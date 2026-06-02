@@ -21,22 +21,17 @@ import type {
 } from "../common";
 
 export interface SignatureVerifierInterface extends Interface {
-  getFunction(nameOrSignature: "verifyECDSA" | "verifyWOTS"): FunctionFragment;
+  getFunction(nameOrSignature: "verifyECDSA"): FunctionFragment;
 
   encodeFunctionData(
     functionFragment: "verifyECDSA",
     values: [AddressLike, BytesLike, BytesLike]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "verifyWOTS",
-    values: [BytesLike, BytesLike[], BytesLike]
   ): string;
 
   decodeFunctionResult(
     functionFragment: "verifyECDSA",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(functionFragment: "verifyWOTS", data: BytesLike): Result;
 }
 
 export interface SignatureVerifier extends BaseContract {
@@ -88,16 +83,6 @@ export interface SignatureVerifier extends BaseContract {
     "view"
   >;
 
-  verifyWOTS: TypedContractMethod<
-    [
-      messageHash: BytesLike,
-      signature: BytesLike[],
-      expectedPubKeyHash: BytesLike
-    ],
-    [boolean],
-    "view"
-  >;
-
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -106,17 +91,6 @@ export interface SignatureVerifier extends BaseContract {
     nameOrSignature: "verifyECDSA"
   ): TypedContractMethod<
     [signer: AddressLike, messageHash: BytesLike, signature: BytesLike],
-    [boolean],
-    "view"
-  >;
-  getFunction(
-    nameOrSignature: "verifyWOTS"
-  ): TypedContractMethod<
-    [
-      messageHash: BytesLike,
-      signature: BytesLike[],
-      expectedPubKeyHash: BytesLike
-    ],
     [boolean],
     "view"
   >;
