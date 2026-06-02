@@ -38,6 +38,14 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.Strings__factory>;
     getContractFactory(
+      name: "IPQSignatureVerifier",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.IPQSignatureVerifier__factory>;
+    getContractFactory(
+      name: "MLDSAVerifier",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.MLDSAVerifier__factory>;
+    getContractFactory(
       name: "SignatureVerifier",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SignatureVerifier__factory>;
@@ -77,6 +85,16 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.Strings>;
     getContractAt(
+      name: "IPQSignatureVerifier",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.IPQSignatureVerifier>;
+    getContractAt(
+      name: "MLDSAVerifier",
+      address: string | ethers.Addressable,
+      signer?: ethers.Signer
+    ): Promise<Contracts.MLDSAVerifier>;
+    getContractAt(
       name: "SignatureVerifier",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -112,6 +130,14 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.Strings>;
     deployContract(
+      name: "IPQSignatureVerifier",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPQSignatureVerifier>;
+    deployContract(
+      name: "MLDSAVerifier",
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MLDSAVerifier>;
+    deployContract(
       name: "SignatureVerifier",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.SignatureVerifier>;
@@ -150,6 +176,16 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.Strings>;
+    deployContract(
+      name: "IPQSignatureVerifier",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.IPQSignatureVerifier>;
+    deployContract(
+      name: "MLDSAVerifier",
+      args: any[],
+      signerOrOptions?: ethers.Signer | DeployContractOptions
+    ): Promise<Contracts.MLDSAVerifier>;
     deployContract(
       name: "SignatureVerifier",
       args: any[],

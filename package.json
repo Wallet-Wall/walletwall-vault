@@ -39,5 +39,8 @@
     "ts-node": "^10.9.2",
     "typechain": "^8.3.2",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "@noble/post-quantum": "^0.6.1"
   }
 }

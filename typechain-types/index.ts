@@ -18,6 +18,10 @@ export type { ReentrancyGuard } from "./@openzeppelin/contracts/utils/Reentrancy
 export { ReentrancyGuard__factory } from "./factories/@openzeppelin/contracts/utils/ReentrancyGuard__factory";
 export type { Strings } from "./@openzeppelin/contracts/utils/Strings";
 export { Strings__factory } from "./factories/@openzeppelin/contracts/utils/Strings__factory";
+export type { IPQSignatureVerifier } from "./contracts/IPQSignatureVerifier";
+export { IPQSignatureVerifier__factory } from "./factories/contracts/IPQSignatureVerifier__factory";
+export type { MLDSAVerifier } from "./contracts/MLDSAVerifier";
+export { MLDSAVerifier__factory } from "./factories/contracts/MLDSAVerifier__factory";
 export type { SignatureVerifier } from "./contracts/SignatureVerifier";
 export { SignatureVerifier__factory } from "./factories/contracts/SignatureVerifier__factory";
 export type { WalletWallVault } from "./contracts/WalletWallVault";

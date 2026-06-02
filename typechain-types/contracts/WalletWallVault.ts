@@ -24,17 +24,27 @@ import type {
 } from "../common";
 
 export declare namespace WalletWallVault {
-  export type VaultStruct = {
-    owner: AddressLike;
-    pqcPublicKeyHash: BytesLike;
+  export type VaultOwnerStruct = {
+    ecdsaSigner: AddressLike;
+    pqPublicKey: BytesLike;
+    nonce: BigNumberish;
     balance: BigNumberish;
+    requireBoth: boolean;
   };
 
-  export type VaultStructOutput = [
-    owner: string,
-    pqcPublicKeyHash: string,
-    balance: bigint
-  ] & { owner: string; pqcPublicKeyHash: string; balance: bigint };
+  export type VaultOwnerStructOutput = [
+    ecdsaSigner: string,
+    pqPublicKey: string,
+    nonce: bigint,
+    balance: bigint,
+    requireBoth: boolean
+  ] & {
+    ecdsaSigner: string;
+    pqPublicKey: string;
+    nonce: bigint;
+    balance: bigint;
+    requireBoth: boolean;
+  };
 }
 
 export interface WalletWallVaultInterface extends Interface {
@@ -42,30 +52,60 @@ export interface WalletWallVaultInterface extends Interface {
     nameOrSignature:
       | "createVault"
       | "deposit"
+      | "ecdsaVerifier"
       | "getVault"
+      | "owner"
+      | "pqVerifier"
+      | "renounceOwnership"
+      | "transferOwnership"
+      | "updatePQVerifier"
       | "vaults"
-      | "verifier"
       | "withdraw"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "Deposited" | "VaultCreated" | "Withdrawn"
+    nameOrSignatureOrTopic:
+      | "Deposited"
+      | "OwnershipTransferred"
+      | "PQVerifierUpdated"
+      | "VaultCreated"
+      | "Withdrawn"
   ): EventFragment;
 
   encodeFunctionData(
     functionFragment: "createVault",
-    values: [BytesLike]
+    values: [AddressLike, BytesLike, boolean]
   ): string;
   encodeFunctionData(functionFragment: "deposit", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "ecdsaVerifier",
+    values?: undefined
+  ): string;
   encodeFunctionData(
     functionFragment: "getVault",
     values: [AddressLike]
   ): string;
+  encodeFunctionData(functionFragment: "owner", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "pqVerifier",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "renounceOwnership",
+    values?: undefined
+  ): string;
+  encodeFunctionData(
+    functionFragment: "transferOwnership",
+    values: [AddressLike]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "updatePQVerifier",
+    values: [AddressLike]
+  ): string;
   encodeFunctionData(functionFragment: "vaults", values: [AddressLike]): string;
-  encodeFunctionData(functionFragment: "verifier", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "withdraw",
-    values: [BigNumberish, AddressLike, BytesLike, BytesLike[]]
+    values: [BigNumberish, AddressLike, BigNumberish, BytesLike, BytesLike]
   ): string;
 
   decodeFunctionResult(
@@ -73,9 +113,26 @@ export interface WalletWallVaultInterface extends Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "deposit", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "ecdsaVerifier",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "getVault", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "pqVerifier", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "renounceOwnership",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "transferOwnership",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "updatePQVerifier",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "vaults", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "verifier", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "withdraw", data: BytesLike): Result;
 }
 
@@ -92,12 +149,49 @@ export namespace DepositedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
+export namespace OwnershipTransferredEvent {
+  export type InputTuple = [previousOwner: AddressLike, newOwner: AddressLike];
+  export type OutputTuple = [previousOwner: string, newOwner: string];
+  export interface OutputObject {
+    previousOwner: string;
+    newOwner: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace PQVerifierUpdatedEvent {
+  export type InputTuple = [newVerifier: AddressLike];
+  export type OutputTuple = [newVerifier: string];
+  export interface OutputObject {
+    newVerifier: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
 export namespace VaultCreatedEvent {
-  export type InputTuple = [owner: AddressLike, pqcPublicKeyHash: BytesLike];
-  export type OutputTuple = [owner: string, pqcPublicKeyHash: string];
+  export type InputTuple = [
+    owner: AddressLike,
+    ecdsaSigner: AddressLike,
+    pqPublicKey: BytesLike,
+    requireBoth: boolean
+  ];
+  export type OutputTuple = [
+    owner: string,
+    ecdsaSigner: string,
+    pqPublicKey: string,
+    requireBoth: boolean
+  ];
   export interface OutputObject {
     owner: string;
-    pqcPublicKeyHash: string;
+    ecdsaSigner: string;
+    pqPublicKey: string;
+    requireBoth: boolean;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -109,13 +203,20 @@ export namespace WithdrawnEvent {
   export type InputTuple = [
     owner: AddressLike,
     recipient: AddressLike,
-    amount: BigNumberish
+    amount: BigNumberish,
+    nonce: BigNumberish
   ];
-  export type OutputTuple = [owner: string, recipient: string, amount: bigint];
+  export type OutputTuple = [
+    owner: string,
+    recipient: string,
+    amount: bigint,
+    nonce: bigint
+  ];
   export interface OutputObject {
     owner: string;
     recipient: string;
     amount: bigint;
+    nonce: bigint;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -167,39 +268,60 @@ export interface WalletWallVault extends BaseContract {
   ): Promise<this>;
 
   createVault: TypedContractMethod<
-    [pqcPublicKeyHash: BytesLike],
+    [ecdsaSigner: AddressLike, pqPublicKey: BytesLike, requireBoth: boolean],
     [void],
     "nonpayable"
   >;
 
   deposit: TypedContractMethod<[], [void], "payable">;
 
+  ecdsaVerifier: TypedContractMethod<[], [string], "view">;
+
   getVault: TypedContractMethod<
     [owner: AddressLike],
-    [WalletWallVault.VaultStructOutput],
+    [WalletWallVault.VaultOwnerStructOutput],
     "view"
+  >;
+
+  owner: TypedContractMethod<[], [string], "view">;
+
+  pqVerifier: TypedContractMethod<[], [string], "view">;
+
+  renounceOwnership: TypedContractMethod<[], [void], "nonpayable">;
+
+  transferOwnership: TypedContractMethod<
+    [newOwner: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
+  updatePQVerifier: TypedContractMethod<
+    [_newVerifier: AddressLike],
+    [void],
+    "nonpayable"
   >;
 
   vaults: TypedContractMethod<
     [arg0: AddressLike],
     [
-      [string, string, bigint] & {
-        owner: string;
-        pqcPublicKeyHash: string;
+      [string, string, bigint, bigint, boolean] & {
+        ecdsaSigner: string;
+        pqPublicKey: string;
+        nonce: bigint;
         balance: bigint;
+        requireBoth: boolean;
       }
     ],
     "view"
   >;
 
-  verifier: TypedContractMethod<[], [string], "view">;
-
   withdraw: TypedContractMethod<
     [
       amount: BigNumberish,
       recipient: AddressLike,
+      nonce: BigNumberish,
       ecdsaSignature: BytesLike,
-      pqcSignature: BytesLike[]
+      pqSignature: BytesLike
     ],
     [void],
     "nonpayable"
@@ -211,41 +333,63 @@ export interface WalletWallVault extends BaseContract {
 
   getFunction(
     nameOrSignature: "createVault"
-  ): TypedContractMethod<[pqcPublicKeyHash: BytesLike], [void], "nonpayable">;
+  ): TypedContractMethod<
+    [ecdsaSigner: AddressLike, pqPublicKey: BytesLike, requireBoth: boolean],
+    [void],
+    "nonpayable"
+  >;
   getFunction(
     nameOrSignature: "deposit"
   ): TypedContractMethod<[], [void], "payable">;
   getFunction(
+    nameOrSignature: "ecdsaVerifier"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
     nameOrSignature: "getVault"
   ): TypedContractMethod<
     [owner: AddressLike],
-    [WalletWallVault.VaultStructOutput],
+    [WalletWallVault.VaultOwnerStructOutput],
     "view"
   >;
+  getFunction(
+    nameOrSignature: "owner"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "pqVerifier"
+  ): TypedContractMethod<[], [string], "view">;
+  getFunction(
+    nameOrSignature: "renounceOwnership"
+  ): TypedContractMethod<[], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "transferOwnership"
+  ): TypedContractMethod<[newOwner: AddressLike], [void], "nonpayable">;
+  getFunction(
+    nameOrSignature: "updatePQVerifier"
+  ): TypedContractMethod<[_newVerifier: AddressLike], [void], "nonpayable">;
   getFunction(
     nameOrSignature: "vaults"
   ): TypedContractMethod<
     [arg0: AddressLike],
     [
-      [string, string, bigint] & {
-        owner: string;
-        pqcPublicKeyHash: string;
+      [string, string, bigint, bigint, boolean] & {
+        ecdsaSigner: string;
+        pqPublicKey: string;
+        nonce: bigint;
         balance: bigint;
+        requireBoth: boolean;
       }
     ],
     "view"
   >;
-  getFunction(
-    nameOrSignature: "verifier"
-  ): TypedContractMethod<[], [string], "view">;
   getFunction(
     nameOrSignature: "withdraw"
   ): TypedContractMethod<
     [
       amount: BigNumberish,
       recipient: AddressLike,
+      nonce: BigNumberish,
       ecdsaSignature: BytesLike,
-      pqcSignature: BytesLike[]
+      pqSignature: BytesLike
     ],
     [void],
     "nonpayable"
@@ -257,6 +401,20 @@ export interface WalletWallVault extends BaseContract {
     DepositedEvent.InputTuple,
     DepositedEvent.OutputTuple,
     DepositedEvent.OutputObject
+  >;
+  getEvent(
+    key: "OwnershipTransferred"
+  ): TypedContractEvent<
+    OwnershipTransferredEvent.InputTuple,
+    OwnershipTransferredEvent.OutputTuple,
+    OwnershipTransferredEvent.OutputObject
+  >;
+  getEvent(
+    key: "PQVerifierUpdated"
+  ): TypedContractEvent<
+    PQVerifierUpdatedEvent.InputTuple,
+    PQVerifierUpdatedEvent.OutputTuple,
+    PQVerifierUpdatedEvent.OutputObject
   >;
   getEvent(
     key: "VaultCreated"
@@ -285,7 +443,29 @@ export interface WalletWallVault extends BaseContract {
       DepositedEvent.OutputObject
     >;
 
-    "VaultCreated(address,bytes32)": TypedContractEvent<
+    "OwnershipTransferred(address,address)": TypedContractEvent<
+      OwnershipTransferredEvent.InputTuple,
+      OwnershipTransferredEvent.OutputTuple,
+      OwnershipTransferredEvent.OutputObject
+    >;
+    OwnershipTransferred: TypedContractEvent<
+      OwnershipTransferredEvent.InputTuple,
+      OwnershipTransferredEvent.OutputTuple,
+      OwnershipTransferredEvent.OutputObject
+    >;
+
+    "PQVerifierUpdated(address)": TypedContractEvent<
+      PQVerifierUpdatedEvent.InputTuple,
+      PQVerifierUpdatedEvent.OutputTuple,
+      PQVerifierUpdatedEvent.OutputObject
+    >;
+    PQVerifierUpdated: TypedContractEvent<
+      PQVerifierUpdatedEvent.InputTuple,
+      PQVerifierUpdatedEvent.OutputTuple,
+      PQVerifierUpdatedEvent.OutputObject
+    >;
+
+    "VaultCreated(address,address,bytes,bool)": TypedContractEvent<
       VaultCreatedEvent.InputTuple,
       VaultCreatedEvent.OutputTuple,
       VaultCreatedEvent.OutputObject
@@ -296,7 +476,7 @@ export interface WalletWallVault extends BaseContract {
       VaultCreatedEvent.OutputObject
     >;
 
-    "Withdrawn(address,address,uint256)": TypedContractEvent<
+    "Withdrawn(address,address,uint256,uint256)": TypedContractEvent<
       WithdrawnEvent.InputTuple,
       WithdrawnEvent.OutputTuple,
       WithdrawnEvent.OutputObject
