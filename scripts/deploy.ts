@@ -10,9 +10,16 @@ async function main() {
   const verifierAddress = await verifier.getAddress();
   console.log(`SignatureVerifier deployed to: ${verifierAddress}`);
 
+  // Deploy MLDSAVerifier
+  const MLDSAVerifier = await ethers.getContractFactory("MLDSAVerifier");
+  const mlDsaVerifier = await MLDSAVerifier.deploy();
+  await mlDsaVerifier.waitForDeployment();
+  const mlDsaVerifierAddress = await mlDsaVerifier.getAddress();
+  console.log(`MLDSAVerifier deployed to: ${mlDsaVerifierAddress}`);
+
   // Deploy WalletWallVault
   const WalletWallVault = await ethers.getContractFactory("WalletWallVault");
-  const vault = await WalletWallVault.deploy(verifierAddress);
+  const vault = await WalletWallVault.deploy(verifierAddress, mlDsaVerifierAddress);
   await vault.waitForDeployment();
   const vaultAddress = await vault.getAddress();
   console.log(`WalletWallVault deployed to: ${vaultAddress}`);
