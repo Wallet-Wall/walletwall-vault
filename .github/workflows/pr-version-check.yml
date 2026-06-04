@@ -1,0 +1,31 @@
+name: PR Version Check
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if package.json version is bumped
+        run: |
+          PR_VERSION=$(jq -r .version package.json)
+          git fetch origin main --depth=1
+          MAIN_VERSION=$(git show origin/main:package.json | jq -r .version)
+          
+          echo "PR Version: $PR_VERSION"
+          echo "Main Version: $MAIN_VERSION"
+          
+          if [ "$PR_VERSION" = "$MAIN_VERSION" ]; then
+            echo "::error::package.json version has not been updated relative to the main branch ($MAIN_VERSION). Please bump the version in package.json."
+            exit 1
+          fi
+          
+          echo "Success: version bumped from $MAIN_VERSION to $PR_VERSION"
