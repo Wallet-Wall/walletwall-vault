@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Hybrid cryptographic asset vault combining ECDSA and Post-Quantum Cryptography.",
   "main": "index.js",
   "scripts": {
