@@ -34,21 +34,41 @@ signature correctly off-chain before signing the attestation.
 7. The verifier checks the payload shape, deadline, public-key hash, EIP-712 signature,
    and configured attestor.
 
-The helper script at [`scripts/sign-attestation.ts`](../scripts/sign-attestation.ts)
-demonstrates steps 4 and 5. Its generated fallback PQ bytes are mock data; the script
-does not perform step 3.
+The attestor CLI at [`scripts/attestor-cli.ts`](../scripts/attestor-cli.ts) implements
+steps 3 through 5 with `@noble/post-quantum` ML-DSA-65 verification. It refuses to sign
+in real verify mode unless verification succeeds and the signed message exactly matches
+the withdrawal digest.
 
-Run it with `npm run sign:attestation`. The following environment variables override
-the generated local sample values:
+The older [`scripts/sign-attestation.ts`](../scripts/sign-attestation.ts) remains a
+payload-construction example only. It does not verify ML-DSA and must not be used as an
+attestor service.
 
-- `WITHDRAWAL_DIGEST`: 32-byte withdrawal digest.
-- `PQ_PUBLIC_KEY`: hex-encoded PQ public key bytes.
-- `PQ_SIGNATURE`: hex-encoded PQ signature bytes.
-- `ATTESTOR_PRIVATE_KEY`: EVM private key used to sign the attestation.
-- `VERIFIER_ADDRESS`: existing verifier address; otherwise the script deploys a local
-  sample verifier.
-- `CHAIN_ID`: EIP-712 chain ID; defaults to the connected network.
-- `ATTESTATION_DEADLINE`: Unix timestamp; defaults to one hour after the latest block.
+## Attestor CLI
+
+`npm run attestor:demo` uses deterministic library-generated ML-DSA-65 material. It
+verifies the signature before signing the attestation and prints:
+
+> DEMO ONLY — do not use generated/demo PQ material for real funds.
+
+`npm run attestor:verify -- ...` requires:
+
+- `--withdrawal-digest`: the 32-byte vault withdrawal digest.
+- `--message` or `--message-file`: the bytes signed by ML-DSA; these must equal the
+  withdrawal digest.
+- `--public-key` or `--public-key-file`: ML-DSA-65 public key bytes.
+- `--pq-signature` or `--pq-signature-file`: ML-DSA-65 signature bytes.
+- `--verifier`: deployed `AttestationPQCVerifier` address.
+- `--chain-id`: intended chain ID.
+- `--deadline`: attestation expiry timestamp.
+- `ATTESTOR_PRIVATE_KEY` or `--attestor-private-key`: EVM attestor key.
+
+Hex files may contain a `0x`-prefixed value. Other files are treated as raw bytes. Real
+verify mode rejects malformed inputs, failed ML-DSA verification, message/digest
+mismatches, and the known deterministic demo material.
+
+Deterministic library-generated fixtures live under
+[`test/fixtures/mldsa/library-generated/`](../test/fixtures/mldsa/library-generated/).
+They are not official NIST vectors and are not deployment credentials.
 
 ## Trust model
 
@@ -66,6 +86,10 @@ Security therefore depends on:
 
 The contract owner can rotate the attestor. A compromised owner or attestor can
 authorize invalid PQ inputs.
+
+The CLI prevents accidental signing after a local verification failure. It cannot
+protect against a compromised host, modified service code, stolen attestor key, or an
+operator intentionally bypassing the CLI.
 
 ## EIP-712 attestation
 
@@ -135,11 +159,14 @@ which includes the vault nonce and withdrawal deadline. Integrations outside
 
 - The EVM trusts an ECDSA attestor instead of verifying ML-DSA itself.
 - A compromised attestor key can authorize invalid PQ signatures.
-- An incorrect or bypassed off-chain verifier can produce invalid attestations.
+- An incorrect, modified, or bypassed off-chain verifier can produce invalid
+  attestations.
 - Attestor rotation is owner-controlled and immediate within this verifier.
 - There is no threshold attestor committee, slashing, transparency log, or availability
   guarantee.
-- The helper script constructs attestations but does not verify ML-DSA.
+- Demo mode uses deterministic test material and does not provide deployment security.
+- The CLI is a prototype process, not a hardened or highly available attestation
+  service.
 
 ## Migration path
 

@@ -62,6 +62,12 @@ incorrect verifier service, or malicious attestor can authorize invalid PQ input
 contract owner can immediately rotate the verifier's attestor, creating an additional
 administrative trust boundary.
 
+The repository's attestor CLI uses `@noble/post-quantum` to verify ML-DSA-65 before
+signing and refuses known demo material in real verify mode. This reduces accidental
+mis-signing in the demonstrated flow, but it does not remove trust in the attestor key,
+host, service code, deployment process, or operator. A compromised attestor can still
+approve invalid PQ claims.
+
 `AttestationPQCVerifier` is stronger than the mock only because it requires the
 configured attestor's valid EIP-712 signature. It does not make the vault production
 custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
@@ -123,6 +129,8 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
 
 - No on-chain ML-DSA verification. The attestation path delegates verification to a
   trusted off-chain service and EVM attestor.
+- The attestor CLI is a prototype without key isolation, threshold signing, hardened
+  service deployment, audit logging, monitoring, or availability guarantees.
 - No ERC-20 / NFT support; ETH only.
 - No multi-signature, guardian recovery, or time-delayed recovery (see
   `Project_Phases.md` for the longer-term vision; these are not implemented here).
