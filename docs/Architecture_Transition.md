@@ -26,7 +26,7 @@ The previous system used WOTS+, which had several limitations:
 2. User registers WOTS+ public key hash in the Vault.
 3. For withdrawal:
    - User provides WOTS+ signature (array of 32-byte hashes).
-   - Vault calls `SignatureVerifier.verifyWOTS`.
+   - Vault calls a `verifyWOTS` helper.
    - `verifyWOTS` reconstructs the public key from the signature and message, then hashes it.
    - Hash is compared with the stored `pqcPublicKeyHash`.
 
@@ -38,15 +38,15 @@ The new system uses ML-DSA-65 (Dilithium3), a NIST-approved post-quantum digital
 - **Reusable keys**: ML-DSA keys can be used for many signatures, just like ECDSA.
 - **Standardized**: Part of the FIPS 204 standard.
 - **Hybrid Security**: Built-in support for requiring both ECDSA and PQC signatures.
-- **Algorithm Agnostic**: The vault now uses an interface (`IPQSignatureVerifier`), allowing for future upgrades to other NIST algorithms (like SLH-DSA or Falcon).
+- **Algorithm Agnostic**: The vault now uses an interface (`IPQCVerifier`), allowing for future upgrades to other NIST algorithms (like SLH-DSA or Falcon).
 
 ### Flow (After)
 1. User generates ML-DSA-65 keypair.
 2. User registers ML-DSA public key in the Vault.
 3. For withdrawal:
    - User provides ML-DSA signature.
-   - Vault calls `IPQSignatureVerifier.verify`.
-   - The verifier (e.g., `MLDSAVerifier`) validates the signature against the registered public key.
+   - Vault calls `IPQCVerifier.verify`.
+   - The verifier (e.g., `MockMLDSAVerifier`) validates the signature against the registered public key.
    - Replay protection is handled via a `nonce`.
 
 ## Architecture Diagram
@@ -62,8 +62,8 @@ graph TD
 
     subgraph "On-chain (Ethereum)"
         D --> E[WalletWallVault]
-        E --> F[SignatureVerifier (ECDSA)]
-        E --> G[IPQSignatureVerifier (ML-DSA)]
+        E --> F[OpenZeppelin ECDSA]
+        E --> G[IPQCVerifier (ML-DSA)]
         F -- Valid --> H{Both Valid?}
         G -- Valid --> H
         H -- Yes --> I[Release Funds]

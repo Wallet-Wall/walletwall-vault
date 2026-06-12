@@ -22,8 +22,6 @@ protected by **per-owner nonces** and a signed **deadline**.
 - `IPQCVerifier.sol` — the PQ verifier trust-boundary interface
   (`algorithmId()`, `verify(digest, publicKey, signature)`).
 - `MockMLDSAVerifier.sol` — **mock** ML-DSA-65 verifier for tests/demos only.
-- `SignatureVerifier.sol` — standalone ECDSA helper (the vault verifies ECDSA over the
-  EIP-712 digest directly via OpenZeppelin's `ECDSA`).
 
 ### Off-chain
 - `pqc/ml-dsa.ts` — ML-DSA-65 key generation and signing via `@noble/post-quantum`.
