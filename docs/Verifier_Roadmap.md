@@ -1,20 +1,19 @@
 # PQ Verifier Roadmap
 
 > ⚠️ **Research prototype. Not audited. Do not use real funds.**
-> Today the vault ships with a **mock** PQ verifier (`MockMLDSAVerifier`) that performs
-> **no real cryptographic verification**.
+> The vault includes a test/demo-only mock verifier and a trusted-attestation verifier.
+> Neither verifies ML-DSA on-chain.
 
 The vault depends only on the `IPQCVerifier` interface:
 
 ```solidity
 interface IPQCVerifier {
-    function algorithmId() external view returns (bytes32);
-    function verify(bytes32 digest, bytes calldata publicKey, bytes calldata signature)
-        external view returns (bool);
+  function algorithmId() external view returns (bytes32);
+  function verify(bytes32 digest, bytes calldata publicKey, bytes calldata signature) external view returns (bool);
 }
 ```
 
-This indirection is the whole point: the *strategy* for verifying post-quantum
+This indirection is the whole point: the _strategy_ for verifying post-quantum
 signatures can evolve without changing the vault. The verifier is **admin-controlled**
 through a timelocked two-step flow (`proposePQVerifier` then
 `applyPQVerifierUpdate` after two days). The owner can be a multisig through the existing
@@ -32,24 +31,31 @@ chain-native solution.
   hybrid-authorization flows.
 - **Status:** implemented.
 
-## Path 1 — Trusted-attestation verifier
+## Path 1 — Trusted-attestation verifier (implemented)
 
-- **Idea:** a trusted off-chain service verifies the real ML-DSA signature
-  (e.g. using `@noble/post-quantum`) and produces an on-chain attestation (its own
-  ECDSA/threshold signature) that the `IPQCVerifier` checks.
+- **Contract:** `AttestationPQCVerifier`
+- **Idea:** a trusted off-chain service verifies the ML-DSA signature with a real FIPS
+  204-compatible implementation and produces an EIP-712 attestation signed by the
+  configured EVM attestor.
 - **Trust:** shifts trust to the attestor / committee. Centralized but cheap and
   deployable today.
-- **Security:** real, **conditional on the attestor being honest and available.**
-- **Status:** not implemented (design candidate).
+- **Security:** stronger than the mock only because the contract enforces the authorized
+  attestor signature. Correctness remains conditional on the attestor key, service, and
+  off-chain ML-DSA verification.
+- **On-chain behavior:** binds the withdrawal digest, public-key hash, PQ signature hash,
+  algorithm identifier, verifier address, chain ID, and deadline. It does not execute
+  ML-DSA verification.
+- **Status:** implemented for research and testnet evaluation. See
+  [Attestation_Verifier.md](Attestation_Verifier.md).
 
 ## Path 2 — ZK-proof verifier
 
 - **Idea:** prove "this ML-DSA-65 signature verifies for this public key and digest"
   inside a zero-knowledge circuit (e.g. Groth16 / Halo2 / a STARK), and verify the
   succinct proof on-chain.
-- **Trust:** trust-minimized — only the proving system and circuit correctness.
+- **Trust:** reduces dependence on an operational attestor but still depends on the
+  proving system, circuit correctness, setup assumptions where applicable, and audits.
 - **Cost:** higher proving effort off-chain; modest on-chain verification cost.
-- **Security:** real and decentralized if the circuit is correct and audited.
 - **Status:** not implemented (preferred long-term software path).
 
 ## Path 3 — Optimized native Solidity verifier

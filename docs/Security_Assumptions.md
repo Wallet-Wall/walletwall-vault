@@ -1,8 +1,8 @@
 # Security Assumptions
 
 > ⚠️ **Research prototype. Not audited. Not production custody. Do not use real funds.**
-> The current PQ verifier is a mock/placeholder and performs no real cryptographic
-> verification.
+> The repository includes a test/demo-only mock verifier and a trusted-attestation
+> verifier. Neither performs ML-DSA verification on-chain.
 
 This document states the trust assumptions and threat model that the WalletWall Vault
 prototype operates under. It is intended to keep claims honest and to make the trust
@@ -21,8 +21,8 @@ boundaries explicit.
 
 - Not audited.
 - Not production custody.
-- Not "quantum-proof", "fully quantum-secure", or "real-fund protection".
-- Not mainnet-ready.
+- Does not provide production-grade quantum resistance or real-fund protection.
+- Not a reviewed deployment system.
 
 ## 3. The PQ verifier trust boundary (most important assumption)
 
@@ -30,7 +30,7 @@ The vault delegates **all** PQ signature validity decisions to whatever contract
 configured as `pqVerifier` (an `IPQCVerifier`). The vault itself does not implement
 lattice cryptography.
 
-In this repository the default implementation is **`MockMLDSAVerifier`**, which:
+The test/demo implementation is **`MockMLDSAVerifier`**, which:
 
 - checks only that the public key is 1952 bytes and the signature is 3309 bytes
   (the ML-DSA-65 sizes),
@@ -38,7 +38,7 @@ In this repository the default implementation is **`MockMLDSAVerifier`**, which:
 - performs **no** binding of signature ↔ public key ↔ digest, and therefore provides
   **no cryptographic security**.
 
-**Consequence:** In `Hybrid` mode the *effective* protection today is roughly that of
+**Consequence:** In `Hybrid` mode the _effective_ protection today is roughly that of
 the ECDSA layer alone. In `PqOnly` mode the prototype would have effectively **no**
 meaningful authorization security, because any well-formed blob of the right length
 passes the mock.
@@ -51,7 +51,21 @@ value is retained for future compatibility and becomes usable once a non-mock ve
 is wired in. `EcdsaOnly` and `Hybrid` are unaffected — they still require a classical
 ECDSA signature.
 
-See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the paths toward a real verifier.
+The repository also implements **`AttestationPQCVerifier`**. It is non-mock because it
+cryptographically enforces an authorized EVM attestor signature over the withdrawal
+digest, public-key hash, PQ signature hash, algorithm identifier, verifier address,
+chain ID, and deadline. It does not verify ML-DSA on-chain.
+
+Its security depends on the attestor correctly verifying ML-DSA off-chain with a real
+FIPS 204-compatible implementation before signing. A compromised attestor key,
+incorrect verifier service, or malicious attestor can authorize invalid PQ inputs. The
+contract owner can immediately rotate the verifier's attestor, creating an additional
+administrative trust boundary.
+
+`AttestationPQCVerifier` is stronger than the mock only because it requires the
+configured attestor's valid EIP-712 signature. It does not make the vault production
+custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
+[Verifier_Roadmap.md](Verifier_Roadmap.md).
 
 ## 4. Admin / trust assumptions
 
@@ -65,7 +79,7 @@ See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the paths toward a real verif
   verifier. Immutability would require redeploying the entire vault contract and would
   strand the existing per-vault state.
 - **The delay does not eliminate owner trust.** Whoever controls the owner can still
-  select the verifier trusted for *every* vault. A malicious or compromised owner can
+  select the verifier trusted for _every_ vault. A malicious or compromised owner can
   propose a permissive verifier and apply it after the delay. A later proposal replaces
   the pending proposal and restarts the delay.
 - **Ownership uses two-step transfer** (`Ownable2Step`) to avoid transferring ownership
@@ -107,7 +121,8 @@ See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the paths toward a real verif
 
 ## 7. Known limitations / out of scope
 
-- No real PQ verification (the central limitation).
+- No on-chain ML-DSA verification. The attestation path delegates verification to a
+  trusted off-chain service and EVM attestor.
 - No ERC-20 / NFT support; ETH only.
 - No multi-signature, guardian recovery, or time-delayed recovery (see
   `Project_Phases.md` for the longer-term vision; these are not implemented here).
