@@ -1,5 +1,15 @@
 # Migration Guide: From WOTS+ to ML-DSA
 
+> ⚠️ **Research prototype. Not audited. Do not use real funds.** The on-chain PQ verifier
+> is a mock/placeholder and performs no real cryptographic verification.
+>
+> **Note (current API):** The `withdraw` signature shown below is outdated. Since the
+> `harden-vault-core` refactor, withdrawals take a single EIP-712 `Withdrawal` struct —
+> `withdraw(Withdrawal request, bytes ecdsaSignature, bytes pqSignature)` — where
+> `Withdrawal = { vaultOwner, recipient, amount, nonce, deadline, vaultMode }`, and
+> `createVault` takes a `VaultMode` enum instead of a `requireBoth` boolean. See
+> [../README.md](../README.md) for the current signing flow.
+
 This guide outlines the steps for users and developers to migrate from the deprecated WOTS+ vault to the new ML-DSA post-quantum vault.
 
 ## For Developers

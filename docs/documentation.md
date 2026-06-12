@@ -1,51 +1,55 @@
-# WalletWall Vault - Developer Documentation
+# WalletWall Vault — Developer Documentation
+
+> ⚠️ **Research prototype. Not audited. Not production custody. Do not use real funds.**
+> The on-chain PQ verifier is a mock/placeholder (`MockMLDSAVerifier`) and performs no
+> real cryptographic verification. See [../SECURITY.md](../SECURITY.md) and
+> [Security_Assumptions.md](Security_Assumptions.md).
 
 ## Overview
-WalletWall Vault is a hybrid cryptographic asset vault. This Phase 1 MVP demonstrates how to combine traditional ECDSA signatures with simulated Post-Quantum Cryptography (PQC) signatures.
 
-## Core Components
+WalletWall Vault is a hybrid classical (ECDSA) + post-quantum (PQ) withdrawal-
+authorization prototype. Withdrawals are authorized with an **EIP-712** typed message and
+protected by **per-owner nonces** and a signed **deadline**.
 
-### Smart Contracts
-- `SignatureVerifier.sol`: A utility contract that uses OpenZeppelin's ECDSA library to verify Ethereum signatures.
-- `WalletWallVault.sol`: The main vault contract. It handles vault registration, ETH deposits, and multi-signature (ECDSA + PQC) withdrawals.
+## Core components
 
-### Off-Chain PQC Layer (Mock)
-- `pqc/pqc-signer.ts`: Simulates PQC keypair generation and signing.
-- `pqc/pqc-verifier.ts`: Simulates PQC signature verification.
+### Smart contracts
+- `WalletWallVault.sol` — vault registration, ETH deposits (`deposit` / `depositFor`), and
+  EIP-712 authorized withdrawals. Uses `ReentrancyGuard`, `Pausable`, `Ownable2Step`, and
+  custom errors. Authorization policy is selected per vault via the `VaultMode` enum
+  (`EcdsaOnly`, `PqOnly`, `Hybrid`); **Hybrid is the intended default** and requires both
+  signatures.
+- `IPQCVerifier.sol` — the PQ verifier trust-boundary interface
+  (`algorithmId()`, `verify(digest, publicKey, signature)`).
+- `MockMLDSAVerifier.sol` — **mock** ML-DSA-65 verifier for tests/demos only.
+- `SignatureVerifier.sol` — standalone ECDSA helper (the vault verifies ECDSA over the
+  EIP-712 digest directly via OpenZeppelin's `ECDSA`).
 
-## Workflow
+### Off-chain
+- `pqc/ml-dsa.ts` — ML-DSA-65 key generation and signing via `@noble/post-quantum`.
 
-### 1. Vault Creation
-A user registers a vault by providing a hash of their PQC public key. This establishes their identity in both classical and post-quantum realms.
-```solidity
-function createVault(bytes32 pqcPublicKeyHash) external
-```
+## Withdrawal flow
 
-### 2. Deposits
-Users can deposit ETH into their registered vault.
-```solidity
-function deposit() external payable
-```
+1. Build a `Withdrawal` struct: `{ vaultOwner, recipient, amount, nonce, deadline, vaultMode }`.
+2. Compute the EIP-712 digest over the domain
+   `{ name: "WalletWallVault", version: "1", chainId, verifyingContract }`.
+3. Produce the signatures the mode requires:
+   - ECDSA: `signer.signTypedData(domain, types, request)`.
+   - PQ: `MLDSASigner.sign(digest, pqPrivateKey)` (validated by the configured verifier).
+4. Submit `vault.withdraw(request, ecdsaSignature, pqSignature)` — may be relayed by anyone;
+   authorization comes from the signatures, not `msg.sender`.
 
-### 3. Hybrid Authorization (Withdrawal)
-To withdraw funds, a user must provide:
-- A valid ECDSA signature.
-- A valid PQC signature (simulated for MVP).
+The contract checks: vault exists, deadline not passed, amount > 0, recipient ≠ 0,
+nonce matches, requested mode matches the vault's mode, sufficient balance, then the
+required signature(s). It follows checks-effects-interactions and increments the nonce
+before transferring.
 
-The withdrawal process works as follows:
-1. Generate a `withdrawalHash` from `(sender, amount, recipient)`.
-2. Generate a `pqcSignature` which is `hash(pqcPublicKeyHash, withdrawalHash)`.
-3. Generate an `ecdsaMessageHash` from `(withdrawalHash, pqcSignature)`.
-4. Sign the `ecdsaMessageHash` using the Ethereum private key.
+See [../README.md](../README.md) for a complete, runnable example, and `npm run demo` for
+an end-to-end local walkthrough.
 
-The contract verifies:
-1. `pqcSignature == hash(storedPqcPublicKeyHash, calculatedWithdrawalHash)`
-2. `recover(ecdsaMessageHash, ecdsaSignature) == owner`
+## Why PQ verification is mocked on-chain
 
-## Why PQC is Off-Chain for MVP
-Real PQC algorithms like CRYSTALS-Dilithium have large signature and public key sizes, making them expensive to verify directly on-chain in Solidity without optimized precompiles or specialized libraries. This MVP uses a hash-based simulation to demonstrate the architectural flow while keeping the implementation simple and gas-efficient for testing.
-
-## Future Migration Path
-- **Phase 2**: Integrate real PQC libraries (e.g., using Succinct or other ZK-proof systems to verify PQC signatures off-chain and submit a proof on-chain).
-- **Phase 3**: Implement native Dilithium/SPHINCS+ verification if/or when EVM-optimized implementations become available.
-- **Phase 4**: Add support for multi-signature vaults and guardian-based recovery.
+Real ML-DSA verification is impractical to run natively within current EVM gas limits.
+This prototype isolates PQ verification behind `IPQCVerifier` so a real verifier
+(trusted attestation, ZK proof, or a future chain-native precompile) can be swapped in
+without changing the vault. See [Verifier_Roadmap.md](Verifier_Roadmap.md).
