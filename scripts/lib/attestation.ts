@@ -135,6 +135,14 @@ export function isDemoMaterial(publicKey: Uint8Array, signature: Uint8Array): bo
   );
 }
 
+export function isFixtureMaterial(publicKey: Uint8Array, signature: Uint8Array): boolean {
+  const fixture = createFixtureMaterial();
+  return (
+    hashPQPublicKey(publicKey) === hashPQPublicKey(fixture.publicKey) ||
+    hashPQSignature(signature) === hashPQSignature(fixture.signature)
+  );
+}
+
 export function buildAttestation(input: AttestationInput, publicKeyHash: string, pqSignatureHash: string) {
   const verifier = getAddress(input.verifierAddress);
   const domain: TypedDataDomain = {
@@ -170,14 +178,17 @@ export function encodeVerifierPayload(
 export async function verifyAndSignAttestation(
   input: AttestationInput,
   attestor: Signer,
-  allowDemoMaterial = false,
+  allowGeneratedMaterial = false,
 ): Promise<SignedAttestation> {
   const digestBytes = normalizeHex(input.withdrawalDigest, "withdrawal-digest", 32);
   if (hexlify(input.signedMessage) !== hexlify(digestBytes)) {
     throw new Error("The ML-DSA signed message must equal the withdrawal digest");
   }
-  if (!allowDemoMaterial && isDemoMaterial(input.publicKey, input.pqSignature)) {
+  if (!allowGeneratedMaterial && isDemoMaterial(input.publicKey, input.pqSignature)) {
     throw new Error("Real verify mode refuses generated demo PQ material");
+  }
+  if (!allowGeneratedMaterial && isFixtureMaterial(input.publicKey, input.pqSignature)) {
+    throw new Error("Real verify mode refuses generated fixture PQ material");
   }
   if (!verifyMLDSA65(input.publicKey, input.signedMessage, input.pqSignature)) {
     throw new Error("ML-DSA-65 verification failed; attestation was not signed");

@@ -45,11 +45,19 @@ chain-native solution.
 - **On-chain behavior:** binds the withdrawal digest, public-key hash, PQ signature hash,
   algorithm identifier, verifier address, chain ID, and deadline. It does not execute
   ML-DSA verification.
+- **Attestor rotation asymmetry:** the vault's two-day verifier governance delay does
+  **not** apply to `updateAttestor`. The attestor can be rotated immediately by the
+  attestor owner. This means vault users are not protected from immediate attestor
+  replacement inside an already-configured `AttestationPQCVerifier`. Operators must
+  monitor `AttestorUpdated` events. This asymmetry is a fundamental limitation of the
+  trusted-attestation path and cannot be fixed within Path 1; it requires graduating to
+  Path 2 (ZK) or Path 4 (chain-native).
 - **Status:** implemented for research and testnet evaluation. See
   [Attestation_Verifier.md](Attestation_Verifier.md).
 - **Off-chain prototype:** `scripts/attestor-cli.ts` verifies ML-DSA-65 with
-  `@noble/post-quantum` before signing. This demonstrates the required verification
-  gate but does not remove trust in the attestor key or service.
+  `@noble/post-quantum` before signing. In real verify mode it refuses both demo
+  material and library-generated fixture material. This demonstrates the required
+  verification gate but does not remove trust in the attestor key or service.
 
 ## Path 2 — ZK-proof verifier
 

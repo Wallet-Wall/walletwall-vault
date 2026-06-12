@@ -91,6 +91,31 @@ The CLI prevents accidental signing after a local verification failure. It canno
 protect against a compromised host, modified service code, stolen attestor key, or an
 operator intentionally bypassing the CLI.
 
+This is a **trusted attestation model, not trustless PQ verification.** The vault
+cannot detect or prevent abuse at the attestor layer.
+
+## Attestor rotation delay asymmetry
+
+`WalletWallVault` protects against verifier replacement through a timelocked
+`proposePQVerifier` / `applyPQVerifierUpdate` governance flow (two-day delay). This
+delay allows users to observe a pending verifier change and react before it takes
+effect.
+
+`AttestationPQCVerifier.updateAttestor` has **no equivalent delay.** The attestor owner
+can rotate to a new attestor immediately in a single transaction. This means:
+
+- The vault's two-day governance delay does **not** protect users from immediate
+  attestor rotation inside an already-configured `AttestationPQCVerifier`.
+- A compromised attestor owner can silently replace a legitimate attestor with a
+  malicious one, causing the verifier to accept fraudulent PQ attestations from the
+  next block onward.
+- Users and integrators relying on this verifier must monitor the `AttestorUpdated(address indexed oldAttestor, address indexed newAttestor)` event to detect unexpected rotations.
+
+This asymmetry is a deliberate design trade-off of the Phase 1 attestation path. It can
+only be eliminated by replacing the attestation path with a ZK or chain-native verifier
+that does not rely on a trusted off-chain authority. See
+[Verifier_Roadmap.md](Verifier_Roadmap.md).
+
 ## EIP-712 attestation
 
 Domain:
@@ -161,10 +186,15 @@ which includes the vault nonce and withdrawal deadline. Integrations outside
 - A compromised attestor key can authorize invalid PQ signatures.
 - An incorrect, modified, or bypassed off-chain verifier can produce invalid
   attestations.
-- Attestor rotation is owner-controlled and immediate within this verifier.
+- **Attestor rotation is owner-controlled and immediate within this verifier.** The
+  vault's two-day verifier governance delay does not cover `updateAttestor`. See
+  [Attestor rotation delay asymmetry](#attestor-rotation-delay-asymmetry) above.
 - There is no threshold attestor committee, slashing, transparency log, or availability
   guarantee.
 - Demo mode uses deterministic test material and does not provide deployment security.
+- The attestor CLI blocks demo material and library-generated fixture material in real
+  verify mode. This prevents accidental signing from known generated inputs but does not
+  remove trust in the attestor key, host, or service.
 - The CLI is a prototype process, not a hardened or highly available attestation
   service.
 
