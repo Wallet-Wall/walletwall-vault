@@ -383,6 +383,42 @@ describe("WalletWallVault", function () {
       await expect(vault.proposePQVerifier(ethers.ZeroAddress)).to.be.revertedWithCustomError(vault, "ZeroAddress");
     });
 
+    it("Should prevent a non-owner from cancelling a PQ verifier update", async function () {
+      const newVerifier = await deployNewVerifier();
+      await vault.proposePQVerifier(await newVerifier.getAddress());
+
+      await expect(vault.connect(otherAccount).cancelPQVerifierUpdate()).to.be.revertedWithCustomError(
+        vault,
+        "OwnableUnauthorizedAccount",
+      );
+    });
+
+    it("Should let the owner cancel a pending PQ verifier update", async function () {
+      const newVerifier = await deployNewVerifier();
+      const newAddr = await newVerifier.getAddress();
+      await vault.proposePQVerifier(newAddr);
+
+      await expect(vault.cancelPQVerifierUpdate()).to.emit(vault, "PQVerifierUpdateCancelled").withArgs(newAddr);
+
+      expect(await vault.pendingPQVerifier()).to.equal(ethers.ZeroAddress);
+      expect(await vault.pendingPQVerifierValidAfter()).to.equal(0);
+    });
+
+    it("Should not apply a cancelled PQ verifier update later", async function () {
+      const newVerifier = await deployNewVerifier();
+      await vault.proposePQVerifier(await newVerifier.getAddress());
+      const validAfter = await vault.pendingPQVerifierValidAfter();
+      await vault.cancelPQVerifierUpdate();
+
+      await time.increaseTo(validAfter);
+      await expect(vault.applyPQVerifierUpdate()).to.be.revertedWithCustomError(vault, "NoPendingPQVerifier");
+      expect(await vault.pqVerifier()).to.equal(await mockVerifier.getAddress());
+    });
+
+    it("Should reject cancellation when no verifier update is pending", async function () {
+      await expect(vault.cancelPQVerifierUpdate()).to.be.revertedWithCustomError(vault, "NoPendingPQVerifier");
+    });
+
     it("Should not apply a verifier before the delay", async function () {
       const newVerifier = await deployNewVerifier();
       await vault.proposePQVerifier(await newVerifier.getAddress());

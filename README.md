@@ -151,9 +151,10 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
 - **Domain separation:** binds signatures to contract address, chainId, and name/version.
 - **Reentrancy:** `ReentrancyGuard` + checks-effects-interactions.
 - **Verifier governance:** the `Ownable2Step` owner proposes a verifier, waits the fixed
-  two-day `PQ_VERIFIER_UPDATE_DELAY`, then applies it. The active verifier remains
-  unchanged during the delay. Ownership can be assigned to a multisig such as Safe
-  without adding multisig logic to this prototype.
+  two-day `PQ_VERIFIER_UPDATE_DELAY`, then applies it. The owner can cancel a pending
+  proposal before application. The active verifier remains unchanged during the delay.
+  Ownership can be assigned to a multisig such as Safe without adding multisig logic to
+  this prototype.
 - **Admin:** the owner can still choose the verifier and pause the vault. The delay
   improves visibility and reaction time but does not remove the central trust boundary.
 - **Accounting:** ETH force-sent via `selfdestruct` is not credited and cannot be

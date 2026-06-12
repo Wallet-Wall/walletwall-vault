@@ -82,7 +82,8 @@ chain-native solution.
 3. Validate against known-answer test vectors for the chosen parameter set.
 4. Propose the verifier via `proposePQVerifier` from the owner or owner multisig.
 5. Monitor the `PQVerifierUpdateProposed` event and independently verify the proposed
-   address and bytecode during the fixed two-day delay.
+   address and bytecode during the fixed two-day delay. Cancel with
+   `cancelPQVerifierUpdate` if review fails or the proposal is no longer intended.
 6. Apply via `applyPQVerifierUpdate` only after the delay and review are complete.
 7. Update docs to drop the "mock verifier" disclaimers **only** once real verification
    is in place and reviewed.

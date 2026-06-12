@@ -58,7 +58,8 @@ See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the paths toward a real verif
 - **Verifier is admin-controlled and timelocked.** The contract owner proposes a new
   verifier with `proposePQVerifier`, waits the fixed two-day
   `PQ_VERIFIER_UPDATE_DELAY`, and applies it with `applyPQVerifierUpdate`. The active
-  verifier remains unchanged during the delay.
+  verifier remains unchanged during the delay. The owner can clear a pending proposal
+  with `cancelPQVerifierUpdate` before it is applied.
 - **Why mutable instead of immutable:** the Phase 1 trust boundary is specifically
   intended to support replacing the mock with a future attestation, ZK, or chain-native
   verifier. Immutability would require redeploying the entire vault contract and would

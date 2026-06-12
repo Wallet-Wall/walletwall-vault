@@ -105,6 +105,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         address indexed proposedVerifier,
         uint256 validAfter
     );
+    event PQVerifierUpdateCancelled(address indexed cancelledVerifier);
     event PQVerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
 
     // ---------------------------------------------------------------------
@@ -312,6 +313,20 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         pendingPQVerifierValidAfter = validAfter;
 
         emit PQVerifierUpdateProposed(address(pqVerifier), newVerifier, validAfter);
+    }
+
+    /**
+     * @notice Cancels the pending PQ verifier update.
+     * @dev Admin-only. Reverts when there is no pending proposal.
+     */
+    function cancelPQVerifierUpdate() external onlyOwner {
+        address cancelledVerifier = pendingPQVerifier;
+        if (cancelledVerifier == address(0)) revert NoPendingPQVerifier();
+
+        pendingPQVerifier = address(0);
+        pendingPQVerifierValidAfter = 0;
+
+        emit PQVerifierUpdateCancelled(cancelledVerifier);
     }
 
     /**

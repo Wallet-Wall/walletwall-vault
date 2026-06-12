@@ -58,10 +58,12 @@ with `PqOnlyDisabledForMockVerifier`. This keeps a classical ECDSA signature in 
 [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 
 Verifier changes are not immediate. The owner must call `proposePQVerifier`, wait the
-fixed two-day delay, and then call `applyPQVerifierUpdate`. This creates an observation
-window but does not make the owner trustless: a compromised owner can still propose and
-later apply a weak verifier. For shared governance, transfer `Ownable2Step` ownership to
-a reviewed multisig. This prototype does not include or audit a multisig implementation.
+fixed two-day delay, and then call `applyPQVerifierUpdate`. The owner can call
+`cancelPQVerifierUpdate` before application to clear the pending proposal. This creates
+an observation and response window but does not make the owner trustless: a compromised
+owner can still propose and later apply a weak verifier. For shared governance, transfer
+`Ownable2Step` ownership to a reviewed multisig. This prototype does not include or
+audit a multisig implementation.
 
 ## Reporting a vulnerability
 
