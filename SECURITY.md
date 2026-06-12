@@ -44,6 +44,7 @@ scope and must not be modified as part of work on this prototype.
 | Tamper protection on owner/recipient/amount/nonce/deadline/mode | Implemented (all fields are part of the EIP-712 typed message) |
 | Reentrancy protection | Implemented (`ReentrancyGuard`, checks-effects-interactions) |
 | Pause / admin controls | Implemented (`Pausable`, `Ownable2Step`) |
+| Verifier update delay | Implemented (two-step proposal + fixed two-day delay) |
 | **Real post-quantum signature verification** | **NOT implemented — mock verifier only** |
 
 Because the PQ layer is a mock, in `Hybrid` mode the *effective* security today is
@@ -55,6 +56,14 @@ while the configured verifier is the mock** (`MockMLDSAVerifier`): `createVault`
 with `PqOnlyDisabledForMockVerifier`. This keeps a classical ECDSA signature in the loop
 (via `Hybrid` or `EcdsaOnly`) until a real PQ verifier is wired in. See
 [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
+
+Verifier changes are not immediate. The owner must call `proposePQVerifier`, wait the
+fixed two-day delay, and then call `applyPQVerifierUpdate`. The owner can call
+`cancelPQVerifierUpdate` before application to clear the pending proposal. This creates
+an observation and response window but does not make the owner trustless: a compromised
+owner can still propose and later apply a weak verifier. For shared governance, transfer
+`Ownable2Step` ownership to a reviewed multisig. This prototype does not include or
+audit a multisig implementation.
 
 ## Reporting a vulnerability
 

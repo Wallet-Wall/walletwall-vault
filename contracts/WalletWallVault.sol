@@ -77,9 +77,18 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     ///      PqOnly configuration while a mock (non-cryptographic) verifier is wired in.
     bytes32 public constant MOCK_ML_DSA_65_ALGORITHM_ID = keccak256("MOCK-ML-DSA-65");
 
+    /// @notice Delay between proposing and applying a PQ verifier update.
+    uint256 public constant PQ_VERIFIER_UPDATE_DELAY = 2 days;
+
     /// @notice Post-quantum verifier at the vault's PQ trust boundary.
-    /// @dev Admin-controlled (see {updatePQVerifier}); NOT immutable, NOT a proxy.
+    /// @dev Mutable only through the timelocked proposal/apply flow.
     IPQCVerifier public pqVerifier;
+
+    /// @notice Verifier proposed for the next timelocked update.
+    address public pendingPQVerifier;
+
+    /// @notice Earliest timestamp at which the pending verifier can be applied.
+    uint256 public pendingPQVerifierValidAfter;
 
     mapping(address => VaultOwner) public vaults;
 
@@ -91,6 +100,12 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     event Withdrawn(address indexed owner, address indexed recipient, uint256 amount, uint256 nonce, VaultMode mode);
     event EcdsaSignerUpdated(address indexed owner, address oldSigner, address newSigner);
     event PQKeyUpdated(address indexed owner);
+    event PQVerifierUpdateProposed(
+        address indexed currentVerifier,
+        address indexed proposedVerifier,
+        uint256 validAfter
+    );
+    event PQVerifierUpdateCancelled(address indexed cancelledVerifier);
     event PQVerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
 
     // ---------------------------------------------------------------------
@@ -110,6 +125,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error InvalidEcdsaSignature();
     error InvalidPQSignature();
     error TransferFailed();
+    error NoPendingPQVerifier();
+    error PQVerifierUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
 
     /**
      * @param _pqVerifier Address of the {IPQCVerifier} implementation. On a
@@ -283,16 +300,56 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     // ---------------------------------------------------------------------
 
     /**
-     * @notice Updates the PQ verifier at the trust boundary.
-     * @dev Admin-only. The verifier is admin-controlled and mutable (NOT an
-     *      upgradeable proxy and NOT immutable). Changing it changes who/what is
-     *      trusted to validate PQ signatures for ALL vaults — see
+     * @notice Proposes a new PQ verifier at the trust boundary.
+     * @dev Admin-only. A later proposal replaces the pending proposal and restarts
+     *      the delay. The active verifier remains unchanged until
+     *      {applyPQVerifierUpdate} succeeds.
+     */
+    function proposePQVerifier(address newVerifier) external onlyOwner {
+        if (newVerifier == address(0)) revert ZeroAddress();
+
+        uint256 validAfter = block.timestamp + PQ_VERIFIER_UPDATE_DELAY;
+        pendingPQVerifier = newVerifier;
+        pendingPQVerifierValidAfter = validAfter;
+
+        emit PQVerifierUpdateProposed(address(pqVerifier), newVerifier, validAfter);
+    }
+
+    /**
+     * @notice Cancels the pending PQ verifier update.
+     * @dev Admin-only. Reverts when there is no pending proposal.
+     */
+    function cancelPQVerifierUpdate() external onlyOwner {
+        address cancelledVerifier = pendingPQVerifier;
+        if (cancelledVerifier == address(0)) revert NoPendingPQVerifier();
+
+        pendingPQVerifier = address(0);
+        pendingPQVerifierValidAfter = 0;
+
+        emit PQVerifierUpdateCancelled(cancelledVerifier);
+    }
+
+    /**
+     * @notice Applies the pending PQ verifier after the governance delay.
+     * @dev Admin-only. Changing the verifier changes who/what is trusted to
+     *      validate PQ signatures for every vault. See
      *      docs/Security_Assumptions.md.
      */
-    function updatePQVerifier(address newVerifier) external onlyOwner {
-        if (newVerifier == address(0)) revert ZeroAddress();
+    function applyPQVerifierUpdate() external onlyOwner {
+        address newVerifier = pendingPQVerifier;
+        if (newVerifier == address(0)) revert NoPendingPQVerifier();
+
+        uint256 validAfter = pendingPQVerifierValidAfter;
+        if (block.timestamp < validAfter) {
+            revert PQVerifierUpdateNotReady(validAfter, block.timestamp);
+        }
+
         address oldVerifier = address(pqVerifier);
         pqVerifier = IPQCVerifier(newVerifier);
+
+        pendingPQVerifier = address(0);
+        pendingPQVerifierValidAfter = 0;
+
         emit PQVerifierUpdated(oldVerifier, newVerifier);
     }
 

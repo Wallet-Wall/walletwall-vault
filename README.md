@@ -53,7 +53,7 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
 
 - [`contracts/WalletWallVault.sol`](contracts/WalletWallVault.sol) — vault: deposits,
   EIP-712 withdrawals, per-owner nonces, `VaultMode`, `ReentrancyGuard`, `Pausable`,
-  `Ownable2Step`, custom errors.
+  `Ownable2Step`, timelocked verifier governance, custom errors.
 - [`contracts/IPQCVerifier.sol`](contracts/IPQCVerifier.sol) — PQ verifier trust-boundary
   interface (`algorithmId()`, `verify()`).
 - [`contracts/MockMLDSAVerifier.sol`](contracts/MockMLDSAVerifier.sol) — **mock**
@@ -150,8 +150,13 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
   EIP-712 message; changing any field invalidates the signature.
 - **Domain separation:** binds signatures to contract address, chainId, and name/version.
 - **Reentrancy:** `ReentrancyGuard` + checks-effects-interactions.
-- **Admin:** `Ownable2Step` owner can update the verifier and pause the vault — a
-  documented centralization/trust assumption.
+- **Verifier governance:** the `Ownable2Step` owner proposes a verifier, waits the fixed
+  two-day `PQ_VERIFIER_UPDATE_DELAY`, then applies it. The owner can cancel a pending
+  proposal before application. The active verifier remains unchanged during the delay.
+  Ownership can be assigned to a multisig such as Safe without adding multisig logic to
+  this prototype.
+- **Admin:** the owner can still choose the verifier and pause the vault. The delay
+  improves visibility and reaction time but does not remove the central trust boundary.
 - **Accounting:** ETH force-sent via `selfdestruct` is not credited and cannot be
   withdrawn; internal per-vault balances are unaffected.
 

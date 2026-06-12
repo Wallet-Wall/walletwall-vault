@@ -55,13 +55,28 @@ See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the paths toward a real verif
 
 ## 4. Admin / trust assumptions
 
-- **Verifier is admin-controlled and mutable.** `updatePQVerifier` is restricted to the
-  contract owner (via `Ownable2Step`). It is **not** an upgradeable proxy and **not**
-  immutable. Whoever controls the owner key controls which contract is trusted to
-  validate PQ signatures for *every* vault. This is a powerful privilege: a malicious or
-  compromised owner could point `pqVerifier` at a permissive contract.
+- **Verifier is admin-controlled and timelocked.** The contract owner proposes a new
+  verifier with `proposePQVerifier`, waits the fixed two-day
+  `PQ_VERIFIER_UPDATE_DELAY`, and applies it with `applyPQVerifierUpdate`. The active
+  verifier remains unchanged during the delay. The owner can clear a pending proposal
+  with `cancelPQVerifierUpdate` before it is applied.
+- **Why mutable instead of immutable:** the Phase 1 trust boundary is specifically
+  intended to support replacing the mock with a future attestation, ZK, or chain-native
+  verifier. Immutability would require redeploying the entire vault contract and would
+  strand the existing per-vault state.
+- **The delay does not eliminate owner trust.** Whoever controls the owner can still
+  select the verifier trusted for *every* vault. A malicious or compromised owner can
+  propose a permissive verifier and apply it after the delay. A later proposal replaces
+  the pending proposal and restarts the delay.
 - **Ownership uses two-step transfer** (`Ownable2Step`) to avoid transferring ownership
-  to an unusable address.
+  to an unusable address. The owner may be a multisig such as Safe; no additional
+  multisig contract logic is required in the vault. A pending verifier proposal remains
+  pending across ownership transfer, so a new owner must review it before applying.
+- **Recommended governance:** an EOA owner is acceptable only for local/testnet
+  prototyping. Any future deployment beyond isolated research should use a reviewed
+  multisig owner, operational monitoring of proposal events, and an independently
+  reviewed delay appropriate to the deployment. This is not a production-readiness
+  claim.
 - **Pause is a global kill-switch.** The owner can pause `createVault` and `withdraw`.
   This protects against incidents but is also a centralization/liveness assumption:
   a paused vault cannot process withdrawals.
