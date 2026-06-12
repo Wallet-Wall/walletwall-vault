@@ -10,6 +10,7 @@
     "coverage": "hardhat coverage",
     "deploy": "hardhat run scripts/deploy.ts",
     "demo": "hardhat run scripts/demo-local.ts",
+    "sign:attestation": "hardhat run scripts/sign-attestation.ts",
     "lint": "solhint \"contracts/**/*.sol\"",
     "format": "prettier --write \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
     "format:check": "prettier --check \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\""

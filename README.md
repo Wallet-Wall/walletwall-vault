@@ -1,14 +1,16 @@
 # WalletWall Vault — hybrid (classical + post-quantum) authorization prototype
 
-> ⚠️ **Prototype only. Not audited. Do not use real funds. The current PQ verifier is a
-> mock/placeholder and performs no real cryptographic verification.**
+> ⚠️ **Prototype only. Not audited. Do not use real funds. The repository includes
+> a test/demo-only mock verifier and a trusted-attestation verifier that does not
+> verify ML-DSA on-chain.**
 > Local / testnet demo only. See [SECURITY.md](SECURITY.md),
 > [docs/Security_Assumptions.md](docs/Security_Assumptions.md), and
 > [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
 
 WalletWall Vault is a **Phase 1 research / hybrid-authorization prototype** that explores
 combining a classical Ethereum **ECDSA** signature with a **post-quantum (PQ)** signature
-to authorize vault withdrawals, and a migration path toward real post-quantum security.
+to authorize vault withdrawals, and a migration path toward stronger future verifier
+designs.
 
 It is intended to demonstrate **contract security and trust boundaries** — replay
 protection, EIP-712 typed authorization, a swappable verifier interface, and honest
@@ -16,17 +18,19 @@ documentation — **not** to custody real assets.
 
 ## What this is / is not
 
-| | |
-| --- | --- |
-| ✅ Hybrid authorization prototype (ECDSA + PQ) | ❌ Production custody |
-| ✅ Post-quantum migration research | ❌ "Quantum-proof" / "fully quantum-secure" |
-| ✅ Testnet / local demo | ❌ Real-fund protection |
-| ✅ EIP-712 replay-protected withdrawals | ❌ Audited |
-| ✅ Swappable `IPQCVerifier` trust boundary | ❌ Mainnet-ready |
+|                                                |                                        |
+| ---------------------------------------------- | -------------------------------------- |
+| ✅ Hybrid authorization prototype (ECDSA + PQ) | ❌ Production custody                  |
+| ✅ Post-quantum migration research             | ❌ Production-grade quantum resistance |
+| ✅ Testnet / local demo                        | ❌ Real-fund protection                |
+| ✅ EIP-712 replay-protected withdrawals        | ❌ Audited                             |
+| ✅ Swappable `IPQCVerifier` trust boundary     | ❌ Reviewed deployment system          |
 
-**The PQ verifier shipped here (`MockMLDSAVerifier`) does NOT perform real ML-DSA
-verification.** In `Hybrid` mode the effective security today is approximately that of
-the ECDSA layer alone.
+`MockMLDSAVerifier` performs no real ML-DSA verification and remains test/demo-only.
+`AttestationPQCVerifier` is non-mock but trusted: it verifies an authorized attestor's
+EIP-712 signature, not ML-DSA on-chain. Its security depends on the attestor correctly
+verifying ML-DSA off-chain with a real FIPS 204-compatible implementation. This
+repository is still not production custody.
 
 ## Architecture
 
@@ -46,7 +50,8 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
         ├── ECDSA signature  ──►  recover() == vault.ecdsaSigner
         └── PQ signature     ──►  IPQCVerifier.verify(digest, pqPublicKey, pqSignature)
                                           │
-                                          └── (today) MockMLDSAVerifier  ⚠️ no real crypto
+                                          ├── MockMLDSAVerifier: structural checks only
+                                          └── AttestationPQCVerifier: trusted EIP-712 attestor
 ```
 
 ### Components
@@ -58,6 +63,9 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
   interface (`algorithmId()`, `verify()`).
 - [`contracts/MockMLDSAVerifier.sol`](contracts/MockMLDSAVerifier.sol) — **mock**
   ML-DSA-65 verifier, **test/demo only**, no real verification.
+- [`contracts/verifiers/AttestationPQCVerifier.sol`](contracts/verifiers/AttestationPQCVerifier.sol)
+  — non-mock trusted-attestation path; verifies an authorized EIP-712 attestor
+  signature and does not execute ML-DSA on-chain.
 - [`contracts/SignatureVerifier.sol`](contracts/SignatureVerifier.sol) — reusable ECDSA
   helper (legacy/standalone; the vault verifies ECDSA over the EIP-712 digest directly).
 - [`contracts/mocks/`](contracts/mocks/) — test-only helpers (`AlwaysFalsePQCVerifier`,
@@ -68,35 +76,56 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
 ## Getting started
 
 ### Prerequisites
+
 - Node.js (v18+) and npm
 
 ### Install
+
 ```bash
 npm install
 ```
 
 ### Compile
+
 ```bash
 npm run compile
 ```
 
 ### Test
+
 ```bash
 npm test
 ```
 
 ### Coverage
+
 ```bash
 npm run coverage
 ```
 
 ### Local demo (Hardhat in-memory network)
+
 Runs a full deposit → EIP-712 sign → hybrid withdrawal flow against a mock PQ verifier:
+
 ```bash
 npm run demo
 ```
 
+### Build a sample attestation payload
+
+Generates mock ML-DSA-shaped bytes unless environment overrides are supplied, signs the
+attestation, and prints the verifier payload:
+
+```bash
+npm run sign:attestation
+```
+
+The helper does not verify ML-DSA. See
+[docs/Attestation_Verifier.md](docs/Attestation_Verifier.md) for the payload and trust
+model.
+
 ### Deploy (local / testnet ONLY)
+
 ```bash
 npx hardhat node          # in one terminal
 npm run deploy -- --network localhost
@@ -149,6 +178,9 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
 - **Tamper protection:** owner/recipient/amount/nonce/deadline/mode are all part of the
   EIP-712 message; changing any field invalidates the signature.
 - **Domain separation:** binds signatures to contract address, chainId, and name/version.
+- **Trusted-attestation verifier:** binds the withdrawal digest, public-key hash, PQ
+  signature hash, algorithm identifier, verifier, chain ID, and deadline to an
+  authorized EIP-712 attestor signature. The attestor remains a central trust boundary.
 - **Reentrancy:** `ReentrancyGuard` + checks-effects-interactions.
 - **Verifier governance:** the `Ownable2Step` owner proposes a verifier, waits the fixed
   two-day `PQ_VERIFIER_UPDATE_DELAY`, then applies it. The owner can cancel a pending
@@ -164,8 +196,9 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 
 ## Post-quantum verifier roadmap
 
-The mock is **Path 0**. Real verification may come from a trusted-attestation verifier, a
-ZK-proof verifier, or a future chain-native PQ precompile. See
+The mock is **Path 0**. The implemented trusted-attestation verifier is **Path 1** and
+depends on correct off-chain ML-DSA verification by its authorized attestor. Future
+stronger paths may use ZK proof verification or native chain support. See
 [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
 
 ## Cryptography naming (NIST)
