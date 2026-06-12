@@ -72,6 +72,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         "Withdrawal(address vaultOwner,address recipient,uint256 amount,uint256 nonce,uint256 deadline,uint8 vaultMode)"
     );
 
+    /// @dev Algorithm id reported by {MockMLDSAVerifier}. Must match
+    ///      MockMLDSAVerifier.algorithmId() exactly. Used to block the unsafe
+    ///      PqOnly configuration while a mock (non-cryptographic) verifier is wired in.
+    bytes32 public constant MOCK_ML_DSA_65_ALGORITHM_ID = keccak256("MOCK-ML-DSA-65");
+
     /// @notice Post-quantum verifier at the vault's PQ trust boundary.
     /// @dev Admin-controlled (see {updatePQVerifier}); NOT immutable, NOT a proxy.
     IPQCVerifier public pqVerifier;
@@ -101,6 +106,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error InvalidNonce(uint256 expected, uint256 provided);
     error DeadlineExpired(uint256 deadline, uint256 nowTimestamp);
     error VaultModeMismatch(VaultMode configured, VaultMode requested);
+    error PqOnlyDisabledForMockVerifier();
     error InvalidEcdsaSignature();
     error InvalidPQSignature();
     error TransferFailed();
@@ -126,6 +132,13 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      */
     function createVault(address ecdsaSigner, bytes calldata pqPublicKey, VaultMode mode) external whenNotPaused {
         if (vaults[msg.sender].exists) revert VaultAlreadyExists();
+
+        // PqOnly is unsafe while the PQ verifier is a mock (no real cryptographic
+        // verification), so it must not be the sole authorization layer. EcdsaOnly and
+        // Hybrid remain available because they still require a classical signature.
+        if (mode == VaultMode.PqOnly && pqVerifier.algorithmId() == MOCK_ML_DSA_65_ALGORITHM_ID) {
+            revert PqOnlyDisabledForMockVerifier();
+        }
 
         // Require the credential(s) the chosen mode actually depends on.
         if (mode == VaultMode.EcdsaOnly || mode == VaultMode.Hybrid) {

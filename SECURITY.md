@@ -50,6 +50,12 @@ Because the PQ layer is a mock, in `Hybrid` mode the *effective* security today 
 approximately that of the classical ECDSA layer alone. Do not rely on the PQ layer for
 any security guarantee in this prototype.
 
+To prevent an unsafe configuration, **`PqOnly` mode is disabled at the contract level
+while the configured verifier is the mock** (`MockMLDSAVerifier`): `createVault` reverts
+with `PqOnlyDisabledForMockVerifier`. This keeps a classical ECDSA signature in the loop
+(via `Hybrid` or `EcdsaOnly`) until a real PQ verifier is wired in. See
+[docs/Security_Assumptions.md](docs/Security_Assumptions.md).
+
 ## Reporting a vulnerability
 
 This is a research prototype maintained on a best-effort basis. If you find an issue:

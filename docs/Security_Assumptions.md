@@ -39,10 +39,17 @@ In this repository the default implementation is **`MockMLDSAVerifier`**, which:
   **no cryptographic security**.
 
 **Consequence:** In `Hybrid` mode the *effective* protection today is roughly that of
-the ECDSA layer alone. In `PqOnly` mode the prototype has effectively **no** meaningful
-authorization security, because any well-formed blob of the right length passes the
-mock. `PqOnly` exists only for migration/experimentation and must not be used to guard
-anything of value.
+the ECDSA layer alone. In `PqOnly` mode the prototype would have effectively **no**
+meaningful authorization security, because any well-formed blob of the right length
+passes the mock.
+
+**Enforced guard:** Because of this, creating a `PqOnly` vault is **blocked at the
+contract level while the configured verifier is the mock**. `createVault` reverts with
+`PqOnlyDisabledForMockVerifier` when `mode == PqOnly` and
+`pqVerifier.algorithmId() == MOCK_ML_DSA_65_ALGORITHM_ID`. The `VaultMode.PqOnly` enum
+value is retained for future compatibility and becomes usable once a non-mock verifier
+is wired in. `EcdsaOnly` and `Hybrid` are unaffected — they still require a classical
+ECDSA signature.
 
 See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the paths toward a real verifier.
 

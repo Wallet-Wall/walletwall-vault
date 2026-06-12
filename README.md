@@ -36,6 +36,9 @@ vault's `VaultMode`, the vault requires:
 - **`Hybrid` (intended default):** a valid ECDSA signature **and** a valid PQ signature.
 - **`EcdsaOnly`:** classical signature only.
 - **`PqOnly`:** PQ signature only (research/migration; relies entirely on the verifier).
+  **Disabled while the configured verifier is the mock** (`MockMLDSAVerifier`):
+  `createVault` reverts with `PqOnlyDisabledForMockVerifier`, since the mock provides no
+  real cryptographic security and PqOnly would be its sole authorization layer.
 
 ```
 EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)

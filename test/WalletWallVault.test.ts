@@ -405,9 +405,24 @@ describe("WalletWallVault", function () {
       expect((await vault.getVault(owner.address)).balance).to.equal(depositAmount - withdrawAmount);
     });
 
-    it("PqOnly: succeeds with only a PQ signature", async function () {
-      await vault.createVault(ethers.ZeroAddress, MLDSASigner.toHex(pqPublicKey), VaultMode.PqOnly);
-      await vault.deposit({ value: depositAmount });
+    it("PqOnly: reverts at creation while the verifier is the mock", async function () {
+      // The default vault uses MockMLDSAVerifier, so PqOnly must be blocked.
+      await expect(
+        vault.createVault(ethers.ZeroAddress, MLDSASigner.toHex(pqPublicKey), VaultMode.PqOnly),
+      ).to.be.revertedWithCustomError(vault, "PqOnlyDisabledForMockVerifier");
+    });
+
+    it("PqOnly: succeeds with only a PQ signature against a non-mock verifier", async function () {
+      // Deploy a vault wired to a non-mock verifier so PqOnly is permitted.
+      const realVerifier = await (await ethers.getContractFactory("AlwaysTruePQCVerifier")).deploy();
+      await realVerifier.waitForDeployment();
+      const pqVault = await (
+        await ethers.getContractFactory("WalletWallVault")
+      ).deploy(await realVerifier.getAddress());
+      await pqVault.waitForDeployment();
+
+      await pqVault.createVault(ethers.ZeroAddress, MLDSASigner.toHex(pqPublicKey), VaultMode.PqOnly);
+      await pqVault.deposit({ value: depositAmount });
 
       const request: WithdrawalRequest = {
         vaultOwner: owner.address,
@@ -417,13 +432,19 @@ describe("WalletWallVault", function () {
         deadline: FUTURE_DEADLINE,
         vaultMode: VaultMode.PqOnly,
       };
-      const domain = await buildDomain(vault);
+      const domain = await buildDomain(pqVault);
       const digest = ethers.TypedDataEncoder.hash(domain, WITHDRAWAL_TYPES, request);
       const pqSignature = MLDSASigner.toHex(MLDSASigner.sign(digest, pqPrivateKey));
 
       // No ECDSA signature needed.
-      await expect(vault.withdraw(request, "0x", pqSignature)).to.emit(vault, "Withdrawn");
-      expect((await vault.getVault(owner.address)).balance).to.equal(depositAmount - withdrawAmount);
+      await expect(pqVault.withdraw(request, "0x", pqSignature)).to.emit(pqVault, "Withdrawn");
+      expect((await pqVault.getVault(owner.address)).balance).to.equal(depositAmount - withdrawAmount);
+    });
+
+    it("EcdsaOnly and Hybrid still work with the mock verifier", async function () {
+      // EcdsaOnly creation succeeds against the mock (covered above); confirm Hybrid too.
+      await vault.createVault(owner.address, MLDSASigner.toHex(pqPublicKey), VaultMode.Hybrid);
+      expect((await vault.getVault(owner.address)).mode).to.equal(VaultMode.Hybrid);
     });
 
     it("Reverts with TransferFailed when the recipient rejects ETH", async function () {
