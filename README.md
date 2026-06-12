@@ -72,6 +72,8 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
   `ForceSend`).
 - [`pqc/ml-dsa.ts`](pqc/ml-dsa.ts) — off-chain ML-DSA-65 signer using
   `@noble/post-quantum`.
+- [`scripts/attestor-cli.ts`](scripts/attestor-cli.ts) — verifies ML-DSA-65 off-chain
+  before signing an EIP-712 attestation for `AttestationPQCVerifier`.
 
 ## Getting started
 
@@ -123,6 +125,34 @@ npm run sign:attestation
 The helper does not verify ML-DSA. See
 [docs/Attestation_Verifier.md](docs/Attestation_Verifier.md) for the payload and trust
 model.
+
+### Verify ML-DSA and build an attestation
+
+Demo mode verifies deterministic library-generated ML-DSA-65 material before signing,
+but that material is only for local demonstration:
+
+```bash
+npm run attestor:demo
+```
+
+Real verify mode requires explicit withdrawal, ML-DSA, verifier, chain, deadline, and
+attestor inputs. It refuses to sign if ML-DSA verification fails or if the known demo
+material is supplied:
+
+```bash
+npm run attestor:verify -- \
+  --withdrawal-digest 0x... \
+  --message-file test/fixtures/mldsa/library-generated/message.hex \
+  --public-key-file test/fixtures/mldsa/library-generated/public-key.hex \
+  --pq-signature-file test/fixtures/mldsa/library-generated/signature.hex \
+  --verifier 0x... \
+  --chain-id 31337 \
+  --deadline 4102444800
+```
+
+Set `ATTESTOR_PRIVATE_KEY` or pass `--attestor-private-key` for isolated local
+development. The contract still verifies only the trusted EVM attestor signature; it
+does not execute ML-DSA.
 
 ### Deploy (local / testnet ONLY)
 
@@ -180,7 +210,8 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
 - **Domain separation:** binds signatures to contract address, chainId, and name/version.
 - **Trusted-attestation verifier:** binds the withdrawal digest, public-key hash, PQ
   signature hash, algorithm identifier, verifier, chain ID, and deadline to an
-  authorized EIP-712 attestor signature. The attestor remains a central trust boundary.
+  authorized EIP-712 attestor signature. The CLI verifies ML-DSA-65 before signing, but
+  the attestor key and service remain central trust boundaries.
 - **Reentrancy:** `ReentrancyGuard` + checks-effects-interactions.
 - **Verifier governance:** the `Ownable2Step` owner proposes a verifier, waits the fixed
   two-day `PQ_VERIFIER_UPDATE_DELAY`, then applies it. The owner can cancel a pending

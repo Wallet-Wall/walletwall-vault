@@ -47,6 +47,9 @@ chain-native solution.
   ML-DSA verification.
 - **Status:** implemented for research and testnet evaluation. See
   [Attestation_Verifier.md](Attestation_Verifier.md).
+- **Off-chain prototype:** `scripts/attestor-cli.ts` verifies ML-DSA-65 with
+  `@noble/post-quantum` before signing. This demonstrates the required verification
+  gate but does not remove trust in the attestor key or service.
 
 ## Path 2 — ZK-proof verifier
 
@@ -57,6 +60,10 @@ chain-native solution.
   proving system, circuit correctness, setup assumptions where applicable, and audits.
 - **Cost:** higher proving effort off-chain; modest on-chain verification cost.
 - **Status:** not implemented (preferred long-term software path).
+
+ZK verification or native chain support remains a stronger future direction because it
+can reduce dependence on the operational attestor. Those approaches still require
+correct implementations, review, and deployment-specific security analysis.
 
 ## Path 3 — Optimized native Solidity verifier
 
