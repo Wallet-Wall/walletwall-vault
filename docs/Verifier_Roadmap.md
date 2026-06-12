@@ -16,7 +16,9 @@ interface IPQCVerifier {
 
 This indirection is the whole point: the *strategy* for verifying post-quantum
 signatures can evolve without changing the vault. The verifier is **admin-controlled**
-(`updatePQVerifier`, owner-only) — see
+through a timelocked two-step flow (`proposePQVerifier` then
+`applyPQVerifierUpdate` after two days). The owner can be a multisig through the existing
+`Ownable2Step` ownership model. See
 [Security_Assumptions.md](Security_Assumptions.md) for the trust implications.
 
 Below are the candidate verification paths, from today's placeholder to a future
@@ -78,6 +80,15 @@ chain-native solution.
 1. Deploy and **independently audit** the new `IPQCVerifier` implementation.
 2. Confirm `algorithmId()` matches the expected scheme.
 3. Validate against known-answer test vectors for the chosen parameter set.
-4. Switch via `updatePQVerifier` (owner-only) — ideally behind a timelock/multisig.
-5. Update docs to drop the "mock verifier" disclaimers **only** once real verification
+4. Propose the verifier via `proposePQVerifier` from the owner or owner multisig.
+5. Monitor the `PQVerifierUpdateProposed` event and independently verify the proposed
+   address and bytecode during the fixed two-day delay.
+6. Apply via `applyPQVerifierUpdate` only after the delay and review are complete.
+7. Update docs to drop the "mock verifier" disclaimers **only** once real verification
    is in place and reviewed.
+
+For local/testnet prototyping, an EOA owner and the built-in delay are sufficient to
+exercise the governance flow. A future production design would still need deployment-
+specific governance review, a reviewed multisig or timelock controller, monitoring, and
+incident procedures. This repository does not claim that the current governance is
+production-ready.

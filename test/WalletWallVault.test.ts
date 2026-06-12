@@ -2,6 +2,8 @@ import { expect } from "chai";
 import { ethers } from "hardhat";
 import { MLDSASigner } from "../pqc/ml-dsa";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { WalletWallVault, MockMLDSAVerifier } from "../typechain-types";
 
 // VaultMode enum mirror (see WalletWallVault.sol)
@@ -349,25 +351,82 @@ describe("WalletWallVault", function () {
   });
 
   describe("Admin controls (Ownable2Step)", function () {
-    it("Should let the admin update the PQ verifier and emit the event", async function () {
+    async function deployNewVerifier() {
       const NewVerifier = await ethers.getContractFactory("MockMLDSAVerifier");
       const newVerifier = await NewVerifier.deploy();
-      const oldAddr = await mockVerifier.getAddress();
-      const newAddr = await newVerifier.getAddress();
+      await newVerifier.waitForDeployment();
+      return newVerifier;
+    }
 
-      await expect(vault.updatePQVerifier(newAddr)).to.emit(vault, "PQVerifierUpdated").withArgs(oldAddr, newAddr);
-      expect(await vault.pqVerifier()).to.equal(newAddr);
-    });
-
-    it("Should prevent a non-admin from updating the PQ verifier", async function () {
-      const newVerifier = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
+    it("Should prevent a non-owner from proposing a PQ verifier", async function () {
+      const newVerifier = await deployNewVerifier();
       await expect(
-        vault.connect(otherAccount).updatePQVerifier(await newVerifier.getAddress()),
+        vault.connect(otherAccount).proposePQVerifier(await newVerifier.getAddress()),
       ).to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount");
     });
 
-    it("Should reject a zero-address verifier update", async function () {
-      await expect(vault.updatePQVerifier(ethers.ZeroAddress)).to.be.revertedWithCustomError(vault, "ZeroAddress");
+    it("Should let the owner propose a PQ verifier and emit the event", async function () {
+      const newVerifier = await deployNewVerifier();
+      const oldAddr = await mockVerifier.getAddress();
+      const newAddr = await newVerifier.getAddress();
+
+      await expect(vault.proposePQVerifier(newAddr))
+        .to.emit(vault, "PQVerifierUpdateProposed")
+        .withArgs(oldAddr, newAddr, anyValue);
+
+      expect(await vault.pendingPQVerifier()).to.equal(newAddr);
+      expect(await vault.pendingPQVerifierValidAfter()).to.be.greaterThan(await time.latest());
+      expect(await vault.pqVerifier()).to.equal(oldAddr);
+    });
+
+    it("Should reject a zero-address verifier proposal", async function () {
+      await expect(vault.proposePQVerifier(ethers.ZeroAddress)).to.be.revertedWithCustomError(vault, "ZeroAddress");
+    });
+
+    it("Should not apply a verifier before the delay", async function () {
+      const newVerifier = await deployNewVerifier();
+      await vault.proposePQVerifier(await newVerifier.getAddress());
+
+      const validAfter = await vault.pendingPQVerifierValidAfter();
+      await expect(vault.applyPQVerifierUpdate())
+        .to.be.revertedWithCustomError(vault, "PQVerifierUpdateNotReady")
+        .withArgs(validAfter, anyValue);
+    });
+
+    it("Should apply a verifier after the delay and emit the event", async function () {
+      const newVerifier = await deployNewVerifier();
+      const oldAddr = await mockVerifier.getAddress();
+      const newAddr = await newVerifier.getAddress();
+      await vault.proposePQVerifier(newAddr);
+
+      await time.increaseTo(await vault.pendingPQVerifierValidAfter());
+
+      await expect(vault.applyPQVerifierUpdate()).to.emit(vault, "PQVerifierUpdated").withArgs(oldAddr, newAddr);
+      expect(await vault.pqVerifier()).to.equal(newAddr);
+      expect(await vault.pendingPQVerifier()).to.equal(ethers.ZeroAddress);
+      expect(await vault.pendingPQVerifierValidAfter()).to.equal(0);
+    });
+
+    it("Should keep existing withdrawal behavior while a verifier update is pending", async function () {
+      const falseVerifier = await (await ethers.getContractFactory("AlwaysFalsePQCVerifier")).deploy();
+      await falseVerifier.waitForDeployment();
+
+      await vault.createVault(owner.address, MLDSASigner.toHex(pqPublicKey), VaultMode.Hybrid);
+      await vault.deposit({ value: ethers.parseEther("2.0") });
+      await vault.proposePQVerifier(await falseVerifier.getAddress());
+
+      const request: WithdrawalRequest = {
+        vaultOwner: owner.address,
+        recipient: otherAccount.address,
+        amount: ethers.parseEther("1.0"),
+        nonce: 0,
+        deadline: FUTURE_DEADLINE,
+        vaultMode: VaultMode.Hybrid,
+      };
+      const { ecdsaSignature, pqSignature } = await signWithdrawal(vault, request, owner, pqPrivateKey);
+
+      await expect(vault.withdraw(request, ecdsaSignature, pqSignature)).to.emit(vault, "Withdrawn");
+      expect(await vault.pqVerifier()).to.equal(await mockVerifier.getAddress());
     });
 
     it("Should use two-step ownership transfer", async function () {
