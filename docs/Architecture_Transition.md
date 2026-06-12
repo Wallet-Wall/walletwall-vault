@@ -26,7 +26,7 @@ The previous system used WOTS+, which had several limitations:
 2. User registers WOTS+ public key hash in the Vault.
 3. For withdrawal:
    - User provides WOTS+ signature (array of 32-byte hashes).
-   - Vault calls `SignatureVerifier.verifyWOTS`.
+   - Vault calls a `verifyWOTS` helper.
    - `verifyWOTS` reconstructs the public key from the signature and message, then hashes it.
    - Hash is compared with the stored `pqcPublicKeyHash`.
 
@@ -62,7 +62,7 @@ graph TD
 
     subgraph "On-chain (Ethereum)"
         D --> E[WalletWallVault]
-        E --> F[SignatureVerifier (ECDSA)]
+        E --> F[OpenZeppelin ECDSA]
         E --> G[IPQSignatureVerifier (ML-DSA)]
         F -- Valid --> H{Both Valid?}
         G -- Valid --> H

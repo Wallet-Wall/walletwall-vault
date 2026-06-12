@@ -35,7 +35,6 @@ This policy covers the contracts and scripts in this repository:
 - `contracts/IPQCVerifier.sol`
 - `contracts/MockMLDSAVerifier.sol`
 - `contracts/verifiers/AttestationPQCVerifier.sol`
-- `contracts/SignatureVerifier.sol`
 - `contracts/mocks/*` (test-only helpers)
 - `pqc/ml-dsa.ts`, `scripts/*`
 

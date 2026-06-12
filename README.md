@@ -66,8 +66,6 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
 - [`contracts/verifiers/AttestationPQCVerifier.sol`](contracts/verifiers/AttestationPQCVerifier.sol)
   — non-mock trusted-attestation path; verifies an authorized EIP-712 attestor
   signature and does not execute ML-DSA on-chain.
-- [`contracts/SignatureVerifier.sol`](contracts/SignatureVerifier.sol) — reusable ECDSA
-  helper (legacy/standalone; the vault verifies ECDSA over the EIP-712 digest directly).
 - [`contracts/mocks/`](contracts/mocks/) — test-only helpers (`AlwaysFalsePQCVerifier`,
   `ForceSend`).
 - [`pqc/ml-dsa.ts`](pqc/ml-dsa.ts) — off-chain ML-DSA-65 signer using
