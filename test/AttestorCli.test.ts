@@ -7,8 +7,11 @@ import { ethers } from "hardhat";
 import {
   DEMO_WARNING,
   DEMO_WITHDRAWAL_DIGEST,
+  FIXTURE_WITHDRAWAL_DIGEST,
   AttestationInput,
   createDemoMaterial,
+  createFixtureMaterial,
+  isFixtureMaterial,
   normalizeHex,
   parseAttestorArgs,
   readBytesInput,
@@ -86,6 +89,26 @@ describe("ML-DSA attestor helpers", function () {
     );
   });
 
+  it("refuses generated fixture material in real mode", async function () {
+    const [attestor] = await ethers.getSigners();
+    const fixture = createFixtureMaterial();
+    const verifierAddress = ethers.Wallet.createRandom().address;
+    const input: AttestationInput = {
+      withdrawalDigest: FIXTURE_WITHDRAWAL_DIGEST,
+      publicKey: fixture.publicKey,
+      pqSignature: fixture.signature,
+      signedMessage: fixture.message,
+      verifierAddress,
+      chainId: 31337n,
+      deadline: 4_102_444_800n,
+    };
+
+    expect(isFixtureMaterial(fixture.publicKey, fixture.signature)).to.equal(true);
+    await expect(verifyAndSignAttestation(input, attestor)).to.be.rejectedWith(
+      "Real verify mode refuses generated fixture PQ material",
+    );
+  });
+
   it("signs verified material and produces an on-chain compatible payload", async function () {
     const [owner, attestor] = await ethers.getSigners();
     const factory = await ethers.getContractFactory("AttestationPQCVerifier", owner);
@@ -102,7 +125,9 @@ describe("ML-DSA attestor helpers", function () {
       chainId: (await ethers.provider.getNetwork()).chainId,
       deadline: 4_102_444_800n,
     };
-    const result = await verifyAndSignAttestation(input, attestor);
+    // allowGeneratedMaterial=true: this test exercises payload construction
+    // and on-chain compatibility with fixture material, not real-mode signing.
+    const result = await verifyAndSignAttestation(input, attestor, true);
     const decoded = ethers.AbiCoder.defaultAbiCoder().decode(
       ["bytes", "uint256", "bytes32", "bytes32"],
       result.verifierPayload,

@@ -88,6 +88,18 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   select the verifier trusted for _every_ vault. A malicious or compromised owner can
   propose a permissive verifier and apply it after the delay. A later proposal replaces
   the pending proposal and restarts the delay.
+- **Attestor rotation is immediate and untimelocked (important asymmetry).** The vault's
+  two-day verifier governance delay (`PQ_VERIFIER_UPDATE_DELAY`) protects against the
+  _vault owner_ swapping in a new verifier contract. It does **not** protect users
+  against the _attestor owner_ rotating the attestor inside an already-configured
+  `AttestationPQCVerifier`. `updateAttestor` is an immediate, owner-controlled call on
+  the verifier contract itself. A compromised or malicious attestor owner can rotate to
+  a malicious attestor without any delay and without triggering the vault governance
+  flow. Operators and users must monitor the `AttestorUpdated` event emitted by
+  `AttestationPQCVerifier` to detect unexpected rotations. This is a trusted attestation
+  model — not trustless PQ verification. Until a non-custodial verifier (ZK proof or
+  chain-native) replaces the attestation path, trust must be placed in whoever controls
+  the attestor and the attestor owner key.
 - **Ownership uses two-step transfer** (`Ownable2Step`) to avoid transferring ownership
   to an unusable address. The owner may be a multisig such as Safe; no additional
   multisig contract logic is required in the vault. A pending verifier proposal remains
