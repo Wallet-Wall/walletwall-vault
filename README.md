@@ -1,87 +1,175 @@
-# WalletWall Vault - Phase 1 MVP (ML-DSA Upgrade)
+# WalletWall Vault — hybrid (classical + post-quantum) authorization prototype
 
-WalletWall Vault is a hybrid cryptographic asset vault that combines traditional Ethereum ECDSA signatures with NIST-approved lattice-based **ML-DSA** (Module-Lattice Digital Signature Algorithm) signatures to provide a secure post-quantum authorization layer.
+> ⚠️ **Prototype only. Not audited. Do not use real funds. The current PQ verifier is a
+> mock/placeholder and performs no real cryptographic verification.**
+> Local / testnet demo only. See [SECURITY.md](SECURITY.md),
+> [docs/Security_Assumptions.md](docs/Security_Assumptions.md), and
+> [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
+
+WalletWall Vault is a **Phase 1 research / hybrid-authorization prototype** that explores
+combining a classical Ethereum **ECDSA** signature with a **post-quantum (PQ)** signature
+to authorize vault withdrawals, and a migration path toward real post-quantum security.
+
+It is intended to demonstrate **contract security and trust boundaries** — replay
+protection, EIP-712 typed authorization, a swappable verifier interface, and honest
+documentation — **not** to custody real assets.
+
+## What this is / is not
+
+| | |
+| --- | --- |
+| ✅ Hybrid authorization prototype (ECDSA + PQ) | ❌ Production custody |
+| ✅ Post-quantum migration research | ❌ "Quantum-proof" / "fully quantum-secure" |
+| ✅ Testnet / local demo | ❌ Real-fund protection |
+| ✅ EIP-712 replay-protected withdrawals | ❌ Audited |
+| ✅ Swappable `IPQCVerifier` trust boundary | ❌ Mainnet-ready |
+
+**The PQ verifier shipped here (`MockMLDSAVerifier`) does NOT perform real ML-DSA
+verification.** In `Hybrid` mode the effective security today is approximately that of
+the ECDSA layer alone.
 
 ## Architecture
 
-WalletWall Vault requires two independent cryptographic proofs for any withdrawal:
-1. **Classical Layer**: Standard Ethereum ECDSA signature.
-2. **Post-Quantum Layer**: ML-DSA-65 (Dilithium3) signature verified on-chain.
+Withdrawals are authorized by an **EIP-712** typed `Withdrawal` message. Depending on the
+vault's `VaultMode`, the vault requires:
+
+- **`Hybrid` (intended default):** a valid ECDSA signature **and** a valid PQ signature.
+- **`EcdsaOnly`:** classical signature only.
+- **`PqOnly`:** PQ signature only (research/migration; relies entirely on the verifier).
+  **Disabled while the configured verifier is the mock** (`MockMLDSAVerifier`):
+  `createVault` reverts with `PqOnlyDisabledForMockVerifier`, since the mock provides no
+  real cryptographic security and PqOnly would be its sole authorization layer.
+
+```
+EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
+        │
+        ├── ECDSA signature  ──►  recover() == vault.ecdsaSigner
+        └── PQ signature     ──►  IPQCVerifier.verify(digest, pqPublicKey, pqSignature)
+                                          │
+                                          └── (today) MockMLDSAVerifier  ⚠️ no real crypto
+```
 
 ### Components
 
-- `contracts/WalletWallVault.sol`: The main vault contract supporting dual ECDSA and ML-DSA verification.
-- `contracts/SignatureVerifier.sol`: Reusable classical verification logic for ECDSA.
-- `contracts/IPQSignatureVerifier.sol`: Interface for NIST Post-Quantum Cryptography (PQC) signature verification.
-- `contracts/MLDSAVerifier.sol`: ML-DSA-65 (Dilithium3) signature verifier contract.
-- `pqc/ml-dsa.ts`: Off-chain ML-DSA signer implementation using `@noble/post-quantum`.
+- [`contracts/WalletWallVault.sol`](contracts/WalletWallVault.sol) — vault: deposits,
+  EIP-712 withdrawals, per-owner nonces, `VaultMode`, `ReentrancyGuard`, `Pausable`,
+  `Ownable2Step`, custom errors.
+- [`contracts/IPQCVerifier.sol`](contracts/IPQCVerifier.sol) — PQ verifier trust-boundary
+  interface (`algorithmId()`, `verify()`).
+- [`contracts/MockMLDSAVerifier.sol`](contracts/MockMLDSAVerifier.sol) — **mock**
+  ML-DSA-65 verifier, **test/demo only**, no real verification.
+- [`contracts/SignatureVerifier.sol`](contracts/SignatureVerifier.sol) — reusable ECDSA
+  helper (legacy/standalone; the vault verifies ECDSA over the EIP-712 digest directly).
+- [`contracts/mocks/`](contracts/mocks/) — test-only helpers (`AlwaysFalsePQCVerifier`,
+  `ForceSend`).
+- [`pqc/ml-dsa.ts`](pqc/ml-dsa.ts) — off-chain ML-DSA-65 signer using
+  `@noble/post-quantum`.
 
-## Getting Started
+## Getting started
 
 ### Prerequisites
+- Node.js (v18+) and npm
 
-- Node.js (v18+)
-- npm
-
-### Installation
-
-To install dependencies (including `@noble/post-quantum`):
+### Install
 ```bash
 npm install
 ```
 
-### Compile Contracts
-
+### Compile
 ```bash
 npm run compile
 ```
 
-### Run Tests
-
+### Test
 ```bash
 npm test
 ```
 
-### Deployment
-
-To deploy both the verifiers and the vault contract to a local node:
+### Coverage
 ```bash
-npx hardhat node
+npm run coverage
+```
+
+### Local demo (Hardhat in-memory network)
+Runs a full deposit → EIP-712 sign → hybrid withdrawal flow against a mock PQ verifier:
+```bash
+npm run demo
+```
+
+### Deploy (local / testnet ONLY)
+```bash
+npx hardhat node          # in one terminal
 npm run deploy -- --network localhost
 ```
 
-## How It Works
+## How a withdrawal works (off-chain signing)
 
-### 1. Vault Registration
-Users register their vault by providing their ECDSA signer address, their ML-DSA public key (bytes), and a boolean indicating if both signatures are required:
-```solidity
-vault.createVault(ecdsaSigner, pqPublicKey, requireBoth);
-```
-
-### 2. Deposits
-Anyone can deposit ETH into a vault:
-```solidity
-vault.deposit({ value: ethers.parseEther("1.0") });
-```
-
-### 3. Hybrid Withdrawals
-Withdrawals require a message to be signed by the ML-DSA private key and (if configured) the ECDSA private key.
 ```typescript
-const nonce = await vault.getVault(owner.address).then(v => v.nonce);
-const messageHash = ethers.solidityPackedKeccak256(
-  ["address", "uint256", "address", "uint256", "address"],
-  [owner.address, withdrawAmount, recipient, nonce, vaultAddress]
-);
+import { MLDSASigner } from "./pqc/ml-dsa";
 
-const pqSignature = MLDSASigner.sign(messageHash, pqPrivateKey);
-const ecdsaSignature = await owner.signMessage(ethers.getBytes(messageHash));
+const VaultMode = { EcdsaOnly: 0, PqOnly: 1, Hybrid: 2 };
 
-await vault.withdraw(withdrawAmount, recipient, nonce, ecdsaSignature, pqSignature);
+const domain = {
+  name: "WalletWallVault",
+  version: "1",
+  chainId,
+  verifyingContract: vaultAddress,
+};
+
+const types = {
+  Withdrawal: [
+    { name: "vaultOwner", type: "address" },
+    { name: "recipient", type: "address" },
+    { name: "amount", type: "uint256" },
+    { name: "nonce", type: "uint256" },
+    { name: "deadline", type: "uint256" },
+    { name: "vaultMode", type: "uint8" },
+  ],
+};
+
+const request = {
+  vaultOwner: owner.address,
+  recipient,
+  amount,
+  nonce: await vault.nonces(owner.address),
+  deadline: Math.floor(Date.now() / 1000) + 3600,
+  vaultMode: VaultMode.Hybrid,
+};
+
+const ecdsaSignature = await owner.signTypedData(domain, types, request);
+const digest = ethers.TypedDataEncoder.hash(domain, types, request);
+const pqSignature = MLDSASigner.toHex(MLDSASigner.sign(digest, pqPrivateKey));
+
+await vault.withdraw(request, ecdsaSignature, pqSignature);
 ```
 
-## Security Considerations
+## Security model (summary)
 
-- **Stateless Lattice-Based Signatures**: Unlike stateful OTS schemes (like WOTS+), ML-DSA-65 is stateless, allowing safe key reuse across multiple transactions.
-- **On-chain Verification Hook**: Dilithium3 verification is extremely gas-intensive. The contract currently implements an architectural hook verifying signature lengths and non-zero bytes. In production, this should be verified via a Zero-Knowledge proof (like Groth16/Halo2) or protocol precompiles.
-- **Replay Protection**: Built-in nonce tracking prevents withdrawal signatures from being replayed.
-- **MVP Status**: This is a Phase 1 Proof-of-Concept. Not for production use.
+- **Replay protection:** strictly increasing per-owner `nonce` + signed `deadline`.
+- **Tamper protection:** owner/recipient/amount/nonce/deadline/mode are all part of the
+  EIP-712 message; changing any field invalidates the signature.
+- **Domain separation:** binds signatures to contract address, chainId, and name/version.
+- **Reentrancy:** `ReentrancyGuard` + checks-effects-interactions.
+- **Admin:** `Ownable2Step` owner can update the verifier and pause the vault — a
+  documented centralization/trust assumption.
+- **Accounting:** ETH force-sent via `selfdestruct` is not credited and cannot be
+  withdrawn; internal per-vault balances are unaffected.
+
+Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
+
+## Post-quantum verifier roadmap
+
+The mock is **Path 0**. Real verification may come from a trusted-attestation verifier, a
+ZK-proof verifier, or a future chain-native PQ precompile. See
+[docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
+
+## Cryptography naming (NIST)
+
+- **ML-DSA / FIPS 204** — formerly **CRYSTALS-Dilithium** (this prototype targets
+  ML-DSA-65: 1952-byte public key, 3309-byte signature).
+- **SLH-DSA / FIPS 205** — formerly **SPHINCS+** (candidate for future PQ paths).
+
+## License
+
+MIT. Provided **as-is** for research and educational purposes. No warranty. Not audited.
+**Do not use with real funds.**

@@ -1,12 +1,18 @@
 {
   "name": "walletwall-vault",
-  "version": "0.0.1",
-  "description": "Hybrid cryptographic asset vault combining ECDSA and Post-Quantum Cryptography.",
+  "version": "0.1.0",
+  "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
     "test": "hardhat test",
     "compile": "hardhat compile",
-    "deploy": "hardhat run scripts/deploy.ts"
+    "clean": "hardhat clean",
+    "coverage": "hardhat coverage",
+    "deploy": "hardhat run scripts/deploy.ts",
+    "demo": "hardhat run scripts/demo-local.ts",
+    "lint": "solhint \"contracts/**/*.sol\"",
+    "format": "prettier --write \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
+    "format:check": "prettier --check \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\""
   },
   "keywords": [
     "solidity",
@@ -35,6 +41,9 @@
     "ethers": "^6.13.4",
     "hardhat": "^2.22.15",
     "hardhat-gas-reporter": "^1.0.10",
+    "prettier": "^3.8.4",
+    "prettier-plugin-solidity": "^2.3.1",
+    "solhint": "^6.2.1",
     "solidity-coverage": "^0.8.17",
     "ts-node": "^10.9.2",
     "typechain": "^8.3.2",

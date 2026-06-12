@@ -1,5 +1,17 @@
 # WalletWall Vault: Architecture Transition
 
+> ⚠️ **Research prototype. Not audited. Do not use real funds.** The on-chain PQ verifier
+> is a mock/placeholder (`MockMLDSAVerifier`) and performs no real cryptographic
+> verification.
+>
+> **Note (current API):** Since the `harden-vault-core` refactor, the verifier interface
+> is `IPQCVerifier` (`verify(bytes32 digest, bytes publicKey, bytes signature)`),
+> withdrawals are authorized via an **EIP-712** typed `Withdrawal` struct with a
+> `deadline` and a `VaultMode` enum, and `MLDSAVerifier` was renamed to
+> `MockMLDSAVerifier`. The historical detail below is retained for context — see
+> [../README.md](../README.md) and [Security_Assumptions.md](Security_Assumptions.md) for
+> current behavior.
+
 This document describes the transition from the deprecated WOTS+ (Winternitz One-Time Signature) architecture to the new NIST-approved ML-DSA (Dilithium) architecture.
 
 ## Before: WOTS+ Architecture

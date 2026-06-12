@@ -14,11 +14,7 @@ contract SignatureVerifier {
     /**
      * @dev Verifies an ECDSA signature.
      */
-    function verifyECDSA(
-        address signer,
-        bytes32 messageHash,
-        bytes calldata signature
-    ) public pure returns (bool) {
+    function verifyECDSA(address signer, bytes32 messageHash, bytes calldata signature) public pure returns (bool) {
         bytes32 ethSignedMessageHash = MessageHashUtils.toEthSignedMessageHash(messageHash);
         return ethSignedMessageHash.recover(signature) == signer;
     }
