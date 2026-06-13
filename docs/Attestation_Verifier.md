@@ -72,6 +72,15 @@ Deterministic library-generated fixtures live under
 [`test/fixtures/mldsa/library-generated/`](../test/fixtures/mldsa/library-generated/).
 They are not official NIST vectors and are not deployment credentials.
 
+Official NIST ACVP vectors for ML-DSA-65 (FIPS 204 sigVer, external interface, pure
+mode) are stored under
+[`test/fixtures/mldsa/nist-cavp/`](../test/fixtures/mldsa/nist-cavp/).
+These are a 6-vector subset (3 valid + 3 invalid) from NIST ACVP-Server vsId 42,
+group 3. `@noble/post-quantum` `ml_dsa65.verify` passes all 15 test cases in that
+ACVP group. See
+[`test/fixtures/mldsa/nist-cavp/README.md`](../test/fixtures/mldsa/nist-cavp/README.md)
+and [`test/MLDSAConformance.test.ts`](../test/MLDSAConformance.test.ts).
+
 ## Ownership transfer
 
 `AttestationPQCVerifier` uses `Ownable2Step` (consistent with `WalletWallVault`).

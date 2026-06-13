@@ -216,6 +216,17 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
 
 Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 
+## ML-DSA test vectors
+
+`test/fixtures/mldsa/library-generated/` — deterministic library-generated ML-DSA-65
+fixtures used by the existing attestor CLI tests. Not official NIST vectors.
+
+`test/fixtures/mldsa/nist-cavp/` — a 6-vector subset (3 valid + 3 invalid) from the
+official [NIST ACVP-Server](https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files/ML-DSA-sigVer-FIPS204)
+(FIPS 204, ML-DSA-65, sigVer, external interface, pure mode, vsId 42 group 3).
+`@noble/post-quantum` `ml_dsa65.verify` passes all 15 test cases in that ACVP group.
+See `test/MLDSAConformance.test.ts` and `test/fixtures/mldsa/nist-cavp/README.md`.
+
 ## Post-quantum verifier roadmap
 
 The mock is **Path 0**. The implemented trusted-attestation verifier is **Path 1** and

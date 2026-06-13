@@ -105,7 +105,9 @@ correct implementations, review, and deployment-specific security analysis.
 
 1. Deploy and **independently audit** the new `IPQCVerifier` implementation.
 2. Confirm `algorithmId()` matches the expected scheme.
-3. Validate against known-answer test vectors for the chosen parameter set.
+3. Validate against known-answer test vectors for the chosen parameter set. Official
+   NIST ACVP sigVer vectors for ML-DSA-65 are available under
+   `test/fixtures/mldsa/nist-cavp/` (FIPS 204, external interface, pure mode).
 4. Propose the verifier via `proposePQVerifier` from the owner or owner multisig.
 5. Monitor the `PQVerifierUpdateProposed` event and independently verify the proposed
    address and bytecode during the fixed two-day delay. Cancel with
