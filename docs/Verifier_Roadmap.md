@@ -72,7 +72,9 @@ chain-native solution.
 - **Trust:** reduces dependence on an operational attestor but still depends on the
   proving system, circuit correctness, setup assumptions where applicable, and audits.
 - **Cost:** higher proving effort off-chain; modest on-chain verification cost.
-- **Status:** not implemented (preferred long-term software path).
+- **Status:** not implemented (preferred long-term software path). See
+  [ZK_Verifier_Feasibility.md](ZK_Verifier_Feasibility.md) for an evaluation of
+  candidate approaches (RISC Zero, SP1, Noir, Circom, native precompile).
 
 ZK verification or native chain support remains a stronger future direction because it
 can reduce dependence on the operational attestor. Those approaches still require
