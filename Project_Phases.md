@@ -505,7 +505,7 @@ Future support may include:
 
 # Future Roadmap
 
-## Phase 1
+## Phase 1 (Completed)
 
 MVP
 
@@ -518,7 +518,7 @@ Features:
 
 ---
 
-## Phase 2
+## Phase 2 (Completed)
 
 Advanced Security
 
