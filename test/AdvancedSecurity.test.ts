@@ -43,8 +43,9 @@ describe("Advanced Security (Phase 2)", function () {
       await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
 
       // Should fail if initiated by non-guardian
-      await expect(vault.connect(other).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY))
-        .to.be.revertedWithCustomError(vault, "NotAGuardian");
+      await expect(
+        vault.connect(other).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "NotAGuardian");
 
       // Should succeed if initiated by guardian
       await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
@@ -126,10 +127,12 @@ describe("Advanced Security (Phase 2)", function () {
       const ecdsaSignature = await owner.signTypedData(domain, types, request);
 
       // Mock PQ signature (MockMLDSAVerifier just checks length and first byte)
-      const pqSignature = ethers.hexlify(ethers.concat([
-        "0x01", // non-zero first byte
-        ethers.randomBytes(3308)
-      ]));
+      const pqSignature = ethers.hexlify(
+        ethers.concat([
+          "0x01", // non-zero first byte
+          ethers.randomBytes(3308),
+        ]),
+      );
 
       await vault.rotateCredentials(
         owner.address,
@@ -137,7 +140,7 @@ describe("Advanced Security (Phase 2)", function () {
         NEW_PQ_KEY,
         deadline,
         ecdsaSignature,
-        pqSignature
+        pqSignature,
       );
 
       const vaultInfo = await vault.getVault(owner.address);
@@ -205,10 +208,10 @@ describe("Advanced Security (Phase 2)", function () {
       // Sort signatures based on signer address to match contract expectation
       const signers = [
         { addr: owner.address, sig: sig1 },
-        { addr: guardian1.address, sig: sig2 }
+        { addr: guardian1.address, sig: sig2 },
       ].sort((a, b) => a.addr.localeCompare(b.addr));
 
-      const ecdsaSignatures = signers.map(s => s.sig);
+      const ecdsaSignatures = signers.map((s) => s.sig);
 
       const pqSignature1 = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
       const pqSignature2 = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
