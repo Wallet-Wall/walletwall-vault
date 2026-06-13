@@ -221,4 +221,167 @@ describe("AttestationPQCVerifier", function () {
     expect(await verifier.algorithmId()).to.equal(ALGORITHM_ID);
     expect(await verifier.algorithmId()).not.to.equal(await mockVerifier.algorithmId());
   });
+
+  // -------------------------------------------------------------------------
+  // Ownable2Step ownership transfer
+  // -------------------------------------------------------------------------
+
+  describe("Ownable2Step ownership transfer", function () {
+    it("owner can initiate a two-step ownership transfer", async function () {
+      const { verifier, owner, other } = await deployFixture();
+
+      await expect(verifier.connect(owner).transferOwnership(other.address))
+        .to.emit(verifier, "OwnershipTransferStarted")
+        .withArgs(owner.address, other.address);
+      expect(await verifier.pendingOwner()).to.equal(other.address);
+      expect(await verifier.owner()).to.equal(owner.address);
+    });
+
+    it("pending owner can accept ownership", async function () {
+      const { verifier, owner, other } = await deployFixture();
+
+      await verifier.connect(owner).transferOwnership(other.address);
+      await expect(verifier.connect(other).acceptOwnership())
+        .to.emit(verifier, "OwnershipTransferred")
+        .withArgs(owner.address, other.address);
+      expect(await verifier.owner()).to.equal(other.address);
+      expect(await verifier.pendingOwner()).to.equal(ethers.ZeroAddress);
+    });
+
+    it("non-pending address cannot accept ownership", async function () {
+      const { verifier, owner, other } = await deployFixture();
+      const signers = await ethers.getSigners();
+      const unrelated = signers[3];
+
+      await verifier.connect(owner).transferOwnership(other.address);
+      await expect(verifier.connect(unrelated).acceptOwnership()).to.be.revertedWithCustomError(
+        verifier,
+        "OwnableUnauthorizedAccount",
+      );
+    });
+
+    it("old owner loses updateAttestor rights after ownership is accepted", async function () {
+      const { verifier, owner, other } = await deployFixture();
+      const [, , newAttestor] = await ethers.getSigners();
+
+      await verifier.connect(owner).transferOwnership(other.address);
+      await verifier.connect(other).acceptOwnership();
+
+      await expect(verifier.connect(owner).updateAttestor(newAttestor.address))
+        .to.be.revertedWithCustomError(verifier, "OwnableUnauthorizedAccount")
+        .withArgs(owner.address);
+    });
+
+    it("new owner can call updateAttestor after acceptance", async function () {
+      const { verifier, owner, other } = await deployFixture();
+      const [, , newAttestor] = await ethers.getSigners();
+
+      await verifier.connect(owner).transferOwnership(other.address);
+      await verifier.connect(other).acceptOwnership();
+
+      await expect(verifier.connect(other).updateAttestor(newAttestor.address)).to.emit(verifier, "AttestorUpdated");
+      expect(await verifier.attestor()).to.equal(newAttestor.address);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Documented attack surface: immediate attestor rotation
+  //
+  // This test suite documents expected behavior, not a bug.
+  //
+  // AttestationPQCVerifier.updateAttestor is immediate: the owner can rotate
+  // the attestor in a single transaction with no delay. If the verifier owner
+  // is compromised, a malicious attestor can be installed instantly and begin
+  // accepting fraudulent attestations from the very next block. The vault's
+  // two-day verifier governance delay does NOT protect against this.
+  //
+  // This is the inherent trust boundary of the Phase 1 trusted-attestation
+  // model. Operators must monitor AttestorUpdated events. Eliminating the risk
+  // requires graduating to a ZK or chain-native verifier (see Verifier_Roadmap.md).
+  // -------------------------------------------------------------------------
+
+  describe("Documented attack surface: immediate attestor rotation (trusted-attestor model)", function () {
+    it("attestor A attestations are accepted before rotation", async function () {
+      const { verifier, attestor } = await deployFixture();
+      const input = await validInputs();
+      const payload = await buildPayload(
+        await verifier.getAddress(),
+        attestor,
+        input.withdrawalDigest,
+        input.publicKeyHash,
+        input.pqSignatureHash,
+        input.deadline,
+      );
+
+      expect(await verifier.verify(input.withdrawalDigest, input.publicKey, payload)).to.equal(true);
+    });
+
+    it("owner can rotate attestor immediately to a new address", async function () {
+      const { verifier, attestor, other } = await deployFixture();
+
+      await expect(verifier.updateAttestor(other.address))
+        .to.emit(verifier, "AttestorUpdated")
+        .withArgs(attestor.address, other.address);
+      expect(await verifier.attestor()).to.equal(other.address);
+    });
+
+    it("attestor B attestations are accepted immediately after rotation (no delay)", async function () {
+      const { verifier, other } = await deployFixture();
+
+      await verifier.updateAttestor(other.address);
+
+      const input = await validInputs();
+      const payload = await buildPayload(
+        await verifier.getAddress(),
+        other,
+        input.withdrawalDigest,
+        input.publicKeyHash,
+        input.pqSignatureHash,
+        input.deadline,
+      );
+
+      expect(await verifier.verify(input.withdrawalDigest, input.publicKey, payload)).to.equal(true);
+    });
+
+    it("attestor A attestations are rejected after rotation to B (rotation is atomic)", async function () {
+      const { verifier, attestor, other } = await deployFixture();
+
+      const input = await validInputs();
+      const payloadA = await buildPayload(
+        await verifier.getAddress(),
+        attestor,
+        input.withdrawalDigest,
+        input.publicKeyHash,
+        input.pqSignatureHash,
+        input.deadline,
+      );
+
+      await verifier.updateAttestor(other.address);
+
+      expect(await verifier.verify(input.withdrawalDigest, input.publicKey, payloadA)).to.equal(false);
+    });
+
+    it("compromised owner can install a malicious attestor that signs a new digest — documents full attack path", async function () {
+      const { verifier, other } = await deployFixture();
+
+      // Owner is compromised; malicious attestor is installed immediately.
+      await verifier.updateAttestor(other.address);
+
+      // Malicious attestor signs a fraudulent attestation for a new digest.
+      const maliciousInput = await validInputs();
+      const maliciousPayload = await buildPayload(
+        await verifier.getAddress(),
+        other,
+        maliciousInput.withdrawalDigest,
+        maliciousInput.publicKeyHash,
+        maliciousInput.pqSignatureHash,
+        maliciousInput.deadline,
+      );
+
+      // The verifier accepts it — the attacker now controls attestation from the next block.
+      expect(
+        await verifier.verify(maliciousInput.withdrawalDigest, maliciousInput.publicKey, maliciousPayload),
+      ).to.equal(true);
+    });
+  });
 });

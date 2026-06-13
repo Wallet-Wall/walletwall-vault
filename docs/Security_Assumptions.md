@@ -100,10 +100,11 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   model — not trustless PQ verification. Until a non-custodial verifier (ZK proof or
   chain-native) replaces the attestation path, trust must be placed in whoever controls
   the attestor and the attestor owner key.
-- **Ownership uses two-step transfer** (`Ownable2Step`) to avoid transferring ownership
-  to an unusable address. The owner may be a multisig such as Safe; no additional
-  multisig contract logic is required in the vault. A pending verifier proposal remains
-  pending across ownership transfer, so a new owner must review it before applying.
+- **Ownership uses two-step transfer** (`Ownable2Step`) on both `WalletWallVault` and
+  `AttestationPQCVerifier`, to avoid transferring ownership to an unusable address.
+  The owner may be a multisig such as Safe; no additional multisig contract logic is
+  required. A pending verifier proposal remains pending across vault ownership transfer,
+  so a new owner must review it before applying.
 - **Recommended governance:** an EOA owner is acceptable only for local/testnet
   prototyping. Any future deployment beyond isolated research should use a reviewed
   multisig owner, operational monitoring of proposal events, and an independently

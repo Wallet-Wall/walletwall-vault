@@ -1,3 +1,15 @@
+// DEPRECATED DEMO ONLY — does not verify ML-DSA.
+// This script signs an attestation payload without performing any ML-DSA verification.
+// It exists only as a low-level payload-construction reference.
+//
+// DO NOT use this as an attestor service. Use `npm run attestor:verify` instead.
+// The attestor CLI at scripts/attestor-cli.ts verifies ML-DSA-65 with a real
+// FIPS 204-compatible implementation before signing, and refuses known demo material
+// in real verify mode. This file does neither.
+//
+// Renamed from scripts/sign-attestation.ts. The `sign:attestation` npm script has
+// been removed. Run `npm run attestor:demo` or `npm run attestor:verify` instead.
+
 import { ethers } from "hardhat";
 
 const REQUIRED_ATTESTOR_NOTICE =
@@ -28,6 +40,11 @@ function bytesFromEnv(name: string, fallbackLength: number): string {
 }
 
 async function main() {
+  console.warn(
+    "WARNING: demo-sign-attestation-unsafe.ts is DEPRECATED DEMO ONLY.",
+    "It does not verify ML-DSA. Use `npm run attestor:verify` for real use.",
+  );
+
   const [defaultSigner] = await ethers.getSigners();
   const attestor =
     process.env.ATTESTOR_PRIVATE_KEY !== undefined

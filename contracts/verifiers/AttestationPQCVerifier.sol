@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
@@ -14,7 +14,7 @@ import "../IPQCVerifier.sol";
  * @dev This contract does not verify ML-DSA on-chain. Its security depends on
  *      the configured attestor and the attestor's off-chain verification.
  */
-contract AttestationPQCVerifier is IPQCVerifier, Ownable, EIP712 {
+contract AttestationPQCVerifier is IPQCVerifier, Ownable2Step, EIP712 {
     bytes32 public constant ATTESTED_ML_DSA_65_ALGORITHM_ID = keccak256("ATTESTED-ML-DSA-65");
 
     bytes32 private constant ATTESTATION_TYPEHASH = keccak256(
