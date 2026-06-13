@@ -54,10 +54,15 @@ chain-native solution.
   Path 2 (ZK) or Path 4 (chain-native).
 - **Status:** implemented for research and testnet evaluation. See
   [Attestation_Verifier.md](Attestation_Verifier.md).
-- **Off-chain prototype:** `scripts/attestor-cli.ts` verifies ML-DSA-65 with
-  `@noble/post-quantum` before signing. In real verify mode it refuses both demo
-  material and library-generated fixture material. This demonstrates the required
-  verification gate but does not remove trust in the attestor key or service.
+- **Off-chain prototype:** `scripts/attestor-cli.ts` (`npm run attestor:verify`)
+  verifies ML-DSA-65 with `@noble/post-quantum` before signing. In real verify mode
+  it refuses both demo material and library-generated fixture material. This
+  demonstrates the required verification gate but does not remove trust in the
+  attestor key or service. The older `scripts/sign-attestation.ts` has been renamed
+  to `scripts/demo-sign-attestation-unsafe.ts` (deprecated, no ML-DSA verification)
+  and the `sign:attestation` npm script has been removed.
+- **Ownership:** `AttestationPQCVerifier` uses `Ownable2Step` (consistent with
+  `WalletWallVault`). Attestor rotation itself remains immediate.
 
 ## Path 2 — ZK-proof verifier
 

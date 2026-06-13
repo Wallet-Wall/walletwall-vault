@@ -39,9 +39,11 @@ steps 3 through 5 with `@noble/post-quantum` ML-DSA-65 verification. It refuses 
 in real verify mode unless verification succeeds and the signed message exactly matches
 the withdrawal digest.
 
-The older [`scripts/sign-attestation.ts`](../scripts/sign-attestation.ts) remains a
-payload-construction example only. It does not verify ML-DSA and must not be used as an
-attestor service.
+The script formerly at `scripts/sign-attestation.ts` has been renamed to
+[`scripts/demo-sign-attestation-unsafe.ts`](../scripts/demo-sign-attestation-unsafe.ts)
+and the `sign:attestation` npm script has been removed. It is retained only as a
+low-level payload-construction reference. It does not verify ML-DSA and must not be used
+as an attestor service. Use `npm run attestor:verify` instead.
 
 ## Attestor CLI
 
@@ -69,6 +71,17 @@ mismatches, and the known deterministic demo material.
 Deterministic library-generated fixtures live under
 [`test/fixtures/mldsa/library-generated/`](../test/fixtures/mldsa/library-generated/).
 They are not official NIST vectors and are not deployment credentials.
+
+## Ownership transfer
+
+`AttestationPQCVerifier` uses `Ownable2Step` (consistent with `WalletWallVault`).
+Transferring ownership is a two-step process: the current owner calls
+`transferOwnership(newOwner)`, then the new owner must call `acceptOwnership()` to
+complete the transfer. This prevents accidental or typo-induced transfer to an unusable
+address.
+
+Attestor rotation itself (`updateAttestor`) remains immediate and has no equivalent
+two-step or timelocked mechanism. See [Attestor rotation delay asymmetry](#attestor-rotation-delay-asymmetry).
 
 ## Trust model
 

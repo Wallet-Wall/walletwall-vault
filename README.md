@@ -65,7 +65,8 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
   ML-DSA-65 verifier, **test/demo only**, no real verification.
 - [`contracts/verifiers/AttestationPQCVerifier.sol`](contracts/verifiers/AttestationPQCVerifier.sol)
   — non-mock trusted-attestation path; verifies an authorized EIP-712 attestor
-  signature and does not execute ML-DSA on-chain.
+  signature and does not execute ML-DSA on-chain. Uses `Ownable2Step` for safer
+  ownership transfer (consistent with `WalletWallVault`).
 - [`contracts/mocks/`](contracts/mocks/) — test-only helpers (`AlwaysFalsePQCVerifier`,
   `ForceSend`).
 - [`pqc/ml-dsa.ts`](pqc/ml-dsa.ts) — off-chain ML-DSA-65 signer using
@@ -110,19 +111,6 @@ Runs a full deposit → EIP-712 sign → hybrid withdrawal flow against a mock P
 ```bash
 npm run demo
 ```
-
-### Build a sample attestation payload
-
-Generates mock ML-DSA-shaped bytes unless environment overrides are supplied, signs the
-attestation, and prints the verifier payload:
-
-```bash
-npm run sign:attestation
-```
-
-The helper does not verify ML-DSA. See
-[docs/Attestation_Verifier.md](docs/Attestation_Verifier.md) for the payload and trust
-model.
 
 ### Verify ML-DSA and build an attestation
 
@@ -216,6 +204,11 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
   proposal before application. The active verifier remains unchanged during the delay.
   Ownership can be assigned to a multisig such as Safe without adding multisig logic to
   this prototype.
+- **Ownership safety:** both `WalletWallVault` and `AttestationPQCVerifier` use
+  `Ownable2Step`. Ownership transfer requires the new owner to explicitly accept,
+  preventing accidental transfer to an unusable address. Attestor rotation itself remains
+  immediate once called by the owner — see
+  [docs/Attestation_Verifier.md](docs/Attestation_Verifier.md).
 - **Admin:** the owner can still choose the verifier and pause the vault. The delay
   improves visibility and reaction time but does not remove the central trust boundary.
 - **Accounting:** ETH force-sent via `selfdestruct` is not credited and cannot be

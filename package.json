@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -10,7 +10,6 @@
     "coverage": "hardhat coverage",
     "deploy": "hardhat run scripts/deploy.ts",
     "demo": "hardhat run scripts/demo-local.ts",
-    "sign:attestation": "hardhat run scripts/sign-attestation.ts",
     "attestor:demo": "ts-node --esm scripts/attestor-cli.ts demo",
     "attestor:verify": "ts-node --esm scripts/attestor-cli.ts verify",
     "attestor:fixtures": "ts-node --esm scripts/generate-attestor-fixture.ts",
