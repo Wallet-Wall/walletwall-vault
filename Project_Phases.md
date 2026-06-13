@@ -1,5 +1,21 @@
 # WalletWall Vault
 
+> ⚠️ **Pre-implementation design / vision document.**
+>
+> This file describes aspirational phases and a long-term vision. Not all features
+> described here are implemented. It is retained for context but is **not the source of
+> truth for current architecture, APIs, or security properties.**
+>
+> For the current implementation see:
+> - **[README.md](README.md)** — current API, components, and signing flow
+> - **[docs/Security_Assumptions.md](docs/Security_Assumptions.md)** — trust model
+> - **[docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md)** — verifier phases
+>
+> **Naming note:** Where this document uses the older names CRYSTALS-Dilithium or
+> Dilithium, the NIST-standardized name is **ML-DSA / FIPS 204**. Where it uses
+> SPHINCS+, the standardized name is **SLH-DSA / FIPS 205**. Falcon is a separate
+> NIST-selected algorithm (FIPS 206) not currently targeted by this prototype.
+
 > A hybrid cryptographic vault for digital assets that combines traditional blockchain signatures with post-quantum cryptography (PQC) to provide a migration path toward a quantum-safe future.
 
 ---

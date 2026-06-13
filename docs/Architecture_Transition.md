@@ -1,16 +1,22 @@
 # WalletWall Vault: Architecture Transition
 
-> ⚠️ **Research prototype. Not audited. Do not use real funds.** The on-chain PQ verifier
-> is a mock/placeholder (`MockMLDSAVerifier`) and performs no real cryptographic
-> verification.
+> ⚠️ **Research prototype. Not audited. Do not use real funds.**
 >
-> **Note (current API):** Since the `harden-vault-core` refactor, the verifier interface
-> is `IPQCVerifier` (`verify(bytes32 digest, bytes publicKey, bytes signature)`),
-> withdrawals are authorized via an **EIP-712** typed `Withdrawal` struct with a
-> `deadline` and a `VaultMode` enum, and `MLDSAVerifier` was renamed to
-> `MockMLDSAVerifier`. The historical detail below is retained for context — see
-> [../README.md](../README.md) and [Security_Assumptions.md](Security_Assumptions.md) for
-> current behavior.
+> **Reading guide:** This document records the architectural transition from an earlier
+> WOTS+ prototype to the current ML-DSA design. The historical sections are accurate for
+> that transition. For the current implementation, see [../README.md](../README.md) and
+> [Security_Assumptions.md](Security_Assumptions.md).
+>
+> **Current API summary:**
+> - The PQ verifier interface is `IPQCVerifier` with
+>   `verify(bytes32 digest, bytes publicKey, bytes signature)`.
+> - ECDSA is verified inline in `WalletWallVault` using OpenZeppelin ECDSA over the
+>   EIP-712 typed `Withdrawal` digest (not via a separate verifier contract).
+> - Withdrawals carry an EIP-712 `Withdrawal` struct with `deadline` and `VaultMode`.
+> - Two verifier implementations are shipped: `MockMLDSAVerifier` (test/demo, structural
+>   checks only) and `AttestationPQCVerifier` (trusted off-chain attestation, non-mock).
+> - `MLDSAVerifier` was renamed to `MockMLDSAVerifier` during the `harden-vault-core`
+>   refactor to make its test-only status explicit.
 
 This document describes the transition from the deprecated WOTS+ (Winternitz One-Time Signature) architecture to the new NIST-approved ML-DSA (Dilithium) architecture.
 
@@ -36,38 +42,58 @@ The new system uses ML-DSA-65 (Dilithium3), a NIST-approved post-quantum digital
 
 ### Key Improvements:
 - **Reusable keys**: ML-DSA keys can be used for many signatures, just like ECDSA.
-- **Standardized**: Part of the FIPS 204 standard.
+- **Standardized**: Part of the FIPS 204 standard (formerly CRYSTALS-Dilithium).
 - **Hybrid Security**: Built-in support for requiring both ECDSA and PQC signatures.
-- **Algorithm Agnostic**: The vault now uses an interface (`IPQCVerifier`), allowing for future upgrades to other NIST algorithms (like SLH-DSA or Falcon).
+- **Algorithm Agnostic**: The vault uses an `IPQCVerifier` interface, allowing future
+  upgrades to other NIST algorithms (SLH-DSA / FIPS 205, Falcon / FIPS 206) or
+  different verification strategies (trusted attestation, ZK proof, precompile).
+- **No separate ECDSA verifier contract**: ECDSA is verified inline in `WalletWallVault`
+  using OpenZeppelin ECDSA over the EIP-712 digest.
 
 ### Flow (After)
 1. User generates ML-DSA-65 keypair.
-2. User registers ML-DSA public key in the Vault.
-3. For withdrawal:
-   - User provides ML-DSA signature.
-   - Vault calls `IPQCVerifier.verify`.
-   - The verifier (e.g., `MockMLDSAVerifier`) validates the signature against the registered public key.
-   - Replay protection is handled via a `nonce`.
+2. User registers the ML-DSA public key in the Vault via `createVault`.
+3. For withdrawal, the user builds an EIP-712 `Withdrawal` struct and signs it:
+   - ECDSA signature: produced by the registered ECDSA signer over the typed-data digest.
+   - PQ signature: produced by the ML-DSA private key over the same typed-data digest.
+4. The signed request is submitted to `withdraw` (by the owner or a relayer):
+   - `WalletWallVault` verifies the ECDSA signature inline via OpenZeppelin ECDSA.
+   - `WalletWallVault` calls `IPQCVerifier.verify(digest, pqPublicKey, pqSignature)`.
+   - `MockMLDSAVerifier` performs **structural length checks only** — it does not
+     cryptographically bind the signature to the public key or the digest. It is
+     test/demo infrastructure, not real security.
+   - `AttestationPQCVerifier` (the non-mock path) verifies that a trusted off-chain
+     attestor signed an EIP-712 statement attesting ML-DSA verification occurred.
+     It does not run ML-DSA on-chain.
+   - Replay protection is provided by a strictly-increasing per-owner `nonce` and the
+     signed `deadline`.
 
 ## Architecture Diagram
 
 ```mermaid
 graph TD
-    subgraph "Off-chain (TypeScript SDK)"
+    subgraph "Off-chain"
         A[User Private Keys] --> B[ECDSA Signer]
-        A --> C[ML-DSA Signer]
-        B --> D[Withdrawal Request]
+        A --> C[ML-DSA Signer pqc/ml-dsa.ts]
+        B --> D[EIP-712 Withdrawal digest]
         C --> D
+        D --> E[withdraw request + signatures]
     end
 
-    subgraph "On-chain (Ethereum)"
-        D --> E[WalletWallVault]
-        E --> F[OpenZeppelin ECDSA]
-        E --> G[IPQCVerifier (ML-DSA)]
-        F -- Valid --> H{Both Valid?}
-        G -- Valid --> H
-        H -- Yes --> I[Release Funds]
-        H -- No --> J[Revert]
+    subgraph "On-chain: WalletWallVault"
+        E --> F[WalletWallVault]
+        F --> G[OZ ECDSA.recover over digest]
+        F --> H[IPQCVerifier.verify]
+        G -- signer matches --> I{Both checks pass?}
+        H -- verifier returns true --> I
+        I -- Yes --> J[Release Funds]
+        I -- No --> K[Revert]
+    end
+
+    subgraph "IPQCVerifier implementations"
+        H --> L[MockMLDSAVerifier\nstructural checks only\ntest/demo]
+        H --> M[AttestationPQCVerifier\ntrusted off-chain attestor\nnon-mock]
+        H --> N[Future: ZK / precompile]
     end
 ```
 

@@ -1,75 +1,180 @@
 # Migration Guide: From WOTS+ to ML-DSA
 
-> ⚠️ **Research prototype. Not audited. Do not use real funds.** The on-chain PQ verifier
-> is a mock/placeholder and performs no real cryptographic verification.
->
-> **Note (current API):** The `withdraw` signature shown below is outdated. Since the
-> `harden-vault-core` refactor, withdrawals take a single EIP-712 `Withdrawal` struct —
-> `withdraw(Withdrawal request, bytes ecdsaSignature, bytes pqSignature)` — where
-> `Withdrawal = { vaultOwner, recipient, amount, nonce, deadline, vaultMode }`, and
-> `createVault` takes a `VaultMode` enum instead of a `requireBoth` boolean. See
-> [../README.md](../README.md) for the current signing flow.
+> ⚠️ **Research prototype. Not audited. Do not use real funds.**
+> See [Security_Assumptions.md](Security_Assumptions.md) and [../README.md](../README.md).
 
-This guide outlines the steps for users and developers to migrate from the deprecated WOTS+ vault to the new ML-DSA post-quantum vault.
+This document describes the architecture transition from the deprecated WOTS+
+(Winternitz One-Time Signature) design to the current NIST-approved ML-DSA
+(FIPS 204) design. The current API and signing flow are in [../README.md](../README.md).
+A runnable end-to-end example is in `scripts/demo-local.ts` (`npm run demo`).
 
-## For Developers
+---
 
-### 1. Update Dependencies
-Ensure you have the latest SDK which includes `@noble/post-quantum`.
+## Why the change
 
-### 2. Contract Changes
-The `WalletWallVault` constructor now requires two verifier addresses:
+The previous WOTS+ prototype had significant limitations:
+
+- **One-time-use keys.** Every withdrawal required a new key or complex Merkle tree
+  management.
+- **Large, unwieldy signatures.** WOTS+ signatures consist of many concatenated hash
+  chain values.
+- **On-chain hashing complexity.** Verifying WOTS+ on-chain required many sequential
+  hash operations.
+
+---
+
+## Current architecture (ML-DSA-65 / FIPS 204)
+
+The vault now uses ML-DSA-65 (Dilithium3), a NIST-standardized post-quantum signature
+scheme. Key properties:
+
+- **Reusable keys.** A single ML-DSA keypair can authorize many withdrawals.
+- **FIPS 204 standard.** Formerly CRYSTALS-Dilithium; standardized as ML-DSA by NIST.
+- **Hybrid authorization.** The default `Hybrid` mode requires both an ECDSA signature
+  and a PQ signature over the same EIP-712 withdrawal digest.
+- **Swappable verifier.** PQ verification is isolated behind the `IPQCVerifier` interface,
+  so the verification strategy can be upgraded without changing the vault contract.
+
+Technical specs (ML-DSA-65): public key 1952 bytes, signature 3309 bytes, NIST
+security category 3.
+
+---
+
+## Constructor
+
 ```solidity
-constructor(address _ecdsaVerifier, address _pqVerifier)
+constructor(address _pqVerifier)
 ```
 
-The `withdraw` function signature has changed to support reusable keys and nonces:
+The vault takes a single PQ verifier address. There is no separate ECDSA verifier
+argument — ECDSA is verified inline using OpenZeppelin ECDSA over the EIP-712 digest.
+
+---
+
+## Creating a vault
+
+`createVault` now takes a `VaultMode` enum instead of a `requireBoth` boolean:
+
 ```solidity
-function withdraw(
-    uint256 amount,
-    address recipient,
-    uint256 nonce,
-    bytes calldata ecdsaSignature,
-    bytes calldata pqSignature
-)
+enum VaultMode { EcdsaOnly, PqOnly, Hybrid }
+
+function createVault(
+    address ecdsaSigner,
+    bytes calldata pqPublicKey,
+    VaultMode mode
+) external whenNotPaused;
 ```
 
-### 3. Key Management
-WOTS+ keys (hash chains) are no longer used. Replace them with ML-DSA-65 keypairs.
+`Hybrid` is the intended default. `PqOnly` is blocked at the contract level while
+the configured verifier is the mock (`MockMLDSAVerifier`).
 
-## For Users
-
-### 1. New Vault Creation
-If you have an existing WOTS+ vault, you must create a new vault using the new ML-DSA public key.
+TypeScript example:
 
 ```typescript
 import { MLDSASigner } from "./pqc/ml-dsa";
 
-// 1. Generate new PQ keys
+const VaultMode = { EcdsaOnly: 0, PqOnly: 1, Hybrid: 2 } as const;
+
 const keys = MLDSASigner.generateKeyPair();
 
-// 2. Create vault on-chain
 await vault.createVault(
-    userAddress,
+    ecdsaSignerAddress,
     MLDSASigner.toHex(keys.publicKey),
-    true // requireBoth (Hybrid Mode)
+    VaultMode.Hybrid,
 );
 ```
 
-### 2. Signing Withdrawals
-Use the new signing flow:
+---
+
+## Authorizing withdrawals (EIP-712)
+
+Withdrawals are authorized by an **EIP-712** typed `Withdrawal` message. Both ECDSA
+and PQ signatures are produced over the same typed-data digest.
 
 ```typescript
-const messageHash = ethers.solidityPackedKeccak256(
-    ["address", "uint256", "address", "uint256", "address"],
-    [ownerAddress, amount, recipient, nonce, vaultAddress]
-);
+const VaultMode = { EcdsaOnly: 0, PqOnly: 1, Hybrid: 2 } as const;
 
-const pqSignature = MLDSASigner.sign(messageHash, keys.privateKey);
-const ecdsaSignature = await wallet.signMessage(ethers.getBytes(messageHash));
+const domain = {
+    name: "WalletWallVault",
+    version: "1",
+    chainId,
+    verifyingContract: vaultAddress,
+};
 
-await vault.withdraw(amount, recipient, nonce, ecdsaSignature, pqSignature);
+const types = {
+    Withdrawal: [
+        { name: "vaultOwner",  type: "address" },
+        { name: "recipient",   type: "address" },
+        { name: "amount",      type: "uint256" },
+        { name: "nonce",       type: "uint256" },
+        { name: "deadline",    type: "uint256" },
+        { name: "vaultMode",   type: "uint8"   },
+    ],
+};
+
+const request = {
+    vaultOwner: owner.address,
+    recipient,
+    amount,
+    nonce: await vault.nonces(owner.address),
+    deadline: Math.floor(Date.now() / 1000) + 3600,
+    vaultMode: VaultMode.Hybrid,
+};
+
+// ECDSA signature over the EIP-712 typed-data digest
+const ecdsaSignature = await owner.signTypedData(domain, types, request);
+
+// ML-DSA signature over the same digest
+const digest = ethers.TypedDataEncoder.hash(domain, types, request);
+const pqSignature = MLDSASigner.toHex(MLDSASigner.sign(digest, keys.privateKey));
+
+// Withdrawals may be relayed by anyone; auth comes from the signatures
+await vault.withdraw(request, ecdsaSignature, pqSignature);
 ```
 
-## Security Note
-Unlike WOTS+, ML-DSA keys are **reusable**. You do not need to rotate your public key after every transaction. However, the system now uses a **nonce** for each vault to prevent replay attacks. Ensure you track your vault's nonce (visible via `getVault(address)`).
+Withdraw function signature:
+
+```solidity
+function withdraw(
+    Withdrawal calldata request,
+    bytes calldata ecdsaSignature,
+    bytes calldata pqSignature
+) external nonReentrant whenNotPaused;
+```
+
+---
+
+## Key management
+
+- ML-DSA keys are **reusable** — no need to rotate after each withdrawal.
+- Per-owner **nonces** increment after each successful withdrawal, preventing replay.
+- The nonce for a vault owner is readable via `vault.nonces(ownerAddress)` or
+  `vault.getVault(ownerAddress).nonce`.
+- ECDSA signer and PQ public key can be rotated independently via
+  `updateEcdsaSigner` and `updatePQPublicKey` (vault owner only).
+
+---
+
+## PQ verifier paths
+
+The vault delegates PQ verification to the configured `IPQCVerifier`:
+
+| Verifier | Algorithm ID | On-chain ML-DSA? | Use |
+|---|---|---|---|
+| `MockMLDSAVerifier` | `MOCK-ML-DSA-65` | No — structural checks only | Tests and local demos |
+| `AttestationPQCVerifier` | `ATTESTED-ML-DSA-65` | No — trusted off-chain attestor | Research / testnet |
+| Future ZK verifier | TBD | No — succinct proof | Not yet implemented |
+| Future precompile | TBD | Yes | Depends on chain support |
+
+See [Verifier_Roadmap.md](Verifier_Roadmap.md) for trust assumptions of each path.
+
+---
+
+## Security notes
+
+- All examples in this document are for a **testnet/local research prototype**.
+  Do not use with real funds.
+- The mock verifier provides no meaningful cryptographic authorization.
+- The attestation verifier (`AttestationPQCVerifier`) delegates trust to a configured
+  off-chain attestor. See [Attestation_Verifier.md](Attestation_Verifier.md).
+- See [Security_Assumptions.md](Security_Assumptions.md) for the full trust model.
