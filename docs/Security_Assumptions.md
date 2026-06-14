@@ -131,14 +131,21 @@ distinct trust boundary that vault owners must understand:
   `cancelRecovery`, which is the primary protection against a malicious guardian set as
   long as the owner still controls their vault address.
 - **Guardian set integrity (enforced).** `setGuardians` rejects an empty set, more than
-  `MAX_GUARDIANS` (20), the zero address, the owner itself, and duplicates. Duplicates are
+  `MAX_GUARDIANS` (32), the zero address, the owner itself, and duplicates. Duplicates are
   rejected specifically because the majority threshold is derived from the array length
   while each address can only support once — an unchecked duplicate would push the
   threshold above the number of distinct supporters and permanently brick recovery.
-- **Anti-grief on re-initiation.** A live recovery request cannot be overwritten until its
-  `executeAfter` timestamp elapses, preventing a single guardian from repeatedly
-  re-initiating to wipe supports already cast by others. A genuinely stuck request becomes
-  replaceable after the window.
+- **Recovery request integrity.** An active recovery request cannot be overwritten before
+  its `executeAfter` timestamp, preventing a guardian from resetting accumulated supports
+  or substituting credentials. An under-supported request becomes replaceable after that
+  window so a single guardian cannot permanently deny recovery when the owner is unavailable
+  to call `cancelRecovery`.
+- **Credential validation.** Recovery and signed credential rotation reject a zero ECDSA
+  signer when ECDSA authorization is active and reject an empty PQ public key when PQ
+  authorization is active. Valid credentials for the vault's configured mode are unchanged.
+- **Replay and pending-withdrawal safety.** Successful recovery increments the vault nonce,
+  invalidating stale signed withdrawals, and cancels/refunds any reserved large withdrawal
+  before the recovered credentials take control.
 - **Residual trust.** Guardians are semi-trusted by construction. The 7-day delay and the
   owner cancel path bound, but do not eliminate, guardian power. This is social recovery,
   not trustless recovery.

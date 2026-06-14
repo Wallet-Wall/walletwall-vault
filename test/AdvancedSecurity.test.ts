@@ -17,6 +17,15 @@ describe("Advanced Security (Phase 2)", function () {
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const NEW_PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
+  const ROTATION_TYPES = {
+    RotateCredentials: [
+      { name: "vaultOwner", type: "address" },
+      { name: "newEcdsaSigner", type: "address" },
+      { name: "newPQPublicKey", type: "bytes" },
+      { name: "nonce", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+    ],
+  };
 
   beforeEach(async function () {
     [owner, guardian1, guardian2, guardian3, other, newSigner] = await ethers.getSigners();
@@ -32,6 +41,26 @@ describe("Advanced Security (Phase 2)", function () {
 
     await vault.createVault(owner.address, PQ_KEY, 2); // Hybrid
   });
+
+  async function signRotation(newEcdsaSigner: string, newPQPublicKey: string) {
+    const deadline = (await time.latest()) + 3600;
+    const domain = {
+      name: "WalletWallVault",
+      version: "1",
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: await vault.getAddress(),
+    };
+    const request = {
+      vaultOwner: owner.address,
+      newEcdsaSigner,
+      newPQPublicKey,
+      nonce: 0,
+      deadline,
+    };
+    const ecdsaSignature = await owner.signTypedData(domain, ROTATION_TYPES, request);
+    const pqSignature = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+    return { deadline, ecdsaSignature, pqSignature };
+  }
 
   describe("Guardian Recovery", function () {
     it("Should allow setting guardians", async function () {
@@ -109,6 +138,7 @@ describe("Advanced Security (Phase 2)", function () {
 
     it("accepts a guardian set exactly at MAX_GUARDIANS", async function () {
       const max = Number(await vault.MAX_GUARDIANS());
+      expect(max).to.equal(32);
       const exact = Array.from({ length: max }, () => ethers.Wallet.createRandom().address);
       await expect(vault.setGuardians(exact)).to.emit(vault, "GuardiansSet");
     });
@@ -146,14 +176,14 @@ describe("Advanced Security (Phase 2)", function () {
       // A second guardian cannot reset the accumulated supports by re-initiating.
       await expect(
         vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
-      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyActive");
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyExists");
 
       const request = await vault.recoveryRequests(owner.address);
       expect(request.supportCount).to.equal(2);
       expect(request.newEcdsaSigner).to.equal(newSigner.address);
     });
 
-    it("allows replacing a stuck request after its execution window elapses", async function () {
+    it("allows replacing an under-supported request after its execution window elapses", async function () {
       await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
       await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
 
@@ -164,47 +194,22 @@ describe("Advanced Security (Phase 2)", function () {
       expect(request.newEcdsaSigner).to.equal(other.address);
       expect(request.supportCount).to.equal(0);
     });
+
+    it("rejects recovery credentials that would brick a hybrid vault", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+
+      await expect(
+        vault.connect(guardian1).initiateRecovery(owner.address, ethers.ZeroAddress, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "ZeroAddress");
+      await expect(
+        vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, "0x"),
+      ).to.be.revertedWithCustomError(vault, "EmptyPQPublicKey");
+    });
   });
 
   describe("Secure Credential Rotation", function () {
     it("Should rotate credentials with valid signatures", async function () {
-      const nonce = 0;
-      const deadline = (await time.latest()) + 3600;
-
-      const domain = {
-        name: "WalletWallVault",
-        version: "1",
-        chainId: (await ethers.provider.getNetwork()).chainId,
-        verifyingContract: await vault.getAddress(),
-      };
-
-      const types = {
-        RotateCredentials: [
-          { name: "vaultOwner", type: "address" },
-          { name: "newEcdsaSigner", type: "address" },
-          { name: "newPQPublicKey", type: "bytes" },
-          { name: "nonce", type: "uint256" },
-          { name: "deadline", type: "uint256" },
-        ],
-      };
-
-      const request = {
-        vaultOwner: owner.address,
-        newEcdsaSigner: newSigner.address,
-        newPQPublicKey: NEW_PQ_KEY,
-        nonce: nonce,
-        deadline: deadline,
-      };
-
-      const ecdsaSignature = await owner.signTypedData(domain, types, request);
-
-      // Mock PQ signature (MockMLDSAVerifier just checks length and first byte)
-      const pqSignature = ethers.hexlify(
-        ethers.concat([
-          "0x01", // non-zero first byte
-          ethers.randomBytes(3308),
-        ]),
-      );
+      const { deadline, ecdsaSignature, pqSignature } = await signRotation(newSigner.address, NEW_PQ_KEY);
 
       await vault.rotateCredentials(
         owner.address,
@@ -218,6 +223,32 @@ describe("Advanced Security (Phase 2)", function () {
       const vaultInfo = await vault.getVault(owner.address);
       expect(vaultInfo.ecdsaSigner).to.equal(newSigner.address);
       expect(vaultInfo.pqPublicKey).to.equal(NEW_PQ_KEY);
+    });
+
+    it("rejects validly signed credentials that would brick a hybrid vault", async function () {
+      const zeroSigner = await signRotation(ethers.ZeroAddress, NEW_PQ_KEY);
+      await expect(
+        vault.rotateCredentials(
+          owner.address,
+          ethers.ZeroAddress,
+          NEW_PQ_KEY,
+          zeroSigner.deadline,
+          zeroSigner.ecdsaSignature,
+          zeroSigner.pqSignature,
+        ),
+      ).to.be.revertedWithCustomError(vault, "ZeroAddress");
+
+      const emptyPQ = await signRotation(newSigner.address, "0x");
+      await expect(
+        vault.rotateCredentials(
+          owner.address,
+          newSigner.address,
+          "0x",
+          emptyPQ.deadline,
+          emptyPQ.ecdsaSignature,
+          emptyPQ.pqSignature,
+        ),
+      ).to.be.revertedWithCustomError(vault, "EmptyPQPublicKey");
     });
   });
 
