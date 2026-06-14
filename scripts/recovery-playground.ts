@@ -37,11 +37,7 @@ async function main() {
   // 4. Initiate recovery
   console.log("4. Guardian 1 initiating recovery for lost credentials...");
   const newPqKey = ethers.hexlify(ethers.randomBytes(1952));
-  await (
-    await vault
-      .connect(guardian1)
-      .initiateRecovery(owner.address, newSigner.address, newPqKey)
-  ).wait();
+  await (await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, newPqKey)).wait();
   const recoveryReq = await vault.recoveryRequests(owner.address);
   console.log(`Recovery initiated. Earliest execution timestamp: ${recoveryReq.executeAfter}`);
 
