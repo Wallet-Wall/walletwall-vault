@@ -94,6 +94,78 @@ describe("Advanced Security (Phase 2)", function () {
     });
   });
 
+  describe("Guardian Set Validation", function () {
+    it("rejects an empty guardian set", async function () {
+      await expect(vault.setGuardians([])).to.be.revertedWithCustomError(vault, "InvalidGuardianSet");
+    });
+
+    it("rejects a guardian set above MAX_GUARDIANS", async function () {
+      const max = Number(await vault.MAX_GUARDIANS());
+      const tooMany = Array.from({ length: max + 1 }, () => ethers.Wallet.createRandom().address);
+      await expect(vault.setGuardians(tooMany))
+        .to.be.revertedWithCustomError(vault, "TooManyGuardians")
+        .withArgs(max + 1, max);
+    });
+
+    it("accepts a guardian set exactly at MAX_GUARDIANS", async function () {
+      const max = Number(await vault.MAX_GUARDIANS());
+      const exact = Array.from({ length: max }, () => ethers.Wallet.createRandom().address);
+      await expect(vault.setGuardians(exact)).to.emit(vault, "GuardiansSet");
+    });
+
+    it("rejects the zero address as a guardian", async function () {
+      await expect(vault.setGuardians([guardian1.address, ethers.ZeroAddress])).to.be.revertedWithCustomError(
+        vault,
+        "ZeroGuardian",
+      );
+    });
+
+    it("rejects the vault owner as its own guardian", async function () {
+      await expect(vault.setGuardians([guardian1.address, owner.address])).to.be.revertedWithCustomError(
+        vault,
+        "GuardianIsOwner",
+      );
+    });
+
+    it("rejects duplicate guardians", async function () {
+      // Without this guard, a duplicate would inflate the majority threshold above
+      // the number of distinct supporters and permanently brick recovery.
+      await expect(vault.setGuardians([guardian1.address, guardian2.address, guardian1.address]))
+        .to.be.revertedWithCustomError(vault, "DuplicateGuardian")
+        .withArgs(guardian1.address);
+    });
+  });
+
+  describe("Recovery Griefing Protection", function () {
+    it("blocks overwriting a live recovery request", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+
+      // A second guardian cannot reset the accumulated supports by re-initiating.
+      await expect(
+        vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyActive");
+
+      const request = await vault.recoveryRequests(owner.address);
+      expect(request.supportCount).to.equal(2);
+      expect(request.newEcdsaSigner).to.equal(newSigner.address);
+    });
+
+    it("allows replacing a stuck request after its execution window elapses", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+
+      await time.increase(7 * 24 * 60 * 60); // window elapses without enough supports
+
+      await vault.connect(guardian2).initiateRecovery(owner.address, other.address, NEW_PQ_KEY);
+      const request = await vault.recoveryRequests(owner.address);
+      expect(request.newEcdsaSigner).to.equal(other.address);
+      expect(request.supportCount).to.equal(0);
+    });
+  });
+
   describe("Secure Credential Rotation", function () {
     it("Should rotate credentials with valid signatures", async function () {
       const nonce = 0;
