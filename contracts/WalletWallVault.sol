@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "./IPQCVerifier.sol";
+import "./IPolicyEngine.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable2Step.sol";
@@ -93,6 +94,9 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     ///      be large enough to make initiate/support/execute/cancel un-runnable.
     uint256 public constant MAX_GUARDIANS = 20;
 
+    /// @notice Governance delay for changes to the policy engine.
+    uint256 public constant POLICY_ENGINE_UPDATE_DELAY = 2 days;
+
     struct RecoveryRequest {
         address newEcdsaSigner;
         bytes newPQPublicKey;
@@ -123,6 +127,13 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @dev vaultOwner => guardian => supported
     mapping(address => mapping(address => bool)) public recoverySupports;
 
+    /// @notice Active policy engine (address(0) = feature disabled, no check performed).
+    IPolicyEngine public policyEngine;
+
+    // Policy engine governance pending state
+    address public pendingPolicyEngine;
+    uint256 public pendingPolicyEngineValidAfter;
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------
@@ -144,6 +155,9 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     event RecoverySupported(address indexed owner, address indexed guardian, uint256 currentSupports);
     event RecoveryExecuted(address indexed owner, address newEcdsaSigner);
     event RecoveryCancelled(address indexed owner);
+    event PolicyEngineUpdateProposed(address indexed proposed, uint256 validAfter);
+    event PolicyEngineUpdateCancelled(address indexed cancelled);
+    event PolicyEngineUpdated(address indexed oldEngine, address indexed newEngine);
 
     // ---------------------------------------------------------------------
     // Custom errors
@@ -176,6 +190,9 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error DuplicateGuardian(address guardian);
     error GuardianIsOwner();
     error RecoveryAlreadyActive();
+    error PolicyViolation(string reason);
+    error NoPendingPolicyEngine();
+    error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
 
     /**
      * @param _pqVerifier Address of the {IPQCVerifier} implementation. On a
@@ -535,6 +552,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             if (!pqVerifier.verify(digest, vault.pqPublicKey, pqSignature)) revert InvalidPQSignature();
         }
 
+        if (address(policyEngine) != address(0)) {
+            (bool ok, string memory why) = policyEngine.check(
+                request.vaultOwner,
+                request.recipient,
+                request.amount,
+                vault.balance
+            );
+            if (!ok) revert PolicyViolation(why);
+        }
+
         // ---- Effects ----
         unchecked {
             vault.nonce = request.nonce + 1;
@@ -604,6 +631,47 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         pendingPQVerifierValidAfter = 0;
 
         emit PQVerifierUpdated(oldVerifier, newVerifier);
+    }
+
+    /**
+     * @notice Proposes a new policy engine to apply after the governance delay.
+     * @dev Admin-only. Pass address(0) to propose disabling the policy engine.
+     *      A later proposal replaces the pending one and restarts the delay.
+     */
+    function proposePolicyEngine(address newEngine) external onlyOwner {
+        uint256 validAfter = block.timestamp + POLICY_ENGINE_UPDATE_DELAY;
+        pendingPolicyEngine = newEngine;
+        pendingPolicyEngineValidAfter = validAfter;
+        emit PolicyEngineUpdateProposed(newEngine, validAfter);
+    }
+
+    /**
+     * @notice Applies the pending policy engine after the governance delay.
+     * @dev Admin-only.
+     */
+    function applyPolicyEngine() external onlyOwner {
+        if (pendingPolicyEngineValidAfter == 0) revert NoPendingPolicyEngine();
+        if (block.timestamp < pendingPolicyEngineValidAfter) {
+            revert PolicyEngineUpdateNotReady(pendingPolicyEngineValidAfter, block.timestamp);
+        }
+        address oldEngine = address(policyEngine);
+        address newEngine = pendingPolicyEngine;
+        policyEngine = IPolicyEngine(newEngine);
+        pendingPolicyEngine = address(0);
+        pendingPolicyEngineValidAfter = 0;
+        emit PolicyEngineUpdated(oldEngine, newEngine);
+    }
+
+    /**
+     * @notice Cancels a pending policy engine update.
+     * @dev Admin-only.
+     */
+    function cancelPolicyEngine() external onlyOwner {
+        if (pendingPolicyEngineValidAfter == 0) revert NoPendingPolicyEngine();
+        address cancelled = pendingPolicyEngine;
+        pendingPolicyEngine = address(0);
+        pendingPolicyEngineValidAfter = 0;
+        emit PolicyEngineUpdateCancelled(cancelled);
     }
 
     /// @notice Pauses createVault and withdraw. Admin-only.
