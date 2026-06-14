@@ -146,6 +146,10 @@ If a user loses their ECDSA key or PQ key, the vault enables a guardian-supporte
      const newPqKey = ethers.hexlify(ethers.randomBytes(1952));
      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, newPqKey);
 
+     // Guardian 1 supports recovery
+     console.log("Guardian 1 supporting recovery...");
+     await vault.connect(guardian1).supportRecovery(owner.address);
+
      // Guardian 2 supports recovery to reach threshold (N/2 + 1 = 2)
      console.log("Guardian 2 supporting recovery...");
      await vault.connect(guardian2).supportRecovery(owner.address);
