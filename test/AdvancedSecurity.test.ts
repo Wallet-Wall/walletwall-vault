@@ -114,15 +114,17 @@ describe("Advanced Security (Phase 2)", function () {
     });
 
     it("rejects the zero address as a guardian", async function () {
-      await expect(
-        vault.setGuardians([guardian1.address, ethers.ZeroAddress]),
-      ).to.be.revertedWithCustomError(vault, "ZeroGuardian");
+      await expect(vault.setGuardians([guardian1.address, ethers.ZeroAddress])).to.be.revertedWithCustomError(
+        vault,
+        "ZeroGuardian",
+      );
     });
 
     it("rejects the vault owner as its own guardian", async function () {
-      await expect(
-        vault.setGuardians([guardian1.address, owner.address]),
-      ).to.be.revertedWithCustomError(vault, "GuardianIsOwner");
+      await expect(vault.setGuardians([guardian1.address, owner.address])).to.be.revertedWithCustomError(
+        vault,
+        "GuardianIsOwner",
+      );
     });
 
     it("rejects duplicate guardians", async function () {
