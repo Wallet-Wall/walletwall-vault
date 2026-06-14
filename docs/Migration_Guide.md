@@ -150,8 +150,55 @@ function withdraw(
 - Per-owner **nonces** increment after each successful withdrawal, preventing replay.
 - The nonce for a vault owner is readable via `vault.nonces(ownerAddress)` or
   `vault.getVault(ownerAddress).nonce`.
-- ECDSA signer and PQ public key can be rotated independently via
-  `updateEcdsaSigner` and `updatePQPublicKey` (vault owner only).
+
+### Credential rotation (breaking change)
+
+`updateEcdsaSigner` and `updatePQPublicKey` are **removed**. They are retained only as
+tombstone selectors that revert with `UseRotateCredentials()`. They previously let the
+vault owner address (a classical EOA) replace either credential with no signature from the
+existing keys — a classical single point of failure that bypassed PQ protection. **Update
+any integration that calls them to use `rotateCredentials` instead.**
+
+Voluntary rotation now requires signatures from both the **current** and the **new**
+credentials, per vault mode:
+
+| Mode | Required signatures |
+|---|---|
+| `EcdsaOnly` | current ECDSA + new ECDSA |
+| `PqOnly` | current PQ + new PQ |
+| `Hybrid` | current ECDSA + current PQ + new ECDSA + new PQ |
+
+The new keys must sign the same `RotateCredentials` EIP-712 digest (proof-of-possession),
+which prevents rotating to an unusable credential that would brick a Pq/Hybrid vault. Both
+credential fields are updated atomically; to change only one, pass the unchanged value for
+the other (it still must co-sign in Hybrid). A successful rotation increments the nonce
+(invalidating in-flight signed withdrawals) and cancels/refunds any pending large
+withdrawal. The `RotateCredentials` typed-data definition is unchanged; only the function's
+calldata changed — the four signatures are passed as a single `RotationAuth` struct:
+
+```solidity
+struct RotationAuth {
+    bytes currentEcdsaSignature;
+    bytes currentPqSignature;
+    bytes newEcdsaSignature;
+    bytes newPqSignature;
+}
+
+function rotateCredentials(
+    address vaultOwner,
+    address newEcdsaSigner,
+    bytes calldata newPQPublicKey,
+    uint256 deadline,
+    RotationAuth calldata auth
+) external nonReentrant whenNotPaused;
+```
+
+For lost or compromised keys (where the current keys cannot sign), use **guardian
+recovery** instead — `rotateCredentials` deliberately cannot help there.
+
+> Indexers: `EcdsaSignerUpdated` / `PQKeyUpdated` no longer fire. Track credential changes
+> via `CredentialsRotated` (rotation) and `RecoveryExecuted` (guardian recovery). The two
+> legacy event signatures are retained in the ABI for backward compatibility but are dead.
 
 ---
 

@@ -108,6 +108,20 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         bool exists;
     }
 
+    /// @notice The four authorizing signatures for {rotateCredentials}, grouped to
+    ///         keep the function's stack within limits. Each is interpreted per the
+    ///         vault mode: ECDSA fields are ignored for PqOnly, PQ fields for EcdsaOnly.
+    /// @param currentEcdsaSignature ECDSA signature from the credential being replaced.
+    /// @param currentPqSignature    PQ signature from the credential being replaced.
+    /// @param newEcdsaSignature     ECDSA proof-of-possession from the incoming signer.
+    /// @param newPqSignature        PQ proof-of-possession from the incoming key.
+    struct RotationAuth {
+        bytes currentEcdsaSignature;
+        bytes currentPqSignature;
+        bytes newEcdsaSignature;
+        bytes newPqSignature;
+    }
+
     /// @notice A signed large withdrawal reserved for delayed execution.
     struct PendingWithdrawal {
         address owner;
@@ -223,6 +237,9 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error InvalidEcdsaSignature();
     error InvalidPQSignature();
     error InvalidRotationSignature();
+    error InvalidNewEcdsaProof();
+    error InvalidNewPQProof();
+    error UseRotateCredentials();
     error TransferFailed();
     error NoPendingPQVerifier();
     error PQVerifierUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
@@ -475,50 +492,96 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     }
 
     /**
-     * @notice Rotates the ECDSA signer for the caller's vault.
-     * @dev Only the vault owner may rotate their own signer.
+     * @notice Removed: direct owner-only credential updates are no longer supported.
+     * @dev Tombstone stub — reverts unconditionally and mutates no state. The former
+     *      behavior let the vault *owner address* (a classical EOA) replace the ECDSA
+     *      signer with no signature from the existing keys, making that classical key
+     *      a single point of failure that bypassed PQ protection entirely. Voluntary
+     *      rotation now goes through {rotateCredentials} (authorized by the current and
+     *      new keys); lost/compromised keys go through guardian recovery. The selector
+     *      is retained deliberately so integrators receive an explicit
+     *      {UseRotateCredentials} error instead of an opaque missing-function revert.
      */
-    function updateEcdsaSigner(address newSigner) external {
-        VaultOwner storage vault = vaults[msg.sender];
-        if (!vault.exists) revert VaultDoesNotExist();
-        if ((vault.mode == VaultMode.EcdsaOnly || vault.mode == VaultMode.Hybrid) && newSigner == address(0))
-            revert ZeroAddress();
-
-        address oldSigner = vault.ecdsaSigner;
-        vault.ecdsaSigner = newSigner;
-        emit EcdsaSignerUpdated(msg.sender, oldSigner, newSigner);
+    function updateEcdsaSigner(address) external pure {
+        revert UseRotateCredentials();
     }
 
     /**
-     * @notice Rotates the PQ public key for the caller's vault.
-     * @dev Only the vault owner may rotate their own key.
+     * @notice Removed: direct owner-only credential updates are no longer supported.
+     * @dev Tombstone stub — reverts unconditionally and mutates no state. See
+     *      {updateEcdsaSigner}; use {rotateCredentials} for voluntary rotation.
      */
-    function updatePQPublicKey(bytes calldata newPQPublicKey) external {
-        VaultOwner storage vault = vaults[msg.sender];
-        if (!vault.exists) revert VaultDoesNotExist();
-        if ((vault.mode == VaultMode.PqOnly || vault.mode == VaultMode.Hybrid) && newPQPublicKey.length == 0)
-            revert EmptyPQPublicKey();
-
-        vault.pqPublicKey = newPQPublicKey;
-        emit PQKeyUpdated(msg.sender);
+    function updatePQPublicKey(bytes calldata) external pure {
+        revert UseRotateCredentials();
     }
 
     /**
-     * @notice Securely rotates vault credentials using current signatures.
-     * @dev Requires signatures from both current keys (if applicable to the mode).
+     * @notice Securely rotates vault credentials using both the current and the new keys.
+     * @dev Authorization is twofold and mode-dependent:
+     *      - The *current* credential(s) must sign the rotation digest, so the keys being
+     *        replaced consent to the change. In Hybrid both are required, meaning neither a
+     *        broken ECDSA key nor a substituted PQ key can evict the other on its own.
+     *      - The *new* credential(s) must also sign the same digest (proof-of-possession),
+     *        proving the owner controls them before they take effect. This prevents rotating
+     *        to an unusable credential (e.g. a mistyped PQ key) that would otherwise brick a
+     *        Pq/Hybrid vault, leaving guardian recovery as the only exit.
+     *      Rotation is atomic across both credential fields; to rotate a single credential,
+     *      pass the unchanged value (which still must co-sign in Hybrid).
      */
     function rotateCredentials(
         address vaultOwner,
         address newEcdsaSigner,
         bytes calldata newPQPublicKey,
         uint256 deadline,
-        bytes calldata ecdsaSignature,
-        bytes calldata pqSignature
+        RotationAuth calldata auth
     ) external nonReentrant whenNotPaused {
         VaultOwner storage vault = vaults[vaultOwner];
         if (!vault.exists) revert VaultDoesNotExist();
         if (block.timestamp > deadline) revert DeadlineExpired(deadline, block.timestamp);
         _validateCredentials(vault.mode, newEcdsaSigner, newPQPublicKey);
+
+        // Signature verification is delegated so this frame stays within the stack limit.
+        _authorizeRotation(vault, vaultOwner, newEcdsaSigner, newPQPublicKey, deadline, auth);
+
+        // ---- Effects ----
+        vault.ecdsaSigner = newEcdsaSigner;
+        vault.pqPublicKey = newPQPublicKey;
+        unchecked {
+            vault.nonce++;
+        }
+
+        // A rotation must invalidate every in-flight authorization. The nonce bump above
+        // voids signed immediate withdrawals, but a queued large withdrawal is tracked
+        // separately and finalizes without re-checking the nonce — so it is cancelled and
+        // its reservation refunded here, mirroring {executeRecovery}.
+        PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
+        if (pending.exists) {
+            bytes32 operationId = pending.operationId;
+            uint256 refund = pending.amount;
+            delete pendingWithdrawals[vaultOwner];
+            vault.balance += refund;
+            emit WithdrawalCancelled(operationId, vaultOwner, refund);
+        }
+
+        emit CredentialsRotated(vaultOwner, newEcdsaSigner);
+    }
+
+    /**
+     * @dev Verifies both the current-credential authorization and the new-credential
+     *      proof-of-possession for a rotation, reverting on any failure. Split out of
+     *      {rotateCredentials} to keep that frame within the EVM stack limit.
+     */
+    function _authorizeRotation(
+        VaultOwner storage vault,
+        address vaultOwner,
+        address newEcdsaSigner,
+        bytes calldata newPQPublicKey,
+        uint256 deadline,
+        RotationAuth calldata auth
+    ) internal view {
+        VaultMode mode = vault.mode;
+        bool needEcdsa = mode == VaultMode.EcdsaOnly || mode == VaultMode.Hybrid;
+        bool needPq = mode == VaultMode.PqOnly || mode == VaultMode.Hybrid;
 
         bytes32 digest = _hashTypedDataV4(
             keccak256(
@@ -533,20 +596,21 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             )
         );
 
-        if (vault.mode == VaultMode.EcdsaOnly || vault.mode == VaultMode.Hybrid) {
-            if (digest.recover(ecdsaSignature) != vault.ecdsaSigner) revert InvalidRotationSignature();
+        // ---- Current-credential authorization (keys being replaced) ----
+        if (needEcdsa) {
+            if (digest.recover(auth.currentEcdsaSignature) != vault.ecdsaSigner) revert InvalidRotationSignature();
         }
-        if (vault.mode == VaultMode.PqOnly || vault.mode == VaultMode.Hybrid) {
-            if (!pqVerifier.verify(digest, vault.pqPublicKey, pqSignature)) revert InvalidPQSignature();
-        }
-
-        vault.ecdsaSigner = newEcdsaSigner;
-        vault.pqPublicKey = newPQPublicKey;
-        unchecked {
-            vault.nonce++;
+        if (needPq) {
+            if (!pqVerifier.verify(digest, vault.pqPublicKey, auth.currentPqSignature)) revert InvalidPQSignature();
         }
 
-        emit CredentialsRotated(vaultOwner, newEcdsaSigner);
+        // ---- New-credential proof-of-possession (incoming keys) ----
+        if (needEcdsa) {
+            if (digest.recover(auth.newEcdsaSignature) != newEcdsaSigner) revert InvalidNewEcdsaProof();
+        }
+        if (needPq) {
+            if (!pqVerifier.verify(digest, newPQPublicKey, auth.newPqSignature)) revert InvalidNewPQProof();
+        }
     }
 
     function _validateCredentials(VaultMode mode, address ecdsaSigner, bytes memory pqPublicKey) internal pure {

@@ -209,4 +209,53 @@ describe("Policy Engine", function () {
       expect(await allowlistPolicy.allowlist(otherOwner.address, recipient.address)).to.be.false;
     });
   });
+
+  describe("Credential rotation interaction", function () {
+    it("preserves daily-spend policy counters across a credential rotation", async function () {
+      await setPolicyEngine(await dailyPolicy.getAddress());
+      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+
+      // Consume 0.6 of the 1.0 daily allowance (nonce 0 -> 1).
+      await withdraw({ amount: ethers.parseEther("0.6") });
+      const before = await dailyPolicy.remainingAllowance(owner.address);
+      expect(before).to.equal(ethers.parseEther("0.4"));
+
+      // Rotate credentials. Policy state is keyed by the vault owner address, which a
+      // rotation does not change, so the counter must be untouched (no reset, no bypass).
+      const ROTATION_TYPES = {
+        RotateCredentials: [
+          { name: "vaultOwner", type: "address" },
+          { name: "newEcdsaSigner", type: "address" },
+          { name: "newPQPublicKey", type: "bytes" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+        ],
+      };
+      const domain = {
+        name: "WalletWallVault",
+        version: "1",
+        chainId: (await ethers.provider.getNetwork()).chainId,
+        verifyingContract: await vault.getAddress(),
+      };
+      const deadline = (await time.latest()) + 3600;
+      const newKey = ethers.hexlify(ethers.randomBytes(1952));
+      const request = {
+        vaultOwner: owner.address,
+        newEcdsaSigner: other.address,
+        newPQPublicKey: newKey,
+        nonce: Number(await vault.nonces(owner.address)),
+        deadline,
+      };
+      const blob = () => ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+      const auth = {
+        currentEcdsaSignature: await owner.signTypedData(domain, ROTATION_TYPES, request),
+        currentPqSignature: blob(),
+        newEcdsaSignature: await other.signTypedData(domain, ROTATION_TYPES, request),
+        newPqSignature: blob(),
+      };
+      await vault.rotateCredentials(owner.address, other.address, newKey, deadline, auth);
+
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
+    });
+  });
 });

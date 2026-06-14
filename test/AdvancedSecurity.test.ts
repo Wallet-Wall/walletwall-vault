@@ -42,7 +42,11 @@ describe("Advanced Security (Phase 2)", function () {
     await vault.createVault(owner.address, PQ_KEY, 2); // Hybrid
   });
 
-  async function signRotation(newEcdsaSigner: string, newPQPublicKey: string) {
+  // Builds the RotationAuth tuple. The current signer is the vault's current ECDSA signer
+  // (owner). When `newEcdsaSigner` is a signer object it provides the new-key ECDSA
+  // proof-of-possession; a plain address (e.g. the zero address) leaves it unsigned, for
+  // negative cases that revert before the proof check. PQ proofs are mock-shaped blobs.
+  async function signRotation(newEcdsaSigner: SignerWithAddress | string, newPQPublicKey: string) {
     const deadline = (await time.latest()) + 3600;
     const domain = {
       name: "WalletWallVault",
@@ -50,16 +54,23 @@ describe("Advanced Security (Phase 2)", function () {
       chainId: (await ethers.provider.getNetwork()).chainId,
       verifyingContract: await vault.getAddress(),
     };
+    const newAddr = typeof newEcdsaSigner === "string" ? newEcdsaSigner : newEcdsaSigner.address;
     const request = {
       vaultOwner: owner.address,
-      newEcdsaSigner,
+      newEcdsaSigner: newAddr,
       newPQPublicKey,
-      nonce: 0,
+      nonce: Number(await vault.nonces(owner.address)),
       deadline,
     };
-    const ecdsaSignature = await owner.signTypedData(domain, ROTATION_TYPES, request);
-    const pqSignature = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
-    return { deadline, ecdsaSignature, pqSignature };
+    const blob = () => ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+    const auth = {
+      currentEcdsaSignature: await owner.signTypedData(domain, ROTATION_TYPES, request),
+      currentPqSignature: blob(),
+      newEcdsaSignature:
+        typeof newEcdsaSigner === "string" ? "0x" : await newEcdsaSigner.signTypedData(domain, ROTATION_TYPES, request),
+      newPqSignature: blob(),
+    };
+    return { deadline, auth };
   }
 
   describe("Guardian Recovery", function () {
@@ -208,17 +219,10 @@ describe("Advanced Security (Phase 2)", function () {
   });
 
   describe("Secure Credential Rotation", function () {
-    it("Should rotate credentials with valid signatures", async function () {
-      const { deadline, ecdsaSignature, pqSignature } = await signRotation(newSigner.address, NEW_PQ_KEY);
+    it("Should rotate credentials with valid current and new-key proofs", async function () {
+      const { deadline, auth } = await signRotation(newSigner, NEW_PQ_KEY);
 
-      await vault.rotateCredentials(
-        owner.address,
-        newSigner.address,
-        NEW_PQ_KEY,
-        deadline,
-        ecdsaSignature,
-        pqSignature,
-      );
+      await vault.rotateCredentials(owner.address, newSigner.address, NEW_PQ_KEY, deadline, auth);
 
       const vaultInfo = await vault.getVault(owner.address);
       expect(vaultInfo.ecdsaSigner).to.equal(newSigner.address);
@@ -228,26 +232,12 @@ describe("Advanced Security (Phase 2)", function () {
     it("rejects validly signed credentials that would brick a hybrid vault", async function () {
       const zeroSigner = await signRotation(ethers.ZeroAddress, NEW_PQ_KEY);
       await expect(
-        vault.rotateCredentials(
-          owner.address,
-          ethers.ZeroAddress,
-          NEW_PQ_KEY,
-          zeroSigner.deadline,
-          zeroSigner.ecdsaSignature,
-          zeroSigner.pqSignature,
-        ),
+        vault.rotateCredentials(owner.address, ethers.ZeroAddress, NEW_PQ_KEY, zeroSigner.deadline, zeroSigner.auth),
       ).to.be.revertedWithCustomError(vault, "ZeroAddress");
 
-      const emptyPQ = await signRotation(newSigner.address, "0x");
+      const emptyPQ = await signRotation(newSigner, "0x");
       await expect(
-        vault.rotateCredentials(
-          owner.address,
-          newSigner.address,
-          "0x",
-          emptyPQ.deadline,
-          emptyPQ.ecdsaSignature,
-          emptyPQ.pqSignature,
-        ),
+        vault.rotateCredentials(owner.address, newSigner.address, "0x", emptyPQ.deadline, emptyPQ.auth),
       ).to.be.revertedWithCustomError(vault, "EmptyPQPublicKey");
     });
   });
