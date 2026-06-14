@@ -315,6 +315,54 @@ describe("Large transaction timelock", function () {
     ).to.be.revertedWithCustomError(vault, "InvalidEcdsaSignature");
   });
 
+  it("cancels and refunds a pending withdrawal when credentials rotate", async function () {
+    await enableLargeTx();
+    const { operationId } = await queueLargeWithdrawal();
+    expect((await vault.getVault(owner.address)).balance).to.equal(DEPOSIT - LARGE_AMOUNT);
+
+    // Build a rotation authorized by the current keys (owner) with new-key proofs.
+    const ROTATION_TYPES = {
+      RotateCredentials: [
+        { name: "vaultOwner", type: "address" },
+        { name: "newEcdsaSigner", type: "address" },
+        { name: "newPQPublicKey", type: "bytes" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+    const domain = {
+      name: "WalletWallVault",
+      version: "1",
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: await vault.getAddress(),
+    };
+    const deadline = (await time.latest()) + 3600;
+    const request = {
+      vaultOwner: owner.address,
+      newEcdsaSigner: newSigner.address,
+      newPQPublicKey: NEW_PQ_KEY,
+      nonce: Number(await vault.nonces(owner.address)),
+      deadline,
+    };
+    const blob = () => ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+    const auth = {
+      currentEcdsaSignature: await owner.signTypedData(domain, ROTATION_TYPES, request),
+      currentPqSignature: blob(),
+      newEcdsaSignature: await newSigner.signTypedData(domain, ROTATION_TYPES, request),
+      newPqSignature: blob(),
+    };
+
+    await expect(vault.rotateCredentials(owner.address, newSigner.address, NEW_PQ_KEY, deadline, auth))
+      .to.emit(vault, "WithdrawalCancelled")
+      .withArgs(operationId, owner.address, LARGE_AMOUNT)
+      .and.to.emit(vault, "CredentialsRotated")
+      .withArgs(owner.address, newSigner.address);
+
+    // Queue is cleared and the reserved amount is returned to the vault balance.
+    expect((await vault.pendingWithdrawals(owner.address)).exists).to.be.false;
+    expect((await vault.getVault(owner.address)).balance).to.equal(DEPOSIT);
+  });
+
   it("proposes and applies large-transaction parameters after the governance delay", async function () {
     await expect(vault.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY))
       .to.emit(vault, "LargeTxParamsProposed")

@@ -114,8 +114,23 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   `queueWithdrawal`, and `finalizeWithdrawal`. This protects against incidents but is
   also a centralization/liveness assumption: a paused vault cannot execute withdrawals.
   Owners can still call `cancelPendingWithdrawal` while paused to release reserved funds.
-- Per-vault credential rotation (`updateEcdsaSigner`, `updatePQPublicKey`) is restricted
-  to the vault's own owner address.
+- **Credential rotation requires the keys, not the owner account.** The direct
+  owner-only mutators (`updateEcdsaSigner`, `updatePQPublicKey`) are removed — they survive
+  only as tombstone selectors that revert with `UseRotateCredentials()`. They previously let
+  the vault owner address (a classical EOA) swap either credential with no signature from the
+  existing keys, which made that classical key a single point of failure capable of replacing
+  the PQ credential and defeating post-quantum protection. Voluntary rotation now goes through
+  `rotateCredentials`, which requires both the current credential(s) **and** a
+  proof-of-possession from the new credential(s), per vault mode (Hybrid requires all four).
+  In Hybrid this means neither a broken ECDSA key nor a substituted PQ key can evict the other
+  on its own. Rotation increments the nonce and cancels/refunds any pending large withdrawal.
+- **Residual owner-account risk.** The owner account remains a classical EOA and still
+  controls `setGuardians`. A compromise of the owner key can therefore still lead to takeover
+  by installing attacker guardians and driving guardian recovery — but only after the 7-day
+  `RECOVERY_DELAY`, during which the owner can `cancelRecovery`. Removing the direct mutators
+  converts what was an *instant* classical takeover into a *delayed, vetoable* one; it does
+  not make the classical owner key irrelevant. Hardening `setGuardians` (e.g. a timelock or
+  existing-guardian consent) is possible future work, out of scope for this change.
 
 ## 4a. Guardian recovery model
 

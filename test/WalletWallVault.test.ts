@@ -555,37 +555,308 @@ describe("WalletWallVault", function () {
     });
   });
 
-  describe("Credential rotation", function () {
-    beforeEach(async function () {
-      await vault.createVault(owner.address, MLDSASigner.toHex(pqPublicKey), VaultMode.Hybrid);
+  describe("Credential rotation (PR D)", function () {
+    const ROTATION_TYPES = {
+      RotateCredentials: [
+        { name: "vaultOwner", type: "address" },
+        { name: "newEcdsaSigner", type: "address" },
+        { name: "newPQPublicKey", type: "bytes" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+
+    // Builds the four-signature RotationAuth tuple for a rotation. ECDSA proofs are real
+    // (recover); PQ proofs are well-formed ML-DSA-shaped blobs (the mock verifier checks
+    // shape only). Pass a falsy private key / string signer to leave a proof unsigned so
+    // negative cases can exercise the missing/invalid paths.
+    async function signRotation(
+      target: WalletWallVault,
+      ownerAccount: HardhatEthersSigner,
+      newEcdsaSigner: HardhatEthersSigner | string,
+      newPQPublicKey: string,
+      opts: {
+        currentSigner?: HardhatEthersSigner;
+        currentPqPriv?: Uint8Array;
+        newPqPriv?: Uint8Array;
+        deadline?: number;
+        nonce?: bigint | number;
+      } = {},
+    ) {
+      const domain = await buildDomain(target);
+      const deadline = opts.deadline ?? (await time.latest()) + 3600;
+      const nonce = opts.nonce ?? (await target.nonces(ownerAccount.address));
+      const request = {
+        vaultOwner: ownerAccount.address,
+        newEcdsaSigner: typeof newEcdsaSigner === "string" ? newEcdsaSigner : newEcdsaSigner.address,
+        newPQPublicKey,
+        nonce,
+        deadline,
+      };
+      const digest = ethers.TypedDataEncoder.hash(domain, ROTATION_TYPES, request);
+      const currentSigner = opts.currentSigner ?? ownerAccount;
+      const currentEcdsaSignature = await currentSigner.signTypedData(domain, ROTATION_TYPES, request);
+      const newEcdsaSignature =
+        typeof newEcdsaSigner === "string" ? "0x" : await newEcdsaSigner.signTypedData(domain, ROTATION_TYPES, request);
+      const currentPqSignature = opts.currentPqPriv
+        ? MLDSASigner.toHex(MLDSASigner.sign(digest, opts.currentPqPriv))
+        : "0x";
+      const newPqSignature = opts.newPqPriv ? MLDSASigner.toHex(MLDSASigner.sign(digest, opts.newPqPriv)) : "0x";
+      return {
+        deadline,
+        digest,
+        auth: { currentEcdsaSignature, currentPqSignature, newEcdsaSignature, newPqSignature },
+      };
+    }
+
+    describe("legacy direct functions are tombstoned", function () {
+      it("updateEcdsaSigner reverts with UseRotateCredentials", async function () {
+        await vault.createVault(owner.address, MLDSASigner.toHex(pqPublicKey), VaultMode.Hybrid);
+        await expect(vault.updateEcdsaSigner(relayer.address)).to.be.revertedWithCustomError(
+          vault,
+          "UseRotateCredentials",
+        );
+        // State is untouched: the original signer is still in place.
+        expect((await vault.getVault(owner.address)).ecdsaSigner).to.equal(owner.address);
+      });
+
+      it("updatePQPublicKey reverts with UseRotateCredentials", async function () {
+        await vault.createVault(owner.address, MLDSASigner.toHex(pqPublicKey), VaultMode.Hybrid);
+        const newKey = MLDSASigner.toHex(MLDSASigner.generateKeyPair().publicKey);
+        await expect(vault.updatePQPublicKey(newKey)).to.be.revertedWithCustomError(vault, "UseRotateCredentials");
+        expect((await vault.getVault(owner.address)).pqPublicKey).to.equal(MLDSASigner.toHex(pqPublicKey));
+      });
+
+      it("tombstones revert even with no vault (no state dependence)", async function () {
+        await expect(vault.connect(otherAccount).updateEcdsaSigner(otherAccount.address)).to.be.revertedWithCustomError(
+          vault,
+          "UseRotateCredentials",
+        );
+      });
     });
 
-    it("Should rotate the ECDSA signer (owner only)", async function () {
-      await expect(vault.updateEcdsaSigner(relayer.address))
-        .to.emit(vault, "EcdsaSignerUpdated")
-        .withArgs(owner.address, owner.address, relayer.address);
-      expect((await vault.getVault(owner.address)).ecdsaSigner).to.equal(relayer.address);
+    describe("Hybrid rotation (current ECDSA + current PQ + new ECDSA + new PQ)", function () {
+      let newPq: ReturnType<typeof MLDSASigner.generateKeyPair>;
+
+      beforeEach(async function () {
+        await vault.createVault(owner.address, MLDSASigner.toHex(pqPublicKey), VaultMode.Hybrid);
+        newPq = MLDSASigner.generateKeyPair();
+      });
+
+      it("rotates with all four valid proofs and increments the nonce", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+
+        await expect(vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth))
+          .to.emit(vault, "CredentialsRotated")
+          .withArgs(owner.address, relayer.address);
+
+        const info = await vault.getVault(owner.address);
+        expect(info.ecdsaSigner).to.equal(relayer.address);
+        expect(info.pqPublicKey).to.equal(newKey);
+        expect(info.nonce).to.equal(1);
+      });
+
+      it("reverts when the current ECDSA proof is from the wrong signer", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentSigner: otherAccount, // not the current signer
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "InvalidRotationSignature");
+      });
+
+      it("reverts when the new-signer proof is empty (current keys alone do not suffice)", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        // Strip the new-signer proof; an empty signature is rejected by ECDSA.recover.
+        auth.newEcdsaSignature = "0x";
+        await expect(vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth)).to.be.reverted;
+      });
+
+      it("reverts when the new ECDSA proof is a valid signature from the wrong account", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        // Same digest (newEcdsaSigner = relayer), but the proof is signed by otherAccount.
+        const domain = await buildDomain(vault);
+        const req = {
+          vaultOwner: owner.address,
+          newEcdsaSigner: relayer.address,
+          newPQPublicKey: newKey,
+          nonce: 0,
+          deadline,
+        };
+        auth.newEcdsaSignature = await otherAccount.signTypedData(domain, ROTATION_TYPES, req);
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "InvalidNewEcdsaProof");
+      });
+
+      it("reverts when the current PQ proof is malformed", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        auth.currentPqSignature = "0x"; // wrong length -> mock verify returns false
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "InvalidPQSignature");
+      });
+
+      it("reverts when the new PQ proof-of-possession is malformed", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        auth.newPqSignature = "0x"; // wrong length -> mock verify returns false
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "InvalidNewPQProof");
+      });
+
+      it("rejects a rotation that would brick the vault (empty new PQ key)", async function () {
+        const { deadline, auth } = await signRotation(vault, owner, relayer, "0x", {
+          currentPqPriv: pqPrivateKey,
+        });
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, "0x", deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "EmptyPQPublicKey");
+      });
+
+      it("reverts on an expired deadline", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const past = (await time.latest()) - 1;
+        const { auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+          deadline: past,
+        });
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, newKey, past, auth),
+        ).to.be.revertedWithCustomError(vault, "DeadlineExpired");
+      });
+
+      it("cannot be replayed once the nonce has advanced", async function () {
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        await vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth);
+        // The signed digest bound nonce 0; the vault is now at nonce 1.
+        await expect(
+          vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "InvalidRotationSignature");
+      });
+
+      it("invalidates a withdrawal signed before the rotation", async function () {
+        await vault.deposit({ value: ethers.parseEther("1") });
+        const stale: WithdrawalRequest = {
+          vaultOwner: owner.address,
+          recipient: otherAccount.address,
+          amount: ethers.parseEther("0.1"),
+          nonce: 0,
+          deadline: FUTURE_DEADLINE,
+          vaultMode: VaultMode.Hybrid,
+        };
+        const staleSig = await signWithdrawal(vault, stale, owner, pqPrivateKey);
+
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        const { deadline, auth } = await signRotation(vault, owner, relayer, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        await vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth);
+
+        await expect(
+          vault.withdraw(stale, staleSig.ecdsaSignature, staleSig.pqSignature),
+        ).to.be.revertedWithCustomError(vault, "InvalidNonce");
+      });
     });
 
-    it("Should reject rotating a hybrid vault's ECDSA signer to the zero address", async function () {
-      await expect(vault.updateEcdsaSigner(ethers.ZeroAddress)).to.be.revertedWithCustomError(vault, "ZeroAddress");
+    describe("EcdsaOnly rotation (current ECDSA + new ECDSA proof)", function () {
+      beforeEach(async function () {
+        await vault.connect(otherAccount).createVault(otherAccount.address, "0x", VaultMode.EcdsaOnly);
+      });
+
+      it("rotates with both ECDSA proofs and ignores PQ", async function () {
+        const { deadline, auth } = await signRotation(vault, otherAccount, relayer, "0x", {
+          currentSigner: otherAccount,
+        });
+        await expect(vault.rotateCredentials(otherAccount.address, relayer.address, "0x", deadline, auth)).to.emit(
+          vault,
+          "CredentialsRotated",
+        );
+        expect((await vault.getVault(otherAccount.address)).ecdsaSigner).to.equal(relayer.address);
+      });
+
+      it("reverts when the new ECDSA proof is from the wrong account", async function () {
+        const { deadline, auth } = await signRotation(vault, otherAccount, relayer, "0x", {
+          currentSigner: otherAccount,
+        });
+        // Valid-length signature, but signed by owner instead of the incoming signer (relayer).
+        const domain = await buildDomain(vault);
+        const req = {
+          vaultOwner: otherAccount.address,
+          newEcdsaSigner: relayer.address,
+          newPQPublicKey: "0x",
+          nonce: 0,
+          deadline,
+        };
+        auth.newEcdsaSignature = await owner.signTypedData(domain, ROTATION_TYPES, req);
+        await expect(
+          vault.rotateCredentials(otherAccount.address, relayer.address, "0x", deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "InvalidNewEcdsaProof");
+      });
+
+      it("rejects rotating the signer to the zero address", async function () {
+        const { deadline, auth } = await signRotation(vault, otherAccount, ethers.ZeroAddress, "0x", {
+          currentSigner: otherAccount,
+        });
+        await expect(
+          vault.rotateCredentials(otherAccount.address, ethers.ZeroAddress, "0x", deadline, auth),
+        ).to.be.revertedWithCustomError(vault, "ZeroAddress");
+      });
     });
 
-    it("Should reject rotation on a non-existent vault", async function () {
-      await expect(vault.connect(otherAccount).updateEcdsaSigner(otherAccount.address)).to.be.revertedWithCustomError(
-        vault,
-        "VaultDoesNotExist",
-      );
-    });
+    describe("PqOnly rotation (current PQ + new PQ proof)", function () {
+      it("rotates with both PQ proofs against a non-mock verifier", async function () {
+        // PqOnly is blocked for the mock verifier, so use AlwaysTruePQCVerifier.
+        const realVerifier = await (await ethers.getContractFactory("AlwaysTruePQCVerifier")).deploy();
+        const pqVault = await (
+          await ethers.getContractFactory("WalletWallVault")
+        ).deploy(await realVerifier.getAddress());
+        const oldKey = MLDSASigner.toHex(pqPublicKey);
+        const newPq = MLDSASigner.generateKeyPair();
+        const newKey = MLDSASigner.toHex(newPq.publicKey);
+        await pqVault.createVault(ethers.ZeroAddress, oldKey, VaultMode.PqOnly);
 
-    it("Should rotate the PQ public key and emit PQKeyUpdated", async function () {
-      const newKey = MLDSASigner.toHex(MLDSASigner.generateKeyPair().publicKey);
-      await expect(vault.updatePQPublicKey(newKey)).to.emit(vault, "PQKeyUpdated").withArgs(owner.address);
-      expect((await vault.getVault(owner.address)).pqPublicKey).to.equal(newKey);
-    });
-
-    it("Should reject rotating a hybrid vault's PQ key to empty", async function () {
-      await expect(vault.updatePQPublicKey("0x")).to.be.revertedWithCustomError(vault, "EmptyPQPublicKey");
+        const { deadline, auth } = await signRotation(pqVault, owner, ethers.ZeroAddress, newKey, {
+          currentPqPriv: pqPrivateKey,
+          newPqPriv: newPq.privateKey,
+        });
+        await expect(pqVault.rotateCredentials(owner.address, ethers.ZeroAddress, newKey, deadline, auth)).to.emit(
+          pqVault,
+          "CredentialsRotated",
+        );
+        const info = await pqVault.getVault(owner.address);
+        expect(info.pqPublicKey).to.equal(newKey);
+        expect(info.nonce).to.equal(1);
+      });
     });
   });
 
