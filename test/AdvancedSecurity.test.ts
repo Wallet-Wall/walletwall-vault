@@ -161,9 +161,7 @@ describe("Advanced Security (Phase 2)", function () {
     });
 
     it("Should deposit and withdraw from multi-sig vault", async function () {
-      const ecdsaSigners = [owner.address, guardian1.address].sort((left, right) =>
-        left.toLowerCase().localeCompare(right.toLowerCase()),
-      );
+      const ecdsaSigners = [owner.address, guardian1.address].sort();
       const pqKeys = [PQ_KEY, NEW_PQ_KEY];
 
       // Re-create vault with sorted signers for easy recovery check
