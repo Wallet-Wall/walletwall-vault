@@ -23,24 +23,18 @@ export class ProverClient {
     publicKey: Uint8Array,
     signature: Uint8Array,
     chainId: bigint,
-    verifierAddress: string
+    verifierAddress: string,
   ): Promise<string> {
     let lastError: any;
 
     for (let attempt = 1; attempt <= this.MAX_RETRIES; attempt++) {
       try {
-        return await this._generateProofInternal(
-          withdrawalDigest,
-          publicKey,
-          signature,
-          chainId,
-          verifierAddress
-        );
+        return await this._generateProofInternal(withdrawalDigest, publicKey, signature, chainId, verifierAddress);
       } catch (error) {
         console.error(`Prover attempt ${attempt} failed:`, error);
         lastError = error;
         if (attempt < this.MAX_RETRIES) {
-          await new Promise(resolve => setTimeout(resolve, this.RETRY_DELAY_MS));
+          await new Promise((resolve) => setTimeout(resolve, this.RETRY_DELAY_MS));
         }
       }
     }
@@ -53,7 +47,7 @@ export class ProverClient {
     publicKey: Uint8Array,
     signature: Uint8Array,
     chainId: bigint,
-    verifierAddress: string
+    verifierAddress: string,
   ): Promise<string> {
     console.log("Generating ZK proof for ML-DSA-65...");
 
@@ -75,11 +69,11 @@ export class ProverClient {
     // In our guest, we commit 5 words of 32 bytes each.
     const publicValues = abiCoder.encode(
       ["bytes32", "bytes32", "bytes32", "uint64", "address"],
-      [withdrawalDigest, pkHash, sigHash, chainId, verifierAddress]
+      [withdrawalDigest, pkHash, sigHash, chainId, verifierAddress],
     );
 
     // Simulate proof generation time
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 100));
 
     const mockProofBytes = ethers.hexlify(ethers.randomBytes(128));
 
