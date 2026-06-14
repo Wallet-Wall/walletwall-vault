@@ -52,3 +52,20 @@ jobs:
 
       - name: Compile guest
         run: cargo check --manifest-path zkvm/guest/Cargo.toml
+
+  zkvm-host-lockfile:
+    name: Validate SP1 host Cargo.lock
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Verify host lockfile is committed and consistent
+        # --locked fails if Cargo.lock is missing or out of date with Cargo.toml.
+        # No compilation occurs; this only resolves metadata from the lockfile.
+        run: cargo metadata --locked --no-deps --manifest-path zkvm/host/Cargo.toml

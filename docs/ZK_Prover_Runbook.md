@@ -36,6 +36,24 @@ Keep the SP1 versions aligned across all three crates: `zkvm/guest` (`sp1-zkvm`)
 `zkvm/host` (`sp1-sdk`, `sp1-build`). They are pinned to the same release; bump them
 together and re-extract the vKey afterwards.
 
+### Host lock file
+
+`zkvm/host/Cargo.lock` is committed to the repository and **must remain committed**.
+Pinning the full SP1 dependency tree is required for production/real-prover readiness
+and keeps dependency versions reproducible for every contributor and CI pipeline.
+Do not add `Cargo.lock` to `.gitignore`. CI enforces this via the
+`zkvm-host-lockfile` job in `.github/workflows/ci.yml`.
+
+If you bump `sp1-sdk` / `sp1-build` versions in `Cargo.toml`, regenerate and
+recommit the lockfile:
+
+```bash
+# Resolves the dependency graph only; no compile or SP1 toolchain needed.
+cargo generate-lockfile --manifest-path zkvm/host/Cargo.toml
+git add zkvm/host/Cargo.lock
+git commit -m "chore(zk): regenerate host Cargo.lock after sp1 version bump"
+```
+
 ## 1. Benchmark (no prover credentials needed)
 
 The feasibility doc's recommended next step. Runs the guest in SP1 **execute** mode
