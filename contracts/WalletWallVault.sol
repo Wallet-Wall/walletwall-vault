@@ -72,6 +72,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         "Withdrawal(address vaultOwner,address recipient,uint256 amount,uint256 nonce,uint256 deadline,uint8 vaultMode)"
     );
 
+    /// @dev EIP-712 type hash for credential rotation.
+    bytes32 public constant ROTATE_CREDENTIALS_TYPEHASH = keccak256(
+        "RotateCredentials(address vaultOwner,address newEcdsaSigner,bytes newPQPublicKey,uint256 nonce,uint256 deadline)"
+    );
+
     /// @dev Algorithm id reported by {MockMLDSAVerifier}. Must match
     ///      MockMLDSAVerifier.algorithmId() exactly. Used to block the unsafe
     ///      PqOnly configuration while a mock (non-cryptographic) verifier is wired in.
@@ -79,6 +84,17 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
     /// @notice Delay between proposing and applying a PQ verifier update.
     uint256 public constant PQ_VERIFIER_UPDATE_DELAY = 2 days;
+
+    /// @notice Delay required before a recovery request can be executed.
+    uint256 public constant RECOVERY_DELAY = 7 days;
+
+    struct RecoveryRequest {
+        address newEcdsaSigner;
+        bytes newPQPublicKey;
+        uint256 executeAfter;
+        uint256 supportCount;
+        bool exists;
+    }
 
     /// @notice Post-quantum verifier at the vault's PQ trust boundary.
     /// @dev Mutable only through the timelocked proposal/apply flow.
@@ -92,6 +108,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
     mapping(address => VaultOwner) public vaults;
 
+    /// @notice Guardians for each vault.
+    mapping(address => address[]) public vaultGuardians;
+
+    /// @notice Pending recovery request for each vault.
+    mapping(address => RecoveryRequest) public recoveryRequests;
+
+    /// @notice Tracks if a guardian has supported a specific recovery request.
+    /// @dev vaultOwner => guardian => supported
+    mapping(address => mapping(address => bool)) public recoverySupports;
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------
@@ -100,6 +126,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     event Withdrawn(address indexed owner, address indexed recipient, uint256 amount, uint256 nonce, VaultMode mode);
     event EcdsaSignerUpdated(address indexed owner, address oldSigner, address newSigner);
     event PQKeyUpdated(address indexed owner);
+    event CredentialsRotated(address indexed owner, address newEcdsaSigner);
     event PQVerifierUpdateProposed(
         address indexed currentVerifier,
         address indexed proposedVerifier,
@@ -107,6 +134,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     );
     event PQVerifierUpdateCancelled(address indexed cancelledVerifier);
     event PQVerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
+    event GuardiansSet(address indexed owner, address[] guardians);
+    event RecoveryInitiated(address indexed owner, address newEcdsaSigner, uint256 executeAfter);
+    event RecoverySupported(address indexed owner, address indexed guardian, uint256 currentSupports);
+    event RecoveryExecuted(address indexed owner, address newEcdsaSigner);
+    event RecoveryCancelled(address indexed owner);
 
     // ---------------------------------------------------------------------
     // Custom errors
@@ -124,9 +156,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error PqOnlyDisabledForMockVerifier();
     error InvalidEcdsaSignature();
     error InvalidPQSignature();
+    error InvalidRotationSignature();
     error TransferFailed();
     error NoPendingPQVerifier();
     error PQVerifierUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
+    error NotAGuardian();
+    error AlreadySupported();
+    error RecoveryNotReady();
+    error RecoveryDoesNotExist();
+    error InsufficientSupports();
+    error InvalidGuardianSet();
 
     /**
      * @param _pqVerifier Address of the {IPQCVerifier} implementation. On a
@@ -135,6 +174,139 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     constructor(address _pqVerifier) Ownable(msg.sender) EIP712("WalletWallVault", "1") {
         if (_pqVerifier == address(0)) revert ZeroAddress();
         pqVerifier = IPQCVerifier(_pqVerifier);
+    }
+
+    // ---------------------------------------------------------------------
+    // Recovery mechanism
+    // ---------------------------------------------------------------------
+
+    /**
+     * @notice Sets the guardians for the caller's vault.
+     * @param guardians Array of guardian addresses.
+     */
+    function setGuardians(address[] calldata guardians) external {
+        if (!vaults[msg.sender].exists) revert VaultDoesNotExist();
+        if (guardians.length == 0) revert InvalidGuardianSet();
+
+        // Cancel pending recovery and clear existing supports to maintain consistency
+        if (recoveryRequests[msg.sender].exists) {
+            delete recoveryRequests[msg.sender];
+            emit RecoveryCancelled(msg.sender);
+        }
+
+        address[] storage existing = vaultGuardians[msg.sender];
+        for (uint256 i = 0; i < existing.length; i++) {
+            recoverySupports[msg.sender][existing[i]] = false;
+        }
+
+        vaultGuardians[msg.sender] = guardians;
+        emit GuardiansSet(msg.sender, guardians);
+    }
+
+    /**
+     * @notice Initiates a recovery request for a vault.
+     * @dev Must be called by a guardian of the vault to prevent arbitrary DOS.
+     */
+    function initiateRecovery(
+        address vaultOwner,
+        address newEcdsaSigner,
+        bytes calldata newPQPublicKey
+    ) external whenNotPaused {
+        if (!vaults[vaultOwner].exists) revert VaultDoesNotExist();
+
+        address[] storage guardians = vaultGuardians[vaultOwner];
+        if (guardians.length == 0) revert InvalidGuardianSet();
+
+        bool isActuallyGuardian = false;
+        for (uint256 i = 0; i < guardians.length; i++) {
+            if (guardians[i] == msg.sender) {
+                isActuallyGuardian = true;
+                break;
+            }
+        }
+        if (!isActuallyGuardian) revert NotAGuardian();
+
+        uint256 executeAfter = block.timestamp + RECOVERY_DELAY;
+        recoveryRequests[vaultOwner] = RecoveryRequest({
+            newEcdsaSigner: newEcdsaSigner,
+            newPQPublicKey: newPQPublicKey,
+            executeAfter: executeAfter,
+            supportCount: 0,
+            exists: true
+        });
+
+        // Reset supports
+        for (uint256 i = 0; i < guardians.length; i++) {
+            recoverySupports[vaultOwner][guardians[i]] = false;
+        }
+
+        emit RecoveryInitiated(vaultOwner, newEcdsaSigner, executeAfter);
+    }
+
+    /**
+     * @notice Supports a pending recovery request.
+     * @dev Must be called by a designated guardian.
+     */
+    function supportRecovery(address vaultOwner) external {
+        if (!recoveryRequests[vaultOwner].exists) revert RecoveryDoesNotExist();
+
+        bool isActuallyGuardian = false;
+        address[] storage guardians = vaultGuardians[vaultOwner];
+        for (uint256 i = 0; i < guardians.length; i++) {
+            if (guardians[i] == msg.sender) {
+                isActuallyGuardian = true;
+                break;
+            }
+        }
+        if (!isActuallyGuardian) revert NotAGuardian();
+        if (recoverySupports[vaultOwner][msg.sender]) revert AlreadySupported();
+
+        recoverySupports[vaultOwner][msg.sender] = true;
+        recoveryRequests[vaultOwner].supportCount++;
+
+        emit RecoverySupported(vaultOwner, msg.sender, recoveryRequests[vaultOwner].supportCount);
+    }
+
+    /**
+     * @notice Executes a recovery request after the delay and sufficient support.
+     */
+    function executeRecovery(address vaultOwner) external nonReentrant whenNotPaused {
+        RecoveryRequest storage request = recoveryRequests[vaultOwner];
+        if (!request.exists) revert RecoveryDoesNotExist();
+        if (block.timestamp < request.executeAfter) revert RecoveryNotReady();
+
+        uint256 required = (vaultGuardians[vaultOwner].length / 2) + 1;
+        if (request.supportCount < required) revert InsufficientSupports();
+
+        VaultOwner storage vault = vaults[vaultOwner];
+        vault.ecdsaSigner = request.newEcdsaSigner;
+        vault.pqPublicKey = request.newPQPublicKey;
+
+        delete recoveryRequests[vaultOwner];
+        // Clean up supports
+        address[] storage guardians = vaultGuardians[vaultOwner];
+        for (uint256 i = 0; i < guardians.length; i++) {
+            recoverySupports[vaultOwner][guardians[i]] = false;
+        }
+
+        emit RecoveryExecuted(vaultOwner, request.newEcdsaSigner);
+    }
+
+    /**
+     * @notice Cancels a pending recovery request.
+     * @dev Can be called by the vault owner to stop a recovery.
+     */
+    function cancelRecovery() external {
+        if (!recoveryRequests[msg.sender].exists) revert RecoveryDoesNotExist();
+        delete recoveryRequests[msg.sender];
+
+        // Clean up supports
+        address[] storage guardians = vaultGuardians[msg.sender];
+        for (uint256 i = 0; i < guardians.length; i++) {
+            recoverySupports[msg.sender][guardians[i]] = false;
+        }
+
+        emit RecoveryCancelled(msg.sender);
     }
 
     // ---------------------------------------------------------------------
@@ -204,6 +376,51 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
         vault.pqPublicKey = newPQPublicKey;
         emit PQKeyUpdated(msg.sender);
+    }
+
+    /**
+     * @notice Securely rotates vault credentials using current signatures.
+     * @dev Requires signatures from both current keys (if applicable to the mode).
+     */
+    function rotateCredentials(
+        address vaultOwner,
+        address newEcdsaSigner,
+        bytes calldata newPQPublicKey,
+        uint256 deadline,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external nonReentrant whenNotPaused {
+        VaultOwner storage vault = vaults[vaultOwner];
+        if (!vault.exists) revert VaultDoesNotExist();
+        if (block.timestamp > deadline) revert DeadlineExpired(deadline, block.timestamp);
+
+        bytes32 digest = _hashTypedDataV4(
+            keccak256(
+                abi.encode(
+                    ROTATE_CREDENTIALS_TYPEHASH,
+                    vaultOwner,
+                    newEcdsaSigner,
+                    keccak256(newPQPublicKey),
+                    vault.nonce,
+                    deadline
+                )
+            )
+        );
+
+        if (vault.mode == VaultMode.EcdsaOnly || vault.mode == VaultMode.Hybrid) {
+            if (digest.recover(ecdsaSignature) != vault.ecdsaSigner) revert InvalidRotationSignature();
+        }
+        if (vault.mode == VaultMode.PqOnly || vault.mode == VaultMode.Hybrid) {
+            if (!pqVerifier.verify(digest, vault.pqPublicKey, pqSignature)) revert InvalidPQSignature();
+        }
+
+        vault.ecdsaSigner = newEcdsaSigner;
+        vault.pqPublicKey = newPQPublicKey;
+        unchecked {
+            vault.nonce++;
+        }
+
+        emit CredentialsRotated(vaultOwner, newEcdsaSigner);
     }
 
     // ---------------------------------------------------------------------
