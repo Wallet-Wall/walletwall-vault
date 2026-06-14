@@ -1,72 +1,48 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
-import { ProverClient } from "../scripts/prover-client";
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { deployMockZkVerifier, encodeMockProof } from "./helpers/zkVerifierHelpers";
 
-describe("ZKMLDSAVerifier NIST ACVP Conformance", function () {
+describe("ZKMLDSAVerifier public-input binding with NIST fixtures", function () {
   let zkVerifier: any;
-  let mockSp1Verifier: any;
-
-  const PROGRAM_VKEY = ethers.keccak256(ethers.toUtf8Bytes("MOCK_VKEY"));
-
   before(async function () {
-    const MockSP1Verifier = await ethers.getContractFactory("MockSP1Verifier");
-    mockSp1Verifier = await MockSP1Verifier.deploy();
-    const sp1VerifierAddress = await mockSp1Verifier.getAddress();
-
-    const ZKMLDSAVerifier = await ethers.getContractFactory("ZKMLDSAVerifier");
-    zkVerifier = await ZKMLDSAVerifier.deploy(sp1VerifierAddress, PROGRAM_VKEY);
+    ({ zkVerifier } = await deployMockZkVerifier());
   });
 
   const fixturePath = path.resolve("test/fixtures/mldsa/nist-cavp/ml-dsa-65-sigver-acvp.json");
   const fixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
 
-  it("should verify valid NIST ACVP vectors through the ZK verifier", async function () {
-    const vec35 = fixture.vectors.find((v: any) => v.tcId === 35);
+  function fixtureVector(tcId: number) {
+    const vector = fixture.vectors.find((candidate: { tcId: number }) => candidate.tcId === tcId);
+    return {
+      digest: ethers.keccak256(ethers.getBytes("0x" + vector.message)),
+      publicKey: ethers.getBytes("0x" + vector.pk),
+      signature: ethers.getBytes("0x" + vector.signature),
+    };
+  }
 
-    const pk = ethers.getBytes("0x" + vec35.pk);
-    const msg = ethers.getBytes("0x" + vec35.message);
-    const sig = ethers.getBytes("0x" + vec35.signature);
+  it("encodes fixture-shaped inputs for the mock SP1 boundary", async function () {
+    const { digest, publicKey, signature } = fixtureVector(35);
 
-    // NIST vector verification uses raw message.
-    // In our ZK guest, we verify the signature over the withdrawal_digest.
-    // So we treat msg as the digest.
-    const digest = ethers.keccak256(msg);
+    const zkProofPayload = await encodeMockProof(zkVerifier, digest, publicKey, signature);
 
-    const zkProofPayload = await ProverClient.generateProof(
-      digest,
-      pk,
-      sig,
-      (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress(),
-    );
-
-    const isValid = await zkVerifier.verify(digest, pk, zkProofPayload);
+    // MockSP1Verifier does not execute the Rust guest or establish NIST conformance.
+    const isValid = await zkVerifier.verify(digest, publicKey, zkProofPayload);
     expect(isValid).to.be.true;
   });
 
   it("should reject tampered NIST ACVP vectors through the ZK verifier", async function () {
-    const vec35 = fixture.vectors.find((v: any) => v.tcId === 35);
-    const pk = ethers.getBytes("0x" + vec35.pk);
-    const msg = ethers.getBytes("0x" + vec35.message);
-    const sig = ethers.getBytes("0x" + vec35.signature);
-    const digest = ethers.keccak256(msg);
+    const { digest, publicKey, signature } = fixtureVector(35);
 
     // Tamper with PK in the public inputs of the proof
-    const tamperedPk = new Uint8Array(pk);
+    const tamperedPk = new Uint8Array(publicKey);
     tamperedPk[0] ^= 0xff;
 
-    const zkProofPayload = await ProverClient.generateProof(
-      digest,
-      tamperedPk,
-      sig,
-      (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress(),
-    );
+    const zkProofPayload = await encodeMockProof(zkVerifier, digest, tamperedPk, signature);
 
     // Should return false because committedPkHash != keccak256(realPublicKey)
-    const isValid = await zkVerifier.verify(digest, pk, zkProofPayload);
+    const isValid = await zkVerifier.verify(digest, publicKey, zkProofPayload);
     expect(isValid).to.be.false;
   });
 });

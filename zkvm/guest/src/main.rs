@@ -1,7 +1,7 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
-use mldsa::mldsa65;
+use ml_dsa::{MlDsa65, Signature, Verifier, VerifyingKey};
 use sha3::{Digest, Keccak256};
 use serde::{Deserialize, Serialize};
 
@@ -28,10 +28,14 @@ pub fn main() {
     hasher.update(&inputs.signature);
     let sig_hash: [u8; 32] = hasher.finalize().into();
 
-    // 3. Verify ML-DSA-65 Signature
-    let is_valid = mldsa65::verify(&inputs.public_key, &inputs.withdrawal_digest, &inputs.signature, &[]);
+    // 3. Decode and verify the ML-DSA-65 signature.
+    let public_key = ml_dsa::EncodedVerifyingKey::<MlDsa65>::try_from(inputs.public_key.as_slice())
+        .expect("Invalid ML-DSA-65 public key length");
+    let verifying_key = VerifyingKey::<MlDsa65>::decode(&public_key);
+    let signature =
+        Signature::<MlDsa65>::try_from(inputs.signature.as_slice()).expect("Invalid ML-DSA-65 signature encoding");
 
-    if !is_valid {
+    if verifying_key.verify(&inputs.withdrawal_digest, &signature).is_err() {
         panic!("Invalid ML-DSA-65 signature");
     }
 

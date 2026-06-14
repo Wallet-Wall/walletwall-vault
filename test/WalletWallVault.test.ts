@@ -5,21 +5,10 @@ import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
 import { WalletWallVault, MockMLDSAVerifier } from "../typechain-types";
+import { WITHDRAWAL_TYPES } from "./helpers/vaultHelpers";
 
 // VaultMode enum mirror (see WalletWallVault.sol)
 const VaultMode = { EcdsaOnly: 0, PqOnly: 1, Hybrid: 2 } as const;
-
-// EIP-712 typed-data definition for Withdrawal authorization.
-const WITHDRAWAL_TYPES = {
-  Withdrawal: [
-    { name: "vaultOwner", type: "address" },
-    { name: "recipient", type: "address" },
-    { name: "amount", type: "uint256" },
-    { name: "nonce", type: "uint256" },
-    { name: "deadline", type: "uint256" },
-    { name: "vaultMode", type: "uint8" },
-  ],
-};
 
 interface WithdrawalRequest {
   vaultOwner: string;

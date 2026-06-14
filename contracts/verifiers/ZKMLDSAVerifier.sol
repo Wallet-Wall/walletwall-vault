@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/access/Ownable2Step.sol";
 import "../IPQCVerifier.sol";
 
 /**
@@ -17,38 +16,28 @@ interface ISP1Verifier {
  * @notice Trustless verification of ML-DSA-65 signatures using ZK proofs.
  * @dev Replaces the trusted-attestation model with a cryptographic proof.
  */
-contract ZKMLDSAVerifier is IPQCVerifier, Ownable2Step {
+contract ZKMLDSAVerifier is IPQCVerifier {
     bytes32 public constant ALGORITHM_ID = keccak256("ZK-ML-DSA-65");
 
     /// @notice The SP1 Verifier contract address.
-    address public immutable sp1Verifier;
+    address public immutable SP1_VERIFIER;
 
     /// @notice The verification key for the ML-DSA-65 guest program.
-    bytes32 public programVKey;
+    bytes32 public immutable PROGRAM_VKEY;
 
-    event ProgramVKeyUpdated(bytes32 indexed oldVKey, bytes32 indexed newVKey);
-
+    error InvalidSP1Verifier();
+    error InvalidProgramVKey();
     error InvalidProof();
-    error MismatchedPublicInput(string field);
 
-    constructor(address _sp1Verifier, bytes32 _programVKey) Ownable(msg.sender) {
-        if (_sp1Verifier == address(0)) revert("Zero address");
-        sp1Verifier = _sp1Verifier;
-        programVKey = _programVKey;
+    constructor(address _sp1Verifier, bytes32 _programVKey) {
+        if (_sp1Verifier.code.length == 0) revert InvalidSP1Verifier();
+        if (_programVKey == bytes32(0)) revert InvalidProgramVKey();
+        SP1_VERIFIER = _sp1Verifier;
+        PROGRAM_VKEY = _programVKey;
     }
 
     function algorithmId() external pure override returns (bytes32) {
         return ALGORITHM_ID;
-    }
-
-    /**
-     * @notice Updates the guest program verification key.
-     * @dev Allows for upgrading the guest program (e.g., for optimizations).
-     */
-    function updateProgramVKey(bytes32 _newVKey) external onlyOwner {
-        bytes32 oldVKey = programVKey;
-        programVKey = _newVKey;
-        emit ProgramVKeyUpdated(oldVKey, _newVKey);
     }
 
     /**
@@ -62,31 +51,30 @@ contract ZKMLDSAVerifier is IPQCVerifier, Ownable2Step {
         bytes calldata publicKey,
         bytes calldata proof
     ) external view override returns (bool) {
-        // Decode the public values (journal) and the proof bytes from the payload.
-        // The payload format is [uint256 publicValuesOffset][uint256 proofBytesOffset][publicValues][proofBytes]
-        if (proof.length < 64) return false;
+        bytes memory publicValues;
+        bytes memory proofBytes;
+        bytes32 committedDigest;
+        bytes32 committedPkHash;
+        uint64 committedChainId;
+        address committedVerifier;
 
-        (bytes memory publicValues, bytes memory proofBytes) = abi.decode(proof, (bytes, bytes));
-
-        // The journal/public values from our guest program:
-        // sp1_zkvm::io::commit(&inputs.withdrawal_digest); (32 bytes)
-        // sp1_zkvm::io::commit(&pk_hash); (32 bytes)
-        // sp1_zkvm::io::commit(&sig_hash); (32 bytes)
-        // sp1_zkvm::io::commit(&inputs.chain_id); (8 bytes, padded to 32)
-        // sp1_zkvm::io::commit(&inputs.verifier_address); (20 bytes, padded to 32)
-
-        // Verify the public values against the transaction context to ensure the proof
-        // is bound to this specific withdrawal and public key.
-        // We expect the journal to be ABI-encoded for robustness and consistency.
-        if (publicValues.length < 160) return false;
-
-        (
-            bytes32 committedDigest,
-            bytes32 committedPkHash,
-            ,
-            /* bytes32 committedSigHash */ uint64 committedChainId,
-            address committedVerifier
-        ) = abi.decode(publicValues, (bytes32, bytes32, bytes32, uint64, address));
+        try this.decodeProofPayload(proof) returns (
+            bytes memory decodedPublicValues,
+            bytes memory decodedProofBytes,
+            bytes32 decodedDigest,
+            bytes32 decodedPkHash,
+            uint64 decodedChainId,
+            address decodedVerifier
+        ) {
+            publicValues = decodedPublicValues;
+            proofBytes = decodedProofBytes;
+            committedDigest = decodedDigest;
+            committedPkHash = decodedPkHash;
+            committedChainId = decodedChainId;
+            committedVerifier = decodedVerifier;
+        } catch {
+            return false;
+        }
 
         if (committedDigest != digest) return false;
         if (committedPkHash != keccak256(publicKey)) return false;
@@ -94,10 +82,35 @@ contract ZKMLDSAVerifier is IPQCVerifier, Ownable2Step {
         if (committedVerifier != address(this)) return false;
 
         // Verify the proof against the SP1 Verifier
-        try ISP1Verifier(sp1Verifier).verifyProof(programVKey, publicValues, proofBytes) {
+        try ISP1Verifier(SP1_VERIFIER).verifyProof(PROGRAM_VKEY, publicValues, proofBytes) {
             return true;
         } catch {
             return false;
         }
+    }
+
+    /**
+     * @dev External pure decoder so verify() can catch malformed dynamic ABI offsets
+     *      and preserve the IPQCVerifier false-on-invalid contract.
+     */
+    function decodeProofPayload(
+        bytes calldata proof
+    )
+        external
+        pure
+        returns (
+            bytes memory publicValues,
+            bytes memory proofBytes,
+            bytes32 committedDigest,
+            bytes32 committedPkHash,
+            uint64 committedChainId,
+            address committedVerifier
+        )
+    {
+        (publicValues, proofBytes) = abi.decode(proof, (bytes, bytes));
+        if (publicValues.length != 160 || proofBytes.length == 0) revert InvalidProof();
+
+        (committedDigest, committedPkHash, , /* bytes32 committedSigHash */ committedChainId, committedVerifier) = abi
+            .decode(publicValues, (bytes32, bytes32, bytes32, uint64, address));
     }
 }
