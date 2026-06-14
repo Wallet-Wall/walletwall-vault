@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import { runScript } from "./lib/run-script";
 
 async function main() {
   const vaultAddress = process.env.VAULT_ADDRESS;
@@ -37,9 +38,4 @@ async function main() {
   console.log("Proposal successful. Can be applied after:", new Date(Number(validAfter) * 1000).toLocaleString());
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+runScript(main);
