@@ -1,3 +1,4 @@
+import { time } from "@nomicfoundation/hardhat-network-helpers";
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { MLDSASigner } from "../pqc/ml-dsa";
@@ -41,8 +42,7 @@ describe("ZKMLDSAVerifier Integration", function () {
     await vault.deposit({ value: amount });
 
     const nonce = await vault.nonces(owner.address);
-    const { latest } = await ethers.provider.getBlock("latest");
-    const deadline = (latest?.timestamp ?? Math.floor(Date.now() / 1000)) + 3600;
+    const deadline = (await time.latest()) + 3600;
 
     const domain = {
       name: "WalletWallVault",
@@ -110,8 +110,7 @@ describe("ZKMLDSAVerifier Integration", function () {
       await zkVerifier.getAddress(),
     );
 
-    const { latest } = await ethers.provider.getBlock("latest");
-    const deadline = (latest?.timestamp ?? Math.floor(Date.now() / 1000)) + 3600;
+    const deadline = (await time.latest()) + 3600;
 
     const request = {
       vaultOwner: owner.address,
@@ -164,8 +163,7 @@ describe("ZKMLDSAVerifier Integration", function () {
 
     await mockSp1Verifier.setShouldSucceed(false);
 
-    const { latest } = await ethers.provider.getBlock("latest");
-    const deadline = (latest?.timestamp ?? Math.floor(Date.now() / 1000)) + 3600;
+    const deadline = (await time.latest()) + 3600;
 
     const request = {
       vaultOwner: owner.address,
