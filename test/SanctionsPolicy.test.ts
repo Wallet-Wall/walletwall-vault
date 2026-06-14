@@ -59,22 +59,25 @@ describe("SanctionsListPolicy", function () {
     });
 
     it("non-owner cannot add to sanctions list", async function () {
-      await expect(
-        sanctions.connect(other).addToSanctionsList(recipient.address),
-      ).to.be.revertedWithCustomError(sanctions, "OwnableUnauthorizedAccount");
+      await expect(sanctions.connect(other).addToSanctionsList(recipient.address)).to.be.revertedWithCustomError(
+        sanctions,
+        "OwnableUnauthorizedAccount",
+      );
     });
 
     it("non-owner cannot remove from sanctions list", async function () {
       await sanctions.addToSanctionsList(recipient.address);
-      await expect(
-        sanctions.connect(other).removeFromSanctionsList(recipient.address),
-      ).to.be.revertedWithCustomError(sanctions, "OwnableUnauthorizedAccount");
+      await expect(sanctions.connect(other).removeFromSanctionsList(recipient.address)).to.be.revertedWithCustomError(
+        sanctions,
+        "OwnableUnauthorizedAccount",
+      );
     });
 
     it("non-owner cannot batch add", async function () {
-      await expect(
-        sanctions.connect(other).addBatchToSanctionsList([recipient.address]),
-      ).to.be.revertedWithCustomError(sanctions, "OwnableUnauthorizedAccount");
+      await expect(sanctions.connect(other).addBatchToSanctionsList([recipient.address])).to.be.revertedWithCustomError(
+        sanctions,
+        "OwnableUnauthorizedAccount",
+      );
     });
 
     it("uses Ownable2Step — pending owner must accept before taking control", async function () {

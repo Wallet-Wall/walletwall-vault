@@ -70,28 +70,20 @@ describe("Policy Engine", function () {
 
     it("proposePolicyEngine reverts before delay", async function () {
       await vault.proposePolicyEngine(await dailyPolicy.getAddress());
-      await expect(vault.applyPolicyEngine()).to.be.revertedWithCustomError(
-        vault,
-        "PolicyEngineUpdateNotReady",
-      );
+      await expect(vault.applyPolicyEngine()).to.be.revertedWithCustomError(vault, "PolicyEngineUpdateNotReady");
     });
 
     it("cancelPolicyEngine clears pending proposal", async function () {
       await vault.proposePolicyEngine(await dailyPolicy.getAddress());
       await vault.cancelPolicyEngine();
-      await expect(vault.applyPolicyEngine()).to.be.revertedWithCustomError(
-        vault,
-        "NoPendingPolicyEngine",
-      );
+      await expect(vault.applyPolicyEngine()).to.be.revertedWithCustomError(vault, "NoPendingPolicyEngine");
     });
 
     it("applyPolicyEngine sets the engine after delay and emits event", async function () {
       const addr = await dailyPolicy.getAddress();
       await vault.proposePolicyEngine(addr);
       await time.increase(GOVERNANCE_DELAY);
-      await expect(vault.applyPolicyEngine())
-        .to.emit(vault, "PolicyEngineUpdated")
-        .withArgs(ethers.ZeroAddress, addr);
+      await expect(vault.applyPolicyEngine()).to.emit(vault, "PolicyEngineUpdated").withArgs(ethers.ZeroAddress, addr);
       expect(await vault.policyEngine()).to.equal(addr);
     });
 
@@ -144,10 +136,7 @@ describe("Policy Engine", function () {
 
       await time.increase(24 * 60 * 60);
 
-      await expect(withdraw({ amount: ethers.parseEther("0.9"), nonce: 1 })).to.emit(
-        vault,
-        "Withdrawn",
-      );
+      await expect(withdraw({ amount: ethers.parseEther("0.9"), nonce: 1 })).to.emit(vault, "Withdrawn");
     });
 
     it("remainingAllowance reflects spend correctly", async function () {
@@ -160,9 +149,7 @@ describe("Policy Engine", function () {
     });
 
     it("remainingAllowance returns max uint256 when no limit set", async function () {
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(
-        ethers.MaxUint256,
-      );
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(ethers.MaxUint256);
     });
 
     it("different vault owners have independent limits", async function () {
@@ -171,12 +158,12 @@ describe("Policy Engine", function () {
 
       await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("0.3"));
 
-      await expect(withdraw({ amount: ethers.parseEther("0.5") }))
-        .to.be.revertedWithCustomError(vault, "PolicyViolation");
-
-      expect(await dailyPolicy.remainingAllowance(otherVaultOwner.address)).to.equal(
-        ethers.MaxUint256,
+      await expect(withdraw({ amount: ethers.parseEther("0.5") })).to.be.revertedWithCustomError(
+        vault,
+        "PolicyViolation",
       );
+
+      expect(await dailyPolicy.remainingAllowance(otherVaultOwner.address)).to.equal(ethers.MaxUint256);
     });
   });
 
@@ -186,9 +173,9 @@ describe("Policy Engine", function () {
     });
 
     it("empty allowlist blocks all recipients", async function () {
-      await expect(withdraw()).to.be.revertedWithCustomError(vault, "PolicyViolation").withArgs(
-        "recipient not on allowlist",
-      );
+      await expect(withdraw())
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient not on allowlist");
     });
 
     it("allowlisted recipient passes", async function () {

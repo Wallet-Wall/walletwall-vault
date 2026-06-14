@@ -554,7 +554,10 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
         if (address(policyEngine) != address(0)) {
             (bool ok, string memory why) = policyEngine.check(
-                request.vaultOwner, request.recipient, request.amount, vault.balance
+                request.vaultOwner,
+                request.recipient,
+                request.amount,
+                vault.balance
             );
             if (!ok) revert PolicyViolation(why);
         }
