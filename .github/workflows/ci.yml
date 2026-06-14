@@ -37,3 +37,18 @@ jobs:
 
       - name: Coverage
         run: npm run coverage
+
+  zkvm-guest:
+    name: Compile zkVM guest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Compile guest
+        run: cargo check --manifest-path zkvm/guest/Cargo.toml
