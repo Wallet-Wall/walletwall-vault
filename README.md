@@ -147,6 +147,38 @@ npx hardhat node          # in one terminal
 npm run deploy -- --network localhost
 ```
 
+Public testnet deployments read credentials and RPC URLs from environment variables.
+Copy `.env.example` as a reference, but do not commit populated values and do not paste
+private keys into issues, pull requests, or chat.
+
+PowerShell example:
+
+```powershell
+$env:DEPLOYER_PRIVATE_KEY = "0x..."
+$env:SEPOLIA_RPC_URL = "https://ethereum-sepolia-rpc.publicnode.com"
+npm run deploy:sepolia
+```
+
+Shell example:
+
+```bash
+DEPLOYER_PRIVATE_KEY=0x... \
+SEPOLIA_RPC_URL=https://ethereum-sepolia-rpc.publicnode.com \
+npm run deploy:sepolia
+```
+
+If the verifier deployed but the vault deployment failed, set the public verifier
+address before retrying so the script reuses the existing contract:
+
+```powershell
+$env:PQC_VERIFIER_ADDRESS = "0x..."
+npm run deploy:sepolia
+```
+
+Supported deployment targets are `hardhat`, `localhost`, `sepolia`, and
+`base-sepolia`. The deployer pays testnet gas once; the resulting contracts remain
+available on that testnet without an ongoing hosting fee.
+
 ## How a withdrawal works (off-chain signing)
 
 ```typescript
