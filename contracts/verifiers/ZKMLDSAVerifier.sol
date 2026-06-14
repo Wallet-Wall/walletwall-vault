@@ -9,11 +9,7 @@ import "../IPQCVerifier.sol";
  * @dev See https://docs.succinct.xyz/docs/sp1/verification/solidity
  */
 interface ISP1Verifier {
-    function verifyProof(
-        bytes32 programVKey,
-        bytes calldata publicValues,
-        bytes calldata proofBytes
-    ) external view;
+    function verifyProof(bytes32 programVKey, bytes calldata publicValues, bytes calldata proofBytes) external view;
 }
 
 /**
@@ -87,8 +83,8 @@ contract ZKMLDSAVerifier is IPQCVerifier, Ownable2Step {
         (
             bytes32 committedDigest,
             bytes32 committedPkHash,
-            bytes32 committedSigHash,
-            uint64 committedChainId,
+            ,
+            /* bytes32 committedSigHash */ uint64 committedChainId,
             address committedVerifier
         ) = abi.decode(publicValues, (bytes32, bytes32, bytes32, uint64, address));
 

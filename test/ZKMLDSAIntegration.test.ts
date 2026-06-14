@@ -82,7 +82,7 @@ describe("ZKMLDSAVerifier Integration", function () {
       publicKey,
       pqSignature,
       (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress()
+      await zkVerifier.getAddress(),
     );
 
     // Execute withdrawal
@@ -107,7 +107,7 @@ describe("ZKMLDSAVerifier Integration", function () {
       publicKey,
       pqSignature,
       (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress()
+      await zkVerifier.getAddress(),
     );
 
     const request = {
@@ -118,24 +118,30 @@ describe("ZKMLDSAVerifier Integration", function () {
       deadline: Math.floor(Date.now() / 1000) + 3600,
       vaultMode: 2,
     };
-    const ecdsaSignature = await owner.signTypedData({
+    const ecdsaSignature = await owner.signTypedData(
+      {
         name: "WalletWallVault",
         version: "1",
         chainId: (await ethers.provider.getNetwork()).chainId,
         verifyingContract: await vault.getAddress(),
-    }, {
+      },
+      {
         Withdrawal: [
-            { name: "vaultOwner", type: "address" },
-            { name: "recipient", type: "address" },
-            { name: "amount", type: "uint256" },
-            { name: "nonce", type: "uint256" },
-            { name: "deadline", type: "uint256" },
-            { name: "vaultMode", type: "uint8" },
+          { name: "vaultOwner", type: "address" },
+          { name: "recipient", type: "address" },
+          { name: "amount", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "vaultMode", type: "uint8" },
         ],
-    }, request);
+      },
+      request,
+    );
 
-    await expect(vault.withdraw(request, ecdsaSignature, zkProofPayload))
-      .to.be.revertedWithCustomError(vault, "InvalidPQSignature");
+    await expect(vault.withdraw(request, ecdsaSignature, zkProofPayload)).to.be.revertedWithCustomError(
+      vault,
+      "InvalidPQSignature",
+    );
   });
 
   it("should reject a withdrawal if the SP1 verifier fails", async function () {
@@ -150,36 +156,42 @@ describe("ZKMLDSAVerifier Integration", function () {
       publicKey,
       pqSignature,
       (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress()
+      await zkVerifier.getAddress(),
     );
 
     await mockSp1Verifier.setShouldSucceed(false);
 
     const request = {
-        vaultOwner: owner.address,
-        recipient: recipient.address,
-        amount: ethers.parseEther("0.1"),
-        nonce: 0,
-        deadline: Math.floor(Date.now() / 1000) + 3600,
-        vaultMode: 2,
+      vaultOwner: owner.address,
+      recipient: recipient.address,
+      amount: ethers.parseEther("0.1"),
+      nonce: 0,
+      deadline: Math.floor(Date.now() / 1000) + 3600,
+      vaultMode: 2,
     };
-    const ecdsaSignature = await owner.signTypedData({
+    const ecdsaSignature = await owner.signTypedData(
+      {
         name: "WalletWallVault",
         version: "1",
         chainId: (await ethers.provider.getNetwork()).chainId,
         verifyingContract: await vault.getAddress(),
-    }, {
+      },
+      {
         Withdrawal: [
-            { name: "vaultOwner", type: "address" },
-            { name: "recipient", type: "address" },
-            { name: "amount", type: "uint256" },
-            { name: "nonce", type: "uint256" },
-            { name: "deadline", type: "uint256" },
-            { name: "vaultMode", type: "uint8" },
+          { name: "vaultOwner", type: "address" },
+          { name: "recipient", type: "address" },
+          { name: "amount", type: "uint256" },
+          { name: "nonce", type: "uint256" },
+          { name: "deadline", type: "uint256" },
+          { name: "vaultMode", type: "uint8" },
         ],
-    }, request);
+      },
+      request,
+    );
 
-    await expect(vault.withdraw(request, ecdsaSignature, zkProofPayload))
-      .to.be.revertedWithCustomError(vault, "InvalidPQSignature");
+    await expect(vault.withdraw(request, ecdsaSignature, zkProofPayload)).to.be.revertedWithCustomError(
+      vault,
+      "InvalidPQSignature",
+    );
   });
 });

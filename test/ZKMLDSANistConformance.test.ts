@@ -39,7 +39,7 @@ describe("ZKMLDSAVerifier NIST ACVP Conformance", function () {
       pk,
       sig,
       (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress()
+      await zkVerifier.getAddress(),
     );
 
     const isValid = await zkVerifier.verify(digest, pk, zkProofPayload);
@@ -55,14 +55,14 @@ describe("ZKMLDSAVerifier NIST ACVP Conformance", function () {
 
     // Tamper with PK in the public inputs of the proof
     const tamperedPk = new Uint8Array(pk);
-    tamperedPk[0] ^= 0xFF;
+    tamperedPk[0] ^= 0xff;
 
     const zkProofPayload = await ProverClient.generateProof(
       digest,
       tamperedPk,
       sig,
       (await ethers.provider.getNetwork()).chainId,
-      await zkVerifier.getAddress()
+      await zkVerifier.getAddress(),
     );
 
     // Should return false because committedPkHash != keccak256(realPublicKey)

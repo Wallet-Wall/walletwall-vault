@@ -29,8 +29,6 @@ pub fn main() {
     let sig_hash: [u8; 32] = hasher.finalize().into();
 
     // 3. Verify ML-DSA-65 Signature
-    // In a real production scenario, we'd use the mldsa crate.
-    // Since we are in a ZKVM, we want to ensure this is as efficient as possible.
     let is_valid = mldsa65::verify(&inputs.public_key, &inputs.withdrawal_digest, &inputs.signature, &[]);
 
     if !is_valid {
@@ -38,24 +36,25 @@ pub fn main() {
     }
 
     // Commit public inputs to the journal.
-    // In production, we use a robust encoding like ABI-encoding to ensure
-    // the Solidity side can easily decode and verify the public inputs.
-    // For this prototype, we simulate the committed bytes that match the
-    // abi.decode call in ZKMLDSAVerifier.sol.
+    // To match Solidity's abi.decode(publicValues, (bytes32, bytes32, bytes32, uint64, address)),
+    // we must commit each value as a 32-byte word.
 
-    // In a real SP1 implementation with eth_abi crate:
-    // let journal = eth_abi::encode(&[
-    //     Token::Uint(inputs.withdrawal_digest.into()),
-    //     Token::Uint(pk_hash.into()),
-    //     Token::Uint(sig_hash.into()),
-    //     Token::Uint(inputs.chain_id.into()),
-    //     Token::Address(inputs.verifier_address.into()),
-    // ]);
-    // sp1_zkvm::io::commit_slice(&journal);
+    // 1. withdrawal_digest (32 bytes)
+    sp1_zkvm::io::commit_slice(&inputs.withdrawal_digest);
 
-    sp1_zkvm::io::commit(&inputs.withdrawal_digest);
-    sp1_zkvm::io::commit(&pk_hash);
-    sp1_zkvm::io::commit(&sig_hash);
-    sp1_zkvm::io::commit(&inputs.chain_id);
-    sp1_zkvm::io::commit(&inputs.verifier_address);
+    // 2. pk_hash (32 bytes)
+    sp1_zkvm::io::commit_slice(&pk_hash);
+
+    // 3. sig_hash (32 bytes)
+    sp1_zkvm::io::commit_slice(&sig_hash);
+
+    // 4. chain_id (u64 -> 32 bytes, big-endian padded)
+    let mut chain_id_bytes = [0u8; 32];
+    chain_id_bytes[24..32].copy_from_slice(&inputs.chain_id.to_be_bytes());
+    sp1_zkvm::io::commit_slice(&chain_id_bytes);
+
+    // 5. verifier_address (20 bytes -> 32 bytes, padded)
+    let mut verifier_addr_bytes = [0u8; 32];
+    verifier_addr_bytes[12..32].copy_from_slice(&inputs.verifier_address);
+    sp1_zkvm::io::commit_slice(&verifier_addr_bytes);
 }
