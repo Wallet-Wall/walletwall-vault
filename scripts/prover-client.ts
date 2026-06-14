@@ -1,8 +1,8 @@
 import { ethers } from "ethers";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 /** JSON emitted by `mldsa65-host prove`. */
 interface HostProveOutput {
@@ -43,7 +43,7 @@ export class ProverClient {
     verifierAddress: string,
     expectedVkey?: string,
   ): Promise<string> {
-    const hostBin = process.env.SP1_HOST_BIN ?? join("zkvm", "host", "target", "release", "mldsa65-host");
+    const hostBin = ProverClient.resolveHostBin();
 
     const dir = mkdtempSync(join(tmpdir(), "mldsa65-"));
     const inputsPath = join(dir, "inputs.json");
@@ -141,5 +141,21 @@ export class ProverClient {
     const payload = abiCoder.encode(["bytes", "bytes"], [publicValues, proofBytes]);
 
     return payload;
+  }
+
+  /**
+   * Resolves the SP1 host binary to a validated absolute path before it is ever
+   * passed to a process launcher. The path is developer-configured (env or the
+   * built default), never request data; resolving and requiring an existing
+   * regular file keeps the launch off PATH and rejects anything that is not a
+   * real binary on disk.
+   */
+  private static resolveHostBin(): string {
+    const configured = process.env.SP1_HOST_BIN ?? join("zkvm", "host", "target", "release", "mldsa65-host");
+    const absolute = isAbsolute(configured) ? configured : resolve(configured);
+    if (!existsSync(absolute) || !statSync(absolute).isFile()) {
+      throw new Error(`SP1 host binary not found at ${absolute}; build zkvm/host or set SP1_HOST_BIN to its path`);
+    }
+    return absolute;
   }
 }

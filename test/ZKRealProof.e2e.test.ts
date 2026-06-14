@@ -1,9 +1,9 @@
 import { expect } from "chai";
 import { ethers } from "hardhat";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 import { MLDSASigner } from "../pqc/ml-dsa";
 
 /**
@@ -17,9 +17,18 @@ import { MLDSASigner } from "../pqc/ml-dsa";
  * `ml-dsa` guest for the same digest, or the guest execution reverts.
  */
 const runE2E = process.env.RUN_SP1_E2E === "1";
-const hostBin = process.env.SP1_HOST_BIN ?? join("zkvm", "host", "target", "release", "mldsa65-host");
+
+function resolveHostBin(): string {
+  const configured = process.env.SP1_HOST_BIN ?? join("zkvm", "host", "target", "release", "mldsa65-host");
+  const absolute = isAbsolute(configured) ? configured : resolve(configured);
+  if (!existsSync(absolute) || !statSync(absolute).isFile()) {
+    throw new Error(`SP1 host binary not found at ${absolute}; build zkvm/host or set SP1_HOST_BIN to its path`);
+  }
+  return absolute;
+}
 
 function runHostExecute(inputs: object): { status: number | null; stdout: string; stderr: string } {
+  const hostBin = resolveHostBin();
   const dir = mkdtempSync(join(tmpdir(), "mldsa65-e2e-"));
   const inputsPath = join(dir, "inputs.json");
   try {
