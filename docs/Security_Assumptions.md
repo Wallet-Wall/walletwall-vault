@@ -116,6 +116,32 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
 - Per-vault credential rotation (`updateEcdsaSigner`, `updatePQPublicKey`) is restricted
   to the vault's own owner address.
 
+## 4a. Guardian recovery model
+
+The vault implements **guardian-based social recovery** so an owner who loses their
+signing keys can have credentials reset by a configured guardian set. This introduces a
+distinct trust boundary that vault owners must understand:
+
+- **Guardian majority can take over a vault.** Recovery resets the vault's `ecdsaSigner`
+  and `pqPublicKey` to attacker-chosen values once `(guardians.length / 2) + 1` guardians
+  support a request and the `RECOVERY_DELAY` (7 days) has elapsed. A colluding majority of
+  guardians can therefore seize the vault. **Choose guardians accordingly.**
+- **Owner override.** The owner can abort any pending recovery at any time with
+  `cancelRecovery`, which is the primary protection against a malicious guardian set as
+  long as the owner still controls their vault address.
+- **Guardian set integrity (enforced).** `setGuardians` rejects an empty set, more than
+  `MAX_GUARDIANS` (20), the zero address, the owner itself, and duplicates. Duplicates are
+  rejected specifically because the majority threshold is derived from the array length
+  while each address can only support once — an unchecked duplicate would push the
+  threshold above the number of distinct supporters and permanently brick recovery.
+- **Anti-grief on re-initiation.** A live recovery request cannot be overwritten until its
+  `executeAfter` timestamp elapses, preventing a single guardian from repeatedly
+  re-initiating to wipe supports already cast by others. A genuinely stuck request becomes
+  replaceable after the window.
+- **Residual trust.** Guardians are semi-trusted by construction. The 7-day delay and the
+  owner cancel path bound, but do not eliminate, guardian power. This is social recovery,
+  not trustless recovery.
+
 ## 5. Authorization & replay model
 
 - Withdrawals are authorized by an **EIP-712** typed `Withdrawal` message. The domain
@@ -145,8 +171,10 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
 - The attestor CLI is a prototype without key isolation, threshold signing, hardened
   service deployment, audit logging, monitoring, or availability guarantees.
 - No ERC-20 / NFT support; ETH only.
-- No multi-signature, guardian recovery, or time-delayed recovery (see
-  `Project_Phases.md` for the longer-term vision; these are not implemented here).
+- Guardian-based, time-delayed social recovery **is** implemented (see §4a) and a
+  separate `WalletWallMultiSigVault` provides p-of-q withdrawal authorization. Both are
+  research implementations: they are not audited and carry the trust assumptions noted
+  above (notably, a guardian majority can take over a recoverable vault).
 - Not gas-optimized; not formally verified; not audited.
 
 ## 8. Cryptography naming (NIST)

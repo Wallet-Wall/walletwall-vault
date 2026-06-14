@@ -88,6 +88,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @notice Delay required before a recovery request can be executed.
     uint256 public constant RECOVERY_DELAY = 7 days;
 
+    /// @notice Maximum number of guardians per vault.
+    /// @dev Bounds the O(n) loops in the recovery flow so a guardian set can never
+    ///      be large enough to make initiate/support/execute/cancel un-runnable.
+    uint256 public constant MAX_GUARDIANS = 20;
+
     struct RecoveryRequest {
         address newEcdsaSigner;
         bytes newPQPublicKey;
@@ -166,6 +171,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error RecoveryDoesNotExist();
     error InsufficientSupports();
     error InvalidGuardianSet();
+    error TooManyGuardians(uint256 provided, uint256 max);
+    error ZeroGuardian();
+    error DuplicateGuardian(address guardian);
+    error GuardianIsOwner();
+    error RecoveryAlreadyActive();
 
     /**
      * @param _pqVerifier Address of the {IPQCVerifier} implementation. On a
@@ -183,10 +193,26 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /**
      * @notice Sets the guardians for the caller's vault.
      * @param guardians Array of guardian addresses.
+     * @dev The set must be non-empty, within {MAX_GUARDIANS}, free of the zero
+     *      address, free of the vault owner, and free of duplicates. Duplicates are
+     *      rejected because the majority threshold is derived from the array length
+     *      while each address can only support a recovery once; an unchecked
+     *      duplicate would raise the threshold above the number of distinct
+     *      supporters and permanently brick recovery.
      */
     function setGuardians(address[] calldata guardians) external {
         if (!vaults[msg.sender].exists) revert VaultDoesNotExist();
         if (guardians.length == 0) revert InvalidGuardianSet();
+        if (guardians.length > MAX_GUARDIANS) revert TooManyGuardians(guardians.length, MAX_GUARDIANS);
+
+        for (uint256 i = 0; i < guardians.length; i++) {
+            address guardian = guardians[i];
+            if (guardian == address(0)) revert ZeroGuardian();
+            if (guardian == msg.sender) revert GuardianIsOwner();
+            for (uint256 j = i + 1; j < guardians.length; j++) {
+                if (guardians[j] == guardian) revert DuplicateGuardian(guardian);
+            }
+        }
 
         // Cancel pending recovery and clear existing supports to maintain consistency
         if (recoveryRequests[msg.sender].exists) {
@@ -216,6 +242,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
         address[] storage guardians = vaultGuardians[vaultOwner];
         if (guardians.length == 0) revert InvalidGuardianSet();
+
+        // A live request (not yet past its execution window) may not be overwritten.
+        // This stops a single guardian from repeatedly re-initiating to wipe the
+        // supports other guardians have already cast. The owner can always clear a
+        // request with cancelRecovery, and a stuck request becomes replaceable once
+        // its executeAfter timestamp has elapsed.
+        RecoveryRequest storage existingRequest = recoveryRequests[vaultOwner];
+        if (existingRequest.exists && block.timestamp < existingRequest.executeAfter) {
+            revert RecoveryAlreadyActive();
+        }
 
         bool isActuallyGuardian = false;
         for (uint256 i = 0; i < guardians.length; i++) {

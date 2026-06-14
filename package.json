@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
