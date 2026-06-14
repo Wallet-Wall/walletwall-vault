@@ -92,7 +92,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @notice Maximum number of guardians per vault.
     /// @dev Bounds the O(n) loops in the recovery flow so a guardian set can never
     ///      be large enough to make initiate/support/execute/cancel un-runnable.
-    uint256 public constant MAX_GUARDIANS = 20;
+    uint256 public constant MAX_GUARDIANS = 32;
 
     /// @notice Governance delay for changes to the policy engine.
     uint256 public constant POLICY_ENGINE_UPDATE_DELAY = 2 days;
@@ -236,7 +236,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error ZeroGuardian();
     error DuplicateGuardian(address guardian);
     error GuardianIsOwner();
-    error RecoveryAlreadyActive();
+    error RecoveryAlreadyExists();
     error PendingWithdrawalExists();
     error NoPendingWithdrawal();
     error NotPendingWithdrawalOwner(address expectedOwner, address caller);
@@ -313,20 +313,20 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         address newEcdsaSigner,
         bytes calldata newPQPublicKey
     ) external whenNotPaused {
-        if (!vaults[vaultOwner].exists) revert VaultDoesNotExist();
+        VaultOwner storage vault = vaults[vaultOwner];
+        if (!vault.exists) revert VaultDoesNotExist();
 
         address[] storage guardians = vaultGuardians[vaultOwner];
         if (guardians.length == 0) revert InvalidGuardianSet();
 
-        // A live request (not yet past its execution window) may not be overwritten.
-        // This stops a single guardian from repeatedly re-initiating to wipe the
-        // supports other guardians have already cast. The owner can always clear a
-        // request with cancelRecovery, and a stuck request becomes replaceable once
-        // its executeAfter timestamp has elapsed.
+        // A live request may not be overwritten. Once its execution window has
+        // elapsed, an under-supported request is replaceable so a single guardian
+        // cannot permanently deny recovery when the owner cannot cancel it.
         RecoveryRequest storage existingRequest = recoveryRequests[vaultOwner];
         if (existingRequest.exists && block.timestamp < existingRequest.executeAfter) {
-            revert RecoveryAlreadyActive();
+            revert RecoveryAlreadyExists();
         }
+        _validateCredentials(vault.mode, newEcdsaSigner, newPQPublicKey);
 
         bool isActuallyGuardian = false;
         for (uint256 i = 0; i < guardians.length; i++) {
@@ -518,6 +518,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         VaultOwner storage vault = vaults[vaultOwner];
         if (!vault.exists) revert VaultDoesNotExist();
         if (block.timestamp > deadline) revert DeadlineExpired(deadline, block.timestamp);
+        _validateCredentials(vault.mode, newEcdsaSigner, newPQPublicKey);
 
         bytes32 digest = _hashTypedDataV4(
             keccak256(
@@ -546,6 +547,15 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         }
 
         emit CredentialsRotated(vaultOwner, newEcdsaSigner);
+    }
+
+    function _validateCredentials(VaultMode mode, address ecdsaSigner, bytes memory pqPublicKey) internal pure {
+        if ((mode == VaultMode.EcdsaOnly || mode == VaultMode.Hybrid) && ecdsaSigner == address(0)) {
+            revert ZeroAddress();
+        }
+        if ((mode == VaultMode.PqOnly || mode == VaultMode.Hybrid) && pqPublicKey.length == 0) {
+            revert EmptyPQPublicKey();
+        }
     }
 
     // ---------------------------------------------------------------------
