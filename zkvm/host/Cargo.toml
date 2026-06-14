@@ -1,0 +1,27 @@
+# SP1 host / prover for the ML-DSA-65 guest.
+#
+# This crate is intentionally NOT part of the repository CI. It depends on the
+# SP1 SDK and toolchain (install with `sp1up`), which are heavy and Linux-first.
+# See docs/ZK_Prover_Runbook.md for how to build and run it.
+#
+# Version note: sp1-sdk / sp1-build are pinned to the same SP1 release as the
+# guest's sp1-zkvm dependency (zkvm/guest/Cargo.toml). If you bump one, bump all
+# three together, then re-extract the program vKey.
+[package]
+name = "mldsa65-host"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "mldsa65-host"
+path = "src/main.rs"
+
+[dependencies]
+sp1-sdk = "=6.2.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+hex = "0.4"
+anyhow = "1.0"
+
+[build-dependencies]
+sp1-build = "=6.2.4"
