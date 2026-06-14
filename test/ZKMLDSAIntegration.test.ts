@@ -110,12 +110,15 @@ describe("ZKMLDSAVerifier Integration", function () {
       await zkVerifier.getAddress(),
     );
 
+    const { latest } = await ethers.provider.getBlock("latest");
+    const deadline = (latest?.timestamp ?? Math.floor(Date.now() / 1000)) + 3600;
+
     const request = {
       vaultOwner: owner.address,
       recipient: recipient.address,
       amount: ethers.parseEther("0.1"),
       nonce: 0,
-      deadline: Math.floor(Date.now() / 1000) + 3600,
+      deadline: deadline,
       vaultMode: 2,
     };
     const ecdsaSignature = await owner.signTypedData(
@@ -161,12 +164,15 @@ describe("ZKMLDSAVerifier Integration", function () {
 
     await mockSp1Verifier.setShouldSucceed(false);
 
+    const { latest } = await ethers.provider.getBlock("latest");
+    const deadline = (latest?.timestamp ?? Math.floor(Date.now() / 1000)) + 3600;
+
     const request = {
       vaultOwner: owner.address,
       recipient: recipient.address,
       amount: ethers.parseEther("0.1"),
       nonce: 0,
-      deadline: Math.floor(Date.now() / 1000) + 3600,
+      deadline: deadline,
       vaultMode: 2,
     };
     const ecdsaSignature = await owner.signTypedData(
