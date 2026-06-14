@@ -142,7 +142,46 @@ distinct trust boundary that vault owners must understand:
   owner cancel path bound, but do not eliminate, guardian power. This is social recovery,
   not trustless recovery.
 
-## 5. Authorization & replay model
+## 5. Policy engine (optional withdrawal filter)
+
+The vault supports an optional pluggable policy engine wired in through the
+`IPolicyEngine` interface. When configured, `check()` is called inside `withdraw`
+before any state changes occur. A denial reverts with `PolicyViolation(reason)`.
+
+**Governance.** The policy engine is admin-controlled through a timelocked
+two-step flow (`proposePolicyEngine`, wait two days, `applyPolicyEngine`).
+`address(0)` disables the feature. The same governance constraints that apply
+to the PQ verifier also apply here: the delay does not eliminate trust in the
+contract owner.
+
+**Included reference implementations (research / non-audited):**
+
+- `DailySpendLimitPolicy` — per-vault vault-owner-managed rolling 24-hour spend
+  cap. Each vault owner sets their own limit via `setDailyLimit()`. Spending is
+  recorded at `check()` time and rolled back if the outer transaction reverts.
+  A limit of 0 means unrestricted.
+- `RecipientAllowlistPolicy` — vault-owner-managed allowlist. An empty allowlist
+  blocks all recipients (fail-safe). Adding `address(0)` disables the restriction.
+  Admin has no control over individual vault allowlists.
+- `SanctionsListPolicy` — admin-controlled (`Ownable2Step`) deny list intended
+  for OFAC-style screening. Blocks any withdrawal whose recipient appears on the
+  list. Admin can add/remove addresses and batch-add.
+
+**Trust assumptions for policy implementations:**
+
+- `DailySpendLimitPolicy` and `RecipientAllowlistPolicy` are vault-owner-controlled.
+  They protect vault owners who opt in; the contract admin cannot bypass them.
+  However, the admin can replace the engine via the governance flow.
+- `SanctionsListPolicy` is admin-controlled. A malicious or compromised admin can
+  add any recipient, potentially censoring legitimate withdrawals. The two-day
+  governance delay protects against silently removing the engine but not against
+  manipulating list contents (those calls are immediate).
+- A stateful policy engine that reverts unexpectedly (e.g. due to a bug) would
+  permanently block withdrawals from the vault. The admin can disable the engine
+  via `proposePolicyEngine(address(0))` followed by `applyPolicyEngine` after
+  the delay. A vault owner cannot bypass an active policy engine unilaterally.
+
+## 6. Authorization & replay model
 
 - Withdrawals are authorized by an **EIP-712** typed `Withdrawal` message. The domain
   separator binds the signature to the **contract address**, **chainId**, and
@@ -155,7 +194,7 @@ distinct trust boundary that vault owners must understand:
   from the signatures, not from `msg.sender`. This is intentional and does not weaken
   the model as long as the signatures are sound.
 
-## 6. Fund-accounting assumptions
+## 7. Fund-accounting assumptions
 
 - Each vault tracks its own `balance`. Deposits credit a specific vault
   (`deposit` / `depositFor`).
@@ -164,7 +203,7 @@ distinct trust boundary that vault owners must understand:
   contract balance but is **not** credited to any vault and cannot be withdrawn — it is
   effectively stuck. Internal accounting is unaffected (covered by tests).
 
-## 7. Known limitations / out of scope
+## 8. Known limitations / out of scope
 
 - No on-chain ML-DSA verification. The attestation path delegates verification to a
   trusted off-chain service and EVM attestor.
@@ -177,7 +216,7 @@ distinct trust boundary that vault owners must understand:
   above (notably, a guardian majority can take over a recoverable vault).
 - Not gas-optimized; not formally verified; not audited.
 
-## 8. Cryptography naming (NIST)
+## 9. Cryptography naming (NIST)
 
 - **ML-DSA / FIPS 204** — formerly **CRYSTALS-Dilithium** (this prototype targets
   ML-DSA-65).
