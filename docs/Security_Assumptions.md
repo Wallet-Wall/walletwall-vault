@@ -110,9 +110,10 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   multisig owner, operational monitoring of proposal events, and an independently
   reviewed delay appropriate to the deployment. This is not a production-readiness
   claim.
-- **Pause is a global kill-switch.** The owner can pause `createVault` and `withdraw`.
-  This protects against incidents but is also a centralization/liveness assumption:
-  a paused vault cannot process withdrawals.
+- **Pause is a global kill-switch.** The owner can pause `createVault`, `withdraw`,
+  `queueWithdrawal`, and `finalizeWithdrawal`. This protects against incidents but is
+  also a centralization/liveness assumption: a paused vault cannot execute withdrawals.
+  Owners can still call `cancelPendingWithdrawal` while paused to release reserved funds.
 - Per-vault credential rotation (`updateEcdsaSigner`, `updatePQPublicKey`) is restricted
   to the vault's own owner address.
 
@@ -142,11 +143,47 @@ distinct trust boundary that vault owners must understand:
   owner cancel path bound, but do not eliminate, guardian power. This is social recovery,
   not trustless recovery.
 
+## 4b. Large transaction timelock
+
+The optional large-transaction timelock separates authorization from execution for
+withdrawals above `largeTxThreshold`. When enabled, `withdraw` continues to execute
+amounts at or below the threshold immediately, but rejects larger amounts. A valid
+above-threshold request must be submitted through `queueWithdrawal`.
+
+Queueing performs the normal EIP-712, PQ, balance, nonce, and active policy-engine
+checks. It then consumes the nonce and reserves the amount by subtracting it from the
+vault's available balance. The pending record binds the vault owner, recipient, amount,
+signed nonce, queue time, ready time, and EIP-712 digest used as the operation identity.
+Only that vault owner can finalize after `largeTxDelay` or cancel and refund the
+reservation, and both actions must name the matching operation identity. A completed,
+cancelled, or replaced operation cannot be finalized by a stale transaction.
+
+**Governance.** The contract owner controls `largeTxThreshold` and `largeTxDelay`
+through `proposeLargeTxParams`, the fixed two-day
+`LARGE_TX_PARAMS_UPDATE_DELAY`, and `applyLargeTxParams`. A pending change can be
+cleared with `cancelLargeTxParams`. A zero threshold disables the feature; an enabled
+configuration requires a non-zero delay. This observation window does not remove admin
+trust, and parameter changes do not alter the recorded deadline of an already queued
+withdrawal.
+
+**Recovery interaction.** Successful guardian recovery cancels any pending large
+withdrawal and refunds the reserved amount to the vault before the recovered
+credentials take control. Recovery also advances the vault nonce, invalidating other
+withdrawal authorizations pre-signed by the old credentials for the previously current
+nonce.
+
+**Limitations.** The feature supports one pending withdrawal per vault, covers ETH only,
+and does not make the prototype production custody. It does not prevent a compromised
+admin from proposing weak threshold/delay settings and applying them after the
+governance delay. Monitoring, reviewed governance, audits, and formal verification
+remain out of scope.
+
 ## 5. Policy engine (optional withdrawal filter)
 
 The vault supports an optional pluggable policy engine wired in through the
-`IPolicyEngine` interface. When configured, `check()` is called inside `withdraw`
-before any state changes occur. A denial reverts with `PolicyViolation(reason)`.
+`IPolicyEngine` interface. When configured, `check()` is called inside `withdraw` or
+`queueWithdrawal` before any state changes occur. A denial reverts with
+`PolicyViolation(reason)`.
 
 **Governance.** The policy engine is admin-controlled through a timelocked
 two-step flow (`proposePolicyEngine`, wait two days, `applyPolicyEngine`).
@@ -159,7 +196,9 @@ contract owner.
 - `DailySpendLimitPolicy` — per-vault vault-owner-managed rolling 24-hour spend
   cap. Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
-  A limit of 0 means unrestricted.
+  For a successfully queued large withdrawal, later cancellation or recovery refunds
+  the vault reservation but does not restore policy allowance; the amount remains
+  counted until the policy window resets. A limit of 0 means unrestricted.
 - `RecipientAllowlistPolicy` — vault-owner-managed allowlist. An empty allowlist
   blocks all recipients (fail-safe). Adding `address(0)` disables the restriction.
   Admin has no control over individual vault allowlists.

@@ -97,11 +97,26 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @notice Governance delay for changes to the policy engine.
     uint256 public constant POLICY_ENGINE_UPDATE_DELAY = 2 days;
 
+    /// @notice Governance delay for changes to large-transaction parameters.
+    uint256 public constant LARGE_TX_PARAMS_UPDATE_DELAY = 2 days;
+
     struct RecoveryRequest {
         address newEcdsaSigner;
         bytes newPQPublicKey;
         uint256 executeAfter;
         uint256 supportCount;
+        bool exists;
+    }
+
+    /// @notice A signed large withdrawal reserved for delayed execution.
+    struct PendingWithdrawal {
+        address owner;
+        address recipient;
+        uint256 amount;
+        uint256 nonce;
+        uint256 queuedAt;
+        uint256 readyAt;
+        bytes32 operationId;
         bool exists;
     }
 
@@ -126,6 +141,19 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @notice Tracks if a guardian has supported a specific recovery request.
     /// @dev vaultOwner => guardian => supported
     mapping(address => mapping(address => bool)) public recoverySupports;
+
+    /// @notice One pending large withdrawal per vault owner.
+    mapping(address => PendingWithdrawal) public pendingWithdrawals;
+
+    /// @notice Amount above which withdrawals must use the timelocked queue. Zero disables the feature.
+    uint256 public largeTxThreshold;
+
+    /// @notice Delay between queueing and finalizing a large withdrawal.
+    uint256 public largeTxDelay;
+
+    uint256 public pendingLargeTxThreshold;
+    uint256 public pendingLargeTxDelay;
+    uint256 public pendingLargeTxValidAfter;
 
     /// @notice Active policy engine (address(0) = feature disabled, no check performed).
     IPolicyEngine public policyEngine;
@@ -155,6 +183,25 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     event RecoverySupported(address indexed owner, address indexed guardian, uint256 currentSupports);
     event RecoveryExecuted(address indexed owner, address newEcdsaSigner);
     event RecoveryCancelled(address indexed owner);
+    event WithdrawalQueued(
+        bytes32 indexed operationId,
+        address indexed owner,
+        address indexed recipient,
+        uint256 amount,
+        uint256 nonce,
+        uint256 queuedAt,
+        uint256 readyAt
+    );
+    event WithdrawalFinalized(
+        bytes32 indexed operationId,
+        address indexed owner,
+        address indexed recipient,
+        uint256 amount
+    );
+    event WithdrawalCancelled(bytes32 indexed operationId, address indexed owner, uint256 amount);
+    event LargeTxParamsProposed(uint256 newThreshold, uint256 newDelay, uint256 validAfter);
+    event LargeTxParamsApplied(uint256 newThreshold, uint256 newDelay);
+    event LargeTxParamsCancelled(uint256 cancelledThreshold, uint256 cancelledDelay);
     event PolicyEngineUpdateProposed(address indexed proposed, uint256 validAfter);
     event PolicyEngineUpdateCancelled(address indexed cancelled);
     event PolicyEngineUpdated(address indexed oldEngine, address indexed newEngine);
@@ -190,6 +237,17 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error DuplicateGuardian(address guardian);
     error GuardianIsOwner();
     error RecoveryAlreadyActive();
+    error PendingWithdrawalExists();
+    error NoPendingWithdrawal();
+    error NotPendingWithdrawalOwner(address expectedOwner, address caller);
+    error PendingWithdrawalMismatch(bytes32 expectedOperationId, bytes32 providedOperationId);
+    error WithdrawalNotReady(uint256 readyAt, uint256 currentTimestamp);
+    error UseLargeWithdrawal();
+    error LargeWithdrawalNotRequired();
+    error LargeTxTimelockDisabled();
+    error ZeroDelay();
+    error NoPendingLargeTxUpdate();
+    error LargeTxUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error PolicyViolation(string reason);
     error NoPendingPolicyEngine();
     error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
@@ -332,8 +390,13 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (request.supportCount < required) revert InsufficientSupports();
 
         VaultOwner storage vault = vaults[vaultOwner];
-        vault.ecdsaSigner = request.newEcdsaSigner;
-        vault.pqPublicKey = request.newPQPublicKey;
+        address recoveredSigner = request.newEcdsaSigner;
+        bytes memory recoveredPQPublicKey = request.newPQPublicKey;
+        vault.ecdsaSigner = recoveredSigner;
+        vault.pqPublicKey = recoveredPQPublicKey;
+        unchecked {
+            vault.nonce++;
+        }
 
         delete recoveryRequests[vaultOwner];
         // Clean up supports
@@ -342,7 +405,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             recoverySupports[vaultOwner][guardians[i]] = false;
         }
 
-        emit RecoveryExecuted(vaultOwner, request.newEcdsaSigner);
+        PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
+        if (pending.exists) {
+            bytes32 operationId = pending.operationId;
+            uint256 refund = pending.amount;
+            delete pendingWithdrawals[vaultOwner];
+            vault.balance += refund;
+            emit WithdrawalCancelled(operationId, vaultOwner, refund);
+        }
+
+        emit RecoveryExecuted(vaultOwner, recoveredSigner);
     }
 
     /**
@@ -508,6 +580,130 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     // ---------------------------------------------------------------------
 
     /**
+     * @notice Queues an above-threshold withdrawal for delayed execution.
+     * @dev Authorization and policy checks are performed at queue time. The
+     *      signed nonce is consumed and the amount is reserved immediately.
+     */
+    function queueWithdrawal(
+        Withdrawal calldata request,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external nonReentrant whenNotPaused {
+        VaultOwner storage vault = vaults[request.vaultOwner];
+
+        if (!vault.exists) revert VaultDoesNotExist();
+        if (block.timestamp > request.deadline) revert DeadlineExpired(request.deadline, block.timestamp);
+        if (request.amount == 0) revert ZeroAmount();
+        if (request.recipient == address(0)) revert ZeroRecipient();
+        if (request.nonce != vault.nonce) revert InvalidNonce(vault.nonce, request.nonce);
+        if (pendingWithdrawals[request.vaultOwner].exists) revert PendingWithdrawalExists();
+        if (largeTxThreshold == 0) revert LargeTxTimelockDisabled();
+        if (request.amount <= largeTxThreshold) revert LargeWithdrawalNotRequired();
+
+        if (vault.balance < request.amount) revert InsufficientBalance();
+
+        bytes32 operationId;
+        {
+            VaultMode configuredMode = vault.mode;
+            if (request.vaultMode != uint8(configuredMode)) {
+                revert VaultModeMismatch(configuredMode, VaultMode(request.vaultMode));
+            }
+
+            operationId = _hashTypedDataV4(_structHash(request));
+            bool needEcdsa = configuredMode == VaultMode.EcdsaOnly || configuredMode == VaultMode.Hybrid;
+            bool needPq = configuredMode == VaultMode.PqOnly || configuredMode == VaultMode.Hybrid;
+
+            if (needEcdsa && operationId.recover(ecdsaSignature) != vault.ecdsaSigner) {
+                revert InvalidEcdsaSignature();
+            }
+            if (needPq && !pqVerifier.verify(operationId, vault.pqPublicKey, pqSignature)) {
+                revert InvalidPQSignature();
+            }
+        }
+
+        if (address(policyEngine) != address(0)) {
+            (bool ok, string memory why) = policyEngine.check(
+                request.vaultOwner,
+                request.recipient,
+                request.amount,
+                vault.balance
+            );
+            if (!ok) revert PolicyViolation(why);
+        }
+
+        unchecked {
+            vault.nonce = request.nonce + 1;
+        }
+        vault.balance -= request.amount;
+
+        uint256 queuedAt = block.timestamp;
+        uint256 readyAt = queuedAt + largeTxDelay;
+        pendingWithdrawals[request.vaultOwner] = PendingWithdrawal({
+            owner: request.vaultOwner,
+            recipient: request.recipient,
+            amount: request.amount,
+            nonce: request.nonce,
+            queuedAt: queuedAt,
+            readyAt: readyAt,
+            operationId: operationId,
+            exists: true
+        });
+
+        emit WithdrawalQueued(
+            operationId,
+            request.vaultOwner,
+            request.recipient,
+            request.amount,
+            request.nonce,
+            queuedAt,
+            readyAt
+        );
+    }
+
+    /**
+     * @notice Finalizes the caller's queued withdrawal after its delay.
+     */
+    function finalizeWithdrawal(address vaultOwner, bytes32 operationId) external nonReentrant whenNotPaused {
+        PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
+        if (!pending.exists) revert NoPendingWithdrawal();
+        if (pending.owner != msg.sender) revert NotPendingWithdrawalOwner(pending.owner, msg.sender);
+        if (pending.operationId != operationId) {
+            revert PendingWithdrawalMismatch(pending.operationId, operationId);
+        }
+        if (block.timestamp < pending.readyAt) {
+            revert WithdrawalNotReady(pending.readyAt, block.timestamp);
+        }
+
+        address recipient = pending.recipient;
+        uint256 amount = pending.amount;
+        delete pendingWithdrawals[vaultOwner];
+
+        (bool success, ) = recipient.call{value: amount}("");
+        if (!success) revert TransferFailed();
+
+        emit WithdrawalFinalized(operationId, vaultOwner, recipient, amount);
+    }
+
+    /**
+     * @notice Cancels the caller's queued withdrawal and releases its reservation.
+     * @dev Cancellation remains available while paused so reserved funds are not trapped.
+     */
+    function cancelPendingWithdrawal(bytes32 operationId) external nonReentrant {
+        PendingWithdrawal storage pending = pendingWithdrawals[msg.sender];
+        if (!pending.exists) revert NoPendingWithdrawal();
+        if (pending.owner != msg.sender) revert NotPendingWithdrawalOwner(pending.owner, msg.sender);
+        if (pending.operationId != operationId) {
+            revert PendingWithdrawalMismatch(pending.operationId, operationId);
+        }
+
+        uint256 refund = pending.amount;
+        delete pendingWithdrawals[msg.sender];
+        vaults[msg.sender].balance += refund;
+
+        emit WithdrawalCancelled(operationId, msg.sender, refund);
+    }
+
+    /**
      * @notice Executes a withdrawal authorized by an EIP-712 typed {Withdrawal}.
      * @dev May be submitted by anyone (e.g. a relayer); authorization is by the
      *      attached signatures, not by msg.sender. Uses checks-effects-interactions
@@ -537,6 +733,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             revert VaultModeMismatch(configuredMode, VaultMode(request.vaultMode));
         }
         if (vault.balance < request.amount) revert InsufficientBalance();
+        if (largeTxThreshold > 0 && request.amount > largeTxThreshold) revert UseLargeWithdrawal();
 
         bytes32 digest = _hashTypedDataV4(_structHash(request));
 
@@ -634,6 +831,58 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     }
 
     /**
+     * @notice Proposes new large-transaction threshold and delay parameters.
+     * @dev A zero threshold disables the feature. Enabled configurations require
+     *      a non-zero delay.
+     */
+    function proposeLargeTxParams(uint256 newThreshold, uint256 newDelay) external onlyOwner {
+        if (newThreshold > 0 && newDelay == 0) revert ZeroDelay();
+
+        uint256 validAfter = block.timestamp + LARGE_TX_PARAMS_UPDATE_DELAY;
+        pendingLargeTxThreshold = newThreshold;
+        pendingLargeTxDelay = newDelay;
+        pendingLargeTxValidAfter = validAfter;
+
+        emit LargeTxParamsProposed(newThreshold, newDelay, validAfter);
+    }
+
+    /**
+     * @notice Applies pending large-transaction parameters after the governance delay.
+     */
+    function applyLargeTxParams() external onlyOwner {
+        uint256 validAfter = pendingLargeTxValidAfter;
+        if (validAfter == 0) revert NoPendingLargeTxUpdate();
+        if (block.timestamp < validAfter) {
+            revert LargeTxUpdateNotReady(validAfter, block.timestamp);
+        }
+
+        uint256 newThreshold = pendingLargeTxThreshold;
+        uint256 newDelay = pendingLargeTxDelay;
+        largeTxThreshold = newThreshold;
+        largeTxDelay = newDelay;
+        pendingLargeTxThreshold = 0;
+        pendingLargeTxDelay = 0;
+        pendingLargeTxValidAfter = 0;
+
+        emit LargeTxParamsApplied(newThreshold, newDelay);
+    }
+
+    /**
+     * @notice Cancels a pending large-transaction parameter update.
+     */
+    function cancelLargeTxParams() external onlyOwner {
+        if (pendingLargeTxValidAfter == 0) revert NoPendingLargeTxUpdate();
+
+        uint256 cancelledThreshold = pendingLargeTxThreshold;
+        uint256 cancelledDelay = pendingLargeTxDelay;
+        pendingLargeTxThreshold = 0;
+        pendingLargeTxDelay = 0;
+        pendingLargeTxValidAfter = 0;
+
+        emit LargeTxParamsCancelled(cancelledThreshold, cancelledDelay);
+    }
+
+    /**
      * @notice Proposes a new policy engine to apply after the governance delay.
      * @dev Admin-only. Pass address(0) to propose disabling the policy engine.
      *      A later proposal replaces the pending one and restarts the delay.
@@ -674,7 +923,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         emit PolicyEngineUpdateCancelled(cancelled);
     }
 
-    /// @notice Pauses createVault and withdraw. Admin-only.
+    /// @notice Pauses vault creation, immediate/queued withdrawal, finalization, and recovery execution. Admin-only.
     function pause() external onlyOwner {
         _pause();
     }
