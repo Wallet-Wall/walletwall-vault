@@ -6,6 +6,7 @@ coverage.json
 .env
 typechain-types
 dist
+zkvm/guest/target/
 
 # IDEs and Editors
 .idea/

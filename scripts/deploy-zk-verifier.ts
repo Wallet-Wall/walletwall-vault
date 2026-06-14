@@ -1,4 +1,5 @@
 import { ethers } from "hardhat";
+import { runScript } from "./lib/run-script";
 
 async function main() {
   const [deployer] = await ethers.getSigners();
@@ -9,7 +10,12 @@ async function main() {
   const allowMock = process.env.ALLOW_MOCK_SP1 === "true";
   const isLocalNetwork = network.chainId === 31337n || network.chainId === 1337n;
 
-  if (!sp1VerifierAddress) {
+  if (sp1VerifierAddress) {
+    const verifierCode = await ethers.provider.getCode(sp1VerifierAddress);
+    if (verifierCode === "0x") {
+      throw new Error("SP1_VERIFIER_ADDRESS must reference a deployed contract");
+    }
+  } else {
     if (!allowMock || !isLocalNetwork) {
       throw new Error(
         "SP1_VERIFIER_ADDRESS is required. Mock deployment is allowed only on a local chain with ALLOW_MOCK_SP1=true.",
@@ -21,11 +27,6 @@ async function main() {
     await mockSp1.waitForDeployment();
     sp1VerifierAddress = await mockSp1.getAddress();
     console.warn("TEST ONLY: deployed always-accepting MockSP1Verifier to:", sp1VerifierAddress);
-  } else {
-    const verifierCode = await ethers.provider.getCode(sp1VerifierAddress);
-    if (verifierCode === "0x") {
-      throw new Error("SP1_VERIFIER_ADDRESS must reference a deployed contract");
-    }
   }
 
   let programVKey = process.env.PROGRAM_VKEY;
@@ -49,9 +50,4 @@ async function main() {
   console.log("Program vKey:", programVKey);
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(error);
-    process.exit(1);
-  });
+runScript(main);
