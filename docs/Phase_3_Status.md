@@ -3,8 +3,9 @@
 > **RESEARCH PROTOTYPE — NOT AUDITED — TESTNET / LOCAL DEMO ONLY. DO NOT USE WITH REAL FUNDS.**
 > All items below are prototype implementations for research purposes only.
 
-Last updated: 2026-06-14
-Branch: `security/vault-phase3-final-hardening`
+Last updated: 2026-06-15
+Status: **complete and merged to `main` in PR #35**
+Release: `v0.4.12`
 
 ---
 
@@ -121,11 +122,11 @@ Branch: `security/vault-phase3-final-hardening`
 | Production custody | 🔮 Future — this is a research prototype; no mainnet deployment intended |
 | Wallet connection | 🔮 Out of scope for this component |
 | Mainnet deployment | 🔮 Out of scope; prototype only |
-| SP1 ZK prover / verifier (Phase 4) | 🔮 Not started in this hardening pass |
+| SP1 ZK prover / verifier | ⚠️ Unaudited scaffold only; not the active Sepolia verifier and not production-ready |
 
 ---
 
-## Validation summary (branch `security/vault-phase3-final-hardening`)
+## Validation summary (merged Phase 3 hardening)
 
 ```
 npm test          → 220 passing, 2 pending (intentional ZK E2E, require RUN_SP1_E2E=1)

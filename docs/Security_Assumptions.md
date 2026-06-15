@@ -16,6 +16,8 @@ boundaries explicit.
 - A **post-quantum migration research** vehicle: the PQ verifier sits behind the
   `IPQCVerifier` interface so different verification strategies can be swapped in.
 - **Testnet / local demo only.**
+- **Phase 3 hardening is complete.** This means the documented prototype controls are
+  merged and tested; it does not mean the system is audited or production-ready.
 
 ## 2. What this prototype is NOT
 
@@ -80,7 +82,7 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   `PQ_VERIFIER_UPDATE_DELAY`, and applies it with `applyPQVerifierUpdate`. The active
   verifier remains unchanged during the delay. The owner can clear a pending proposal
   with `cancelPQVerifierUpdate` before it is applied.
-- **Why mutable instead of immutable:** the Phase 1 trust boundary is specifically
+- **Why mutable instead of immutable:** the verifier trust boundary is specifically
   intended to support replacing the mock with a future attestation, ZK, or chain-native
   verifier. Immutability would require redeploying the entire vault contract and would
   strand the existing per-vault state.
@@ -215,6 +217,9 @@ contract owner.
 
 **Included reference implementations (research / non-audited):**
 
+- `CompositePolicyEngine` — the single engine wired into the vault when multiple
+  modules must apply simultaneously. It calls each configured module and fails on the
+  first denial. Module administration uses `Ownable2Step`.
 - `DailySpendLimitPolicy` — per-vault vault-owner-managed rolling 24-hour spend
   cap. Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
@@ -241,6 +246,9 @@ contract owner.
   permanently block withdrawals from the vault. The admin can disable the engine
   via `proposePolicyEngine(address(0))` followed by `applyPolicyEngine` after
   the delay. A vault owner cannot bypass an active policy engine unilaterally.
+- Large-withdrawal finalization re-checks policy only if the active engine address
+  changed after queueing. This closes stale-engine bypasses while avoiding a second
+  call to the same stateful engine, which would double-count daily spend.
 
 ## 6. Authorization & replay model
 
@@ -268,6 +276,10 @@ contract owner.
 
 - No on-chain ML-DSA verification. The attestation path delegates verification to a
   trusted off-chain service and EVM attestor.
+- The SP1 implementation is an unaudited scaffold, not the active Sepolia verifier and
+  not evidence of production-grade ZK/PQ verification.
+- Native Solidity ML-DSA is not a production path. Chain-native PQ verification depends
+  on future protocol support; no live precompile is assumed.
 - The attestor CLI is a prototype without key isolation, threshold signing, hardened
   service deployment, audit logging, monitoring, or availability guarantees.
 - No ERC-20 / NFT support; ETH only.

@@ -13,8 +13,12 @@
 > - ECDSA is verified inline in `WalletWallVault` using OpenZeppelin ECDSA over the
 >   EIP-712 typed `Withdrawal` digest (not via a separate verifier contract).
 > - Withdrawals carry an EIP-712 `Withdrawal` struct with `deadline` and `VaultMode`.
-> - Two verifier implementations are shipped: `MockMLDSAVerifier` (test/demo, structural
->   checks only) and `AttestationPQCVerifier` (trusted off-chain attestation, non-mock).
+> - The active prototype paths are `MockMLDSAVerifier` (test/demo, structural checks
+>   only) and `AttestationPQCVerifier` (trusted off-chain attestation, non-mock).
+> - An SP1-based verifier exists as an unaudited scaffold/roadmap path. It is not the
+>   active Sepolia verifier and does not establish production-grade PQ verification.
+> - Native Solidity ML-DSA is not a production path, and chain-native PQ verification
+>   remains dependent on future protocol support.
 > - `MLDSAVerifier` was renamed to `MockMLDSAVerifier` during the `harden-vault-core`
 >   refactor to make its test-only status explicit.
 
@@ -93,7 +97,7 @@ graph TD
     subgraph "IPQCVerifier implementations"
         H --> L[MockMLDSAVerifier\nstructural checks only\ntest/demo]
         H --> M[AttestationPQCVerifier\ntrusted off-chain attestor\nnon-mock]
-        H --> N[Future: ZK / precompile]
+        H --> N[SP1 scaffold / future chain precompile]
     end
 ```
 

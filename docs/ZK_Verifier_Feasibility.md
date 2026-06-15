@@ -765,8 +765,9 @@ developer-facing copy for WalletWall Vault should:
   system, the circuit/guest correctness, and (for PLONK/Groth16) any trusted setup
   assumptions.
 
-The `docs/Verifier_Roadmap.md` "Path 2 — ZK-proof verifier" entry already carries the
-correct conservative framing ("not implemented, preferred long-term software path").
+The `docs/Verifier_Roadmap.md` "Path 2 — ZK-proof verifier / SP1 scaffold" entry carries
+the conservative framing required here: scaffolded, unaudited, not the active Sepolia
+verifier, and not production-ready.
 This feasibility document is additive context for future maintainers evaluating the
 effort required to implement Path 2.
 
