@@ -7,10 +7,11 @@
 > [docs/Security_Assumptions.md](docs/Security_Assumptions.md), and
 > [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
 
-WalletWall Vault is a **Phase 1 research / hybrid-authorization prototype** that explores
+WalletWall Vault is a **research / hybrid-authorization prototype** that explores
 combining a classical Ethereum **ECDSA** signature with a **post-quantum (PQ)** signature
 to authorize vault withdrawals, and a migration path toward stronger future verifier
-designs.
+designs. **Phase 3 security hardening is complete on `main`**; see
+[docs/Phase_3_Status.md](docs/Phase_3_Status.md).
 
 It is intended to demonstrate **contract security and trust boundaries** — replay
 protection, EIP-712 typed authorization, a swappable verifier interface, and honest
@@ -58,7 +59,12 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
 
 - [`contracts/WalletWallVault.sol`](contracts/WalletWallVault.sol) — vault: deposits,
   EIP-712 withdrawals, per-owner nonces, `VaultMode`, `ReentrancyGuard`, `Pausable`,
-  `Ownable2Step`, timelocked verifier governance, custom errors.
+  `Ownable2Step`, delayed large withdrawals, guardian recovery and treasury quorum,
+  timelocked verifier/policy/parameter governance, and custom errors.
+- [`contracts/IPolicyEngine.sol`](contracts/IPolicyEngine.sol) and
+  [`contracts/policies/`](contracts/policies/) — optional withdrawal-policy boundary,
+  including `CompositePolicyEngine`, daily spend limits, recipient allowlists, and an
+  admin-managed sanctions deny list.
 - [`contracts/IPQCVerifier.sol`](contracts/IPQCVerifier.sol) — PQ verifier trust-boundary
   interface (`algorithmId()`, `verify()`).
 - [`contracts/MockMLDSAVerifier.sol`](contracts/MockMLDSAVerifier.sol) — **mock**
@@ -193,6 +199,9 @@ Public testnet deployments read credentials and RPC URLs from environment variab
 Copy `.env.example` as a reference, but do not commit populated values and do not paste
 private keys into issues, pull requests, or chat.
 
+**Use Sepolia test ETH only. Never send real funds. Frontend write operations must stay
+restricted to supported testnet chain IDs and must not silently fall back to mainnet.**
+
 PowerShell example:
 
 ```powershell
@@ -220,6 +229,13 @@ npm run deploy:sepolia
 Supported deployment targets are `hardhat`, `localhost`, `sepolia`, and
 `base-sepolia`. The deployer pays testnet gas once; the resulting contracts remain
 available on that testnet without an ongoing hosting fee.
+
+The active Ethereum Sepolia test deployment and deprecated historical deployment are
+recorded in [docs/Deployments.md](docs/Deployments.md). The active deployment is wired
+to `MockMLDSAVerifier`; it is for testnet integration only and provides no real PQ
+verification. Its observed runtime is `20,508` bytes, while current public HEAD
+recompiles to `22,138` bytes; exact deployment reproducibility is pending public
+source/artifact alignment.
 
 ## How a withdrawal works (off-chain signing)
 
@@ -268,6 +284,18 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
 - **Tamper protection:** owner/recipient/amount/nonce/deadline/mode are all part of the
   EIP-712 message; changing any field invalidates the signature.
 - **Domain separation:** binds signatures to contract address, chainId, and name/version.
+- **Large-withdrawal timelock:** above-threshold withdrawals are authorized and reserved
+  at queue time, then finalized only after the configured delay. Parameter changes use
+  a separate two-day proposal/apply flow.
+- **Policy boundary:** an optional `IPolicyEngine` can reject withdrawals before state
+  changes. `CompositePolicyEngine` composes the daily spend, recipient allowlist, and
+  sanctions modules so all enabled checks must pass.
+- **Finalization policy check:** a queued withdrawal is checked against the current
+  policy engine again if the engine address changed after queueing. The unchanged
+  stateful engine is not called twice, avoiding double-counting daily spend.
+- **Treasury quorum:** vault owners can require guardian approvals before a queued large
+  withdrawal finalizes. Approvals are scoped to the queued operation and cleared on
+  cancellation, recovery, rotation, or guardian-set replacement.
 - **Trusted-attestation verifier:** binds the withdrawal digest, public-key hash, PQ
   signature hash, algorithm identifier, verifier, chain ID, and deadline to an
   authorized EIP-712 attestor signature. The CLI verifies ML-DSA-65 before signing, but
@@ -303,9 +331,11 @@ See `test/MLDSAConformance.test.ts` and `test/fixtures/mldsa/nist-cavp/README.md
 
 ## Post-quantum verifier roadmap
 
-The mock is **Path 0**. The implemented trusted-attestation verifier is **Path 1** and
-depends on correct off-chain ML-DSA verification by its authorized attestor. Future
-stronger paths may use ZK proof verification or native chain support. See
+The mock is **Path 0**. The implemented trusted-attestation verifier is the current
+non-mock prototype path (**Path 1**) and depends on correct off-chain ML-DSA verification
+by its authorized attestor. The SP1 path is an unaudited scaffold/roadmap path, not the
+active deployment path. Native Solidity ML-DSA remains impractical, and no chain-native
+PQ precompile is live or assumed. See
 [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
 
 ## Cryptography naming (NIST)

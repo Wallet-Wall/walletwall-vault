@@ -2,9 +2,10 @@
 
 ## ⚠️ Status: research prototype — NOT for real funds
 
-WalletWall Vault is a **Phase 1 research / hybrid-authorization prototype** exploring
-classical (ECDSA) + post-quantum (PQ) withdrawal authorization and a post-quantum
-migration path for smart-contract vaults.
+WalletWall Vault is a **research / hybrid-authorization prototype** exploring classical
+(ECDSA) + post-quantum (PQ) withdrawal authorization and a post-quantum migration path
+for smart-contract vaults. Phase 3 hardening is complete, but completion of that
+prototype phase is not a production-readiness or audit claim.
 
 It is **explicitly not**:
 
@@ -51,6 +52,11 @@ scope and must not be modified as part of work on this prototype.
 | Reentrancy protection                                           | Implemented (`ReentrancyGuard`, checks-effects-interactions)   |
 | Pause / admin controls                                          | Implemented (`Pausable`, `Ownable2Step`)                       |
 | Verifier update delay                                           | Implemented (two-step proposal + fixed two-day delay)          |
+| Large-withdrawal timelock                                       | Implemented (queue/finalize + delayed parameter governance)    |
+| Policy engine boundary                                          | Implemented (optional, delayed engine governance)              |
+| Composite policy enforcement                                    | Implemented (daily limit + allowlist + sanctions modules)      |
+| Finalization policy re-check                                    | Implemented when the active engine changed after queueing      |
+| Treasury guardian quorum                                        | Implemented for queued large withdrawals                       |
 | Trusted off-chain ML-DSA attestation                            | Implemented; relies on an authorized EVM attestor              |
 | On-chain ML-DSA verification                                    | Not implemented                                                |
 
@@ -58,6 +64,12 @@ With the mock verifier, the PQ layer provides no meaningful cryptographic author
 With `AttestationPQCVerifier`, the additional authorization is only as reliable as the
 attestor key, service, and off-chain ML-DSA verification. It is stronger than the mock
 only because an authorized attestor signature is enforced.
+
+The active Sepolia deployment documented in [docs/Deployments.md](docs/Deployments.md)
+uses the mock verifier. It is an active **testnet** integration target, not a production
+or mainnet deployment. Its observed `20,508`-byte runtime is not reproducible from
+current public HEAD, which recompiles to `22,138` bytes; provenance alignment remains
+an explicit follow-up.
 
 To prevent an unsafe configuration, **`PqOnly` mode is disabled at the contract level
 while the configured verifier is the mock** (`MockMLDSAVerifier`): `createVault` reverts

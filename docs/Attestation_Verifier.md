@@ -133,7 +133,7 @@ can rotate to a new attestor immediately in a single transaction. This means:
   next block onward.
 - Users and integrators relying on this verifier must monitor the `AttestorUpdated(address indexed oldAttestor, address indexed newAttestor)` event to detect unexpected rotations.
 
-This asymmetry is a deliberate design trade-off of the Phase 1 attestation path. It can
+This asymmetry is a deliberate design trade-off of the trusted-attestation path. It can
 only be eliminated by replacing the attestation path with a ZK or chain-native verifier
 that does not rely on a trusted off-chain authority. See
 [Verifier_Roadmap.md](Verifier_Roadmap.md).

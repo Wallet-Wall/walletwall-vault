@@ -11,7 +11,8 @@
 
 WalletWall Vault is a hybrid classical (ECDSA) + post-quantum (PQ) withdrawal-
 authorization prototype. Withdrawals are authorized with an **EIP-712** typed message and
-protected by **per-owner nonces** and a signed **deadline**.
+protected by **per-owner nonces** and a signed **deadline**. Phase 3 hardening is
+complete on `main`; see [Phase_3_Status.md](Phase_3_Status.md).
 
 ## Core components
 
@@ -21,7 +22,13 @@ protected by **per-owner nonces** and a signed **deadline**.
   and custom errors. Authorization policy is selected per vault via the `VaultMode` enum
   (`EcdsaOnly`, `PqOnly`, `Hybrid`); **Hybrid is the intended default** and requires both
   signatures. Includes timelocked PQ verifier governance (`proposePQVerifier` →
-  `applyPQVerifierUpdate` after a two-day delay, with `cancelPQVerifierUpdate`).
+  `applyPQVerifierUpdate` after a two-day delay, with `cancelPQVerifierUpdate`), delayed
+  large withdrawals, guardian recovery, optional treasury quorum, and timelocked policy
+  and large-transaction parameter updates.
+- `IPolicyEngine.sol` and `contracts/policies/` — optional withdrawal-policy boundary.
+  `CompositePolicyEngine` applies multiple modules together; the included modules
+  implement daily spend, recipient allowlist, and sanctions controls. Large withdrawals
+  are checked at queue time and re-checked at finalization if the engine changed.
 - `IPQCVerifier.sol` — the PQ verifier trust-boundary interface
   (`algorithmId()`, `verify(digest, publicKey, signature)`).
 - `MockMLDSAVerifier.sol` — **mock** ML-DSA-65 verifier for tests and local demos only.
@@ -67,5 +74,8 @@ an end-to-end local walkthrough.
 
 Real ML-DSA verification is impractical to run natively within current EVM gas limits.
 This prototype isolates PQ verification behind `IPQCVerifier` so a real verifier
-(trusted attestation, ZK proof, or a future chain-native precompile) can be swapped in
-without changing the vault. See [Verifier_Roadmap.md](Verifier_Roadmap.md).
+(trusted attestation, a reviewed ZK proof path, or a future chain-native precompile) can
+be swapped in without changing the vault. The current non-mock prototype path is trusted
+attestation; SP1 remains an unaudited scaffold, native Solidity ML-DSA is not a
+production path, and no live PQ precompile is assumed. See
+[Verifier_Roadmap.md](Verifier_Roadmap.md) and [Deployments.md](Deployments.md).

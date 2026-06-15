@@ -23,13 +23,15 @@ through a timelocked two-step flow (`proposePQVerifier` then
 Below are the candidate verification paths, from today's placeholder to a future
 chain-native solution.
 
-## Path 0 — Mock / local verifier (current)
+## Path 0 — Mock / local/testnet verifier
 
 - **Contract:** `MockMLDSAVerifier`
 - **Security:** none. Structural length/non-zero checks only.
 - **Use:** local + testnet demos, wiring up the trust boundary, exercising replay and
   hybrid-authorization flows.
 - **Status:** implemented.
+- **Deployment note:** the active Ethereum Sepolia test deployment uses this path. It
+  provides no real PQ verification. See [Deployments.md](Deployments.md).
 
 ## Path 1 — Trusted-attestation verifier (implemented)
 
@@ -64,7 +66,7 @@ chain-native solution.
 - **Ownership:** `AttestationPQCVerifier` uses `Ownable2Step` (consistent with
   `WalletWallVault`). Attestor rotation itself remains immediate.
 
-## Path 2 — ZK-proof verifier
+## Path 2 — ZK-proof verifier / SP1 scaffold
 
 - **Idea:** prove "this ML-DSA-65 signature verifies for this public key and digest"
   inside a zero-knowledge circuit (e.g. Groth16 / Halo2 / a STARK), and verify the
@@ -72,9 +74,13 @@ chain-native solution.
 - **Trust:** reduces dependence on an operational attestor but still depends on the
   proving system, circuit correctness, setup assumptions where applicable, and audits.
 - **Cost:** higher proving effort off-chain; modest on-chain verification cost.
-- **Status:** not implemented (preferred long-term software path). See
-  [ZK_Verifier_Feasibility.md](ZK_Verifier_Feasibility.md) for an evaluation of
-  candidate approaches (RISC Zero, SP1, Noir, Circom, native precompile).
+- **Current repository status:** an unaudited SP1 scaffold exists
+  (`ZKMLDSAVerifier`, guest/host code, proof encoder, deployment script, and mock-backed
+  Solidity tests). It does not include a production prover integration, and the default
+  tests do not establish real SP1 execution, gas, or NIST conformance.
+- **Deployment status:** not the active Sepolia verifier and not production-ready.
+- See [ZK_Verifier_Production.md](ZK_Verifier_Production.md) for scaffold limitations
+  and [ZK_Verifier_Feasibility.md](ZK_Verifier_Feasibility.md) for the broader roadmap.
 
 ZK verification or native chain support remains a stronger future direction because it
 can reduce dependence on the operational attestor. Those approaches still require
@@ -92,7 +98,8 @@ correct implementations, review, and deployment-specific security analysis.
 - **Idea:** the underlying L1/L2 exposes a precompile or native opcode for ML-DSA
   (or SLH-DSA) verification; the `IPQCVerifier` implementation simply forwards to it.
 - **Trust:** same as the host chain.
-- **Status:** depends on future protocol support; the interface is ready for it.
+- **Status:** future protocol dependency only. No supported deployment in this
+  repository assumes or uses a live chain-native PQ precompile.
 
 ## Algorithm notes (NIST)
 
