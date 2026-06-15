@@ -1,7 +1,7 @@
 # Experimental ZK Verifier Scaffold for ML-DSA-65
 
 ## Overview
-This code is an unaudited testnet scaffold for verifying ML-DSA-65 proofs with Succinct's SP1 zkVM. It is not production custody software and must not be used with real funds. It does not include a production SP1 prover integration.
+This code is an unaudited testnet scaffold for verifying ML-DSA-65 proofs with Succinct's SP1 zkVM. It is a roadmap/prototyping path, not the current operational verifier path. It is not production custody software and must not be used with real funds. It does not include a production SP1 prover integration.
 
 ## Components
 
@@ -31,3 +31,7 @@ Gas usage and end-to-end NIST conformance have not been established for this sca
 
 ## NIST ACVP Conformance
 The repository's current Solidity tests use `MockSP1Verifier` and therefore do not prove zkVM execution or NIST conformance. A production-readiness review requires tests that compile and execute the Rust guest and verify real SP1 proofs.
+
+The active Ethereum Sepolia deployment documented in
+[Deployments.md](Deployments.md) does not use `ZKMLDSAVerifier`; it uses
+`MockMLDSAVerifier`.
