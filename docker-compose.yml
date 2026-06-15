@@ -1,0 +1,18 @@
+services:
+  walletwall-vault:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/artifacts
+      - /app/cache
+      - /app/typechain-types
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
+      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL}
+    ports:
+      - "8545:8545"
+    # Keep container alive by running a no-op tail command if started with 'up'
+    # This allows 'docker compose exec' to work consistently.
+    command: tail -f /dev/null

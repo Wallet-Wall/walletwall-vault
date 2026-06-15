@@ -112,6 +112,48 @@ Runs a full deposit → EIP-712 sign → hybrid withdrawal flow against a mock P
 npm run demo
 ```
 
+### Docker Support
+
+You can build, test, and run the development environment using Docker.
+
+#### Prerequisites
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+
+#### Build the environment
+```bash
+docker compose build
+```
+
+#### Run tests in Docker
+```bash
+docker compose up -d
+docker compose exec walletwall-vault npm test
+```
+
+#### Start a local node and run demo in Docker
+```bash
+# Start the container in the background
+docker compose up -d
+
+# Run the demo script inside the running container
+docker compose exec walletwall-vault npm run demo
+```
+
+#### Deployment in Docker
+```bash
+docker compose run -e DEPLOYER_PRIVATE_KEY=0x... -e SEPOLIA_RPC_URL=... walletwall-vault npm run deploy:sepolia
+```
+
+#### Stop the environment
+```bash
+docker compose down
+```
+
+#### Troubleshooting
+- **Permission denied**: Ensure your user has permissions to run Docker or use `sudo`.
+- **Port 8545 already in use**: If you have a local Hardhat node running, stop it or change the port mapping in `docker-compose.yml`.
+
 ### Verify ML-DSA and build an attestation
 
 Demo mode verifies deterministic library-generated ML-DSA-65 material before signing,
