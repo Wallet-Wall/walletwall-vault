@@ -131,6 +131,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         uint256 queuedAt;
         uint256 readyAt;
         bytes32 operationId;
+        /// @dev Policy engine address active when the withdrawal was queued.
+        ///      Finalization re-checks policy only if the engine has since changed,
+        ///      preventing stale-policy bypasses without double-counting stateful
+        ///      policies (e.g. daily spend limit) that already recorded spend at queue time.
+        address policyEngineAtQueue;
         bool exists;
     }
 
@@ -176,6 +181,24 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     address public pendingPolicyEngine;
     uint256 public pendingPolicyEngineValidAfter;
 
+    // -------------------------------------------------------------------------
+    // Treasury withdrawal quorum
+    // -------------------------------------------------------------------------
+    // Distinct from the credential-recovery guardian quorum: uses the same guardian
+    // set but with a vault-owner-configurable threshold applied at large-withdrawal
+    // finalization rather than at credential recovery execution.
+
+    /// @notice Required guardian approvals before a large withdrawal can finalize.
+    ///         Per vault. 0 = treasury quorum disabled for this vault.
+    mapping(address => uint256) public treasuryQuorumThreshold;
+
+    /// @notice Guardian approval counts per queued-withdrawal operationId.
+    mapping(bytes32 => uint256) public treasuryApprovalCount;
+
+    /// @notice Whether a specific guardian has approved a specific operationId.
+    /// @dev operationId => guardian => approved
+    mapping(bytes32 => mapping(address => bool)) public treasuryApprovals;
+
     // ---------------------------------------------------------------------
     // Events
     // ---------------------------------------------------------------------
@@ -219,6 +242,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     event PolicyEngineUpdateProposed(address indexed proposed, uint256 validAfter);
     event PolicyEngineUpdateCancelled(address indexed cancelled);
     event PolicyEngineUpdated(address indexed oldEngine, address indexed newEngine);
+    event TreasuryQuorumThresholdSet(address indexed vaultOwner, uint256 threshold);
+    event TreasuryWithdrawalApproved(bytes32 indexed operationId, address indexed guardian, uint256 approvalCount);
 
     // ---------------------------------------------------------------------
     // Custom errors
@@ -268,6 +293,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error PolicyViolation(string reason);
     error NoPendingPolicyEngine();
     error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
+    error TreasuryQuorumNotMet(uint256 required, uint256 current);
+    error TreasuryAlreadyApproved();
 
     /**
      * @param _pqVerifier Address of the {IPQCVerifier} implementation. On a
@@ -315,6 +342,13 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         address[] storage existing = vaultGuardians[msg.sender];
         for (uint256 i = 0; i < existing.length; i++) {
             recoverySupports[msg.sender][existing[i]] = false;
+        }
+
+        // Treasury approvals are keyed by operationId and guardian address. Clear them
+        // using the OLD guardian set before it is replaced so no stale approvals persist.
+        PendingWithdrawal storage pendingForGuardianChange = pendingWithdrawals[msg.sender];
+        if (pendingForGuardianChange.exists) {
+            _clearTreasuryApprovalsForOp(msg.sender, pendingForGuardianChange.operationId);
         }
 
         vaultGuardians[msg.sender] = guardians;
@@ -426,6 +460,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (pending.exists) {
             bytes32 operationId = pending.operationId;
             uint256 refund = pending.amount;
+            _clearTreasuryApprovalsForOp(vaultOwner, operationId);
             delete pendingWithdrawals[vaultOwner];
             vault.balance += refund;
             emit WithdrawalCancelled(operationId, vaultOwner, refund);
@@ -558,6 +593,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (pending.exists) {
             bytes32 operationId = pending.operationId;
             uint256 refund = pending.amount;
+            _clearTreasuryApprovalsForOp(vaultOwner, operationId);
             delete pendingWithdrawals[vaultOwner];
             vault.balance += refund;
             emit WithdrawalCancelled(operationId, vaultOwner, refund);
@@ -720,6 +756,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             queuedAt: queuedAt,
             readyAt: readyAt,
             operationId: operationId,
+            policyEngineAtQueue: address(policyEngine),
             exists: true
         });
 
@@ -736,6 +773,17 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
     /**
      * @notice Finalizes the caller's queued withdrawal after its delay.
+     * @dev In addition to the timelock, two optional gates may block finalization:
+     *
+     *      1. Treasury quorum — if the vault owner has configured a non-zero
+     *         `treasuryQuorumThreshold`, the required number of guardian approvals
+     *         (via {approveTreasuryWithdrawal}) must be recorded before this call.
+     *
+     *      2. Policy re-check — if the active policy engine has changed since the
+     *         withdrawal was queued (e.g. admin updated the engine and the new engine
+     *         sanctions the recipient), the current engine is consulted again. This
+     *         does NOT re-invoke the engine that ran at queue time, avoiding
+     *         double-counting in stateful policies such as DailySpendLimitPolicy.
      */
     function finalizeWithdrawal(address vaultOwner, bytes32 operationId) external nonReentrant whenNotPaused {
         PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
@@ -748,8 +796,28 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             revert WithdrawalNotReady(pending.readyAt, block.timestamp);
         }
 
+        // Gate 1: treasury quorum
+        uint256 quorumRequired = treasuryQuorumThreshold[vaultOwner];
+        if (quorumRequired > 0) {
+            uint256 current = treasuryApprovalCount[operationId];
+            if (current < quorumRequired) revert TreasuryQuorumNotMet(quorumRequired, current);
+        }
+
+        // Gate 2: policy re-check when engine has changed since queuing
+        address currentEngine = address(policyEngine);
+        if (currentEngine != address(0) && currentEngine != pending.policyEngineAtQueue) {
+            (bool ok, string memory why) = policyEngine.check(
+                vaultOwner,
+                pending.recipient,
+                pending.amount,
+                vaults[vaultOwner].balance
+            );
+            if (!ok) revert PolicyViolation(why);
+        }
+
         address recipient = pending.recipient;
         uint256 amount = pending.amount;
+        _clearTreasuryApprovalsForOp(vaultOwner, operationId);
         delete pendingWithdrawals[vaultOwner];
 
         (bool success, ) = recipient.call{value: amount}("");
@@ -761,6 +829,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /**
      * @notice Cancels the caller's queued withdrawal and releases its reservation.
      * @dev Cancellation remains available while paused so reserved funds are not trapped.
+     *      Any treasury guardian approvals accumulated for this operationId are cleared
+     *      so they cannot be observed or reused elsewhere.
      */
     function cancelPendingWithdrawal(bytes32 operationId) external nonReentrant {
         PendingWithdrawal storage pending = pendingWithdrawals[msg.sender];
@@ -771,6 +841,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         }
 
         uint256 refund = pending.amount;
+        _clearTreasuryApprovalsForOp(msg.sender, operationId);
         delete pendingWithdrawals[msg.sender];
         vaults[msg.sender].balance += refund;
 
@@ -995,6 +1066,81 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         pendingPolicyEngine = address(0);
         pendingPolicyEngineValidAfter = 0;
         emit PolicyEngineUpdateCancelled(cancelled);
+    }
+
+    // ---------------------------------------------------------------------
+    // Treasury withdrawal quorum
+    // ---------------------------------------------------------------------
+
+    /**
+     * @notice Sets the required guardian-approval count before a large withdrawal
+     *         queued by this vault can be finalized.
+     * @dev A threshold of 0 disables treasury quorum for this vault (default).
+     *      The threshold must not exceed the current guardian count so that quorum
+     *      is always achievable with the existing guardian set.
+     *      Vault-owner-controlled: each vault owner manages their own treasury security.
+     */
+    function setTreasuryQuorumThreshold(uint256 threshold) external {
+        if (!vaults[msg.sender].exists) revert VaultDoesNotExist();
+        if (threshold > 0) {
+            uint256 guardianCount = vaultGuardians[msg.sender].length;
+            if (guardianCount == 0) revert InvalidGuardianSet();
+            if (threshold > guardianCount) {
+                revert TooManyGuardians(threshold, guardianCount);
+            }
+        }
+        treasuryQuorumThreshold[msg.sender] = threshold;
+        emit TreasuryQuorumThresholdSet(msg.sender, threshold);
+    }
+
+    /**
+     * @notice Records a guardian's approval for a queued large withdrawal.
+     * @dev The caller must be a current guardian of `vaultOwner`'s vault.
+     *      Duplicate approvals are rejected. Approvals are scoped to `operationId`
+     *      so they cannot carry over to a different queued withdrawal.
+     *      If the guardian set changes (via {setGuardians}), all existing approvals
+     *      for any pending withdrawal are cleared, and removed guardians lose their
+     *      previously-recorded approvals.
+     */
+    function approveTreasuryWithdrawal(address vaultOwner, bytes32 operationId) external {
+        PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
+        if (!pending.exists) revert NoPendingWithdrawal();
+        if (pending.operationId != operationId) {
+            revert PendingWithdrawalMismatch(pending.operationId, operationId);
+        }
+
+        // Caller must be a current guardian of vaultOwner.
+        bool isGuardian = false;
+        address[] storage guardians = vaultGuardians[vaultOwner];
+        for (uint256 i = 0; i < guardians.length; i++) {
+            if (guardians[i] == msg.sender) {
+                isGuardian = true;
+                break;
+            }
+        }
+        if (!isGuardian) revert NotAGuardian();
+        if (treasuryApprovals[operationId][msg.sender]) revert TreasuryAlreadyApproved();
+
+        treasuryApprovals[operationId][msg.sender] = true;
+        uint256 newCount = treasuryApprovalCount[operationId] + 1;
+        treasuryApprovalCount[operationId] = newCount;
+
+        emit TreasuryWithdrawalApproved(operationId, msg.sender, newCount);
+    }
+
+    /**
+     * @dev Clears treasury approval state for a specific operationId, iterating
+     *      the current guardian set of `vaultOwner`. Must be called while the
+     *      guardian set still reflects the approvers (i.e. before {setGuardians}
+     *      replaces it).
+     */
+    function _clearTreasuryApprovalsForOp(address vaultOwner, bytes32 operationId) internal {
+        if (treasuryApprovalCount[operationId] == 0) return;
+        treasuryApprovalCount[operationId] = 0;
+        address[] storage guardians = vaultGuardians[vaultOwner];
+        for (uint256 i = 0; i < guardians.length; i++) {
+            delete treasuryApprovals[operationId][guardians[i]];
+        }
     }
 
     /// @notice Pauses vault creation, immediate/queued withdrawal, finalization, and recovery execution. Admin-only.
