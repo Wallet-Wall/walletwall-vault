@@ -1,95 +1,158 @@
-# Roadmap
+# WalletWall Vault Roadmap
 
-> Research roadmap, not a production commitment. Dates and exact quantum-risk timelines
-> are intentionally not claimed here.
+WalletWall Vault is a public research/prototype repository. It explores migration-path
+concepts for quantum-aware wallet readiness while staying honest about the current
+boundary: local/testnet-oriented, not production custody, not audited, and not safe for
+real funds.
 
-WalletWall Vault is a staged research prototype for evaluating a migration path from
-classical Ethereum authorization toward stronger post-quantum verifier options. Each
-stage must preserve the repository's current boundary: no production-readiness claims,
-no real-fund custody claims, and no exact "Q-day" claims.
+The project does not claim exact Q-day timing, production quantum protection, audited
+status, or mainnet readiness.
 
-## Current Stage: Prototype Boundary
+## Current status
 
-Implemented:
+WalletWall Vault demonstrates a research path for combining classical Ethereum
+authorization with post-quantum verifier interfaces. The prototype includes completed
+baseline architecture, security hardening, verifier-governance work, trusted
+attestation research, conformance fixtures, and documentation that can be reviewed by
+users, investors, design partners, and security reviewers.
 
-- EIP-712 withdrawal authorization.
-- Per-owner nonces and deadlines for replay protection.
-- `EcdsaOnly`, `PqOnly`, and `Hybrid` vault modes.
-- `PqOnly` blocked while the mock verifier is active.
-- `IPQCVerifier` trust-boundary interface.
-- Mock ML-DSA-shaped verifier for local/testnet demos.
-- Trusted-attestation verifier that enforces an authorized EVM attestor signature.
-- Off-chain attestor CLI that verifies ML-DSA-65 with `@noble/post-quantum` before
-  signing in real verify mode.
-- Timelocked owner-controlled PQ verifier updates.
-- Prototype docs and tests.
+Today, the repository should be treated as a local/testnet prototype only. It is useful
+for evaluating ideas and implementation tradeoffs, not for custodying real assets or
+making production protection claims.
 
-Not implemented:
+See the [threat model](THREAT_MODEL.md), [WalletWall app boundary](WALLETWALL_APP_BOUNDARY.md),
+and [testing guide](TESTING.md) for the current trust assumptions and validation scope.
 
-- On-chain ML-DSA verification.
-- ZK proof verification of ML-DSA.
-- Threshold attestor committee.
-- Hardened attestor service operations.
-- Production deployment process.
-- Third-party audit.
-- Production custody controls.
+## Roadmap diagram
 
-## Near-Term Work
+```mermaid
+flowchart LR
+  P1["Phase 1<br/>Research Prototype<br/>Completed baseline"]
+  P2["Phase 2<br/>Security Hardening<br/>In progress"]
+  P3["Phase 3<br/>Verifier & Attestation<br/>In progress / expanding"]
+  P4["Phase 4<br/>Audit Preparation<br/>Partially complete"]
+  P5["Phase 5<br/>Production Evaluation<br/>Future / conditional"]
 
-- Keep security assumptions and app-boundary docs current with contract behavior.
-- Expand negative tests for verifier payload binding, replay edges, and governance
-  transitions as the prototype changes.
-- Add known-answer vectors where practical and distinguish official vectors from
-  library-generated fixtures.
-- Improve attestor tooling ergonomics without weakening fail-closed behavior.
-- Document deployment observations for local/testnet networks only.
+  P1 --> P2 --> P3 --> P4 --> P5
 
-## Verifier Research Path
+  B["Boundary<br/>Research prototype today<br/>No production custody - No audited/mainnet-ready claim"]
+  B -. applies .- P1
+  B -. applies .- P5
 
-The verifier path should progress only when each step is implemented and reviewed:
+  classDef complete fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef progress fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef partial fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef future fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+  classDef boundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
 
-1. Mock verifier for local/testnet wiring.
-2. Trusted-attestation verifier for evaluating off-chain ML-DSA verification plus
-   on-chain attestor enforcement.
-3. Threshold or committee-based attestation research, if operationally justified.
-4. ZK proof verifier research for proving ML-DSA verification off-chain and checking a
-   succinct proof on-chain.
-5. Chain-native verifier or precompile integration if an L1/L2 provides reviewed
-   support.
+  class P1 complete;
+  class P2,P3 progress;
+  class P4 partial;
+  class P5 future;
+  class B boundary;
+```
 
-The current repository is at steps 1 and 2. Later steps remain research directions, not
-completed security properties.
+## Phase 1 - Research Prototype
 
-## Governance Work
+Status: completed baseline.
 
-Before any non-local deployment could be considered, the governance model would need:
+- Hybrid ECDSA + PQ verifier-interface experiment.
+- Replay-protected EIP-712 withdrawal prototype.
+- Trusted attestation path for off-chain ML-DSA verification assumptions.
+- Local/testnet validation.
+- Initial vault architecture and README.
 
-- Reviewed owner multisig or timelock-controller setup.
-- Monitoring for verifier proposal, cancellation, and application events.
-- Clear runbooks for canceling bad verifier proposals.
-- Key-management controls for owner and attestor keys.
-- Independent review of the configured verifier bytecode and deployment process.
+## Phase 2 - Security Hardening & Review Readiness
 
-These items are not complete in this repository.
+Status: in progress / continuing.
 
-## App Integration Work
+Completed or current work:
 
-The private WalletWall app may use this repository as a research/prototype reference,
-but app-facing copy should stay within the boundaries in
-[`WALLETWALL_APP_BOUNDARY.md`](WALLETWALL_APP_BOUNDARY.md).
+- EIP-712 replay protection.
+- Timelocked verifier governance.
+- Verifier cancellation and pending-state improvements.
+- Ownership hardening.
+- Core test coverage expansion.
+- Threat model and testing docs.
 
-Any future product integration would need a separate product threat model, deployment
-plan, user warnings, support model, and legal/compliance review. This repository does
-not provide those artifacts.
+Remaining work:
 
-## Criteria Before Stronger Claims
+- Expand edge-case and malformed-input tests.
+- Improve deployment and runbook documentation.
+- Define an explicit audit-readiness checklist.
+- Continue reducing governance trust where practical.
+- Keep WalletWall app integration read-only and claim-safe.
 
-Do not make stronger claims until all relevant criteria are met:
+## Phase 3 - Verifier & Attestation Hardening
 
-- The claimed verifier path is implemented.
-- The implementation has tests for success and fail-closed behavior.
-- Independent review or audit has been completed.
-- Deployment governance and monitoring are defined and tested.
-- App-facing documentation matches the actual deployed verifier and governance.
-- The wording avoids real-fund, production-readiness, quantum-proof, and exact-timeline
-  claims unless those claims have separate evidence.
+Status: in progress / expanding.
+
+Completed or current work:
+
+- Trusted attestation verifier path.
+- Off-chain ML-DSA verification assumptions documented.
+- Deterministic attestation fixtures.
+- ACVP/conformance vector subset.
+- ZK/SP1 feasibility documentation.
+
+Remaining work:
+
+- Explore threshold attestor designs.
+- Design hardened attestor-service operations.
+- Evaluate an SP1/zkVM verification path beyond feasibility documentation.
+- Broaden conformance coverage.
+- Document verifier tradeoffs.
+- Continue avoiding production claims until verifier assumptions and operations are
+  resolved.
+
+## Phase 4 - Audit Preparation
+
+Status: partially complete / expanding.
+
+Completed or current work:
+
+- Threat model.
+- WalletWall app boundary doc.
+- Testing doc.
+- Roadmap docs.
+- README links.
+- CI/test validation.
+- Explicit safe/unsafe claims.
+
+Remaining work:
+
+- Prepare for external security review.
+- Document deployment procedures.
+- Define operational monitoring assumptions.
+- Plan incident response.
+- Document key-management assumptions.
+- Track production blockers explicitly.
+
+## Phase 5 - Production Evaluation
+
+Status: future / conditional.
+
+This phase is conditional. It should be evaluated only after audit, governance
+hardening, deployment controls, verifier assumptions, and operational controls are
+resolved.
+
+There is no current production custody claim and no current mainnet-ready claim.
+
+## How this relates to the WalletWall app
+
+The private WalletWall app may reference WalletWall Vault as a migration-readiness
+research path. The app should treat the vault as a research signal, not a live custody
+feature.
+
+The app should remain read-only unless explicitly changed in a future reviewed
+integration.
+
+## What is not promised yet
+
+- Production custody.
+- Audited status.
+- Safe use with real funds.
+- On-chain ML-DSA verification today.
+- Exact quantum-risk timeline.
+- Quantum-proof protection.
+- Mainnet deployment.
