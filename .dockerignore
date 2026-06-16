@@ -1,0 +1,15 @@
+node_modules
+artifacts
+cache
+coverage
+coverage.json
+.env
+typechain-types
+dist
+zkvm/guest/target/
+zkvm/host/target/
+.git
+.github
+.idea
+.vscode
+*.log
