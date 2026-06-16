@@ -5,7 +5,7 @@
 > verify ML-DSA on-chain.**
 > Local / testnet demo only. See [SECURITY.md](SECURITY.md),
 > [docs/Security_Assumptions.md](docs/Security_Assumptions.md), and
-> [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
+> [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
 WalletWall Vault is a **research / hybrid-authorization prototype** that explores
 combining a classical Ethereum **ECDSA** signature with a **post-quantum (PQ)** signature
@@ -317,6 +317,18 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
   withdrawn; internal per-vault balances are unaffected.
 
 Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
+
+## Documentation map
+
+- [Threat model](docs/THREAT_MODEL.md) - trust assumptions, verifier assumptions,
+  replay protection, governance assumptions, and known gaps.
+- [WalletWall app boundary](docs/WALLETWALL_APP_BOUNDARY.md) - safe ways for the
+  private WalletWall app to reference this public research prototype.
+- [Testing](docs/TESTING.md) - validation commands and what the tests do and do not
+  prove.
+- [Roadmap](docs/ROADMAP.md) - research directions without production-readiness or
+  exact Q-day claims.
+- [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
 
 ## ML-DSA test vectors
 
