@@ -32,9 +32,19 @@ struct GuestInputs {
     pub signature: Vec<u8>,
     pub chain_id: u64,
     pub verifier_address: [u8; 20],
+    /// Raw signed message for FIPS 204 external/pure verification. Empty on the
+    /// withdrawal path (the digest is the message); set only for ACVP conformance.
+    pub message: Vec<u8>,
+    /// FIPS 204 context string. Empty on the withdrawal path; ACVP vectors carry one.
+    pub context: Vec<u8>,
 }
 
 /// JSON shape accepted on disk for `execute` / `prove`.
+///
+/// `message` and `context` are optional and default to empty: a withdrawal
+/// `inputs.json` omits them and the guest verifies the 32-byte `withdrawalDigest`
+/// under the empty context. NIST ACVP conformance inputs set both to route the
+/// vector's arbitrary-length message and domain-separation context through the guest.
 #[derive(Deserialize)]
 struct InputsFile {
     #[serde(rename = "withdrawalDigest")]
@@ -46,6 +56,10 @@ struct InputsFile {
     chain_id: u64,
     #[serde(rename = "verifierAddress")]
     verifier_address: String,
+    #[serde(default)]
+    message: String,
+    #[serde(default)]
+    context: String,
 }
 
 fn strip0x(s: &str) -> &str {
@@ -60,6 +74,10 @@ fn load_inputs(path: &str) -> Result<GuestInputs> {
     let verifier = hex::decode(strip0x(&file.verifier_address)).context("decoding verifierAddress")?;
     let public_key = hex::decode(strip0x(&file.public_key)).context("decoding publicKey")?;
     let signature = hex::decode(strip0x(&file.signature)).context("decoding signature")?;
+    // Empty strings decode to empty vectors -> the withdrawal path. ACVP inputs
+    // supply hex-encoded message/context that the guest verifies via verify_with_context.
+    let message = hex::decode(strip0x(&file.message)).context("decoding message")?;
+    let context = hex::decode(strip0x(&file.context)).context("decoding context")?;
 
     if digest.len() != 32 {
         return Err(anyhow!("withdrawalDigest must be 32 bytes, got {}", digest.len()));
@@ -79,6 +97,8 @@ fn load_inputs(path: &str) -> Result<GuestInputs> {
         signature,
         chain_id: file.chain_id,
         verifier_address,
+        message,
+        context,
     })
 }
 
