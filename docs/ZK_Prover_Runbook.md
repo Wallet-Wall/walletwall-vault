@@ -18,8 +18,11 @@ still uses `MockSP1Verifier` and a mock vKey — none of this runs in CI.
   `prove` subcommands. **Not** part of CI; depends on the SP1 toolchain.
 - `scripts/prover-client.ts` — `ProverClient.generateProof()` shells out to the host
   and reuses `encodeProof()`; `encodeProof()` remains the mock/encode-only path.
-- `test/ZKRealProof.e2e.test.ts` — gated end-to-end / differential test
+- `test/ZKRealProof.e2e.test.ts` — gated end-to-end TS↔Rust differential test
   (`RUN_SP1_E2E=1`).
+- `test/ZKAcvpGuest.e2e.test.ts` — gated NIST ACVP differential-conformance test
+  that routes the official sigVer vectors through the guest (`RUN_SP1_E2E=1`). See
+  [ACVP_Guest_Results.md](ACVP_Guest_Results.md).
 
 ## Prerequisites
 
@@ -63,6 +66,10 @@ for ML-DSA-65 here.
 ```bash
 # inputs.json: { withdrawalDigest, publicKey, signature, chainId, verifierAddress }
 # (hex strings; digest 32 bytes, verifierAddress 20 bytes)
+# Optional: message, context (hex). Omitted/empty => verify the 32-byte
+# withdrawalDigest under the empty FIPS 204 context (the withdrawal path). Set both
+# to verify an arbitrary-length message under a domain-separation context, as the
+# NIST ACVP external/pure vectors require (see ACVP_Guest_Results.md).
 cargo run --release --manifest-path zkvm/host/Cargo.toml -- execute inputs.json
 # -> {"cycles": <N>, "publicValues": "0x..."}
 ```
@@ -128,9 +135,23 @@ The positive case proves the TS (`@noble/post-quantum`) and Rust (`ml-dsa`)
 implementations interoperate: a TS-produced signature must verify inside the guest.
 The negative case asserts a tampered signature makes the guest revert.
 
+### ACVP differential conformance (issue #29)
+
+The official NIST ACVP sigVer vectors are routed through the guest by
+`test/ZKAcvpGuest.e2e.test.ts`:
+
+```bash
+cargo build --release --manifest-path zkvm/host/Cargo.toml
+RUN_SP1_E2E=1 npx hardhat test test/ZKAcvpGuest.e2e.test.ts
+```
+
+Valid vectors must be accepted by the guest; invalid vectors and a tampered
+signature must make it revert. This checks the guest against FIPS 204 itself, not
+only against the TS implementation. Scope and limits: [ACVP_Guest_Results.md](ACVP_Guest_Results.md).
+
 ## What this still does not establish
 
 - No audit of the guest, the host, or the SP1 verifier contract.
-- A single positive vector is not full NIST ACVP conformance; run the official
-  sigVer vectors through the guest before making any conformance claim.
+- The committed ACVP set is a 6-vector subset, not the complete NIST ACVP vector
+  set; passing it is conformance evidence, not full FIPS 204 conformance.
 - Gas and proving-time figures must be measured, not assumed, before publishing.
