@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.4.23",
+  "version": "0.4.24",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -13,6 +13,8 @@
     "deploy:base-sepolia": "hardhat run scripts/deploy.ts --network base-sepolia",
     "demo": "hardhat run scripts/demo-local.ts",
     "demo:simulator": "hardhat run scripts/demo-simulator.ts",
+    "deploy:simulator": "hardhat run scripts/deploy-simulator.ts",
+    "deploy:simulator:sepolia": "hardhat run scripts/deploy-simulator.ts --network sepolia",
     "attestor:demo": "ts-node --esm scripts/attestor-cli.ts demo",
     "attestor:verify": "ts-node --esm scripts/attestor-cli.ts verify",
     "attestor:fixtures": "ts-node --esm scripts/generate-attestor-fixture.ts",
