@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/deployments/schema/simulator-deployment.schema.json",
+  "title": "StablecoinVaultSimulator Deployment Metadata v1",
+  "description": "Versioned static metadata for a StablecoinVaultSimulator deployment. All contract address fields MUST be null/omitted until an actual deployment has been performed and the transaction confirmed on-chain. The WalletWall app may consume this file read-only; it MUST NOT infer transaction readiness, vault availability, or custody from the presence or absence of this file.",
+  "type": "object",
+  "required": [
+    "version",
+    "environment",
+    "chainId",
+    "networkName",
+    "tokenMode",
+    "packageVersion",
+    "warnings"
+  ],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Schema version for this metadata file. Currently '1'.",
+      "enum": ["1"]
+    },
+    "environment": {
+      "type": "string",
+      "description": "Deployment environment. 'local' means an in-memory Hardhat or Anvil node (no persistent deployment record needed). 'sepolia' and 'base-sepolia' are public testnets only.",
+      "enum": ["local", "sepolia", "base-sepolia"]
+    },
+    "chainId": {
+      "type": "integer",
+      "description": "EVM chain ID. 31337 = Hardhat/Anvil local; 11155111 = Ethereum Sepolia; 84532 = Base Sepolia.",
+      "examples": [31337, 11155111, 84532]
+    },
+    "networkName": {
+      "type": "string",
+      "description": "Human-readable network name matching the Hardhat network key (e.g. 'hardhat', 'localhost', 'sepolia', 'base-sepolia').",
+      "examples": ["hardhat", "localhost", "sepolia", "base-sepolia"]
+    },
+    "tokenMode": {
+      "type": "string",
+      "description": "'mock' = MockUSDC (freely mintable, no monetary value, deployed alongside the simulator). 'external-test-token' = a pre-existing testnet ERC-20 not deployed by this repo's scripts.",
+      "enum": ["mock", "external-test-token"]
+    },
+    "tokenAddress": {
+      "description": "Address of the ERC-20 token contract used by this simulator deployment. MUST be null until deployed and the transaction confirmed on-chain. Never a real-value token address.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "tokenSymbol": {
+      "description": "Symbol of the deployed token (e.g. 'mUSDC'). May be populated before deployment as documentation; must match the deployed token when an address is present.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "minLength": 1, "maxLength": 20 }
+      ]
+    },
+    "tokenDecimals": {
+      "description": "Decimal precision of the token. MockUSDC uses 6 to mirror real USDC.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "integer", "minimum": 0, "maximum": 18 }
+      ]
+    },
+    "stablecoinVaultSimulatorAddress": {
+      "description": "Address of the deployed StablecoinVaultSimulator contract. MUST be null until deployed and confirmed on-chain.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "verifierAddress": {
+      "description": "Address of the deployed IPQCVerifier contract (MockMLDSAVerifier locally, AttestationPQCVerifier on testnets). MUST be null until deployed.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "policyEngineAddress": {
+      "description": "Address of the deployed IPolicyEngine contract, if one was wired at construction. Null if the simulator was deployed without a policy engine.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "timelockAddress": {
+      "description": "Timelock admin address used for large-tx and governance delays. Null until deployed or if the deployer address acts as admin.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "recoveryAddress": {
+      "description": "Guardian recovery address. Null until deployed or if recovery was not configured.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+      ]
+    },
+    "deploymentCommit": {
+      "description": "Full 40-character git commit SHA of the source tree from which this deployment was compiled. MUST be null until deployed. Must match a commit present in the public repository.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      ]
+    },
+    "packageVersion": {
+      "type": "string",
+      "description": "package.json version of this repository at deployment time (semver). Documents which release built the deployed bytecode.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+.*$"
+    },
+    "deployedAt": {
+      "description": "ISO 8601 UTC timestamp when the deployment transaction was confirmed. MUST be null until deployed.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "date-time" }
+      ]
+    },
+    "docsUrl": {
+      "description": "URL to the primary documentation for this deployment (e.g. docs/specs/testnet-stablecoin-vault-simulator.md on GitHub). Read-only reference for the app.",
+      "oneOf": [
+        { "type": "null" },
+        { "type": "string", "format": "uri" }
+      ]
+    },
+    "warnings": {
+      "type": "array",
+      "description": "Required disclosure strings. Must contain at least one entry stating that this is a testnet-only research prototype with no monetary value. The app must surface at least one of these to the user before any write interaction.",
+      "items": { "type": "string", "minLength": 10 },
+      "minItems": 1
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "../schema/simulator-deployment.schema.json",
+  "_note": "EXAMPLE ONLY — NOT A DEPLOYMENT RECORD. This file documents what a local Hardhat deployment record would look like. All contract addresses are null because no deployment has been performed. Copy this file to deployments/simulator.<network>.json and fill in addresses only after a real deployment is confirmed on-chain.",
+  "version": "1",
+  "environment": "local",
+  "chainId": 31337,
+  "networkName": "hardhat",
+  "tokenMode": "mock",
+  "tokenAddress": null,
+  "tokenSymbol": "mUSDC",
+  "tokenDecimals": 6,
+  "stablecoinVaultSimulatorAddress": null,
+  "verifierAddress": null,
+  "policyEngineAddress": null,
+  "timelockAddress": null,
+  "recoveryAddress": null,
+  "deploymentCommit": null,
+  "packageVersion": "0.4.23",
+  "deployedAt": null,
+  "docsUrl": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/docs/specs/testnet-stablecoin-vault-simulator.md",
+  "warnings": [
+    "NOT DEPLOYED — all contract addresses are null. Populate only after a deployment transaction is confirmed on-chain.",
+    "RESEARCH PROTOTYPE. Not audited. Testnet / local only.",
+    "MockUSDC (mUSDC) has no monetary value. There is no purchase path, no custody, and no yield.",
+    "PQ gate on local/Hardhat uses MockMLDSAVerifier — no real on-chain ML-DSA cryptographic verification.",
+    "No yield, interest, APY, APR, returns, or payout of any kind.",
+    "The WalletWall app may read this metadata. Metadata presence does not indicate that the simulator is deployed, reachable, or ready for transactions."
+  ]
+}
