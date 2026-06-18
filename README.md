@@ -329,6 +329,9 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 - [Roadmap](docs/ROADMAP.md) - research directions without production-readiness or
   exact Q-day claims.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
+- [Testnet stablecoin vault simulator spec](docs/specs/testnet-stablecoin-vault-simulator.md) -
+  proposed mock USDC-style ERC-20 deposit/withdraw rehearsal over the existing
+  authorization model (docs/spec only; testnet, no real value).
 
 ## ML-DSA test vectors
 
