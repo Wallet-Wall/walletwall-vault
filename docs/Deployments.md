@@ -48,13 +48,37 @@ public source tag and artifact manifest.
 or redeploy from public HEAD and update this deployment record with the replacement
 address, transaction, source tag, and runtime.
 
-## StablecoinVaultSimulator — not yet deployed to testnet
+## StablecoinVaultSimulator — Sepolia deployed
 
-The `StablecoinVaultSimulator` and `MockUSDC` contracts introduced in v0.4.22 have
-**not yet been deployed** to Sepolia or Base Sepolia. No deployment was performed in the
-change that added the deploy-only tooling below — there are no Sepolia addresses to record
-yet. This section, and a metadata record under `deployments/`, will be filled in **only
-after** an operator runs the deploy locally and verifies the output (see below).
+The `StablecoinVaultSimulator`, `MockUSDC`, and `MockMLDSAVerifier` contracts were
+deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
+`deployments/sepolia/stablecoin-vault-simulator.json`.
+
+| Field | Value |
+| --- | --- |
+| Network | Ethereum Sepolia |
+| Chain ID | `11155111` |
+| `MockUSDC` | [`0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15`](https://sepolia.etherscan.io/address/0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15) |
+| `MockMLDSAVerifier` | [`0x4736138c99e0619D06663D971C8cD347de186F6d`](https://sepolia.etherscan.io/address/0x4736138c99e0619D06663D971C8cD347de186F6d) |
+| `StablecoinVaultSimulator` | [`0x32f489842DD515Fa4b4b258714F0067B8B8133ae`](https://sepolia.etherscan.io/address/0x32f489842DD515Fa4b4b258714F0067B8B8133ae) |
+| Metadata file | `deployments/sepolia/stablecoin-vault-simulator.json` |
+| Deployment commit | `35c25fa294bebea44b3089aa2435a190a5adf3fb` |
+| Deployed package version | `0.4.24` |
+| Repo package version (this PR) | `0.4.26` |
+| Deployed at | `2026-06-18T20:23:48.000Z` |
+| Source verification | Not configured |
+
+**Limitations and disclosures:**
+
+- Testnet/research prototype only. No production security guarantee.
+- MockUSDC (mUSDC) has no monetary value. There is no purchase path, no custody,
+  and no income-generating product or promised returns.
+- MockMLDSAVerifier performs structural checks only — no real on-chain ML-DSA
+  cryptographic verification.
+- No mainnet deployment exists or is planned.
+- No custody of real assets.
+- Source verification is not configured. Bytecode reproducibility from
+  `35c25fa294bebea44b3089aa2435a190a5adf3fb` has not been independently confirmed.
 
 ### Safe deployment path: the deploy-only script
 
