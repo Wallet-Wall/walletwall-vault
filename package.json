@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.4.18",
+  "version": "0.4.19",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -56,5 +56,8 @@
   },
   "dependencies": {
     "@noble/post-quantum": "^0.6.1"
+  },
+  "overrides": {
+    "js-yaml": ">=4.2.0"
   }
 }
