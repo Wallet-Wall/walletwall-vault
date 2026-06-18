@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.4.22",
+  "version": "0.4.23",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -18,7 +18,8 @@
     "attestor:fixtures": "ts-node --esm scripts/generate-attestor-fixture.ts",
     "lint": "solhint \"contracts/**/*.sol\"",
     "format": "prettier --write \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
-    "format:check": "prettier --check \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\""
+    "format:check": "prettier --check \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
+    "validate:deployments": "ts-node scripts/validate-deployments.ts"
   },
   "keywords": [
     "solidity",
