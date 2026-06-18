@@ -48,6 +48,40 @@ public source tag and artifact manifest.
 or redeploy from public HEAD and update this deployment record with the replacement
 address, transaction, source tag, and runtime.
 
+## StablecoinVaultSimulator — not yet deployed to testnet
+
+The `StablecoinVaultSimulator` and `MockUSDC` contracts introduced in v0.4.22 have
+**not yet been deployed** to Sepolia or Base Sepolia. This section will be updated with
+deployment addresses, transaction hashes, and bytecode sizes once a testnet deployment
+is performed.
+
+**Local usage** (no deployment record needed):
+
+```sh
+# Start local node
+npx hardhat node          # or: anvil
+
+# Run demo in a second terminal
+npm run demo:simulator    # deploys MockUSDC + MockMLDSAVerifier + StablecoinVaultSimulator
+                          # then exercises faucet, approve+deposit, withdraw
+```
+
+**Testnet deployment (when ready)**:
+
+```sh
+# Requires DEPLOYER_PRIVATE_KEY + SEPOLIA_RPC_URL in .env
+npx hardhat run scripts/demo-simulator.ts --network sepolia
+```
+
+**Limitations to record when this section is filled:**
+
+- MockUSDC is freely mintable — no value, no purchase path.
+- PQ gate uses `MockMLDSAVerifier` locally or `AttestationPQCVerifier` (trusted-attestor path)
+  on testnet — ML-DSA is **not verified on-chain**.
+- Simulator is a research prototype; it is not audited and makes no production claims.
+- Fee-on-transfer / rebasing tokens are explicitly unsupported by the vault accounting.
+- No mainnet deployment exists or is planned for this contract.
+
 ## Deprecated Ethereum Sepolia deployment
 
 The older Sepolia deployment commonly referenced as `0x8c5B...CF24` (and sometimes
