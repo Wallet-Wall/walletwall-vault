@@ -96,6 +96,11 @@ cp .env.example .env
 #   SEPOLIA_RPC_URL=<your Sepolia RPC endpoint>   # optional; a public default exists
 ```
 
+`hardhat.config.ts` loads `.env` automatically (via `import "dotenv/config"`), so the
+values above are picked up by `hardhat run` / the `npm run deploy:*` scripts without any
+extra step — you do **not** need to export them into your shell. (If you prefer, exporting
+them as real environment variables still works and takes precedence.)
+
 Never commit `.env`, a private key, a mnemonic, an RPC URL, or any other secret. The
 deployer must be a **funded throwaway** testnet wallet holding only a small amount of
 **Sepolia test ETH** — never a wallet that controls real funds.

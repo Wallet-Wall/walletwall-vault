@@ -1,3 +1,9 @@
+// Load environment variables from a local, git-ignored .env file before any
+// config below reads process.env. This is what makes the documented
+// `cp .env.example .env` workflow actually work for `hardhat run` /
+// `npm run deploy:*` — Hardhat does not load .env on its own. Never commit .env.
+import "dotenv/config";
+
 import { HardhatUserConfig } from "hardhat/config";
 import "@nomicfoundation/hardhat-toolbox";
 
