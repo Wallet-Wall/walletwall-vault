@@ -23,6 +23,11 @@ making production protection claims.
 See the [threat model](THREAT_MODEL.md), [WalletWall app boundary](WALLETWALL_APP_BOUNDARY.md),
 and [testing guide](TESTING.md) for the current trust assumptions and validation scope.
 
+Proposed near-term research direction: the
+[testnet stablecoin vault simulator spec](specs/testnet-stablecoin-vault-simulator.md) extends
+the prototype's asset coverage to a mock USDC-style ERC-20 test token while preserving every
+existing claim boundary (testnet only, no real value, trusted-attestation PQ gate).
+
 ## Roadmap diagram
 
 ```mermaid
