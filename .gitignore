@@ -31,3 +31,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Docker image exports (large binary files, not for version control)
+*.tar.gz
+*.tar

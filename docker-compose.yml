@@ -1,18 +1,115 @@
+# WalletWall Vault — Docker Compose
+#
+# Three usage modes:
+#
+#   1. Local dev / run commands inside container (default):
+#        docker compose up -d
+#        docker compose exec walletwall-vault npm test
+#        docker compose exec walletwall-vault npm run compile
+#
+#   2. Sepolia deployment (one-shot — runs deploy:sepolia then exits):
+#        docker compose --profile deploy run --rm vault-deploy
+#      Set DEPLOYER_PRIVATE_KEY in your .env before running.
+#
+#   3. DigitalOcean production (on the Droplet):
+#        docker compose --profile production up -d walletwall-node
+
 services:
+  # ── Local / dev: keep-alive container for exec commands ──────
+  #
+  # Why `tail -f /dev/null` instead of `npx hardhat node`:
+  #   - `npm test` (hardhat test) spins up its own in-process network; it does
+  #     NOT need an external JSON-RPC node running.
+  #   - On Windows + Docker Desktop the source-mount (- .:/app) can shadow the
+  #     container's Linux node_modules. Running hardhat node as the entrypoint
+  #     would crash immediately with MODULE_NOT_FOUND. Using tail keeps the
+  #     container alive without touching node_modules at startup.
+  #   - To run a local Hardhat node use: docker compose exec walletwall-vault
+  #     npx hardhat node --hostname 0.0.0.0
   walletwall-vault:
-    build: .
-    volumes:
-      - .:/app
-      - /app/node_modules
-      - /app/artifacts
-      - /app/cache
-      - /app/typechain-types
-    environment:
-      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL}
-      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL}
+    build:
+      context: .
+      target: runner          # use the slim runner stage
+    image: walletwall-vault:local
+    container_name: walletwall-vault
+    restart: unless-stopped
     ports:
       - "8545:8545"
-    # Keep container alive by running a no-op tail command if started with 'up'
-    # This allows 'docker compose exec' to work consistently.
+    volumes:
+      # Mount source so edits don't require a rebuild during dev.
+      # Named volumes protect Linux node_modules / artifacts / cache
+      # from being overwritten by the Windows host directory.
+      - .:/app
+      - vault_node_modules:/app/node_modules
+      - vault_artifacts:/app/artifacts
+      - vault_cache:/app/cache
+      - vault_typechain:/app/typechain-types
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY:-}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
+      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+    # Keep the container alive without binding any port or crashing.
+    # Use `docker compose exec walletwall-vault <cmd>` to run anything inside.
     command: tail -f /dev/null
+
+  # ── One-shot Sepolia deployer ────────────────────────────────
+  # Usage: docker compose --profile deploy run --rm vault-deploy
+  vault-deploy:
+    build:
+      context: .
+      target: runner
+    image: walletwall-vault:local
+    profiles: [deploy]
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
+      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+    command: /bin/sh /app/scripts/deploy-entrypoint.sh
+
+  # ── DigitalOcean production node (no source mounts) ─────────
+  # Pull the pre-built image from DOCR and run a persistent node.
+  # Usage: docker compose --profile production up -d walletwall-node
+  walletwall-node:
+    image: ${DO_REGISTRY:-walletwall-vault}:latest
+    profiles: [production]
+    container_name: walletwall-node
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY:-}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
+      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+    # Production: no source mounts, image is fully self-contained.
+    command: npx hardhat node --hostname 0.0.0.0
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -sf
+        - -X
+        - POST
+        - http://localhost:8545
+        - -H
+        - "Content-Type: application/json"
+        - -d
+        - '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+# Named volumes for the dev service — Docker manages these on the Linux VM
+# so the Windows host filesystem never overwrites the container's compiled
+# node_modules, artifacts, cache, or typechain types.
+volumes:
+  vault_node_modules:
+  vault_artifacts:
+  vault_cache:
+  vault_typechain:

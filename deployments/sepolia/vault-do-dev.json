@@ -1,0 +1,31 @@
+{
+  "$schema": "../schema/simulator-deployment.schema.json",
+  "version": "1",
+  "environment": "sepolia",
+  "chainId": 11155111,
+  "networkName": "sepolia",
+  "tokenMode": "mock",
+  "tokenAddress": null,
+  "tokenSymbol": null,
+  "tokenDecimals": null,
+  "stablecoinVaultSimulatorAddress": null,
+  "verifierAddress": "0x76BfBF157515d59b33CE9aC0093dd501146F39bf",
+  "policyEngineAddress": null,
+  "timelockAddress": null,
+  "recoveryAddress": null,
+  "walletWallVaultAddress": "0x035a2651f3FF30Ba73fF5690Ae0E31D59BB0f1f9",
+  "deployerAddress": "0x7a2D57A21b05fb50680F20E4A11CD5fd0695524F",
+  "deploymentCommit": "7b2983021d9b4422fd0127139c23e93e322b1cb8",
+  "packageVersion": "0.4.26",
+  "deployedAt": "2026-06-19T04:52:44.000Z",
+  "deployedVia": "Docker on DigitalOcean Droplet",
+  "sepoliaEtherscanVault": "https://sepolia.etherscan.io/address/0x035a2651f3FF30Ba73fF5690Ae0E31D59BB0f1f9",
+  "sepoliaEtherscanVerifier": "https://sepolia.etherscan.io/address/0x76BfBF157515d59b33CE9aC0093dd501146F39bf",
+  "docsUrl": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/docs/DIGITALOCEAN_DEPLOYMENT.md",
+  "warnings": [
+    "TESTNET ONLY — Ethereum Sepolia. No mainnet deployment exists or is planned.",
+    "RESEARCH PROTOTYPE. Not audited. No production security guarantee.",
+    "PQ gate uses MockMLDSAVerifier — structural checks only. No real on-chain ML-DSA cryptographic verification.",
+    "Source verification is not configured. Bytecode reproducibility from the deployment commit has not been independently confirmed."
+  ]
+}

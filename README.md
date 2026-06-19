@@ -120,13 +120,20 @@ npm run demo
 
 ### Docker Support
 
-You can build, test, and run the development environment using Docker.
+You can build, test, and run the development environment using Docker. The Compose
+file defines three separate profiles for different use cases:
+
+| Profile | Service | Purpose |
+|---|---|---|
+| *(default)* | `walletwall-vault` | Local dev: Hardhat in-memory node + source mounts |
+| `deploy` | `vault-deploy` | One-shot Sepolia deployer (exits after deploy) |
+| `production` | `walletwall-node` | DigitalOcean: persistent node, no source mounts |
 
 #### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/)
 - [Docker Compose](https://docs.docker.com/compose/install/)
 
-#### Build the environment
+#### Build the image
 ```bash
 docker compose build
 ```
@@ -139,16 +146,17 @@ docker compose exec walletwall-vault npm test
 
 #### Start a local node and run demo in Docker
 ```bash
-# Start the container in the background
+# Start the container in the background (Hardhat node on localhost:8545)
 docker compose up -d
 
 # Run the demo script inside the running container
 docker compose exec walletwall-vault npm run demo
 ```
 
-#### Deployment in Docker
+#### Deploy to Sepolia via Docker
 ```bash
-docker compose run -e DEPLOYER_PRIVATE_KEY=0x... -e SEPOLIA_RPC_URL=... walletwall-vault npm run deploy:sepolia
+# Set your test wallet key in .env first (see .env.example)
+docker compose --profile deploy run --rm vault-deploy
 ```
 
 #### Stop the environment
@@ -159,6 +167,29 @@ docker compose down
 #### Troubleshooting
 - **Permission denied**: Ensure your user has permissions to run Docker or use `sudo`.
 - **Port 8545 already in use**: If you have a local Hardhat node running, stop it or change the port mapping in `docker-compose.yml`.
+
+### Cloud Deployment (DigitalOcean)
+
+For a full step-by-step guide to deploying this container to a **DigitalOcean Droplet**
+and running the Sepolia deployer in the cloud, see
+[docs/DIGITALOCEAN_DEPLOYMENT.md](docs/DIGITALOCEAN_DEPLOYMENT.md).
+
+In summary:
+
+```bash
+# 1. Build and save the image locally
+docker build -t walletwall-vault:latest .
+
+# 2. Copy to your Droplet
+docker save walletwall-vault:latest | gzip > walletwall-vault.tar.gz
+scp walletwall-vault.tar.gz root@<DROPLET_IP>:/root/
+
+# 3. On the Droplet: load the image and run the Sepolia deployer
+ssh root@<DROPLET_IP>
+docker load < /root/walletwall-vault.tar.gz
+# Populate /opt/walletwall-vault/.env with DEPLOYER_PRIVATE_KEY etc.
+docker compose --profile deploy run --rm vault-deploy
+```
 
 ### Verify ML-DSA and build an attestation
 
