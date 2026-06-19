@@ -1,0 +1,68 @@
+# WalletWall Vault — DigitalOcean Droplet Compose File
+#
+# ⚠️  This file is for use ON THE DROPLET ONLY.
+#     It assumes walletwall-vault:latest is already loaded via:
+#       docker load < walletwall-vault.tar.gz
+#
+#     Do NOT use this file locally — use docker-compose.yml instead.
+#
+# Usage on the Droplet:
+#
+#   Deploy to Sepolia (one-shot, exits when done):
+#     docker compose -f docker-compose.droplet.yml --profile deploy run --rm vault-deploy
+#
+#   Run a persistent Hardhat node:
+#     docker compose -f docker-compose.droplet.yml --profile node up -d walletwall-node
+#
+#   Stop everything:
+#     docker compose -f docker-compose.droplet.yml down
+
+services:
+  # ── One-shot Sepolia deployer ────────────────────────────────
+  # Runs deploy:sepolia inside the pre-loaded image and exits.
+  vault-deploy:
+    image: walletwall-vault:latest   # already loaded via docker load
+    profiles: [deploy]
+    env_file: .env                   # /opt/walletwall-vault/.env on the Droplet
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
+      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+    command: /bin/sh /app/scripts/deploy-entrypoint.sh
+
+  # ── Optional: persistent Hardhat JSON-RPC node ──────────────
+  # Useful for pointing a frontend or testing tool at the Droplet.
+  # Note: this is an in-memory Hardhat node (chain 31337), not Sepolia.
+  walletwall-node:
+    image: walletwall-vault:latest
+    profiles: [node]
+    container_name: walletwall-node
+    restart: unless-stopped
+    ports:
+      - "8545:8545"
+    env_file: .env
+    environment:
+      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY:-}
+      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
+      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
+      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
+      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+    command: npx hardhat node --hostname 0.0.0.0
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - -sf
+        - -X
+        - POST
+        - http://localhost:8545
+        - -H
+        - "Content-Type: application/json"
+        - -d
+        - '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s

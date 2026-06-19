@@ -21,6 +21,9 @@ const config: HardhatUserConfig = {
     },
   },
   networks: {
+    localhost: {
+      url: process.env.RPC_URL ?? "http://127.0.0.1:8545",
+    },
     sepolia: {
       url: process.env.SEPOLIA_RPC_URL ?? "https://ethereum-sepolia-rpc.publicnode.com",
       accounts: deployerKey ? [deployerKey] : [],
