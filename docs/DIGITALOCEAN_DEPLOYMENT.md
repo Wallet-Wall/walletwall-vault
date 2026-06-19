@@ -437,7 +437,7 @@ to during development).
 ```bash
 cd /opt/walletwall-vault
 
-# Start the production node using the droplet compose file
+# Start the dodev node using the droplet compose file
 docker compose -f docker-compose.droplet.yml --profile node up -d walletwall-node
 
 # Check it's running
