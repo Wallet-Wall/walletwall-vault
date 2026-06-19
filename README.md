@@ -127,7 +127,7 @@ file defines three separate profiles for different use cases:
 |---|---|---|
 | *(default)* | `walletwall-vault` | Local dev: Hardhat in-memory node + source mounts |
 | `deploy` | `vault-deploy` | One-shot Sepolia deployer (exits after deploy) |
-| `production` | `walletwall-node` | DigitalOcean: persistent node, no source mounts |
+| `dodev` | `walletwall-node` | DigitalOcean: persistent node, no source mounts |
 
 #### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/)

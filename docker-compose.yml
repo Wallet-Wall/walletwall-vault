@@ -12,7 +12,7 @@
 #      Set DEPLOYER_PRIVATE_KEY in your .env before running.
 #
 #   3. DigitalOcean production (on the Droplet):
-#        docker compose --profile production up -d walletwall-node
+#        docker compose --profile dodev up -d walletwall-node
 
 services:
   # ── Local / dev: keep-alive container for exec commands ──────
@@ -72,10 +72,10 @@ services:
 
   # ── DigitalOcean production node (no source mounts) ─────────
   # Pull the pre-built image from DOCR and run a persistent node.
-  # Usage: docker compose --profile production up -d walletwall-node
+  # Usage: docker compose --profile dodev up -d walletwall-node
   walletwall-node:
     image: ${DO_REGISTRY:-walletwall-vault}:latest
-    profiles: [production]
+    profiles: [dodev]
     container_name: walletwall-node
     restart: unless-stopped
     ports:
