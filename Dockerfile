@@ -3,7 +3,7 @@
 #   Installs all dev-dependencies, compiles Solidity contracts,
 #   and generates TypeChain types. Nothing from this stage is
 #   needed at runtime on DigitalOcean — only the compiled
-#   artifacts and the production node_modules are carried over.
+#   artifacts and the node_modules are carried over.
 # ─────────────────────────────────────────────────────────────
 FROM node:20-slim AS builder
 
@@ -26,7 +26,7 @@ RUN npm run compile
 
 # ─────────────────────────────────────────────────────────────
 # Stage 2 — runner
-#   Slim production image. Contains only what is needed to:
+#   Slim image. Contains only what is needed to:
 #     a) run `npm run deploy:sepolia` (one-shot deploy mode), OR
 #     b) run `npx hardhat node` (persistent JSON-RPC node mode)
 #   SP1 / Rust / zkVM toolchains are intentionally excluded —

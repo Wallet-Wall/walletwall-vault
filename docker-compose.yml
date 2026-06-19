@@ -11,7 +11,7 @@
 #        docker compose --profile deploy run --rm vault-deploy
 #      Set DEPLOYER_PRIVATE_KEY in your .env before running.
 #
-#   3. DigitalOcean production (on the Droplet):
+#   3. DigitalOcean dodev (on the Droplet):
 #        docker compose --profile dodev up -d walletwall-node
 
 services:
@@ -70,7 +70,7 @@ services:
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
     command: /bin/sh /app/scripts/deploy-entrypoint.sh
 
-  # ── DigitalOcean production node (no source mounts) ─────────
+  # ── DigitalOcean dodev node (no source mounts) ─────────
   # Pull the pre-built image from DOCR and run a persistent node.
   # Usage: docker compose --profile dodev up -d walletwall-node
   walletwall-node:
@@ -86,7 +86,7 @@ services:
       - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
       - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
       - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
-    # Production: no source mounts, image is fully self-contained.
+    # dodev: no source mounts, image is fully self-contained.
     command: npx hardhat node --hostname 0.0.0.0
     healthcheck:
       test:
