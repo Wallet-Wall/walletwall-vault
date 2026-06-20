@@ -17,6 +17,12 @@ The public `walletwall-vault` repository owns:
 - Research documentation for verifier migration paths.
 - Tests for the public prototype.
 
+The public WalletWall production app surfaces remain read-only wallet intelligence,
+readiness, status, and rehearsal visibility. A local, Hardhat, Docker, or Sepolia
+simulator flow documented here is an isolated developer/testnet rehearsal exception,
+not production app behavior, not custody, not a production deposit/withdrawal service,
+not real yield, and not a mainnet write path.
+
 The private WalletWall app owns:
 
 - Product UI and user flows.
@@ -57,6 +63,9 @@ The private app should not say or imply that this repository is:
 - Backed by on-chain ML-DSA verification today.
 - A guarantee against any exact "Q-day" date or timeline.
 - A substitute for wallet hygiene, multisig governance, or operational security.
+- A production deposit or withdrawal service.
+- A source of real yield, interest, APY, rewards-as-returns, or income.
+- A mainnet production write path.
 
 Avoid wording such as:
 
@@ -65,6 +74,8 @@ Avoid wording such as:
 - "Audited post-quantum custody."
 - "Prevents all future quantum risk."
 - "Ready for mainnet deposits."
+- "Users can deposit into WalletWall for yield."
+- "Production withdrawals are live."
 
 ## Integration Guidance
 

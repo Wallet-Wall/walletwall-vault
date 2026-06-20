@@ -17,6 +17,11 @@ It is intended to demonstrate **contract security and trust boundaries** — rep
 protection, EIP-712 typed authorization, a swappable verifier interface, and honest
 documentation — **not** to custody real assets.
 
+Public WalletWall production app surfaces remain read-only intelligence, readiness,
+status, and rehearsal visibility. Any local, Hardhat, Docker, or Sepolia flow in this
+repository is an isolated developer/testnet rehearsal path, not production WalletWall
+behavior and not a mainnet write path.
+
 ## What this is / is not
 
 |                                                |                                        |
@@ -232,6 +237,10 @@ private keys into issues, pull requests, or chat.
 
 **Use Sepolia test ETH only. Never send real funds. Frontend write operations must stay
 restricted to supported testnet chain IDs and must not silently fall back to mainnet.**
+
+These deployment and demo commands do not create a production service. They do not
+accept real deposits, process production withdrawals, custody user funds, or produce
+real yield.
 
 PowerShell example:
 

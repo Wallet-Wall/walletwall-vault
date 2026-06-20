@@ -20,6 +20,8 @@ In scope:
 Out of scope:
 
 - The private WalletWall application repository.
+- Production WalletWall app behavior; production app surfaces remain read-only
+  intelligence/status/readiness surfaces unless a future reviewed integration says otherwise.
 - Production custody operations, deployment monitoring, key management, incident
   response, and user support.
 - Claims about an exact quantum-computer timeline, including any exact "Q-day" date.
@@ -139,4 +141,6 @@ classical ECDSA authorization path could be combined with a PQ verifier interfac
 trusted attestation migration step.
 
 It should not be described as production-ready, audited, quantum-proof, safe for real
-funds, or a custody product.
+funds, a custody product, a production deposit or withdrawal service, a real-yield
+product, or a mainnet production write path. Local and Sepolia simulator paths are
+developer/testnet rehearsal exceptions only.

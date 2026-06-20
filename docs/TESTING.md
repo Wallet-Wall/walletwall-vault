@@ -3,6 +3,9 @@
 > Passing tests do not make this repository production-ready. They only show that the
 > current prototype behavior matches the checked test cases.
 
+Tests in this repository exercise local/testnet prototype behavior only. They do not
+prove mainnet readiness, custody safety, production deposits or withdrawals, or yield.
+
 This document describes the validation commands for the public WalletWall Vault
 prototype and the security properties those tests do and do not cover.
 
