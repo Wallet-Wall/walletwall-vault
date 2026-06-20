@@ -26,7 +26,9 @@ Neither path makes this prototype suitable for production custody or real funds.
 [docs/Security_Assumptions.md](docs/Security_Assumptions.md) and
 [docs/Verifier_Roadmap.md](docs/Verifier_Roadmap.md).
 
-> Use on local/testnet networks only. **Do not deposit real funds.**
+> Use on local/testnet networks only. **Do not deposit real funds.** This repository
+> does not provide a production deposit or withdrawal service, does not custody user funds,
+> does not produce real yield, and does not include a mainnet production write path.
 
 ## Scope
 

@@ -6,7 +6,9 @@ boundary: local/testnet-oriented, not production custody, not audited, and not s
 real funds.
 
 The project does not claim exact Q-day timing, production quantum protection, audited
-status, or mainnet readiness.
+status, mainnet readiness, a production deposit/withdrawal service, or real yield.
+Local and Sepolia simulator work remains isolated research rehearsal, not production
+WalletWall app behavior.
 
 ## Current status
 
