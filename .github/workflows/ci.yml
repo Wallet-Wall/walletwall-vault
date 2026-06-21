@@ -35,6 +35,21 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Smoke-test shipped CLIs
+        run: |
+          set -euo pipefail
+          # Verifier CLI: verifies a valid fixture triple and prints JSON.
+          out=$(npm run --silent verifier:verify -- \
+            --message-file test/fixtures/mldsa/library-generated/message.hex \
+            --public-key-file test/fixtures/mldsa/library-generated/public-key.hex \
+            --pq-signature-file test/fixtures/mldsa/library-generated/signature.hex \
+            --json)
+          echo "$out"
+          echo "$out" | grep -q '"reason": "ML_DSA_65_VALID"'
+          # Attestor demo: exercises the off-chain verify + EIP-712 signing path.
+          # Both CLIs run under CommonJS ts-node so they work on the pinned Node 20.
+          npm run attestor:demo
+
       - name: Coverage
         run: npm run coverage
 

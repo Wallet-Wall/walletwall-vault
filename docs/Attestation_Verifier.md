@@ -35,9 +35,16 @@ signature correctly off-chain before signing the attestation.
    and configured attestor.
 
 The attestor CLI at [`scripts/attestor-cli.ts`](../scripts/attestor-cli.ts) implements
-steps 3 through 5 with `@noble/post-quantum` ML-DSA-65 verification. It refuses to sign
-in real verify mode unless verification succeeds and the signed message exactly matches
-the withdrawal digest.
+steps 3 through 5. The core ML-DSA-65 verification (step 3) now lives in the **open PQ
+verifier** module ([`src/verifier/`](../src/verifier/)); the attestation layer
+**consumes** that verified result rather than owning the verification logic. See
+[Open_PQ_Verifier.md](Open_PQ_Verifier.md). The CLI refuses to sign in real verify mode
+unless verification succeeds and the signed message exactly matches the withdrawal
+digest.
+
+The open verifier itself never signs anything and never requires an EVM private key. The
+attestation path is a separate, **trusted** bridge into testnet contracts — it is not a
+ZK proof and not on-chain ML-DSA verification.
 
 The script formerly at `scripts/sign-attestation.ts` has been renamed to
 [`scripts/demo-sign-attestation-unsafe.ts`](../scripts/demo-sign-attestation-unsafe.ts)

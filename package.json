@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -15,12 +15,13 @@
     "demo:simulator": "hardhat run scripts/demo-simulator.ts",
     "deploy:simulator": "hardhat run scripts/deploy-simulator.ts",
     "deploy:simulator:sepolia": "hardhat run scripts/deploy-simulator.ts --network sepolia",
-    "attestor:demo": "ts-node --esm scripts/attestor-cli.ts demo",
-    "attestor:verify": "ts-node --esm scripts/attestor-cli.ts verify",
-    "attestor:fixtures": "ts-node --esm scripts/generate-attestor-fixture.ts",
+    "attestor:demo": "ts-node scripts/attestor-cli.ts demo",
+    "attestor:verify": "ts-node scripts/attestor-cli.ts verify",
+    "attestor:fixtures": "ts-node scripts/generate-attestor-fixture.ts",
+    "verifier:verify": "ts-node scripts/pq-verifier-cli.ts verify",
     "lint": "solhint \"contracts/**/*.sol\"",
-    "format": "prettier --write \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
-    "format:check": "prettier --check \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
+    "format": "prettier --write \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
+    "format:check": "prettier --check \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
     "validate:deployments": "ts-node scripts/validate-deployments.ts"
   },
   "keywords": [

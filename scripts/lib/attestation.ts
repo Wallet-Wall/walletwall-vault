@@ -4,6 +4,15 @@ import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import type { BytesLike, Signer, TypedDataDomain } from "ethers";
 import { AbiCoder, getAddress, getBytes, hexlify, isHexString, keccak256, toUtf8Bytes } from "ethers";
 
+// Core ML-DSA-65 verification now lives in the open, independently hostable
+// verifier boundary. This module only consumes its result; it never duplicates
+// the verification logic. See src/verifier/ and docs/Open_PQ_Verifier.md.
+export type { PQVerificationResult } from "../../src/verifier/ml-dsa-65";
+// @ts-expect-error ts-node ESM requires the explicit extension.
+import { verifyMLDSA65 as verifyMLDSA65Pure, verifyMLDSA65Detailed } from "../../src/verifier/ml-dsa-65.ts";
+
+export { verifyMLDSA65Detailed };
+
 export const ATTESTATION_ALGORITHM_ID = keccak256(toUtf8Bytes("ATTESTED-ML-DSA-65"));
 export const ATTESTATION_DOMAIN_NAME = "AttestationPQCVerifier";
 export const ATTESTATION_DOMAIN_VERSION = "1";
@@ -97,20 +106,13 @@ export function hashPQSignature(signature: BytesLike): string {
   return keccak256(signature);
 }
 
+/**
+ * Backwards-compatible boolean wrapper. Delegates to the open verifier module so
+ * that this file no longer owns the core ML-DSA-65 verification logic. Existing
+ * importers (CLI, conformance tests) keep the same signature and behavior.
+ */
 export function verifyMLDSA65(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean {
-  if (
-    publicKey.length !== ml_dsa65.lengths.publicKey ||
-    signature.length !== ml_dsa65.lengths.signature ||
-    message.length === 0
-  ) {
-    return false;
-  }
-
-  try {
-    return ml_dsa65.verify(signature, message, publicKey);
-  } catch {
-    return false;
-  }
+  return verifyMLDSA65Pure(publicKey, message, signature);
 }
 
 export function createDemoMaterial() {
@@ -190,8 +192,11 @@ export async function verifyAndSignAttestation(
   if (!allowGeneratedMaterial && isFixtureMaterial(input.publicKey, input.pqSignature)) {
     throw new Error("Real verify mode refuses generated fixture PQ material");
   }
-  if (!verifyMLDSA65(input.publicKey, input.signedMessage, input.pqSignature)) {
-    throw new Error("ML-DSA-65 verification failed; attestation was not signed");
+  const verification = verifyMLDSA65Detailed(input.publicKey, input.signedMessage, input.pqSignature);
+  if (!verification.result.verified) {
+    throw new Error(
+      `ML-DSA-65 verification failed; attestation was not signed (reason: ${verification.result.reason})`,
+    );
   }
 
   const publicKeyHash = hashPQPublicKey(input.publicKey);

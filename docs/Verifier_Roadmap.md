@@ -63,6 +63,15 @@ chain-native solution.
   attestor key or service. The older `scripts/sign-attestation.ts` has been renamed
   to `scripts/demo-sign-attestation-unsafe.ts` (deprecated, no ML-DSA verification)
   and the `sign:attestation` npm script has been removed.
+- **Open verifier boundary:** the pure ML-DSA-65 verification now lives in an
+  independently hostable module ([`src/verifier/`](../src/verifier/)) exposed through a
+  standalone CLI (`npm run verifier:verify`). It returns a deterministic structured
+  result, requires no attestor key, and never signs. The attestation layer consumes
+  this result. This separates _reproducible PQ verification_ (open, hostable, key-free)
+  from _trusted attestation_ (EIP-712 signing by a configured attestor). It does **not**
+  change the trust model of Path 1: the on-chain contract still trusts the attestor, not
+  an on-chain ML-DSA check. See [Open_PQ_Verifier.md](Open_PQ_Verifier.md) and
+  [Verifier_Result_Schema.md](Verifier_Result_Schema.md).
 - **Ownership:** `AttestationPQCVerifier` uses `Ownable2Step` (consistent with
   `WalletWallVault`). Attestor rotation itself remains immediate.
 
