@@ -119,6 +119,7 @@ replay protection.
 | Mock verifier accepted as real PQ security | Documented limitation; `PqOnly` is blocked while the mock verifier is active. |
 | Malicious or compromised attestor | Not solved. This is a core trust assumption of the attestation path. |
 | Malicious or compromised contract owner | Not solved. Timelocked verifier governance creates review time, not trustlessness. |
+| Immediate attestor rotation inside a configured verifier | Documented; `updateAttestor` is instant and not covered by the vault's two-day verifier timelock. Near-term hardening: immutable-attestor verifier (see [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md)). |
 | Force-sent ETH | Accounted balances are unaffected; force-sent ETH is not credited to a vault. |
 | Production deployment mistakes | Out of scope; this repository is not a deployment system. |
 
@@ -127,6 +128,10 @@ replay protection.
 - No on-chain ML-DSA verification.
 - No ZK proof verifier.
 - No threshold attestor committee.
+- Attestor rotation inside `AttestationPQCVerifier` is immediate and is not covered by the
+  vault's verifier timelock. The hardening plan (recommended near-term: an
+  immutable-attestor verifier) is documented in
+  [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md).
 - No hardened attestor service, key isolation, monitoring, transparency log, or
   incident process.
 - No audited multisig or timelock-controller deployment.

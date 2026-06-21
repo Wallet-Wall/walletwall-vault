@@ -145,6 +145,12 @@ only be eliminated by replacing the attestation path with a ZK or chain-native v
 that does not rely on a trusted off-chain authority. See
 [Verifier_Roadmap.md](Verifier_Roadmap.md).
 
+As a **near-term mitigation** — one that does not eliminate attestor trust but removes
+the hidden, immediate in-place rotation — the recommended path is an immutable-attestor
+verifier deployment: fix the attestor in the constructor and change attestors by deploying
+a new verifier that the vault adopts through its existing timelocked verifier governance.
+See [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md).
+
 ## EIP-712 attestation
 
 Domain:
