@@ -198,6 +198,76 @@ describe("PQ proof-artifact manifest", function () {
     });
   });
 
+  describe("validateProofArtifact — rejects unknown nested keys", function () {
+    // The shipped JSON Schema declares additionalProperties:false at every
+    // object level. These pin the authoritative TS validator to the same rule,
+    // so raw key/signature/message material cannot ride in an unrecognized
+    // nested field even though the top-level key set is untouched.
+    const cases: Array<[string, (a: any) => void, string]> = [
+      ["artifact", (a) => (a.artifact.surprise = "x"), "unexpected key in artifact: surprise"],
+      [
+        "artifact.verifier",
+        (a) => (a.artifact.verifier.surprise = "x"),
+        "unexpected key in artifact.verifier: surprise",
+      ],
+      ["artifact.tooling", (a) => (a.artifact.tooling.surprise = "x"), "unexpected key in artifact.tooling: surprise"],
+      ["artifact.input", (a) => (a.artifact.input.surprise = "x"), "unexpected key in artifact.input: surprise"],
+      ["artifact.journal", (a) => (a.artifact.journal.surprise = "x"), "unexpected key in artifact.journal: surprise"],
+      ["proof", (a) => (a.proof.surprise = "x"), "unexpected key in proof: surprise"],
+      ["regeneration", (a) => (a.regeneration.surprise = "x"), "unexpected key in regeneration: surprise"],
+    ];
+
+    for (const [path, mutate, expected] of cases) {
+      it(`an unknown key in ${path}`, function () {
+        const a = freshExample();
+        mutate(a);
+        const res = validateProofArtifact(a);
+        expect(res.valid).to.equal(false);
+        expect(res.errors).to.include(expected);
+      });
+    }
+
+    it("raw key/signature material smuggled into nested fields (defense in depth)", function () {
+      const a = freshExample();
+      // A 3309-byte ML-DSA-65 signature and a 32-byte key, hidden in unknown
+      // nested keys. Every other field stays valid, so only the nested
+      // additionalProperties guard can catch this.
+      a.artifact.input.rawSignature = "0x" + "ab".repeat(3309);
+      a.artifact.verifier.privateKey = "0x" + "cd".repeat(64);
+      a.proof.note = "totally extra";
+      const res = validateProofArtifact(a);
+      expect(res.valid).to.equal(false);
+      expect(res.errors).to.include("unexpected key in artifact.input: rawSignature");
+      expect(res.errors).to.include("unexpected key in artifact.verifier: privateKey");
+      expect(res.errors).to.include("unexpected key in proof: note");
+    });
+
+    it("every additionalProperties:false object in the schema is enforced by the validator", function () {
+      // Cross-check: for each object the JSON Schema closes, injecting an
+      // unknown key must make the authoritative validator reject the manifest.
+      const schema = readJson(schemaPath);
+      const closedPaths: Array<[string[], boolean]> = [
+        [["artifact"], schema.properties.artifact.additionalProperties === false],
+        [["artifact", "verifier"], schema.properties.artifact.properties.verifier.additionalProperties === false],
+        [["artifact", "tooling"], schema.properties.artifact.properties.tooling.additionalProperties === false],
+        [["artifact", "input"], schema.properties.artifact.properties.input.additionalProperties === false],
+        [["artifact", "journal"], schema.properties.artifact.properties.journal.additionalProperties === false],
+        [["proof"], schema.properties.proof.additionalProperties === false],
+        [["regeneration"], schema.properties.regeneration.additionalProperties === false],
+      ];
+      for (const [pathParts, schemaCloses] of closedPaths) {
+        expect(schemaCloses, `schema should close ${pathParts.join(".")}`).to.equal(true);
+        const a = freshExample();
+        let node: any = a;
+        for (const p of pathParts) node = node[p];
+        node.__unexpected__ = "x";
+        expect(validateProofArtifact(a).valid, `validator should reject extra key in ${pathParts.join(".")}`).to.equal(
+          false,
+        );
+      }
+    });
+  });
+
   describe("committed example (no drift)", function () {
     it("example file equals the freshly generated manifest", function () {
       expect(readJson(EXAMPLE_PATH)).to.deep.equal(buildExample());
