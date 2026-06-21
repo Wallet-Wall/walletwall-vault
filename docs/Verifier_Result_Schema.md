@@ -5,7 +5,10 @@
 This document describes the deterministic result returned by the open PQ verifier
 ([`src/verifier/`](../src/verifier/)). The schema is defined in
 [`src/verifier/schema.ts`](../src/verifier/schema.ts). For the verifier's scope and
-guarantees, see [Open_PQ_Verifier.md](Open_PQ_Verifier.md).
+guarantees, see [Open_PQ_Verifier.md](Open_PQ_Verifier.md). To run the verifier and
+compare results across operators, see the
+[PQ Verifier Operator Guide](PQ_Verifier_Operator_Guide.md) and
+[PQ Verifier Reproducibility](PQ_Verifier_Reproducibility.md).
 
 The result is **deterministic**: identical `(message, publicKey, signature)` inputs
 always produce byte-identical JSON. It contains only keccak256 **hashes** of the inputs
