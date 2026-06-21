@@ -36,6 +36,38 @@ validator — see the [PQ Verifier Evidence Artifact](PQ_Verifier_Evidence_Artif
   [`test/MLDSAConformance.test.ts`](../test/MLDSAConformance.test.ts) and
   [`test/PQVerifier.test.ts`](../test/PQVerifier.test.ts)).
 
+## Test vector coverage
+
+The verifier boundary is exercised by three complementary, fully deterministic and
+network-free suites:
+
+| Suite                                                                     | Coverage                                                                                                                     |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| [`test/MLDSAConformance.test.ts`](../test/MLDSAConformance.test.ts)       | Official NIST ACVP ML-DSA-65 sigVer group-3 subset (3 valid + 3 invalid) via `ml_dsa65.verify`; tcId 35 through the wrapper. |
+| [`test/PQVerifier.test.ts`](../test/PQVerifier.test.ts)                   | Structured-result unit tests anchored to NIST tcId 35: reason codes, determinism, no-raw-material, closed reason set.        |
+| [`test/MLDSAVectorCoverage.test.ts`](../test/MLDSAVectorCoverage.test.ts) | Expanded deterministic matrix (see below).                                                                                   |
+
+The expanded matrix (`MLDSAVectorCoverage.test.ts`) builds reproducible ML-DSA material
+from fixed, test-only seeds with deterministic signing (`extraEntropy: false`) and adds:
+
+- **Positive vectors** — several independent deterministic `(message, publicKey, signature)`
+  triples, plus the official NIST ACVP empty-context vector (tcId 35) as a standards anchor.
+- **Cross-vector negatives** ("wrong vector metadata") — for every ordered pair of distinct
+  vectors, swapping exactly one of message / public key / signature must fail.
+- **Single-bit mutations** — flipping sampled bits of the message, public key, or signature
+  (length preserved) must fail.
+- **Unsupported parameter sets** — ML-DSA-44 and ML-DSA-87 material is rejected by length
+  (`INVALID_PUBLIC_KEY_LENGTH` / `INVALID_SIGNATURE_LENGTH`); the boundary verifies ML-DSA-65
+  only and never attempts to verify a different algorithm identifier.
+- **Malformed encoding / length** — truncated, padded, and empty keys/signatures, the
+  empty-message precedence rule, and a strict-hex-decode guard for odd-length wire encodings.
+- **Reason-code invariants** — every result reports a reason from the closed set, and
+  `verified` is true **iff** the reason is `ML_DSA_65_VALID`.
+
+All vectors are produced by _signing only to generate test material_; the pure verifier
+under test never signs. No raw key or signature bytes are logged — only the verifier's
+keccak256 input hashes appear in any result.
+
 ## What it is not
 
 - It **does not custody funds.**
@@ -72,14 +104,14 @@ scripts/lib/attestation.ts       (optional EIP-712 attestation, trusted attestor
 
 Exactly one reason is reported per verification:
 
-| Reason                       | Meaning                                               |
-| ---------------------------- | ----------------------------------------------------- |
-| `ML_DSA_65_VALID`            | Signature verified for the message and public key.    |
-| `EMPTY_MESSAGE`              | The message had zero bytes.                            |
-| `INVALID_PUBLIC_KEY_LENGTH`  | Public key was not the ML-DSA-65 length (1952 bytes). |
-| `INVALID_SIGNATURE_LENGTH`   | Signature was not the ML-DSA-65 length (3309 bytes).  |
-| `VERIFY_FAILED`              | Well-formed inputs, but the signature did not verify. |
-| `VERIFY_EXCEPTION`           | The underlying verifier threw while checking.         |
+| Reason                      | Meaning                                               |
+| --------------------------- | ----------------------------------------------------- |
+| `ML_DSA_65_VALID`           | Signature verified for the message and public key.    |
+| `EMPTY_MESSAGE`             | The message had zero bytes.                           |
+| `INVALID_PUBLIC_KEY_LENGTH` | Public key was not the ML-DSA-65 length (1952 bytes). |
+| `INVALID_SIGNATURE_LENGTH`  | Signature was not the ML-DSA-65 length (3309 bytes).  |
+| `VERIFY_FAILED`             | Well-formed inputs, but the signature did not verify. |
+| `VERIFY_EXCEPTION`          | The underlying verifier threw while checking.         |
 
 Reason precedence is fixed: empty message → public-key length → signature length →
 cryptographic verification.
