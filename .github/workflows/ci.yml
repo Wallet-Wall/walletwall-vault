@@ -35,6 +35,18 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Smoke-test shipped CLIs (ts-node --esm)
+        run: |
+          set -euo pipefail
+          npm run attestor:demo
+          out=$(npm run --silent verifier:verify -- \
+            --message-file test/fixtures/mldsa/library-generated/message.hex \
+            --public-key-file test/fixtures/mldsa/library-generated/public-key.hex \
+            --pq-signature-file test/fixtures/mldsa/library-generated/signature.hex \
+            --json)
+          echo "$out"
+          echo "$out" | grep -q '"reason": "ML_DSA_65_VALID"'
+
       - name: Coverage
         run: npm run coverage
 
