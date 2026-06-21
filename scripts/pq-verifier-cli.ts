@@ -18,11 +18,15 @@
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
+// Run under CommonJS ts-node (the `verifier:verify` script intentionally omits
+// `--esm`). ts-node's ESM loader cannot resolve `.ts` extensions on Node 20
+// (ERR_UNKNOWN_FILE_EXTENSION), the version this project's CI pins; CommonJS
+// resolves both extensionless `.ts` imports and the CJS build of
+// `@noble/post-quantum`, so it works across Node versions. The verifier module
+// itself (src/verifier) stays runtime-agnostic and ESM-importable.
 import type { PQVerificationResult } from "../src/verifier/ml-dsa-65";
-// @ts-expect-error ts-node ESM requires the explicit extension.
-import { verifyMLDSA65Detailed } from "../src/verifier/ml-dsa-65.ts";
-// @ts-expect-error ts-node ESM requires the explicit extension.
-import { readBytesInput } from "./lib/attestation.ts";
+import { verifyMLDSA65Detailed } from "../src/verifier/ml-dsa-65";
+import { readBytesInput } from "./lib/attestation";
 
 interface ParsedVerifierArgs {
   command: string;
