@@ -187,14 +187,44 @@ const HASH_RE = /^0x[0-9a-f]{64}$/;
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const PROOF_STATUSES = new Set<string>(Object.values(PQ_PROOF_STATUS));
 
+/**
+ * Closed key sets per object level, mirroring `additionalProperties: false`
+ * and the `required` sets in docs/schemas/pq-proof-artifact.v1.schema.json.
+ * They let the authoritative validator reject unknown keys at *every* level —
+ * not just the top — so raw key/signature/message material cannot be smuggled
+ * into an unrecognized nested field (e.g. `artifact.input.rawSignature`).
+ */
+const ARTIFACT_KEYS = ["kind", "vectorSet", "verifier", "tooling", "sourceEvidenceHash", "input", "journal"];
+const VERIFIER_KEYS = ["name", "version"];
+const TOOLING_KEYS = ["prover", "scheme"];
+const INPUT_KEYS = ["messageHash", "publicKeyHash", "signatureHash"];
+const JOURNAL_KEYS = ["publicValues", "publicValuesHash", "chainId", "verifierAddress"];
+const PROOF_KEYS = ["status", "scheme", "generated", "reason"];
+const REGEN_KEYS = ["command", "deterministic"];
+
 function isHash(v: unknown): v is string {
   return typeof v === "string" && HASH_RE.test(v);
 }
 
 /**
+ * Push an error for every own key of `obj` not in `allowed`. No-ops for
+ * non-objects (those are reported by their own type checks). This enforces the
+ * schema's `additionalProperties: false` for nested objects, closing the hole
+ * where the top-level-only key check let raw material ride in a nested field.
+ */
+function rejectUnknownKeys(obj: unknown, allowed: readonly string[], path: string, errors: string[]): void {
+  if (typeof obj !== "object" || obj === null) return;
+  for (const k of Object.keys(obj)) {
+    if (!allowed.includes(k)) errors.push(`unexpected key in ${path}: ${k}`);
+  }
+}
+
+/**
  * Strictly validate a proof-artifact manifest.
  *
- * Rejects unknown keys, malformed hashes/timestamps, an inconsistent
+ * Rejects unknown keys at every object level (mirroring the JSON Schema's
+ * `additionalProperties: false`, so raw material cannot hide in an
+ * unrecognized nested field), malformed hashes/timestamps, an inconsistent
  * proof.status/generated pairing, a journal that does not decode to the
  * declared input hashes, and any embedded raw key/signature material. The
  * journal is the only intentionally long hex field; it is validated to be
@@ -222,6 +252,7 @@ export function validateProofArtifact(value: unknown): ProofArtifactValidation {
   if (!a || typeof a !== "object") {
     errors.push("artifact must be an object");
   } else {
+    rejectUnknownKeys(a, ARTIFACT_KEYS, "artifact", errors);
     if (a.kind !== PQ_PROOF_ARTIFACT_KIND) errors.push(`artifact.kind must be ${PQ_PROOF_ARTIFACT_KIND}`);
     if (typeof a.vectorSet !== "string" || a.vectorSet.length === 0) {
       errors.push("artifact.vectorSet must be a non-empty string");
@@ -230,10 +261,12 @@ export function validateProofArtifact(value: unknown): ProofArtifactValidation {
     if (!verifier || verifier.name !== PQ_VERIFIER_NAME || typeof verifier.version !== "string") {
       errors.push(`artifact.verifier must be { name: ${PQ_VERIFIER_NAME}, version: string }`);
     }
+    rejectUnknownKeys(verifier, VERIFIER_KEYS, "artifact.verifier", errors);
     const tooling = a.tooling as Record<string, unknown> | undefined;
     if (!tooling || tooling.prover !== PQ_PROOF_PROVER || tooling.scheme !== PQ_PROOF_SCHEME) {
       errors.push(`artifact.tooling must be { prover: ${PQ_PROOF_PROVER}, scheme: ${PQ_PROOF_SCHEME} }`);
     }
+    rejectUnknownKeys(tooling, TOOLING_KEYS, "artifact.tooling", errors);
     if (!isHash(a.sourceEvidenceHash)) errors.push("artifact.sourceEvidenceHash must be a 0x keccak256 hash");
 
     const input = a.input as Record<string, unknown> | undefined;
@@ -243,12 +276,14 @@ export function validateProofArtifact(value: unknown): ProofArtifactValidation {
       for (const k of ["messageHash", "publicKeyHash", "signatureHash"] as const) {
         if (!isHash(input[k])) errors.push(`artifact.input.${k} must be a 0x keccak256 hash`);
       }
+      rejectUnknownKeys(input, INPUT_KEYS, "artifact.input", errors);
     }
 
     const journal = a.journal as Record<string, unknown> | undefined;
     if (!journal) {
       errors.push("artifact.journal is required");
     } else {
+      rejectUnknownKeys(journal, JOURNAL_KEYS, "artifact.journal", errors);
       validateJournal(journal, input, errors);
     }
   }
@@ -257,6 +292,7 @@ export function validateProofArtifact(value: unknown): ProofArtifactValidation {
   if (!proof) {
     errors.push("proof is required");
   } else {
+    rejectUnknownKeys(proof, PROOF_KEYS, "proof", errors);
     if (typeof proof.status !== "string" || !PROOF_STATUSES.has(proof.status)) {
       errors.push(`proof.status must be one of ${[...PROOF_STATUSES].join(", ")}`);
     }
@@ -278,6 +314,7 @@ export function validateProofArtifact(value: unknown): ProofArtifactValidation {
   if (!regen) {
     errors.push("regeneration is required");
   } else {
+    rejectUnknownKeys(regen, REGEN_KEYS, "regeneration", errors);
     if (typeof regen.command !== "string" || regen.command.length === 0) {
       errors.push("regeneration.command must be a non-empty string");
     }
