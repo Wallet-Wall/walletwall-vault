@@ -26,6 +26,9 @@ jobs:
       - name: Compile contracts
         run: npm run compile
 
+      - name: Typecheck (tsc --noEmit)
+        run: npm run typecheck
+
       - name: Check formatting
         run: npm run format:check
 
@@ -49,6 +52,19 @@ jobs:
           # Attestor demo: exercises the off-chain verify + EIP-712 signing path.
           # Both CLIs run under CommonJS ts-node so they work on the pinned Node 20.
           npm run attestor:demo
+
+      - name: SP1 smoke (execute-only journal check; no SP1 toolchain)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic SP1 lane check: derives the guest journal for a
+          # fixture and asserts its shape. No proving; the host execute step is
+          # skipped here because CI has no built mldsa65-host binary. Heavy
+          # proving / e2e stays gated behind RUN_SP1_E2E=1.
+          out=$(npm run --silent sp1:smoke)
+          echo "$out"
+          echo "$out" | grep -q '"mode": "sp1-smoke"'
+          echo "$out" | grep -q '"proven": false'
+          echo "$out" | grep -q '"hostExecuted": false'
 
       - name: Coverage
         run: npm run coverage

@@ -23,6 +23,10 @@ still uses `MockSP1Verifier` and a mock vKey — none of this runs in CI.
 - `test/ZKAcvpGuest.e2e.test.ts` — gated NIST ACVP differential-conformance test
   that routes the official sigVer vectors through the guest (`RUN_SP1_E2E=1`). See
   [ACVP_Guest_Results.md](ACVP_Guest_Results.md).
+- `scripts/sp1-smoke.ts` — the cheap, deterministic **smoke lane** (`npm run sp1:smoke`).
+  Runs in CI with no toolchain (journal-encoding check) and optionally runs the guest in
+  execute mode if a host binary is built. See [SP1_Smoke_Lane.md](SP1_Smoke_Lane.md) for how
+  the normal CI, smoke, and gated e2e lanes relate and what each proves vs only executes.
 
 ## Prerequisites
 
