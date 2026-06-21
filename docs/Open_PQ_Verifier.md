@@ -105,9 +105,18 @@ npm run verifier:verify -- \
 Rules:
 
 - Each input accepts **exactly one** of an inline hex value or a file path.
+- Inline values are **`0x`-prefixed, even-length hex only** (no base64). A file is
+  read as hex when its contents start with `0x`, otherwise as raw bytes.
+- Malformed input — non-hex characters, odd-length hex, an un-prefixed inline
+  value, a missing input, or both inline and file forms for the same input —
+  **exits non-zero** with a clear error and never produces a result.
 - `--json` prints JSON only; without it, a concise human-readable result is printed.
 - A **failed verification is still a successful process** (exit `0`) reporting
   `"verified": false`. Only malformed CLI input exits non-zero.
+
+These encoding and failure rules are pinned by `test/PQVerifierCli.test.ts`, and the
+verifier's closed reason-code set and one-way (no-signing, no-Hardhat, no-attestor-key)
+boundary are pinned by `test/PQVerifier.test.ts` and `test/PQVerifierBoundary.test.ts`.
 
 Example (valid library-generated fixture triple):
 
