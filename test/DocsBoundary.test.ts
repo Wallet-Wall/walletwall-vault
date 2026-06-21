@@ -14,6 +14,7 @@ describe("public docs boundary language", function () {
   const threatModel = readDoc("docs/THREAT_MODEL.md");
   const roadmap = readDoc("docs/ROADMAP.md");
   const testing = readDoc("docs/TESTING.md");
+  const statusMatrix = readDoc("docs/ZK_PQ_Status_Matrix.md");
 
   it("README scopes production app behavior to read-only surfaces", function () {
     expect(readme).to.include("public walletwall production app surfaces remain read-only intelligence");
@@ -81,5 +82,22 @@ describe("public docs boundary language", function () {
     expect(roadmap).to.include("real yield");
     expect(testing).to.include("production deposits or withdrawals");
     expect(testing).to.include("yield");
+  });
+
+  it("ZK/PQ status matrix carries the prototype non-claims", function () {
+    for (const phrase of [
+      "research prototype",
+      "not production custody",
+      "no mainnet deposits",
+      "no real yield",
+      "quantum-proof",
+    ]) {
+      expect(statusMatrix).to.include(phrase);
+    }
+  });
+
+  it("ZK/PQ status matrix is honest about on-chain verification (mock only)", function () {
+    expect(statusMatrix).to.include("the active sepolia verifier is the **mock**");
+    expect(statusMatrix).to.include("native or zk on-chain ml-dsa verification");
   });
 });
