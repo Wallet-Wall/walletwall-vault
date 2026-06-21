@@ -141,12 +141,46 @@ describe("PQ proof-artifact manifest", function () {
       expect(res.errors.join(" ")).to.match(/160-byte hex/);
     });
 
+    it("an input messageHash that disagrees with the journal", function () {
+      const a = freshExample();
+      // Overwrite only the declared messageHash; the publicValues blob still
+      // encodes the original withdrawalDigest, so the cross-check must fire.
+      a.artifact.input.messageHash = "0x" + "cc".repeat(32);
+      const res = validateProofArtifact(a);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/messageHash does not match/);
+    });
+
     it("an input publicKeyHash that disagrees with the journal", function () {
       const a = freshExample();
       a.artifact.input.publicKeyHash = "0x" + "ab".repeat(32);
       const res = validateProofArtifact(a);
       expect(res.valid).to.equal(false);
       expect(res.errors.join(" ")).to.match(/publicKeyHash does not match/);
+    });
+
+    it("a missing regeneration block", function () {
+      const a = freshExample();
+      delete a.regeneration;
+      const res = validateProofArtifact(a);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/regeneration is required/);
+    });
+
+    it("a regeneration.command that is empty", function () {
+      const a = freshExample();
+      a.regeneration.command = "";
+      const res = validateProofArtifact(a);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/regeneration\.command/);
+    });
+
+    it("a regeneration.deterministic that is not a boolean", function () {
+      const a = freshExample();
+      a.regeneration.deterministic = "yes";
+      const res = validateProofArtifact(a);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/regeneration\.deterministic/);
     });
 
     it("a proof.status/generated mismatch", function () {

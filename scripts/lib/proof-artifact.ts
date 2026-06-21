@@ -311,11 +311,21 @@ function validateJournal(
   // Decode the journal and cross-check it against the declared inputs. This is
   // the defense that proves the publicValues blob carries only hashes (no raw
   // key/signature) and is internally consistent.
+  //
+  // The ABI encoding is (withdrawalDigest, pkHash, sigHash, uint64, address).
+  // All three hash fields are cross-checked so a partially-tampered artifact
+  // (e.g. flipping only messageHash in artifact.input) is caught here.
   try {
-    const [, pkHash, sigHash, chainId, verifierAddress] = new AbiCoder().decode(
+    const [msgHash, pkHash, sigHash, chainId, verifierAddress] = new AbiCoder().decode(
       ["bytes32", "bytes32", "bytes32", "uint64", "address"],
       pv,
     );
+    // The journal carries the raw withdrawalDigest (bytes32); artifact.input.messageHash
+    // is keccak256 of those same bytes. Cross-check the round-trip so a tampered
+    // messageHash field is caught even when the journal itself is untouched.
+    if (input && isHash(input.messageHash) && keccak256(msgHash) !== (input.messageHash as string)) {
+      errors.push("journal messageHash does not match artifact.input.messageHash");
+    }
     if (input && isHash(input.publicKeyHash) && pkHash.toLowerCase() !== (input.publicKeyHash as string)) {
       errors.push("journal publicKeyHash does not match artifact.input.publicKeyHash");
     }
