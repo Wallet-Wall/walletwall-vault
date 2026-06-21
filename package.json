@@ -24,6 +24,7 @@
     "verifier:verify": "ts-node scripts/pq-verifier-cli.ts verify",
     "hosted:demo": "ts-node scripts/hosted-verifier-demo.ts",
     "sp1:smoke": "ts-node scripts/sp1-smoke.ts",
+    "pretypecheck": "hardhat compile",
     "typecheck": "tsc --noEmit",
     "lint": "solhint \"contracts/**/*.sol\"",
     "format": "prettier --write \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
