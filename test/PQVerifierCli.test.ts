@@ -168,4 +168,27 @@ describe("Open PQ verifier CLI (verifier:verify)", function () {
   it("throws (non-zero exit) on an unknown command", function () {
     expect(() => parseVerifierArgs(["bogus"])).to.throw(/unknown command/i);
   });
+
+  it("throws (non-zero exit) on malformed inline hex (non-hex characters)", function () {
+    expect(() =>
+      main(["verify", "--message", "0xZZZZ", "--public-key", publicKeyHex, "--pq-signature", signatureHex]),
+    ).to.throw(/hex/i);
+  });
+
+  it("throws (non-zero exit) on malformed inline hex (odd length)", function () {
+    // Odd-length hex is rejected before verification; the exact message comes from
+    // the hex decoder, so we only assert that it exits non-zero (throws).
+    expect(() =>
+      main(["verify", "--message", "0x123", "--public-key", publicKeyHex, "--pq-signature", signatureHex]),
+    ).to.throw();
+  });
+
+  it("rejects inline values without a 0x prefix (no base64 inline form)", function () {
+    // Inline inputs are 0x-prefixed hex only; an un-prefixed/base64-looking value
+    // is rejected rather than silently misinterpreted. Raw-byte files remain the
+    // way to pass non-hex material (covered above).
+    expect(() =>
+      main(["verify", "--message", "aGVsbG8=", "--public-key", publicKeyHex, "--pq-signature", signatureHex]),
+    ).to.throw(/hex/i);
+  });
 });
