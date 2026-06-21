@@ -1,0 +1,56 @@
+# ZK / PQ Capability Status Matrix
+
+> ⚠️ **Research prototype. Not audited. Testnet/local only. Do not use real funds.**
+> This repository is a **research prototype**. It is **not production custody**, accepts
+> **no mainnet deposits**, produces **no real yield**, and makes **no "quantum-proof"
+> guarantees**. The matrix below is the single source of truth for what actually exists so
+> that the private app and docs cannot overclaim. Pair it with
+> [WALLETWALL_APP_BOUNDARY.md](WALLETWALL_APP_BOUNDARY.md).
+
+## Legend
+
+| Symbol | Meaning |
+| --- | --- |
+| ✅ **Implemented** | Exists and is exercised by tests/CI in this repo, within the stated (research/testnet) scope. |
+| 🟡 **Scaffold / gated** | Code exists but is unaudited and/or only runs behind an explicit env flag or external toolchain; not part of normal CI. |
+| ❌ **Not implemented** | Deliberately absent. Must not be claimed. |
+
+"CI-gated" = runs in `.github/workflows/ci.yml` on every PR. "Env-gated" = requires an
+explicit flag (e.g. `RUN_SP1_E2E=1`) and/or external toolchain; not run in CI.
+
+## Matrix
+
+| Capability | Status | What exists | What does **not** exist | Verify locally | Gating |
+| --- | --- | --- | --- | --- | --- |
+| **TypeScript / open PQ verifier** (`src/verifier/`) | ✅ | Pure ML-DSA-65 (FIPS 204) verification via `@noble/post-quantum`; deterministic structured result with input **hashes only**; closed reason-code set; no signing, no key access, no Hardhat. | On-chain verification; any trust beyond "this signature verified". | `npx hardhat test test/PQVerifier.test.ts test/PQVerifierBoundary.test.ts` | CI-gated |
+| **Verifier CLI** (`npm run verifier:verify`) | ✅ | Standalone CLI returning the structured result; hex or raw-byte inputs; failed verify is exit 0, malformed input is non-zero; never signs. | base64 input; any signing/attestation. | `npm run verifier:verify -- --message-file … --public-key-file … --pq-signature-file … --json`; `npx hardhat test test/PQVerifierCli.test.ts` | CI-gated (CLI smoke + tests) |
+| **PQ evidence artifact / schema** (`src/verifier/evidence.ts`) | ✅ | Stable `walletwall.pq-verifier-evidence.v1` envelope (hashes only), strict validator, JSON Schema, valid + failure examples. App-consumable **read-only**. | Raw key/signature material (rejected); any trust-bearing meaning. | `npm run evidence:fixtures`; `npx hardhat test test/PQEvidence.test.ts`; see [PQ_Verifier_Evidence_Artifact.md](PQ_Verifier_Evidence_Artifact.md) | CI-gated |
+| **Attestation boundary** (`AttestationPQCVerifier`, `npm run attestor:verify`) | 🟡 | Off-chain ML-DSA verify gated before an EIP-712 attestation signed by a configured attestor; on-chain contract enforces the attestor signature. | Trustless verification; on-chain ML-DSA; protection from immediate attestor rotation. **Trusted, not ZK.** | `npm run attestor:demo`; `npx hardhat test test/AttestationPQCVerifier.test.ts`; see [Attestation_Verifier.md](Attestation_Verifier.md), [Verifier_Roadmap.md](Verifier_Roadmap.md) | CI-gated (off-chain trust remains) |
+| **SP1 execute** (guest in execute mode) | 🟡 | `zkvm/guest` compiles in CI; `npm run sp1:smoke` pinns the journal encoding with no toolchain and runs guest **execute** (no proof) when a host binary is built. | Any proof; execute is not run in CI (needs SP1 toolchain). | `npm run sp1:smoke`; with toolchain: `cargo build … && npm run sp1:smoke`, or `RUN_SP1_E2E=1 npx hardhat test test/ZKRealProof.e2e.test.ts`; see [SP1_Smoke_Lane.md](SP1_Smoke_Lane.md) | Pure check CI-gated; execute env/toolchain-gated |
+| **SP1 prove** (real Groth16 proof) | 🟡 | Host `prove` subcommand + `ProverClient.generateProof`; gated differential/conformance e2e tests. | Audited circuit; measured gas/proving time; any CI coverage. | `RUN_SP1_E2E=1` + built host + configured prover; see [ZK_Prover_Runbook.md](ZK_Prover_Runbook.md) | Env-gated (not in CI) |
+| **On-chain ML-DSA verification** | ❌ | `ZKMLDSAVerifier` Solidity scaffold + **mock**-backed tests only; `MockMLDSAVerifier` for local/testnet wiring. | Native or ZK on-chain ML-DSA verification on any live deployment. The active Sepolia verifier is the **mock**. | `npx hardhat test test/ZKMLDSAIntegration.test.ts`; see [ZK_Verifier_Production.md](ZK_Verifier_Production.md), [Deployments.md](Deployments.md) | N/A (not claimed) |
+| **Testnet simulator / rehearsal** (`StablecoinVaultSimulator`, Sepolia) | 🟡 | Local/Hardhat/Docker/Sepolia developer rehearsal flows and deployment metadata; an isolated developer/testnet rehearsal exception. | Production app behavior; a production deposit/withdrawal service; a mainnet write path. | `npm run demo:simulator`; see [Sepolia_Rehearsal_Operator_Path.md](Sepolia_Rehearsal_Operator_Path.md), [Operator_Checklist_Simulator.md](Operator_Checklist_Simulator.md), [`deployments/examples/app-status.example.json`](../deployments/examples/app-status.example.json) | CI-gated (tests); deployment is manual/testnet |
+| **Production custody** | ❌ | — | Custody of user funds; mainnet deposits/withdrawals; real yield/APY; audited production operation. Would need separate design, threat modeling, audits, and operational controls. | — | N/A (never claimed) |
+
+## Boundary (non-claims)
+
+This repository and any app referencing it must **not** claim or imply:
+
+- It is **production custody** — it is **not production custody**.
+- It accepts **mainnet deposits** — there are **no mainnet deposits**.
+- It generates returns — there is **no real yield**, interest, APY, or rewards-as-returns.
+- It is **"quantum-proof"** or immune to a future quantum-capable adversary — no
+  **quantum-proof** guarantee is made.
+- It performs **on-chain ML-DSA verification** today — it does not; the active testnet
+  verifier is the mock path and the attestation path is trusted, not trustless.
+
+Everything here is a **research prototype** for local/testnet evaluation only. See
+[Verifier_Roadmap.md](Verifier_Roadmap.md) for the staged path from mock → trusted
+attestation → ZK/native, and [Security_Assumptions.md](Security_Assumptions.md) and
+[THREAT_MODEL.md](THREAT_MODEL.md) for the trust implications.
+
+## Related
+
+- [Open_PQ_Verifier.md](Open_PQ_Verifier.md) · [Verifier_Result_Schema.md](Verifier_Result_Schema.md) · [PQ_Verifier_Evidence_Artifact.md](PQ_Verifier_Evidence_Artifact.md)
+- [SP1_Smoke_Lane.md](SP1_Smoke_Lane.md) · [ZK_Prover_Runbook.md](ZK_Prover_Runbook.md) · [ZK_Verifier_Production.md](ZK_Verifier_Production.md) · [ZK_Verifier_Feasibility.md](ZK_Verifier_Feasibility.md)
+- [Verifier_Roadmap.md](Verifier_Roadmap.md) · [WALLETWALL_APP_BOUNDARY.md](WALLETWALL_APP_BOUNDARY.md) · [Deployments.md](Deployments.md)

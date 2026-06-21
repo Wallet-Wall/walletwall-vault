@@ -407,6 +407,12 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   optional EIP-712 attestation.
 - [Verifier result schema](docs/Verifier_Result_Schema.md) - the deterministic
   structured result and reason codes returned by the open verifier.
+- [PQ verifier evidence artifact](docs/PQ_Verifier_Evidence_Artifact.md) - the stable,
+  app-consumable JSON evidence envelope (hashes only) the app may display read-only.
+- [SP1 smoke lane](docs/SP1_Smoke_Lane.md) - the cheap, deterministic execute-only SP1
+  check and how the normal CI / smoke / gated-e2e lanes relate.
+- [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
+  the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
 - [Testnet stablecoin vault simulator spec](docs/specs/testnet-stablecoin-vault-simulator.md) -
   proposed mock USDC-style ERC-20 deposit/withdraw rehearsal over the existing
