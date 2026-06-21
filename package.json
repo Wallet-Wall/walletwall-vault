@@ -18,9 +18,10 @@
     "attestor:demo": "ts-node --esm scripts/attestor-cli.ts demo",
     "attestor:verify": "ts-node --esm scripts/attestor-cli.ts verify",
     "attestor:fixtures": "ts-node --esm scripts/generate-attestor-fixture.ts",
+    "verifier:verify": "ts-node scripts/pq-verifier-cli.ts verify",
     "lint": "solhint \"contracts/**/*.sol\"",
-    "format": "prettier --write \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
-    "format:check": "prettier --check \"contracts/**/*.sol\" \"{scripts,test,pqc}/**/*.ts\"",
+    "format": "prettier --write \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
+    "format:check": "prettier --check \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
     "validate:deployments": "ts-node scripts/validate-deployments.ts"
   },
   "keywords": [

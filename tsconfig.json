@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "rootDir": "."
   },
-  "include": ["scripts", "test", "pqc", "hardhat.config.ts", "typechain-types"],
+  "include": ["src", "scripts", "test", "pqc", "hardhat.config.ts", "typechain-types"],
   "exclude": ["node_modules"]
 }
