@@ -1,0 +1,27 @@
+{
+  "schema": "walletwall.pq-verifier-evidence.v1",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "verification": {
+    "schemaVersion": "walletwall.pq-verifier.v1",
+    "verifier": {
+      "name": "walletwall-vault-pq-verifier",
+      "version": "0.1.0"
+    },
+    "algorithm": "ML-DSA-65",
+    "fips": "FIPS-204",
+    "mode": "pure",
+    "input": {
+      "messageHash": "0x5db1d74d46bab477e6ce75db5b0d95bff658c5ac8791568141a14ee08c36d774",
+      "publicKeyHash": "0x69434246a432c782f8aeab5fcdb441e25d3c17ff538fc02262947be96d647bdc",
+      "signatureHash": "0xf0130c48cc487d63042a3aedac5e66c777fdcfee6b354dcbc2ed95503dee083e"
+    },
+    "result": {
+      "verified": true,
+      "reason": "ML_DSA_65_VALID"
+    }
+  },
+  "source": {
+    "type": "nist-acvp",
+    "reference": "NIST ACVP ML-DSA-65 sigVer tcId 35 (FIPS 204, external/pure)"
+  }
+}

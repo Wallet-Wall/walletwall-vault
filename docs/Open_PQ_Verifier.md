@@ -22,7 +22,9 @@ The open verifier answers exactly one question:
 > Did this ML-DSA-65 signature verify for this message and public key?
 
 It returns a deterministic, structured result (see
-[Verifier_Result_Schema.md](Verifier_Result_Schema.md)).
+[Verifier_Result_Schema.md](Verifier_Result_Schema.md)). For a stable, app-consumable
+envelope around that result — with a timestamp, optional provenance, a JSON Schema, and a
+validator — see the [PQ Verifier Evidence Artifact](PQ_Verifier_Evidence_Artifact.md).
 
 - **Independently hostable.** The verifier module ([`src/verifier/`](../src/verifier/))
   has no Hardhat dependency and no EVM private key. It can be vendored, re-hosted, or
