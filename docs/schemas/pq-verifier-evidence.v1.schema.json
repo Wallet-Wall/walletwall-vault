@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://walletwall.org/schemas/pq-verifier-evidence.v1.schema.json",
+  "title": "WalletWall PQ Verifier Evidence (v1)",
+  "description": "App-consumable, read-only evidence artifact wrapping a deterministic open ML-DSA-65 (FIPS 204) verification result. Contains only keccak256 hashes of the inputs — never raw key, signature, or message bytes. This is verification evidence only: not a signature, not an attestation, not a ZK proof, and not on-chain verification. Research prototype; not audited; testnet/local only. The dependency-free TypeScript validator in src/verifier/evidence.ts is the authoritative in-repo check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "verification"],
+  "properties": {
+    "schema": {
+      "const": "walletwall.pq-verifier-evidence.v1",
+      "description": "Stable evidence-envelope schema identifier."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$",
+      "description": "ISO-8601 UTC instant the evidence was produced. The only non-deterministic field."
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "verifier", "algorithm", "fips", "mode", "input", "result"],
+      "description": "Deterministic verification result (its own walletwall.pq-verifier.v1 schema).",
+      "properties": {
+        "schemaVersion": { "const": "walletwall.pq-verifier.v1" },
+        "verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "walletwall-vault-pq-verifier" },
+            "version": { "type": "string" }
+          }
+        },
+        "algorithm": { "const": "ML-DSA-65" },
+        "fips": { "const": "FIPS-204" },
+        "mode": { "const": "pure" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["messageHash", "publicKeyHash", "signatureHash"],
+          "properties": {
+            "messageHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "publicKeyHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "signatureHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+          }
+        },
+        "result": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verified", "reason"],
+          "properties": {
+            "verified": { "type": "boolean" },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "ML_DSA_65_VALID",
+                "EMPTY_MESSAGE",
+                "INVALID_PUBLIC_KEY_LENGTH",
+                "INVALID_SIGNATURE_LENGTH",
+                "VERIFY_FAILED",
+                "VERIFY_EXCEPTION"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "reference"],
+      "description": "Optional, safe provenance reference. Must not embed raw key/signature material.",
+      "properties": {
+        "type": { "type": "string", "enum": ["nist-acvp", "library-generated", "operator-supplied"] },
+        "reference": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

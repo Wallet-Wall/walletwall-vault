@@ -24,7 +24,12 @@ import { resolve } from "node:path";
 
 import { expect } from "chai";
 
-const VERIFIER_FILES = ["src/verifier/schema.ts", "src/verifier/result.ts", "src/verifier/ml-dsa-65.ts"];
+const VERIFIER_FILES = [
+  "src/verifier/schema.ts",
+  "src/verifier/result.ts",
+  "src/verifier/ml-dsa-65.ts",
+  "src/verifier/evidence.ts",
+];
 
 /** Remove block and line comments so only executable code is scanned. */
 function stripComments(source: string): string {
@@ -83,6 +88,7 @@ describe("Open PQ verifier boundary (static source guards)", function () {
     // schema and result helpers stay free of crypto-library coupling.
     expect(sources.get("src/verifier/schema.ts")!).to.not.match(/@noble\/post-quantum/);
     expect(sources.get("src/verifier/result.ts")!).to.not.match(/@noble\/post-quantum/);
+    expect(sources.get("src/verifier/evidence.ts")!).to.not.match(/@noble\/post-quantum/);
     expect(sources.get("src/verifier/ml-dsa-65.ts")!).to.match(/@noble\/post-quantum/);
   });
 });
