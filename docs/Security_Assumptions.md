@@ -70,6 +70,15 @@ mis-signing in the demonstrated flow, but it does not remove trust in the attest
 host, service code, deployment process, or operator. A compromised attestor can still
 approve invalid PQ claims.
 
+The core ML-DSA-65 verification is factored into an **open, independently hostable
+verifier boundary** ([`src/verifier/`](../src/verifier/), `npm run verifier:verify`).
+It is deterministic for the same inputs, returns a structured result, and **never signs,
+custodies funds, stores private keys, or constructs an attestation**. This makes
+verification reproducible by auditors, operators, and third parties, but it does not
+change the trust model: the on-chain verifier still trusts the attestor's EIP-712
+signature, not an on-chain ML-DSA check. Trusted attestation is not trustless
+verification, and it is not a ZK proof. See [Open_PQ_Verifier.md](Open_PQ_Verifier.md).
+
 `AttestationPQCVerifier` is stronger than the mock only because it requires the
 configured attestor's valid EIP-712 signature. It does not make the vault production
 custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and

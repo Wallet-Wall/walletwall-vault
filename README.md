@@ -224,6 +224,36 @@ Set `ATTESTOR_PRIVATE_KEY` or pass `--attestor-private-key` for isolated local
 development. The contract still verifies only the trusted EVM attestor signature; it
 does not execute ML-DSA.
 
+### Open PQ verifier (pure ML-DSA-65 check, no signing)
+
+The open verifier ([`src/verifier/`](src/verifier/)) is a reproducible verification
+boundary that answers only: _did this ML-DSA-65 signature verify for this message and
+public key?_ It is independently hostable, deterministic for the same inputs, and
+requires **no** `ATTESTOR_PRIVATE_KEY`. It never signs anything, never custodies funds,
+and never builds an EIP-712 attestation. A failed verification is still a successful
+process (`"verified": false`); only malformed CLI input exits non-zero.
+
+```bash
+# Inline hex
+npm run verifier:verify -- \
+  --message 0x... \
+  --public-key 0x... \
+  --pq-signature 0x... \
+  --json
+
+# File inputs (hex files may contain 0x...; other files are treated as raw bytes)
+npm run verifier:verify -- \
+  --message-file ./message.bin \
+  --public-key-file ./public-key.bin \
+  --pq-signature-file ./signature.bin \
+  --json
+```
+
+The optional attestation layer (above) consumes the verified result before signing a
+trusted EIP-712 attestation. Trusted attestation is **not** a ZK proof and **not**
+on-chain ML-DSA verification. See [docs/Open_PQ_Verifier.md](docs/Open_PQ_Verifier.md)
+and [docs/Verifier_Result_Schema.md](docs/Verifier_Result_Schema.md).
+
 ### Deploy (local / testnet ONLY)
 
 ```bash
@@ -368,6 +398,10 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   prove.
 - [Roadmap](docs/ROADMAP.md) - research directions without production-readiness or
   exact Q-day claims.
+- [Open PQ verifier](docs/Open_PQ_Verifier.md) - the independently hostable, pure
+  ML-DSA-65 verification boundary (no signing, no custody, no EVM private key).
+- [Verifier result schema](docs/Verifier_Result_Schema.md) - the deterministic
+  structured result and reason codes returned by the open verifier.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
 - [Testnet stablecoin vault simulator spec](docs/specs/testnet-stablecoin-vault-simulator.md) -
   proposed mock USDC-style ERC-20 deposit/withdraw rehearsal over the existing
