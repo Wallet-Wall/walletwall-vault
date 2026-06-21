@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://walletwall.org/schemas/pq-proof-artifact.v1.schema.json",
+  "title": "WalletWall PQ Proof Artifact (v1)",
+  "description": "Deterministic, locally regenerable manifest demonstrating the SHAPE of a future ZK/PQ proof output for an ML-DSA-65 (FIPS 204) withdrawal-authorization fixture. It pins the deterministic SP1 guest journal (public values — hashes plus chainId and verifier address only) and the open-verifier evidence core (a keccak256 of the verification result). It is NOT a real proof: no Groth16 proof bytes are generated and the proof block is reported as gated. It is NOT on-chain verification, NOT custody, and makes NO quantum-proof guarantee. Research prototype; not audited; testnet/local only. The TypeScript validator in scripts/lib/proof-artifact.ts is the authoritative in-repo check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "generatedAt", "artifact", "proof", "regeneration"],
+  "properties": {
+    "schema": {
+      "const": "walletwall.pq-proof-artifact.v1",
+      "description": "Stable manifest schema identifier."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$",
+      "description": "ISO-8601 UTC instant the manifest was produced. The only non-deterministic field."
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "vectorSet", "verifier", "tooling", "sourceEvidenceHash", "input", "journal"],
+      "properties": {
+        "kind": { "const": "sp1-mldsa65-journal-manifest" },
+        "vectorSet": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Vector-set identifier the fixture was drawn from."
+        },
+        "verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "const": "walletwall-vault-pq-verifier" },
+            "version": { "type": "string" }
+          }
+        },
+        "tooling": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["prover", "scheme"],
+          "properties": {
+            "prover": { "const": "sp1" },
+            "scheme": { "const": "groth16" }
+          }
+        },
+        "sourceEvidenceHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-f]{64}$",
+          "description": "keccak256 of the canonical deterministic verification result (the evidence core, no timestamp)."
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["messageHash", "publicKeyHash", "signatureHash"],
+          "properties": {
+            "messageHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "publicKeyHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "signatureHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+          }
+        },
+        "journal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["publicValues", "publicValuesHash", "chainId", "verifierAddress"],
+          "description": "SP1 guest journal (public values). Carries only hashes plus chainId and verifier address; never raw key/signature/message bytes.",
+          "properties": {
+            "publicValues": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{320}$",
+              "description": "ABI-encoded (bytes32,bytes32,bytes32,uint64,address) journal, exactly 160 bytes."
+            },
+            "publicValuesHash": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$",
+              "description": "keccak256(publicValues) — the deterministic output hash."
+            },
+            "chainId": { "type": "integer", "minimum": 0 },
+            "verifierAddress": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "scheme", "generated", "reason"],
+      "description": "Proof presence. In this manifest the proof is gated (not generated); a real proof requires the SP1 toolchain and an external prover and is not produced in CI.",
+      "properties": {
+        "status": { "type": "string", "enum": ["gated", "generated"] },
+        "scheme": { "const": "groth16" },
+        "generated": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "regeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "deterministic"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "deterministic": { "type": "boolean" }
+      }
+    }
+  }
+}

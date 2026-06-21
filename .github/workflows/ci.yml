@@ -66,6 +66,14 @@ jobs:
           echo "$out" | grep -q '"proven": false'
           echo "$out" | grep -q '"hostExecuted": false'
 
+      - name: Validate reproducible proof artifact (deterministic; no proving)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: the committed proof-artifact manifest is
+          # valid and has not drifted from its generator. No SP1 toolchain, no
+          # proving, no network. Real proving stays gated behind RUN_SP1_E2E=1.
+          npm run proof:artifact:validate
+
       - name: Coverage
         run: npm run coverage
 
