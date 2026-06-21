@@ -10,6 +10,11 @@ signature material and arrive at the same structured result. Optional EIP-712
 attestations can bridge verified results into testnet contracts, but that attestation
 path remains trusted and is **not** a ZK proof or native on-chain PQ verification.
 
+**Running it yourself?** See the [PQ Verifier Operator Guide](PQ_Verifier_Operator_Guide.md)
+for step-by-step instructions and [PQ Verifier Reproducibility](PQ_Verifier_Reproducibility.md)
+for how operators compare results and how pure verification differs from EIP-712
+attestation.
+
 ## What it is
 
 The open verifier answers exactly one question:

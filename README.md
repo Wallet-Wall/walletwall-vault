@@ -400,6 +400,11 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   exact Q-day claims.
 - [Open PQ verifier](docs/Open_PQ_Verifier.md) - the independently hostable, pure
   ML-DSA-65 verification boundary (no signing, no custody, no EVM private key).
+- [PQ verifier operator guide](docs/PQ_Verifier_Operator_Guide.md) - how an independent
+  operator, auditor, or protocol runs the open verifier themselves.
+- [PQ verifier reproducibility](docs/PQ_Verifier_Reproducibility.md) - what deterministic
+  means here, how operators compare results, and how pure verification differs from an
+  optional EIP-712 attestation.
 - [Verifier result schema](docs/Verifier_Result_Schema.md) - the deterministic
   structured result and reason codes returned by the open verifier.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
