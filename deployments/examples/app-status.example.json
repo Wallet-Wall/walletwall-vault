@@ -1,0 +1,45 @@
+{
+  "_note": "EXAMPLE ONLY — not a deployment record. Shows what a consuming app should derive and assert from deployments/sepolia/stablecoin-vault-simulator.json before surfacing any simulator feature. Values are taken from the live Sepolia record at the time this example was written; always read the canonical source file, not this example.",
+  "_source": "deployments/sepolia/stablecoin-vault-simulator.json",
+  "simulatorStatus": {
+    "isDeployed": true,
+    "network": "sepolia",
+    "chainId": 11155111,
+    "tokenMode": "mock",
+    "tokenSymbol": "mUSDC",
+    "tokenAddress": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+    "simulatorAddress": "0x32f489842DD515Fa4b4b258714F0067B8B8133ae",
+    "verifierAddress": "0x4736138c99e0619D06663D971C8cD347de186F6d",
+    "deployedAt": "2026-06-18T20:23:48.000Z",
+    "docsUrl": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/docs/specs/testnet-stablecoin-vault-simulator.md"
+  },
+  "appGates": {
+    "_description": "Boolean assertions the app MUST evaluate before enabling any write interaction with the simulator. All must be true.",
+    "tokenModeIsMock": true,
+    "chainIdIsTestnet": true,
+    "noMainnetDeployment": true,
+    "noRealFunds": true,
+    "noCustody": true,
+    "noYield": true,
+    "notAudited": true,
+    "pqVerifierIsMock": true,
+    "warningMustBeShownToUser": true
+  },
+  "disclosureToDisplay": "TESTNET ONLY — Ethereum Sepolia. No mainnet deployment exists or is planned.",
+  "tokenLabel": "mUSDC (mock USDC — no monetary value)",
+  "simulatorLabel": "Stablecoin Vault Simulator (testnet research prototype, not audited)",
+  "consumptionRules": [
+    "Read deployments/sepolia/stablecoin-vault-simulator.json as static metadata from the canonical walletwall-vault repository.",
+    "Assert tokenMode === 'mock' before any write interaction. Reject anything else.",
+    "Assert chainId === 11155111 (Sepolia) or the correct testnet chain ID before any write.",
+    "Assert stablecoinVaultSimulatorAddress is non-null before any write interaction.",
+    "Show at least one string from the warnings[] array to the user before any write interaction.",
+    "Perform on-chain checks (e.g. contract.paused(), contract.token()) before any write — metadata alone does not confirm reachability.",
+    "Never label the token as 'USDC' — always 'mUSDC' or 'mock USDC (no monetary value)'.",
+    "Never imply yield, interest, APY, APR, returns, rewards, payout, or profit of any kind.",
+    "Never imply custody, production-grade security, audited status, or mainnet availability.",
+    "Never imply on-chain ML-DSA or quantum-proof verification — the PQ gate is a mock.",
+    "Never store or re-publish contract addresses without linking to walletwall-vault as the canonical source.",
+    "Metadata presence does NOT mean the simulator is reachable, funded, or ready for transactions."
+  ]
+}
