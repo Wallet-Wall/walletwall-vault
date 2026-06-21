@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -22,6 +22,7 @@
     "proof:artifact": "ts-node scripts/generate-proof-artifact.ts",
     "proof:artifact:validate": "ts-node scripts/generate-proof-artifact.ts --validate",
     "verifier:verify": "ts-node scripts/pq-verifier-cli.ts verify",
+    "hosted:demo": "ts-node scripts/hosted-verifier-demo.ts",
     "sp1:smoke": "ts-node scripts/sp1-smoke.ts",
     "typecheck": "tsc --noEmit",
     "lint": "solhint \"contracts/**/*.sol\"",
