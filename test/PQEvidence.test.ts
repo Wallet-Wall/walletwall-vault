@@ -116,6 +116,30 @@ describe("PQ verifier evidence artifact", function () {
       expect(res.errors.join(" ")).to.match(/unexpected top-level key/i);
     });
 
+    it("an unknown key nested under verification", function () {
+      const e = freshValid();
+      e.verification.injected = "surprise";
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/verification has unexpected key/i);
+    });
+
+    it("an unknown key nested under verification.verifier", function () {
+      const e = freshValid();
+      e.verification.verifier.injected = "surprise";
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/verification\.verifier has unexpected key/i);
+    });
+
+    it("an unknown key nested under verification.result", function () {
+      const e = freshValid();
+      e.verification.result.injected = "surprise";
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/verification\.result has unexpected key/i);
+    });
+
     it("a malformed input hash", function () {
       const e = freshValid();
       e.verification.input.publicKeyHash = "0x1234";

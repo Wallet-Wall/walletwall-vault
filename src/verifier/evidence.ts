@@ -123,12 +123,33 @@ function validateVerification(v: unknown, errors: string[]): void {
   }
   const r = v as Record<string, unknown>;
 
+  // Reject unknown keys at the verification level. The JSON Schema declares
+  // additionalProperties:false at every object level; this authoritative TS
+  // validator must match it (mirrors the proof-artifact validator's stance).
+  const allowedVerificationKeys = new Set([
+    "schemaVersion",
+    "verifier",
+    "algorithm",
+    "fips",
+    "mode",
+    "input",
+    "result",
+  ]);
+  for (const k of Object.keys(r)) {
+    if (!allowedVerificationKeys.has(k)) errors.push(`verification has unexpected key: ${k}`);
+  }
+
   if (r.schemaVersion !== PQ_VERIFIER_SCHEMA_VERSION) {
     errors.push(`verification.schemaVersion must be ${PQ_VERIFIER_SCHEMA_VERSION}`);
   }
   const verifier = r.verifier as Record<string, unknown> | undefined;
   if (!verifier || verifier.name !== PQ_VERIFIER_NAME || typeof verifier.version !== "string") {
     errors.push("verification.verifier must be { name, version:string }");
+  }
+  if (verifier && typeof verifier === "object") {
+    for (const k of Object.keys(verifier)) {
+      if (k !== "name" && k !== "version") errors.push(`verification.verifier has unexpected key: ${k}`);
+    }
   }
   if (r.algorithm !== PQ_VERIFIER_ALGORITHM) errors.push(`verification.algorithm must be ${PQ_VERIFIER_ALGORITHM}`);
   if (r.fips !== PQ_VERIFIER_FIPS) errors.push(`verification.fips must be ${PQ_VERIFIER_FIPS}`);
@@ -153,6 +174,9 @@ function validateVerification(v: unknown, errors: string[]): void {
   if (!result || typeof result.verified !== "boolean" || typeof result.reason !== "string") {
     errors.push("verification.result must be { verified:boolean, reason:string }");
     return;
+  }
+  for (const k of Object.keys(result)) {
+    if (k !== "verified" && k !== "reason") errors.push(`verification.result has unexpected key: ${k}`);
   }
   if (!ALLOWED_REASONS.has(result.reason)) {
     errors.push(`verification.result.reason must be one of ${[...ALLOWED_REASONS].join(", ")}`);
