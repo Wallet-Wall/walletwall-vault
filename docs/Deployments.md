@@ -20,7 +20,8 @@ Status: **active testnet**
 | Reported source commit | `828bf219c0e2612fcd1aba5f085c4abeba29de88` |
 | Live Sepolia runtime observed | `20,508` bytes |
 | Current public HEAD runtime | `22,138` bytes |
-| Reproducibility status | **Pending public artifact/source alignment** |
+| Reproducibility status | **Remediation-gated** — not reproducible from public sources today; see the remediation runbook below |
+| Machine-checkable manifest | [`deployments/reproducibility/walletwall-vault-sepolia.json`](../deployments/reproducibility/walletwall-vault-sepolia.json) (validated by `npm run validate:reproducibility`) |
 | Last independently re-checked | 2026-06-15 |
 
 Read-only Sepolia RPC checks confirmed that the deployment transaction succeeded, the
@@ -41,12 +42,44 @@ history, and the current public HEAD recompiles `WalletWallVault` to a `22,138`-
 runtime rather than the observed `20,508`-byte deployed runtime.
 
 The public repository therefore does **not** currently provide a clean third-party
-reproduction path for this exact deployment. Reproducibility remains pending an aligned
-public source tag and artifact manifest.
+reproduction path for this exact deployment. This is recorded honestly rather than
+papered over: the reproducibility status is **remediation-gated**, and the facts above
+are captured in a machine-checkable manifest at
+[`deployments/reproducibility/walletwall-vault-sepolia.json`](../deployments/reproducibility/walletwall-vault-sepolia.json).
+`npm run validate:reproducibility` enforces that this deployment **cannot** be marked
+`reproducible` while its reported commit is absent from public history or its runtime
+bytecode differs from public HEAD.
 
-**Follow-up TODO:** publish the exact deployment source commit/tag and artifact manifest,
-or redeploy from public HEAD and update this deployment record with the replacement
-address, transaction, source tag, and runtime.
+### Reproducibility remediation runbook
+
+Two paths can move this deployment from *remediation-gated* to *reproducible*. Pick whichever
+is feasible; both end by updating this record **and** the manifest, then re-validating.
+
+**Path A — redeploy from public HEAD (preferred; the reported commit is unpublishable):**
+
+1. From a clean checkout of public `main`, run `npm ci` and `npm run compile`. Record the
+   compiler version, optimizer settings, and the `keccak256` of the `WalletWallVault` runtime
+   bytecode — this becomes `artifactManifest.bytecodeHash`.
+2. Deploy `WalletWallVault` + `MockMLDSAVerifier` from public HEAD to **Ethereum Sepolia**
+   (chain ID `11155111`) using the safe deploy path. Use a **funded throwaway** testnet key
+   only — never a real-funds wallet. No mainnet.
+3. Read the live runtime bytecode of the new address and confirm its byte length and
+   `keccak256` match the locally compiled public-HEAD artifact.
+4. Update this section and the manifest with the new `deployedAddress`, `deploymentTx`,
+   `reportedSourceCommit` (a commit that **is** in public history), `observedRuntimeBytes`,
+   and `artifactManifest`; set `reproducibilityStatus` to `reproducible`.
+5. Run `npm run validate:reproducibility` and `npm run validate:deployments`; commit only
+   after both pass.
+
+**Path B — publish the exact source tag + artifact manifest:** if the exact deployment commit
+can be located and published as a public tag, publish it alongside a build artifact manifest
+(compiler version, settings, and the runtime bytecode `keccak256` that reproduces the deployed
+`20,508`-byte runtime), then set `reproducibilityStatus` to `reproducible` with that
+`artifactManifest`.
+
+No on-chain action is performed by this documentation change. Until one path is completed,
+the deployment remains a valid, live, **testnet-only research-prototype** deployment whose
+source-level reproducibility is explicitly gated.
 
 ## StablecoinVaultSimulator — Sepolia deployed
 

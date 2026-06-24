@@ -12,11 +12,17 @@ deployments/
     simulator-deployment.schema.json   — JSON Schema v1 for all metadata files
   examples/
     simulator.local.example.json       — annotated example (NOT a deployment record)
+  reproducibility/
+    schema/reproducibility.schema.json — JSON Schema v1 for reproducibility manifests
+    <subject>-<network>.json           — reproducibility manifests (validated separately)
   simulator.<network>.json             — live deployment records (added post-deployment)
   README.md                            — this file
 ```
 
-Files under `schema/` and `examples/` are excluded from `npm run validate:deployments`.
+Files under `schema/`, `examples/`, and `reproducibility/` are excluded from
+`npm run validate:deployments`. Reproducibility manifests have their own shape and are
+checked by `npm run validate:reproducibility` (see
+[Reproducibility manifests](#reproducibility-manifests) below).
 
 ## Rules for deployment records
 
@@ -67,6 +73,24 @@ npm run validate:deployments
 Validates all JSON files in `deployments/` (excluding `schema/` and `examples/`) against
 the schema rules. Exits 0 if all records are valid or if no records exist. Exits 1 on any
 error.
+
+## Reproducibility manifests
+
+`reproducibility/<subject>-<network>.json` records whether a public testnet deployment can be
+reproduced from public repository sources, and — when it cannot — the **committed remediation
+path**. This keeps the trust story honest: a deployment is either provably reproducible or
+**clearly remediation-gated**, never silently assumed.
+
+```sh
+npm run validate:reproducibility
+```
+
+The validator enforces an **honesty cross-check**: a manifest may only declare
+`reproducibilityStatus: "reproducible"` when its own recorded facts support it (the reported
+source commit is in public history, the observed and public-HEAD runtime byte counts match, and
+an `artifactManifest` with a source tag + bytecode hash is present). Any other status **must**
+carry a concrete `remediation` plan (`chosenPath` + non-empty `steps`). See
+[`docs/Deployments.md`](../docs/Deployments.md) for the human-readable remediation runbook.
 
 ## Security reminders
 

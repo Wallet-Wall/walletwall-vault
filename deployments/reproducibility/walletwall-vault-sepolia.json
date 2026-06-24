@@ -1,0 +1,36 @@
+{
+  "$schema": "./schema/reproducibility.schema.json",
+  "version": "1",
+  "subject": "WalletWallVault",
+  "environment": "sepolia",
+  "chainId": 11155111,
+  "deployedAddress": "0x210ceD9C12AF27b10B06eB5506b24a51E11506E9",
+  "deploymentTx": "0x8f15e6c99ee4ac789836716c75d26a8dc8df240dad731cbc8a7c9515e91cc3e1",
+  "reportedSourceCommit": "828bf219c0e2612fcd1aba5f085c4abeba29de88",
+  "reportedSourceCommitInPublicHistory": false,
+  "observedRuntimeBytes": 20508,
+  "publicHeadRuntimeBytes": 22138,
+  "reproducibilityStatus": "remediation-gated",
+  "lastChecked": "2026-06-15",
+  "artifactManifest": null,
+  "remediation": {
+    "chosenPath": "redeploy-from-public-head",
+    "rationale": "The reported source commit 828bf219c0e2612fcd1aba5f085c4abeba29de88 is absent from public repository history, and public HEAD recompiles WalletWallVault to a 22,138-byte runtime rather than the deployed 20,508-byte runtime. Because the original deployment commit cannot be published, the honest path to a clean third-party reproduction is to redeploy from public HEAD and replace this record.",
+    "steps": [
+      "From a clean checkout of public main, run `npm ci` and `npm run compile`; record the compiler version, optimizer settings, and the keccak256 of the WalletWallVault runtime bytecode (this becomes artifactManifest.bytecodeHash).",
+      "Deploy WalletWallVault + MockMLDSAVerifier from public HEAD to Ethereum Sepolia (chainId 11155111) using the safe deploy path; never use a real-funds wallet, only a funded throwaway Sepolia testnet key.",
+      "Read the live runtime bytecode of the newly deployed address and confirm its byte length and keccak256 match the locally compiled public-HEAD artifact.",
+      "Update docs/Deployments.md (Ethereum Sepolia — active testnet) and this manifest with the new deployedAddress, deploymentTx, reportedSourceCommit (a commit that IS in public history), observedRuntimeBytes, and artifactManifest, then set reproducibilityStatus to `reproducible`.",
+      "Run `npm run validate:reproducibility` and `npm run validate:deployments`; only commit the updated records once both pass."
+    ],
+    "recordToUpdate": "docs/Deployments.md (Ethereum Sepolia — active testnet) and deployments/reproducibility/walletwall-vault-sepolia.json",
+    "alternatePath": "publish-source-tag-and-manifest: if the exact deployment commit can be located and published as a public tag, publish it together with a build artifact manifest (compiler version, settings, and runtime bytecode keccak256 that reproduces the deployed 20,508-byte runtime), then set reproducibilityStatus to `reproducible` with that artifactManifest."
+  },
+  "disclosures": [
+    "Research prototype. Not audited. Testnet only (Ethereum Sepolia). Do not use real funds.",
+    "Source verification is not configured, and bytecode reproducibility from the reported deployment commit has not been independently confirmed.",
+    "The PQ gate is MockMLDSAVerifier — structural checks only, with no real on-chain ML-DSA cryptographic verification.",
+    "No Ethereum mainnet deployment exists or is planned; this record documents a testnet deployment only.",
+    "This deployment's reproducibility is remediation-gated: it is not yet reproducible from public sources, and the steps above are the committed path to make it so."
+  ]
+}
