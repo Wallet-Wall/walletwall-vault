@@ -496,7 +496,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      * @param pqPublicKey The PQ public key bytes.
      * @param mode The authorization policy (Hybrid recommended).
      */
-    function createVault(address ecdsaSigner, bytes calldata pqPublicKey, VaultMode mode) external payable whenNotPaused {
+    function createVault(
+        address ecdsaSigner,
+        bytes calldata pqPublicKey,
+        VaultMode mode
+    ) external payable whenNotPaused {
         if (vaults[msg.sender].exists) revert VaultAlreadyExists();
 
         // PqOnly is unsafe while the PQ verifier is a mock (no real cryptographic
