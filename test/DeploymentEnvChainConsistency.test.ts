@@ -51,7 +51,8 @@ function collectLiveRecords(): string[] {
   for (const entry of readdirSync(DEPLOYMENTS_DIR)) {
     const fullPath = join(DEPLOYMENTS_DIR, entry);
     if (statSync(fullPath).isDirectory()) {
-      if (entry === "schema" || entry === "examples") continue; // not live records
+      // not live records (reproducibility manifests have their own validator)
+      if (entry === "schema" || entry === "examples" || entry === "reproducibility") continue;
       for (const f of readdirSync(fullPath)) {
         if (f.endsWith(".json")) result.push(join(fullPath, f));
       }

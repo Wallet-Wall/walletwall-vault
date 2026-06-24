@@ -39,8 +39,9 @@ function collectLiveRecords(): string[] {
     const fullPath = join(DEPLOYMENTS_DIR, entry);
     const stat = statSync(fullPath);
     if (stat.isDirectory()) {
-      // Skip schema/ and examples/ — only live network subdirs
-      if (entry === "schema" || entry === "examples") continue;
+      // Skip schema/, examples/, and reproducibility/ (reproducibility manifests
+      // have their own shape + validator) — only live network record subdirs.
+      if (entry === "schema" || entry === "examples" || entry === "reproducibility") continue;
       for (const f of readdirSync(fullPath)) {
         if (f.endsWith(".json")) result.push(join(fullPath, f));
       }

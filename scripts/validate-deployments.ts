@@ -17,7 +17,9 @@ import { join, relative, sep } from "path";
 
 const REPO_ROOT = join(__dirname, "..");
 const DEPLOYMENTS_DIR = join(REPO_ROOT, "deployments");
-const EXCLUDED_DIRS = new Set(["schema", "examples"]);
+// "reproducibility" holds reproducibility manifests validated separately by
+// scripts/validate-reproducibility.ts; they have a different shape.
+const EXCLUDED_DIRS = new Set(["schema", "examples", "reproducibility"]);
 
 const ALLOWED_ENVIRONMENTS = ["local", "sepolia", "base-sepolia"] as const;
 const ALLOWED_TOKEN_MODES = ["mock", "external-test-token"] as const;
