@@ -1,7 +1,7 @@
 //! `evidence-validator` — offline, deterministic evidence-shape CLI (Phase 1 scaffold).
 //!
 //! SCAFFOLD / OFFLINE ONLY. Reads ONE committed evidence JSON artifact from disk
-//! and reports whether it is shape-valid against
+//! and reports whether it is contract-shape-valid against
 //! `walletwall.zk-adapter-evidence-response.v1`. It performs NO network I/O, NO
 //! prover execution, NO SP1 SDK build, NO signing, NO key access, and NO chain
 //! access, and it makes NO cryptographic truth claim (it does not recompute the
@@ -16,7 +16,8 @@
 //!   1  the artifact failed validation, or could not be read
 //!   2  usage error (no path argument)
 //!
-//! See `docs/Rust_Evidence_Tooling_Scaffold.md`.
+//! See `docs/Rust_Evidence_Validator_Contract_Expansion.md` and
+//! `docs/Rust_Evidence_Tooling_Scaffold.md`.
 
 #![forbid(unsafe_code)]
 
@@ -50,10 +51,13 @@ fn main() -> ExitCode {
 
     let outcome = validate_evidence_response(&contents);
     if outcome.ok {
-        println!("OK: {path} is shape-valid (offline shape check only; not cryptographic)");
+        println!("OK: {path} is contract-shape-valid (offline check only; not cryptographic)");
         ExitCode::SUCCESS
     } else {
-        eprintln!("FAIL: {path} did not pass the offline shape check:");
+        eprintln!(
+            "FAIL: {path} did not pass the offline contract-shape check ({} problem(s)):",
+            outcome.problems.len()
+        );
         for problem in &outcome.problems {
             eprintln!("  - {problem}");
         }

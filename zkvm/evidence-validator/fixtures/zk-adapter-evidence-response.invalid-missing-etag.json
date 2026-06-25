@@ -7,7 +7,8 @@
   "contentType": "application/json",
   "servedAt": "2026-01-01T00:00:00.000Z",
   "adapter": {
-    "schema": "walletwall.zk-verifier-adapter.v1"
+    "schema": "walletwall.zk-verifier-adapter.v1",
+    "artifactType": "zk-verifier-adapter-boundary"
   },
   "limitations": [
     "Negative fixture — the required top-level `etag` field is missing."

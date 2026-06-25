@@ -448,6 +448,11 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   checks its deterministic shape against `walletwall.zk-adapter-evidence-response.v1`. No
   network, no prover, no chain, no keys; not a cryptographic verification and not part of
   the default CI lane.
+- [Rust evidence validator contract expansion](docs/Rust_Evidence_Validator_Contract_Expansion.md) -
+  a conservative, deterministic expansion of the Phase 1 validator: `status`/`ok`
+  consistency, `adapter` identity/version fields, `servedAt` range, and `etag`/`limitations`/
+  `regeneration` presence. Still offline-only and contract-shape only — no keccak256
+  recompute, no prover, no network/RPC, no endpoint deployment, no contract/ABI changes.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.

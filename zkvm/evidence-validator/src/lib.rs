@@ -8,26 +8,37 @@
 //! `docs/ZK_Adapter_Evidence_Endpoint.md` and pinned by
 //! `evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json`.
 //!
-//! What this validates (shape only):
+//! What this validates (deterministic contract shape only):
 //!   * every required top-level field is present and well-typed,
 //!   * no unknown top-level fields are present (`deny_unknown_fields`,
 //!     mirroring the schema's `additionalProperties: false`),
 //!   * the fixed-constant fields hold their contract values,
-//!   * `servedAt` is an ISO-8601 UTC timestamp of the contracted form,
-//!   * `etag` is a `0x` + 64 lowercase-hex string,
+//!   * `status` and `ok` are internally consistent (a 2xx status requires
+//!     `ok == true`; a non-2xx status requires `ok == false`),
+//!   * `servedAt` is an ISO-8601 UTC timestamp of the contracted form, with
+//!     in-range calendar/time components,
+//!   * `etag` is a present, non-empty `0x` + 64 lowercase-hex string,
+//!   * the embedded `adapter` is an object that carries its required identity /
+//!     version fields (`schema` + `artifactType` contract constants),
 //!   * `limitations` is a non-empty array of non-empty strings,
-//!   * `regeneration` carries a non-empty `command` and `deterministic == true`.
+//!   * `regeneration` is present and carries a non-empty `command` and
+//!     `deterministic == true`.
 //!
 //! What this deliberately does NOT do:
 //!   * It does NOT recompute or verify the keccak256 `etag`. No cryptographic
 //!     truth claim is made or checked here; the TypeScript `validate:zk-response`
 //!     pass remains the authoritative `etag == keccak256(adapter)` cross-check.
-//!   * It does NOT validate the embedded `adapter` in depth (only that it is a
-//!     JSON object); deep adapter validation stays in TypeScript.
+//!     The canonical adapter-canonicalization + keccak256 algorithm lives in
+//!     TypeScript (`scripts/lib/zk-adapter-endpoint.ts`); re-deriving it here is
+//!     deferred, not implemented.
+//!   * It does NOT validate the embedded `adapter` in depth — only its top-level
+//!     identity/version fields. Deep adapter validation (`proofInput`, `journal`,
+//!     `proof`, `evidence`, …) stays in TypeScript (`validateAdapter`).
 //!   * It performs NO network I/O, NO prover execution, NO SP1 SDK build, NO
 //!     signing, NO key access, and NO chain access.
 //!
-//! See `docs/Rust_Evidence_Tooling_Scaffold.md` and the Phase 1 section of
+//! See `docs/Rust_Evidence_Validator_Contract_Expansion.md`,
+//! `docs/Rust_Evidence_Tooling_Scaffold.md`, and the Phase 1 section of
 //! `docs/Rust_Implementation_Path.md`.
 
 // This scaffold has no need for `unsafe`; forbid it outright so the boundary is
@@ -42,6 +53,12 @@ pub const EXPECTED_SERVICE: &str = "walletwall-zk-adapter-evidence-demo";
 pub const EXPECTED_MODE: &str = "spike-non-production";
 pub const EXPECTED_CONTENT_TYPE: &str = "application/json";
 pub const EXPECTED_STATUS: u64 = 200;
+
+/// Identity / version constants for the embedded `walletwall.zk-verifier-adapter.v1`
+/// boundary. Only these top-level identity fields are checked here; the deep
+/// adapter shape stays the TypeScript `validateAdapter` pass's responsibility.
+pub const EXPECTED_ADAPTER_SCHEMA: &str = "walletwall.zk-verifier-adapter.v1";
+pub const EXPECTED_ADAPTER_ARTIFACT_TYPE: &str = "zk-verifier-adapter-boundary";
 
 /// Strict typed view of the response top level. `deny_unknown_fields` mirrors the
 /// schema's `additionalProperties: false`; missing or mistyped fields are
@@ -130,18 +147,25 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
     if !parsed.ok {
         problems.push("ok must be true".to_string());
     }
+    // Cross-field invariant: a 2xx status must carry `ok == true`, and any
+    // non-2xx status must carry `ok == false`. This is internal-consistency
+    // defense-in-depth on top of the pinned `status == 200` / `ok == true`
+    // constants; it catches a `status`/`ok` pair that disagrees.
+    if is_success_status(parsed.status) != parsed.ok {
+        problems.push("ok is inconsistent with status (2xx requires ok=true)".to_string());
+    }
     if parsed.content_type != EXPECTED_CONTENT_TYPE {
         problems.push("contentType must be application/json".to_string());
     }
     if !is_iso8601_utc(&parsed.served_at) {
-        problems.push("servedAt must be an ISO-8601 UTC timestamp".to_string());
+        problems.push("servedAt must be an in-range ISO-8601 UTC timestamp".to_string());
     }
-    if !is_strong_etag(&parsed.etag) {
+    if parsed.etag.is_empty() {
+        problems.push("etag must be present and non-empty".to_string());
+    } else if !is_strong_etag(&parsed.etag) {
         problems.push("etag must match ^0x[0-9a-f]{64}$".to_string());
     }
-    if !parsed.adapter.is_object() {
-        problems.push("adapter must be a JSON object".to_string());
-    }
+    check_adapter_identity(&parsed.adapter, &mut problems);
     if parsed.limitations.is_empty() {
         problems.push("limitations must be a non-empty array".to_string());
     }
@@ -175,9 +199,58 @@ fn is_strong_etag(value: &str) -> bool {
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
+/// True for an HTTP-like 2xx success status.
+fn is_success_status(status: u64) -> bool {
+    (200..300).contains(&status)
+}
+
+/// Check the embedded `adapter`'s required identity / version fields against the
+/// `walletwall.zk-verifier-adapter.v1` contract constants.
+///
+/// This is a SHALLOW identity check only: it confirms the adapter is an object
+/// carrying the right `schema` + `artifactType` constants, so a wrong or stub
+/// adapter cannot pass unnoticed. It does NOT deeply validate the adapter
+/// (`proofInput`, `journal`, `proof`, `evidence`, …); that stays the authoritative
+/// TypeScript `validateAdapter` pass's responsibility.
+fn check_adapter_identity(adapter: &serde_json::Value, problems: &mut Vec<String>) {
+    let Some(object) = adapter.as_object() else {
+        problems.push("adapter must be a JSON object".to_string());
+        return;
+    };
+
+    check_identity_field(object, "schema", EXPECTED_ADAPTER_SCHEMA, problems);
+    check_identity_field(
+        object,
+        "artifactType",
+        EXPECTED_ADAPTER_ARTIFACT_TYPE,
+        problems,
+    );
+}
+
+/// Check that one adapter identity/version field is present, a string, and equal
+/// to its contract constant; push a precise problem otherwise.
+fn check_identity_field(
+    object: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    expected: &str,
+    problems: &mut Vec<String>,
+) {
+    match object.get(field).and_then(serde_json::Value::as_str) {
+        Some(value) if value == expected => {}
+        Some(_) => problems.push(format!("adapter.{field} must be the contract value")),
+        None => problems.push(format!("adapter.{field} must be present and a string")),
+    }
+}
+
 /// Accept exactly `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.mmmZ` — the two
-/// forms the contract's `servedAt` pattern allows. Structural check only; it does
-/// not validate calendar ranges (e.g. month 13 is not rejected here).
+/// forms the contract's `servedAt` pattern allows — AND require the calendar/time
+/// components to be in range (month `01`–`12`, day `01`–`31`, hour `00`–`23`,
+/// minute `00`–`59`, second `00`–`59`).
+///
+/// This is a deterministic structural + component-range check. It is NOT a full
+/// calendar validator: it does not reject day-of-month overflow for short months
+/// (e.g. `02-30`) or leap-year edge cases. The authoritative TypeScript
+/// `Date.parse` cross-check stays the source of truth for full parseability.
 fn is_iso8601_utc(value: &str) -> bool {
     let bytes = value.as_bytes();
     let has_millis = match bytes.len() {
@@ -212,17 +285,40 @@ fn is_iso8601_utc(value: &str) -> bool {
     }
 
     // Optional `.mmm` fraction, then `Z`.
-    if has_millis {
+    let terminator_ok = if has_millis {
         bytes[19] == b'.' && all_ascii_digits(bytes, 20, 3) && bytes[23] == b'Z'
     } else {
         bytes[19] == b'Z'
+    };
+    if !terminator_ok {
+        return false;
     }
+
+    // Component ranges. Year and the optional millisecond fraction accept any
+    // digits; the remaining fields must fall in their calendar/clock ranges.
+    let month = two_digits(bytes, 5);
+    let day = two_digits(bytes, 8);
+    let hour = two_digits(bytes, 11);
+    let minute = two_digits(bytes, 14);
+    let second = two_digits(bytes, 17);
+
+    (1..=12).contains(&month)
+        && (1..=31).contains(&day)
+        && hour <= 23
+        && minute <= 59
+        && second <= 59
 }
 
 /// True when `bytes[start..start + len]` are all ASCII digits. Callers guarantee
 /// the range is in bounds.
 fn all_ascii_digits(bytes: &[u8], start: usize, len: usize) -> bool {
     bytes[start..start + len].iter().all(u8::is_ascii_digit)
+}
+
+/// Read the two ASCII digits at `bytes[start..start + 2]` as a number. Callers
+/// guarantee the two bytes are ASCII digits and in bounds.
+fn two_digits(bytes: &[u8], start: usize) -> u32 {
+    u32::from(bytes[start] - b'0') * 10 + u32::from(bytes[start + 1] - b'0')
 }
 
 #[cfg(test)]
@@ -248,6 +344,26 @@ mod tests {
         include_str!("../fixtures/zk-adapter-evidence-response.invalid-empty-limitations.json");
     const WRONG_STATUS: &str =
         include_str!("../fixtures/zk-adapter-evidence-response.invalid-wrong-status.json");
+    const WRONG_SERVICE: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-wrong-service.json");
+    const STATUS_OK_MISMATCH: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-status-ok-mismatch.json");
+    const MISSING_LIMITATIONS: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-missing-limitations.json");
+    const MISSING_REGENERATION: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-missing-regeneration.json");
+    const BAD_TIMESTAMP: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-bad-timestamp.json");
+    const EMPTY_ETAG: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-empty-etag.json");
+    const MALFORMED_ADAPTER: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-malformed-adapter.json");
+    const ADAPTER_MISSING_IDENTITY: &str = include_str!(
+        "../fixtures/zk-adapter-evidence-response.invalid-adapter-missing-identity.json"
+    );
+    const ADAPTER_WRONG_IDENTITY: &str = include_str!(
+        "../fixtures/zk-adapter-evidence-response.invalid-adapter-wrong-identity.json"
+    );
 
     #[test]
     fn accepts_the_valid_fixture() {
@@ -365,5 +481,138 @@ mod tests {
         assert!(!is_strong_etag("0x98fb")); // too short
         assert!(!is_strong_etag(upper)); // uppercase rejected
         assert!(!is_strong_etag(no_prefix)); // missing 0x
+    }
+
+    #[test]
+    fn accepts_the_canonical_typescript_example() {
+        // True fixture parity: the validator must accept the repo's canonical
+        // evidence example owned by the TypeScript validators, resolved relative to
+        // the crate (not the process CWD). Guards against the Rust contract check
+        // drifting away from the real artifact shape. Offline local-file read only.
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let rel = "/../../evidence/zk/zk-adapter-evidence-response.example.json";
+        let path = format!("{manifest_dir}{rel}");
+        let contents = std::fs::read_to_string(&path).expect("read the canonical example");
+        let outcome = validate_evidence_response(&contents);
+        assert!(
+            outcome.ok,
+            "canonical example should pass: {:?}",
+            outcome.problems
+        );
+    }
+
+    #[test]
+    fn rejects_wrong_service_constant() {
+        let outcome = validate_evidence_response(WRONG_SERVICE);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("service must be")));
+    }
+
+    #[test]
+    fn rejects_status_ok_inconsistency() {
+        // status 200 + ok:false — the cross-field consistency rule must fire.
+        let outcome = validate_evidence_response(STATUS_OK_MISMATCH);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("ok is inconsistent with status")));
+    }
+
+    #[test]
+    fn rejects_missing_limitations() {
+        // The required top-level `limitations` field is absent — serde rejects it at
+        // the typed-shape stage.
+        let outcome = validate_evidence_response(MISSING_LIMITATIONS);
+        assert!(!outcome.ok);
+        assert!(outcome.problems[0].contains("shape"));
+    }
+
+    #[test]
+    fn rejects_missing_regeneration() {
+        let outcome = validate_evidence_response(MISSING_REGENERATION);
+        assert!(!outcome.ok);
+        assert!(outcome.problems[0].contains("shape"));
+    }
+
+    #[test]
+    fn rejects_out_of_range_timestamp() {
+        let outcome = validate_evidence_response(BAD_TIMESTAMP);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("servedAt must be an in-range ISO-8601 UTC timestamp")));
+    }
+
+    #[test]
+    fn rejects_empty_etag() {
+        let outcome = validate_evidence_response(EMPTY_ETAG);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag must be present and non-empty")));
+    }
+
+    #[test]
+    fn rejects_non_object_adapter() {
+        let outcome = validate_evidence_response(MALFORMED_ADAPTER);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("adapter must be a JSON object")));
+    }
+
+    #[test]
+    fn rejects_adapter_missing_identity_fields() {
+        let outcome = validate_evidence_response(ADAPTER_MISSING_IDENTITY);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("adapter.schema must be present")));
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("adapter.artifactType must be present")));
+    }
+
+    #[test]
+    fn rejects_adapter_wrong_identity_values() {
+        let outcome = validate_evidence_response(ADAPTER_WRONG_IDENTITY);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("adapter.schema must be the contract value")));
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("adapter.artifactType must be the contract value")));
+    }
+
+    #[test]
+    fn status_consistency_helper_matches_2xx() {
+        assert!(is_success_status(200));
+        assert!(is_success_status(299));
+        assert!(!is_success_status(199));
+        assert!(!is_success_status(300));
+        assert!(!is_success_status(500));
+    }
+
+    #[test]
+    fn iso8601_helper_rejects_out_of_range_components() {
+        assert!(is_iso8601_utc("2026-12-31T23:59:59Z"));
+        assert!(!is_iso8601_utc("2026-13-01T00:00:00Z")); // month 13
+        assert!(!is_iso8601_utc("2026-00-01T00:00:00Z")); // month 00
+        assert!(!is_iso8601_utc("2026-01-32T00:00:00Z")); // day 32
+        assert!(!is_iso8601_utc("2026-01-01T24:00:00Z")); // hour 24
+        assert!(!is_iso8601_utc("2026-01-01T00:60:00Z")); // minute 60
+        assert!(!is_iso8601_utc("2026-01-01T00:00:60Z")); // second 60
     }
 }
