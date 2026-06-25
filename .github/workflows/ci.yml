@@ -99,6 +99,15 @@ jobs:
           # proving, no network.
           npm run validate:zk-adapter
 
+      - name: Validate ZK adapter evidence endpoint response (deterministic; no server)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: the committed read-only endpoint example
+          # serves the committed adapter, its etag is keccak256 of that adapter, a
+          # conditional GET returns 304, and it has not drifted. No server, no
+          # network, no proving.
+          npm run validate:zk-response
+
       - name: Coverage
         run: npm run coverage
 
