@@ -170,7 +170,9 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
 fn is_strong_etag(value: &str) -> bool {
     value.len() == 66
         && value.starts_with("0x")
-        && value[2..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        && value[2..]
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Accept exactly `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.mmmZ` — the two
@@ -250,7 +252,11 @@ mod tests {
     #[test]
     fn accepts_the_valid_fixture() {
         let outcome = validate_evidence_response(VALID);
-        assert!(outcome.ok, "valid fixture should pass: {:?}", outcome.problems);
+        assert!(
+            outcome.ok,
+            "valid fixture should pass: {:?}",
+            outcome.problems
+        );
         assert!(outcome.problems.is_empty());
     }
 
@@ -281,28 +287,40 @@ mod tests {
     fn rejects_wrong_schema_constant() {
         let outcome = validate_evidence_response(WRONG_SCHEMA);
         assert!(!outcome.ok);
-        assert!(outcome.problems.iter().any(|p| p.contains("schema must be")));
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("schema must be")));
     }
 
     #[test]
     fn rejects_bad_etag() {
         let outcome = validate_evidence_response(BAD_ETAG);
         assert!(!outcome.ok);
-        assert!(outcome.problems.iter().any(|p| p.contains("etag must match")));
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag must match")));
     }
 
     #[test]
     fn rejects_empty_limitations() {
         let outcome = validate_evidence_response(EMPTY_LIMITATIONS);
         assert!(!outcome.ok);
-        assert!(outcome.problems.iter().any(|p| p.contains("non-empty array")));
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("non-empty array")));
     }
 
     #[test]
     fn rejects_wrong_status() {
         let outcome = validate_evidence_response(WRONG_STATUS);
         assert!(!outcome.ok);
-        assert!(outcome.problems.iter().any(|p| p.contains("status must be")));
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("status must be")));
     }
 
     #[test]

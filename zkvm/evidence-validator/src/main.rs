@@ -26,7 +26,9 @@ use evidence_validator::validate_evidence_response;
 
 fn main() -> ExitCode {
     let mut args = std::env::args();
-    let program = args.next().unwrap_or_else(|| "evidence-validator".to_string());
+    let program = args
+        .next()
+        .unwrap_or_else(|| "evidence-validator".to_string());
 
     let path = match args.next() {
         Some(arg) if arg != "-h" && arg != "--help" => arg,
