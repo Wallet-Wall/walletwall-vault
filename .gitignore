@@ -8,6 +8,7 @@ typechain-types
 dist
 zkvm/guest/target/
 zkvm/host/target/
+zkvm/evidence-validator/target/
 
 # IDEs and Editors
 .idea/
