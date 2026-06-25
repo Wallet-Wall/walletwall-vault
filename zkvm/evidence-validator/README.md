@@ -1,22 +1,28 @@
-# `evidence-validator` — offline evidence-shape validator (Phase 1 scaffold)
+# `evidence-validator` — offline evidence-shape + ETag-parity validator (Phase 1)
 
 > ⚠️ **Research prototype. Not audited. Testnet/local only. No real funds.**
 > **SCAFFOLD / OFFLINE ONLY.** CI compiles and tests this crate offline (the
 > `Check evidence-validator crate (offline)` job), but it is **not** a
-> cryptographic verifier — CI checks compile/shape only, never proving, endpoint
-> behavior, or production readiness.
+> cryptographic verifier — the ETag-parity recompute is an offline deterministic
+> content-hash cross-check, **not** proof verification and **not** cryptographic
+> truth about chain state. CI checks compile/shape/parity only, never proving,
+> endpoint behavior, or production readiness.
 
 A minimal, dependency-light Rust crate that reads a committed evidence JSON
 artifact from disk and checks its **deterministic shape** against the
 `walletwall.zk-adapter-evidence-response.v1` response contract (see
 [`docs/ZK_Adapter_Evidence_Endpoint.md`](../../docs/ZK_Adapter_Evidence_Endpoint.md)
 and the JSON Schema at
-[`evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json`](../../evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json)).
+[`evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json`](../../evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json)),
+and then cross-checks the canonical keccak256 `etag` for **deterministic parity**.
 
-This is the first Phase 1 Rust scaffold described in
+This is the Phase 1 Rust crate described in
 [`docs/Rust_Implementation_Path.md`](../../docs/Rust_Implementation_Path.md) and
 documented in
-[`docs/Rust_Evidence_Tooling_Scaffold.md`](../../docs/Rust_Evidence_Tooling_Scaffold.md).
+[`docs/Rust_Evidence_Tooling_Scaffold.md`](../../docs/Rust_Evidence_Tooling_Scaffold.md),
+[`docs/Rust_Evidence_Validator_Contract_Expansion.md`](../../docs/Rust_Evidence_Validator_Contract_Expansion.md),
+and
+[`docs/Rust_Evidence_Validator_Etag_Parity.md`](../../docs/Rust_Evidence_Validator_Etag_Parity.md).
 
 ## What it validates (deterministic contract shape only)
 
@@ -39,18 +45,36 @@ See
 [`docs/Rust_Evidence_Validator_Contract_Expansion.md`](../../docs/Rust_Evidence_Validator_Contract_Expansion.md)
 for the full list of contract fields validated and the boundaries preserved.
 
+## What it validates (canonical ETag / keccak256 parity)
+
+- when the `etag` is well-formed and the embedded `adapter` carries its correct
+  identity, the validator recomputes the canonical keccak256 content hash of the
+  adapter — exactly as the TypeScript serializer does
+  (`keccak256(JSON.stringify(adapter))`, compact and in document key order) — and
+  **fails** validation if it does not equal the committed `etag`. This catches a
+  tampered `etag`, a drifted adapter payload left with a stale `etag`, and a
+  re-ordered adapter that no longer hashes to the committed value.
+
+This parity step is an **offline deterministic** content-hash cross-check, **not**
+a cryptographic truth claim and **not** proof verification. It asserts only that
+the committed `etag` is keccak256 of the committed `adapter`. See
+[`docs/Rust_Evidence_Validator_Etag_Parity.md`](../../docs/Rust_Evidence_Validator_Etag_Parity.md).
+
 ## What it deliberately does NOT do
 
-- It does **not** recompute or verify the keccak256 `etag` — no cryptographic
-  truth claim is made or checked here. The TypeScript `validate:zk-response` pass
-  remains the authoritative `etag == keccak256(adapter)` cross-check; re-deriving
-  the canonical adapter hash in Rust is **deferred, not implemented**.
+- The ETag parity recompute is **not** proof verification, **not** cryptographic
+  truth about chain state, and makes **no** production claim — it only restates,
+  in Rust, the content-hash identity the TypeScript `computeAdapterETag` defines.
+  The TypeScript `validate:zk-response` pass remains the CI source of truth; this
+  crate relaxes nothing and adds an independent, offline second check.
 - It does **not** deeply validate the embedded `adapter` — only its top-level
-  identity/version fields. Deep adapter validation (`proofInput`, `journal`,
-  `proof`, `evidence`, …) stays in TypeScript (`validateAdapter`).
+  identity/version fields (plus the whole-adapter ETag hash). Deep adapter
+  validation (`proofInput`, `journal`, `proof`, `evidence`, …) stays in TypeScript
+  (`validateAdapter`).
 - It performs **no** network I/O, **no** prover execution, **no** SP1 SDK build,
   **no** signing, **no** key access, and **no** chain access.
-- It does **not** publish, deploy, or operate any endpoint.
+- It does **not** publish, deploy, or operate any endpoint, and changes **no**
+  contract, ABI, or deployment.
 
 ## Run it offline
 
@@ -70,16 +94,22 @@ cargo run -- ../../evidence/zk/zk-adapter-evidence-response.example.json
 cargo run -- fixtures/zk-adapter-evidence-response.valid.json
 ```
 
-Exit codes: `0` shape-valid, `1` invalid or unreadable, `2` usage error.
+Exit codes: `0` shape-valid and etag matches the adapter hash, `1` invalid or
+unreadable, `2` usage error.
 
 ## Fixtures
 
 `fixtures/` holds local, checked-in scaffold test material — **not** canonical
 evidence artifacts. The valid fixture mirrors the committed TypeScript example
-(`evidence/zk/zk-adapter-evidence-response.example.json`), and the tests also run
-the validator against that canonical example directly for parity. Negative
-fixtures cover malformed JSON, missing required fields (`etag`, `limitations`,
-`regeneration`), wrong `schema`/`service` constants, `status`/`ok` inconsistency,
-an out-of-range `servedAt`, an empty/bad `etag`, and a malformed or
-wrong-identity `adapter`. All fixtures are local; the tests fetch nothing over
-the network.
+(`evidence/zk/zk-adapter-evidence-response.example.json`) including a matching
+`etag`, and the tests also run the validator against that canonical example
+directly for cross-language parity. Negative fixtures cover malformed JSON,
+missing required fields (`etag`, `limitations`, `regeneration`), wrong
+`schema`/`service` constants, `status`/`ok` inconsistency, an out-of-range
+`servedAt`, an empty/bad `etag`, and a malformed or wrong-identity `adapter`.
+ETag-parity negative fixtures cover a well-shaped but mismatched `etag`
+(`invalid-etag-mismatch`), a drifted adapter payload left with a stale `etag`
+(`invalid-etag-stale-adapter`), a re-ordered adapter that no longer hashes to the
+committed value (`invalid-etag-noncanonical-order`), and an uppercase-hex `etag`
+that is rejected on shape before parity runs (`invalid-etag-uppercase`). All
+fixtures are local; the tests fetch nothing over the network.

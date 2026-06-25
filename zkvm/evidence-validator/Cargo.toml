@@ -1,26 +1,31 @@
-# Offline, deterministic evidence-shape validator — Phase 1 Rust scaffold.
+# Offline, deterministic evidence-shape + ETag-parity validator — Phase 1 Rust crate.
 #
 # SCAFFOLD / OFFLINE ONLY. This crate reads a committed evidence JSON artifact
 # from disk and checks its deterministic SHAPE against the
-# `walletwall.zk-adapter-evidence-response.v1` response contract. It performs NO
-# network I/O, NO prover execution, NO SP1 SDK build, NO signing, NO key access,
-# and NO chain access. It makes NO cryptographic truth claim — in particular it
-# does NOT recompute or verify the keccak256 `etag`; that cross-check stays with
-# the TypeScript `validate:zk-response` pass.
+# `walletwall.zk-adapter-evidence-response.v1` response contract, and now also
+# recomputes the canonical keccak256 `etag` of the embedded adapter and checks it
+# for deterministic PARITY against the committed `etag`. It performs NO network
+# I/O, NO prover execution, NO SP1 SDK build, NO signing, NO key access, and NO
+# chain access. The ETag parity recompute is an OFFLINE DETERMINISTIC cross-check
+# that the committed `etag` is keccak256 of the committed `adapter` — it is NOT a
+# proof, NOT cryptographic truth about chain state, and makes NO production claim.
 #
-# See docs/Rust_Evidence_Tooling_Scaffold.md and Phase 1 of
-# docs/Rust_Implementation_Path.md.
+# See docs/Rust_Evidence_Validator_Etag_Parity.md,
+# docs/Rust_Evidence_Validator_Contract_Expansion.md,
+# docs/Rust_Evidence_Tooling_Scaffold.md and docs/Rust_Implementation_Path.md.
 #
 # Dependency convention mirrors zkvm/guest and zkvm/host: serde-family crates use
-# caret minor pins. This crate intentionally pulls in NO SP1, cryptography, HTTP,
-# or other network/prover dependencies — only serde + serde_json for strict typed
-# JSON parsing.
+# caret minor pins and the keccak256 hash uses the same `sha3 = "=0.10.8"` exact
+# pin as `zkvm/guest`. This crate intentionally pulls in NO SP1, HTTP, RPC,
+# wallet, or prover dependencies — only serde + serde_json (with `preserve_order`
+# so re-serialization matches the TypeScript `JSON.stringify` document key order)
+# and the sha3 keccak256 hash.
 [package]
 name = "evidence-validator"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 publish = false
-description = "Offline, deterministic contract-shape validator for committed walletwall evidence artifacts (Phase 1 scaffold + contract expansion)."
+description = "Offline, deterministic contract-shape + canonical keccak256 ETag-parity validator for committed walletwall evidence artifacts (Phase 1 crate)."
 license = "MIT"
 
 [lib]
@@ -33,4 +38,11 @@ path = "src/main.rs"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# `preserve_order` keeps parsed object keys in document order, so re-serializing
+# the adapter for the keccak256 ETag parity check matches the TypeScript
+# `JSON.stringify(adapter)` byte ordering instead of sorting keys.
+serde_json = { version = "1.0", features = ["preserve_order"] }
+# keccak256 for the offline ETag-parity recompute. Exact-pinned to the same
+# version `zkvm/guest` uses, so the whole repo resolves one Keccak implementation.
+# This is the Ethereum/ethers keccak256 (original Keccak, not NIST SHA3-256).
+sha3 = "=0.10.8"
