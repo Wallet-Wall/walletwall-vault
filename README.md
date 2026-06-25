@@ -409,6 +409,10 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   structured result and reason codes returned by the open verifier.
 - [PQ verifier evidence artifact](docs/PQ_Verifier_Evidence_Artifact.md) - the stable,
   app-consumable JSON evidence envelope (hashes only) the app may display read-only.
+- [ML-DSA evidence manifest](docs/ML_DSA_Evidence_Manifest.md) - the deterministic,
+  machine-checkable index over the committed ML-DSA evidence artifacts (hashes only)
+  recording the off-chain evidence boundary and limitations
+  ([`evidence/ml-dsa/manifest.json`](evidence/ml-dsa/manifest.json)).
 - [SP1 smoke lane](docs/SP1_Smoke_Lane.md) - the cheap, deterministic execute-only SP1
   check and how the normal CI / smoke / gated-e2e lanes relate.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across

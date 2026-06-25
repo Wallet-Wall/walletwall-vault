@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://walletwall.org/schemas/ml-dsa-evidence-manifest.v1.schema.json",
+  "title": "WalletWall ML-DSA Evidence Manifest (v1)",
+  "description": "Deterministic, app-consumable, read-only INDEX over the repository's committed ML-DSA (FIPS 204) evidence artifacts. Records, per entry, keccak256 hashes of the message, public key, and signature (never raw bytes), the off-chain verification result, and the integrity hash of the referenced artifact file, plus the overall evidence boundary (off-chain verification, trusted-attestor on-chain path, mock on-chain verifier, no custody) and an explicit limitations list. This is evidence only: not a signature, not an attestation, not a ZK proof, and not on-chain ML-DSA verification. Research prototype; not audited; testnet/local only; no real funds. The dependency-light TypeScript validator in scripts/lib/ml-dsa-evidence-manifest.ts is the authoritative in-repo check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "artifactType",
+    "generatedAt",
+    "algorithm",
+    "verifier",
+    "boundary",
+    "evidence",
+    "limitations",
+    "regeneration"
+  ],
+  "properties": {
+    "schema": {
+      "const": "walletwall.ml-dsa-evidence-manifest.v1",
+      "description": "Stable manifest schema identifier; the `.v1` suffix is the schema version."
+    },
+    "artifactType": {
+      "const": "ml-dsa-evidence-manifest"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$",
+      "description": "ISO-8601 UTC instant the manifest was produced. The only non-deterministic field."
+    },
+    "algorithm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parameterSet", "fips"],
+      "properties": {
+        "parameterSet": { "const": "ML-DSA-65" },
+        "fips": { "const": "FIPS-204" }
+      }
+    },
+    "verifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "mode"],
+      "description": "The off-chain open verifier that produced the per-entry results.",
+      "properties": {
+        "name": { "const": "walletwall-vault-pq-verifier" },
+        "version": { "type": "string", "minLength": 1 },
+        "mode": { "const": "pure" }
+      }
+    },
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "verificationMode",
+        "attestation",
+        "onChainMLDSAVerification",
+        "onChainVerifierIsMock",
+        "custody"
+      ],
+      "description": "The evidence boundary, marked machine-checkably.",
+      "properties": {
+        "verificationMode": { "const": "off-chain" },
+        "attestation": { "const": "trusted-attestor" },
+        "onChainMLDSAVerification": { "const": false },
+        "onChainVerifierIsMock": { "const": true },
+        "custody": { "const": false }
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "sourceType",
+          "reference",
+          "parameterSet",
+          "verifierMode",
+          "messageHash",
+          "publicKeyHash",
+          "signatureHash",
+          "result",
+          "artifactPath",
+          "artifactHash"
+        ],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "enum": ["pq-verifier-evidence", "test-vector"] },
+          "sourceType": { "type": "string", "enum": ["nist-acvp", "library-generated", "operator-supplied"] },
+          "reference": { "type": "string", "minLength": 1 },
+          "parameterSet": { "const": "ML-DSA-65" },
+          "verifierMode": { "const": "pure" },
+          "messageHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+          "publicKeyHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+          "signatureHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+          "result": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["accepted", "reason"],
+            "properties": {
+              "accepted": { "type": "boolean" },
+              "reason": {
+                "type": "string",
+                "enum": [
+                  "ML_DSA_65_VALID",
+                  "EMPTY_MESSAGE",
+                  "INVALID_PUBLIC_KEY_LENGTH",
+                  "INVALID_SIGNATURE_LENGTH",
+                  "VERIFY_FAILED",
+                  "VERIFY_EXCEPTION"
+                ]
+              }
+            }
+          },
+          "artifactPath": { "type": "string", "minLength": 1 },
+          "artifactHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "regeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "deterministic"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "deterministic": { "const": true }
+      }
+    }
+  }
+}

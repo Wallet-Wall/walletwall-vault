@@ -1,0 +1,86 @@
+{
+  "schema": "walletwall.ml-dsa-evidence-manifest.v1",
+  "artifactType": "ml-dsa-evidence-manifest",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "algorithm": {
+    "parameterSet": "ML-DSA-65",
+    "fips": "FIPS-204"
+  },
+  "verifier": {
+    "name": "walletwall-vault-pq-verifier",
+    "version": "0.1.0",
+    "mode": "pure"
+  },
+  "boundary": {
+    "verificationMode": "off-chain",
+    "attestation": "trusted-attestor",
+    "onChainMLDSAVerification": false,
+    "onChainVerifierIsMock": true,
+    "custody": false
+  },
+  "evidence": [
+    {
+      "id": "nist-acvp-ml-dsa-65-sigver-tcid35-valid",
+      "kind": "pq-verifier-evidence",
+      "sourceType": "nist-acvp",
+      "reference": "NIST ACVP ML-DSA-65 sigVer tcId 35 (FIPS 204, external/pure)",
+      "parameterSet": "ML-DSA-65",
+      "verifierMode": "pure",
+      "messageHash": "0x5db1d74d46bab477e6ce75db5b0d95bff658c5ac8791568141a14ee08c36d774",
+      "publicKeyHash": "0x69434246a432c782f8aeab5fcdb441e25d3c17ff538fc02262947be96d647bdc",
+      "signatureHash": "0xf0130c48cc487d63042a3aedac5e66c777fdcfee6b354dcbc2ed95503dee083e",
+      "result": {
+        "accepted": true,
+        "reason": "ML_DSA_65_VALID"
+      },
+      "artifactPath": "docs/schemas/examples/pq-verifier-evidence.valid.json",
+      "artifactHash": "0x0eb1a0c9c50a43a4323a3abfa071360b79b5d01994408008361f597a8d1e53d0"
+    },
+    {
+      "id": "nist-acvp-ml-dsa-65-sigver-tcid35-failure",
+      "kind": "pq-verifier-evidence",
+      "sourceType": "nist-acvp",
+      "reference": "NIST ACVP ML-DSA-65 sigVer tcId 35 with one tampered signature byte",
+      "parameterSet": "ML-DSA-65",
+      "verifierMode": "pure",
+      "messageHash": "0x5db1d74d46bab477e6ce75db5b0d95bff658c5ac8791568141a14ee08c36d774",
+      "publicKeyHash": "0x69434246a432c782f8aeab5fcdb441e25d3c17ff538fc02262947be96d647bdc",
+      "signatureHash": "0xac82205d0b4ca1da2d729e70f3e15358b16192b60b5d229148b200f63f7a0695",
+      "result": {
+        "accepted": false,
+        "reason": "VERIFY_FAILED"
+      },
+      "artifactPath": "docs/schemas/examples/pq-verifier-evidence.failure.json",
+      "artifactHash": "0x03854d6eba93a5a26aa16daedc159da1a7713f62180d9ae27a57cf8f6b655d5d"
+    },
+    {
+      "id": "library-generated-ml-dsa-65",
+      "kind": "test-vector",
+      "sourceType": "library-generated",
+      "reference": "@noble/post-quantum 0.6.1 ML-DSA-65 / FIPS 204 (deterministic seed; the SP1 proof-input source)",
+      "parameterSet": "ML-DSA-65",
+      "verifierMode": "pure",
+      "messageHash": "0x736040b98747745e98dbbeb459df3c6f5dc3d89fd305bccade65d2807cb0530c",
+      "publicKeyHash": "0x3ae18e10835136b3f369b331045bd230caefed3e5c32a3bd0be523a5ccda12f0",
+      "signatureHash": "0x3ad471f5c1048bfc22a707479e3f827bd032da80870c98fbdef2b964ad50caed",
+      "result": {
+        "accepted": true,
+        "reason": "ML_DSA_65_VALID"
+      },
+      "artifactPath": "test/fixtures/mldsa/library-generated/ml-dsa-65.json",
+      "artifactHash": "0x86093d5d390d142074778ca48e0956542c939427d00fc4ab02b6f04fb85d030f"
+    }
+  ],
+  "limitations": [
+    "Off-chain post-quantum verification only — ML-DSA-65 signatures are verified off-chain by the open pure verifier, not on-chain.",
+    "Trusted-attestor boundary — the non-mock AttestationPQCVerifier trusts an authorized EIP-712 attestor and does not execute ML-DSA on-chain.",
+    "Mock verifier limitations — the active testnet on-chain verifier is a mock that performs no real ML-DSA verification.",
+    "Research prototype — not audited.",
+    "Testnet / reference path only — no mainnet deployment and no production custody.",
+    "No real funds — every referenced artifact is deterministic test/fixture material."
+  ],
+  "regeneration": {
+    "command": "npm run evidence:manifest",
+    "deterministic": true
+  }
+}
