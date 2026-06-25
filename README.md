@@ -415,6 +415,9 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   ([`evidence/ml-dsa/manifest.json`](evidence/ml-dsa/manifest.json)).
 - [SP1 smoke lane](docs/SP1_Smoke_Lane.md) - the cheap, deterministic execute-only SP1
   check and how the normal CI / smoke / gated-e2e lanes relate.
+- [SP1 proof-input scaffold](docs/SP1_Proof_Input.md) - the committed, deterministic SP1
+  guest input ([`zkvm/fixtures/mldsa65-withdrawal.inputs.json`](zkvm/fixtures/mldsa65-withdrawal.inputs.json))
+  kept aligned with the ML-DSA evidence manifest; an input contract, not a proof.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.

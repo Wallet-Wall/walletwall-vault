@@ -82,6 +82,14 @@ jobs:
           # not drifted from its generator. No toolchain, no proving, no network.
           npm run validate:evidence
 
+      - name: Validate SP1 proof input (deterministic; no proving)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: the committed SP1 guest proof input is
+          # well-formed, aligned with the ML-DSA evidence manifest hashes/schema,
+          # and has not drifted. No SP1 toolchain, no proving, no network.
+          npm run validate:sp1-input
+
       - name: Coverage
         run: npm run coverage
 
