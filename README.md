@@ -425,6 +425,11 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 - [ZK adapter evidence endpoint](docs/ZK_Adapter_Evidence_Endpoint.md) - a read-only
   spike (no server) serving the adapter boundary as evidence with a `servedAt` + ETag
   caching contract ([example response](evidence/zk/zk-adapter-evidence-response.example.json)).
+- [Hosted evidence endpoint deployment plan](docs/Hosted_Evidence_Endpoint_Deployment_Plan.md) -
+  a deployment plan / spec (deploys nothing) for a future hosted, read-only evidence
+  endpoint: contract, artifact generation, validation, cache/ETag, app consumption,
+  acceptable deployment options, security boundaries, rollout phases, and contributor
+  tasks. Choosing a deployment target is deferred to a separate reviewed PR.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
