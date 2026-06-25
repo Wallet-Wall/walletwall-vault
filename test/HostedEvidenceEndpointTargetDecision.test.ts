@@ -71,10 +71,7 @@ describe("Hosted Evidence Endpoint Target Decision — docs guard", function () 
 
   it("selects Option A and explicitly defers Options B, C, and D", function () {
     // Option A must be selected.
-    expect(norm).to.match(
-      /selects? option a|option a.*is selected/,
-      "must state that Option A is selected",
-    );
+    expect(norm).to.match(/selects? option a|option a.*is selected/, "must state that Option A is selected");
     // Each of B, C, D must be explicitly deferred.
     for (const opt of ["b", "c", "d"]) {
       expect(norm).to.match(
@@ -144,9 +141,7 @@ describe("Hosted Evidence Endpoint Target Decision — docs guard", function () 
         const start = m.index;
         const before = norm.slice(Math.max(0, start - 45), start);
         if (!NEGATION.test(before)) {
-          offenders.push(
-            `${term} @${start} ("...${norm.slice(Math.max(0, start - 30), start + term.length + 5)}...")`,
-          );
+          offenders.push(`${term} @${start} ("...${norm.slice(Math.max(0, start - 30), start + term.length + 5)}...")`);
         }
       }
     }
