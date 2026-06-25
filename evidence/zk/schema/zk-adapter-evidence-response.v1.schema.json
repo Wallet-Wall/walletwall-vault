@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://walletwall.org/schemas/zk-adapter-evidence-response.v1.schema.json",
+  "title": "WalletWall ZK Adapter Evidence Endpoint — Success Response (v1)",
+  "description": "The deterministic 200 success response a hosted, READ-ONLY ZK-adapter evidence endpoint would return: the committed ZK verifier adapter boundary (walletwall.zk-verifier-adapter.v1) wrapped with `servedAt` and a strong `etag` (keccak256 content hash of the adapter) for caching and conditional re-fetch. This is a non-production SPIKE: no server, no network listener, no secrets, read-only. The served adapter is not a proof, not production ZK verification, and not on-chain ML-DSA verification. Research prototype; not audited; testnet/local only; no real funds. The dependency-light TypeScript validator in scripts/lib/zk-adapter-endpoint.ts (which reuses validateAdapter for the embedded adapter) is the authoritative in-repo check.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "service",
+    "mode",
+    "status",
+    "ok",
+    "contentType",
+    "servedAt",
+    "etag",
+    "adapter",
+    "limitations",
+    "regeneration"
+  ],
+  "properties": {
+    "schema": { "const": "walletwall.zk-adapter-evidence-response.v1" },
+    "service": { "const": "walletwall-zk-adapter-evidence-demo" },
+    "mode": { "const": "spike-non-production" },
+    "status": { "const": 200 },
+    "ok": { "const": true },
+    "contentType": { "const": "application/json" },
+    "servedAt": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{3})?Z$"
+    },
+    "etag": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$",
+      "description": "Strong ETag: keccak256 of the canonical adapter JSON."
+    },
+    "adapter": {
+      "type": "object",
+      "description": "The served walletwall.zk-verifier-adapter.v1 boundary. Validated in depth by validateAdapter (see evidence/zk/schema/zk-verifier-adapter.v1.schema.json)."
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "regeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "deterministic"],
+      "properties": {
+        "command": { "type": "string", "minLength": 1 },
+        "deterministic": { "const": true }
+      }
+    }
+  }
+}

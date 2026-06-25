@@ -422,6 +422,9 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   descriptor ([`evidence/zk/zk-verifier-adapter.json`](evidence/zk/zk-verifier-adapter.json))
   tying the proof input, guest journal, gated proof, and evidence manifest together
   with the on-chain verifier role; cross-checked, not production ZK verification.
+- [ZK adapter evidence endpoint](docs/ZK_Adapter_Evidence_Endpoint.md) - a read-only
+  spike (no server) serving the adapter boundary as evidence with a `servedAt` + ETag
+  caching contract ([example response](evidence/zk/zk-adapter-evidence-response.example.json)).
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
