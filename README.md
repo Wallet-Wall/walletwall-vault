@@ -442,6 +442,12 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   split, phased rollout (Phase 0–5), and acceptance criteria for the first real Rust
   scaffold PR. This document is the Rust implementation-path gate named in the target
   decision. No Rust code is added here.
+- [Rust evidence tooling scaffold](docs/Rust_Evidence_Tooling_Scaffold.md) - the first
+  Phase 1 Rust scaffold ([`zkvm/evidence-validator/`](zkvm/evidence-validator/)): an
+  offline-only CLI + library that reads a committed evidence JSON artifact from disk and
+  checks its deterministic shape against `walletwall.zk-adapter-evidence-response.v1`. No
+  network, no prover, no chain, no keys; not a cryptographic verification and not part of
+  the default CI lane.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
