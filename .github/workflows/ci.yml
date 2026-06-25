@@ -142,3 +142,28 @@ jobs:
         # --locked fails if Cargo.lock is missing or out of date with Cargo.toml.
         # No compilation occurs; this only resolves metadata from the lockfile.
         run: cargo metadata --locked --no-deps --manifest-path zkvm/host/Cargo.toml
+
+  evidence-validator:
+    name: Check evidence-validator crate (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust (with rustfmt)
+        # Offline tooling crate: no SP1 toolchain, no prover, and no network/RPC,
+        # chain, key, or endpoint behavior at runtime. Cargo fetches only serde +
+        # serde_json at build time (exactly like the zkvm-guest job). No Cargo.lock
+        # is committed for this crate, so --locked is intentionally not used.
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+
+      - name: Format check
+        run: cargo fmt --check --manifest-path zkvm/evidence-validator/Cargo.toml
+
+      - name: Type / borrow check (no proving, no network)
+        run: cargo check --manifest-path zkvm/evidence-validator/Cargo.toml
+
+      - name: Unit + negative tests (no proving, no network/RPC, no chain)
+        run: cargo test --manifest-path zkvm/evidence-validator/Cargo.toml

@@ -99,7 +99,7 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
     let value: serde_json::Value = match serde_json::from_str(json) {
         Ok(value) => value,
         Err(err) => {
-            return ValidationOutcome::failure(format!("input is not valid JSON: {err}"));
+            return ValidationOutcome::failure(format!("not valid JSON: {err}"));
         }
     };
 
@@ -108,9 +108,7 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
     let parsed: EvidenceResponse = match serde_json::from_value(value) {
         Ok(parsed) => parsed,
         Err(err) => {
-            return ValidationOutcome::failure(format!(
-                "input does not match the zk-adapter-evidence-response.v1 shape: {err}"
-            ));
+            return ValidationOutcome::failure(format!("evidence-response shape mismatch: {err}"));
         }
     };
 
@@ -118,61 +116,39 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
     let mut problems: Vec<String> = Vec::new();
 
     if parsed.schema != EXPECTED_SCHEMA {
-        problems.push(format!(
-            "schema must be \"{EXPECTED_SCHEMA}\", found \"{}\"",
-            parsed.schema
-        ));
+        problems.push("schema must be the contract value".to_string());
     }
     if parsed.service != EXPECTED_SERVICE {
-        problems.push(format!(
-            "service must be \"{EXPECTED_SERVICE}\", found \"{}\"",
-            parsed.service
-        ));
+        problems.push("service must be the contract value".to_string());
     }
     if parsed.mode != EXPECTED_MODE {
-        problems.push(format!(
-            "mode must be \"{EXPECTED_MODE}\", found \"{}\"",
-            parsed.mode
-        ));
+        problems.push("mode must be the contract value".to_string());
     }
     if parsed.status != EXPECTED_STATUS {
-        problems.push(format!(
-            "status must be {EXPECTED_STATUS}, found {}",
-            parsed.status
-        ));
+        problems.push("status must be 200".to_string());
     }
     if !parsed.ok {
         problems.push("ok must be true".to_string());
     }
     if parsed.content_type != EXPECTED_CONTENT_TYPE {
-        problems.push(format!(
-            "contentType must be \"{EXPECTED_CONTENT_TYPE}\", found \"{}\"",
-            parsed.content_type
-        ));
+        problems.push("contentType must be application/json".to_string());
     }
     if !is_iso8601_utc(&parsed.served_at) {
-        problems.push(format!(
-            "servedAt must be an ISO-8601 UTC timestamp (YYYY-MM-DDTHH:MM:SS[.mmm]Z), found \"{}\"",
-            parsed.served_at
-        ));
+        problems.push("servedAt must be an ISO-8601 UTC timestamp".to_string());
     }
     if !is_strong_etag(&parsed.etag) {
-        problems.push(format!(
-            "etag must match ^0x[0-9a-f]{{64}}$, found \"{}\"",
-            parsed.etag
-        ));
+        problems.push("etag must match ^0x[0-9a-f]{64}$".to_string());
     }
     if !parsed.adapter.is_object() {
         problems.push("adapter must be a JSON object".to_string());
     }
     if parsed.limitations.is_empty() {
         problems.push("limitations must be a non-empty array".to_string());
-    } else if let Some(index) = parsed
-        .limitations
-        .iter()
-        .position(|item| item.trim().is_empty())
-    {
-        problems.push(format!("limitations[{index}] must be a non-empty string"));
+    }
+    for (index, item) in parsed.limitations.iter().enumerate() {
+        if item.trim().is_empty() {
+            problems.push(format!("limitations[{index}] must be a non-empty string"));
+        }
     }
     if parsed.regeneration.command.trim().is_empty() {
         problems.push("regeneration.command must be a non-empty string".to_string());
@@ -194,9 +170,7 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
 fn is_strong_etag(value: &str) -> bool {
     value.len() == 66
         && value.starts_with("0x")
-        && value[2..]
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        && value[2..].bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// Accept exactly `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MM:SS.mmmZ` — the two
@@ -210,21 +184,32 @@ fn is_iso8601_utc(value: &str) -> bool {
         _ => return false,
     };
 
-    let fixed_ok = all_ascii_digits(bytes, 0, 4) // YYYY
-        && bytes[4] == b'-'
-        && all_ascii_digits(bytes, 5, 2) // MM
-        && bytes[7] == b'-'
-        && all_ascii_digits(bytes, 8, 2) // DD
-        && bytes[10] == b'T'
-        && all_ascii_digits(bytes, 11, 2) // HH
-        && bytes[13] == b':'
-        && all_ascii_digits(bytes, 14, 2) // MM
-        && bytes[16] == b':'
-        && all_ascii_digits(bytes, 17, 2); // SS
-    if !fixed_ok {
+    // Date: YYYY-MM-DD
+    if !all_ascii_digits(bytes, 0, 4) || bytes[4] != b'-' {
+        return false;
+    }
+    if !all_ascii_digits(bytes, 5, 2) || bytes[7] != b'-' {
+        return false;
+    }
+    if !all_ascii_digits(bytes, 8, 2) {
         return false;
     }
 
+    // `T` separator, then time HH:MM:SS.
+    if bytes[10] != b'T' {
+        return false;
+    }
+    if !all_ascii_digits(bytes, 11, 2) || bytes[13] != b':' {
+        return false;
+    }
+    if !all_ascii_digits(bytes, 14, 2) || bytes[16] != b':' {
+        return false;
+    }
+    if !all_ascii_digits(bytes, 17, 2) {
+        return false;
+    }
+
+    // Optional `.mmm` fraction, then `Z`.
     if has_millis {
         bytes[19] == b'.' && all_ascii_digits(bytes, 20, 3) && bytes[23] == b'Z'
     } else {
@@ -265,11 +250,7 @@ mod tests {
     #[test]
     fn accepts_the_valid_fixture() {
         let outcome = validate_evidence_response(VALID);
-        assert!(
-            outcome.ok,
-            "expected the valid fixture to pass, got problems: {:?}",
-            outcome.problems
-        );
+        assert!(outcome.ok, "valid fixture should pass: {:?}", outcome.problems);
         assert!(outcome.problems.is_empty());
     }
 
@@ -277,11 +258,7 @@ mod tests {
     fn rejects_malformed_json() {
         let outcome = validate_evidence_response(MALFORMED);
         assert!(!outcome.ok);
-        assert!(
-            outcome.problems[0].contains("not valid JSON"),
-            "got: {:?}",
-            outcome.problems
-        );
+        assert!(outcome.problems[0].contains("not valid JSON"));
     }
 
     #[test]
@@ -289,11 +266,7 @@ mod tests {
         // `etag` is absent — serde rejects it at the typed-shape stage.
         let outcome = validate_evidence_response(MISSING_ETAG);
         assert!(!outcome.ok);
-        assert!(
-            outcome.problems[0].contains("shape"),
-            "got: {:?}",
-            outcome.problems
-        );
+        assert!(outcome.problems[0].contains("shape"));
     }
 
     #[test]
@@ -301,11 +274,7 @@ mod tests {
         // An extra top-level key is rejected by `deny_unknown_fields`.
         let outcome = validate_evidence_response(UNKNOWN_FIELD);
         assert!(!outcome.ok);
-        assert!(
-            outcome.problems[0].contains("shape"),
-            "got: {:?}",
-            outcome.problems
-        );
+        assert!(outcome.problems[0].contains("shape"));
     }
 
     #[test]
@@ -326,10 +295,7 @@ mod tests {
     fn rejects_empty_limitations() {
         let outcome = validate_evidence_response(EMPTY_LIMITATIONS);
         assert!(!outcome.ok);
-        assert!(outcome
-            .problems
-            .iter()
-            .any(|p| p.contains("limitations must be a non-empty array")));
+        assert!(outcome.problems.iter().any(|p| p.contains("non-empty array")));
     }
 
     #[test]
@@ -343,11 +309,9 @@ mod tests {
     fn loads_the_valid_fixture_from_disk() {
         // Exercises the on-disk read path the CLI uses, with a checked-in local
         // fixture resolved relative to the crate, not the process CWD.
-        let path = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/fixtures/zk-adapter-evidence-response.valid.json"
-        );
-        let contents = std::fs::read_to_string(path).expect("read the valid fixture from disk");
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let path = format!("{manifest_dir}/fixtures/zk-adapter-evidence-response.valid.json");
+        let contents = std::fs::read_to_string(&path).expect("read the valid fixture from disk");
         assert!(validate_evidence_response(&contents).ok);
     }
 
@@ -376,15 +340,12 @@ mod tests {
 
     #[test]
     fn etag_helper_requires_lowercase_hex() {
-        assert!(is_strong_etag(
-            "0x98fb94cfd69a4c962501f10a581656437d11edd5419426c019a0bcdd628d4375"
-        ));
-        assert!(!is_strong_etag("0x98FB")); // too short
-        assert!(!is_strong_etag(
-            "0x98FB94CFD69A4C962501F10A581656437D11EDD5419426C019A0BCDD628D4375"
-        )); // uppercase
-        assert!(!is_strong_etag(
-            "98fb94cfd69a4c962501f10a581656437d11edd5419426c019a0bcdd628d4375"
-        )); // missing 0x
+        let lower = "0x98fb94cfd69a4c962501f10a581656437d11edd5419426c019a0bcdd628d4375";
+        let upper = "0x98FB94CFD69A4C962501F10A581656437D11EDD5419426C019A0BCDD628D4375";
+        let no_prefix = "98fb94cfd69a4c962501f10a581656437d11edd5419426c019a0bcdd628d4375";
+        assert!(is_strong_etag(lower));
+        assert!(!is_strong_etag("0x98fb")); // too short
+        assert!(!is_strong_etag(upper)); // uppercase rejected
+        assert!(!is_strong_etag(no_prefix)); // missing 0x
     }
 }

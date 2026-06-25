@@ -26,20 +26,14 @@ use evidence_validator::validate_evidence_response;
 
 fn main() -> ExitCode {
     let mut args = std::env::args();
-    let program = args
-        .next()
-        .unwrap_or_else(|| "evidence-validator".to_string());
+    let program = args.next().unwrap_or_else(|| "evidence-validator".to_string());
 
     let path = match args.next() {
         Some(arg) if arg != "-h" && arg != "--help" => arg,
         _ => {
             eprintln!("usage: {program} <path-to-evidence-response.json>");
-            eprintln!(
-                "  Offline shape check of a walletwall.zk-adapter-evidence-response.v1 artifact."
-            );
-            eprintln!(
-                "  No network, no prover, no chain, no keys; not a cryptographic verification."
-            );
+            eprintln!("  offline shape check of a zk-adapter-evidence-response.v1 artifact");
+            eprintln!("  no network, prover, chain, or keys; not a cryptographic check");
             return ExitCode::from(2);
         }
     };
@@ -54,10 +48,7 @@ fn main() -> ExitCode {
 
     let outcome = validate_evidence_response(&contents);
     if outcome.ok {
-        println!(
-            "OK: {path} is a shape-valid walletwall.zk-adapter-evidence-response.v1 \
-             (offline shape check only; not a cryptographic verification)"
-        );
+        println!("OK: {path} is shape-valid (offline shape check only; not cryptographic)");
         ExitCode::SUCCESS
     } else {
         eprintln!("FAIL: {path} did not pass the offline shape check:");

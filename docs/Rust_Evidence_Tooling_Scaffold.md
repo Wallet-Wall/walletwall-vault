@@ -2,10 +2,12 @@
 
 > ⚠️ **Research prototype. Not audited. Testnet/local only. No real funds.**
 > **Scaffold / offline only.** This document describes the first Phase 1 Rust
-> scaffold from [Rust_Implementation_Path.md](Rust_Implementation_Path.md). The
-> crate is opt-in offline tooling: it is **not** part of the default CI lane, it
-> is **not** a cryptographic verifier, it deploys nothing, it adds no server, no
-> network listener, no secrets, and no API keys.
+> scaffold from [Rust_Implementation_Path.md](Rust_Implementation_Path.md). CI
+> compiles and tests the crate offline (see "How to run it offline"), but it is
+> **not** a cryptographic verifier, it deploys nothing, it adds no server, no
+> network listener, no secrets, and no API keys. CI verifies only that the
+> scaffold compiles and its shape checks pass — never cryptographic truth,
+> proving, endpoint behavior, or production readiness.
 
 This is the first real Rust code added under the bounded, offline-safe role that
 [Rust_Implementation_Path.md](Rust_Implementation_Path.md) defined. It implements
@@ -85,15 +87,28 @@ and:
 
 ## How to run it offline
 
-The Rust toolchain is **not** required by the default CI lane. Install it
-(`rustup`) only to run this crate locally:
+CI runs an offline job — **`Check evidence-validator crate (offline)`** in
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) — that installs stable
+Rust and runs, scoped to this crate only:
+
+```bash
+cargo fmt --check --manifest-path zkvm/evidence-validator/Cargo.toml
+cargo check --manifest-path zkvm/evidence-validator/Cargo.toml
+cargo test  --manifest-path zkvm/evidence-validator/Cargo.toml
+```
+
+That job is offline-safe: no SP1 toolchain, no prover, no network/RPC at runtime,
+no chain, no keys, no endpoint. It verifies only that the crate compiles and its
+shape checks pass — never cryptographic truth, proving, endpoint behavior, or
+production readiness. `clippy` is not run (the repo's Rust jobs do not use it).
+
+You can run the same checks locally with `rustup`:
 
 ```bash
 # from zkvm/evidence-validator/
 cargo test                  # build + run unit and negative tests
 cargo fmt --check           # formatting
 cargo check                 # type / borrow check
-cargo clippy -- -D warnings # optional lints (not gated in CI)
 
 # validate the committed example artifact from disk:
 cargo run -- ../../evidence/zk/zk-adapter-evidence-response.example.json
@@ -109,10 +124,11 @@ checked-in fixtures only.
 The crate depends only on `serde` + `serde_json` for strict typed JSON parsing —
 no SP1, cryptography, HTTP, or network crates. The dependency convention mirrors
 `zkvm/guest` and `zkvm/host` (caret minor pins for serde-family crates). A
-`Cargo.lock` is **not** committed in this PR because the Rust toolchain was not
-available in the authoring environment; the first contributor with a toolchain
-should run `cargo build` and may commit the generated `Cargo.lock` as a follow-up
-to pin transitive dependencies. No default CI job requires this crate's lockfile.
+`Cargo.lock` is **not** committed for this crate, so the CI job runs **without**
+`--locked` and `cargo` resolves `serde` + `serde_json` fresh at build time. A
+contributor with a toolchain may run `cargo build` and commit the generated
+`Cargo.lock` as a follow-up to pin transitive dependencies; the dedicated
+`--locked` lockfile gate stays specific to `zkvm/host`.
 
 ## Relationship to the Rust implementation path
 

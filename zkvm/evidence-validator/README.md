@@ -1,8 +1,10 @@
 # `evidence-validator` — offline evidence-shape validator (Phase 1 scaffold)
 
 > ⚠️ **Research prototype. Not audited. Testnet/local only. No real funds.**
-> **SCAFFOLD / OFFLINE ONLY.** This crate is opt-in offline tooling. It is **not**
-> part of the default CI lane and is **not** a cryptographic verifier.
+> **SCAFFOLD / OFFLINE ONLY.** CI compiles and tests this crate offline (the
+> `Check evidence-validator crate (offline)` job), but it is **not** a
+> cryptographic verifier — CI checks compile/shape only, never proving, endpoint
+> behavior, or production readiness.
 
 A minimal, dependency-light Rust crate that reads a committed evidence JSON
 artifact from disk and checks its **deterministic shape** against the
@@ -40,15 +42,15 @@ documented in
 
 ## Run it offline
 
-The Rust toolchain is **not** required by the default CI lane; install it only if
-you want to run this crate locally (`rustup`):
+CI runs `cargo fmt --check`, `cargo check`, and `cargo test` for this crate
+offline (the `Check evidence-validator crate (offline)` job). Run the same checks
+locally with `rustup`:
 
 ```bash
 # from zkvm/evidence-validator/
 cargo test                 # build + run unit and negative tests
 cargo fmt --check          # formatting
 cargo check                # type/borrow check
-cargo clippy -- -D warnings  # optional lints (not gated in CI)
 
 # validate a committed artifact from disk:
 cargo run -- ../../evidence/zk/zk-adapter-evidence-response.example.json
