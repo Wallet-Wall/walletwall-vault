@@ -13,6 +13,14 @@ This is the first real Rust code added under the bounded, offline-safe role that
 [Rust_Implementation_Path.md](Rust_Implementation_Path.md) defined. It implements
 **Phase 1 — Rust crate boundary** of that document and nothing beyond it.
 
+> **Update — contract-validation expansion.** A conservative, still-offline Phase 1
+> expansion has since strengthened the validator (`status`/`ok` consistency,
+> `adapter` identity/version fields, `servedAt` range, and `etag` / `limitations` /
+> `regeneration` presence). It remains contract-shape only — no keccak256 recompute,
+> no prover, no network/RPC, no endpoint deployment, and no contract/ABI changes. See
+> [Rust_Evidence_Validator_Contract_Expansion.md](Rust_Evidence_Validator_Contract_Expansion.md)
+> for the full field list and boundaries.
+
 - **Crate:** [`zkvm/evidence-validator/`](../zkvm/evidence-validator/)
 - **Library + CLI:** `src/lib.rs`, `src/main.rs`
 - **Local fixtures:** `zkvm/evidence-validator/fixtures/`
@@ -166,6 +174,8 @@ None of these begins without its own reviewed PR; this document records the
 
 ## Related
 
+- [Rust evidence validator contract expansion](Rust_Evidence_Validator_Contract_Expansion.md) —
+  the conservative, deterministic Phase 1 expansion that builds on this scaffold.
 - [Rust implementation path](Rust_Implementation_Path.md) — the bounded role and
   phased rollout this scaffold implements (Phase 1).
 - [ZK adapter evidence endpoint](ZK_Adapter_Evidence_Endpoint.md) — the read-only

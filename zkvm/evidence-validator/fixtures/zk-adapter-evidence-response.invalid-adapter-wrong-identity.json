@@ -2,17 +2,17 @@
   "schema": "walletwall.zk-adapter-evidence-response.v1",
   "service": "walletwall-zk-adapter-evidence-demo",
   "mode": "spike-non-production",
-  "status": 500,
+  "status": 200,
   "ok": true,
   "contentType": "application/json",
   "servedAt": "2026-01-01T00:00:00.000Z",
   "etag": "0x98fb94cfd69a4c962501f10a581656437d11edd5419426c019a0bcdd628d4375",
   "adapter": {
-    "schema": "walletwall.zk-verifier-adapter.v1",
-    "artifactType": "zk-verifier-adapter-boundary"
+    "schema": "walletwall.some-other-adapter.v9",
+    "artifactType": "not-the-boundary"
   },
   "limitations": [
-    "Negative fixture — the success-response `status` constant must be 200."
+    "Negative fixture — `adapter` identity/version constants do not match the contract."
   ],
   "regeneration": {
     "command": "npm run zk:adapter:response",

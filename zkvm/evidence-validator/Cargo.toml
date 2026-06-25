@@ -17,10 +17,10 @@
 # JSON parsing.
 [package]
 name = "evidence-validator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 publish = false
-description = "Offline, deterministic shape validator for committed walletwall evidence artifacts (Phase 1 scaffold)."
+description = "Offline, deterministic contract-shape validator for committed walletwall evidence artifacts (Phase 1 scaffold + contract expansion)."
 license = "MIT"
 
 [lib]

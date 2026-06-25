@@ -2,7 +2,7 @@
   "schema": "walletwall.zk-adapter-evidence-response.v1",
   "service": "walletwall-zk-adapter-evidence-demo",
   "mode": "spike-non-production",
-  "status": 500,
+  "status": 200,
   "ok": true,
   "contentType": "application/json",
   "servedAt": "2026-01-01T00:00:00.000Z",
@@ -11,9 +11,6 @@
     "schema": "walletwall.zk-verifier-adapter.v1",
     "artifactType": "zk-verifier-adapter-boundary"
   },
-  "limitations": [
-    "Negative fixture — the success-response `status` constant must be 200."
-  ],
   "regeneration": {
     "command": "npm run zk:adapter:response",
     "deterministic": true
