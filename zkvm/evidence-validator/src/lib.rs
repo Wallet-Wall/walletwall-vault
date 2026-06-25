@@ -218,16 +218,27 @@ fn check_adapter_identity(adapter: &serde_json::Value, problems: &mut Vec<String
         return;
     };
 
-    match object.get("schema").and_then(serde_json::Value::as_str) {
-        Some(value) if value == EXPECTED_ADAPTER_SCHEMA => {}
-        Some(_) => problems.push("adapter.schema must be the contract value".to_string()),
-        None => problems.push("adapter.schema must be present and a string".to_string()),
-    }
+    check_identity_field(object, "schema", EXPECTED_ADAPTER_SCHEMA, problems);
+    check_identity_field(
+        object,
+        "artifactType",
+        EXPECTED_ADAPTER_ARTIFACT_TYPE,
+        problems,
+    );
+}
 
-    match object.get("artifactType").and_then(serde_json::Value::as_str) {
-        Some(value) if value == EXPECTED_ADAPTER_ARTIFACT_TYPE => {}
-        Some(_) => problems.push("adapter.artifactType must be the contract value".to_string()),
-        None => problems.push("adapter.artifactType must be present and a string".to_string()),
+/// Check that one adapter identity/version field is present, a string, and equal
+/// to its contract constant; push a precise problem otherwise.
+fn check_identity_field(
+    object: &serde_json::Map<String, serde_json::Value>,
+    field: &str,
+    expected: &str,
+    problems: &mut Vec<String>,
+) {
+    match object.get(field).and_then(serde_json::Value::as_str) {
+        Some(value) if value == expected => {}
+        Some(_) => problems.push(format!("adapter.{field} must be the contract value")),
+        None => problems.push(format!("adapter.{field} must be present and a string")),
     }
 }
 
