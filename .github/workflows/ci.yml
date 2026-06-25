@@ -90,6 +90,15 @@ jobs:
           # and has not drifted. No SP1 toolchain, no proving, no network.
           npm run validate:sp1-input
 
+      - name: Validate ZK verifier adapter boundary (deterministic; no proving)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: the committed ZK verifier adapter is valid,
+          # its journal decodes to the proof-input hashes, those hashes match the
+          # ML-DSA evidence manifest, and it has not drifted. No SP1 toolchain, no
+          # proving, no network.
+          npm run validate:zk-adapter
+
       - name: Coverage
         run: npm run coverage
 

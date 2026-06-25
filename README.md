@@ -418,6 +418,10 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 - [SP1 proof-input scaffold](docs/SP1_Proof_Input.md) - the committed, deterministic SP1
   guest input ([`zkvm/fixtures/mldsa65-withdrawal.inputs.json`](zkvm/fixtures/mldsa65-withdrawal.inputs.json))
   kept aligned with the ML-DSA evidence manifest; an input contract, not a proof.
+- [ZK verifier adapter boundary](docs/ZK_Verifier_Adapter_Boundary.md) - the read-only
+  descriptor ([`evidence/zk/zk-verifier-adapter.json`](evidence/zk/zk-verifier-adapter.json))
+  tying the proof input, guest journal, gated proof, and evidence manifest together
+  with the on-chain verifier role; cross-checked, not production ZK verification.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
