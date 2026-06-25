@@ -435,6 +435,13 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   target; documents rationale, deferred options, required controls, rollout gate,
   security-review gate, and app-consumption boundary. Implementation requires a separate
   reviewed PR.
+- [Rust implementation path](docs/Rust_Implementation_Path.md) - defines the bounded,
+  offline-safe role Rust may play in the `walletwall-vault` toolchain: approved uses
+  (deterministic evidence tooling, artifact normalization, proof-input validation,
+  fixture parity, offline CLI, SP1 adapter boundary support), non-goals, TypeScript/Rust
+  split, phased rollout (Phase 0–5), and acceptance criteria for the first real Rust
+  scaffold PR. This document is the Rust implementation-path gate named in the target
+  decision. No Rust code is added here.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
