@@ -583,7 +583,9 @@ mod tests {
         let contents = std::fs::read_to_string(&path).expect("read the canonical example");
         let value: serde_json::Value =
             serde_json::from_str(&contents).expect("canonical example is JSON");
-        let adapter = value.get("adapter").expect("canonical example has an adapter");
+        let adapter = value
+            .get("adapter")
+            .expect("canonical example has an adapter");
         let stored = value
             .get("etag")
             .and_then(serde_json::Value::as_str)
