@@ -1,0 +1,55 @@
+{
+  "schema": "walletwall.zk-verifier-adapter.v1",
+  "artifactType": "zk-verifier-adapter-boundary",
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "algorithm": {
+    "parameterSet": "ML-DSA-65",
+    "fips": "FIPS-204"
+  },
+  "onChainVerifier": {
+    "interface": "IPQCVerifier",
+    "contract": "ZKMLDSAVerifier",
+    "algorithmId": "ZK-ML-DSA-65",
+    "sp1Verifier": "mock",
+    "onChainVerification": false,
+    "custody": false
+  },
+  "proofInput": {
+    "schema": "walletwall.sp1-proof-input.v1",
+    "path": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+    "messageHash": "0x736040b98747745e98dbbeb459df3c6f5dc3d89fd305bccade65d2807cb0530c",
+    "publicKeyHash": "0x3ae18e10835136b3f369b331045bd230caefed3e5c32a3bd0be523a5ccda12f0",
+    "signatureHash": "0x3ad471f5c1048bfc22a707479e3f827bd032da80870c98fbdef2b964ad50caed"
+  },
+  "journal": {
+    "publicValues": "0x8e345eeac3d258c778ad2384da5952dd41734c24c4912cc168899b54ac24e9863ae18e10835136b3f369b331045bd230caefed3e5c32a3bd0be523a5ccda12f03ad471f5c1048bfc22a707479e3f827bd032da80870c98fbdef2b964ad50caed0000000000000000000000000000000000000000000000000000000000007a690000000000000000000000001111111111111111111111111111111111111111",
+    "publicValuesHash": "0x87f2c4dff1a8b21209e06f0710c2afdf3614310badb15d929af04856126c7c4c",
+    "chainId": 31337,
+    "verifierAddress": "0x1111111111111111111111111111111111111111"
+  },
+  "proof": {
+    "status": "gated",
+    "scheme": "groth16",
+    "prover": "sp1",
+    "generated": false,
+    "reason": "Heavy SP1 Groth16 proving is gated behind RUN_SP1_E2E=1 and an external prover; not produced in CI. This manifest pins the deterministic journal only."
+  },
+  "evidence": {
+    "manifestSchema": "walletwall.ml-dsa-evidence-manifest.v1",
+    "manifestPath": "evidence/ml-dsa/manifest.json",
+    "evidenceId": "library-generated-ml-dsa-65"
+  },
+  "limitations": [
+    "No proof — no real Groth16 proof bytes are present; heavy SP1 proving stays gated behind RUN_SP1_E2E=1 and an external prover.",
+    "Off-chain only — ML-DSA-65 is verified off-chain; this boundary does not perform on-chain ML-DSA verification.",
+    "Mock on-chain verifier — the active testnet SP1 verifier is a mock, so the ZKMLDSAVerifier path is not a live trustless check.",
+    "Trusted-attestor boundary — the non-mock production path today is the trusted EIP-712 attestor, not a ZK proof.",
+    "Research prototype — not audited.",
+    "Testnet / reference path only — no mainnet deployment and no production custody.",
+    "No real funds — every referenced artifact is deterministic test/fixture material."
+  ],
+  "regeneration": {
+    "command": "npm run zk:adapter",
+    "deterministic": true
+  }
+}
