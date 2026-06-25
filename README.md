@@ -429,7 +429,12 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   a deployment plan / spec (deploys nothing) for a future hosted, read-only evidence
   endpoint: contract, artifact generation, validation, cache/ETag, app consumption,
   acceptable deployment options, security boundaries, rollout phases, and contributor
-  tasks. Choosing a deployment target is deferred to a separate reviewed PR.
+  tasks. See target decision below.
+- [Hosted evidence endpoint target decision: Option A](docs/Hosted_Evidence_Endpoint_Target_Decision.md) -
+  selects Option A (static JSON / GitHub Pages or equivalent) as the initial deployment
+  target; documents rationale, deferred options, required controls, rollout gate,
+  security-review gate, and app-consumption boundary. Implementation requires a separate
+  reviewed PR.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
