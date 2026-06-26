@@ -108,6 +108,17 @@ jobs:
           # network, no proving.
           npm run validate:zk-response
 
+      - name: Validate static hosted evidence artifact (deterministic; no publish)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: the committed Option A static hosted evidence
+          # artifact is byte-for-byte the canonical example, is a valid
+          # zk-adapter-evidence-response.v1, its etag is keccak256 of its adapter, it
+          # is served from a versioned path, and it has not drifted from the
+          # generator. Publishes nothing — no server, no network, no GitHub Pages
+          # deploy, no CDN upload, no proving.
+          npm run validate:static-artifact
+
       - name: Coverage
         run: npm run coverage
 
@@ -153,8 +164,11 @@ jobs:
       - name: Install stable Rust (with rustfmt)
         # Offline tooling crate: no SP1 toolchain, no prover, and no network/RPC,
         # chain, key, or endpoint behavior at runtime. Cargo fetches only serde +
-        # serde_json at build time (exactly like the zkvm-guest job). No Cargo.lock
-        # is committed for this crate, so --locked is intentionally not used.
+        # serde_json + sha3 at build time (exactly like the zkvm-guest job). A
+        # Cargo.lock IS committed for this crate, so `--locked` is used below for the
+        # build/test steps to pin the exact dependency versions and fail on any
+        # lockfile drift (mirroring the zkvm-host-lockfile job's reproducibility
+        # gate). `cargo fmt` needs no dependency resolution, so it stays unchanged.
         run: |
           rustup toolchain install stable --profile minimal --component rustfmt
           rustup default stable
@@ -162,8 +176,8 @@ jobs:
       - name: Format check
         run: cargo fmt --check --manifest-path zkvm/evidence-validator/Cargo.toml
 
-      - name: Type / borrow check (no proving, no network)
-        run: cargo check --manifest-path zkvm/evidence-validator/Cargo.toml
+      - name: Type / borrow check (no proving, no network) — locked
+        run: cargo check --locked --manifest-path zkvm/evidence-validator/Cargo.toml
 
-      - name: Unit + negative tests (no proving, no network/RPC, no chain)
-        run: cargo test --manifest-path zkvm/evidence-validator/Cargo.toml
+      - name: Unit + negative tests (no proving, no network/RPC, no chain) — locked
+        run: cargo test --locked --manifest-path zkvm/evidence-validator/Cargo.toml

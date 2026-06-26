@@ -710,6 +710,52 @@ mod tests {
     }
 
     #[test]
+    fn accepts_the_static_hosted_evidence_artifact() {
+        // The committed Option A static hosted evidence artifact
+        // (evidence/zk/hosted/v1/zk-adapter-evidence-response.json) is a faithful,
+        // versioned copy of the canonical example that a static host WOULD serve
+        // byte-for-byte. It must pass the same offline contract-shape + ETag-parity
+        // check. Resolved relative to the crate; offline local-file read only — no
+        // server, no network, no publishing, no chain.
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let rel = "/../../evidence/zk/hosted/v1/zk-adapter-evidence-response.json";
+        let path = format!("{manifest_dir}{rel}");
+        let contents = std::fs::read_to_string(&path).expect("read the static hosted artifact");
+        let outcome = validate_evidence_response(&contents);
+        assert!(
+            outcome.ok,
+            "static hosted artifact should pass: {:?}",
+            outcome.problems
+        );
+    }
+
+    #[test]
+    fn recomputes_the_static_hosted_evidence_artifact_etag() {
+        // Cross-language parity on the static artifact: the Rust keccak256 of its
+        // embedded adapter must equal the committed `etag`, exactly as for the
+        // canonical example it copies. Offline, local-file only; not a proof, not a
+        // chain claim, no prover, no network.
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let rel = "/../../evidence/zk/hosted/v1/zk-adapter-evidence-response.json";
+        let path = format!("{manifest_dir}{rel}");
+        let contents = std::fs::read_to_string(&path).expect("read the static hosted artifact");
+        let value: serde_json::Value =
+            serde_json::from_str(&contents).expect("static hosted artifact is JSON");
+        let adapter = value
+            .get("adapter")
+            .expect("static hosted artifact has an adapter");
+        let stored = value
+            .get("etag")
+            .and_then(serde_json::Value::as_str)
+            .expect("static hosted artifact has a string etag");
+        assert_eq!(
+            compute_adapter_etag(adapter),
+            stored,
+            "Rust keccak256 of the adapter must equal the committed etag"
+        );
+    }
+
+    #[test]
     fn rejects_wrong_service_constant() {
         let outcome = validate_evidence_response(WRONG_SERVICE);
         assert!(!outcome.ok);
