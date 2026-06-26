@@ -449,6 +449,17 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   and app-consumption controls. Publishes nothing - no GitHub Pages workflow, no CI publish
   step, no server; app consumption and connector/plugin integration remain future work, and a
   live publish stays gated behind the target decision's security review.
+- [Static hosted evidence publish workflow (Option A)](docs/Static_Hosted_Evidence_Publish_Workflow.md) -
+  the reviewed, manual-dispatch-only, validation-gated GitHub Actions workflow
+  ([`.github/workflows/publish-static-evidence.yml`](.github/workflows/publish-static-evidence.yml))
+  plus an offline staging script
+  ([`scripts/prepare-static-evidence-publish.ts`](scripts/prepare-static-evidence-publish.ts),
+  `npm run static:publish:prepare`) that stages only the committed artifact
+  (`evidence/zk/hosted/v1/zk-adapter-evidence-response.json`) into a controlled
+  `dist/hosted-evidence/` directory after the TypeScript and Rust validators pass.
+  Merging publishes nothing - there is no push trigger; a deploy runs only on explicit
+  manual dispatch with `publish: true` and protected `github-pages` environment approval.
+  App consumption and connector/plugin integration remain future work.
 - [Rust implementation path](docs/Rust_Implementation_Path.md) - defines the bounded,
   offline-safe role Rust may play in the `walletwall-vault` toolchain: approved uses
   (deterministic evidence tooling, artifact normalization, proof-input validation,
