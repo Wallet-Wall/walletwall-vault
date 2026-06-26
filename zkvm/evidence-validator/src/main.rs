@@ -1,22 +1,26 @@
-//! `evidence-validator` — offline, deterministic evidence-shape CLI (Phase 1 scaffold).
+//! `evidence-validator` — offline, deterministic evidence-shape + ETag-parity CLI.
 //!
 //! SCAFFOLD / OFFLINE ONLY. Reads ONE committed evidence JSON artifact from disk
 //! and reports whether it is contract-shape-valid against
-//! `walletwall.zk-adapter-evidence-response.v1`. It performs NO network I/O, NO
-//! prover execution, NO SP1 SDK build, NO signing, NO key access, and NO chain
-//! access, and it makes NO cryptographic truth claim (it does not recompute the
-//! keccak256 `etag`). This is the offline-CLI analogue of the existing TypeScript
-//! `validate:*` scripts; the TypeScript validators remain the CI source of truth.
+//! `walletwall.zk-adapter-evidence-response.v1` AND whether its committed `etag`
+//! matches the canonical keccak256 of the embedded adapter. It performs NO network
+//! I/O, NO prover execution, NO SP1 SDK build, NO signing, NO key access, and NO
+//! chain access. The ETag parity check is an OFFLINE DETERMINISTIC content-hash
+//! cross-check, not a cryptographic truth claim, not proof verification, and not a
+//! production-readiness claim. This is the offline-CLI analogue of the existing
+//! TypeScript `validate:*` scripts; the TypeScript validators remain the CI source
+//! of truth.
 //!
 //! Usage:
 //!   evidence-validator <path-to-evidence-response.json>
 //!
 //! Exit codes:
-//!   0  the artifact is shape-valid
+//!   0  the artifact is contract-shape-valid and its etag matches the adapter hash
 //!   1  the artifact failed validation, or could not be read
 //!   2  usage error (no path argument)
 //!
-//! See `docs/Rust_Evidence_Validator_Contract_Expansion.md` and
+//! See `docs/Rust_Evidence_Validator_Etag_Parity.md`,
+//! `docs/Rust_Evidence_Validator_Contract_Expansion.md` and
 //! `docs/Rust_Evidence_Tooling_Scaffold.md`.
 
 #![forbid(unsafe_code)]
@@ -51,11 +55,14 @@ fn main() -> ExitCode {
 
     let outcome = validate_evidence_response(&contents);
     if outcome.ok {
-        println!("OK: {path} is contract-shape-valid (offline check only; not cryptographic)");
+        println!(
+            "OK: {path} is contract-shape-valid and its etag matches the canonical adapter \
+             keccak256 (offline deterministic check only; not cryptographic, no proof, no chain)"
+        );
         ExitCode::SUCCESS
     } else {
         eprintln!(
-            "FAIL: {path} did not pass the offline contract-shape check ({} problem(s)):",
+            "FAIL: {path} did not pass the offline contract-shape / etag-parity check ({} problem(s)):",
             outcome.problems.len()
         );
         for problem in &outcome.problems {

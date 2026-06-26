@@ -52,16 +52,22 @@ secrets, keys, wallet data, or environment values.
 
 ## What remains shape / contract validation only
 
-This expansion is still **contract-shape validation, not cryptographic truth**:
+This expansion is **contract-shape validation, not cryptographic truth**:
 
-- The `etag` is checked for **form only**. The validator does **not** recompute or
-  verify the keccak256 content hash, and makes **no** cryptographic truth claim.
+- The `etag` is checked for **form** here, and is now additionally cross-checked
+  for **canonical keccak256 parity** by a separate, focused step — see
+  [Rust_Evidence_Validator_Etag_Parity.md](Rust_Evidence_Validator_Etag_Parity.md).
+  That parity step recomputes `keccak256(JSON.stringify(adapter))` offline and
+  asserts it equals the committed `etag`; it is a deterministic content-hash
+  cross-check and still makes **no** cryptographic truth claim about chain state.
   The canonical adapter-canonicalization + keccak256 algorithm lives in TypeScript
-  (`scripts/lib/zk-adapter-endpoint.ts`); re-deriving it in Rust is **deferred,
-  not implemented**, so no cryptographic semantics are invented here.
+  (`scripts/lib/zk-adapter-endpoint.ts`); the Rust step mirrors it, while the
+  *deep* adapter re-derivation (`proofInput`, `journal`, `proof`, `evidence`, …)
+  remains **deferred, not implemented**.
 - The embedded `adapter` is checked for its **top-level identity/version fields
-  only**. Deep adapter validation (`proofInput`, `journal`, `proof`, `evidence`,
-  …) stays the authoritative TypeScript `validateAdapter` pass's responsibility.
+  only** (plus the whole-adapter ETag hash). Deep adapter validation
+  (`proofInput`, `journal`, `proof`, `evidence`, …) stays the authoritative
+  TypeScript `validateAdapter` pass's responsibility.
 - The TypeScript `validate:*` scripts remain the CI source of truth. This crate
   **relaxes no existing validation**; it only adds an independent, offline,
   deterministic second check.
@@ -121,10 +127,12 @@ checked-in fixtures only — the suite fetches nothing over the network.
 
 ## Relationship to the Rust implementation path
 
-This work is **Phase 1 — Rust crate boundary** only, within the permission granted
-by [Rust_Implementation_Path.md](Rust_Implementation_Path.md). It does **not**
-implement Phase 2 (canonical keccak256 parity), Phase 3 (adapter re-derivation),
-Phase 4 (reviewed prover path), or Phase 5 (hosted artifact integration). Each
+This work is **Phase 1 — Rust crate boundary**, within the permission granted by
+[Rust_Implementation_Path.md](Rust_Implementation_Path.md). The canonical
+keccak256 ETag parity (Phase 2) is now implemented as a separate, focused step —
+see [Rust_Evidence_Validator_Etag_Parity.md](Rust_Evidence_Validator_Etag_Parity.md).
+This expansion does **not** implement deep adapter re-derivation (Phase 3), a
+reviewed prover path (Phase 4), or hosted artifact integration (Phase 5); each
 later phase still needs its own separate, reviewed PR.
 
 ## Related

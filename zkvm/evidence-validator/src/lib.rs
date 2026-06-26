@@ -1,4 +1,4 @@
-//! Offline, deterministic evidence-shape validator — Phase 1 scaffold.
+//! Offline, deterministic evidence-shape + ETag-parity validator — Phase 1 crate.
 //!
 //! SCAFFOLD / OFFLINE ONLY.
 //!
@@ -6,9 +6,10 @@
 //! string by the caller) and checks its deterministic *shape* against the
 //! `walletwall.zk-adapter-evidence-response.v1` response contract documented in
 //! `docs/ZK_Adapter_Evidence_Endpoint.md` and pinned by
-//! `evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json`.
+//! `evidence/zk/schema/zk-adapter-evidence-response.v1.schema.json`, and then
+//! cross-checks the canonical keccak256 `etag` for deterministic *parity*.
 //!
-//! What this validates (deterministic contract shape only):
+//! What this validates (deterministic contract shape):
 //!   * every required top-level field is present and well-typed,
 //!   * no unknown top-level fields are present (`deny_unknown_fields`,
 //!     mirroring the schema's `additionalProperties: false`),
@@ -24,20 +25,34 @@
 //!   * `regeneration` is present and carries a non-empty `command` and
 //!     `deterministic == true`.
 //!
+//! What this validates (canonical ETag / keccak256 parity):
+//!   * when the `etag` is well-formed (`0x` + 64 lowercase hex) and the embedded
+//!     `adapter` carries its correct identity, the validator recomputes the
+//!     canonical keccak256 content hash of the adapter — exactly as the
+//!     TypeScript serializer does (`keccak256(JSON.stringify(adapter))`, compact
+//!     and in document key order) — and fails validation if it does not equal the
+//!     committed `etag`. This catches a tampered `etag`, a drifted adapter payload
+//!     with a stale `etag`, and a re-ordered adapter that no longer hashes to the
+//!     committed value.
+//!
+//! This ETag parity is an OFFLINE DETERMINISTIC cross-check, not a cryptographic
+//! truth claim. It asserts only that the committed `etag` is the keccak256 of the
+//! committed `adapter`. It is NOT proof verification, makes NO claim about chain
+//! state, generates NO proof, runs NO prover, and touches NO network or chain.
+//! The TypeScript `validate:zk-response` pass remains the CI source of truth; this
+//! crate adds an independent, offline, second check and relaxes nothing.
+//!
 //! What this deliberately does NOT do:
-//!   * It does NOT recompute or verify the keccak256 `etag`. No cryptographic
-//!     truth claim is made or checked here; the TypeScript `validate:zk-response`
-//!     pass remains the authoritative `etag == keccak256(adapter)` cross-check.
-//!     The canonical adapter-canonicalization + keccak256 algorithm lives in
-//!     TypeScript (`scripts/lib/zk-adapter-endpoint.ts`); re-deriving it here is
-//!     deferred, not implemented.
 //!   * It does NOT validate the embedded `adapter` in depth — only its top-level
-//!     identity/version fields. Deep adapter validation (`proofInput`, `journal`,
-//!     `proof`, `evidence`, …) stays in TypeScript (`validateAdapter`).
+//!     identity/version fields (plus the whole-adapter ETag hash). Deep adapter
+//!     validation (`proofInput`, `journal`, `proof`, `evidence`, …) stays in
+//!     TypeScript (`validateAdapter`); re-deriving it field-by-field in Rust is
+//!     deferred, not implemented.
 //!   * It performs NO network I/O, NO prover execution, NO SP1 SDK build, NO
 //!     signing, NO key access, and NO chain access.
 //!
-//! See `docs/Rust_Evidence_Validator_Contract_Expansion.md`,
+//! See `docs/Rust_Evidence_Validator_Etag_Parity.md`,
+//! `docs/Rust_Evidence_Validator_Contract_Expansion.md`,
 //! `docs/Rust_Evidence_Tooling_Scaffold.md`, and the Phase 1 section of
 //! `docs/Rust_Implementation_Path.md`.
 
@@ -46,6 +61,7 @@
 #![forbid(unsafe_code)]
 
 use serde::Deserialize;
+use sha3::{Digest, Keccak256};
 
 /// Contract constants for `walletwall.zk-adapter-evidence-response.v1`.
 pub const EXPECTED_SCHEMA: &str = "walletwall.zk-adapter-evidence-response.v1";
@@ -165,7 +181,7 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
     } else if !is_strong_etag(&parsed.etag) {
         problems.push("etag must match ^0x[0-9a-f]{64}$".to_string());
     }
-    check_adapter_identity(&parsed.adapter, &mut problems);
+    let adapter_identity_ok = check_adapter_identity(&parsed.adapter, &mut problems);
     if parsed.limitations.is_empty() {
         problems.push("limitations must be a non-empty array".to_string());
     }
@@ -181,16 +197,69 @@ pub fn validate_evidence_response(json: &str) -> ValidationOutcome {
         problems.push("regeneration.deterministic must be true".to_string());
     }
 
+    // Stage 4 — canonical ETag / keccak256 parity.
+    //
+    // Recompute the canonical keccak256 content hash of the embedded adapter and
+    // require it to equal the committed `etag`. This is gated behind a well-formed
+    // (`0x` + 64 lowercase hex) `etag` and a structurally credible adapter
+    // identity: if the `etag` shape is already wrong, or the adapter is not an
+    // object with the right identity, the parity recompute would only restate a
+    // problem already reported, so it is skipped. This mirrors the TypeScript
+    // `validate:zk-response` pass, which only cross-checks the hash once the
+    // adapter itself is valid.
+    //
+    // This is an OFFLINE DETERMINISTIC parity check, not a cryptographic truth
+    // claim: it asserts the committed `etag` is keccak256 of the committed
+    // `adapter`, nothing more. No proof, no prover, no network, no chain.
+    if is_strong_etag(&parsed.etag) && adapter_identity_ok {
+        let expected = compute_adapter_etag(&parsed.adapter);
+        if parsed.etag != expected {
+            problems.push(format!(
+                "etag does not match keccak256 of the canonical adapter JSON (expected {expected})"
+            ));
+        }
+    }
+
     ValidationOutcome {
         ok: problems.is_empty(),
         problems,
     }
 }
 
+/// Recompute the strong ETag of an adapter exactly as the TypeScript serializer
+/// does: keccak256 over the compact (`JSON.stringify`) UTF-8 bytes of the adapter
+/// in document key order, rendered as `0x` + 64 lowercase hex.
+///
+/// `serde_json` is built here with the `preserve_order` feature, so a parsed
+/// adapter re-serializes with its keys in document/insertion order and compact
+/// separators — byte-for-byte equal to JavaScript `JSON.stringify(adapter)` for
+/// this artifact family (no floats; only standard JSON escaping).
+///
+/// This is an OFFLINE DETERMINISTIC recomputation, not a cryptographic truth
+/// claim and not proof verification. It only restates, in Rust, the content-hash
+/// identity the TypeScript `computeAdapterETag` defines.
+pub fn compute_adapter_etag(adapter: &serde_json::Value) -> String {
+    use std::fmt::Write as _;
+
+    // A `serde_json::Value` re-serializes infallibly: object keys are always
+    // strings and JSON numbers are never NaN/Inf, so there is nothing to error on.
+    let canonical = serde_json::to_string(adapter)
+        .expect("a serde_json::Value always serializes back to a JSON string");
+    let digest = Keccak256::digest(canonical.as_bytes());
+
+    let mut etag = String::with_capacity(2 + 64);
+    etag.push_str("0x");
+    for byte in digest {
+        let _ = write!(etag, "{byte:02x}");
+    }
+    etag
+}
+
 /// `^0x[0-9a-f]{64}$` — a strong lowercase-hex content-hash ETag.
 ///
-/// This is a SHAPE check only. It deliberately does NOT recompute keccak256 or
-/// assert that the hash is correct for the embedded adapter.
+/// This is a SHAPE check only. The separate Stage-4 parity step is what recomputes
+/// keccak256 and asserts the hash is correct for the embedded adapter; this helper
+/// just gates that step behind a well-formed ETag.
 fn is_strong_etag(value: &str) -> bool {
     value.len() == 66
         && value.starts_with("0x")
@@ -212,33 +281,46 @@ fn is_success_status(status: u64) -> bool {
 /// adapter cannot pass unnoticed. It does NOT deeply validate the adapter
 /// (`proofInput`, `journal`, `proof`, `evidence`, …); that stays the authoritative
 /// TypeScript `validateAdapter` pass's responsibility.
-fn check_adapter_identity(adapter: &serde_json::Value, problems: &mut Vec<String>) {
+///
+/// Returns `true` only when the adapter is an object whose `schema` and
+/// `artifactType` both equal their contract constants. The ETag-parity recompute
+/// is gated on this so a structurally wrong adapter does not produce a redundant
+/// (and misleading) second hash-mismatch problem.
+fn check_adapter_identity(adapter: &serde_json::Value, problems: &mut Vec<String>) -> bool {
     let Some(object) = adapter.as_object() else {
         problems.push("adapter must be a JSON object".to_string());
-        return;
+        return false;
     };
 
-    check_identity_field(object, "schema", EXPECTED_ADAPTER_SCHEMA, problems);
-    check_identity_field(
+    let schema_ok = check_identity_field(object, "schema", EXPECTED_ADAPTER_SCHEMA, problems);
+    let artifact_type_ok = check_identity_field(
         object,
         "artifactType",
         EXPECTED_ADAPTER_ARTIFACT_TYPE,
         problems,
     );
+    schema_ok && artifact_type_ok
 }
 
 /// Check that one adapter identity/version field is present, a string, and equal
-/// to its contract constant; push a precise problem otherwise.
+/// to its contract constant; push a precise problem otherwise. Returns whether the
+/// field held its contract value.
 fn check_identity_field(
     object: &serde_json::Map<String, serde_json::Value>,
     field: &str,
     expected: &str,
     problems: &mut Vec<String>,
-) {
+) -> bool {
     match object.get(field).and_then(serde_json::Value::as_str) {
-        Some(value) if value == expected => {}
-        Some(_) => problems.push(format!("adapter.{field} must be the contract value")),
-        None => problems.push(format!("adapter.{field} must be present and a string")),
+        Some(value) if value == expected => true,
+        Some(_) => {
+            problems.push(format!("adapter.{field} must be the contract value"));
+            false
+        }
+        None => {
+            problems.push(format!("adapter.{field} must be present and a string"));
+            false
+        }
     }
 }
 
@@ -364,6 +446,16 @@ mod tests {
     const ADAPTER_WRONG_IDENTITY: &str = include_str!(
         "../fixtures/zk-adapter-evidence-response.invalid-adapter-wrong-identity.json"
     );
+    // ETag / keccak256 parity fixtures (local scaffold material).
+    const ETAG_MISMATCH: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-etag-mismatch.json");
+    const ETAG_STALE_ADAPTER: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-etag-stale-adapter.json");
+    const ETAG_NONCANONICAL_ORDER: &str = include_str!(
+        "../fixtures/zk-adapter-evidence-response.invalid-etag-noncanonical-order.json"
+    );
+    const ETAG_UPPERCASE: &str =
+        include_str!("../fixtures/zk-adapter-evidence-response.invalid-etag-uppercase.json");
 
     #[test]
     fn accepts_the_valid_fixture() {
@@ -450,17 +542,133 @@ mod tests {
     }
 
     #[test]
-    fn etag_check_is_shape_only_not_a_keccak_recompute() {
-        // The validator accepts ANY 0x + 64-lowercase-hex string; it does not (and
-        // must not) assert the etag equals keccak256(adapter). That cross-check
-        // stays in the TypeScript `validate:zk-response` pass. Swapping in a
-        // different well-shaped etag must therefore still be shape-valid.
+    fn rejects_a_swapped_but_well_shaped_etag() {
+        // The valid fixture passes parity; swapping in a different, still
+        // well-shaped (`0x` + 64 lowercase hex) etag must now FAIL the keccak256
+        // parity check. This is the offline deterministic content-hash cross-check
+        // — not a cryptographic truth claim, no proof, no prover, no chain.
         assert!(validate_evidence_response(VALID).ok);
         let swapped = VALID.replace(
             "0x98fb94cfd69a4c962501f10a581656437d11edd5419426c019a0bcdd628d4375",
             "0x0000000000000000000000000000000000000000000000000000000000000000",
         );
-        assert!(validate_evidence_response(&swapped).ok);
+        let outcome = validate_evidence_response(&swapped);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag does not match keccak256 of the canonical adapter JSON")));
+    }
+
+    #[test]
+    fn compute_adapter_etag_is_zero_x_64_lowercase_hex() {
+        // Format guard for the recompute helper: its output is itself a strong
+        // (`0x` + 64 lowercase hex) ETag, i.e. exactly what the shape check accepts.
+        let adapter = serde_json::json!({ "any": "object", "n": 1 });
+        let etag = compute_adapter_etag(&adapter);
+        assert_eq!(etag.len(), 66);
+        assert!(is_strong_etag(&etag));
+    }
+
+    #[test]
+    fn recomputes_the_canonical_typescript_example_etag() {
+        // The cross-language parity assertion: the Rust keccak256 of the canonical
+        // example's embedded adapter must equal the `etag` the TypeScript
+        // serializer committed. Resolved relative to the crate, offline, local-file
+        // only. If serde_json's compact, document-order serialization ever diverges
+        // from `JSON.stringify(adapter)`, this test fails loudly.
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let rel = "/../../evidence/zk/zk-adapter-evidence-response.example.json";
+        let path = format!("{manifest_dir}{rel}");
+        let contents = std::fs::read_to_string(&path).expect("read the canonical example");
+        let value: serde_json::Value =
+            serde_json::from_str(&contents).expect("canonical example is JSON");
+        let adapter = value
+            .get("adapter")
+            .expect("canonical example has an adapter");
+        let stored = value
+            .get("etag")
+            .and_then(serde_json::Value::as_str)
+            .expect("canonical example has a string etag");
+        assert_eq!(
+            compute_adapter_etag(adapter),
+            stored,
+            "Rust keccak256 of the adapter must equal the committed etag"
+        );
+    }
+
+    #[test]
+    fn rejects_etag_mismatch() {
+        // A credible full adapter with a well-shaped but wrong (all-zero) etag.
+        let outcome = validate_evidence_response(ETAG_MISMATCH);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag does not match keccak256 of the canonical adapter JSON")));
+    }
+
+    #[test]
+    fn rejects_stale_etag_after_adapter_payload_change() {
+        // The adapter payload was changed (a journal field) but the etag was left
+        // at its old value — parity must catch the drift.
+        let outcome = validate_evidence_response(ETAG_STALE_ADAPTER);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag does not match keccak256 of the canonical adapter JSON")));
+    }
+
+    #[test]
+    fn rejects_noncanonical_adapter_key_ordering() {
+        // Same adapter fields, re-ordered top-level keys, original etag. Because the
+        // canonical payload is the adapter in document key order, the recomputed
+        // keccak256 differs and parity fails — the check is order-sensitive by
+        // design (it mirrors `JSON.stringify`, which is not key-sorted).
+        let outcome = validate_evidence_response(ETAG_NONCANONICAL_ORDER);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag does not match keccak256 of the canonical adapter JSON")));
+    }
+
+    /// True when the outcome carries the Stage-4 keccak256 parity-mismatch problem.
+    fn has_parity_problem(outcome: &ValidationOutcome) -> bool {
+        outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag does not match keccak256"))
+    }
+
+    #[test]
+    fn etag_parity_is_gated_behind_etag_shape() {
+        // An uppercase-hex etag fails the shape check; the parity recompute is then
+        // skipped (no second, redundant hash-mismatch problem). Deterministic and
+        // specific: the shape problem is the only etag problem.
+        let outcome = validate_evidence_response(ETAG_UPPERCASE);
+        assert!(!outcome.ok);
+        assert!(outcome
+            .problems
+            .iter()
+            .any(|p| p.contains("etag must match")));
+        assert!(
+            !has_parity_problem(&outcome),
+            "parity must be skipped when the etag shape is already invalid"
+        );
+    }
+
+    #[test]
+    fn etag_parity_is_gated_behind_adapter_identity() {
+        // When the adapter identity is wrong, parity is skipped (the identity
+        // problem already covers it) — no redundant hash-mismatch problem.
+        let outcome = validate_evidence_response(ADAPTER_WRONG_IDENTITY);
+        assert!(!outcome.ok);
+        assert!(
+            !has_parity_problem(&outcome),
+            "parity must be skipped when the adapter identity is invalid"
+        );
     }
 
     #[test]

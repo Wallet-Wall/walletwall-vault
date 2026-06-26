@@ -451,8 +451,15 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
 - [Rust evidence validator contract expansion](docs/Rust_Evidence_Validator_Contract_Expansion.md) -
   a conservative, deterministic expansion of the Phase 1 validator: `status`/`ok`
   consistency, `adapter` identity/version fields, `servedAt` range, and `etag`/`limitations`/
-  `regeneration` presence. Still offline-only and contract-shape only — no keccak256
-  recompute, no prover, no network/RPC, no endpoint deployment, no contract/ABI changes.
+  `regeneration` presence. Offline-only and contract-shape only — the keccak256 `etag`
+  parity recompute is the separate ETag-parity step below; no prover, no network/RPC, no
+  endpoint deployment, no contract/ABI changes.
+- [Rust evidence validator ETag parity](docs/Rust_Evidence_Validator_Etag_Parity.md) -
+  the offline, deterministic canonical ETag / keccak256 parity cross-check: the validator
+  recomputes `keccak256(JSON.stringify(adapter))` in document key order and fails if it
+  does not equal the committed `etag`. Not proof verification and not cryptographic truth
+  about chain state — no proof generated, no prover, no network/RPC, no endpoint
+  deployment, no hosted artifact publishing, no contract/ABI/deployment changes.
 - [ZK / PQ status matrix](docs/ZK_PQ_Status_Matrix.md) - what exists vs does not across
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
