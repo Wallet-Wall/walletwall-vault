@@ -435,6 +435,13 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   target; documents rationale, deferred options, required controls, rollout gate,
   security-review gate, and app-consumption boundary. Implementation requires a separate
   reviewed PR.
+- [Static hosted evidence artifact (Option A)](docs/Static_Hosted_Evidence_Artifact.md) -
+  the first committed static evidence artifact for Option A: the canonical example copied
+  byte-for-byte to a versioned static path
+  (`evidence/zk/hosted/v1/zk-adapter-evidence-response.json`), validated offline by
+  `npm run validate:static-artifact` and independently re-checked by the Rust
+  `zkvm/evidence-validator`. Publishes nothing - no server, no GitHub Pages deploy, no
+  network, no proving; live publish stays gated behind the target decision's security review.
 - [Rust implementation path](docs/Rust_Implementation_Path.md) - defines the bounded,
   offline-safe role Rust may play in the `walletwall-vault` toolchain: approved uses
   (deterministic evidence tooling, artifact normalization, proof-input validation,

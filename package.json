@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.9.11",
+  "version": "0.9.12",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
@@ -32,6 +32,8 @@
     "validate:zk-adapter": "ts-node scripts/generate-zk-verifier-adapter.ts --validate",
     "zk:adapter:response": "ts-node scripts/generate-zk-adapter-evidence-response.ts",
     "validate:zk-response": "ts-node scripts/generate-zk-adapter-evidence-response.ts --validate",
+    "static:artifact": "ts-node scripts/generate-static-evidence-artifact.ts",
+    "validate:static-artifact": "ts-node scripts/generate-static-evidence-artifact.ts --validate",
     "pretypecheck": "hardhat compile",
     "typecheck": "tsc --noEmit",
     "lint": "solhint \"contracts/**/*.sol\"",
