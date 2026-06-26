@@ -442,6 +442,13 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   `npm run validate:static-artifact` and independently re-checked by the Rust
   `zkvm/evidence-validator`. Publishes nothing - no server, no GitHub Pages deploy, no
   network, no proving; live publish stays gated behind the target decision's security review.
+- [Static hosted evidence publishing controls (Option A)](docs/Static_Hosted_Evidence_Publishing_Controls.md) -
+  the reviewed host gate / control plan for a future static publish of the committed Option A
+  artifact: source-of-truth, publish-boundary, hosting (versioned path, HTTPS, cache/ETag,
+  CORS), release (reviewed PR, TS + Rust validation, rollback, incident/offline fallback),
+  and app-consumption controls. Publishes nothing - no GitHub Pages workflow, no CI publish
+  step, no server; app consumption and connector/plugin integration remain future work, and a
+  live publish stays gated behind the target decision's security review.
 - [Rust implementation path](docs/Rust_Implementation_Path.md) - defines the bounded,
   offline-safe role Rust may play in the `walletwall-vault` toolchain: approved uses
   (deterministic evidence tooling, artifact normalization, proof-input validation,
