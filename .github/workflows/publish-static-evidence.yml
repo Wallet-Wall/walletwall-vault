@@ -1,0 +1,103 @@
+name: Publish static hosted evidence (manual, gated)
+
+# Manual-dispatch-only, validation-gated publish of the SINGLE committed Option A
+# static hosted evidence artifact
+# (evidence/zk/hosted/v1/zk-adapter-evidence-response.json).
+#
+# Merging this workflow into main publishes nothing: there is no push/schedule
+# trigger. A deploy happens only when a maintainer runs it with `publish: true`
+# AND the protected `github-pages` environment approval is granted (and Pages is
+# enabled for the repo). The default dispatch (`publish: false`) is a dry run that
+# validates and stages the artifact without deploying.
+#
+# It serves exactly one read-only JSON file, byte-for-byte the checked-in artifact.
+# It never regenerates evidence, reads a secret, calls a chain, runs a prover, or
+# executes SP1. Going live still requires the security review named in
+# docs/Hosted_Evidence_Endpoint_Target_Decision.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Deploy to GitHub Pages after validation. false = validate + stage only (dry run)."
+        type: boolean
+        default: false
+
+# Least privilege at the top level: read-only. The deploy job widens its own scope.
+permissions:
+  contents: read
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  validate-and-stage:
+    name: Validate and stage the static artifact
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate ZK adapter evidence endpoint response (deterministic; no server)
+        run: npm run validate:zk-response
+
+      - name: Validate static hosted evidence artifact (deterministic; no publish)
+        run: npm run validate:static-artifact
+
+      - name: Stage ONLY the approved static artifact (offline; deterministic)
+        run: npm run static:publish:prepare
+
+      - name: Upload the staged static artifact as a Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/hosted-evidence
+
+  evidence-validator:
+    name: Re-check evidence-validator crate (offline; locked)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust (with rustfmt)
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+
+      - name: Format check
+        run: cargo fmt --check --manifest-path zkvm/evidence-validator/Cargo.toml
+
+      - name: Type / borrow check — locked
+        run: cargo check --locked --manifest-path zkvm/evidence-validator/Cargo.toml
+
+      - name: Unit + negative tests — locked
+        run: cargo test --locked --manifest-path zkvm/evidence-validator/Cargo.toml
+
+  deploy:
+    name: Deploy the static artifact (manual + protected environment)
+    needs: [validate-and-stage, evidence-validator]
+    # Two gates beyond the read-only default: the explicit publish input AND the
+    # protected github-pages environment approval. A dry run (publish=false) stops here.
+    if: ${{ inputs.publish }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy the uploaded static artifact to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
