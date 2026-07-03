@@ -33,6 +33,86 @@ The private WalletWall app owns:
 Work in this repository must not copy private app source code, private configuration,
 private deployment data, customer data, or internal operational procedures.
 
+## Public-Safe Surface Map
+
+This repository can support public documentation about WalletWall readiness and
+migration research without exposing private app implementation details. The product
+surface labels below are public-facing concepts, not a map of private routes, private
+state, or runtime data providers.
+
+```mermaid
+flowchart LR
+    Docs[Public docs] --> StableSeer[Stable Seer\nstablecoin monitoring]
+    Docs --> HolderWall[HolderWall\nholder concentration signals]
+    Docs --> Coinstellation[Coinstellation\nrelationship mapping]
+    Docs --> Quantum[Quantum Intelligence\nmigration risk research]
+    Docs --> Readiness[Vault / Migration Readiness\nstatus and evidence]
+
+    Readiness --> Evidence[Static evidence artifacts\nhashes, versions, timestamps]
+    Readiness --> VaultRepo[Public vault research repo\ncontracts, tests, verifier docs]
+    Quantum --> VaultRepo
+
+    VaultRepo --> Boundaries[Prototype boundaries\nno production custody\nno mainnet write path]
+    Evidence --> Boundaries
+```
+
+## Public / Private Boundary
+
+Use this repository as a public evidence and research boundary. Do not use it as a place
+to publish private app source, private ABIs, secrets, operational credentials, customer
+data, or write-capable app behavior.
+
+```mermaid
+flowchart TB
+    subgraph Public["Public surfaces"]
+        PublicDocs[Public docs]
+        VaultRepo[walletwall-vault research repo]
+        StaticEvidence[Static evidence artifacts\nversioned, read-only]
+    end
+
+    subgraph External["External data sources"]
+        ChainData[Chain and token data]
+        VerifierInputs[Verifier inputs\nhashes or fixtures only]
+    end
+
+    subgraph Private["Private WalletWall app"]
+        AppUI[Read-only intelligence UI]
+        AppReadiness[Readiness and migration status]
+    end
+
+    External --> StaticEvidence
+    VaultRepo --> StaticEvidence
+    StaticEvidence --> AppReadiness
+    PublicDocs --> AppUI
+    VaultRepo --> PublicDocs
+
+    Private -. boundary .- Public
+    Boundary[Boundary rules\nno secrets\nno private ABIs\nno private app source\nno write actions by default]
+    Boundary --- Public
+    Boundary --- Private
+```
+
+## Vault Readiness States
+
+Readiness language should stay status-oriented. A readiness signal can support review,
+monitoring, or rehearsal, but it is not a default instruction to deposit, withdraw, sign,
+or send a transaction.
+
+```mermaid
+stateDiagram-v2
+    [*] --> UnknownMonitor
+    UnknownMonitor: unknown / monitor
+    UnknownMonitor --> EligibleSignals: eligible signals observed
+    EligibleSignals --> ReadinessReview: readiness review
+    EligibleSignals --> Deferred: insufficient evidence
+    ReadinessReview --> PrototypePath: vault-prototype path
+    ReadinessReview --> Deferred: deferred / not enough evidence
+    PrototypePath --> NoWriteDefault: present readiness signal
+    Deferred --> UnknownMonitor: continue monitoring
+    NoWriteDefault: no write action by default
+    NoWriteDefault --> [*]
+```
+
 ## What the App May Safely Say
 
 The private app may reference this repository as:

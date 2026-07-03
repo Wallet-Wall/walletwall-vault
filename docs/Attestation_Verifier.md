@@ -46,6 +46,29 @@ The open verifier itself never signs anything and never requires an EVM private 
 attestation path is a separate, **trusted** bridge into testnet contracts — it is not a
 ZK proof and not on-chain ML-DSA verification.
 
+The public-safe sequence is:
+
+```mermaid
+sequenceDiagram
+    participant Observer as Wallet/app observer
+    participant Evidence as Evidence artifact
+    participant OpenVerifier as Open PQ verifier
+    participant Attestor as Trusted attestor
+    participant Contract as AttestationPQCVerifier
+    participant UI as Readiness UI
+    participant User as User
+
+    Observer->>Evidence: Observe signal and record hashes
+    Evidence->>OpenVerifier: Validate ML-DSA inputs off-chain
+    OpenVerifier-->>Attestor: Verified result or failure reason
+    Attestor->>Attestor: Sign only after successful verification
+    Attestor-->>Contract: EIP-712 attestation payload
+    Contract->>Contract: Check deadline, hashes, chain, verifier, attestor
+    Contract-->>UI: Boundary status for readiness display
+    UI-->>User: Present signal and limitations
+    Note over User,UI: User remains in control; no default write action
+```
+
 The script formerly at `scripts/sign-attestation.ts` has been renamed to
 [`scripts/demo-sign-attestation-unsafe.ts`](../scripts/demo-sign-attestation-unsafe.ts)
 and the `sign:attestation` npm script has been removed. It is retained only as a
