@@ -24,4 +24,4 @@ hex = "0.4"
 anyhow = "1.0"
 
 [build-dependencies]
-sp1-build = "=6.2.4"
+sp1-build = "=6.3.1"
