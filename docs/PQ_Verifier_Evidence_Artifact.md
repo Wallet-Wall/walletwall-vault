@@ -43,6 +43,63 @@ or carrying raw key material.
 }
 ```
 
+The evidence envelope is intentionally smaller than an attestation. It carries verifier
+status and hashes for read-only display; any trusted attestation metadata remains a
+separate boundary and is not embedded in this artifact.
+
+```mermaid
+classDiagram
+    class EvidenceEnvelope {
+        string schema
+        string generatedAt
+        object sourceOptional
+    }
+    class VerificationResult {
+        string schemaVersion
+        string algorithm
+        string fips
+        string mode
+    }
+    class VerifierMetadata {
+        string name
+        string version
+    }
+    class InputHashes {
+        string messageHash
+        string publicKeyHash
+        string signatureHash
+    }
+    class Result {
+        boolean verified
+        string reason
+    }
+    class SupportedAlgorithms {
+        string algorithm
+        string fips
+        string mode
+    }
+    class AttestationMetadata {
+        bytes attestationSignature
+        uint256 deadline
+        address verifier
+        uint256 chainId
+    }
+    class BoundaryLimitations {
+        boolean noRawKeys
+        boolean noSigning
+        boolean noCustody
+        boolean noWriteAction
+    }
+
+    EvidenceEnvelope *-- VerificationResult
+    VerificationResult *-- VerifierMetadata
+    VerificationResult *-- InputHashes
+    VerificationResult *-- Result
+    VerificationResult --> SupportedAlgorithms
+    EvidenceEnvelope ..> BoundaryLimitations : documents non-goals
+    EvidenceEnvelope ..> AttestationMetadata : separate trusted path
+```
+
 The deterministic verification result is nested **verbatim** under `verification`, keeping its
 own `walletwall.pq-verifier.v1` schema. The envelope adds only `generatedAt` and an optional
 `source`. The reason codes are the verifier's closed set
