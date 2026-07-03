@@ -2,6 +2,29 @@ import { ethers, network } from "hardhat";
 
 const ALLOWED_NETWORKS = new Set(["hardhat", "localhost", "sepolia", "base-sepolia"]);
 
+// Expected chain ID for each supported Hardhat network. Used to detect a
+// misconfigured RPC URL (e.g. one that actually points at a mainnet) BEFORE any
+// gas is spent. A mismatch is a hard failure. Kept identical to
+// scripts/deploy-simulator.ts for consistency.
+const EXPECTED_CHAIN_ID: Record<string, bigint> = {
+  hardhat: 31337n,
+  localhost: 31337n,
+  sepolia: 11155111n,
+  "base-sepolia": 84532n,
+};
+
+// Well-known mainnet chain IDs that must NEVER be a deployment target here.
+// Kept identical to scripts/deploy-simulator.ts for consistency.
+const FORBIDDEN_MAINNET_CHAIN_IDS = new Map<bigint, string>([
+  [1n, "Ethereum mainnet"],
+  [8453n, "Base mainnet"],
+  [137n, "Polygon mainnet"],
+  [10n, "Optimism mainnet"],
+  [42161n, "Arbitrum One mainnet"],
+  [56n, "BNB Smart Chain mainnet"],
+  [43114n, "Avalanche C-Chain mainnet"],
+]);
+
 /**
  * Deploys the WalletWall Vault research prototype.
  *
@@ -12,6 +35,31 @@ const ALLOWED_NETWORKS = new Set(["hardhat", "localhost", "sepolia", "base-sepol
 async function main() {
   if (!ALLOWED_NETWORKS.has(network.name)) {
     throw new Error(`Refusing to deploy to unsupported network: ${network.name}`);
+  }
+
+  // A network-NAME allowlist alone is not enough: `--network sepolia` pointed at
+  // a mainnet RPC URL would still deploy the vault to mainnet. Verify the LIVE
+  // chain ID reported by the RPC BEFORE any deploy transaction. This mirrors the
+  // guard in scripts/deploy-simulator.ts.
+  const liveChainId = (await ethers.provider.getNetwork()).chainId;
+
+  const forbidden = FORBIDDEN_MAINNET_CHAIN_IDS.get(liveChainId);
+  if (forbidden) {
+    throw new Error(
+      `REFUSING TO DEPLOY: the RPC for network "${network.name}" reports chain ID ` +
+        `${liveChainId} (${forbidden}). This is a MAINNET. The WalletWall Vault ` +
+        `prototype is testnet/local only and must never touch mainnet. Aborting before ` +
+        `any transaction. Check your *_RPC_URL environment variable.`,
+    );
+  }
+
+  const expectedChainId = EXPECTED_CHAIN_ID[network.name];
+  if (liveChainId !== expectedChainId) {
+    throw new Error(
+      `Chain ID mismatch for network "${network.name}": expected ${expectedChainId} but the ` +
+        `RPC reports ${liveChainId}. Aborting before any transaction — verify your RPC URL ` +
+        `points at the correct ${network.name} endpoint.`,
+    );
   }
 
   console.warn(
