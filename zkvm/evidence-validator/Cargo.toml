@@ -45,4 +45,4 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 # keccak256 for the offline ETag-parity recompute. Exact-pinned to the same
 # version `zkvm/guest` uses, so the whole repo resolves one Keccak implementation.
 # This is the Ethereum/ethers keccak256 (original Keccak, not NIST SHA3-256).
-sha3 = "=0.10.8"
+sha3 = "=0.12.0"
