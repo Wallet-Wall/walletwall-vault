@@ -10,6 +10,7 @@ jobs:
   build-test:
     name: Build, lint & test
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -125,6 +126,7 @@ jobs:
   zkvm-guest:
     name: Compile zkVM guest
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -140,6 +142,7 @@ jobs:
   zkvm-host-lockfile:
     name: Validate SP1 host Cargo.lock
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -157,6 +160,7 @@ jobs:
   evidence-validator:
     name: Check evidence-validator crate (offline)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
