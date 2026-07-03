@@ -7,6 +7,13 @@ updates:
     open-pull-requests-limit: 5
     groups:
       npm-security-and-maintenance:
+        # Group only non-breaking updates. Major bumps are excluded so they
+        # arrive as separate, individually-reviewable PRs instead of being
+        # welded to safe patches (e.g. a Hardhat 2->3 major inside a "security
+        # and maintenance" batch, which silently breaks the build).
+        update-types:
+          - "minor"
+          - "patch"
         patterns:
           - "*"
 
@@ -17,6 +24,11 @@ updates:
     open-pull-requests-limit: 5
     groups:
       github-actions-security-and-maintenance:
+        # Group only non-breaking updates; majors get their own PR (action
+        # major bumps can change default runtimes / inputs).
+        update-types:
+          - "minor"
+          - "patch"
         patterns:
           - "*"
 

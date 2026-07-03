@@ -7,6 +7,11 @@ on:
 
 jobs:
   check-version:
+    # Dependabot PRs bump dependencies, not the app version, so this gate would
+    # always red-X them (and there is no version to bump). Skip it for Dependabot;
+    # human-authored PRs must still bump package.json. Keyed on the PR author
+    # rather than github.actor so it holds even when a human re-runs the checks.
+    if: ${{ github.event.pull_request.user.login != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
