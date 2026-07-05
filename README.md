@@ -7,6 +7,18 @@
 > [docs/Security_Assumptions.md](docs/Security_Assumptions.md), and
 > [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
+## Official WalletWall links
+
+- Home: https://walletwall.org/
+- Docs: https://docs.walletwall.org/
+- Vault Readiness: https://vault.walletwall.org/
+
+This repository is a **public research/prototype evidence lane** — it does not
+custody funds, accept deposits, or offer yield, and nothing here is a mainnet
+write path. The production Stablecoin Vault readiness surface lives at
+[vault.walletwall.org](https://vault.walletwall.org/) and is read-only intelligence,
+not production custody.
+
 WalletWall Vault is a **research / hybrid-authorization prototype** that explores
 combining a classical Ethereum **ECDSA** signature with a **post-quantum (PQ)** signature
 to authorize vault withdrawals, and a migration path toward stronger future verifier
