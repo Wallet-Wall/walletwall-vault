@@ -501,8 +501,19 @@ Full details: [docs/Security_Assumptions.md](docs/Security_Assumptions.md).
   the verifier, evidence, attestation, SP1, on-chain, simulator, and custody capabilities.
 - [Verifier roadmap](docs/Verifier_Roadmap.md) - detailed candidate verifier paths.
 - [Testnet stablecoin vault simulator spec](docs/specs/testnet-stablecoin-vault-simulator.md) -
-  proposed mock USDC-style ERC-20 deposit/withdraw rehearsal over the existing
-  authorization model (docs/spec only; testnet, no real value).
+  the original design spec for a mock USDC-style ERC-20 deposit/withdraw rehearsal over the
+  existing authorization model. **Status: implemented and deployed, not merely proposed.**
+  [`contracts/StablecoinVaultSimulator.sol`](contracts/StablecoinVaultSimulator.sol) (with
+  [`contracts/mocks/MockUSDC.sol`](contracts/mocks/MockUSDC.sol)) is a prototype
+  implementation, and a Sepolia testnet research deployment exists — see
+  [docs/Deployments.md](docs/Deployments.md) for addresses, deployment timestamp, and
+  package version (not restated here to avoid drift). This remains non-production: no
+  custody or production asset protection; not audited; no claim of quantum-proof security
+  (the deployed PQ gate is the mock verifier, not on-chain ML-DSA); and a testnet
+  deployment does not establish production readiness. None of this implies anything about
+  production WalletWall's actual security posture, which is separate and unrelated. See
+  [docs/Sepolia_Rehearsal_Operator_Path.md](docs/Sepolia_Rehearsal_Operator_Path.md) for the
+  current operator-facing status and constraints.
 
 ## ML-DSA test vectors
 
