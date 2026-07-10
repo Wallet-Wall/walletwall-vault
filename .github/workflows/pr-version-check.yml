@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   check-version:
     # Dependabot PRs bump dependencies, not the app version, so this gate would

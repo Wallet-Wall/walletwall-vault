@@ -1,12 +1,14 @@
 {
   "name": "walletwall-vault",
-  "version": "0.9.22",
+  "version": "0.9.23",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "main": "index.js",
   "scripts": {
     "test": "hardhat test",
     "compile": "hardhat compile",
     "clean": "hardhat clean",
+    "security:audit": "npm audit --audit-level=moderate --omit=dev",
+    "security:audit:all": "npm audit --audit-level=moderate",
     "coverage": "hardhat coverage",
     "deploy": "hardhat run scripts/deploy.ts",
     "deploy:sepolia": "hardhat run scripts/deploy.ts --network sepolia",
