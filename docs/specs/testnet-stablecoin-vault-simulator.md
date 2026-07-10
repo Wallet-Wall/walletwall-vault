@@ -1,10 +1,23 @@
 # Testnet Stablecoin Vault Simulator — Implementation Spec
 
 > ⚠️ **Research prototype. Not audited. Testnet / local only. Do not use real funds.**
-> This document is a **docs / spec proposal only**. It adds **no** Solidity, scripts,
-> deployment artifacts, ABIs, or frontend integration. It defines *what* the testnet
-> stablecoin vault simulator should be and the boundaries a later engineering session
-> must respect.
+> **Status update:** this document originated as a docs/spec proposal ("adds no Solidity,
+> scripts, deployment artifacts, ABIs, or frontend integration"); that framing is no longer
+> current. The design below has since been **implemented and deployed**:
+> [`contracts/StablecoinVaultSimulator.sol`](../../contracts/StablecoinVaultSimulator.sol)
+> and [`contracts/mocks/MockUSDC.sol`](../../contracts/mocks/MockUSDC.sol) exist as a
+> prototype implementation, and a Sepolia testnet research deployment exists — see
+> [docs/Deployments.md](../Deployments.md) for addresses, deployment timestamp, and
+> package version. This is a non-production Sepolia research deployment: no custody or
+> production asset protection, not audited, no claim of quantum-proof security (the
+> deployed PQ gate is the mock verifier, not on-chain ML-DSA), and a testnet deployment
+> does not establish production readiness. It has no bearing on production WalletWall's
+> actual security posture, which is separate and unrelated. The sections below remain the
+> original design rationale; the §10 implementation checklist describes work that is now
+> complete. For current operator-facing status see
+> [docs/Sepolia_Rehearsal_Operator_Path.md](../Sepolia_Rehearsal_Operator_Path.md); for the
+> up-to-date capability summary see
+> [docs/ZK_PQ_Status_Matrix.md](../ZK_PQ_Status_Matrix.md).
 >
 > **One-line framing:** A **testnet-only** simulator where a user can deposit and withdraw
 > a **mock USDC-style ERC-20 test token (no monetary value)** through the vault's existing
