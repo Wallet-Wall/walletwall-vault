@@ -69,7 +69,7 @@
     "chai": "^4.5.0",
     "dotenv": "^17.4.2",
     "ethers": "^6.13.4",
-    "hardhat": "^2.22.15",
+    "hardhat": "^3.9.1",
     "hardhat-gas-reporter": "^1.0.10",
     "prettier": "^3.9.4",
     "prettier-plugin-solidity": "^2.3.1",
