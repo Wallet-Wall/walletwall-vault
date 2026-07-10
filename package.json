@@ -70,7 +70,7 @@
     "dotenv": "^17.4.2",
     "ethers": "^6.13.4",
     "hardhat": "^2.22.15",
-    "hardhat-gas-reporter": "^1.0.10",
+    "hardhat-gas-reporter": "^2.3.0",
     "prettier": "^3.9.4",
     "prettier-plugin-solidity": "^2.3.1",
     "solhint": "^6.2.3",
