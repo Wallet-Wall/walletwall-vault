@@ -16,6 +16,18 @@ updates:
           - "patch"
         patterns:
           - "*"
+    ignore:
+      # Hardhat 3 is an ESM/plugin-system rewrite; this repo is a stability-critical
+      # public verifier reference. Migrate all four in one dedicated spike PR against
+      # the hardhat 3 migration guide instead of piecemeal major bumps (#113-#116).
+      - dependency-name: "hardhat"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@nomicfoundation/hardhat-ethers"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@nomicfoundation/hardhat-network-helpers"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "hardhat-gas-reporter"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /
