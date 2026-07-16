@@ -100,7 +100,7 @@ function readDeploymentCommit(): string | null {
 }
 
 async function main(): Promise<void> {
-  const connection = await network.connect();
+  const connection = await network.create();
   const { ethers } = connection;
 
   const networkName = connection.networkName;

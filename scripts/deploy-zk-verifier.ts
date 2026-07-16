@@ -2,7 +2,7 @@ import { network } from "hardhat";
 import { runScript } from "./lib/run-script";
 
 async function main() {
-  const { ethers } = await network.connect();
+  const { ethers } = await network.create();
 
   const [deployer] = await ethers.getSigners();
   const chainNetwork = await ethers.provider.getNetwork();

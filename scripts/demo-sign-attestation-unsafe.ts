@@ -14,7 +14,7 @@ import { network } from "hardhat";
 
 // Leaf demo script (ESM). Acquire the connection's `ethers` at module scope via
 // top-level await so the module-level `bytesFromEnv` helper below can use it too.
-const { ethers } = await network.connect();
+const { ethers } = await network.create();
 
 const REQUIRED_ATTESTOR_NOTICE =
   "In production/research use, the attestor must verify ML-DSA with a real FIPS 204-compatible implementation before signing.";

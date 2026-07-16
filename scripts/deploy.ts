@@ -34,7 +34,7 @@ const FORBIDDEN_MAINNET_CHAIN_IDS = new Map<bigint, string>([
  *     cryptographic verification. Do not use with real funds.
  */
 async function main() {
-  const connection = await network.connect();
+  const connection = await network.create();
   const { ethers } = connection;
 
   if (!ALLOWED_NETWORKS.has(connection.networkName)) {

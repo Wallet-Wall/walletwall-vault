@@ -34,7 +34,7 @@ function banner(title: string) {
 }
 
 async function main() {
-  const connection = await network.connect();
+  const connection = await network.create();
   const { ethers } = connection;
 
   if (!ALLOWED_NETWORKS.includes(connection.networkName)) {
