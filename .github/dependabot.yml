@@ -20,29 +20,24 @@ updates:
       # Hardhat 3 is an ESM/plugin-system rewrite; this repo is a stability-critical
       # public verifier reference. Migrate the whole Hardhat-3 toolchain in ONE
       # dedicated spike PR against the migration guide instead of piecemeal major
-      # bumps. Every package below is gated on that migration: the Hardhat 3 core
-      # rewrite (#113-#116) plus its peer-locked ecosystem — hardhat-toolbox@7 is the
-      # Hardhat-3 toolbox ("does not work with Hardhat 2 nor 3" without the migration),
-      # and while on toolbox@5 it pins hardhat-chai-matchers@^2 → chai@^4, so
-      # toolbox 7 / chai 6 / matchers 3 / verify 3 / ignition-core 3 all fail the build
-      # until the whole toolchain moves to Hardhat 3 together (#119-#123).
+      # bumps. The entire @nomicfoundation/* family (hardhat-toolbox, hardhat-ethers,
+      # hardhat-network-helpers, hardhat-chai-matchers, hardhat-verify, ignition-core,
+      # hardhat-ignition, hardhat-ignition-ethers, …) is peer-locked to Hardhat 3 at
+      # its next major, so a wildcard keeps future stragglers out too; `hardhat` core,
+      # `hardhat-gas-reporter`, and `chai` (chai 6 is ESM-only, blocked by
+      # hardhat-chai-matchers@^2 → chai@^4) round out the set. See #113-#128.
       - dependency-name: "hardhat"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "@nomicfoundation/hardhat-toolbox"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@nomicfoundation/hardhat-ethers"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@nomicfoundation/hardhat-network-helpers"
+      - dependency-name: "@nomicfoundation/*"
         update-types: ["version-update:semver-major"]
       - dependency-name: "hardhat-gas-reporter"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "@nomicfoundation/ignition-core"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@nomicfoundation/hardhat-chai-matchers"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@nomicfoundation/hardhat-verify"
-        update-types: ["version-update:semver-major"]
       - dependency-name: "chai"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7 is the native (Go) compiler rewrite; it breaks the current
+      # hardhat + ts-node toolchain (`Cannot read properties of undefined (reading
+      # 'fileExists')` at compile). Its own deliberate migration, not an auto-bump (#125).
+      - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
