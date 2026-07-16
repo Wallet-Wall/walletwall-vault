@@ -15,7 +15,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, relative, sep } from "path";
 
-const REPO_ROOT = join(__dirname, "..");
+const REPO_ROOT = join(import.meta.dirname, "..");
 const DEPLOYMENTS_DIR = join(REPO_ROOT, "deployments");
 // "reproducibility" holds reproducibility manifests validated separately by
 // scripts/validate-reproducibility.ts; they have a different shape.

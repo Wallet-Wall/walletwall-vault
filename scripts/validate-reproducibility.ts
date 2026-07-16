@@ -24,7 +24,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, relative } from "path";
 
-const REPO_ROOT = join(__dirname, "..");
+const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const EXCLUDED_DIRS = new Set(["schema"]);
 
