@@ -1,19 +1,19 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { ethers } from "./helpers/connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import { WalletWallVault, MockMLDSAVerifier, WalletWallMultiSigVault } from "../typechain-types";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { networkHelpers } from "./helpers/connection";
 
 describe("Advanced Security (Phase 2)", function () {
   let vault: WalletWallVault;
   let multiSigVault: WalletWallMultiSigVault;
   let verifier: MockMLDSAVerifier;
-  let owner: SignerWithAddress;
-  let guardian1: SignerWithAddress;
-  let guardian2: SignerWithAddress;
-  let guardian3: SignerWithAddress;
-  let other: SignerWithAddress;
-  let newSigner: SignerWithAddress;
+  let owner: HardhatEthersSigner;
+  let guardian1: HardhatEthersSigner;
+  let guardian2: HardhatEthersSigner;
+  let guardian3: HardhatEthersSigner;
+  let other: HardhatEthersSigner;
+  let newSigner: HardhatEthersSigner;
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const NEW_PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
@@ -46,8 +46,8 @@ describe("Advanced Security (Phase 2)", function () {
   // (owner). When `newEcdsaSigner` is a signer object it provides the new-key ECDSA
   // proof-of-possession; a plain address (e.g. the zero address) leaves it unsigned, for
   // negative cases that revert before the proof check. PQ proofs are mock-shaped blobs.
-  async function signRotation(newEcdsaSigner: SignerWithAddress | string, newPQPublicKey: string) {
-    const deadline = (await time.latest()) + 3600;
+  async function signRotation(newEcdsaSigner: HardhatEthersSigner | string, newPQPublicKey: string) {
+    const deadline = (await networkHelpers.time.latest()) + 3600;
     const domain = {
       name: "WalletWallVault",
       version: "1",
@@ -115,7 +115,7 @@ describe("Advanced Security (Phase 2)", function () {
       await vault.connect(guardian1).supportRecovery(owner.address);
       await vault.connect(guardian2).supportRecovery(owner.address);
 
-      await time.increase(7 * 24 * 60 * 60); // 7 days
+      await networkHelpers.time.increase(7 * 24 * 60 * 60); // 7 days
 
       await vault.executeRecovery(owner.address);
 
@@ -198,7 +198,7 @@ describe("Advanced Security (Phase 2)", function () {
       await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
       await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
 
-      await time.increase(7 * 24 * 60 * 60); // window elapses without enough supports
+      await networkHelpers.time.increase(7 * 24 * 60 * 60); // window elapses without enough supports
 
       await vault.connect(guardian2).initiateRecovery(owner.address, other.address, NEW_PQ_KEY);
       const request = await vault.recoveryRequests(owner.address);
@@ -265,7 +265,7 @@ describe("Advanced Security (Phase 2)", function () {
       await multiSigVault.deposit({ value: ethers.parseEther("1") });
 
       const nonce = 0;
-      const deadline = (await time.latest()) + 3600;
+      const deadline = (await networkHelpers.time.latest()) + 3600;
       const amount = ethers.parseEther("0.5");
       const recipient = other.address;
 
@@ -326,7 +326,7 @@ describe("Advanced Security (Phase 2)", function () {
 
       await multiSigVault.deposit({ value: ethers.parseEther("1") });
 
-      const deadline = (await time.latest()) + 3600;
+      const deadline = (await networkHelpers.time.latest()) + 3600;
       const request = {
         vaultOwner: owner.address,
         recipient: other.address,

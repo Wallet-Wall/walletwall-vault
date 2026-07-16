@@ -17,7 +17,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { expect } from "chai";
 
-const REPO_ROOT = join(__dirname, "..");
+const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const VAULT_MANIFEST = join(REPRO_DIR, "walletwall-vault-sepolia.json");
 

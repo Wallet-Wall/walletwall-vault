@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers } from "./helpers/connection";
 import { MockUSDC } from "../typechain-types";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 
 describe("MockUSDC", function () {
   let token: MockUSDC;
@@ -62,7 +62,7 @@ describe("MockUSDC", function () {
 
     it("mints exactly MAX_MINT_PER_CALL without reverting", async function () {
       const cap = await token.MAX_MINT_PER_CALL();
-      await expect(token.mint(user.address, cap)).to.not.be.reverted;
+      await expect(token.mint(user.address, cap)).to.not.revert(ethers);
       expect(await token.balanceOf(user.address)).to.equal(cap);
     });
 
@@ -88,7 +88,7 @@ describe("MockUSDC", function () {
     });
 
     it("reverts on transfer with insufficient balance", async function () {
-      await expect(token.connect(user).transfer(other.address, 1n)).to.be.reverted;
+      await expect(token.connect(user).transfer(other.address, 1n)).to.revert(ethers);
     });
   });
 });

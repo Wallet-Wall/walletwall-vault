@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { ethers } from "./helpers/connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
+import { networkHelpers } from "./helpers/connection";
 import {
   WalletWallVault,
   MockMLDSAVerifier,
@@ -15,9 +15,9 @@ describe("Policy Engine", function () {
   let verifier: MockMLDSAVerifier;
   let dailyPolicy: DailySpendLimitPolicy;
   let allowlistPolicy: RecipientAllowlistPolicy;
-  let owner: SignerWithAddress;
-  let recipient: SignerWithAddress;
-  let other: SignerWithAddress;
+  let owner: HardhatEthersSigner;
+  let recipient: HardhatEthersSigner;
+  let other: HardhatEthersSigner;
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const GOVERNANCE_DELAY = 2 * 24 * 60 * 60;
@@ -33,7 +33,7 @@ describe("Policy Engine", function () {
 
   async function setPolicyEngine(engineAddress: string) {
     await vault.proposePolicyEngine(engineAddress);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.applyPolicyEngine();
   }
 
@@ -82,7 +82,7 @@ describe("Policy Engine", function () {
     it("applyPolicyEngine sets the engine after delay and emits event", async function () {
       const addr = await dailyPolicy.getAddress();
       await vault.proposePolicyEngine(addr);
-      await time.increase(GOVERNANCE_DELAY);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await expect(vault.applyPolicyEngine()).to.emit(vault, "PolicyEngineUpdated").withArgs(ethers.ZeroAddress, addr);
       expect(await vault.policyEngine()).to.equal(addr);
     });
@@ -134,7 +134,7 @@ describe("Policy Engine", function () {
       await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
       await withdraw({ amount: ethers.parseEther("0.9") });
 
-      await time.increase(24 * 60 * 60);
+      await networkHelpers.time.increase(24 * 60 * 60);
 
       await expect(withdraw({ amount: ethers.parseEther("0.9"), nonce: 1 })).to.emit(vault, "Withdrawn");
     });
@@ -237,7 +237,7 @@ describe("Policy Engine", function () {
         chainId: (await ethers.provider.getNetwork()).chainId,
         verifyingContract: await vault.getAddress(),
       };
-      const deadline = (await time.latest()) + 3600;
+      const deadline = (await networkHelpers.time.latest()) + 3600;
       const newKey = ethers.hexlify(ethers.randomBytes(1952));
       const request = {
         vaultOwner: owner.address,

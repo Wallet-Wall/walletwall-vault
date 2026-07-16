@@ -1,6 +1,6 @@
-import { ethers } from "hardhat";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { ethers } from "./connection";
+import { networkHelpers } from "./connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import { StablecoinVaultSimulator } from "../../typechain-types";
 
 export const WITHDRAWAL_TYPES = {
@@ -26,7 +26,7 @@ export async function simulatorDomain(vault: StablecoinVaultSimulator) {
 
 export async function signWithdrawalRequest(
   vault: StablecoinVaultSimulator,
-  signer: SignerWithAddress,
+  signer: HardhatEthersSigner,
   request: object,
 ) {
   const domain = await simulatorDomain(vault);
@@ -37,7 +37,7 @@ export async function signWithdrawalRequest(
 }
 
 /** Returns a sign function that produces ECDSA + mock-PQ signatures for the simulator. */
-export function makeSignWithdrawal(vault: StablecoinVaultSimulator, signer: SignerWithAddress) {
+export function makeSignWithdrawal(vault: StablecoinVaultSimulator, signer: HardhatEthersSigner) {
   return async function signWithdrawal(request: object) {
     const domain = await simulatorDomain(vault);
     const ecdsaSig = await signer.signTypedData(domain, WITHDRAWAL_TYPES, request);
@@ -47,7 +47,7 @@ export function makeSignWithdrawal(vault: StablecoinVaultSimulator, signer: Sign
 }
 
 export function makeBuildRequest(
-  owner: SignerWithAddress,
+  owner: HardhatEthersSigner,
   defaults: { recipient: string; amount: bigint; vaultMode?: number },
 ) {
   return async function buildRequest(overrides: { amount?: bigint; nonce?: number; recipient?: string } = {}) {
@@ -56,7 +56,7 @@ export function makeBuildRequest(
       recipient: overrides.recipient ?? defaults.recipient,
       amount: overrides.amount ?? defaults.amount,
       nonce: overrides.nonce ?? 0,
-      deadline: (await time.latest()) + 3600,
+      deadline: (await networkHelpers.time.latest()) + 3600,
       vaultMode: defaults.vaultMode ?? 2,
     };
   };
@@ -65,7 +65,7 @@ export function makeBuildRequest(
 /** Build an AttestationPQCVerifier payload for a given withdrawal digest. */
 export async function buildAttestationPayload(
   verifierAddress: string,
-  attestorSigner: SignerWithAddress,
+  attestorSigner: HardhatEthersSigner,
   withdrawalDigest: string,
   publicKey: string,
   deadlineOffset = 3600,
@@ -86,7 +86,7 @@ export async function buildAttestationPayload(
   const { chainId } = await ethers.provider.getNetwork();
   const publicKeyHash = ethers.keccak256(publicKey);
   const pqSignatureHash = ethers.keccak256(ethers.randomBytes(3309));
-  const deadline = BigInt((await time.latest()) + deadlineOffset);
+  const deadline = BigInt((await networkHelpers.time.latest()) + deadlineOffset);
 
   const domain = {
     name: "AttestationPQCVerifier",

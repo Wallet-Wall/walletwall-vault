@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers } from "./helpers/connection";
 
 import {
   DEMO_WARNING,

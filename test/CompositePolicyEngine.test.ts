@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { ethers } from "./helpers/connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
+import { networkHelpers } from "./helpers/connection";
 import {
   WalletWallVault,
   MockMLDSAVerifier,
@@ -20,11 +20,11 @@ describe("CompositePolicyEngine", function () {
   let allowlistPolicy: RecipientAllowlistPolicy;
   let sanctionsPolicy: SanctionsListPolicy;
 
-  let admin: SignerWithAddress;
-  let owner: SignerWithAddress;
-  let recipient: SignerWithAddress;
-  let sanctioned: SignerWithAddress;
-  let other: SignerWithAddress;
+  let admin: HardhatEthersSigner;
+  let owner: HardhatEthersSigner;
+  let recipient: HardhatEthersSigner;
+  let sanctioned: HardhatEthersSigner;
+  let other: HardhatEthersSigner;
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const GOVERNANCE_DELAY = 2 * 24 * 60 * 60;
@@ -40,13 +40,13 @@ describe("CompositePolicyEngine", function () {
 
   async function setPolicyEngine(engine: string) {
     await vault.connect(admin).proposePolicyEngine(engine);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyPolicyEngine();
   }
 
   async function enableLargeTx() {
     await vault.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyLargeTxParams();
   }
 
@@ -150,7 +150,7 @@ describe("CompositePolicyEngine", function () {
     it("can re-add a module after removal", async function () {
       await composite.addModule(await dailyPolicy.getAddress());
       await composite.removeModule(await dailyPolicy.getAddress());
-      await expect(composite.addModule(await dailyPolicy.getAddress())).to.not.be.reverted;
+      await expect(composite.addModule(await dailyPolicy.getAddress())).to.not.revert(ethers);
     });
   });
 
@@ -241,7 +241,7 @@ describe("CompositePolicyEngine", function () {
       await sanctionsPolicy.addToSanctionsList(recipient.address);
 
       // Pass the large-tx timelock
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       // Finalization must be blocked because current engine != engine at queue time
       // and the new engine rejects the recipient
@@ -264,7 +264,7 @@ describe("CompositePolicyEngine", function () {
 
       // But THRESHOLD is 3 ETH and amount is 1.5 ETH < threshold — so it's not a large withdrawal.
       // Let me use an amount above the threshold: 4 ETH > THRESHOLD (3 ETH).
-      // But daily limit is 2 ETH, and 4 ETH > limit — would be blocked at queue time.
+      // But daily limit is 2 ETH, and 4 ETH > limit — would be blocked at queue networkHelpers.time.
       // Use a fresh composite with NO daily limit and add allowlist that always passes.
       const Composite2 = await ethers.getContractFactory("CompositePolicyEngine", admin);
       const composite2 = await Composite2.deploy();
@@ -278,7 +278,7 @@ describe("CompositePolicyEngine", function () {
       await vault.connect(other).queueWithdrawal(req2, ecdsaSig, pqSig);
       const operationId2 = await vault.hashWithdrawal(req2);
 
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       // Engine is unchanged → no re-check → finalization succeeds
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId2)).to.emit(
