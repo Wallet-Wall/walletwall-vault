@@ -17,26 +17,22 @@ updates:
         patterns:
           - "*"
     ignore:
-      # Hardhat 3 is an ESM/plugin-system rewrite; this repo is a stability-critical
-      # public verifier reference. Migrate the whole Hardhat-3 toolchain in ONE
-      # dedicated spike PR against the migration guide instead of piecemeal major
-      # bumps. The entire @nomicfoundation/* family (hardhat-toolbox, hardhat-ethers,
-      # hardhat-network-helpers, hardhat-chai-matchers, hardhat-verify, ignition-core,
-      # hardhat-ignition, hardhat-ignition-ethers, …) is peer-locked to Hardhat 3 at
-      # its next major, so a wildcard keeps future stragglers out too; `hardhat` core,
-      # `hardhat-gas-reporter`, and `chai` (chai 6 is ESM-only, blocked by
-      # hardhat-chai-matchers@^2 → chai@^4) round out the set. See #113-#128.
+      # This repo is now ON Hardhat 3 (migrated in the #131 spike). Hardhat's NEXT
+      # major (a future Hardhat 4) and the @nomicfoundation/* plugin family are
+      # peer-locked together across a major, and such a jump is again an ESM/plugin
+      # rewrite risk on a stability-critical public verifier reference — so defer the
+      # whole family to ONE dedicated, reviewed migration rather than piecemeal
+      # auto-bumps. Minor/patch updates for all of these still flow through the grouped
+      # PR above. (chai and hardhat-gas-reporter are no longer pinned here: the repo is
+      # on chai 6, and hardhat-gas-reporter was dropped in the Hardhat 3 migration.)
       - dependency-name: "hardhat"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@nomicfoundation/*"
         update-types: ["version-update:semver-major"]
-      - dependency-name: "hardhat-gas-reporter"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "chai"
-        update-types: ["version-update:semver-major"]
-      # TypeScript 7 is the native (Go) compiler rewrite; it breaks the current
-      # hardhat + ts-node toolchain (`Cannot read properties of undefined (reading
-      # 'fileExists')` at compile). Its own deliberate migration, not an auto-bump (#125).
+      # TypeScript 7 is the native (Go) compiler rewrite that ships without the classic
+      # programmatic compiler API. Even on Hardhat 3 (which dropped ts-node), the
+      # typechain type generator still calls that API, so a typescript@7 bump would break
+      # type generation during `hardhat compile`. Keep it a deliberate, separate migration.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
