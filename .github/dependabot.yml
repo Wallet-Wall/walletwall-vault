@@ -18,8 +18,13 @@ updates:
           - "*"
     ignore:
       # Hardhat 3 is an ESM/plugin-system rewrite; this repo is a stability-critical
-      # public verifier reference. Migrate all four in one dedicated spike PR against
-      # the hardhat 3 migration guide instead of piecemeal major bumps (#113-#116).
+      # public verifier reference. Migrate the whole Hardhat-3 toolchain in ONE
+      # dedicated spike PR against the migration guide instead of piecemeal major
+      # bumps. Every package below is gated on that migration: the Hardhat 3 core
+      # rewrite (#113-#116) plus its peer-locked ecosystem — hardhat-toolbox@5 pins
+      # hardhat-chai-matchers@^2, which pins chai@^4, so chai 6 / matchers 3 / verify 3
+      # / ignition-core 3 all fail `npm ci` until the toolbox itself moves to Hardhat 3
+      # (#119-#122).
       - dependency-name: "hardhat"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@nomicfoundation/hardhat-ethers"
@@ -27,6 +32,14 @@ updates:
       - dependency-name: "@nomicfoundation/hardhat-network-helpers"
         update-types: ["version-update:semver-major"]
       - dependency-name: "hardhat-gas-reporter"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@nomicfoundation/ignition-core"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@nomicfoundation/hardhat-chai-matchers"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@nomicfoundation/hardhat-verify"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "chai"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
