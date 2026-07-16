@@ -25,7 +25,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { expect } from "chai";
 
-const REPO_ROOT = join(__dirname, "..");
+const REPO_ROOT = join(import.meta.dirname, "..");
 const DEPLOYMENTS_DIR = join(REPO_ROOT, "deployments");
 
 // Canonical chain ID for each deployment environment (testnet / local only).

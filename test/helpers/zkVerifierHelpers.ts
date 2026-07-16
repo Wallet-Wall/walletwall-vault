@@ -1,4 +1,4 @@
-import { ethers } from "hardhat";
+import { ethers } from "./connection";
 import { ProverClient } from "../../scripts/prover-client";
 
 export const MOCK_PROGRAM_VKEY = ethers.keccak256(ethers.toUtf8Bytes("MOCK_VKEY"));

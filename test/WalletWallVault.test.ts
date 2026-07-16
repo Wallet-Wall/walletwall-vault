@@ -1,9 +1,9 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers } from "./helpers/connection";
 import { MLDSASigner } from "../pqc/ml-dsa";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
+import { networkHelpers } from "./helpers/connection";
+import { anyValue } from "@nomicfoundation/hardhat-ethers-chai-matchers/withArgs";
 import { WalletWallVault, MockMLDSAVerifier } from "../typechain-types";
 import { WITHDRAWAL_TYPES } from "./helpers/vaultHelpers";
 
@@ -364,7 +364,7 @@ describe("WalletWallVault", function () {
         .withArgs(oldAddr, newAddr, anyValue);
 
       expect(await vault.pendingPQVerifier()).to.equal(newAddr);
-      expect(await vault.pendingPQVerifierValidAfter()).to.be.greaterThan(await time.latest());
+      expect(await vault.pendingPQVerifierValidAfter()).to.be.greaterThan(await networkHelpers.time.latest());
       expect(await vault.pqVerifier()).to.equal(oldAddr);
     });
 
@@ -399,7 +399,7 @@ describe("WalletWallVault", function () {
       const validAfter = await vault.pendingPQVerifierValidAfter();
       await vault.cancelPQVerifierUpdate();
 
-      await time.increaseTo(validAfter);
+      await networkHelpers.time.increaseTo(validAfter);
       await expect(vault.applyPQVerifierUpdate()).to.be.revertedWithCustomError(vault, "NoPendingPQVerifier");
       expect(await vault.pqVerifier()).to.equal(await mockVerifier.getAddress());
     });
@@ -424,7 +424,7 @@ describe("WalletWallVault", function () {
       const newAddr = await newVerifier.getAddress();
       await vault.proposePQVerifier(newAddr);
 
-      await time.increaseTo(await vault.pendingPQVerifierValidAfter());
+      await networkHelpers.time.increaseTo(await vault.pendingPQVerifierValidAfter());
 
       await expect(vault.applyPQVerifierUpdate()).to.emit(vault, "PQVerifierUpdated").withArgs(oldAddr, newAddr);
       expect(await vault.pqVerifier()).to.equal(newAddr);
@@ -584,7 +584,7 @@ describe("WalletWallVault", function () {
       } = {},
     ) {
       const domain = await buildDomain(target);
-      const deadline = opts.deadline ?? (await time.latest()) + 3600;
+      const deadline = opts.deadline ?? (await networkHelpers.time.latest()) + 3600;
       const nonce = opts.nonce ?? (await target.nonces(ownerAccount.address));
       const request = {
         vaultOwner: ownerAccount.address,
@@ -680,7 +680,7 @@ describe("WalletWallVault", function () {
         });
         // Strip the new-signer proof; an empty signature is rejected by ECDSA.recover.
         auth.newEcdsaSignature = "0x";
-        await expect(vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth)).to.be.reverted;
+        await expect(vault.rotateCredentials(owner.address, relayer.address, newKey, deadline, auth)).to.revert(ethers);
       });
 
       it("reverts when the new ECDSA proof is a valid signature from the wrong account", async function () {
@@ -739,7 +739,7 @@ describe("WalletWallVault", function () {
 
       it("reverts on an expired deadline", async function () {
         const newKey = MLDSASigner.toHex(newPq.publicKey);
-        const past = (await time.latest()) - 1;
+        const past = (await networkHelpers.time.latest()) - 1;
         const { auth } = await signRotation(vault, owner, relayer, newKey, {
           currentPqPriv: pqPrivateKey,
           newPqPriv: newPq.privateKey,

@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers } from "./helpers/connection";
 import { MLDSASigner } from "../pqc/ml-dsa";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import { WalletWallVault, MockMLDSAVerifier } from "../typechain-types";
 
 const VaultMode = { EcdsaOnly: 0, PqOnly: 1, Hybrid: 2 } as const;

@@ -1,7 +1,7 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { ethers } from "./helpers/connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
+import { networkHelpers } from "./helpers/connection";
 import { WalletWallVault, MockMLDSAVerifier } from "../typechain-types";
 import { makeBuildRequest, makeSignWithdrawal } from "./helpers/vaultHelpers";
 
@@ -9,14 +9,14 @@ describe("Treasury withdrawal quorum", function () {
   let vault: WalletWallVault;
   let verifier: MockMLDSAVerifier;
 
-  let admin: SignerWithAddress;
-  let owner: SignerWithAddress;
-  let owner2: SignerWithAddress;
-  let recipient: SignerWithAddress;
-  let other: SignerWithAddress;
-  let guardian1: SignerWithAddress;
-  let guardian2: SignerWithAddress;
-  let guardian3: SignerWithAddress;
+  let admin: HardhatEthersSigner;
+  let owner: HardhatEthersSigner;
+  let owner2: HardhatEthersSigner;
+  let recipient: HardhatEthersSigner;
+  let other: HardhatEthersSigner;
+  let guardian1: HardhatEthersSigner;
+  let guardian2: HardhatEthersSigner;
+  let guardian3: HardhatEthersSigner;
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const DEPOSIT = ethers.parseEther("10");
@@ -30,7 +30,7 @@ describe("Treasury withdrawal quorum", function () {
 
   async function enableLargeTx(threshold = THRESHOLD, delay = LARGE_TX_DELAY) {
     await vault.connect(admin).proposeLargeTxParams(threshold, delay);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyLargeTxParams();
   }
 
@@ -115,7 +115,7 @@ describe("Treasury withdrawal quorum", function () {
 
     it("large withdrawal cannot finalize without required quorum", async function () {
       const { operationId } = await queueLargeWithdrawal();
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
         .to.be.revertedWithCustomError(vault, "TreasuryQuorumNotMet")
         .withArgs(2, 0);
@@ -124,7 +124,7 @@ describe("Treasury withdrawal quorum", function () {
     it("large withdrawal cannot finalize with insufficient quorum (1 of 2 required)", async function () {
       const { operationId } = await queueLargeWithdrawal();
       await vault.connect(guardian1).approveTreasuryWithdrawal(owner.address, operationId);
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
         .to.be.revertedWithCustomError(vault, "TreasuryQuorumNotMet")
         .withArgs(2, 1);
@@ -134,7 +134,7 @@ describe("Treasury withdrawal quorum", function () {
       const { operationId } = await queueLargeWithdrawal();
       await vault.connect(guardian1).approveTreasuryWithdrawal(owner.address, operationId);
       await vault.connect(guardian2).approveTreasuryWithdrawal(owner.address, operationId);
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
         .to.emit(vault, "WithdrawalFinalized")
         .withArgs(operationId, owner.address, recipient.address, LARGE_AMOUNT);
@@ -154,7 +154,7 @@ describe("Treasury withdrawal quorum", function () {
     it("large withdrawal with quorum disabled (threshold=0) finalizes without approvals", async function () {
       await vault.connect(owner).setTreasuryQuorumThreshold(0);
       const { operationId } = await queueLargeWithdrawal();
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
         vault,
         "WithdrawalFinalized",
@@ -252,7 +252,7 @@ describe("Treasury withdrawal quorum", function () {
       expect(await vault.treasuryApprovalCount(opB)).to.equal(0);
 
       // Finalization of B without fresh approvals must fail
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, opB))
         .to.be.revertedWithCustomError(vault, "TreasuryQuorumNotMet")
         .withArgs(2, 0);
@@ -273,7 +273,7 @@ describe("Treasury withdrawal quorum", function () {
       await vault.connect(owner).cancelPendingWithdrawal(operationId);
 
       // Even though quorum was met before cancellation, finalization is impossible
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
         vault,
         "NoPendingWithdrawal",
@@ -291,7 +291,7 @@ describe("Treasury withdrawal quorum", function () {
       expect(await vault.treasuryApprovalCount(operationId)).to.equal(0);
 
       // Trying to finalize without fresh approvals should fail
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
         .to.be.revertedWithCustomError(vault, "TreasuryQuorumNotMet")
         .withArgs(2, 0);
@@ -319,7 +319,7 @@ describe("Treasury withdrawal quorum", function () {
       await vault.connect(guardian1).initiateRecovery(owner.address, other.address, newKey);
       await vault.connect(guardian1).supportRecovery(owner.address);
       await vault.connect(guardian2).supportRecovery(owner.address);
-      await time.increase(7 * 24 * 60 * 60); // RECOVERY_DELAY
+      await networkHelpers.time.increase(7 * 24 * 60 * 60); // RECOVERY_DELAY
       await vault.connect(guardian1).executeRecovery(owner.address);
 
       // Treasury approvals for the cancelled withdrawal should be cleared

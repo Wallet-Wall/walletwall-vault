@@ -1,8 +1,8 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
-import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
+import { ethers } from "./helpers/connection";
+import { networkHelpers } from "./helpers/connection";
+import { anyValue } from "@nomicfoundation/hardhat-ethers-chai-matchers/withArgs";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import {
   MockUSDC,
   MockMLDSAVerifier,
@@ -55,7 +55,7 @@ describe("StablecoinVaultSimulator", function () {
 
   async function enableLargeTx(threshold = THRESHOLD, delay = LARGE_TX_DELAY) {
     await sim.connect(admin).proposeLargeTxParams(threshold, delay);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await sim.connect(admin).applyLargeTxParams();
   }
 
@@ -201,7 +201,7 @@ describe("StablecoinVaultSimulator", function () {
     it("reverts without sufficient allowance", async function () {
       await token.connect(owner).mint(owner.address, DEPOSIT);
       // No approve — reverts on safeTransferFrom
-      await expect(sim.connect(owner).deposit(DEPOSIT)).to.be.reverted;
+      await expect(sim.connect(owner).deposit(DEPOSIT)).to.revert(ethers);
     });
 
     it("reverts when depositing to a non-existent vault", async function () {
@@ -295,7 +295,7 @@ describe("StablecoinVaultSimulator", function () {
     });
 
     it("reverts on expired deadline", async function () {
-      const request = { ...(await buildRequest()), deadline: (await time.latest()) - 1 };
+      const request = { ...(await buildRequest()), deadline: (await networkHelpers.time.latest()) - 1 };
       const { ecdsaSig, pqSig } = await signWithdrawal(request);
       await expect(sim.withdraw(request, ecdsaSig, pqSig)).to.be.revertedWithCustomError(sim, "DeadlineExpired");
     });
@@ -516,7 +516,7 @@ describe("StablecoinVaultSimulator", function () {
       await sim.connect(relayer).queueWithdrawal(request, ecdsaSig, pqSig);
       const operationId = await sim.hashWithdrawal(request);
 
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       const recipientBefore = await token.balanceOf(recipient.address);
       await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
@@ -554,8 +554,8 @@ describe("StablecoinVaultSimulator", function () {
       await sim.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
       // Cannot apply yet
       await expect(sim.connect(admin).applyLargeTxParams()).to.be.revertedWithCustomError(sim, "LargeTxUpdateNotReady");
-      await time.increase(GOVERNANCE_DELAY);
-      await expect(sim.connect(admin).applyLargeTxParams()).to.not.be.reverted;
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await expect(sim.connect(admin).applyLargeTxParams()).to.not.revert(ethers);
       expect(await sim.largeTxThreshold()).to.equal(THRESHOLD);
     });
   });
@@ -570,7 +570,7 @@ describe("StablecoinVaultSimulator", function () {
 
     async function setPolicyEngine(engine: string) {
       await sim.connect(admin).proposePolicyEngine(engine);
-      await time.increase(GOVERNANCE_DELAY);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await sim.connect(admin).applyPolicyEngine();
     }
 
@@ -639,7 +639,7 @@ describe("StablecoinVaultSimulator", function () {
       await sanctionsPolicy.connect(admin).addToSanctionsList(recipient.address);
       await setPolicyEngine(await sanctionsPolicy.getAddress());
 
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       // Finalize should be blocked by the new policy
       await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
@@ -654,7 +654,7 @@ describe("StablecoinVaultSimulator", function () {
         sim,
         "PolicyEngineUpdateNotReady",
       );
-      await time.increase(GOVERNANCE_DELAY);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await sim.connect(admin).applyPolicyEngine();
       expect(await sim.policyEngine()).to.equal(await allowlistPolicy.getAddress());
     });
@@ -691,7 +691,7 @@ describe("StablecoinVaultSimulator", function () {
         "RecoveryNotReady",
       );
 
-      await time.increase(RECOVERY_DELAY_SECONDS);
+      await networkHelpers.time.increase(RECOVERY_DELAY_SECONDS);
       await expect(sim.connect(other).executeRecovery(owner.address))
         .to.emit(sim, "RecoveryExecuted")
         .withArgs(owner.address, newSigner.address);
@@ -705,7 +705,7 @@ describe("StablecoinVaultSimulator", function () {
       await sim.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
       // Only 1 support (need 2 of 3)
       await sim.connect(guardian1).supportRecovery(owner.address);
-      await time.increase(RECOVERY_DELAY_SECONDS);
+      await networkHelpers.time.increase(RECOVERY_DELAY_SECONDS);
 
       await expect(sim.connect(other).executeRecovery(owner.address)).to.be.revertedWithCustomError(
         sim,
@@ -724,7 +724,7 @@ describe("StablecoinVaultSimulator", function () {
       await sim.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
       await sim.connect(guardian1).supportRecovery(owner.address);
       await sim.connect(guardian2).supportRecovery(owner.address);
-      await time.increase(RECOVERY_DELAY_SECONDS);
+      await networkHelpers.time.increase(RECOVERY_DELAY_SECONDS);
 
       await expect(sim.connect(other).executeRecovery(owner.address))
         .to.emit(sim, "WithdrawalCancelled")
@@ -767,14 +767,14 @@ describe("StablecoinVaultSimulator", function () {
     it("pause() blocks new deposits", async function () {
       await sim.connect(admin).pause();
       await mintAndApprove(relayer, MUSDC(10));
-      await expect(sim.connect(relayer).depositFor(owner.address, MUSDC(10))).to.be.reverted;
+      await expect(sim.connect(relayer).depositFor(owner.address, MUSDC(10))).to.revert(ethers);
     });
 
     it("pause() blocks withdrawals", async function () {
       await sim.connect(admin).pause();
       const request = await buildRequest();
       const { ecdsaSig, pqSig } = await signWithdrawal(request);
-      await expect(sim.withdraw(request, ecdsaSig, pqSig)).to.be.reverted;
+      await expect(sim.withdraw(request, ecdsaSig, pqSig)).to.revert(ethers);
     });
 
     it("cancelPendingWithdrawal is still available while paused", async function () {
@@ -821,7 +821,7 @@ describe("StablecoinVaultSimulator", function () {
       await sim.connect(relayer).queueWithdrawal(request, ecdsaSig, pqSig);
       const operationId = await sim.hashWithdrawal(request);
 
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
         sim,
@@ -838,7 +838,7 @@ describe("StablecoinVaultSimulator", function () {
 
       await sim.connect(guardian1).approveTreasuryWithdrawal(owner.address, operationId);
       await sim.connect(guardian2).approveTreasuryWithdrawal(owner.address, operationId);
-      await time.increase(LARGE_TX_DELAY);
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
         sim,
@@ -873,7 +873,7 @@ describe("StablecoinVaultSimulator", function () {
         sim,
         "PQVerifierUpdateNotReady",
       );
-      await time.increase(GOVERNANCE_DELAY);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await sim.connect(admin).applyPQVerifierUpdate();
       expect(await sim.pqVerifier()).to.equal(await newVerifier.getAddress());
     });

@@ -1,6 +1,6 @@
-import { ethers } from "hardhat";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { ethers } from "./connection";
+import { networkHelpers } from "./connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import { WalletWallVault } from "../../typechain-types";
 
 export const WITHDRAWAL_TYPES = {
@@ -23,7 +23,7 @@ export async function withdrawalDomain(vault: WalletWallVault) {
   };
 }
 
-export async function signWithdrawalRequest(vault: WalletWallVault, signer: SignerWithAddress, request: object) {
+export async function signWithdrawalRequest(vault: WalletWallVault, signer: HardhatEthersSigner, request: object) {
   const domain = await withdrawalDomain(vault);
   return {
     digest: ethers.TypedDataEncoder.hash(domain, WITHDRAWAL_TYPES, request),
@@ -31,7 +31,7 @@ export async function signWithdrawalRequest(vault: WalletWallVault, signer: Sign
   };
 }
 
-export function makeSignWithdrawal(vault: WalletWallVault, signer: SignerWithAddress) {
+export function makeSignWithdrawal(vault: WalletWallVault, signer: HardhatEthersSigner) {
   return async function signWithdrawal(request: object) {
     const domain = await withdrawalDomain(vault);
     const ecdsaSig = await signer.signTypedData(domain, WITHDRAWAL_TYPES, request);
@@ -41,7 +41,7 @@ export function makeSignWithdrawal(vault: WalletWallVault, signer: SignerWithAdd
 }
 
 export function makeBuildRequest(
-  owner: SignerWithAddress,
+  owner: HardhatEthersSigner,
   defaults: { recipient: string; amount: bigint; vaultMode?: number },
 ) {
   return async function buildRequest(overrides: { amount?: bigint; nonce?: number; recipient?: string } = {}) {
@@ -50,7 +50,7 @@ export function makeBuildRequest(
       recipient: overrides.recipient ?? defaults.recipient,
       amount: overrides.amount ?? defaults.amount,
       nonce: overrides.nonce ?? 0,
-      deadline: (await time.latest()) + 3600,
+      deadline: (await networkHelpers.time.latest()) + 3600,
       vaultMode: defaults.vaultMode ?? 2,
     };
   };

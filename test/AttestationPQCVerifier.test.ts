@@ -1,6 +1,6 @@
 import { expect } from "chai";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { ethers } from "hardhat";
+import { networkHelpers } from "./helpers/connection";
+import { ethers } from "./helpers/connection";
 
 const ALGORITHM_ID = ethers.keccak256(ethers.toUtf8Bytes("ATTESTED-ML-DSA-65"));
 
@@ -63,7 +63,7 @@ describe("AttestationPQCVerifier", function () {
     const withdrawalDigest = ethers.keccak256(ethers.toUtf8Bytes("withdrawal"));
     const publicKeyHash = ethers.keccak256(publicKey);
     const pqSignatureHash = ethers.keccak256(ethers.randomBytes(3309));
-    const deadline = (await time.latest()) + 3600;
+    const deadline = (await networkHelpers.time.latest()) + 3600;
 
     return {
       publicKey,
@@ -107,7 +107,7 @@ describe("AttestationPQCVerifier", function () {
   it("rejects an expired attestation", async function () {
     const { verifier, attestor } = await deployFixture();
     const input = await validInputs();
-    const deadline = BigInt((await time.latest()) + 10);
+    const deadline = BigInt((await networkHelpers.time.latest()) + 10);
     const payload = await buildPayload(
       await verifier.getAddress(),
       attestor,
@@ -116,7 +116,7 @@ describe("AttestationPQCVerifier", function () {
       input.pqSignatureHash,
       deadline,
     );
-    await time.increaseTo(deadline + 1n);
+    await networkHelpers.time.increaseTo(deadline + 1n);
 
     expect(await verifier.verify(input.withdrawalDigest, input.publicKey, payload)).to.equal(false);
   });

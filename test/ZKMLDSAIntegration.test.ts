@@ -1,6 +1,6 @@
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { networkHelpers } from "./helpers/connection";
 import { expect } from "chai";
-import { ethers } from "hardhat";
+import { ethers } from "./helpers/connection";
 import { MLDSASigner } from "../pqc/ml-dsa";
 import { ProverClient } from "../scripts/prover-client";
 import { signWithdrawalRequest } from "./helpers/vaultHelpers";
@@ -35,7 +35,7 @@ describe("ZKMLDSAVerifier Integration", function () {
       recipient: recipient.address,
       amount: ethers.parseEther("0.1"),
       nonce: 0,
-      deadline: (await time.latest()) + 3600,
+      deadline: (await networkHelpers.time.latest()) + 3600,
       vaultMode: 2,
     };
     const { ecdsaSignature } = await signWithdrawalRequest(vault, owner, request);
@@ -56,7 +56,7 @@ describe("ZKMLDSAVerifier Integration", function () {
     await vault.deposit({ value: amount });
 
     const nonce = await vault.nonces(owner.address);
-    const deadline = (await time.latest()) + 3600;
+    const deadline = (await networkHelpers.time.latest()) + 3600;
 
     const request = {
       vaultOwner: owner.address,

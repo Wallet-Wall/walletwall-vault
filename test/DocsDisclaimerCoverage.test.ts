@@ -28,7 +28,7 @@ import { join, resolve, relative, sep } from "node:path";
 
 import { expect } from "chai";
 
-const REPO_ROOT = resolve(__dirname, "..");
+const REPO_ROOT = resolve(import.meta.dirname, "..");
 
 // Topics that, if discussed, require a nearby safety disclaimer somewhere in the
 // same document.

@@ -1,8 +1,8 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { anyValue } from "@nomicfoundation/hardhat-chai-matchers/withArgs";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
+import { ethers } from "./helpers/connection";
+import { anyValue } from "@nomicfoundation/hardhat-ethers-chai-matchers/withArgs";
+import { networkHelpers } from "./helpers/connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import { MockMLDSAVerifier, RecipientAllowlistPolicy, WalletWallVault } from "../typechain-types";
 import { makeBuildRequest, makeSignWithdrawal } from "./helpers/vaultHelpers";
 
@@ -10,15 +10,15 @@ describe("Large transaction timelock", function () {
   let vault: WalletWallVault;
   let verifier: MockMLDSAVerifier;
   let allowlistPolicy: RecipientAllowlistPolicy;
-  let admin: SignerWithAddress;
-  let owner: SignerWithAddress;
-  let owner2: SignerWithAddress;
-  let recipient: SignerWithAddress;
-  let other: SignerWithAddress;
-  let guardian1: SignerWithAddress;
-  let guardian2: SignerWithAddress;
-  let guardian3: SignerWithAddress;
-  let newSigner: SignerWithAddress;
+  let admin: HardhatEthersSigner;
+  let owner: HardhatEthersSigner;
+  let owner2: HardhatEthersSigner;
+  let recipient: HardhatEthersSigner;
+  let other: HardhatEthersSigner;
+  let guardian1: HardhatEthersSigner;
+  let guardian2: HardhatEthersSigner;
+  let guardian3: HardhatEthersSigner;
+  let newSigner: HardhatEthersSigner;
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const NEW_PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
@@ -35,7 +35,7 @@ describe("Large transaction timelock", function () {
 
   async function enableLargeTx(threshold = THRESHOLD, delay = LARGE_TX_DELAY) {
     await vault.connect(admin).proposeLargeTxParams(threshold, delay);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyLargeTxParams();
   }
 
@@ -157,7 +157,7 @@ describe("Large transaction timelock", function () {
   it("finalizes after the delay and cannot finalize twice", async function () {
     await enableLargeTx();
     const { operationId } = await queueLargeWithdrawal();
-    await time.increase(LARGE_TX_DELAY);
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
 
     const recipientBalance = await ethers.provider.getBalance(recipient.address);
     await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
@@ -193,7 +193,7 @@ describe("Large transaction timelock", function () {
     await vault.connect(owner2).createVault(owner2.address, PQ_KEY, 2);
     await vault.connect(owner2).deposit({ value: DEPOSIT });
 
-    const deadline = (await time.latest()) + 3600;
+    const deadline = (await networkHelpers.time.latest()) + 3600;
     const request1 = {
       vaultOwner: owner.address,
       recipient: recipient.address,
@@ -211,7 +211,7 @@ describe("Large transaction timelock", function () {
     expect(operationId1).to.not.equal(operationId2);
     await vault.queueWithdrawal(request1, signatures1.ecdsaSig, signatures1.pqSig);
     await vault.queueWithdrawal(request2, signatures2.ecdsaSig, signatures2.pqSig);
-    await time.increase(LARGE_TX_DELAY);
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
 
     await expect(vault.connect(owner).finalizeWithdrawal(owner2.address, operationId2))
       .to.be.revertedWithCustomError(vault, "NotPendingWithdrawalOwner")
@@ -224,7 +224,7 @@ describe("Large transaction timelock", function () {
   it("does not let another owner finalize or cancel the pending withdrawal", async function () {
     await enableLargeTx();
     const { operationId } = await queueLargeWithdrawal();
-    await time.increase(LARGE_TX_DELAY);
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
 
     await expect(vault.connect(other).finalizeWithdrawal(owner.address, operationId))
       .to.be.revertedWithCustomError(vault, "NotPendingWithdrawalOwner")
@@ -249,7 +249,7 @@ describe("Large transaction timelock", function () {
 
     await vault.connect(admin).unpause();
     const { operationId } = await queueLargeWithdrawal();
-    await time.increase(LARGE_TX_DELAY);
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
     await vault.connect(admin).pause();
 
     await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
@@ -262,7 +262,7 @@ describe("Large transaction timelock", function () {
   it("enforces the active policy engine before queueing", async function () {
     await enableLargeTx();
     await vault.connect(admin).proposePolicyEngine(await allowlistPolicy.getAddress());
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyPolicyEngine();
 
     const request = await buildRequest();
@@ -281,7 +281,7 @@ describe("Large transaction timelock", function () {
     const { operationId } = await queueLargeWithdrawal();
     const staleRequest = {
       ...(await buildRequest({ amount: SMALL_AMOUNT, nonce: 1 })),
-      deadline: (await time.latest()) + RECOVERY_DELAY + 3600,
+      deadline: (await networkHelpers.time.latest()) + RECOVERY_DELAY + 3600,
     };
     const staleSignatures = await signWithdrawal(staleRequest);
 
@@ -289,7 +289,7 @@ describe("Large transaction timelock", function () {
     await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
     await vault.connect(guardian1).supportRecovery(owner.address);
     await vault.connect(guardian2).supportRecovery(owner.address);
-    await time.increase(RECOVERY_DELAY);
+    await networkHelpers.time.increase(RECOVERY_DELAY);
 
     await expect(vault.executeRecovery(owner.address))
       .to.emit(vault, "WithdrawalCancelled")
@@ -307,7 +307,7 @@ describe("Large transaction timelock", function () {
 
     const oldSignerRequest = {
       ...(await buildRequest({ amount: SMALL_AMOUNT, nonce: 2 })),
-      deadline: (await time.latest()) + 3600,
+      deadline: (await networkHelpers.time.latest()) + 3600,
     };
     const oldSignerSignatures = await signWithdrawal(oldSignerRequest);
     await expect(
@@ -336,7 +336,7 @@ describe("Large transaction timelock", function () {
       chainId: (await ethers.provider.getNetwork()).chainId,
       verifyingContract: await vault.getAddress(),
     };
-    const deadline = (await time.latest()) + 3600;
+    const deadline = (await networkHelpers.time.latest()) + 3600;
     const request = {
       vaultOwner: owner.address,
       newEcdsaSigner: newSigner.address,
@@ -372,7 +372,7 @@ describe("Large transaction timelock", function () {
       vault,
       "LargeTxUpdateNotReady",
     );
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await expect(vault.connect(admin).applyLargeTxParams())
       .to.emit(vault, "LargeTxParamsApplied")
       .withArgs(THRESHOLD, LARGE_TX_DELAY);
@@ -391,7 +391,7 @@ describe("Large transaction timelock", function () {
     );
 
     await vault.connect(admin).proposeLargeTxParams(0, 0);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyLargeTxParams();
     expect(await vault.largeTxThreshold()).to.equal(0);
     expect(await vault.largeTxDelay()).to.equal(0);
@@ -407,7 +407,7 @@ describe("Large transaction timelock", function () {
       .withArgs(owner.address);
 
     await vault.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await expect(vault.connect(owner).applyLargeTxParams())
       .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount")
       .withArgs(owner.address);

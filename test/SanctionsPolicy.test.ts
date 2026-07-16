@@ -1,17 +1,17 @@
 import { expect } from "chai";
-import { ethers } from "hardhat";
-import { SignerWithAddress } from "@nomicfoundation/hardhat-ethers/signers";
-import { time } from "@nomicfoundation/hardhat-network-helpers";
+import { ethers } from "./helpers/connection";
+import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
+import { networkHelpers } from "./helpers/connection";
 import { WalletWallVault, MockMLDSAVerifier, SanctionsListPolicy } from "../typechain-types";
 import { makeSignWithdrawal, makeBuildRequest } from "./helpers/vaultHelpers";
 
 describe("SanctionsListPolicy", function () {
   let vault: WalletWallVault;
   let sanctions: SanctionsListPolicy;
-  let owner: SignerWithAddress;
-  let admin: SignerWithAddress;
-  let recipient: SignerWithAddress;
-  let other: SignerWithAddress;
+  let owner: HardhatEthersSigner;
+  let admin: HardhatEthersSigner;
+  let recipient: HardhatEthersSigner;
+  let other: HardhatEthersSigner;
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const GOVERNANCE_DELAY = 2 * 24 * 60 * 60;
@@ -21,7 +21,7 @@ describe("SanctionsListPolicy", function () {
 
   async function activateSanctions() {
     await vault.proposePolicyEngine(await sanctions.getAddress());
-    await time.increase(GOVERNANCE_DELAY);
+    await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.applyPolicyEngine();
   }
 

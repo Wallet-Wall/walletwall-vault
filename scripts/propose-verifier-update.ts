@@ -1,7 +1,9 @@
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { runScript } from "./lib/run-script";
 
 async function main() {
+  const { ethers } = await network.create();
+
   const vaultAddress = process.env.VAULT_ADDRESS;
   const newVerifierAddress = process.env.NEW_VERIFIER_ADDRESS;
 

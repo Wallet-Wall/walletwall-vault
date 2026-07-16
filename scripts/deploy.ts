@@ -1,12 +1,13 @@
-import { ethers, network } from "hardhat";
+import { network } from "hardhat";
 
-const ALLOWED_NETWORKS = new Set(["hardhat", "localhost", "sepolia", "base-sepolia"]);
+const ALLOWED_NETWORKS = new Set(["default", "hardhat", "localhost", "sepolia", "base-sepolia"]);
 
 // Expected chain ID for each supported Hardhat network. Used to detect a
 // misconfigured RPC URL (e.g. one that actually points at a mainnet) BEFORE any
 // gas is spent. A mismatch is a hard failure. Kept identical to
 // scripts/deploy-simulator.ts for consistency.
 const EXPECTED_CHAIN_ID: Record<string, bigint> = {
+  default: 31337n,
   hardhat: 31337n,
   localhost: 31337n,
   sepolia: 11155111n,
@@ -33,8 +34,11 @@ const FORBIDDEN_MAINNET_CHAIN_IDS = new Map<bigint, string>([
  *     cryptographic verification. Do not use with real funds.
  */
 async function main() {
-  if (!ALLOWED_NETWORKS.has(network.name)) {
-    throw new Error(`Refusing to deploy to unsupported network: ${network.name}`);
+  const connection = await network.create();
+  const { ethers } = connection;
+
+  if (!ALLOWED_NETWORKS.has(connection.networkName)) {
+    throw new Error(`Refusing to deploy to unsupported network: ${connection.networkName}`);
   }
 
   // A network-NAME allowlist alone is not enough: `--network sepolia` pointed at
@@ -46,19 +50,19 @@ async function main() {
   const forbidden = FORBIDDEN_MAINNET_CHAIN_IDS.get(liveChainId);
   if (forbidden) {
     throw new Error(
-      `REFUSING TO DEPLOY: the RPC for network "${network.name}" reports chain ID ` +
+      `REFUSING TO DEPLOY: the RPC for network "${connection.networkName}" reports chain ID ` +
         `${liveChainId} (${forbidden}). This is a MAINNET. The WalletWall Vault ` +
         `prototype is testnet/local only and must never touch mainnet. Aborting before ` +
         `any transaction. Check your *_RPC_URL environment variable.`,
     );
   }
 
-  const expectedChainId = EXPECTED_CHAIN_ID[network.name];
+  const expectedChainId = EXPECTED_CHAIN_ID[connection.networkName];
   if (liveChainId !== expectedChainId) {
     throw new Error(
-      `Chain ID mismatch for network "${network.name}": expected ${expectedChainId} but the ` +
+      `Chain ID mismatch for network "${connection.networkName}": expected ${expectedChainId} but the ` +
         `RPC reports ${liveChainId}. Aborting before any transaction — verify your RPC URL ` +
-        `points at the correct ${network.name} endpoint.`,
+        `points at the correct ${connection.networkName} endpoint.`,
     );
   }
 
@@ -66,7 +70,7 @@ async function main() {
     "\n⚠️  Prototype only. Not audited. Do not use real funds. " +
       "The PQ verifier deployed here is a MOCK (no real cryptographic verification).\n",
   );
-  console.log(`Network: ${network.name}`);
+  console.log(`Network: ${connection.networkName}`);
   console.log("Deploying contracts...");
 
   const deployerKey = process.env.DEPLOYER_PRIVATE_KEY;
