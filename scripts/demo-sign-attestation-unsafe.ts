@@ -10,7 +10,11 @@
 // Renamed from scripts/sign-attestation.ts. The `sign:attestation` npm script has
 // been removed. Run `npm run attestor:demo` or `npm run attestor:verify` instead.
 
-import { ethers } from "hardhat";
+import { network } from "hardhat";
+
+// Leaf demo script (ESM). Acquire the connection's `ethers` at module scope via
+// top-level await so the module-level `bytesFromEnv` helper below can use it too.
+const { ethers } = await network.connect();
 
 const REQUIRED_ATTESTOR_NOTICE =
   "In production/research use, the attestor must verify ML-DSA with a real FIPS 204-compatible implementation before signing.";
@@ -74,8 +78,8 @@ async function main() {
   const publicKeyHash = ethers.keccak256(publicKey);
   const pqSignatureHash = ethers.keccak256(pqSignature);
 
-  const network = await ethers.provider.getNetwork();
-  const chainId = process.env.CHAIN_ID === undefined ? network.chainId : BigInt(process.env.CHAIN_ID);
+  const chainNetwork = await ethers.provider.getNetwork();
+  const chainId = process.env.CHAIN_ID === undefined ? chainNetwork.chainId : BigInt(process.env.CHAIN_ID);
   const latestBlock = await ethers.provider.getBlock("latest");
   if (latestBlock === null) throw new Error("Unable to read the latest block");
   const deadline =

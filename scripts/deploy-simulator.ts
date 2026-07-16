@@ -1,4 +1,4 @@
-import { ethers, network } from "hardhat";
+import { network } from "hardhat";
 import { execSync } from "child_process";
 import { mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
@@ -36,6 +36,7 @@ import { dirname, join } from "path";
 
 // Hardhat network name -> deployment-metadata `environment` enum value.
 const NETWORK_ENVIRONMENT: Record<string, "local" | "sepolia" | "base-sepolia"> = {
+  default: "local",
   hardhat: "local",
   localhost: "local",
   sepolia: "sepolia",
@@ -46,6 +47,7 @@ const NETWORK_ENVIRONMENT: Record<string, "local" | "sepolia" | "base-sepolia"> 
 // misconfigured RPC URL (e.g. one that actually points at a mainnet) BEFORE any
 // gas is spent. A mismatch is a hard failure.
 const EXPECTED_CHAIN_ID: Record<string, bigint> = {
+  default: 31337n,
   hardhat: 31337n,
   localhost: 31337n,
   sepolia: 11155111n,
@@ -63,7 +65,7 @@ const FORBIDDEN_MAINNET_CHAIN_IDS = new Map<bigint, string>([
   [43114n, "Avalanche C-Chain mainnet"],
 ]);
 
-const REPO_ROOT = join(__dirname, "..");
+const REPO_ROOT = join(import.meta.dirname, "..");
 
 const DISCLAIMER =
   "TESTNET — RESEARCH PROTOTYPE, NO REAL VALUE. Not audited. " +
@@ -98,7 +100,10 @@ function readDeploymentCommit(): string | null {
 }
 
 async function main(): Promise<void> {
-  const networkName = network.name;
+  const connection = await network.connect();
+  const { ethers } = connection;
+
+  const networkName = connection.networkName;
   const environment = NETWORK_ENVIRONMENT[networkName];
 
   // --- Hard network gate (refuse unsupported networks and mainnet) ---

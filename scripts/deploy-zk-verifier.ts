@@ -1,14 +1,16 @@
-import { ethers } from "hardhat";
+import { network } from "hardhat";
 import { runScript } from "./lib/run-script";
 
 async function main() {
+  const { ethers } = await network.connect();
+
   const [deployer] = await ethers.getSigners();
-  const network = await ethers.provider.getNetwork();
+  const chainNetwork = await ethers.provider.getNetwork();
   console.log("Deploying ZKMLDSAVerifier with account:", deployer.address);
 
   let sp1VerifierAddress = process.env.SP1_VERIFIER_ADDRESS;
   const allowMock = process.env.ALLOW_MOCK_SP1 === "true";
-  const isLocalNetwork = network.chainId === 31337n || network.chainId === 1337n;
+  const isLocalNetwork = chainNetwork.chainId === 31337n || chainNetwork.chainId === 1337n;
 
   if (sp1VerifierAddress) {
     const verifierCode = await ethers.provider.getCode(sp1VerifierAddress);

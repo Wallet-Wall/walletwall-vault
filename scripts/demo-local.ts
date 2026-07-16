@@ -1,4 +1,4 @@
-import { ethers, network } from "hardhat";
+import { network } from "hardhat";
 import { MLDSASigner } from "../pqc/ml-dsa";
 
 /**
@@ -22,15 +22,24 @@ function banner(title: string) {
 }
 
 async function main() {
-  if (network.name !== "hardhat" && network.name !== "localhost") {
+  const connection = await network.connect();
+  const { ethers } = connection;
+
+  // "default" is Hardhat 3's built-in in-memory (EDR-simulated) network, the
+  // equivalent of Hardhat 2's in-memory "hardhat" network used by `npm run demo`.
+  if (
+    connection.networkName !== "default" &&
+    connection.networkName !== "hardhat" &&
+    connection.networkName !== "localhost"
+  ) {
     throw new Error(
-      `Refusing to run the demo on network "${network.name}". ` +
+      `Refusing to run the demo on network "${connection.networkName}". ` +
         "This demo is local/testnet only — use the Hardhat or localhost network.",
     );
   }
 
   banner("⚠️  " + DISCLAIMER);
-  console.log(`Network: ${network.name}`);
+  console.log(`Network: ${connection.networkName}`);
 
   const [owner, recipient] = await ethers.getSigners();
 

@@ -1,4 +1,4 @@
-import { ethers, network } from "hardhat";
+import { network } from "hardhat";
 import { MLDSASigner } from "../pqc/ml-dsa";
 
 /**
@@ -17,7 +17,9 @@ import { MLDSASigner } from "../pqc/ml-dsa";
  *     npx hardhat run scripts/demo-simulator.ts --network base-sepolia
  */
 
-const ALLOWED_NETWORKS = ["hardhat", "localhost", "sepolia", "base-sepolia"];
+// "default" is Hardhat 3's built-in in-memory (EDR-simulated) network, the
+// equivalent of Hardhat 2's in-memory "hardhat" network (chain id 31337).
+const ALLOWED_NETWORKS = ["default", "hardhat", "localhost", "sepolia", "base-sepolia"];
 
 const VaultMode = { EcdsaOnly: 0, PqOnly: 1, Hybrid: 2 } as const;
 
@@ -32,15 +34,18 @@ function banner(title: string) {
 }
 
 async function main() {
-  if (!ALLOWED_NETWORKS.includes(network.name)) {
+  const connection = await network.connect();
+  const { ethers } = connection;
+
+  if (!ALLOWED_NETWORKS.includes(connection.networkName)) {
     throw new Error(
-      `Refusing to deploy on network "${network.name}". ` +
+      `Refusing to deploy on network "${connection.networkName}". ` +
         `Simulator is testnet/local only. Allowed: ${ALLOWED_NETWORKS.join(", ")}`,
     );
   }
 
   banner("⚠️  " + DISCLAIMER);
-  console.log(`Network: ${network.name}`);
+  console.log(`Network: ${connection.networkName}`);
 
   const [owner, recipient] = await ethers.getSigners();
 
