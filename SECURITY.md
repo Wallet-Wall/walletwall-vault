@@ -100,6 +100,16 @@ known, documented property, not a vulnerability.
 Failures that allow bypassing the configured attestor, changing bound attestation
 fields, or accepting expired attestations are in scope.
 
+## Dependency and workflow hardening
+
+- Run `npm run security:audit` before security-sensitive pull requests; it audits
+  runtime dependencies and is safe for CI.
+- Use `npm run security:audit:all` for explicit dev-toolchain triage, because the
+  Hardhat coverage/tooling chain may require reviewed breaking upgrades.
+- Default GitHub Actions permissions should stay read-only (`contents: read`).
+- Workflows may widen permissions only for narrow, reviewed jobs that require them,
+  such as version tagging or the manual, environment-gated Pages evidence publish.
+
 ## Cryptography / NIST naming
 
 - **ML-DSA / FIPS 204** — Module-Lattice Digital Signature Algorithm, formerly
