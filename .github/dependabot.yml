@@ -23,17 +23,13 @@ updates:
       # rewrite risk on a stability-critical public verifier reference — so defer the
       # whole family to ONE dedicated, reviewed migration rather than piecemeal
       # auto-bumps. Minor/patch updates for all of these still flow through the grouped
-      # PR above. (chai and hardhat-gas-reporter are no longer pinned here: the repo is
-      # on chai 6, and hardhat-gas-reporter was dropped in the Hardhat 3 migration.)
+      # PR above. (chai, hardhat-gas-reporter, and typescript are no longer pinned here:
+      # the repo is on chai 6, hardhat-gas-reporter was dropped in the Hardhat 3 migration,
+      # and typescript is now on 7 — TS7 works on Hardhat 3 because ts-node is gone and
+      # typechain does NOT use the removed classic programmatic compiler API.)
       - dependency-name: "hardhat"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@nomicfoundation/*"
-        update-types: ["version-update:semver-major"]
-      # TypeScript 7 is the native (Go) compiler rewrite that ships without the classic
-      # programmatic compiler API. Even on Hardhat 3 (which dropped ts-node), the
-      # typechain type generator still calls that API, so a typescript@7 bump would break
-      # type generation during `hardhat compile`. Keep it a deliberate, separate migration.
-      - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions

@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -84,8 +85,9 @@ describe("ML-DSA attestor helpers", function () {
       deadline: 4_102_444_800n,
     };
 
-    await expect(verifyAndSignAttestation(input, attestor)).to.be.rejectedWith(
-      "Real verify mode refuses generated demo PQ material",
+    await assert.rejects(
+      verifyAndSignAttestation(input, attestor),
+      /Real verify mode refuses generated demo PQ material/,
     );
   });
 
@@ -104,8 +106,9 @@ describe("ML-DSA attestor helpers", function () {
     };
 
     expect(isFixtureMaterial(fixture.publicKey, fixture.signature)).to.equal(true);
-    await expect(verifyAndSignAttestation(input, attestor)).to.be.rejectedWith(
-      "Real verify mode refuses generated fixture PQ material",
+    await assert.rejects(
+      verifyAndSignAttestation(input, attestor),
+      /Real verify mode refuses generated fixture PQ material/,
     );
   });
 
