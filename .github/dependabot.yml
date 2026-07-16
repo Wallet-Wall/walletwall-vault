@@ -21,11 +21,14 @@ updates:
       # public verifier reference. Migrate the whole Hardhat-3 toolchain in ONE
       # dedicated spike PR against the migration guide instead of piecemeal major
       # bumps. Every package below is gated on that migration: the Hardhat 3 core
-      # rewrite (#113-#116) plus its peer-locked ecosystem — hardhat-toolbox@5 pins
-      # hardhat-chai-matchers@^2, which pins chai@^4, so chai 6 / matchers 3 / verify 3
-      # / ignition-core 3 all fail `npm ci` until the toolbox itself moves to Hardhat 3
-      # (#119-#122).
+      # rewrite (#113-#116) plus its peer-locked ecosystem — hardhat-toolbox@7 is the
+      # Hardhat-3 toolbox ("does not work with Hardhat 2 nor 3" without the migration),
+      # and while on toolbox@5 it pins hardhat-chai-matchers@^2 → chai@^4, so
+      # toolbox 7 / chai 6 / matchers 3 / verify 3 / ignition-core 3 all fail the build
+      # until the whole toolchain moves to Hardhat 3 together (#119-#123).
       - dependency-name: "hardhat"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@nomicfoundation/hardhat-toolbox"
         update-types: ["version-update:semver-major"]
       - dependency-name: "@nomicfoundation/hardhat-ethers"
         update-types: ["version-update:semver-major"]
