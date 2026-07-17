@@ -69,9 +69,15 @@ cryptographic implementations against FIPS 204.
 
 ## Noble post-quantum compatibility
 
-`@noble/post-quantum` `ml_dsa65.verify(sig, msg, pk, { context })` passes **15/15**
-group-3 ACVP sigVer vectors, including all 3 valid and all 12 invalid test cases in
-that group. See `test/MLDSAConformance.test.ts` for the test.
+`@noble/post-quantum` `ml_dsa65.verify(sig, msg, pk, { context })` passes the
+**6 committed vectors** in this fixture (3 valid + 3 invalid group-3 ACVP sigVer
+vectors — see "Vector selection" above). This fixture does not include the
+group's other 9 invalid vectors, so this is a committed subset, not the full
+15/15 group-3 result. `@noble/post-quantum` is independently ACVP-tested
+upstream by its maintainer; see
+[`@noble/post-quantum`](https://github.com/paulmillr/noble-post-quantum) for
+its own conformance claims. See `test/MLDSAConformance.test.ts` for the test
+that exercises this fixture.
 
 ## Vectors not included
 

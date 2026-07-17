@@ -523,7 +523,9 @@ fixtures used by the existing attestor CLI tests. Not official NIST vectors.
 `test/fixtures/mldsa/nist-cavp/` — a 6-vector subset (3 valid + 3 invalid) from the
 official [NIST ACVP-Server](https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files/ML-DSA-sigVer-FIPS204)
 (FIPS 204, ML-DSA-65, sigVer, external interface, pure mode, vsId 42 group 3).
-`@noble/post-quantum` `ml_dsa65.verify` passes all 15 test cases in that ACVP group.
+6 committed NIST ACVP group-3 vectors (3 valid + 3 invalid) are exercised via
+`@noble/post-quantum` `ml_dsa65.verify` — not the full 15-vector group.
+`@noble/post-quantum` is independently ACVP-tested upstream.
 See `test/MLDSAConformance.test.ts` and `test/fixtures/mldsa/nist-cavp/README.md`.
 
 ## Post-quantum verifier roadmap

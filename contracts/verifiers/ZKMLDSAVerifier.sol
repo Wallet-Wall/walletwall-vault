@@ -13,8 +13,13 @@ interface ISP1Verifier {
 
 /**
  * @title ZKMLDSAVerifier
- * @notice Trustless verification of ML-DSA-65 signatures using ZK proofs.
- * @dev Replaces the trusted-attestation model with a cryptographic proof.
+ * @notice Intended to provide trustless verification of ML-DSA-65 signatures
+ *         using ZK proofs, in place of the trusted-attestation model.
+ * @dev PROTOTYPE — not deployed, unaudited. This contract forwards to an
+ *      external ISP1Verifier; there is no on-chain guarantee that
+ *      PROGRAM_VKEY corresponds to a genuine ML-DSA-65 verification circuit
+ *      (that binding is unproven on-chain). Mock-backed in tests. See
+ *      docs/ZK_PQ_Status_Matrix.md for the current capability matrix.
  */
 contract ZKMLDSAVerifier is IPQCVerifier {
     bytes32 public constant ALGORITHM_ID = keccak256("ZK-ML-DSA-65");

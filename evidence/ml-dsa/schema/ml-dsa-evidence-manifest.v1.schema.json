@@ -12,6 +12,7 @@
     "algorithm",
     "verifier",
     "boundary",
+    "standards",
     "evidence",
     "limitations",
     "regeneration"
@@ -36,7 +37,10 @@
       "required": ["parameterSet", "fips"],
       "properties": {
         "parameterSet": { "const": "ML-DSA-65" },
-        "fips": { "const": "FIPS-204" }
+        "fips": {
+          "const": "FIPS-204",
+          "description": "The NIST standard this algorithm/parameter set aligns to. This is an algorithm identifier only — it is NOT a claim of FIPS or CMVP validation. See the sibling top-level `standards.certificationStatus` field for validation status."
+        }
       }
     },
     "verifier": {
@@ -67,6 +71,47 @@
         "onChainMLDSAVerification": { "const": false },
         "onChainVerifierIsMock": { "const": true },
         "custody": { "const": false }
+      }
+    },
+    "standards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "parameterSet",
+        "standard",
+        "implementation",
+        "verificationMode",
+        "conformanceStatus",
+        "certificationStatus",
+        "productionStatus"
+      ],
+      "description": "Standards-alignment snapshot from the canonical PQ algorithm registry (src/standards/pq-algorithm-registry.ts). `certificationStatus` is the authoritative validation-status field — never infer FIPS/CMVP validation from `algorithm.fips` alone.",
+      "properties": {
+        "algorithm": { "type": "string", "enum": ["ML-DSA", "ML-KEM", "SLH-DSA"] },
+        "parameterSet": { "type": ["string", "null"] },
+        "standard": { "type": "string", "enum": ["FIPS 203", "FIPS 204", "FIPS 205"] },
+        "implementation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provider", "package", "version"],
+          "properties": {
+            "provider": { "type": ["string", "null"] },
+            "package": { "type": ["string", "null"] },
+            "version": { "type": ["string", "null"] }
+          }
+        },
+        "verificationMode": { "type": "string", "enum": ["local", "off-chain", "attested", "zk-proof", "mock"] },
+        "conformanceStatus": { "type": "string", "enum": ["not-tested", "vectors-tested", "acvp-evidence", "unknown"] },
+        "certificationStatus": {
+          "type": "string",
+          "enum": ["not-validated", "validation-pending", "validated"],
+          "description": "Must never be 'validated' without real, citable FIPS/CMVP certification evidence."
+        },
+        "productionStatus": {
+          "type": "string",
+          "enum": ["research-only", "prototype", "production-candidate", "production"]
+        }
       }
     },
     "evidence": {

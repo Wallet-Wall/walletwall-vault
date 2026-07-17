@@ -18,6 +18,20 @@
     "onChainVerifierIsMock": true,
     "custody": false
   },
+  "standards": {
+    "algorithm": "ML-DSA",
+    "parameterSet": "ML-DSA-65",
+    "standard": "FIPS 204",
+    "implementation": {
+      "provider": "noble-cryptography (Paul Miller)",
+      "package": "@noble/post-quantum",
+      "version": "0.6.1"
+    },
+    "verificationMode": "off-chain",
+    "conformanceStatus": "vectors-tested",
+    "certificationStatus": "not-validated",
+    "productionStatus": "prototype"
+  },
   "evidence": [
     {
       "id": "nist-acvp-ml-dsa-65-sigver-tcid35-valid",
@@ -34,7 +48,7 @@
         "reason": "ML_DSA_65_VALID"
       },
       "artifactPath": "docs/schemas/examples/pq-verifier-evidence.valid.json",
-      "artifactHash": "0x0eb1a0c9c50a43a4323a3abfa071360b79b5d01994408008361f597a8d1e53d0"
+      "artifactHash": "0xc7d3806ca50b802904932861819e818af97bebc1d563cd3064c6969913ae5a81"
     },
     {
       "id": "nist-acvp-ml-dsa-65-sigver-tcid35-failure",
@@ -51,7 +65,7 @@
         "reason": "VERIFY_FAILED"
       },
       "artifactPath": "docs/schemas/examples/pq-verifier-evidence.failure.json",
-      "artifactHash": "0x03854d6eba93a5a26aa16daedc159da1a7713f62180d9ae27a57cf8f6b655d5d"
+      "artifactHash": "0x083e8ca4a0895edd1f622165d0f3c8c8faba8ca2307f6fae64f034364473afed"
     },
     {
       "id": "library-generated-ml-dsa-65",

@@ -10,8 +10,12 @@
  *
  * Design:
  *   - The deterministic verification result is nested verbatim under
- *     `verification`. The envelope adds only `generatedAt` (the single
- *     non-deterministic field) and an optional safe `source` reference.
+ *     `verification`. The envelope adds `generatedAt` (the single
+ *     non-deterministic field), an optional safe `source` reference, and an
+ *     optional `standards` snapshot from the canonical PQ algorithm registry
+ *     (src/standards/pq-algorithm-registry.ts) recording conformance,
+ *     certification, and production-readiness status. Absence of `standards`
+ *     (e.g. on legacy evidence) must never be read as a positive claim.
  *   - The envelope NEVER contains raw message, public-key, or signature bytes —
  *     only the hashes already present in the inner result. {@link buildEvidence}
  *     and {@link validateEvidence} both defend against accidentally embedding raw
@@ -27,6 +31,21 @@ import type { PQReason, PQVerificationResult } from "./schema";
 // @ts-expect-error ts-node ESM requires the explicit extension.
 import * as schema from "./schema.ts";
 
+import type {
+  PQAlgorithmId,
+  PQAlgorithmRecord,
+  PQCertificationStatus,
+  PQConformanceStatus,
+  PQImplementationRef,
+  PQProductionStatus,
+  PQStandard,
+  PQVerificationMode,
+} from "../standards/pq-algorithm-registry";
+// Namespace import of the dependency-free standards registry; mirrors the
+// schema import above (ts-node ESM requires the explicit extension).
+// @ts-expect-error ts-node ESM requires the explicit extension.
+import * as standards from "../standards/pq-algorithm-registry.ts";
+
 const {
   PQ_REASON,
   PQ_VERIFIER_ALGORITHM,
@@ -35,6 +54,16 @@ const {
   PQ_VERIFIER_NAME,
   PQ_VERIFIER_SCHEMA_VERSION,
 } = schema;
+
+const {
+  PQ_ALGORITHM_IDS,
+  PQ_STANDARDS,
+  PQ_VERIFICATION_MODES,
+  PQ_CONFORMANCE_STATUSES,
+  PQ_CERTIFICATION_STATUSES,
+  PQ_PRODUCTION_STATUSES,
+  getPQAlgorithmRecord,
+} = standards;
 
 /** Stable evidence-envelope schema identifier. Bump only on a breaking change. */
 export const PQ_EVIDENCE_SCHEMA_VERSION = "walletwall.pq-verifier-evidence.v1";
@@ -54,17 +83,61 @@ export interface PQEvidenceSource {
 }
 
 /**
+ * Standards-alignment snapshot, taken at evidence-generation time, of this
+ * algorithm's canonical registry entry
+ * (src/standards/pq-algorithm-registry.ts). Optional and purely additive.
+ *
+ * Absence must be read as "no standards metadata available" — a consumer
+ * must never infer validation, certification, or production readiness from
+ * a missing `standards` block. See {@link toEvidenceStandardsMetadata}.
+ */
+export interface PQEvidenceStandardsMetadata {
+  algorithm: PQAlgorithmId;
+  parameterSet: string | null;
+  standard: PQStandard;
+  implementation: PQImplementationRef;
+  verificationMode: PQVerificationMode;
+  conformanceStatus: PQConformanceStatus;
+  certificationStatus: PQCertificationStatus;
+  productionStatus: PQProductionStatus;
+}
+
+/**
  * Stable, app-consumable evidence artifact.
  *
  * `verification` is the deterministic inner result (its own
  * `walletwall.pq-verifier.v1` schema). `generatedAt` is an ISO-8601 UTC instant
  * and is the only non-deterministic field. `source` is optional provenance.
+ * `standards` is an optional standards-alignment snapshot (see
+ * {@link PQEvidenceStandardsMetadata}); legacy evidence generated before this
+ * field existed simply omits it.
  */
 export interface PQVerificationEvidence {
   schema: typeof PQ_EVIDENCE_SCHEMA_VERSION;
   generatedAt: string;
   verification: PQVerificationResult;
   source?: PQEvidenceSource;
+  standards?: PQEvidenceStandardsMetadata;
+}
+
+/**
+ * Project a canonical registry record into the narrower per-evidence
+ * standards-metadata shape, for a given verification mode.
+ */
+export function toEvidenceStandardsMetadata(
+  record: PQAlgorithmRecord,
+  verificationMode: PQVerificationMode,
+): PQEvidenceStandardsMetadata {
+  return {
+    algorithm: record.algorithm,
+    parameterSet: record.parameterSet,
+    standard: record.standard,
+    implementation: { ...record.implementation },
+    verificationMode,
+    conformanceStatus: record.conformanceStatus,
+    certificationStatus: record.certificationStatus,
+    productionStatus: record.productionStatus,
+  };
 }
 
 /** Result of {@link validateEvidence}. */
@@ -92,11 +165,19 @@ function isIsoTimestamp(value: unknown): value is string {
  * @param opts.generatedAt fixed timestamp (Date or ISO string); defaults to now.
  *   Pass a fixed value to produce deterministic fixtures/examples.
  * @param opts.source optional safe provenance reference.
+ * @param opts.standards standards-alignment snapshot; defaults to the
+ *   canonical ML-DSA-65 registry record (this verifier's only algorithm) at
+ *   `verificationMode: "off-chain"`. Pass `null` to omit the field entirely
+ *   (e.g. to reproduce pre-standards-metadata legacy evidence in a fixture).
  * @throws if `source.reference` would embed raw key/signature material.
  */
 export function buildEvidence(
   verification: PQVerificationResult,
-  opts: { generatedAt?: string | Date; source?: PQEvidenceSource } = {},
+  opts: {
+    generatedAt?: string | Date;
+    source?: PQEvidenceSource;
+    standards?: PQEvidenceStandardsMetadata | null;
+  } = {},
 ): PQVerificationEvidence {
   const generatedAt =
     opts.generatedAt instanceof Date ? opts.generatedAt.toISOString() : (opts.generatedAt ?? new Date().toISOString());
@@ -111,6 +192,9 @@ export function buildEvidence(
       throw new Error("source.reference must not embed raw key/signature material");
     }
     evidence.source = { type: opts.source.type, reference: opts.source.reference };
+  }
+  if (opts.standards !== null) {
+    evidence.standards = opts.standards ?? toEvidenceStandardsMetadata(getPQAlgorithmRecord("ML-DSA"), "off-chain");
   }
   return evidence;
 }
@@ -189,6 +273,72 @@ function validateVerification(v: unknown, errors: string[]): void {
 }
 
 /**
+ * Validate an optional `standards` block. Unlike `source` (also optional),
+ * a *present but malformed* `standards` block is always an error — it must
+ * never be silently downgraded into an implicit "no metadata" pass, since
+ * that would let a caller ship a broken/spoofed standards claim that reads
+ * as absent rather than rejected.
+ */
+function validateStandardsMetadata(v: unknown, errors: string[]): void {
+  if (typeof v !== "object" || v === null) {
+    errors.push("standards must be an object when present");
+    return;
+  }
+  const s = v as Record<string, unknown>;
+
+  const allowedStandardsKeys = new Set([
+    "algorithm",
+    "parameterSet",
+    "standard",
+    "implementation",
+    "verificationMode",
+    "conformanceStatus",
+    "certificationStatus",
+    "productionStatus",
+  ]);
+  for (const k of Object.keys(s)) {
+    if (!allowedStandardsKeys.has(k)) errors.push(`standards has unexpected key: ${k}`);
+  }
+
+  if (!(PQ_ALGORITHM_IDS as readonly string[]).includes(s.algorithm as string)) {
+    errors.push(`standards.algorithm must be one of ${PQ_ALGORITHM_IDS.join(", ")}`);
+  }
+  if (s.parameterSet !== null && typeof s.parameterSet !== "string") {
+    errors.push("standards.parameterSet must be a string or null");
+  }
+  if (!(PQ_STANDARDS as readonly string[]).includes(s.standard as string)) {
+    errors.push(`standards.standard must be one of ${PQ_STANDARDS.join(", ")}`);
+  }
+  if (!(PQ_VERIFICATION_MODES as readonly string[]).includes(s.verificationMode as string)) {
+    errors.push(`standards.verificationMode must be one of ${PQ_VERIFICATION_MODES.join(", ")}`);
+  }
+  if (!(PQ_CONFORMANCE_STATUSES as readonly string[]).includes(s.conformanceStatus as string)) {
+    errors.push(`standards.conformanceStatus must be one of ${PQ_CONFORMANCE_STATUSES.join(", ")}`);
+  }
+  if (!(PQ_CERTIFICATION_STATUSES as readonly string[]).includes(s.certificationStatus as string)) {
+    errors.push(`standards.certificationStatus must be one of ${PQ_CERTIFICATION_STATUSES.join(", ")}`);
+  }
+  if (!(PQ_PRODUCTION_STATUSES as readonly string[]).includes(s.productionStatus as string)) {
+    errors.push(`standards.productionStatus must be one of ${PQ_PRODUCTION_STATUSES.join(", ")}`);
+  }
+
+  const impl = s.implementation as Record<string, unknown> | undefined;
+  if (typeof impl !== "object" || impl === null) {
+    errors.push("standards.implementation must be an object");
+  } else {
+    const implKeys = Object.keys(impl).sort();
+    if (implKeys.join(",") !== "package,provider,version") {
+      errors.push("standards.implementation must have exactly { provider, package, version }");
+    }
+    for (const k of ["provider", "package", "version"] as const) {
+      if (impl[k] !== null && typeof impl[k] !== "string") {
+        errors.push(`standards.implementation.${k} must be a string or null`);
+      }
+    }
+  }
+}
+
+/**
  * Validate an evidence artifact against the stable schema.
  *
  * Strict: rejects unknown top-level keys, malformed hashes, unknown reason codes,
@@ -204,7 +354,7 @@ export function validateEvidence(value: unknown): EvidenceValidation {
   const e = value as Record<string, unknown>;
 
   const topKeys = Object.keys(e).sort();
-  const allowedTop = new Set(["schema", "generatedAt", "verification", "source"]);
+  const allowedTop = new Set(["schema", "generatedAt", "verification", "source", "standards"]);
   for (const k of topKeys) {
     if (!allowedTop.has(k)) errors.push(`unexpected top-level key: ${k}`);
   }
@@ -226,6 +376,13 @@ export function validateEvidence(value: unknown): EvidenceValidation {
     if (typeof s.reference !== "string" || s.reference.length === 0) {
       errors.push("source.reference must be a non-empty string");
     }
+  }
+
+  // `standards` is optional (legacy evidence omits it entirely — that is
+  // valid), but if present it must be well-formed; a malformed block is
+  // always rejected, never silently treated as absent.
+  if (e.standards !== undefined) {
+    validateStandardsMetadata(e.standards, errors);
   }
 
   // Defense in depth: no raw key/signature material anywhere in the artifact.

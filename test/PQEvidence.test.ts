@@ -23,6 +23,7 @@ import {
   validateEvidence,
 } from "../src/verifier/evidence";
 import { PQ_REASON } from "../src/verifier/schema";
+import { getPQAlgorithmRecord } from "../src/standards/pq-algorithm-registry";
 import {
   EXAMPLE_GENERATED_AT,
   FAILURE_EXAMPLE_PATH,
@@ -63,6 +64,30 @@ describe("PQ verifier evidence artifact", function () {
       expect(() => buildEvidence(v, { source: { type: "operator-supplied", reference: rawBlob } })).to.throw(
         /raw key\/signature material/i,
       );
+    });
+
+    it("auto-populates standards from the canonical ML-DSA-65 registry record", function () {
+      const v = buildValidExample().verification;
+      const evidence = buildEvidence(v);
+      const record = getPQAlgorithmRecord("ML-DSA");
+      expect(evidence.standards).to.deep.equal({
+        algorithm: "ML-DSA",
+        parameterSet: "ML-DSA-65",
+        standard: "FIPS 204",
+        implementation: { ...record.implementation },
+        verificationMode: "off-chain",
+        conformanceStatus: record.conformanceStatus,
+        certificationStatus: "not-validated",
+        productionStatus: record.productionStatus,
+      });
+      expect(validateEvidence(evidence).valid).to.equal(true);
+    });
+
+    it("omits standards entirely when opts.standards is explicitly null (legacy-shape simulation)", function () {
+      const v = buildValidExample().verification;
+      const evidence = buildEvidence(v, { standards: null });
+      expect(evidence.standards).to.equal(undefined);
+      expect(validateEvidence(evidence).valid).to.equal(true);
     });
   });
 
@@ -174,6 +199,48 @@ describe("PQ verifier evidence artifact", function () {
       expect(res.valid).to.equal(false);
       expect(res.errors.join(" ")).to.match(/raw key\/signature material/i);
     });
+
+    it("an invalid standards.algorithm value", function () {
+      const e = freshValid();
+      e.standards.algorithm = "RSA-4096";
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/standards\.algorithm must be one of/i);
+    });
+
+    it("an invalid standards.certificationStatus value (rejected, not silently downgraded)", function () {
+      const e = freshValid();
+      e.standards.certificationStatus = "definitely-validated-trust-me";
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/standards\.certificationStatus must be one of/i);
+    });
+
+    it("an unknown key nested under standards", function () {
+      const e = freshValid();
+      e.standards.certified = true;
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/standards has unexpected key/i);
+    });
+
+    it("a malformed standards.implementation shape", function () {
+      const e = freshValid();
+      e.standards.implementation = { package: "@noble/post-quantum" }; // missing provider/version
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/standards\.implementation must have exactly/i);
+    });
+  });
+
+  describe("standards field — backward compatibility", function () {
+    it("legacy evidence with no standards field at all is still valid (absence != a claim)", function () {
+      const e = JSON.parse(JSON.stringify(buildValidExample()));
+      delete e.standards;
+      const res = validateEvidence(e);
+      expect(res.valid).to.equal(true);
+      expect(e.standards).to.equal(undefined);
+    });
   });
 
   describe("committed examples (no drift)", function () {
@@ -217,6 +284,17 @@ describe("PQ verifier evidence artifact", function () {
     it("source.type enum matches PQ_EVIDENCE_SOURCE_TYPES", function () {
       const schemaTypes = schema.properties.source.properties.type.enum.slice().sort();
       expect(schemaTypes).to.deep.equal([...PQ_EVIDENCE_SOURCE_TYPES].sort());
+    });
+
+    it("standards is declared optional (not in the top-level required list)", function () {
+      expect(schema.required).to.not.include("standards");
+      expect(schema.properties).to.have.property("standards");
+    });
+
+    it("standards.certificationStatus enum never asserts a bare 'validated' const default", function () {
+      const certStatus = schema.properties.standards.properties.certificationStatus;
+      expect(certStatus.enum).to.include("not-validated");
+      expect(certStatus.const).to.equal(undefined); // must stay an open enum, not pinned true/validated
     });
   });
 });

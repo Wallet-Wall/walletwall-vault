@@ -23,5 +23,19 @@
   "source": {
     "type": "nist-acvp",
     "reference": "NIST ACVP ML-DSA-65 sigVer tcId 35 with one tampered signature byte"
+  },
+  "standards": {
+    "algorithm": "ML-DSA",
+    "parameterSet": "ML-DSA-65",
+    "standard": "FIPS 204",
+    "implementation": {
+      "provider": "noble-cryptography (Paul Miller)",
+      "package": "@noble/post-quantum",
+      "version": "0.6.1"
+    },
+    "verificationMode": "off-chain",
+    "conformanceStatus": "vectors-tested",
+    "certificationStatus": "not-validated",
+    "productionStatus": "prototype"
   }
 }

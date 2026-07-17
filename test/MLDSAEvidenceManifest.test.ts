@@ -27,6 +27,7 @@ import {
   ML_DSA_EVIDENCE_KINDS,
   ML_DSA_EVIDENCE_MANIFEST_SCHEMA,
   ML_DSA_EVIDENCE_SOURCE_TYPES,
+  ML_DSA_EVIDENCE_STANDARDS,
   buildManifest,
   isMLDSAEvidenceManifest,
   validateManifest,
@@ -74,6 +75,13 @@ describe("ML-DSA evidence manifest", function () {
       expect(kinds).to.include("pq-verifier-evidence");
       expect(kinds).to.include("test-vector");
       expect(m.evidence.length).to.be.greaterThanOrEqual(3);
+    });
+
+    it("carries the ML-DSA-65 standards-alignment snapshot", function () {
+      const m = buildExampleManifest();
+      expect(m.standards).to.deep.equal(ML_DSA_EVIDENCE_STANDARDS);
+      expect(m.standards.certificationStatus).to.equal("not-validated");
+      expect(m.standards.implementation.package).to.equal("@noble/post-quantum");
     });
   });
 
@@ -197,6 +205,30 @@ describe("ML-DSA evidence manifest", function () {
       m.evidence = [];
       expect(validateManifest(m).valid).to.equal(false);
     });
+
+    it("a missing standards block (required here, unlike the per-artifact evidence schema)", function () {
+      const m = freshValid() as unknown as Record<string, unknown>;
+      delete m.standards;
+      const res = validateManifest(m);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/standards must be an object/);
+    });
+
+    it("an invalid standards.certificationStatus value", function () {
+      const m = freshValid();
+      (m.standards as unknown as Record<string, unknown>).certificationStatus = "trust-me-its-validated";
+      const res = validateManifest(m);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/standards\.certificationStatus must be one of/);
+    });
+
+    it("an unknown key nested under standards.implementation", function () {
+      const m = freshValid();
+      (m.standards.implementation as unknown as Record<string, unknown>).injected = "x";
+      const res = validateManifest(m);
+      expect(res.valid).to.equal(false);
+      expect(res.errors.join(" ")).to.match(/unexpected key in standards\.implementation/);
+    });
   });
 
   describe("committed manifest (no drift, matches sources)", function () {
@@ -272,6 +304,16 @@ describe("ML-DSA evidence manifest", function () {
       // the committed manifest's top-level keys equal the schema's required set.
       const manifest = readJson(MANIFEST_PATH) as Record<string, unknown>;
       expect(Object.keys(manifest).sort()).to.deep.equal([...schema.required].sort());
+    });
+
+    it("standards is required in the schema (unlike the optional per-artifact evidence field)", function () {
+      expect(schema.required).to.include("standards");
+    });
+
+    it("standards.certificationStatus enum stays open (no const pinning it to 'validated')", function () {
+      const certStatus = schema.properties.standards.properties.certificationStatus;
+      expect(certStatus.enum).to.include("not-validated");
+      expect(certStatus.const).to.equal(undefined);
     });
   });
 
