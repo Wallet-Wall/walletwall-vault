@@ -279,6 +279,45 @@ function validateVerification(v: unknown, errors: string[]): void {
  * that would let a caller ship a broken/spoofed standards claim that reads
  * as absent rather than rejected.
  */
+const ALLOWED_STANDARDS_KEYS = new Set([
+  "algorithm",
+  "parameterSet",
+  "standard",
+  "implementation",
+  "verificationMode",
+  "conformanceStatus",
+  "certificationStatus",
+  "productionStatus",
+]);
+
+/** `[field, closed-enum-of-allowed-values]` pairs checked by {@link validateStandardsMetadata}. */
+const STANDARDS_ENUM_CHECKS: ReadonlyArray<[string, readonly string[]]> = [
+  ["algorithm", PQ_ALGORITHM_IDS as readonly string[]],
+  ["standard", PQ_STANDARDS as readonly string[]],
+  ["verificationMode", PQ_VERIFICATION_MODES as readonly string[]],
+  ["conformanceStatus", PQ_CONFORMANCE_STATUSES as readonly string[]],
+  ["certificationStatus", PQ_CERTIFICATION_STATUSES as readonly string[]],
+  ["productionStatus", PQ_PRODUCTION_STATUSES as readonly string[]],
+];
+
+/** Validate a `{ provider, package, version }` implementation reference. Pushes into `errors`. */
+function validateStandardsImplementation(impl: unknown, errors: string[]): void {
+  if (typeof impl !== "object" || impl === null) {
+    errors.push("standards.implementation must be an object");
+    return;
+  }
+  const implRecord = impl as Record<string, unknown>;
+  const implKeys = Object.keys(implRecord).sort((a, b) => a.localeCompare(b));
+  if (implKeys.join(",") !== "package,provider,version") {
+    errors.push("standards.implementation must have exactly { provider, package, version }");
+  }
+  for (const k of ["provider", "package", "version"] as const) {
+    if (implRecord[k] !== null && typeof implRecord[k] !== "string") {
+      errors.push(`standards.implementation.${k} must be a string or null`);
+    }
+  }
+}
+
 function validateStandardsMetadata(v: unknown, errors: string[]): void {
   if (typeof v !== "object" || v === null) {
     errors.push("standards must be an object when present");
@@ -286,56 +325,20 @@ function validateStandardsMetadata(v: unknown, errors: string[]): void {
   }
   const s = v as Record<string, unknown>;
 
-  const allowedStandardsKeys = new Set([
-    "algorithm",
-    "parameterSet",
-    "standard",
-    "implementation",
-    "verificationMode",
-    "conformanceStatus",
-    "certificationStatus",
-    "productionStatus",
-  ]);
   for (const k of Object.keys(s)) {
-    if (!allowedStandardsKeys.has(k)) errors.push(`standards has unexpected key: ${k}`);
+    if (!ALLOWED_STANDARDS_KEYS.has(k)) errors.push(`standards has unexpected key: ${k}`);
   }
 
-  if (!(PQ_ALGORITHM_IDS as readonly string[]).includes(s.algorithm as string)) {
-    errors.push(`standards.algorithm must be one of ${PQ_ALGORITHM_IDS.join(", ")}`);
+  for (const [field, allowedValues] of STANDARDS_ENUM_CHECKS) {
+    if (!allowedValues.includes(s[field] as string)) {
+      errors.push(`standards.${field} must be one of ${allowedValues.join(", ")}`);
+    }
   }
   if (s.parameterSet !== null && typeof s.parameterSet !== "string") {
     errors.push("standards.parameterSet must be a string or null");
   }
-  if (!(PQ_STANDARDS as readonly string[]).includes(s.standard as string)) {
-    errors.push(`standards.standard must be one of ${PQ_STANDARDS.join(", ")}`);
-  }
-  if (!(PQ_VERIFICATION_MODES as readonly string[]).includes(s.verificationMode as string)) {
-    errors.push(`standards.verificationMode must be one of ${PQ_VERIFICATION_MODES.join(", ")}`);
-  }
-  if (!(PQ_CONFORMANCE_STATUSES as readonly string[]).includes(s.conformanceStatus as string)) {
-    errors.push(`standards.conformanceStatus must be one of ${PQ_CONFORMANCE_STATUSES.join(", ")}`);
-  }
-  if (!(PQ_CERTIFICATION_STATUSES as readonly string[]).includes(s.certificationStatus as string)) {
-    errors.push(`standards.certificationStatus must be one of ${PQ_CERTIFICATION_STATUSES.join(", ")}`);
-  }
-  if (!(PQ_PRODUCTION_STATUSES as readonly string[]).includes(s.productionStatus as string)) {
-    errors.push(`standards.productionStatus must be one of ${PQ_PRODUCTION_STATUSES.join(", ")}`);
-  }
 
-  const impl = s.implementation as Record<string, unknown> | undefined;
-  if (typeof impl !== "object" || impl === null) {
-    errors.push("standards.implementation must be an object");
-  } else {
-    const implKeys = Object.keys(impl).sort();
-    if (implKeys.join(",") !== "package,provider,version") {
-      errors.push("standards.implementation must have exactly { provider, package, version }");
-    }
-    for (const k of ["provider", "package", "version"] as const) {
-      if (impl[k] !== null && typeof impl[k] !== "string") {
-        errors.push(`standards.implementation.${k} must be a string or null`);
-      }
-    }
-  }
+  validateStandardsImplementation(s.implementation, errors);
 }
 
 /**
