@@ -45,6 +45,16 @@ import {
   PQ_VERIFIER_NAME,
 } from "../../src/verifier/schema";
 import type { PQReason } from "../../src/verifier/schema";
+import { getPQAlgorithmRecord } from "../../src/standards/pq-algorithm-registry";
+import type {
+  PQAlgorithmId,
+  PQCertificationStatus,
+  PQConformanceStatus,
+  PQImplementationRef,
+  PQProductionStatus,
+  PQStandard,
+  PQVerificationMode,
+} from "../../src/standards/pq-algorithm-registry";
 
 /** Stable manifest schema identifier. Bump only on a breaking shape change. */
 export const ML_DSA_EVIDENCE_MANIFEST_SCHEMA = "walletwall.ml-dsa-evidence-manifest.v1";
@@ -101,6 +111,36 @@ export const ML_DSA_EVIDENCE_VERIFIER = {
   mode: PQ_VERIFIER_MODE,
 } as const;
 
+/**
+ * Standards-alignment snapshot from the canonical registry
+ * (src/standards/pq-algorithm-registry.ts). Unlike the individual
+ * `pq-verifier-evidence.v1` artifact type (which may have pre-existing
+ * instances predating this field), this manifest is a single generated
+ * file — `standards` is REQUIRED here rather than optional.
+ */
+const ML_DSA_REGISTRY_RECORD = getPQAlgorithmRecord("ML-DSA");
+export const ML_DSA_EVIDENCE_STANDARDS = {
+  algorithm: ML_DSA_REGISTRY_RECORD.algorithm,
+  parameterSet: ML_DSA_REGISTRY_RECORD.parameterSet,
+  standard: ML_DSA_REGISTRY_RECORD.standard,
+  implementation: { ...ML_DSA_REGISTRY_RECORD.implementation },
+  verificationMode: "off-chain" as PQVerificationMode,
+  conformanceStatus: ML_DSA_REGISTRY_RECORD.conformanceStatus,
+  certificationStatus: ML_DSA_REGISTRY_RECORD.certificationStatus,
+  productionStatus: ML_DSA_REGISTRY_RECORD.productionStatus,
+};
+
+export interface MLDSAEvidenceStandards {
+  algorithm: PQAlgorithmId;
+  parameterSet: string | null;
+  standard: PQStandard;
+  implementation: PQImplementationRef;
+  verificationMode: PQVerificationMode;
+  conformanceStatus: PQConformanceStatus;
+  certificationStatus: PQCertificationStatus;
+  productionStatus: PQProductionStatus;
+}
+
 export interface MLDSAEvidenceResult {
   /** True iff the off-chain verifier accepted the signature. */
   accepted: boolean;
@@ -139,6 +179,7 @@ export interface MLDSAEvidenceManifest {
   algorithm: typeof ML_DSA_EVIDENCE_ALGORITHM;
   verifier: typeof ML_DSA_EVIDENCE_VERIFIER;
   boundary: typeof ML_DSA_BOUNDARY;
+  standards: MLDSAEvidenceStandards;
   evidence: MLDSAEvidenceEntry[];
   limitations: string[];
   regeneration: {
@@ -171,6 +212,7 @@ export function buildManifest(entries: MLDSAEvidenceEntry[], opts: BuildManifest
     algorithm: ML_DSA_EVIDENCE_ALGORITHM,
     verifier: ML_DSA_EVIDENCE_VERIFIER,
     boundary: ML_DSA_BOUNDARY,
+    standards: ML_DSA_EVIDENCE_STANDARDS,
     evidence: entries,
     limitations: [...ML_DSA_EVIDENCE_LIMITATIONS],
     regeneration: {
@@ -238,12 +280,30 @@ const TOP_KEYS = [
   "algorithm",
   "verifier",
   "boundary",
+  "standards",
   "evidence",
   "limitations",
   "regeneration",
 ];
 const ALGORITHM_KEYS = ["parameterSet", "fips"];
 const VERIFIER_KEYS = ["name", "version", "mode"];
+const STANDARDS_KEYS = [
+  "algorithm",
+  "parameterSet",
+  "standard",
+  "implementation",
+  "verificationMode",
+  "conformanceStatus",
+  "certificationStatus",
+  "productionStatus",
+];
+const STANDARDS_IMPLEMENTATION_KEYS = ["provider", "package", "version"];
+const PQ_ALGORITHM_ID_VALUES = new Set(["ML-DSA", "ML-KEM", "SLH-DSA"]);
+const PQ_STANDARD_VALUES = new Set(["FIPS 203", "FIPS 204", "FIPS 205"]);
+const PQ_VERIFICATION_MODE_VALUES = new Set(["local", "off-chain", "attested", "zk-proof", "mock"]);
+const PQ_CONFORMANCE_STATUS_VALUES = new Set(["not-tested", "vectors-tested", "acvp-evidence", "unknown"]);
+const PQ_CERTIFICATION_STATUS_VALUES = new Set(["not-validated", "validation-pending", "validated"]);
+const PQ_PRODUCTION_STATUS_VALUES = new Set(["research-only", "prototype", "production-candidate", "production"]);
 const BOUNDARY_KEYS = [
   "verificationMode",
   "attestation",
@@ -387,6 +447,49 @@ export function validateManifest(value: unknown): ManifestValidation {
     }
     if (boundary.custody !== false) {
       errors.push("boundary.custody must be false (no custody)");
+    }
+  }
+
+  // Standards-alignment snapshot. Required (this manifest is a single
+  // generated file, not a widely-forked artifact type with pre-existing
+  // legacy instances) — a missing or malformed block is always an error,
+  // never silently treated as "no metadata".
+  const manifestStandards = m.standards as Record<string, unknown> | undefined;
+  if (!manifestStandards || typeof manifestStandards !== "object") {
+    errors.push("standards must be an object");
+  } else {
+    rejectUnknownKeys(manifestStandards, STANDARDS_KEYS, "standards", errors);
+    if (!PQ_ALGORITHM_ID_VALUES.has(manifestStandards.algorithm as string)) {
+      errors.push(`standards.algorithm must be one of ${[...PQ_ALGORITHM_ID_VALUES].join(", ")}`);
+    }
+    if (manifestStandards.parameterSet !== null && typeof manifestStandards.parameterSet !== "string") {
+      errors.push("standards.parameterSet must be a string or null");
+    }
+    if (!PQ_STANDARD_VALUES.has(manifestStandards.standard as string)) {
+      errors.push(`standards.standard must be one of ${[...PQ_STANDARD_VALUES].join(", ")}`);
+    }
+    if (!PQ_VERIFICATION_MODE_VALUES.has(manifestStandards.verificationMode as string)) {
+      errors.push(`standards.verificationMode must be one of ${[...PQ_VERIFICATION_MODE_VALUES].join(", ")}`);
+    }
+    if (!PQ_CONFORMANCE_STATUS_VALUES.has(manifestStandards.conformanceStatus as string)) {
+      errors.push(`standards.conformanceStatus must be one of ${[...PQ_CONFORMANCE_STATUS_VALUES].join(", ")}`);
+    }
+    if (!PQ_CERTIFICATION_STATUS_VALUES.has(manifestStandards.certificationStatus as string)) {
+      errors.push(`standards.certificationStatus must be one of ${[...PQ_CERTIFICATION_STATUS_VALUES].join(", ")}`);
+    }
+    if (!PQ_PRODUCTION_STATUS_VALUES.has(manifestStandards.productionStatus as string)) {
+      errors.push(`standards.productionStatus must be one of ${[...PQ_PRODUCTION_STATUS_VALUES].join(", ")}`);
+    }
+    const impl = manifestStandards.implementation as Record<string, unknown> | undefined;
+    if (!impl || typeof impl !== "object") {
+      errors.push("standards.implementation must be an object");
+    } else {
+      rejectUnknownKeys(impl, STANDARDS_IMPLEMENTATION_KEYS, "standards.implementation", errors);
+      for (const k of STANDARDS_IMPLEMENTATION_KEYS) {
+        if (impl[k] !== null && typeof impl[k] !== "string") {
+          errors.push(`standards.implementation.${k} must be a string or null`);
+        }
+      }
     }
   }
 

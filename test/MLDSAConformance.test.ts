@@ -50,7 +50,7 @@ describe("ML-DSA-65 NIST ACVP conformance (FIPS 204)", function () {
     expect(fixture.preHash).to.equal("pure");
   });
 
-  describe("full ACVP test group 3 via ml_dsa65.verify (external, pure)", function () {
+  describe("committed group-3 subset via ml_dsa65.verify (external, pure)", function () {
     for (const vec of fixture.vectors) {
       it(`tcId ${vec.tcId}: ${vec.testPassed ? "valid" : "invalid"} vector (context ${vec.context.length === 0 ? "empty" : `${vec.context.length / 2}B`})`, function () {
         const pk = hexToBytes(vec.pk);
