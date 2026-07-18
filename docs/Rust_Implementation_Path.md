@@ -181,7 +181,7 @@ responsibilities.
 
 No Rust work in any of these categories may begin without a separate,
 reviewed PR targeting that specific category. This document defines
-*permission*, not *authorization to implement*.
+_permission_, not _authorization to implement_.
 
 ## Rollout phases
 
@@ -192,6 +192,16 @@ flowchart LR
   P2 --> P3["Phase 3 - adapter validation"]
   P3 --> P4["Phase 4 - reviewed prover path"]
   P4 --> P5["Phase 5 - hosted evidence artifact integration"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class P0 wwMuted;
+  class P1,P2 wwLight;
+  class P3,P4 wwSecondary;
+  class P5 wwPrimary;
 ```
 
 ### Phase 0 — Docs / spec / test guard (this PR)

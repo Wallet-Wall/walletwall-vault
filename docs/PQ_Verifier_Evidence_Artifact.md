@@ -22,24 +22,26 @@ or carrying raw key material.
 ```jsonc
 {
   "schema": "walletwall.pq-verifier-evidence.v1", // stable envelope id
-  "generatedAt": "2026-01-01T00:00:00.000Z",      // ISO-8601 UTC; the ONLY non-deterministic field
-  "verification": {                                // the deterministic inner result, verbatim
+  "generatedAt": "2026-01-01T00:00:00.000Z", // ISO-8601 UTC; the ONLY non-deterministic field
+  "verification": {
+    // the deterministic inner result, verbatim
     "schemaVersion": "walletwall.pq-verifier.v1",
     "verifier": { "name": "walletwall-vault-pq-verifier", "version": "0.1.0" },
     "algorithm": "ML-DSA-65",
     "fips": "FIPS-204",
     "mode": "pure",
     "input": {
-      "messageHash":   "0x…",  // keccak256(message)
-      "publicKeyHash": "0x…",  // keccak256(publicKey)
-      "signatureHash": "0x…"   // keccak256(signature)
+      "messageHash": "0x…", // keccak256(message)
+      "publicKeyHash": "0x…", // keccak256(publicKey)
+      "signatureHash": "0x…", // keccak256(signature)
     },
-    "result": { "verified": true, "reason": "ML_DSA_65_VALID" }
+    "result": { "verified": true, "reason": "ML_DSA_65_VALID" },
   },
-  "source": {                                       // optional, safe provenance
-    "type": "nist-acvp",                            // nist-acvp | library-generated | operator-supplied
-    "reference": "NIST ACVP ML-DSA-65 sigVer tcId 35 (FIPS 204, external/pure)"
-  }
+  "source": {
+    // optional, safe provenance
+    "type": "nist-acvp", // nist-acvp | library-generated | operator-supplied
+    "reference": "NIST ACVP ML-DSA-65 sigVer tcId 35 (FIPS 204, external/pure)",
+  },
 }
 ```
 
@@ -53,6 +55,7 @@ classDiagram
         string schema
         string generatedAt
         object sourceOptional
+        object standardsOptional
     }
     class VerificationResult {
         string schemaVersion
@@ -73,36 +76,47 @@ classDiagram
         boolean verified
         string reason
     }
-    class SupportedAlgorithms {
+    class EvidenceSource {
+        string type
+        string reference
+    }
+    class StandardsMetadata {
         string algorithm
-        string fips
-        string mode
+        string parameterSet
+        string standard
+        string verificationMode
+        string conformanceStatus
+        string certificationStatus
+        string productionStatus
     }
-    class AttestationMetadata {
-        bytes attestationSignature
-        uint256 deadline
-        address verifier
-        uint256 chainId
-    }
-    class BoundaryLimitations {
-        boolean noRawKeys
-        boolean noSigning
-        boolean noCustody
-        boolean noWriteAction
+    class ImplementationRef {
+        string provider
+        string package
+        string version
     }
 
     EvidenceEnvelope *-- VerificationResult
+    EvidenceEnvelope o-- EvidenceSource
+    EvidenceEnvelope o-- StandardsMetadata
     VerificationResult *-- VerifierMetadata
     VerificationResult *-- InputHashes
     VerificationResult *-- Result
-    VerificationResult --> SupportedAlgorithms
-    EvidenceEnvelope ..> BoundaryLimitations : documents non-goals
-    EvidenceEnvelope ..> AttestationMetadata : separate trusted path
+    StandardsMetadata *-- ImplementationRef
+
+    style EvidenceEnvelope fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px
+    style VerificationResult fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px
+    style StandardsMetadata fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px
+    style VerifierMetadata fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px
+    style InputHashes fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px
+    style Result fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px
+    style EvidenceSource fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px
+    style ImplementationRef fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px
 ```
 
 The deterministic verification result is nested **verbatim** under `verification`, keeping its
-own `walletwall.pq-verifier.v1` schema. The envelope adds only `generatedAt` and an optional
-`source`. The reason codes are the verifier's closed set
+own `walletwall.pq-verifier.v1` schema. The envelope adds `generatedAt`, an optional
+`source`, and an optional standards-alignment snapshot. Missing standards metadata is not
+a positive conformance, certification, or production-readiness claim. The reason codes are the verifier's closed set
 (see [Verifier_Result_Schema.md](Verifier_Result_Schema.md)).
 
 ## Safety boundary
@@ -114,8 +128,8 @@ own `walletwall.pq-verifier.v1` schema. The envelope adds only `generatedAt` and
 - **No private material, no signing.** Producing evidence never reads `ATTESTOR_PRIVATE_KEY`
   or any environment variable and never signs anything. The evidence module is covered by the
   open-verifier boundary guards in [`test/PQVerifierBoundary.test.ts`](../test/PQVerifierBoundary.test.ts).
-- **Not trust-bearing.** `verified: true` means *the open ML-DSA-65 verifier checked this
-  signature*, nothing more. It is not an attestation, not a ZK proof, and not on-chain
+- **Not trust-bearing.** `verified: true` means _the open ML-DSA-65 verifier checked this
+  signature_, nothing more. It is not an attestation, not a ZK proof, and not on-chain
   verification. See [Verifier_Roadmap.md](Verifier_Roadmap.md) for the trust model.
 
 ## How the private app should consume it (read-only)

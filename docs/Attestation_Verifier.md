@@ -49,24 +49,30 @@ ZK proof and not on-chain ML-DSA verification.
 The public-safe sequence is:
 
 ```mermaid
+%%{init: {"theme": "base", "themeVariables": {"actorBkg": "#BF4E32", "actorBorder": "#8B3120", "actorTextColor": "#FAF8F3", "actorLineColor": "#C9A47A", "signalColor": "#8B6F47", "signalTextColor": "#FAF8F3", "labelBoxBkgColor": "#FAF8F3", "labelBoxBorderColor": "#C9A47A", "labelTextColor": "#1E1A14", "noteBkgColor": "#E6DED2", "noteBorderColor": "#9A9186", "noteTextColor": "#1E1A14"}}}%%
 sequenceDiagram
     participant Observer as Wallet/app observer
     participant Evidence as Evidence artifact
     participant OpenVerifier as Open PQ verifier
     participant Attestor as Trusted attestor
+    participant Vault as WalletWallVault
     participant Contract as AttestationPQCVerifier
     participant UI as Readiness UI
     participant User as User
 
-    Observer->>Evidence: Observe signal and record hashes
-    Evidence->>OpenVerifier: Validate ML-DSA inputs off-chain
+    Observer->>OpenVerifier: Supply digest and ML-DSA inputs off-chain
+    OpenVerifier-->>Evidence: Emit read-only verification evidence
     OpenVerifier-->>Attestor: Verified result or failure reason
     Attestor->>Attestor: Sign only after successful verification
-    Attestor-->>Contract: EIP-712 attestation payload
+    Attestor-->>User: Return EIP-712 attestation payload
+    User->>Vault: Submit withdrawal request and payload
+    Vault->>Contract: Verify digest, public key, and payload
     Contract->>Contract: Check deadline, hashes, chain, verifier, attestor
-    Contract-->>UI: Boundary status for readiness display
+    Contract-->>Vault: Return true or false
+    UI->>Vault: Read boundary status
+    Vault-->>UI: Return readiness status
     UI-->>User: Present signal and limitations
-    Note over User,UI: User remains in control; no default write action
+    Note over UI,User: User remains in control and no write action is the default
 ```
 
 The script formerly at `scripts/sign-attestation.ts` has been renamed to

@@ -8,6 +8,7 @@
 > [Security_Assumptions.md](Security_Assumptions.md).
 >
 > **Current API summary:**
+>
 > - The PQ verifier interface is `IPQCVerifier` with
 >   `verify(bytes32 digest, bytes publicKey, bytes signature)`.
 > - ECDSA is verified inline in `WalletWallVault` using OpenZeppelin ECDSA over the
@@ -27,11 +28,13 @@ This document describes the transition from the deprecated WOTS+ (Winternitz One
 ## Before: WOTS+ Architecture
 
 The previous system used WOTS+, which had several limitations:
+
 - **One-time use keys**: Every withdrawal required a new key or a complex Merkle tree management.
 - **Large signatures**: WOTS+ signatures consist of many hash chain values.
 - **High complexity**: On-chain verification required many hash operations.
 
 ### Flow (Before)
+
 1. User generates WOTS+ keypair.
 2. User registers WOTS+ public key hash in the Vault.
 3. For withdrawal:
@@ -45,6 +48,7 @@ The previous system used WOTS+, which had several limitations:
 The new system uses ML-DSA-65 (Dilithium3), a NIST-approved post-quantum digital signature algorithm.
 
 ### Key Improvements:
+
 - **Reusable keys**: ML-DSA keys can be used for many signatures, just like ECDSA.
 - **Standardized**: Part of the FIPS 204 standard (formerly CRYSTALS-Dilithium).
 - **Hybrid Security**: Built-in support for requiring both ECDSA and PQC signatures.
@@ -55,6 +59,7 @@ The new system uses ML-DSA-65 (Dilithium3), a NIST-approved post-quantum digital
   using OpenZeppelin ECDSA over the EIP-712 digest.
 
 ### Flow (After)
+
 1. User generates ML-DSA-65 keypair.
 2. User registers the ML-DSA public key in the Vault via `createVault`.
 3. For withdrawal, the user builds an EIP-712 `Withdrawal` struct and signs it:
@@ -72,11 +77,15 @@ The new system uses ML-DSA-65 (Dilithium3), a NIST-approved post-quantum digital
    - Replay protection is provided by a strictly-increasing per-owner `nonce` and the
      signed `deadline`.
 
-## Architecture Diagram
+## Architecture Diagram (Hybrid Mode)
+
+The authorization path below shows the intended `Hybrid` mode, where both signature
+checks are required. The weaker research-only `EcdsaOnly` and `PqOnly` modes run only
+their configured check.
 
 ```mermaid
 graph TD
-    subgraph "Off-chain"
+    subgraph OffChain["Off-chain"]
         A[User Private Keys] --> B[ECDSA Signer]
         A --> C[ML-DSA Signer pqc/ml-dsa.ts]
         B --> D[EIP-712 Withdrawal digest]
@@ -84,31 +93,50 @@ graph TD
         D --> E[withdraw request + signatures]
     end
 
-    subgraph "On-chain: WalletWallVault"
+    subgraph OnChain["On-chain: WalletWallVault"]
         E --> F[WalletWallVault]
         F --> G[OZ ECDSA.recover over digest]
         F --> H[IPQCVerifier.verify]
-        G -- signer matches --> I{Both checks pass?}
+        G -- signer matches --> I{Required Hybrid checks pass?}
         H -- verifier returns true --> I
         I -- Yes --> J[Release Funds]
         I -- No --> K[Revert]
     end
 
-    subgraph "IPQCVerifier implementations"
+    subgraph Implementations["IPQCVerifier implementations"]
         H --> L[MockMLDSAVerifier\nstructural checks only\ntest/demo]
         H --> M[AttestationPQCVerifier\ntrusted off-chain attestor\nnon-mock]
-        H --> N[SP1 scaffold / future chain precompile]
+        H --> N[ZKMLDSAVerifier\nSP1 scaffold\nnot deployed]
     end
+
+    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+
+    class A,B,C,L wwLight;
+    class D,E,F,H,M wwPrimary;
+    class G,N wwSecondary;
+    class I wwBoundary;
+    class J wwPrimary;
+    class K wwMuted;
+
+    style OffChain fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+    style OnChain fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    style Implementations fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
 ```
 
 ## Chosen Algorithm: ML-DSA-65
 
 We chose **ML-DSA-65** (Dilithium3) for this implementation because:
+
 1. **NIST Approval**: It is the primary recommendation by NIST for general-purpose digital signatures.
 2. **Performance**: It offers a good balance between signature size (~3.3 KB) and verification speed.
 3. **Security**: It provides NIST Security Category 3 (equivalent to AES-192).
 
 ### Technical Specs:
+
 - **Public Key Size**: 1952 bytes
 - **Signature Size**: 3309 bytes
 - **Standard**: FIPS 204
