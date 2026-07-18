@@ -1,0 +1,12 @@
+name: WalletWall Vault CodeQL configuration
+
+queries:
+  - uses: security-extended
+
+paths-ignore:
+  - "artifacts/**"
+  - "cache/**"
+  - "coverage/**"
+  - "node_modules/**"
+  - "typechain-types/**"
+  - "zkvm/**/target/**"

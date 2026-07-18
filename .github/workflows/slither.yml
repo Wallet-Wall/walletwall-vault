@@ -1,0 +1,60 @@
+name: Slither
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # Tuesdays at 10:43 UTC.
+    - cron: "43 10 * * 2"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze Solidity
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # Hardhat 3 requires Node >= 22.10.0.
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile contracts
+        run: npm run compile
+
+      - name: Run Slither
+        id: slither
+        # v0.4.2, pinned to an immutable commit for third-party action review.
+        uses: crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f
+        with:
+          # Released Slither 0.11.5 requires crytic-compile <0.4.0. This pinned
+          # upstream commit requires >=0.4.1, which provides Hardhat 3 support.
+          slither-version: ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad
+          ignore-compile: true
+          fail-on: none
+          sarif: slither-results.sarif
+          slither-args: --compile-force-framework hardhat --exclude-dependencies
+
+      - name: Upload Slither SARIF
+        if: ${{ always() && hashFiles('slither-results.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slither-results.sarif
+          category: slither
