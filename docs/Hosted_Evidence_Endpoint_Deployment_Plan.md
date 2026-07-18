@@ -67,13 +67,13 @@ This plan does **not**:
 The contract is defined and tested today (no server). See
 [ZK adapter evidence endpoint](ZK_Adapter_Evidence_Endpoint.md) for the full spec.
 
-| Request | Response |
-| --- | --- |
-| `GET` (or no method) | `200` with the committed adapter + `servedAt` + `etag` |
-| `GET` with `ifNoneMatch === etag` | `304 Not Modified` (no body) |
-| `GET` with a stale `ifNoneMatch` | `200` with the adapter |
-| non-`GET` method | `405 Method Not Allowed` |
-| unknown request field / non-object | `400 Bad Request` |
+| Request                            | Response                                               |
+| ---------------------------------- | ------------------------------------------------------ |
+| `GET` (or no method)               | `200` with the committed adapter + `servedAt` + `etag` |
+| `GET` with `ifNoneMatch === etag`  | `304 Not Modified` (no body)                           |
+| `GET` with a stale `ifNoneMatch`   | `200` with the adapter                                 |
+| non-`GET` method                   | `405 Method Not Allowed`                               |
+| unknown request field / non-object | `400 Bad Request`                                      |
 
 - **Success schema:** `walletwall.zk-adapter-evidence-response.v1`.
 - **ETag:** `etag == keccak256(canonical adapter JSON)`, so the served evidence and
@@ -96,6 +96,15 @@ flowchart LR
   C --> D["Private app read-only GET"]
   D --> E["Validator"]
   E --> F["Vault Candidate Readiness Packet"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class A wwLight;
+  class B,C wwSecondary;
+  class D,E wwPrimary;
+  class F wwBoundary;
 ```
 
 The serializer is the existing pure function; the "static or hosted endpoint
@@ -131,6 +140,15 @@ flowchart LR
   I --> J["ETag equals keccak256 of adapter"]
   J --> K["Limitations and no-overclaim checks"]
   K --> L["Private app revalidates on fetch"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class G wwLight;
+  class H wwPrimary;
+  class I,J,K wwSecondary;
+  class L wwBoundary;
 ```
 
 - **In repo / CI:** `validateAdapterEvidenceResponse` re-runs `validateAdapter` on the
@@ -249,6 +267,15 @@ flowchart LR
   S2 --> S3["Read-only staging endpoint"]
   S3 --> S4["App feature-flag validation"]
   S4 --> S5["Production endpoint approval"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class S1 wwLight;
+  class S2,S3 wwSecondary;
+  class S4 wwPrimary;
+  class S5 wwBoundary;
 ```
 
 1. **Local artifact validation** — regenerate and drift-check the committed artifact
@@ -291,6 +318,15 @@ flowchart TD
   C --> L5["Static hosting"]
   C --> L6["App integration"]
   C --> L7["Test fixtures"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class C wwPrimary;
+  class L1,L2,L3 wwLight;
+  class L4 wwBoundary;
+  class L5,L6,L7 wwSecondary;
 ```
 
 - **Docs:** validate that the Mermaid diagrams in this plan render on GitHub/Mintlify;
@@ -351,6 +387,15 @@ flowchart TD
   N["Boundary - No wallet connection - No signing - No deposits - No transactions - No prover execution in app"]
   N -. applies to .- H
   N -. applies to .- A
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class R wwLight;
+  class H wwSecondary;
+  class A wwPrimary;
+  class P,N wwBoundary;
 ```
 
 ## Related

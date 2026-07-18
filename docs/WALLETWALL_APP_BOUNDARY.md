@@ -54,6 +54,15 @@ flowchart LR
 
     VaultRepo --> Boundaries[Prototype boundaries\nno production custody\nno mainnet write path]
     Evidence --> Boundaries
+
+    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    class Docs,Readiness wwPrimary;
+    class StableSeer,HolderWall,Coinstellation,Quantum wwSecondary;
+    class Evidence,VaultRepo wwLight;
+    class Boundaries wwBoundary;
 ```
 
 ## Public / Private Boundary
@@ -90,6 +99,20 @@ flowchart TB
     Boundary[Boundary rules\nno secrets\nno private ABIs\nno private app source\nno write actions by default]
     Boundary --- Public
     Boundary --- Private
+
+    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    class PublicDocs,VaultRepo,StaticEvidence wwLight;
+    class ChainData,VerifierInputs wwMuted;
+    class AppUI,AppReadiness wwSecondary;
+    class Boundary wwBoundary;
+
+    style Public fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+    style External fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    style Private fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
 ```
 
 ## Vault Readiness States
@@ -111,6 +134,15 @@ stateDiagram-v2
     Deferred --> UnknownMonitor: continue monitoring
     NoWriteDefault: no write action by default
     NoWriteDefault --> [*]
+
+    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    class UnknownMonitor,Deferred wwMuted;
+    class EligibleSignals,ReadinessReview wwSecondary;
+    class PrototypePath wwPrimary;
+    class NoWriteDefault wwBoundary;
 ```
 
 ## What the App May Safely Say
