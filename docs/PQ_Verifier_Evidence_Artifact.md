@@ -49,69 +49,20 @@ The evidence envelope is intentionally smaller than an attestation. It carries v
 status and hashes for read-only display; any trusted attestation metadata remains a
 separate boundary and is not embedded in this artifact.
 
-```mermaid
-classDiagram
-    class EvidenceEnvelope {
-        string schema
-        string generatedAt
-        object sourceOptional
-        object standardsOptional
-    }
-    class VerificationResult {
-        string schemaVersion
-        string algorithm
-        string fips
-        string mode
-    }
-    class VerifierMetadata {
-        string name
-        string version
-    }
-    class InputHashes {
-        string messageHash
-        string publicKeyHash
-        string signatureHash
-    }
-    class Result {
-        boolean verified
-        string reason
-    }
-    class EvidenceSource {
-        string type
-        string reference
-    }
-    class StandardsMetadata {
-        string algorithm
-        string parameterSet
-        string standard
-        string verificationMode
-        string conformanceStatus
-        string certificationStatus
-        string productionStatus
-    }
-    class ImplementationRef {
-        string provider
-        string package
-        string version
-    }
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01-light.svg"
+    alt="Shape: classDiagram diagram"
+    width="100%"
+  />
+</picture>
 
-    EvidenceEnvelope *-- VerificationResult
-    EvidenceEnvelope o-- EvidenceSource
-    EvidenceEnvelope o-- StandardsMetadata
-    VerificationResult *-- VerifierMetadata
-    VerificationResult *-- InputHashes
-    VerificationResult *-- Result
-    StandardsMetadata *-- ImplementationRef
-
-    style EvidenceEnvelope fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px
-    style VerificationResult fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px
-    style StandardsMetadata fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px
-    style VerifierMetadata fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px
-    style InputHashes fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px
-    style Result fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px
-    style EvidenceSource fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px
-    style ImplementationRef fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01-light.svg) or
+[dark](assets/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01.mmd)._
 
 The deterministic verification result is nested **verbatim** under `verification`, keeping its
 own `walletwall.pq-verifier.v1` schema. The envelope adds `generatedAt`, an optional

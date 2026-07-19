@@ -8,7 +8,7 @@
  *   - the plan doc exists,
  *   - its required structural headings are present,
  *   - the required read-only safety boundaries are stated,
- *   - the required Mermaid diagrams exist and use simple, renderable syntax
+ *   - the required adaptive Mermaid sources exist and use simple, renderable syntax
  *     (no parentheses, only flowchart/graph),
  *   - the acceptable deployment options are documented,
  *   - no forbidden overclaim language appears in affirmative (non-negated) form,
@@ -25,6 +25,7 @@ import { expect } from "chai";
 
 const PLAN_PATH = resolve("docs/Hosted_Evidence_Endpoint_Deployment_Plan.md");
 const README_PATH = resolve("README.md");
+const ADAPTIVE_MANIFEST_PATH = resolve("docs/diagrams/adaptive-manifest.json");
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -38,13 +39,12 @@ function normalize(raw: string): string {
     .replace(/\s+/g, " ");
 }
 
-/** Extract the bodies of every ```mermaid fenced block. */
-function mermaidBlocks(raw: string): string[] {
-  const blocks: string[] = [];
-  const re = /```mermaid\s*([\s\S]*?)```/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(raw)) !== null) blocks.push(m[1]);
-  return blocks;
+/** Read the canonical Mermaid sources mapped to one documentation page. */
+function mermaidSources(file: string): string[] {
+  const manifest = JSON.parse(read(ADAPTIVE_MANIFEST_PATH)) as {
+    diagrams: Array<{ file: string; source: string }>;
+  };
+  return manifest.diagrams.filter((entry) => entry.file === file).map((entry) => read(resolve(entry.source)));
 }
 
 describe("Hosted Evidence Endpoint Deployment Plan — docs guard", function () {
@@ -125,7 +125,7 @@ describe("Hosted Evidence Endpoint Deployment Plan — docs guard", function () 
   });
 
   describe("Mermaid diagrams", function () {
-    const blocks = mermaidBlocks(raw);
+    const blocks = mermaidSources("docs/Hosted_Evidence_Endpoint_Deployment_Plan.md");
 
     it("includes at least the four required diagrams", function () {
       expect(blocks.length).to.be.greaterThanOrEqual(4, `found only ${blocks.length} mermaid blocks`);

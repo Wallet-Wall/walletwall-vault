@@ -49,23 +49,20 @@ The endpoint serves the pre-committed artifact byte-for-byte. No generation, sig
 or computation occurs at request time. The `ETag` is derived from the committed bytes;
 the `If-None-Match` / `304` contract is honored by the static host's native headers.
 
-```mermaid
-flowchart LR
-  A["Committed evidence artifact"] --> B["CI validates and publishes"]
-  B --> C["GitHub Pages - static JSON"]
-  C --> D["App - read-only GET"]
-  D --> E["Shape and ETag validator"]
-  E --> F["Vault Candidate Readiness Packet"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01-light.svg"
+    alt="Selected target: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class A wwLight;
-  class B,C wwSecondary;
-  class D,E wwPrimary;
-  class F wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01-light.svg) or
+[dark](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01.mmd)._
 
 ## Why Option A
 

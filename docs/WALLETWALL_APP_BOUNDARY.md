@@ -40,30 +40,20 @@ migration research without exposing private app implementation details. The prod
 surface labels below are public-facing concepts, not a map of private routes, private
 state, or runtime data providers.
 
-```mermaid
-flowchart LR
-    Docs[Public docs] --> StableSeer[Stable Seer\nstablecoin monitoring]
-    Docs --> HolderWall[HolderWall\nholder concentration signals]
-    Docs --> Coinstellation[Coinstellation\nrelationship mapping]
-    Docs --> Quantum[Quantum Intelligence\nmigration risk research]
-    Docs --> Readiness[Vault / Migration Readiness\nstatus and evidence]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01-light.svg"
+    alt="Public-Safe Surface Map: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-    Readiness --> Evidence[Static evidence artifacts\nhashes, versions, timestamps]
-    Readiness --> VaultRepo[Public vault research repo\ncontracts, tests, verifier docs]
-    Quantum --> VaultRepo
-
-    VaultRepo --> Boundaries[Prototype boundaries\nno production custody\nno mainnet write path]
-    Evidence --> Boundaries
-
-    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-    class Docs,Readiness wwPrimary;
-    class StableSeer,HolderWall,Coinstellation,Quantum wwSecondary;
-    class Evidence,VaultRepo wwLight;
-    class Boundaries wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01-light.svg) or
+[dark](assets/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01.mmd)._
 
 ## Public / Private Boundary
 
@@ -71,49 +61,20 @@ Use this repository as a public evidence and research boundary. Do not use it as
 to publish private app source, private ABIs, secrets, operational credentials, customer
 data, or write-capable app behavior.
 
-```mermaid
-flowchart TB
-    subgraph Public["Public surfaces"]
-        PublicDocs[Public docs]
-        VaultRepo[walletwall-vault research repo]
-        StaticEvidence[Static evidence artifacts\nversioned, read-only]
-    end
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02-light.svg"
+    alt="Public / Private Boundary: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-    subgraph External["External data sources"]
-        ChainData[Chain and token data]
-        VerifierInputs[Verifier inputs\nhashes or fixtures only]
-    end
-
-    subgraph Private["Private WalletWall app"]
-        AppUI[Read-only intelligence UI]
-        AppReadiness[Readiness and migration status]
-    end
-
-    External --> StaticEvidence
-    VaultRepo --> StaticEvidence
-    StaticEvidence --> AppReadiness
-    PublicDocs --> AppUI
-    VaultRepo --> PublicDocs
-
-    Private -. boundary .- Public
-    Boundary[Boundary rules\nno secrets\nno private ABIs\nno private app source\nno write actions by default]
-    Boundary --- Public
-    Boundary --- Private
-
-    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-    class PublicDocs,VaultRepo,StaticEvidence wwLight;
-    class ChainData,VerifierInputs wwMuted;
-    class AppUI,AppReadiness wwSecondary;
-    class Boundary wwBoundary;
-
-    style Public fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-    style External fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-    style Private fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02-light.svg) or
+[dark](assets/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02.mmd)._
 
 ## Vault Readiness States
 
@@ -121,29 +82,20 @@ Readiness language should stay status-oriented. A readiness signal can support r
 monitoring, or rehearsal, but it is not a default instruction to deposit, withdraw, sign,
 or send a transaction.
 
-```mermaid
-stateDiagram-v2
-    [*] --> UnknownMonitor
-    UnknownMonitor: unknown / monitor
-    UnknownMonitor --> EligibleSignals: eligible signals observed
-    EligibleSignals --> ReadinessReview: readiness review
-    EligibleSignals --> Deferred: insufficient evidence
-    ReadinessReview --> PrototypePath: vault-prototype path
-    ReadinessReview --> Deferred: deferred / not enough evidence
-    PrototypePath --> NoWriteDefault: present readiness signal
-    Deferred --> UnknownMonitor: continue monitoring
-    NoWriteDefault: no write action by default
-    NoWriteDefault --> [*]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03-light.svg"
+    alt="Vault Readiness States: stateDiagram-v2 diagram"
+    width="100%"
+  />
+</picture>
 
-    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-    class UnknownMonitor,Deferred wwMuted;
-    class EligibleSignals,ReadinessReview wwSecondary;
-    class PrototypePath wwPrimary;
-    class NoWriteDefault wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03-light.svg) or
+[dark](assets/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03.mmd)._
 
 ## What the App May Safely Say
 

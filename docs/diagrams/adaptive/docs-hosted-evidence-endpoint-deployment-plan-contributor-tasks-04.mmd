@@ -1,0 +1,18 @@
+flowchart TD
+  C["Contribution lanes"]
+  C --> L1["Docs"]
+  C --> L2["Schemas"]
+  C --> L3["Validators"]
+  C --> L4["Security review"]
+  C --> L5["Static hosting"]
+  C --> L6["App integration"]
+  C --> L7["Test fixtures"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class C wwPrimary;
+  class L1,L2,L3 wwLight;
+  class L4 wwBoundary;
+  class L5,L6,L7 wwSecondary;

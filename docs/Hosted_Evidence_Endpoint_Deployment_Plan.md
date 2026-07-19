@@ -89,23 +89,20 @@ A hosted endpoint is, at heart, a way to publish the **already-committed** evide
 artifact over a read-only transport so the private app can fetch it with caching.
 Nothing in the path signs, holds keys, writes on-chain, or mutates state.
 
-```mermaid
-flowchart LR
-  A["Committed evidence artifacts"] --> B["Endpoint serializer"]
-  B --> C["Static or hosted endpoint response"]
-  C --> D["Private app read-only GET"]
-  D --> E["Validator"]
-  E --> F["Vault Candidate Readiness Packet"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01-light.svg"
+    alt="Deployment architecture: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class A wwLight;
-  class B,C wwSecondary;
-  class D,E wwPrimary;
-  class F wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01-light.svg) or
+[dark](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01.mmd)._
 
 The serializer is the existing pure function; the "static or hosted endpoint
 response" is just the committed `*.example.json` (or a regenerated equivalent)
@@ -133,23 +130,20 @@ read-only JSON document. It would not run any generator at request time.
 
 Validation happens twice, and neither step needs a server:
 
-```mermaid
-flowchart LR
-  G["Committed example response"] --> H["validateAdapterEvidenceResponse"]
-  H --> I["Embedded adapter revalidated"]
-  I --> J["ETag equals keccak256 of adapter"]
-  J --> K["Limitations and no-overclaim checks"]
-  K --> L["Private app revalidates on fetch"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02-light.svg"
+    alt="Validation flow: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class G wwLight;
-  class H wwPrimary;
-  class I,J,K wwSecondary;
-  class L wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02-light.svg) or
+[dark](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02.mmd)._
 
 - **In repo / CI:** `validateAdapterEvidenceResponse` re-runs `validateAdapter` on the
   embedded boundary, recomputes the `etag`, enforces limitation coverage, and rejects
@@ -261,22 +255,20 @@ separate, reviewed implementation PR.
 
 A future endpoint would roll out in reviewed phases, never skipping a gate:
 
-```mermaid
-flowchart LR
-  S1["Local artifact validation"] --> S2["Static hosting preview"]
-  S2 --> S3["Read-only staging endpoint"]
-  S3 --> S4["App feature-flag validation"]
-  S4 --> S5["Production endpoint approval"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03-light.svg"
+    alt="Rollout phases: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class S1 wwLight;
-  class S2,S3 wwSecondary;
-  class S4 wwPrimary;
-  class S5 wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03-light.svg) or
+[dark](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03.mmd)._
 
 1. **Local artifact validation** — regenerate and drift-check the committed artifact
    and endpoint example (the checks in [Validation flow](#validation-flow)).
@@ -308,26 +300,20 @@ Before any phase advances:
 
 Concrete ways to help, by lane:
 
-```mermaid
-flowchart TD
-  C["Contribution lanes"]
-  C --> L1["Docs"]
-  C --> L2["Schemas"]
-  C --> L3["Validators"]
-  C --> L4["Security review"]
-  C --> L5["Static hosting"]
-  C --> L6["App integration"]
-  C --> L7["Test fixtures"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04-light.svg"
+    alt="Contributor tasks: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class C wwPrimary;
-  class L1,L2,L3 wwLight;
-  class L4 wwBoundary;
-  class L5,L6,L7 wwSecondary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04-light.svg) or
+[dark](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04.mmd)._
 
 - **Docs:** validate that the Mermaid diagrams in this plan render on GitHub/Mintlify;
   verify the doc avoids overclaims; improve clarity of the boundaries.
@@ -379,24 +365,20 @@ this plan alone.
 
 The trust chain is strictly one-directional and read-only end to end:
 
-```mermaid
-flowchart TD
-  R["Public vault repo - committed evidence artifacts"] --> H["Hosted endpoint - read only"]
-  H --> A["Private app - read only GET and validator"]
-  A --> P["User-facing readiness packet"]
-  N["Boundary - No wallet connection - No signing - No deposits - No transactions - No prover execution in app"]
-  N -. applies to .- H
-  N -. applies to .- A
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05-light.svg"
+    alt="Trust boundary: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class R wwLight;
-  class H wwSecondary;
-  class A wwPrimary;
-  class P,N wwBoundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05-light.svg) or
+[dark](assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05.mmd)._
 
 ## Related
 

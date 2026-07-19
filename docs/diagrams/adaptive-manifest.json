@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "generatedFrom": "tracked Markdown and MDX Mermaid fences",
+  "count": 13,
+  "diagrams": [
+    {
+      "file": "docs/Attestation_Verifier.md",
+      "heading": "Architecture flow",
+      "index": 1,
+      "type": "sequenceDiagram",
+      "source": "docs/diagrams/adaptive/docs-attestation-verifier-architecture-flow-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-attestation-verifier-architecture-flow-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-attestation-verifier-architecture-flow-01-dark.svg",
+      "alt": "Architecture flow: sequenceDiagram diagram"
+    },
+    {
+      "file": "docs/Hosted_Evidence_Endpoint_Deployment_Plan.md",
+      "heading": "Deployment architecture",
+      "index": 1,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-deployment-architecture-01-dark.svg",
+      "alt": "Deployment architecture: flowchart diagram"
+    },
+    {
+      "file": "docs/Hosted_Evidence_Endpoint_Deployment_Plan.md",
+      "heading": "Validation flow",
+      "index": 2,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-validation-flow-02-dark.svg",
+      "alt": "Validation flow: flowchart diagram"
+    },
+    {
+      "file": "docs/Hosted_Evidence_Endpoint_Deployment_Plan.md",
+      "heading": "Rollout phases",
+      "index": 3,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-rollout-phases-03-dark.svg",
+      "alt": "Rollout phases: flowchart diagram"
+    },
+    {
+      "file": "docs/Hosted_Evidence_Endpoint_Deployment_Plan.md",
+      "heading": "Contributor tasks",
+      "index": 4,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-contributor-tasks-04-dark.svg",
+      "alt": "Contributor tasks: flowchart diagram"
+    },
+    {
+      "file": "docs/Hosted_Evidence_Endpoint_Deployment_Plan.md",
+      "heading": "Trust boundary",
+      "index": 5,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-deployment-plan-trust-boundary-05-dark.svg",
+      "alt": "Trust boundary: flowchart diagram"
+    },
+    {
+      "file": "docs/Hosted_Evidence_Endpoint_Target_Decision.md",
+      "heading": "Selected target",
+      "index": 1,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-hosted-evidence-endpoint-target-decision-selected-target-01-dark.svg",
+      "alt": "Selected target: flowchart diagram"
+    },
+    {
+      "file": "docs/PQ_Verifier_Evidence_Artifact.md",
+      "heading": "Shape",
+      "index": 1,
+      "type": "classDiagram",
+      "source": "docs/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-pq-verifier-evidence-artifact-shape-01-dark.svg",
+      "alt": "Shape: classDiagram diagram"
+    },
+    {
+      "file": "docs/ROADMAP.md",
+      "heading": "Roadmap diagram",
+      "index": 1,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-roadmap-roadmap-diagram-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-roadmap-roadmap-diagram-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-roadmap-roadmap-diagram-01-dark.svg",
+      "alt": "Roadmap diagram: flowchart diagram"
+    },
+    {
+      "file": "docs/Rust_Implementation_Path.md",
+      "heading": "Rollout phases",
+      "index": 1,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01-dark.svg",
+      "alt": "Rollout phases: flowchart diagram"
+    },
+    {
+      "file": "docs/WALLETWALL_APP_BOUNDARY.md",
+      "heading": "Public-Safe Surface Map",
+      "index": 1,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-walletwall-app-boundary-public-safe-surface-map-01-dark.svg",
+      "alt": "Public-Safe Surface Map: flowchart diagram"
+    },
+    {
+      "file": "docs/WALLETWALL_APP_BOUNDARY.md",
+      "heading": "Public / Private Boundary",
+      "index": 2,
+      "type": "flowchart",
+      "source": "docs/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-walletwall-app-boundary-public-private-boundary-02-dark.svg",
+      "alt": "Public / Private Boundary: flowchart diagram"
+    },
+    {
+      "file": "docs/WALLETWALL_APP_BOUNDARY.md",
+      "heading": "Vault Readiness States",
+      "index": 3,
+      "type": "stateDiagram-v2",
+      "source": "docs/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03.mmd",
+      "light": "docs/assets/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03-light.svg",
+      "dark": "docs/assets/diagrams/adaptive/docs-walletwall-app-boundary-vault-readiness-states-03-dark.svg",
+      "alt": "Vault Readiness States: stateDiagram-v2 diagram"
+    }
+  ]
+}

@@ -32,32 +32,20 @@ existing claim boundary (testnet only, no real value, trusted-attestation PQ gat
 
 ## Roadmap diagram
 
-```mermaid
-flowchart LR
-  P1["Phase 1<br/>Research Prototype<br/>Completed baseline"]
-  P2["Phase 2<br/>Security Hardening<br/>In progress"]
-  P3["Phase 3<br/>Verifier & Attestation<br/>In progress / expanding"]
-  P4["Phase 4<br/>Audit Preparation<br/>Partially complete"]
-  P5["Phase 5<br/>Production Evaluation<br/>Future / conditional"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-roadmap-roadmap-diagram-01-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-roadmap-roadmap-diagram-01-light.svg"
+    alt="Roadmap diagram: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  P1 --> P2 --> P3 --> P4 --> P5
-
-  B["Boundary<br/>Research prototype today<br/>No production custody - No audited/mainnet-ready claim"]
-  B -. applies .- P1
-  B -. applies .- P5
-
-  classDef complete fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef progress fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef partial fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef future fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-  classDef boundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-
-  class P1 complete;
-  class P2,P3 progress;
-  class P4 partial;
-  class P5 future;
-  class B boundary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-roadmap-roadmap-diagram-01-light.svg) or
+[dark](assets/diagrams/adaptive/docs-roadmap-roadmap-diagram-01-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-roadmap-roadmap-diagram-01.mmd)._
 
 ## Phase 1 - Research Prototype
 

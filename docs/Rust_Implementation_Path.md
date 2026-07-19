@@ -185,24 +185,20 @@ _permission_, not _authorization to implement_.
 
 ## Rollout phases
 
-```mermaid
-flowchart LR
-  P0["Phase 0 - docs and spec guard"] --> P1["Phase 1 - Rust crate boundary"]
-  P1 --> P2["Phase 2 - fixture parity"]
-  P2 --> P3["Phase 3 - adapter validation"]
-  P3 --> P4["Phase 4 - reviewed prover path"]
-  P4 --> P5["Phase 5 - hosted evidence artifact integration"]
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01-dark.svg"
+  />
+  <img
+    src="assets/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01-light.svg"
+    alt="Rollout phases: flowchart diagram"
+    width="100%"
+  />
+</picture>
 
-  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-  classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-  class P0 wwMuted;
-  class P1,P2 wwLight;
-  class P3,P4 wwSecondary;
-  class P5 wwPrimary;
-```
+_Appearance-aware WalletWall diagram. Open the full-size [light](assets/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01-light.svg) or
+[dark](assets/diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01-dark.svg) variant. [Mermaid source](diagrams/adaptive/docs-rust-implementation-path-rollout-phases-01.mmd)._
 
 ### Phase 0 — Docs / spec / test guard (this PR)
 

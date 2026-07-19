@@ -1,0 +1,14 @@
+flowchart LR
+  S1["Local artifact validation"] --> S2["Static hosting preview"]
+  S2 --> S3["Read-only staging endpoint"]
+  S3 --> S4["App feature-flag validation"]
+  S4 --> S5["Production endpoint approval"]
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class S1 wwLight;
+  class S2,S3 wwSecondary;
+  class S4 wwPrimary;
+  class S5 wwBoundary;
