@@ -1,0 +1,22 @@
+flowchart LR
+    Docs[Public docs] --> StableSeer[Stable Seer\nstablecoin monitoring]
+    Docs --> HolderWall[HolderWall\nholder concentration signals]
+    Docs --> Coinstellation[Coinstellation\nrelationship mapping]
+    Docs --> Quantum[Quantum Intelligence\nmigration risk research]
+    Docs --> Readiness[Vault / Migration Readiness\nstatus and evidence]
+
+    Readiness --> Evidence[Static evidence artifacts\nhashes, versions, timestamps]
+    Readiness --> VaultRepo[Public vault research repo\ncontracts, tests, verifier docs]
+    Quantum --> VaultRepo
+
+    VaultRepo --> Boundaries[Prototype boundaries\nno production custody\nno mainnet write path]
+    Evidence --> Boundaries
+
+    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    class Docs,Readiness wwPrimary;
+    class StableSeer,HolderWall,Coinstellation,Quantum wwSecondary;
+    class Evidence,VaultRepo wwLight;
+    class Boundaries wwBoundary;

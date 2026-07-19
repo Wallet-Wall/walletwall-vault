@@ -1,0 +1,16 @@
+flowchart TD
+  R["Public vault repo - committed evidence artifacts"] --> H["Hosted endpoint - read only"]
+  H --> A["Private app - read only GET and validator"]
+  A --> P["User-facing readiness packet"]
+  N["Boundary - No wallet connection - No signing - No deposits - No transactions - No prover execution in app"]
+  N -. applies to .- H
+  N -. applies to .- A
+
+  classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+  classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+  classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
+  classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+  class R wwLight;
+  class H wwSecondary;
+  class A wwPrimary;
+  class P,N wwBoundary;

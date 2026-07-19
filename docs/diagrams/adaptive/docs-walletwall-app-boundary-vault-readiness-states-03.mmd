@@ -1,0 +1,21 @@
+stateDiagram-v2
+    [*] --> UnknownMonitor
+    UnknownMonitor: unknown / monitor
+    UnknownMonitor --> EligibleSignals: eligible signals observed
+    EligibleSignals --> ReadinessReview: readiness review
+    EligibleSignals --> Deferred: insufficient evidence
+    ReadinessReview --> PrototypePath: vault-prototype path
+    ReadinessReview --> Deferred: deferred / not enough evidence
+    PrototypePath --> NoWriteDefault: present readiness signal
+    Deferred --> UnknownMonitor: continue monitoring
+    NoWriteDefault: no write action by default
+    NoWriteDefault --> [*]
+
+    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
+    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    class UnknownMonitor,Deferred wwMuted;
+    class EligibleSignals,ReadinessReview wwSecondary;
+    class PrototypePath wwPrimary;
+    class NoWriteDefault wwBoundary;
