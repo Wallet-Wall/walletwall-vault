@@ -1,0 +1,45 @@
+%% Keep graph structure aligned with architecture-transition-hybrid-light.mmd. %%
+%% Only theme variables and WalletWall palette roles may differ between variants. %%
+%% Color is supplementary; labels, shapes, and borders carry the diagram meaning. %%
+%%{init: {"theme":"base","themeVariables":{"darkMode":true,"background":"#1E1A14","primaryColor":"#1E1A14","primaryTextColor":"#FAF8F3","primaryBorderColor":"#C9A47A","lineColor":"#C9A47A","textColor":"#FAF8F3","edgeLabelBackground":"#1E1A14","clusterBkg":"#1E1A14","clusterBorder":"#C9A47A","titleColor":"#FAF8F3"}}}%%
+graph TD
+    subgraph OffChain["Off-chain"]
+        A[User Private Keys] --> B[ECDSA Signer]
+        A --> C[ML-DSA Signer pqc/ml-dsa.ts]
+        B --> D[EIP-712 Withdrawal digest]
+        C --> D
+        D --> E[withdraw request + signatures]
+    end
+
+    subgraph OnChain["On-chain: WalletWallVault"]
+        E --> F[WalletWallVault]
+        F --> G[OZ ECDSA.recover over digest]
+        F --> H[IPQCVerifier.verify]
+        G -- signer matches --> I{Required Hybrid checks pass?}
+        H -- verifier returns true --> I
+        I -- Yes --> J[Release Funds]
+        I -- No --> K[Revert]
+    end
+
+    subgraph Implementations["IPQCVerifier implementations"]
+        H --> L[MockMLDSAVerifier\nstructural checks only\ntest/demo]
+        H --> M[AttestationPQCVerifier\ntrusted off-chain attestor\nnon-mock]
+        H --> N[ZKMLDSAVerifier\nSP1 scaffold\nnot deployed]
+    end
+
+    classDef wwPrimary fill:#BF4E32,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    classDef wwSecondary fill:#896D46,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    classDef wwLight fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
+    classDef wwBoundary fill:#1E1A14,stroke:#BF4E32,color:#FAF8F3,stroke-width:2px;
+
+    class A,B,C,L wwLight;
+    class D,E,F,H,M wwPrimary;
+    class G,N wwSecondary;
+    class I wwBoundary;
+    class J wwPrimary;
+    class K wwMuted;
+
+    style OffChain fill:transparent,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
+    style OnChain fill:transparent,stroke:#9A9186,color:#FAF8F3,stroke-width:1px;
+    style Implementations fill:transparent,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;

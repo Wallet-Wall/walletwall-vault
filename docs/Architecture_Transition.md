@@ -83,49 +83,25 @@ The authorization path below shows the intended `Hybrid` mode, where both signat
 checks are required. The weaker research-only `EcdsaOnly` and `PqOnly` modes run only
 their configured check.
 
-```mermaid
-graph TD
-    subgraph OffChain["Off-chain"]
-        A[User Private Keys] --> B[ECDSA Signer]
-        A --> C[ML-DSA Signer pqc/ml-dsa.ts]
-        B --> D[EIP-712 Withdrawal digest]
-        C --> D
-        D --> E[withdraw request + signatures]
-    end
+<picture>
+  <source
+    media="(prefers-color-scheme: dark)"
+    srcset="assets/diagrams/architecture-transition-hybrid-dark.svg"
+  />
+  <img
+    src="assets/diagrams/architecture-transition-hybrid-light.svg"
+    alt="Hybrid withdrawal authorization flow through ECDSA and post-quantum verifier checks"
+    width="100%"
+  />
+</picture>
 
-    subgraph OnChain["On-chain: WalletWallVault"]
-        E --> F[WalletWallVault]
-        F --> G[OZ ECDSA.recover over digest]
-        F --> H[IPQCVerifier.verify]
-        G -- signer matches --> I{Required Hybrid checks pass?}
-        H -- verifier returns true --> I
-        I -- Yes --> J[Release Funds]
-        I -- No --> K[Revert]
-    end
+The two transparent SVG variants preserve the same graph and select a WalletWall light
+or dark palette from the viewer's appearance. Their editable Mermaid sources live in
+[`docs/diagrams/`](diagrams/).
 
-    subgraph Implementations["IPQCVerifier implementations"]
-        H --> L[MockMLDSAVerifier\nstructural checks only\ntest/demo]
-        H --> M[AttestationPQCVerifier\ntrusted off-chain attestor\nnon-mock]
-        H --> N[ZKMLDSAVerifier\nSP1 scaffold\nnot deployed]
-    end
-
-    classDef wwPrimary fill:#BF4E32,stroke:#8B3120,color:#FAF8F3,stroke-width:1px;
-    classDef wwSecondary fill:#C9A47A,stroke:#8B6F47,color:#1E1A14,stroke-width:1px;
-    classDef wwLight fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-    classDef wwMuted fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-    classDef wwBoundary fill:#1E1A14,stroke:#C9A47A,color:#FAF8F3,stroke-width:1px;
-
-    class A,B,C,L wwLight;
-    class D,E,F,H,M wwPrimary;
-    class G,N wwSecondary;
-    class I wwBoundary;
-    class J wwPrimary;
-    class K wwMuted;
-
-    style OffChain fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-    style OnChain fill:#E6DED2,stroke:#9A9186,color:#1E1A14,stroke-width:1px;
-    style Implementations fill:#FAF8F3,stroke:#C9A47A,color:#1E1A14,stroke-width:1px;
-```
+Open the full-size [light](assets/diagrams/architecture-transition-hybrid-light.svg) or
+[dark](assets/diagrams/architecture-transition-hybrid-dark.svg) variant for detailed
+inspection on narrow screens.
 
 ## Chosen Algorithm: ML-DSA-65
 
