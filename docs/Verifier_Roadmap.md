@@ -54,9 +54,14 @@ chain-native solution.
   monitor `AttestorUpdated` events. This asymmetry is a fundamental limitation of the
   trusted-attestation path and cannot be fixed within Path 1; it requires graduating to
   Path 2 (ZK) or Path 4 (chain-native). As a near-term hardening that narrows (but does
-  not remove) this surface, the recommended step is an **immutable-attestor verifier**
-  deployment — see
-  [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md).
+  not remove) this surface, the recommended step is the **immutable-attestor verifier**
+  deployment,
+  [`ImmutableAttestationPQCVerifier`](../contracts/verifiers/ImmutableAttestationPQCVerifier.sol) —
+  implemented, ABI- and payload-compatible with `AttestationPQCVerifier`, with no
+  `updateAttestor` and no admin surface. Changing its attestor requires deploying a new
+  verifier and moving the vault to it via `proposePQVerifier` / `applyPQVerifierUpdate`.
+  See [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md) and
+  [Attestation_Verifier.md](Attestation_Verifier.md#immutable-attestor-variant).
 - **Status:** implemented for research and testnet evaluation. See
   [Attestation_Verifier.md](Attestation_Verifier.md).
 - **Off-chain prototype:** `scripts/attestor-cli.ts` (`npm run attestor:verify`)

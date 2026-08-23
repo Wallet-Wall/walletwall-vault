@@ -111,9 +111,13 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   model — not trustless PQ verification. Until a non-custodial verifier (ZK proof or
   chain-native) replaces the attestation path, trust must be placed in whoever controls
   the attestor and the attestor owner key. The recommended near-term hardening for this
-  asymmetry is an immutable-attestor verifier deployment, which moves attestor changes
-  under the vault's existing timelocked verifier governance; see
-  [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md).
+  asymmetry is the implemented immutable-attestor verifier,
+  [`ImmutableAttestationPQCVerifier`](../contracts/verifiers/ImmutableAttestationPQCVerifier.sol),
+  which has no `updateAttestor` and no admin surface — changing its attestor requires
+  deploying a new verifier, which moves the change under the vault's existing timelocked
+  verifier governance; see
+  [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md) and
+  [Attestation_Verifier.md](Attestation_Verifier.md#immutable-attestor-variant).
 - **Ownership uses two-step transfer** (`Ownable2Step`) on both `WalletWallVault` and
   `AttestationPQCVerifier`, to avoid transferring ownership to an unusable address.
   The owner may be a multisig such as Safe; no additional multisig contract logic is
