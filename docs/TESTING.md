@@ -36,8 +36,8 @@ npm run coverage
 ```
 
 All seven commands above (everything except the optional coverage run) execute in normal
-PR CI (`.github/workflows/ci.yml`, `build-test` job) — none are opt-in or advisory. A PR
-that fails any of them cannot merge.
+PR CI (`.github/workflows/ci.yml`, `build-test` job) — none are opt-in or advisory. A
+failure in any of them fails the `build-test` job on that commit.
 
 ## Script Meaning
 

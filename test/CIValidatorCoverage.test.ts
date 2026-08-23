@@ -1,5 +1,5 @@
 /**
- * CI workflow guard: proves the required PR-blocking job in
+ * CI workflow guard: proves the normal PR CI build-test job in
  * .github/workflows/ci.yml actually runs the deployment-truth validators
  * (`npm run validate:deployments`, `npm run validate:reproducibility`) and the
  * EIP-170 runtime bytecode size gate (`npm run validate:bytecode-size`) — so a
@@ -68,7 +68,7 @@ describe("CI workflow — deployment-truth and bytecode-size gates run in normal
     expect(code).to.not.match(/paths(-ignore)?:/);
   });
 
-  describe("build-test job (the required PR-blocking job)", function () {
+  describe("build-test job (normal PR CI)", function () {
     const job = jobBlock(code, "build-test");
 
     it("runs npm run validate:deployments", function () {
