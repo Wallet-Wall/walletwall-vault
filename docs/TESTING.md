@@ -24,6 +24,9 @@ npm run compile
 npm test
 npm run lint
 npm run format:check
+npm run validate:deployments
+npm run validate:reproducibility
+npm run validate:bytecode-size
 ```
 
 Optional coverage run:
@@ -31,6 +34,10 @@ Optional coverage run:
 ```bash
 npm run coverage
 ```
+
+All seven commands above (everything except the optional coverage run) execute in normal
+PR CI (`.github/workflows/ci.yml`, `build-test` job) — none are opt-in or advisory. A
+failure in any of them fails the `build-test` job on that commit.
 
 ## Script Meaning
 
@@ -41,6 +48,9 @@ npm run coverage
 | `npm run lint` | Runs Solhint on Solidity contracts. |
 | `npm run format:check` | Checks formatting for Solidity and TypeScript files covered by Prettier. |
 | `npm run coverage` | Runs Solidity coverage instrumentation. |
+| `npm run validate:deployments` | Validates every committed `deployments/` record (excluding `schema/`, `examples/`, `reproducibility/`) against the required shape and testnet-only safety rules. Deterministic, offline. |
+| `npm run validate:reproducibility` | Validates every committed `deployments/reproducibility/` manifest: a manifest may only claim `reproducibilityStatus: "reproducible"` when its own recorded facts support that; otherwise it must carry a concrete remediation plan. Deterministic, offline. |
+| `npm run validate:bytecode-size` | Post-compile EIP-170 gate: fails if any of `WalletWallVault`, `StablecoinVaultSimulator`, `WalletWallMultiSigVault`, `MockMLDSAVerifier`, `AttestationPQCVerifier`, or `ZKMLDSAVerifier` has RUNTIME (deployed) bytecode over 24,576 bytes. Creation bytecode is reported but never gated. Deterministic, offline; requires `npm run compile` first (run automatically via the `prevalidate:bytecode-size` hook). |
 
 ## Current Test Focus
 
