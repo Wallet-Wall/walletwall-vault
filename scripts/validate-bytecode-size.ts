@@ -79,6 +79,15 @@ export const TARGET_CONTRACTS: ContractSizeTarget[] = [
     justification: "concrete IPQCVerifier trusted-attestation implementation",
   },
   {
+    name: "ImmutableAttestationPQCVerifier",
+    artifactRelPath: "verifiers/ImmutableAttestationPQCVerifier.sol/ImmutableAttestationPQCVerifier.json",
+    justification:
+      "concrete IPQCVerifier trusted-attestation implementation with a constructor-fixed, " +
+      "non-rotatable attestor and no admin surface; recommended near-term deployment choice " +
+      "over AttestationPQCVerifier (see docs/Attestation_Governance_Hardening.md), not yet " +
+      "deployed to any network",
+  },
+  {
     name: "ZKMLDSAVerifier",
     artifactRelPath: "verifiers/ZKMLDSAVerifier.sol/ZKMLDSAVerifier.json",
     justification:
