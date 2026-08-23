@@ -5,7 +5,7 @@
   "chainId": 11155111,
   "networkName": "sepolia",
   "tokenMode": "mock",
-  "tokenAddress": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+  "tokenAddress": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
   "tokenSymbol": "mUSDC",
   "tokenDecimals": 6,
   "stablecoinVaultSimulatorAddress": "0x32f489842DD515Fa4b4b258714F0067B8B8133ae",
