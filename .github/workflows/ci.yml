@@ -34,6 +34,14 @@ jobs:
       - name: Compile contracts
         run: npm run compile
 
+      - name: Validate runtime bytecode size (EIP-170 budget; deterministic, no network)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: every measured contract's RUNTIME (deployed)
+          # bytecode is within the EIP-170 24,576-byte protocol ceiling. Creation
+          # bytecode is reported but never gated. No network, no chain, no proving.
+          npm run validate:bytecode-size
+
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
 
@@ -73,6 +81,25 @@ jobs:
           echo "$out" | grep -q '"mode": "sp1-smoke"'
           echo "$out" | grep -q '"proven": false'
           echo "$out" | grep -q '"hostExecuted": false'
+
+      - name: Validate deployment metadata (deterministic; no network)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: every committed deployment metadata record
+          # under deployments/ (excluding schema/, examples/, reproducibility/)
+          # conforms to the required shape and testnet-only safety rules. No
+          # network, no chain, no proving.
+          npm run validate:deployments
+
+      - name: Validate deployment reproducibility manifests (deterministic; no network)
+        run: |
+          set -euo pipefail
+          # Cheap, deterministic check: every committed reproducibility manifest
+          # under deployments/reproducibility/ passes the honesty cross-check (a
+          # manifest may only claim "reproducible" when its own recorded facts
+          # support that) or carries a concrete remediation plan. No network, no
+          # chain, no proving.
+          npm run validate:reproducibility
 
       - name: Validate reproducible proof artifact (deterministic; no proving)
         run: |
