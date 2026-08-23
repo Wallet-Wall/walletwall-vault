@@ -97,7 +97,7 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
 | Metadata file | `deployments/sepolia/stablecoin-vault-simulator.json` |
 | Deployment commit | [`35c25fa294bebea44b3089aa2435a190a5adf3fb`](https://github.com/Wallet-Wall/walletwall-vault/commit/35c25fa294bebea44b3089aa2435a190a5adf3fb) (tag `v0.4.24`) |
 | Deployed package version | `0.4.24` |
-| Repo package version (this PR) | `0.4.26` |
+| Repo package version (this PR) | `0.10.7` |
 | Deployed at | `2026-06-18T20:23:48.000Z` |
 | Explorer source verification | Not configured (see [Source verification](#source-verification-explorer) below — a distinct claim from reproducibility) |
 | Reproducibility (from public source) | **Reproducible** — see [Reproducibility](#reproducibility) below |
