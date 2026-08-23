@@ -1,0 +1,30 @@
+{
+  "$schema": "./schema/reproducibility.schema.json",
+  "version": "1",
+  "subject": "MockUSDC",
+  "environment": "sepolia",
+  "chainId": 11155111,
+  "deployedAddress": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+  "deploymentTx": "0x9568c269484ebca53166d63bc031f189059fe2e0c45791563b02a82d97cd159b",
+  "reportedSourceCommit": "35c25fa294bebea44b3089aa2435a190a5adf3fb",
+  "reportedSourceCommitInPublicHistory": true,
+  "observedRuntimeBytes": 1994,
+  "publicHeadRuntimeBytes": 1994,
+  "reproducibilityStatus": "reproducible",
+  "lastChecked": "2026-08-23",
+  "artifactManifest": {
+    "sourceTag": "v0.4.24",
+    "bytecodeHash": "0xc889aafb27bb2161bce6cbe5a96831282cc97013098dd1ec86788aefe5c6d930",
+    "executableBytecodeMatch": true,
+    "metadataHashMatch": false,
+    "metadataTrailerBytesExcluded": 43,
+    "constructorArgs": [],
+    "notes": "bytecodeHash is keccak256 of the live runtime bytecode with the trailing 43-byte solc CBOR metadata region zeroed out (executableBytecodeMatch covers this same normalized region). MockUSDC has no `immutable` variables, so no immutable-slot verification applies. Verified from a clean `npm ci` + `npx hardhat compile` in a worktree pinned to the deployment commit (Hardhat 2 / solc 0.8.24+commit.e11b9ed9, optimizer runs=200, evmVersion=cancun) against the live Sepolia runtime read via eth_getCode; independently cross-checked with a second solc build variant (solc-js/WASM) to rule out a compiler-binary cause for the metadata divergence."
+  },
+  "disclosures": [
+    "TESTNET ONLY — Ethereum Sepolia. Research prototype. Not audited. No production security guarantee. Do not use real funds.",
+    "MockUSDC (mUSDC) has no monetary value. There is no purchase path, no custody, and no income-generating product or promised returns. It is freely mintable by anyone.",
+    "All executable runtime bytecode was independently recompiled from public commit 35c25fa294bebea44b3089aa2435a190a5adf3fb (tag v0.4.24) and matched the live Sepolia deployment exactly. Only the trailing 43-byte solc CBOR metadata hash — a non-executed IPFS content pointer, never run by the EVM — differs, consistent with a build-environment difference (OS/toolchain/path) rather than a source or code difference; it is not claimed to match and does not affect on-chain behavior.",
+    "No Ethereum mainnet deployment of this contract exists or is planned."
+  ]
+}

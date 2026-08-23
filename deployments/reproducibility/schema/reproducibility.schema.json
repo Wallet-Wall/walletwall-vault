@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/deployments/reproducibility/schema/reproducibility.schema.json",
   "title": "Deployment Reproducibility Manifest v1",
-  "description": "Records whether a public testnet deployment can be reproduced from public repository sources, and — when it cannot — the committed remediation path. A manifest may only declare reproducibilityStatus 'reproducible' when its own facts support it (reported commit in public history, matching runtime bytes, and an artifactManifest with a source tag + bytecode hash). Testnet only; this file never documents a mainnet deployment. Validated by `npm run validate:reproducibility`.",
+  "description": "Records whether a public testnet deployment can be reproduced from public repository sources, and — when it cannot — the committed remediation path. A manifest may only declare reproducibilityStatus 'reproducible' when its own facts support it (reported commit in public history, matching runtime bytes, and an artifactManifest with a source tag + bytecode hash). When artifactManifest.metadataHashMatch is explicitly false (the solc build-metadata CBOR hash was excluded from the equality claim), executableBytecodeMatch, metadataTrailerBytesExcluded, and a disclosure naming the exclusion are all required — this makes a 'code matches, non-executable metadata hash does not' claim impossible to state without also disclosing its exact scope. Testnet only; this file never documents a mainnet deployment. Validated by `npm run validate:reproducibility`.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -65,7 +65,34 @@
       "additionalProperties": true,
       "properties": {
         "sourceTag": { "type": "string" },
-        "bytecodeHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+        "bytecodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256 of the runtime bytecode this claim actually covers. Equal to the raw on-chain runtime hash when metadataHashMatch is true; equal to the metadata-trailer-normalized hash when metadataHashMatch is false (see metadataTrailerBytesExcluded)."
+        },
+        "executableBytecodeMatch": {
+          "type": "boolean",
+          "description": "True only if every EXECUTED runtime byte (i.e. excluding the trailing solc metadata region, and — for contracts with `immutable` variables — excluding the per-deployment immutable slots, whose values are instead verified independently) is byte-for-byte identical between the live on-chain deployment and a clean local recompile."
+        },
+        "metadataHashMatch": {
+          "type": "boolean",
+          "description": "True only if the trailing solc CBOR build-metadata hash (a non-executed IPFS content pointer, not run by the EVM) also matches byte-for-byte between the live deployment and a clean local recompile. This is commonly false even for genuinely reproducible source, since the metadata hash is sensitive to the exact build environment (OS/toolchain/path) that produced it — see metadataTrailerBytesExcluded."
+        },
+        "metadataTrailerBytesExcluded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 128,
+          "description": "Required, and bounded to a small value, whenever metadataHashMatch is false: the exact number of trailing bytes excluded from the reproducibility claim (the solc CBOR metadata region only). Bounding this tightly prevents the exclusion from silently growing to cover real executable logic in a future edit."
+        },
+        "immutableValuesIndependentlyVerified": {
+          "type": "boolean",
+          "description": "For contracts with `immutable` variables only: true if every immutable slot's on-chain value was independently re-derived from public inputs (constructor arguments, the contract's own deployed address, chain ID, and any relevant construction-time constants) and matched, rather than merely observed."
+        },
+        "constructorArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The exact constructor arguments used at deployment, in order, as recorded in the deployment metadata — supports independently re-deriving any immutable variable values."
+        }
       }
     },
     "remediation": {

@@ -21,6 +21,27 @@ const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const VAULT_MANIFEST = join(REPRO_DIR, "walletwall-vault-sepolia.json");
 
+const SIMULATOR_MANIFESTS: Array<{ subject: string; file: string; deployedAddress: string; hasImmutables: boolean }> = [
+  {
+    subject: "StablecoinVaultSimulator",
+    file: join(REPRO_DIR, "stablecoin-vault-simulator-sepolia.json"),
+    deployedAddress: "0x32f489842DD515Fa4b4b258714F0067B8B8133ae",
+    hasImmutables: true,
+  },
+  {
+    subject: "MockUSDC",
+    file: join(REPRO_DIR, "mock-usdc-sepolia.json"),
+    deployedAddress: "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+    hasImmutables: false,
+  },
+  {
+    subject: "MockMLDSAVerifier",
+    file: join(REPRO_DIR, "mock-mldsa-verifier-sepolia.json"),
+    deployedAddress: "0x4736138c99e0619D06663D971C8cD347de186F6d",
+    hasImmutables: false,
+  },
+];
+
 const FORBIDDEN_CHAIN_IDS = new Set([1, 8453, 137, 10, 42161, 56, 43114]);
 const ALLOWED_STATUSES = new Set(["reproducible", "pending-source-alignment", "remediation-gated", "deprecated"]);
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -94,6 +115,72 @@ describe("Deployment reproducibility — manifests are reproducible or remediati
     });
   });
 
+  describe("StablecoinVaultSimulator stack Sepolia manifests", () => {
+    for (const spec of SIMULATOR_MANIFESTS) {
+      describe(`${spec.subject} manifest`, () => {
+        let m: Record<string, unknown>;
+
+        before(function () {
+          if (!existsSync(spec.file)) this.skip();
+          m = loadJson(spec.file);
+        });
+
+        it("has version '1' and matches the expected subject/address/chain", () => {
+          expect(m["version"]).to.equal("1");
+          expect(m["subject"]).to.equal(spec.subject);
+          expect(m["environment"]).to.equal("sepolia");
+          expect(m["chainId"]).to.equal(11155111);
+          expect((m["deployedAddress"] as string).toLowerCase()).to.equal(spec.deployedAddress.toLowerCase());
+        });
+
+        it("reports the deployment commit as present in public history", () => {
+          expect(m["reportedSourceCommit"]).to.equal("35c25fa294bebea44b3089aa2435a190a5adf3fb");
+          expect(m["reportedSourceCommitInPublicHistory"]).to.equal(true);
+        });
+
+        it("is honestly reproducible: runtime bytes match and the artifact manifest proves it", () => {
+          expect(m["reproducibilityStatus"]).to.equal("reproducible");
+          expect(m["observedRuntimeBytes"]).to.equal(m["publicHeadRuntimeBytes"]);
+          const manifest = m["artifactManifest"] as Record<string, unknown>;
+          expect(manifest).to.be.an("object");
+          expect(manifest["sourceTag"]).to.equal("v0.4.24");
+          expect(manifest["bytecodeHash"]).to.match(BYTECODE_HASH_RE);
+          expect(manifest["executableBytecodeMatch"]).to.equal(true);
+        });
+
+        it("discloses the excluded solc metadata hash precisely (does not overclaim raw-byte equality)", () => {
+          const manifest = m["artifactManifest"] as Record<string, unknown>;
+          expect(manifest["metadataHashMatch"]).to.equal(false);
+          expect(manifest["metadataTrailerBytesExcluded"]).to.equal(43);
+          const disclosures = m["disclosures"] as string[];
+          const blob = disclosures.join(" ").toLowerCase();
+          expect(/metadata|cbor/.test(blob)).to.equal(true);
+        });
+
+        if (spec.hasImmutables) {
+          it("independently verifies every immutable constructor value (not merely observed)", () => {
+            const manifest = m["artifactManifest"] as Record<string, unknown>;
+            expect(manifest["immutableValuesIndependentlyVerified"]).to.equal(true);
+            expect(Array.isArray(manifest["constructorArgs"])).to.equal(true);
+            expect((manifest["constructorArgs"] as unknown[]).length).to.be.greaterThan(0);
+          });
+        }
+
+        it("carries a testnet / research-prototype disclosure and a mock-verifier disclosure where relevant", () => {
+          const disclosures = m["disclosures"] as string[];
+          const blob = disclosures.join(" ").toLowerCase();
+          expect(/testnet|research prototype|not audited|no real funds/.test(blob)).to.equal(true);
+          if (spec.subject !== "MockUSDC") {
+            expect(
+              /mock/.test(blob) && /ml-dsa|mldsa|pq/i.test(blob),
+              `${spec.file}: expected a MockMLDSAVerifier / no-real-PQ-verification disclosure`,
+            ).to.equal(true);
+          }
+        });
+      });
+    }
+  });
+
   describe("All reproducibility manifests — honesty cross-check", () => {
     it("a manifest may only claim 'reproducible' when its own facts support it", () => {
       for (const path of collectManifests()) {
@@ -113,6 +200,28 @@ describe("Deployment reproducibility — manifests are reproducible or remediati
           expect(manifest, `${path}: 'reproducible' requires an artifactManifest`).to.be.an("object");
           expect(manifest!["sourceTag"]).to.be.a("string").with.length.greaterThan(0);
           expect(manifest!["bytecodeHash"]).to.match(BYTECODE_HASH_RE);
+
+          // A manifest may claim "reproducible" while explicitly excluding the non-executed
+          // solc build-metadata hash (known to vary by build environment even for identical
+          // source) — but only if it proves the executable code still matches exactly, bounds
+          // the excluded region, and discloses the exclusion. Mirrors
+          // scripts/validate-reproducibility.ts.
+          if (manifest!["metadataHashMatch"] === false) {
+            expect(
+              manifest!["executableBytecodeMatch"],
+              `${path}: metadataHashMatch: false requires executableBytecodeMatch: true`,
+            ).to.equal(true);
+            const excluded = manifest!["metadataTrailerBytesExcluded"];
+            expect(typeof excluded, `${path}: metadataTrailerBytesExcluded must be a number`).to.equal("number");
+            expect(excluded as number).to.be.at.least(0);
+            expect(excluded as number, `${path}: excluded region must stay small (≤128 bytes)`).to.be.at.most(128);
+            const disclosures = m["disclosures"] as string[];
+            const blob = disclosures.join(" ").toLowerCase();
+            expect(
+              /metadata|cbor/.test(blob),
+              `${path}: metadataHashMatch: false requires a disclosure mentioning the excluded metadata/CBOR hash`,
+            ).to.equal(true);
+          }
         } else {
           const remediation = m["remediation"] as Record<string, unknown> | undefined;
           expect(remediation, `${path}: non-reproducible status requires a remediation plan`).to.be.an("object");

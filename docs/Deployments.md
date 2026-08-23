@@ -95,11 +95,12 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
 | `MockMLDSAVerifier` | [`0x4736138c99e0619D06663D971C8cD347de186F6d`](https://sepolia.etherscan.io/address/0x4736138c99e0619D06663D971C8cD347de186F6d) |
 | `StablecoinVaultSimulator` | [`0x32f489842DD515Fa4b4b258714F0067B8B8133ae`](https://sepolia.etherscan.io/address/0x32f489842DD515Fa4b4b258714F0067B8B8133ae) |
 | Metadata file | `deployments/sepolia/stablecoin-vault-simulator.json` |
-| Deployment commit | `35c25fa294bebea44b3089aa2435a190a5adf3fb` |
+| Deployment commit | [`35c25fa294bebea44b3089aa2435a190a5adf3fb`](https://github.com/Wallet-Wall/walletwall-vault/commit/35c25fa294bebea44b3089aa2435a190a5adf3fb) (tag `v0.4.24`) |
 | Deployed package version | `0.4.24` |
 | Repo package version (this PR) | `0.4.26` |
 | Deployed at | `2026-06-18T20:23:48.000Z` |
-| Source verification | Not configured |
+| Explorer source verification | Not configured (see [Source verification](#source-verification-explorer) below — a distinct claim from reproducibility) |
+| Reproducibility (from public source) | **Reproducible** — see [Reproducibility](#reproducibility) below |
 
 **Limitations and disclosures:**
 
@@ -110,8 +111,70 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
   cryptographic verification.
 - No mainnet deployment exists or is planned.
 - No custody of real assets.
-- Source verification is not configured. Bytecode reproducibility from
-  `35c25fa294bebea44b3089aa2435a190a5adf3fb` has not been independently confirmed.
+- Explorer source verification is not configured for these addresses (a distinct claim from
+  reproducibility — see below).
+- Reproducibility from `35c25fa294bebea44b3089aa2435a190a5adf3fb` **has** been independently
+  confirmed for all three contracts, with an explicit, machine-checkable scope: see
+  [Reproducibility](#reproducibility).
+
+### Reproducibility
+
+All executable runtime bytecode, and — for `StablecoinVaultSimulator` — all 8 EIP-712 /
+`immutable` constructor-time values, were independently reproduced from public commit
+`35c25fa294bebea44b3089aa2435a190a5adf3fb` (tag `v0.4.24`) and matched the live Sepolia
+deployment **exactly**. Each contract has a machine-checkable manifest, validated by
+`npm run validate:reproducibility`:
+
+| Contract | Manifest | Runtime bytes | Executable code match | Metadata hash match |
+| --- | --- | --- | --- | --- |
+| `MockUSDC` | [`deployments/reproducibility/mock-usdc-sepolia.json`](../deployments/reproducibility/mock-usdc-sepolia.json) | `1,994` | ✅ exact | ❌ excluded (see below) |
+| `MockMLDSAVerifier` | [`deployments/reproducibility/mock-mldsa-verifier-sepolia.json`](../deployments/reproducibility/mock-mldsa-verifier-sepolia.json) | `569` | ✅ exact | ❌ excluded (see below) |
+| `StablecoinVaultSimulator` | [`deployments/reproducibility/stablecoin-vault-simulator-sepolia.json`](../deployments/reproducibility/stablecoin-vault-simulator-sepolia.json) | `21,807` | ✅ exact (incl. all 8 immutables) | ❌ excluded (see below) |
+
+Last independently re-checked: **2026-08-23**.
+
+**Method (from a clean checkout pinned to the exact deployment commit, not public HEAD):**
+
+1. Checked out `35c25fa294bebea44b3089aa2435a190a5adf3fb` in an isolated worktree, ran
+   `npm ci` (the commit's own committed lockfile — Hardhat 2, solc `0.8.24+commit.e11b9ed9`,
+   optimizer `runs=200`, `evmVersion=cancun`) and `npx hardhat compile`.
+2. Read the live runtime bytecode for all three addresses via `eth_getCode` against a public
+   Sepolia RPC, and confirmed `eth_chainId` is `11155111`.
+3. Compared the locally compiled `deployedBytecode` against the live runtime. All bytes match
+   **except** a trailing 43-byte region, which is solc's own CBOR-encoded build-metadata hash
+   (an IPFS content pointer used by external tooling for source lookup — it is never executed
+   by the EVM). This was cross-checked against a second, independent solc build variant
+   (solc-js/WASM, not just Hardhat's downloaded native binary) to rule out a trivial
+   compiler-binary cause; both local builds agree with each other and both differ from the live
+   deployment in the identical way, isolated to that one trailing region.
+4. `StablecoinVaultSimulator` additionally declares one `immutable` (`token`) and inherits 7
+   more from OpenZeppelin 5.6.1's `EIP712` (`_cachedDomainSeparator`, `_cachedChainId`,
+   `_cachedThis`, `_hashedName`, `_hashedVersion`, `_name`, `_version`) — solc bakes these into
+   fixed byte ranges of the runtime code at construction time, so they are necessarily
+   per-deployment and cannot be produced by any fresh, differently-addressed redeploy. Instead
+   of redeploying, all 8 values were **independently re-derived from public inputs only**
+   (the known constructor arguments, this contract's own deployed address, chain ID `11155111`,
+   and the EIP-712 domain literals `"WalletWallStablecoinVault"`/`"1"` read from source) and
+   confirmed to match the live on-chain bytes exactly, byte for byte.
+
+**What this claim does and does not cover:** "Reproducible" here means every byte the EVM
+actually executes — the full contract logic, and every immutable constructor value — is
+proven to come from the public commit above. It explicitly **excludes** the trailing
+metadata-hash bytes, which are not code and do not affect on-chain behavior; those are
+recorded as excluded (`metadataHashMatch: false`, `metadataTrailerBytesExcluded: 43`) rather
+than silently ignored, in every manifest.
+
+### Source verification (explorer)
+
+None of the three addresses are marked "verified" on a public explorer today. Explorer source
+verification and source-level reproducibility (above) are **distinct claims**: verification
+publishes source to a specific explorer/UI for human/API browsing, while this repo's
+reproducibility record is an independent, machine-checkable comparison against public git
+history. Given the confirmed compiler settings above, explorer verification for all three
+addresses is a low-risk, deterministic follow-up (flatten or standard-JSON-input verify via
+`hardhat-verify`/Etherscan or Sourcify using solc `0.8.24`, optimizer `runs=200`,
+`evmVersion=cancun`, source commit `35c25fa294bebea44b3089aa2435a190a5adf3fb`); it requires an
+explorer API key to actually submit and is intentionally **not** performed by this record.
 
 ### Safe deployment path: the deploy-only script
 

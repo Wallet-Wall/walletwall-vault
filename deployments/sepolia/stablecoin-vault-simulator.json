@@ -23,7 +23,7 @@
     "MockUSDC (mUSDC) has no monetary value. There is no purchase path, no custody, and no income-generating product or promised returns.",
     "PQ gate uses MockMLDSAVerifier — structural checks only. No real on-chain ML-DSA cryptographic verification.",
     "No income-generating product or promised returns of any kind.",
-    "Source verification is not configured. Bytecode reproducibility from the deployment commit has not been independently confirmed.",
+    "Explorer source verification is not configured for these addresses. Bytecode reproducibility from the deployment commit HAS been independently confirmed for all three contracts (executable code and, for the simulator, all 8 immutable constructor values) — see deployments/reproducibility/stablecoin-vault-simulator-sepolia.json, mock-usdc-sepolia.json, mock-mldsa-verifier-sepolia.json, and docs/Deployments.md for the exact, explicitly scoped claim.",
     "This metadata is read-only. Metadata presence does not guarantee that the simulator is reachable or ready for production use."
   ]
 }

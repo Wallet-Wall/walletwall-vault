@@ -166,6 +166,31 @@ function validateManifest(filePath: string, raw: unknown): ValidationResult {
       if (typeof m["bytecodeHash"] !== "string" || !BYTECODE_HASH_RE.test(m["bytecodeHash"] as string)) {
         errors.push("artifactManifest.bytecodeHash: must be a 0x-prefixed 32-byte hash when reproducible");
       }
+
+      // A manifest may legitimately claim "reproducible" while explicitly excluding the
+      // non-executed solc build-metadata hash (it is known to vary by build environment
+      // even for byte-identical source). That narrower claim must be impossible to state
+      // without also disclosing exactly what is excluded and proving the executable code
+      // itself still matches exactly.
+      if (m["metadataHashMatch"] === false) {
+        if (m["executableBytecodeMatch"] !== true) {
+          errors.push(
+            'artifactManifest.metadataHashMatch: false requires artifactManifest.executableBytecodeMatch: true — a "reproducible" claim cannot exclude the metadata hash unless the executable code is independently confirmed to still match exactly',
+          );
+        }
+        const excluded = m["metadataTrailerBytesExcluded"];
+        if (typeof excluded !== "number" || !Number.isInteger(excluded) || excluded < 0 || excluded > 128) {
+          errors.push(
+            "artifactManifest.metadataTrailerBytesExcluded: required (a small non-negative integer, ≤128) when metadataHashMatch is false, so the excluded region cannot silently grow to cover real logic",
+          );
+        }
+        const disclosureBlob = ((rec["disclosures"] as string[] | undefined) ?? []).join(" ").toLowerCase();
+        if (!/metadata|cbor/.test(disclosureBlob)) {
+          errors.push(
+            "disclosures: metadataHashMatch: false requires at least one disclosure mentioning the excluded metadata/CBOR hash",
+          );
+        }
+      }
     }
   } else {
     // Not reproducible → a concrete remediation plan is mandatory.

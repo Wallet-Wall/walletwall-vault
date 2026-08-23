@@ -1,0 +1,30 @@
+{
+  "$schema": "./schema/reproducibility.schema.json",
+  "version": "1",
+  "subject": "MockMLDSAVerifier",
+  "environment": "sepolia",
+  "chainId": 11155111,
+  "deployedAddress": "0x4736138c99e0619D06663D971C8cD347de186F6d",
+  "deploymentTx": "0x0782c95fa14e5d4762a3e78c98611ca09d6e93f11672fcac493778914e07c8a8",
+  "reportedSourceCommit": "35c25fa294bebea44b3089aa2435a190a5adf3fb",
+  "reportedSourceCommitInPublicHistory": true,
+  "observedRuntimeBytes": 569,
+  "publicHeadRuntimeBytes": 569,
+  "reproducibilityStatus": "reproducible",
+  "lastChecked": "2026-08-23",
+  "artifactManifest": {
+    "sourceTag": "v0.4.24",
+    "bytecodeHash": "0x0ea0ee53ae0bf2fb2612e44ad5462f64110372aecf572648d7584f5c874816c9",
+    "executableBytecodeMatch": true,
+    "metadataHashMatch": false,
+    "metadataTrailerBytesExcluded": 43,
+    "constructorArgs": [],
+    "notes": "bytecodeHash is keccak256 of the live runtime bytecode with the trailing 43-byte solc CBOR metadata region zeroed out (executableBytecodeMatch covers this same normalized region). MockMLDSAVerifier has no `immutable` variables and no constructor arguments, so no immutable-slot verification applies. Verified from a clean `npm ci` + `npx hardhat compile` in a worktree pinned to the deployment commit (Hardhat 2 / solc 0.8.24+commit.e11b9ed9, optimizer runs=200, evmVersion=cancun) against the live Sepolia runtime read via eth_getCode; independently cross-checked with a second solc build variant (solc-js/WASM) to rule out a compiler-binary cause for the metadata divergence."
+  },
+  "disclosures": [
+    "TESTNET ONLY — Ethereum Sepolia. Research prototype. Not audited. No production security guarantee. Do not use real funds.",
+    "This is a MOCK verifier. It performs structural length/shape checks only — it does NOT verify a real ML-DSA-65 (FIPS 204 / Dilithium3) lattice signature on-chain. A passing result means 'structurally plausible', never 'cryptographically authorized'. See docs/Verifier_Roadmap.md.",
+    "All executable runtime bytecode was independently recompiled from public commit 35c25fa294bebea44b3089aa2435a190a5adf3fb (tag v0.4.24) and matched the live Sepolia deployment exactly. Only the trailing 43-byte solc CBOR metadata hash — a non-executed IPFS content pointer, never run by the EVM — differs, consistent with a build-environment difference (OS/toolchain/path) rather than a source or code difference; it is not claimed to match and does not affect on-chain behavior.",
+    "No Ethereum mainnet deployment of this contract exists or is planned."
+  ]
+}
