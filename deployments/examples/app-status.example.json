@@ -7,7 +7,7 @@
     "chainId": 11155111,
     "tokenMode": "mock",
     "tokenSymbol": "mUSDC",
-    "tokenAddress": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+    "tokenAddress": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
     "simulatorAddress": "0x32f489842DD515Fa4b4b258714F0067B8B8133ae",
     "verifierAddress": "0x4736138c99e0619D06663D971C8cD347de186F6d",
     "deployedAt": "2026-06-18T20:23:48.000Z",
