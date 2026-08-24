@@ -167,12 +167,7 @@ describe("Policy finalization authority (adversarial characterization)", functio
       expect(await vault.policyEngine()).to.equal(engineAtQueue);
 
       // CONTROL: the composite now denies on a fresh evaluation.
-      const [ok, why] = await composite.check.staticCall(
-        owner.address,
-        recipient.address,
-        LARGE_AMOUNT,
-        DEPOSIT,
-      );
+      const [ok, why] = await composite.check.staticCall(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
       expect(ok).to.equal(false);
       expect(why).to.equal("recipient is sanctioned");
 
@@ -185,10 +180,11 @@ describe("Policy finalization authority (adversarial characterization)", functio
       );
     });
 
-    it("VULNERABILITY: finalize succeeds after the permitting module is REMOVED from the composite", async function () {
-      // Composite permits at queue time via allowlist; empty composite is permissive too,
-      // so removing the module leaves an all-permitting engine — this variant instead
-      // removes allowlist and relies on the default-deny of an EMPTY allowlist re-add.
+    it("VULNERABILITY: finalize succeeds after a retained composite module's internal state turns denying", async function () {
+      // The composite KEEPS its allowlist module throughout; only the module's internal
+      // state mutates (the recipient's allowlist entry is revoked after queue). Removing
+      // the module itself would not deny — an empty composite is permissive — so the
+      // mutation under test is module-internal, behind an unchanged composite address.
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await composite.addModule(await allowlistPolicy.getAddress());
       await setPolicyEngine(await composite.getAddress());
@@ -370,9 +366,10 @@ describe("Policy finalization authority (adversarial characterization)", functio
       expect(await vault.treasuryApprovals(operationId, guardian1.address)).to.equal(false);
       // Cancelled op cannot be finalized.
       await networkHelpers.time.increase(LARGE_TX_DELAY);
-      await expect(
-        vault.connect(owner).finalizeWithdrawal(owner.address, operationId),
-      ).to.be.revertedWithCustomError(vault, "NoPendingWithdrawal");
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
+        vault,
+        "NoPendingWithdrawal",
+      );
     });
 
     it("a re-queued withdrawal after cancellation does NOT inherit the old op's guardian approvals", async function () {

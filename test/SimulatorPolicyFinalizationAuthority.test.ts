@@ -72,10 +72,9 @@ describe("Simulator policy finalization authority (parity characterization)", fu
 
     token = await (await ethers.getContractFactory("MockUSDC")).deploy();
     verifier = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
-    sim = await (await ethers.getContractFactory("StablecoinVaultSimulator", admin)).deploy(
-      await token.getAddress(),
-      await verifier.getAddress(),
-    );
+    sim = await (
+      await ethers.getContractFactory("StablecoinVaultSimulator", admin)
+    ).deploy(await token.getAddress(), await verifier.getAddress());
     allowlistPolicy = await (await ethers.getContractFactory("RecipientAllowlistPolicy", admin)).deploy();
     dailyPolicy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
     sanctionsPolicy = await (await ethers.getContractFactory("SanctionsListPolicy", admin)).deploy();
@@ -100,10 +99,7 @@ describe("Simulator policy finalization authority (parity characterization)", fu
     expect(await sim.policyEngine()).to.equal(engineAtQueue); // address unchanged
 
     await networkHelpers.time.increase(LARGE_TX_DELAY);
-    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
-      sim,
-      "WithdrawalFinalized",
-    );
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
   });
 
   it("VULNERABILITY: finalize pays a recipient removed from the allowlist AFTER queue", async function () {
@@ -117,10 +113,7 @@ describe("Simulator policy finalization authority (parity characterization)", fu
     expect(ok).to.equal(false);
 
     await networkHelpers.time.increase(LARGE_TX_DELAY);
-    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
-      sim,
-      "WithdrawalFinalized",
-    );
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
   });
 
   it("SAFE (control): finalize BLOCKS when the engine ADDRESS is replaced by a denying one", async function () {
