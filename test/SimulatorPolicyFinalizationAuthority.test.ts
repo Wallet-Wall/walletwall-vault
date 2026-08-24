@@ -194,16 +194,21 @@ describe("Simulator policy finalization authority (parity regression)", function
   });
 
   it("a code-less CURRENT engine fails finalization closed (parity)", async function () {
+    // Wipe the already-active engine's OWN code in place rather than governance-switching
+    // to an EOA — governance now refuses to install an already-code-less destination; see
+    // test/GovernanceCodeBearingDestination.test.ts. This test is about a destination that
+    // was valid at propose/apply time and lost its code afterward.
     await allowlistPolicy.connect(owner).addRecipient(recipient.address);
     await setPolicyEngine(await allowlistPolicy.getAddress());
     await enableLargeTx();
     const { operationId } = await queueLarge();
 
-    await setPolicyEngine(other.address); // EOA: code.length == 0
+    const engineAddr = await allowlistPolicy.getAddress();
+    await ethers.provider.send("hardhat_setCode", [engineAddr, "0x"]);
     await networkHelpers.time.increase(LARGE_TX_DELAY);
     await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
       .to.be.revertedWithCustomError(sim, "PolicyEngineUnavailable")
-      .withArgs(other.address);
+      .withArgs(engineAddr);
   });
 
   it("a revalidate() that attempts a state write fails finalization closed (STATICCALL parity)", async function () {

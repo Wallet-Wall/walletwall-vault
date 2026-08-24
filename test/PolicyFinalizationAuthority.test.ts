@@ -552,17 +552,22 @@ describe("Policy finalization authority (regression)", function () {
     });
 
     it("a CURRENT engine that has become code-less fails closed", async function () {
-      // Queue under a real engine, then point the active engine at a code-less address (an EOA).
+      // Queue under a real engine, then wipe that engine's OWN code in place — it has
+      // become code-less without ever going through governance. (Governance itself now
+      // refuses to install an already-code-less destination as the active engine; see
+      // test/GovernanceCodeBearingDestination.test.ts. This test is about a destination
+      // that was valid at propose/apply time and lost its code afterward.)
       await setPolicyEngine(await allowlistPolicy.getAddress());
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await enableLargeTx();
       const { operationId } = await queueLarge();
 
-      await setPolicyEngine(other.address); // EOA: code.length == 0
+      const engineAddr = await allowlistPolicy.getAddress();
+      await ethers.provider.send("hardhat_setCode", [engineAddr, "0x"]);
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
         .to.be.revertedWithCustomError(vault, "PolicyEngineUnavailable")
-        .withArgs(other.address);
+        .withArgs(engineAddr);
     });
   });
 

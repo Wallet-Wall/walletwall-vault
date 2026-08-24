@@ -277,6 +277,10 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error TransferFailed();
     error NoPendingPQVerifier();
     error PQVerifierUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
+    /// @notice A proposed or pending governance destination has no runtime code.
+    /// @dev Proves only that the address is code-bearing at this instant — not
+    ///      interface conformance, behavioral correctness, or future availability.
+    error NoCode(address account);
     error NotAGuardian();
     error AlreadySupported();
     error RecoveryNotReady();
@@ -1006,10 +1010,13 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      * @notice Proposes a new PQ verifier at the trust boundary.
      * @dev Admin-only. A later proposal replaces the pending proposal and restarts
      *      the delay. The active verifier remains unchanged until
-     *      {applyPQVerifierUpdate} succeeds.
+     *      {applyPQVerifierUpdate} succeeds. `newVerifier` must have code at
+     *      proposal time; see {applyPQVerifierUpdate} for why that alone is not
+     *      sufficient.
      */
     function proposePQVerifier(address newVerifier) external onlyOwner {
         if (newVerifier == address(0)) revert ZeroAddress();
+        if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
         uint256 validAfter = block.timestamp + PQ_VERIFIER_UPDATE_DELAY;
         pendingPQVerifier = newVerifier;
@@ -1037,6 +1044,14 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      * @dev Admin-only. Changing the verifier changes who/what is trusted to
      *      validate PQ signatures for every vault. See
      *      docs/Security_Assumptions.md.
+     *
+     *      Re-checks that the pending verifier still has code, independent of the
+     *      check already performed in {proposePQVerifier}: a governance delay
+     *      separates proposal from execution, and a destination that was
+     *      code-bearing at proposal time can become code-less before the delay
+     *      elapses. This re-check runs before any state is mutated, so a rejected
+     *      apply leaves the active verifier and the pending proposal untouched —
+     *      the proposal remains recoverable via {cancelPQVerifierUpdate}.
      */
     function applyPQVerifierUpdate() external onlyOwner {
         address newVerifier = pendingPQVerifier;
@@ -1046,6 +1061,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (block.timestamp < validAfter) {
             revert PQVerifierUpdateNotReady(validAfter, block.timestamp);
         }
+
+        if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
         address oldVerifier = address(pqVerifier);
         pqVerifier = IPQCVerifier(newVerifier);
@@ -1111,9 +1128,12 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /**
      * @notice Proposes a new policy engine to apply after the governance delay.
      * @dev Admin-only. Pass address(0) to propose disabling the policy engine.
-     *      A later proposal replaces the pending one and restarts the delay.
+     *      A later proposal replaces the pending one and restarts the delay. A
+     *      nonzero `newEngine` must have code at proposal time; see
+     *      {applyPolicyEngine} for why that alone is not sufficient.
      */
     function proposePolicyEngine(address newEngine) external onlyOwner {
+        _requireCodeBearingPolicyEngine(newEngine);
         uint256 validAfter = block.timestamp + POLICY_ENGINE_UPDATE_DELAY;
         pendingPolicyEngine = newEngine;
         pendingPolicyEngineValidAfter = validAfter;
@@ -1123,18 +1143,35 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /**
      * @notice Applies the pending policy engine after the governance delay.
      * @dev Admin-only.
+     *
+     *      Re-checks that a nonzero pending engine still has code, independent of
+     *      the check already performed in {proposePolicyEngine}: a governance
+     *      delay separates proposal from execution, and a destination that was
+     *      code-bearing at proposal time can become code-less before the delay
+     *      elapses. This re-check runs before any state is mutated, so a rejected
+     *      apply leaves the active engine and the pending proposal untouched — the
+     *      proposal remains recoverable via {cancelPolicyEngine}. address(0)
+     *      always passes (disabling the policy engine remains valid).
      */
     function applyPolicyEngine() external onlyOwner {
         if (pendingPolicyEngineValidAfter == 0) revert NoPendingPolicyEngine();
         if (block.timestamp < pendingPolicyEngineValidAfter) {
             revert PolicyEngineUpdateNotReady(pendingPolicyEngineValidAfter, block.timestamp);
         }
-        address oldEngine = address(policyEngine);
         address newEngine = pendingPolicyEngine;
+        _requireCodeBearingPolicyEngine(newEngine);
+
+        address oldEngine = address(policyEngine);
         policyEngine = IPolicyEngine(newEngine);
         pendingPolicyEngine = address(0);
         pendingPolicyEngineValidAfter = 0;
         emit PolicyEngineUpdated(oldEngine, newEngine);
+    }
+
+    /// @dev address(0) is a valid, intentional policy-engine disable value and
+    ///      always passes; any other address must be code-bearing at this instant.
+    function _requireCodeBearingPolicyEngine(address engine) private view {
+        if (engine != address(0) && engine.code.length == 0) revert PolicyEngineUnavailable(engine);
     }
 
     /**
