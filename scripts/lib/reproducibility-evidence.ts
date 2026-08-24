@@ -66,15 +66,19 @@
  *     `verifySourceDigestsAgainstCommit` — WHEN that commit's objects are
  *     locally available (requires a full-history checkout in CI; see
  *     `verifyReportedCommitInPublicHistory`).
- *   - Whether `publicHeadBuild.headCommit` is STALE for the source files it
- *     covers relative to the validating repo's own current HEAD — see
- *     `verifyPublicHeadCommitNotStale`. This walks only the repo-owned
- *     Solidity paths recorded in `sourceDigests`; it does NOT currently watch
+ *   - Whether `publicHeadBuild` is STALE for the source files it covers,
+ *     relative to the validating repo's own current HEAD — see
+ *     `verifyPublicHeadCommitNotStale`. Staleness is defined purely as
+ *     CONTENT divergence: the recorded `sourceDigests` are compared against
+ *     the same paths read out of current HEAD's tree, NOT against commit
+ *     topology, so a squash/rebase that preserves the tree is not stale while
+ *     any real source change is. This walks only the repo-owned Solidity
+ *     paths recorded in `sourceDigests`; it does NOT currently watch
  *     `hardhat.config.ts`, `package.json`/`package-lock.json`, or other
  *     compiler/toolchain configuration, so it does not by itself guarantee
  *     current HEAD recompiles byte-identically under every possible
  *     toolchain/config change since `headCommit` — only that the covered
- *     source files themselves have not changed. (Tracked as a follow-up.)
+ *     source files themselves have the same content. (Tracked as a follow-up.)
  *
  * What this system does NOT protect against: an attacker who edits every
  * cooperating field in a committed evidence/manifest pair simultaneously and
@@ -508,54 +512,96 @@ export function verifySourceDigestsAgainstCommit(
 export interface StalenessCheck {
   /** null means "could not be determined" (commit object unavailable locally). */
   stale: boolean | null;
-  /** Commits (oneline) that touched a covered source file between headCommit and current HEAD. */
-  staleCommits: string[];
+  /**
+   * The covered source files whose CONTENT at current HEAD disagrees with the digest the
+   * capture recorded (or which no longer exist at HEAD), each with the concrete divergence.
+   * This is the staleness AUTHORITY: non-empty iff `stale === true`.
+   */
+  changedFiles: string[];
   error?: string;
 }
 
 /**
  * A "public HEAD" capture is not required to equal the CURRENT tip bit-for-bit — main moves
  * constantly, and re-capturing on every unrelated commit would make this claim impossible to
- * keep current. It IS required to still accurately reflect the CONTENT of current HEAD's
- * `sourceFiles` — i.e. that no commit since `headCommit` has touched one of the specific files
- * this build's `sourceDigests` covers. This checks exactly that: does any commit between
- * `headCommit` and the validating repo's current HEAD touch any of `sourceFiles`? If so, the
- * capture is stale for THIS build regardless of whether it's an "old" commit in the abstract.
+ * keep current. It IS required to still accurately reflect the CONTENT of current HEAD for the
+ * specific files this build's `sourceDigests` covers. This function defines staleness as exactly
+ * that, and nothing else:
  *
- * IMPORTANT — this is a SOURCE-CONTENT check, not a recompilation guarantee: `sourceFiles` here
- * covers only the repo-owned Solidity paths recorded in `sourceDigests`. It does NOT watch
+ *     public-head evidence is stale
+ *     IFF current HEAD's covered source CONTENT != the content the evidence says it captured
+ *
+ * It therefore compares the recorded `sourceDigests` directly against the same paths read out of
+ * current HEAD's git tree (`git show HEAD:<path>`), rather than asking whether some later commit
+ * happened to TOUCH those paths.
+ *
+ * WHY CONTENT, NOT COMMIT TOPOLOGY. This check previously ran
+ * `git log <headCommit>..HEAD -- <sourceFiles>` and reported staleness whenever any intervening
+ * commit touched a covered path. That is a topology question, not a content question, and the two
+ * diverge precisely under this repo's normal squash-merge workflow: squash-merging a PR replaces
+ * its branch history with a NEW single-parent commit that necessarily "touches" every covered path
+ * the PR edited, so evidence captured on the PR branch — with byte-identical resulting content —
+ * was reported stale the instant it merged. PR #159 is the worked example: branch head 14fd579 was
+ * squashed into 091c04c (single parent d96ad7d), immediately invalidating the public-head evidence
+ * that PR had correctly recaptured pre-merge, and forcing a post-merge repair. Content comparison
+ * survives squash, rebase, cherry-pick, and any other history rewrite that preserves the tree,
+ * while still catching every real source change — including a change that is later reverted back
+ * to the captured content, which is correctly NOT stale because the content again matches.
+ *
+ * IMPORTANT — this is a SOURCE-CONTENT check, not a recompilation guarantee: `sourceDigests` here
+ * covers only the repo-owned Solidity paths the capture recorded. It does NOT watch
  * `hardhat.config.ts`, `package.json`/`package-lock.json`, or other compiler/toolchain
- * configuration. `stale: false` therefore means "these exact source files are unchanged at
+ * configuration. `stale: false` therefore means "these exact source files have the same content at
  * current HEAD" — it does NOT by itself mathematically guarantee that recompiling current HEAD
- * would produce byte-identical output, since a toolchain/compiler-settings/dependency change
- * with no edit to `sourceFiles` would go undetected by this function. (Tracked as a follow-up;
- * not addressed by this function today.)
+ * would produce byte-identical output, since a toolchain/compiler-settings/dependency change with
+ * no edit to a covered file would go undetected by this function. (Tracked as a follow-up; not
+ * addressed by this function today.)
  *
- * Requires headCommit's objects to be locally available (a full-history checkout); returns
- * `stale: null` (never a false "not stale") when that can't be determined.
+ * Requires headCommit's objects to be locally available (a full-history checkout). That is not
+ * needed for the content comparison itself, but it is deliberately retained as a PRECONDITION: on
+ * a shallow checkout the surrounding evidence chain (notably
+ * {verifySourceDigestsAgainstCommit}, which binds these same digests to the capture commit) cannot
+ * be verified either, and answering "not stale" there would assert freshness on the strength of
+ * digests nothing has authenticated. Returns `stale: null` — never a false "not stale" — in that
+ * case, and likewise when HEAD itself cannot be resolved or when the capture bound no files at all.
  */
 export function verifyPublicHeadCommitNotStale(
   headCommit: string,
-  sourceFiles: string[],
+  sourceDigests: Record<string, string>,
   repoRoot: string,
 ): StalenessCheck {
   const availability = checkCommitObjectAvailable(headCommit, repoRoot);
   if (!availability.commitObjectPresent) {
-    return { stale: null, staleCommits: [], error: availability.error };
+    return { stale: null, changedFiles: [], error: availability.error };
   }
-  if (sourceFiles.length === 0) {
-    return { stale: null, staleCommits: [], error: "no source files given to check staleness against" };
+  const entries = Object.entries(sourceDigests);
+  if (entries.length === 0) {
+    return {
+      stale: null,
+      changedFiles: [],
+      error: "sourceDigests is empty — a capture that bound no source files proves nothing about staleness",
+    };
   }
-  const result = runGit(["log", "--oneline", `${headCommit}..HEAD`, "--", ...sourceFiles], repoRoot);
-  if (!result.ok) {
-    return { stale: null, staleCommits: [], error: `git log ${headCommit}..HEAD failed for the given source files` };
+  // Resolve HEAD once. A missing/broken HEAD is inconclusive; a specific file
+  // missing UNDER a resolvable HEAD is a real content change (deleted/renamed).
+  const head = runGit(["rev-parse", "HEAD"], repoRoot);
+  if (!head.ok) {
+    return { stale: null, changedFiles: [], error: "could not resolve current HEAD to compare covered source content" };
   }
-  const lines = result.stdout
-    .toString("utf8")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-  return { stale: lines.length > 0, staleCommits: lines };
+
+  const changedFiles: string[] = [];
+  for (const [file, recordedDigest] of entries) {
+    const blob = runGit(["show", `HEAD:${file}`], repoRoot);
+    if (!blob.ok) {
+      changedFiles.push(`${file}: no longer present at current HEAD (deleted or renamed since capture)`);
+      continue;
+    }
+    const headDigest = keccak256(blob.stdout);
+    if (headDigest.toLowerCase() !== recordedDigest.toLowerCase()) {
+      changedFiles.push(`${file}: content at HEAD is ${headDigest}, capture recorded ${recordedDigest}`);
+    }
+  }
+  return { stale: changedFiles.length > 0, changedFiles };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -946,20 +992,20 @@ export function checkEvidenceAgainstManifest(
     if (!headDigestCheck.ok) {
       for (const e of headDigestCheck.errors) errors.push(`[public-head binding] ${e}`);
     }
-    // A publicHeadBuild need not equal the CURRENT tip bit-for-bit, but it must still
-    // accurately represent current HEAD for the specific files it covers — reject it if any
-    // commit between headCommit and this repo's current HEAD touched one of those files,
-    // even when evidence and manifest agree with each other on headCommit/publicHeadCommit.
+    // A publicHeadBuild need not equal the CURRENT tip bit-for-bit, but the CONTENT it recorded
+    // for the files it covers must still match current HEAD's content for those same paths.
+    // Compared by digest, not by commit topology, so a squash/rebase that preserves the tree is
+    // correctly NOT stale while any real source change (or a deletion/rename) is.
     const staleness = verifyPublicHeadCommitNotStale(
       evidence.publicHeadBuild.headCommit,
-      Object.keys(evidence.publicHeadBuild.sourceDigests),
+      evidence.publicHeadBuild.sourceDigests,
       repoRoot,
     );
     if (staleness.stale === null) {
       errors.push(`[public-head staleness] could not be determined: ${staleness.error}`);
     } else if (staleness.stale) {
       errors.push(
-        `[public-head staleness] publicHeadBuild.headCommit (${evidence.publicHeadBuild.headCommit}) is stale: ${staleness.staleCommits.length} commit(s) touched its covered source files since then and are not reflected — ${staleness.staleCommits.slice(0, 3).join("; ")}${staleness.staleCommits.length > 3 ? "; ..." : ""} — recapture publicHeadBuild from current HEAD`,
+        `[public-head staleness] publicHeadBuild (headCommit ${evidence.publicHeadBuild.headCommit}) is stale: ${staleness.changedFiles.length} covered source file(s) differ in CONTENT from current HEAD — ${staleness.changedFiles.slice(0, 3).join("; ")}${staleness.changedFiles.length > 3 ? "; ..." : ""} — recapture publicHeadBuild from current HEAD`,
       );
     }
   }

@@ -421,12 +421,17 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
 // Blocker 2 (round 2) — a publicHeadBuild that is internally self-consistent
 // (evidence.headCommit === manifest.publicHeadCommit, and sourceDigests that
 // genuinely verify against THAT commit's real git content) can still be
-// STALE: commits landing between it and the validating repo's current HEAD
-// may have touched the very source files it claims to cover, without the
-// capture ever being refreshed. Blocker A/B close "is this commit real and
-// does its content match" — this closes "is this commit still current for
-// the files it covers", a distinct temporal property neither of those checks
-// can see.
+// STALE: the source files it claims to cover may have since CHANGED CONTENT
+// at the validating repo's current HEAD, without the capture ever being
+// refreshed. Blocker A/B close "is this commit real and does its content
+// match" — this closes "does this capture still describe current HEAD's
+// content", a distinct property neither of those checks can see.
+//
+// Staleness is decided by CONTENT (recorded sourceDigests vs. the same paths
+// at current HEAD), never by commit topology — see
+// test/ReproducibilityStalenessContentAuthority.test.ts for the full
+// adversarial control set, including the squash-merge regression this
+// distinction exists to close.
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
@@ -434,25 +439,35 @@ describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
     const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
     const result = verifyPublicHeadCommitNotStale(
       PUBLIC_HEAD_COMMIT,
-      Object.keys(fixture.evidence.publicHeadBuild.sourceDigests),
+      fixture.evidence.publicHeadBuild.sourceDigests,
       REPO_ROOT,
     );
     expect(result.stale, result.error).to.equal(false);
   });
 
-  it("the old deployment commit IS stale relative to current HEAD for StablecoinVaultSimulator.sol (PR #152 changed it after DEPLOYMENT_COMMIT)", () => {
+  it("the old deployment commit's recorded content IS stale relative to current HEAD (PR #152 changed StablecoinVaultSimulator.sol after DEPLOYMENT_COMMIT)", () => {
+    // Use the deployment-commit capture's OWN recorded digests: they are genuinely valid
+    // for DEPLOYMENT_COMMIT, so this is a real content divergence against current HEAD,
+    // not a fabricated one.
+    const fixture = loadFixtures().find((f) => f.slug === "stablecoin-vault-simulator-sepolia")!;
     const result = verifyPublicHeadCommitNotStale(
       DEPLOYMENT_COMMIT,
-      ["contracts/StablecoinVaultSimulator.sol"],
+      fixture.evidence.deploymentCommitBuild.sourceDigests,
       REPO_ROOT,
     );
     expect(result.stale).to.equal(true);
-    expect(result.staleCommits.length).to.be.greaterThan(0);
+    expect(result.changedFiles.length).to.be.greaterThan(0);
+    expect(result.changedFiles.some((f) => f.includes("contracts/StablecoinVaultSimulator.sol"))).to.equal(true);
   });
 
   it("a commit whose object is not locally available returns stale: null (inconclusive), never a false 'not stale'", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
     const fabricated = "e".repeat(40);
-    const result = verifyPublicHeadCommitNotStale(fabricated, ["contracts/MockUSDC.sol"], REPO_ROOT);
+    const result = verifyPublicHeadCommitNotStale(
+      fabricated,
+      fixture.evidence.publicHeadBuild.sourceDigests,
+      REPO_ROOT,
+    );
     expect(result.stale).to.equal(null);
   });
 
