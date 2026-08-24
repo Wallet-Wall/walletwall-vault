@@ -146,8 +146,9 @@ field is ever accepted on its own say-so.
 [`test/ReproducibilityEvidenceCheck.test.ts`](../test/ReproducibilityEvidenceCheck.test.ts) proves
 this by mutation: it tampers with the hash, an executable byte, the metadata boundary, the
 excluded-byte count, an immutable's derivation input, its observed on-chain value, its byte-range
-reference, the recorded source commit, and the recorded deployed address — one at a time — and
-asserts the checker rejects every one of those nine mutations for the correct reason.
+reference, the recorded source commit, the recorded deployed address, and the live runtime code
+hash — one at a time — and asserts the checker rejects every one of those ten mutations for the
+correct reason.
 
 To replay every manifest against its committed evidence yourself (offline, no network,
 no toolchain — just reads the committed bundles): `npx tsx scripts/reproducibility-evidence.ts
@@ -170,13 +171,26 @@ evidence bundles below were produced.
    deployment commit"), never conflated with reproducibility against the deployment commit
    itself, since the two builds can legitimately use different toolchains. Both builds' `capture-build`
    step binds `sourceDigests` to the literal `content` embedded in solc's own standard-json input
-   (not a separately-taken disk snapshot), and records a `compilerInputHash` — keccak256 of the
-   full canonical compiler input, including dependency sources — so a source digest can only ever
-   describe what solc actually compiled, never merely what happens to sit on disk with a matching
-   filename. `npm run validate:reproducibility` additionally requires `publicHeadBuild.headCommit`
-   to be non-stale: it rejects the claim if any commit between that capture and the validating
-   repo's current HEAD touched one of the source files it covers, even when the manifest and
-   evidence agree with each other on the (stale) commit.
+   (not a separately-taken disk snapshot), so a source digest can only ever describe what solc
+   actually compiled, never merely what happens to sit on disk with a matching filename —
+   `sourceDigests` is independently re-verified by the checker against the claimed commit's real
+   git objects (`git show`), and is the actual replayed source-binding authority. Each build
+   capture also records a `compilerInputHash` — keccak256 of the full canonical compiler input,
+   including dependency sources — but this is a **capture-time audit fingerprint only**: the
+   committed evidence bundle does not retain the full standard-json input, so
+   `validate:reproducibility` cannot independently recompute or replay `compilerInputHash`
+   offline; it exists for a party who separately retains the original build-info (e.g. CI build
+   artifacts) to audit against. `npm run validate:reproducibility` additionally requires
+   `publicHeadBuild.headCommit` to be non-stale: it rejects the claim if any commit between that
+   capture and the validating repo's current HEAD touched one of the source files it covers, even
+   when the manifest and evidence agree with each other on the (stale) commit. This staleness
+   check currently watches only the `sourceDigests`-covered Solidity source paths — it does not
+   watch `hardhat.config.ts`, `package.json`/`package-lock.json`, or other compiler/toolchain
+   configuration, so a non-stale result does not by itself guarantee current HEAD recompiles
+   byte-identically under every possible toolchain/config change since that commit (tracked as a
+   follow-up). It also independently re-checks that `liveRuntime.runtimeCodeHash` really is
+   `keccak256(liveRuntime.runtimeBytecode)`, rather than trusting the two fields to agree because
+   they were captured together.
 2. Read the live runtime bytecode for all three addresses via `eth_getCode` against a public
    Sepolia RPC, and confirmed `eth_chainId` is `11155111`.
 3. Decoded the trailing solc CBOR metadata region directly from the bytecode's own trailing

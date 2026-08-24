@@ -32,8 +32,23 @@
  *     independently derives the ACTUAL checked-out commit via `git
  *     rev-parse HEAD` (never trusting an operator-supplied label alone),
  *     requires a clean tracked tree, and records per-source-file keccak256
- *     digests (`sourceDigests`) taken directly from solc's own metadata,
- *     cross-checked against the files actually on disk at capture time.
+ *     digests (`sourceDigests`) taken directly from the LITERAL content
+ *     embedded in solc's own standard-json compiler input — not a disk
+ *     snapshot taken separately — cross-checked at capture time against the
+ *     files actually on disk (`verifyDigestsMatchWorkingTree`). Each build
+ *     capture also records `compilerInputHash`: keccak256 of the FULL
+ *     canonicalized standard-json input (every source, including
+ *     dependencies, plus settings) — a capture-time AUDIT FINGERPRINT of the
+ *     complete compilation input, not a claim this module can independently
+ *     recompute. The committed evidence bundle deliberately does NOT contain
+ *     the full standard-json input (dependency source text alone would be
+ *     large, and is already covered by `package-lock.json`'s own integrity
+ *     hashes), so `compilerInputHash` cannot be replayed offline the way
+ *     `sourceDigests` can; it exists so a party who DOES retain the original
+ *     build-info file (e.g. the operator, or CI build artifacts) can prove
+ *     that exact input produced this evidence. `sourceDigests` plus their
+ *     git-object re-verification (below) remain the actual REPLAYED
+ *     source-binding authority this module enforces.
  *
  * What IS independently re-derived, offline, with no network access, by
  * THIS module:
@@ -41,6 +56,9 @@
  *     BOTH live and local sides — see Blocker D below).
  *   - The normalized executable-code comparison and hash (computed on BOTH
  *     sides, not inferred from one side only).
+ *   - `liveRuntime.runtimeCodeHash`, cross-checked against
+ *     `keccak256(liveRuntime.runtimeBytecode)` — the internal-consistency
+ *     property described above is actually enforced, not merely asserted.
  *   - Every immutable's expected value, from public inputs.
  *   - The immutable byte-range AUTHORITY itself: which AST ids are even
  *     eligible to claim an exclusion range (see `validateImmutableAuthority`).
@@ -48,6 +66,15 @@
  *     `verifySourceDigestsAgainstCommit` — WHEN that commit's objects are
  *     locally available (requires a full-history checkout in CI; see
  *     `verifyReportedCommitInPublicHistory`).
+ *   - Whether `publicHeadBuild.headCommit` is STALE for the source files it
+ *     covers relative to the validating repo's own current HEAD — see
+ *     `verifyPublicHeadCommitNotStale`. This walks only the repo-owned
+ *     Solidity paths recorded in `sourceDigests`; it does NOT currently watch
+ *     `hardhat.config.ts`, `package.json`/`package-lock.json`, or other
+ *     compiler/toolchain configuration, so it does not by itself guarantee
+ *     current HEAD recompiles byte-identically under every possible
+ *     toolchain/config change since `headCommit` — only that the covered
+ *     source files themselves have not changed. (Tracked as a follow-up.)
  *
  * What this system does NOT protect against: an attacker who edits every
  * cooperating field in a committed evidence/manifest pair simultaneously and
@@ -328,7 +355,7 @@ export interface BuildCapture {
   immutableReferences: Record<string, Array<{ start: number; length: number }>>;
   /** Per-local-source-file keccak256 of the LITERAL content embedded in the compiler's OWN standard-json input (compilerInput.sources[path].content) — not a disk snapshot taken separately. Proven by construction to be exactly what produced deployedBytecodeObject; verifySourceDigestsAgainstCommit re-verifies these against `git show <commit>:<path>` at check time, closing the full chain (git commit -> compiler input -> compiler output). */
   sourceDigests: Record<string, string>;
-  /** keccak256 of a canonical (recursively key-sorted) JSON serialization of the FULL solc standard-json input (language, ALL sources including dependencies, settings) that produced this build — a single audit fingerprint of the complete compilation input, freezing even the parts (dependency source content) git does not govern. */
+  /** keccak256 of a canonical (recursively key-sorted) JSON serialization of the FULL solc standard-json input (language, ALL sources including dependencies, settings) that produced this build — a CAPTURE-TIME audit fingerprint of the complete compilation input, freezing even the parts (dependency source content) git does not govern. The committed evidence bundle does not retain the full standard-json input itself, so this module cannot independently recompute or replay this value offline — that is `sourceDigests`' job (see `verifySourceDigestsAgainstCommit`), which this module DOES re-verify against real git objects. This field is audit trail, not a replayed check. */
   compilerInputHash: string;
   /** Every immutable VariableDeclaration the compiler's AST reports, across the whole compilation unit — the independent authority for Blocker C. Empty array if the build has no immutables anywhere relevant. */
   immutableAstDeclarations: ImmutableAstDeclaration[];
@@ -489,12 +516,20 @@ export interface StalenessCheck {
 /**
  * A "public HEAD" capture is not required to equal the CURRENT tip bit-for-bit — main moves
  * constantly, and re-capturing on every unrelated commit would make this claim impossible to
- * keep current. It IS required to still accurately represent what current HEAD would compile
- * for the files this build actually depends on. This checks exactly that: does any commit
- * between `headCommit` and the validating repo's current HEAD touch any of `sourceFiles`? If
- * so, the capture is stale for THIS build regardless of whether it's an "old" commit in the
- * abstract — and if not, an older headCommit is not stale in any sense that matters, since
- * recompiling current HEAD would produce byte-identical output for those files.
+ * keep current. It IS required to still accurately reflect the CONTENT of current HEAD's
+ * `sourceFiles` — i.e. that no commit since `headCommit` has touched one of the specific files
+ * this build's `sourceDigests` covers. This checks exactly that: does any commit between
+ * `headCommit` and the validating repo's current HEAD touch any of `sourceFiles`? If so, the
+ * capture is stale for THIS build regardless of whether it's an "old" commit in the abstract.
+ *
+ * IMPORTANT — this is a SOURCE-CONTENT check, not a recompilation guarantee: `sourceFiles` here
+ * covers only the repo-owned Solidity paths recorded in `sourceDigests`. It does NOT watch
+ * `hardhat.config.ts`, `package.json`/`package-lock.json`, or other compiler/toolchain
+ * configuration. `stale: false` therefore means "these exact source files are unchanged at
+ * current HEAD" — it does NOT by itself mathematically guarantee that recompiling current HEAD
+ * would produce byte-identical output, since a toolchain/compiler-settings/dependency change
+ * with no edit to `sourceFiles` would go undetected by this function. (Tracked as a follow-up;
+ * not addressed by this function today.)
  *
  * Requires headCommit's objects to be locally available (a full-history checkout); returns
  * `stale: null` (never a false "not stale") when that can't be determined.
@@ -866,6 +901,18 @@ export function checkEvidenceAgainstManifest(
   if (manifest["publicHeadCommit"] != null && evidence.publicHeadBuild.headCommit !== manifest["publicHeadCommit"]) {
     errors.push(
       `evidence.publicHeadBuild.headCommit (${evidence.publicHeadBuild.headCommit}) does not match manifest.publicHeadCommit (${manifest["publicHeadCommit"]}) — a stale or substituted public-HEAD capture cannot be silently relabeled as current`,
+    );
+  }
+
+  // ── Live-capture internal consistency: runtimeCodeHash is DOCUMENTED (see
+  // this module's header) as independently re-provable as keccak256(runtimeBytecode) —
+  // actually enforce that, rather than trusting the two fields to agree because the
+  // capture tool wrote them together. A tampered runtimeCodeHash with the real
+  // runtimeBytecode left untouched must fail here, specifically. ────────────────────
+  const derivedRuntimeCodeHash = keccak256(evidence.liveRuntime.runtimeBytecode);
+  if (evidence.liveRuntime.runtimeCodeHash.toLowerCase() !== derivedRuntimeCodeHash.toLowerCase()) {
+    errors.push(
+      `evidence.liveRuntime.runtimeCodeHash (${evidence.liveRuntime.runtimeCodeHash}) does not equal keccak256(evidence.liveRuntime.runtimeBytecode) (${derivedRuntimeCodeHash}) — the recorded hash does not describe the recorded bytecode`,
     );
   }
 

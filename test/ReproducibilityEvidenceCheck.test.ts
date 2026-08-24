@@ -280,6 +280,17 @@ describe("checkEvidenceAgainstManifest — adversarial mutation matrix", () => {
     expect(result.errors.some((e) => /deployedAddress/.test(e))).to.equal(true);
   });
 
+  it("10. a tampered liveRuntime.runtimeCodeHash, with runtimeBytecode left untouched, is rejected — the module's own documented internal-consistency property (runtimeCodeHash === keccak256(runtimeBytecode)) is actually enforced, not merely asserted", () => {
+    const evidence = clone(usdcFixture.evidence);
+    // Mutate ONLY the recorded hash; the bytecode it's supposed to describe is untouched,
+    // so nothing else in the checker (executableBytecodeMatch, metadata boundary, etc.)
+    // has any reason to fail — this must be caught specifically as a hash/bytecode mismatch.
+    evidence.liveRuntime.runtimeCodeHash = "0x" + "ab".repeat(32);
+    const result = checkEvidenceAgainstManifest(evidence, usdcFixture.manifest);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /runtimeCodeHash/.test(e))).to.equal(true);
+  });
+
   it("bonus: excluding a REAL code byte by mislabeling it as metadata is still rejected", () => {
     // Adversarial case from the review: claim executableBytecodeMatch/metadataHashMatch
     // as if the divergence were metadata-only, while the actual differing byte is
@@ -641,7 +652,7 @@ describe("Blocker D — dual metadata-boundary authorization", () => {
 
 // ─────────────────────────────────────────────────────────────────────────
 // Common-mode mutation matrix — mutating manifest AND evidence TOGETHER,
-// self-consistently, must still fail. The earlier 9-point matrix (above)
+// self-consistently, must still fail. The earlier 10-point matrix (above)
 // proved disagreement detection when only one side is touched; these prove
 // the false claim is structurally impossible even when an attacker updates
 // every cooperating field at once.
