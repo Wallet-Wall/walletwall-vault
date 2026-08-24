@@ -122,7 +122,7 @@
       "contracts/mocks/MockUSDC.sol": "0xf3234021fd43cc5f59284032dccf1481259601d0a01950ab148bd6730663c667",
       "contracts/mocks/PolicyRevalidationMocks.sol": "0x86001a01602d5e61d99c2e2b5fca6b18ca700bd96f58b378c01b39de9f1d4831",
       "contracts/mocks/RejectEther.sol": "0x65a18729f548cc8d7c956de3f0ab8631a38a41041d478f9628074acce3b58f6d",
-      "contracts/policies/CompositePolicyEngine.sol": "0xac9e6f16bde13491a9d08a14325e8725e69c4d37026e6b6a348a27ede4b5dd92",
+      "contracts/policies/CompositePolicyEngine.sol": "0xbf30c1fffbd509bc79c72ce4da2ffe5eff3e062e2c483a28ce98e0b65f57d8b2",
       "contracts/policies/DailySpendLimitPolicy.sol": "0x8ea9bc737216e328006727a87078733934d372678dda2defde65e1165075bbf0",
       "contracts/policies/RecipientAllowlistPolicy.sol": "0xcc4bce37617c1c66821e1b4bd4a3dc72705b6051c9938c9724c72147663422b9",
       "contracts/policies/SanctionsListPolicy.sol": "0xd76ba454883ac6f5430daf00ce5cd5a3c8b901d8c010c93c4480a770d7316f79",
@@ -195,27 +195,27 @@
         "typeString": "uint256"
       },
       {
-        "astId": "18717",
+        "astId": "18881",
         "name": "attestor",
         "sourceFile": "contracts/verifiers/ImmutableAttestationPQCVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "18936",
+        "astId": "19100",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "18939",
+        "astId": "19103",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "bytes32"
       }
     ],
-    "compilerInputHash": "0x8ba189cf9d4ae2ea0d4a2a302122bb3678d8362b4f9d4ee176b1fa68293b9d92",
-    "headCommit": "ba345745dbd5015775238c2ebebe4c3789580583",
-    "capturedAt": "2026-08-24T03:20:19.930Z"
+    "compilerInputHash": "0x85ddafc02d152aa1aa222975cd7ce487afff52140db1d8a37a0edc557b0ee68f",
+    "headCommit": "21c13efbad8cb6a0d674b51b626c4e66f9b3631a",
+    "capturedAt": "2026-08-24T13:30:36.907Z"
   },
   "liveRuntime": {
     "address": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
