@@ -79,6 +79,14 @@ describe("CI workflow — deployment-truth and bytecode-size gates run in normal
       expect(job).to.include("npm run validate:reproducibility");
     });
 
+    it("checks out full git history (fetch-depth: 0), which validate:reproducibility's public-history and source-commit-binding checks require", function () {
+      const checkoutStep = stepBlockContaining(job, "actions/checkout@");
+      expect(
+        checkoutStep,
+        "fetch-depth: 0 not found on the checkout step — without it, historical deployment commits are absent from the shallow clone and scripts/lib/reproducibility-evidence.ts's git-based checks (verifyReportedCommitInPublicHistory, verifySourceDigestsAgainstCommit) go inconclusive, failing validate:reproducibility for every 'reproducible' manifest",
+      ).to.match(/fetch-depth:\s*0/);
+    });
+
     it("runs npm run validate:bytecode-size", function () {
       expect(job).to.include("npm run validate:bytecode-size");
     });

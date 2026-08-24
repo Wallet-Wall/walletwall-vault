@@ -195,7 +195,11 @@ function validateManifest(filePath: string, raw: unknown): ValidationResult {
       } else {
         try {
           const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as EvidenceBundle;
-          const check = checkEvidenceAgainstManifest(evidence, rec);
+          // Pass REPO_ROOT so the replay ALSO independently verifies (via local git,
+          // no network) that the deployment commit is real public history and that its
+          // sourceDigests match that commit's actual git objects — requires a
+          // full-history checkout (see .github/workflows/ci.yml's fetch-depth: 0).
+          const check = checkEvidenceAgainstManifest(evidence, rec, REPO_ROOT);
           for (const e of check.errors) errors.push(`[evidence replay] ${e}`);
         } catch (err) {
           errors.push(`evidenceFile: failed to load/replay ${evidenceFile}: ${(err as Error).message}`);

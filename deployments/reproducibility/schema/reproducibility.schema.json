@@ -56,7 +56,12 @@
     "publicHeadRuntimeBytes": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Byte length of the runtime bytecode recompiled from current public HEAD (a distinct, separately-captured build — see evidenceFile's publicHeadBuild.headCommit for the exact SHA used). Equality with observedRuntimeBytes is informational context (source has not drifted since the deployment commit), NOT the reproducibility claim itself — that is reportedCommitRuntimeBytes."
+      "description": "Byte length of the runtime bytecode recompiled from current public HEAD (a distinct, separately-captured build — see publicHeadCommit for the exact SHA used). Equality with observedRuntimeBytes is informational context (source has not drifted since the deployment commit), NOT the reproducibility claim itself — that is reportedCommitRuntimeBytes."
+    },
+    "publicHeadCommit": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The exact commit SHA the publicHeadRuntimeBytes build was captured at (cross-checked against evidenceFile's publicHeadBuild.headCommit when evidenceFile is present). Pinning this prevents a stale or substituted public-HEAD capture from being silently relabeled as current."
     },
     "reproducibilityStatus": {
       "type": "string",

@@ -25,15 +25,23 @@ import { join } from "path";
 import { expect } from "chai";
 
 import {
+  checkCommitObjectAvailable,
   checkEvidenceAgainstManifest,
   decodeSolcMetadataBoundary,
+  deriveFactsFromEvidence,
   deriveImmutableExpectedBytes,
   encodeShortString,
+  validateImmutableAuthority,
+  verifyReportedCommitInPublicHistory,
+  verifySourceDigestsAgainstCommit,
   type EvidenceBundle,
 } from "../scripts/lib/reproducibility-evidence";
 
-const REPRO_DIR = join(import.meta.dirname, "..", "deployments", "reproducibility");
+const REPO_ROOT = join(import.meta.dirname, "..");
+const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const EVIDENCE_DIR = join(REPRO_DIR, "evidence");
+const DEPLOYMENT_COMMIT = "35c25fa294bebea44b3089aa2435a190a5adf3fb";
+const PUBLIC_HEAD_COMMIT = "fca346457c94cdaf6b1b5bc2f824cdd15ff9972f";
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
@@ -283,5 +291,361 @@ describe("checkEvidenceAgainstManifest — adversarial mutation matrix", () => {
     const result = checkEvidenceAgainstManifest(evidence, manifest);
     expect(result.ok).to.equal(false);
     expect(result.facts.executableBytecodeMatch).to.equal(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Blocker B — public-history reachability is independently derived via local
+// git plumbing, never trusted from the manifest's own boolean.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("verifyReportedCommitInPublicHistory — Blocker B", () => {
+  it("the real deployment commit is confirmed present and an ancestor of HEAD in this repo", () => {
+    const result = verifyReportedCommitInPublicHistory(DEPLOYMENT_COMMIT, REPO_ROOT);
+    expect(result.isAncestorOfHead).to.equal(true);
+  });
+
+  it("a fabricated commit that does not exist anywhere returns null (inconclusive), never false", () => {
+    const fabricated = "f".repeat(40);
+    const result = checkCommitObjectAvailable(fabricated, REPO_ROOT);
+    expect(result.commitObjectPresent).to.equal(false);
+    const history = verifyReportedCommitInPublicHistory(fabricated, REPO_ROOT);
+    expect(history.isAncestorOfHead).to.equal(null);
+    expect(history.error).to.match(/not present locally/);
+  });
+
+  it("checkEvidenceAgainstManifest treats a manifest's reportedSourceCommitInPublicHistory as REQUIRING agreement with the independently-derived value, not as its own authority", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const manifest = clone(fixture.manifest);
+    // Flip the flag against what git actually shows.
+    manifest["reportedSourceCommitInPublicHistory"] = false;
+    const result = checkEvidenceAgainstManifest(fixture.evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /reportedSourceCommitInPublicHistory/.test(e))).to.equal(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Blocker A (offline half) — sourceDigests are independently re-verified
+// against the ACTUAL git objects at the claimed commit, not merely trusted
+// as recorded by the capture tool.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", () => {
+  it("the real deployment-commit build's sourceDigests verify against actual git history", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const result = verifySourceDigestsAgainstCommit(
+      DEPLOYMENT_COMMIT,
+      fixture.evidence.deploymentCommitBuild.sourceDigests,
+      REPO_ROOT,
+    );
+    expect(result.checked).to.equal(true);
+    expect(result.ok, result.errors.join("\n")).to.equal(true);
+  });
+
+  it("the real public-head build's sourceDigests verify against actual git history", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const result = verifySourceDigestsAgainstCommit(
+      PUBLIC_HEAD_COMMIT,
+      fixture.evidence.publicHeadBuild.sourceDigests,
+      REPO_ROOT,
+    );
+    expect(result.checked).to.equal(true);
+    expect(result.ok, result.errors.join("\n")).to.equal(true);
+  });
+
+  it("a WRONG recorded digest for a real file at a real commit is rejected", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const tampered = { ...fixture.evidence.deploymentCommitBuild.sourceDigests };
+    const [firstFile] = Object.keys(tampered);
+    tampered[firstFile] = "0x" + "ab".repeat(32);
+    const result = verifySourceDigestsAgainstCommit(DEPLOYMENT_COMMIT, tampered, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => e.includes(firstFile))).to.equal(true);
+  });
+
+  it("a file path that never existed at the claimed commit is rejected", () => {
+    const result = verifySourceDigestsAgainstCommit(
+      DEPLOYMENT_COMMIT,
+      { "contracts/DoesNotExist.sol": "0x" + "00".repeat(32) },
+      REPO_ROOT,
+    );
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /not found at commit/.test(e))).to.equal(true);
+  });
+
+  it("checkEvidenceAgainstManifest rejects a manifest+evidence pair whose reportedSourceCommit is real public history but whose sourceDigests DON'T actually match that commit's content — the common-mode 'wrong build-info, consistently mislabeled' case", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const evidence = clone(fixture.evidence);
+    // Relabel the WHOLE build capture as a DIFFERENT, real, public commit — self-consistent
+    // between evidence.deploymentCommitBuild.commit and manifest.reportedSourceCommit — but
+    // the sourceDigests still reflect the ORIGINAL commit's content, which the relabeled
+    // commit's real git history does not match (package.json alone differs across commits
+    // in this repo's history, let alone contracts/).
+    const manifest = clone(fixture.manifest);
+    evidence.deploymentCommitBuild.commit = PUBLIC_HEAD_COMMIT;
+    manifest["reportedSourceCommit"] = PUBLIC_HEAD_COMMIT;
+    const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /source-commit binding/.test(e))).to.equal(true);
+  });
+
+  it("checkEvidenceAgainstManifest rejects a stale public-head commit even when evidence.publicHeadBuild.headCommit and manifest.publicHeadCommit are consistently (but wrongly) relabeled together", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const evidence = clone(fixture.evidence);
+    const manifest = clone(fixture.manifest);
+    // Both sides agree on the deployment commit's SHA instead of the real public-head SHA —
+    // internally consistent with each other, but the sourceDigests (captured from the real
+    // public-head worktree) do not match THIS commit's actual git content.
+    evidence.publicHeadBuild.headCommit = DEPLOYMENT_COMMIT;
+    manifest["publicHeadCommit"] = DEPLOYMENT_COMMIT;
+    const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /public-head binding/.test(e))).to.equal(true);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Blocker C — immutable byte-range AUTHORITY. An AST id may only claim an
+// exclusion range if it is both declared in immutableIdentities AND actually
+// present in the build's own machine-derived immutableAstDeclarations.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("validateImmutableAuthority — Blocker C", () => {
+  const baseFixture = loadFixtures().find((f) => f.slug === "stablecoin-vault-simulator-sepolia")!;
+
+  it("the real evidence's immutable authority is valid", () => {
+    const result = validateImmutableAuthority(baseFixture.evidence);
+    expect(result.ok, result.errors.join("\n")).to.equal(true);
+  });
+
+  it("an extra AST id in immutableReferences with no declared identity is rejected", () => {
+    const evidence = clone(baseFixture.evidence);
+    evidence.deploymentCommitBuild.immutableReferences["424242"] = [{ start: 100, length: 32 }];
+    const result = validateImmutableAuthority(evidence);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /no corresponding immutableIdentities entry/.test(e))).to.equal(true);
+  });
+
+  it("COMMON-MODE: a fake AST id added to BOTH immutableReferences AND immutableIdentities self-consistently is still rejected, because it is not in the build's real immutableAstDeclarations", () => {
+    // This is the exact attack the review described: mutate a real executable byte, then
+    // try to launder it as an immutable by adding matching entries to every cooperating
+    // field an attacker could edit by hand. The one thing they CANNOT fabricate is the
+    // machine-derived AST snapshot captured once, mechanically, at capture time.
+    const evidence = clone(baseFixture.evidence);
+    const fakeAstId = "999999";
+    const targetOffset = 100; // deep in real executable code, nowhere near any real immutable
+    evidence.deploymentCommitBuild.immutableReferences[fakeAstId] = [{ start: targetOffset, length: 32 }];
+    evidence.immutableIdentities!.push({
+      astId: fakeAstId,
+      name: "fakeImmutable",
+      sourceFile: "contracts/StablecoinVaultSimulator.sol",
+      typeString: "bytes32",
+      derivation: { method: "constructor-argument", value: "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15" },
+      expectedValueHex: "0x0000000000000000000000008ffc8ce04789e9a7b53685a2d78cda54e6faac15",
+    });
+    // Mutate the live byte at that offset to actually BE the fake identity's expected value's
+    // first byte, and recompute the manifest's dependent claims as an attacker who checked
+    // their work would.
+    const liveBuf = Buffer.from(evidence.liveRuntime.runtimeBytecode.slice(2), "hex");
+    Buffer.from("0000000000000000000000008ffc8ce04789e9a7b53685a2d78cda54e6faac15", "hex").copy(liveBuf, targetOffset);
+    evidence.liveRuntime.runtimeBytecode = "0x" + liveBuf.toString("hex");
+
+    const authority = validateImmutableAuthority(evidence);
+    expect(authority.ok).to.equal(false);
+    expect(
+      authority.errors.some((e) => /does not correspond to anything the compiler actually emitted/.test(e)),
+    ).to.equal(true);
+
+    const manifest = clone(baseFixture.manifest);
+    const facts = deriveFactsFromEvidence(evidence);
+    // Even if the attacker recomputes bytecodeHash/executableBytecodeMatch to match the
+    // (illegitimately masked) result, the authority check alone makes the whole replay fail.
+    (manifest["artifactManifest"] as Record<string, unknown>)["bytecodeHash"] = facts.normalizedBytecodeHash;
+    (manifest["artifactManifest"] as Record<string, unknown>)["executableBytecodeMatch"] =
+      facts.executableBytecodeMatch;
+    const result = checkEvidenceAgainstManifest(evidence, manifest);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /immutable authority/.test(e))).to.equal(true);
+  });
+
+  it("a constructor-argument derivation whose value is not in the manifest's recorded constructorArgs is rejected — an attacker cannot invent an unrecorded 'public' argument", () => {
+    const evidence = clone(baseFixture.evidence);
+    const tokenIdentity = evidence.immutableIdentities!.find((i) => i.name === "token")!;
+    // @ts-expect-error narrowing a discriminated union for a test mutation
+    tokenIdentity.derivation.value = "0x000000000000000000000000000000DeaDBeef";
+    const result = checkEvidenceAgainstManifest(evidence, baseFixture.manifest);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /not present in artifactManifest.constructorArgs/.test(e))).to.equal(true);
+  });
+
+  it("overlapping immutable ranges are rejected", () => {
+    const evidence = clone(baseFixture.evidence);
+    const refs = evidence.deploymentCommitBuild.immutableReferences;
+    const [firstId] = Object.keys(refs);
+    const overlapStart = refs[firstId][0].start + 10; // overlaps the first range
+    refs["888888"] = [{ start: overlapStart, length: 32 }];
+    evidence.immutableIdentities!.push({
+      astId: "888888",
+      name: "overlapper",
+      sourceFile: "contracts/StablecoinVaultSimulator.sol",
+      typeString: "bytes32",
+      derivation: { method: "chain-id" },
+      expectedValueHex: "0x0000000000000000000000000000000000000000000000000000000000aa36a7",
+    });
+    const result = validateImmutableAuthority(evidence);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /overlap/.test(e))).to.equal(true);
+  });
+
+  it("an immutable range that enters the decoded metadata region is rejected", () => {
+    const evidence = clone(baseFixture.evidence);
+    const localLen = Buffer.from(evidence.deploymentCommitBuild.deployedBytecodeObject.slice(2), "hex").length;
+    const boundary = decodeSolcMetadataBoundary(evidence.deploymentCommitBuild.deployedBytecodeObject);
+    evidence.deploymentCommitBuild.immutableReferences["777777"] = [{ start: boundary.regionStart!, length: 8 }];
+    evidence.immutableIdentities!.push({
+      astId: "777777",
+      name: "intoMetadata",
+      sourceFile: "contracts/StablecoinVaultSimulator.sol",
+      typeString: "bytes32",
+      derivation: { method: "chain-id" },
+      expectedValueHex: "0x0000000000000000000000000000000000000000000000000000000000aa36a7",
+    });
+    const result = validateImmutableAuthority(evidence);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /enters the decoded metadata region/.test(e))).to.equal(true);
+    expect(localLen).to.be.greaterThan(0); // sanity: the buffer parsed
+  });
+
+  it("a contract with NO declared immutables but a non-empty immutableReferences is rejected", () => {
+    const usdcFixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const evidence = clone(usdcFixture.evidence);
+    evidence.deploymentCommitBuild.immutableReferences["1"] = [{ start: 0, length: 32 }];
+    const result = validateImmutableAuthority(evidence);
+    expect(result.ok).to.equal(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Blocker D — metadata exclusion requires DUAL authorization (live AND local
+// boundaries must decode to the identical region), and the executable
+// comparison is a full buffer equality on BOTH normalized sides, not an
+// inference from one side's hash alone.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("Blocker D — dual metadata-boundary authorization", () => {
+  const usdcFixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+
+  it("real evidence: live and local metadata boundaries agree exactly", () => {
+    const facts = deriveFactsFromEvidence(usdcFixture.evidence);
+    expect(facts.metadataBoundariesAgree).to.equal(true);
+    expect(facts.liveMetadataBoundary.regionStart).to.equal(facts.localMetadataBoundary.regionStart);
+    expect(facts.liveMetadataBoundary.regionSize).to.equal(facts.localMetadataBoundary.regionSize);
+  });
+
+  it("both normalized hashes are computed independently and must agree for executableBytecodeMatch to be true", () => {
+    const facts = deriveFactsFromEvidence(usdcFixture.evidence);
+    expect(facts.normalizedLiveHash).to.equal(facts.normalizedLocalHash);
+    expect(facts.executableBytecodeMatch).to.equal(true);
+  });
+
+  it("a shifted live metadata region (would otherwise let an executable difference near the boundary be laundered as metadata) revokes ALL metadata exclusion authority", () => {
+    const evidence = clone(usdcFixture.evidence);
+    const liveBuf = Buffer.from(evidence.liveRuntime.runtimeBytecode.slice(2), "hex");
+    // Rewrite the live length suffix to declare a metadata region 4 bytes LARGER than it
+    // really is — still a well-formed-looking length, but now the live boundary decodes to
+    // a DIFFERENT regionStart than local's, because the extra 4 bytes it now claims as
+    // "metadata" are actually still executable-region bytes in the real layout.
+    const realBoundary = decodeSolcMetadataBoundary(evidence.liveRuntime.runtimeBytecode);
+    const inflatedLength = realBoundary.regionSize! + 4;
+    liveBuf.writeUInt16BE(inflatedLength, liveBuf.length - 2);
+    evidence.liveRuntime.runtimeBytecode = "0x" + liveBuf.toString("hex");
+
+    const facts = deriveFactsFromEvidence(evidence);
+    // Either the live boundary now fails to decode cleanly, or it decodes but at a
+    // DIFFERENT offset/size than local's — either way, no exclusion is authorized.
+    if (facts.liveMetadataBoundary.ok) {
+      expect(facts.metadataBoundariesAgree).to.equal(false);
+    }
+    const result = checkEvidenceAgainstManifest(evidence, usdcFixture.manifest);
+    expect(result.ok).to.equal(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Common-mode mutation matrix — mutating manifest AND evidence TOGETHER,
+// self-consistently, must still fail. The earlier 9-point matrix (above)
+// proved disagreement detection when only one side is touched; these prove
+// the false claim is structurally impossible even when an attacker updates
+// every cooperating field at once.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("common-mode mutations — manifest and evidence updated together, self-consistently", () => {
+  const usdcFixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+  const simFixture = loadFixtures().find((f) => f.slug === "stablecoin-vault-simulator-sepolia")!;
+
+  it("1. wrong build-info + matching fake commit labels on both manifest and evidence (git-checked)", () => {
+    const evidence = clone(usdcFixture.evidence);
+    const manifest = clone(usdcFixture.manifest);
+    evidence.deploymentCommitBuild.commit = PUBLIC_HEAD_COMMIT;
+    manifest["reportedSourceCommit"] = PUBLIC_HEAD_COMMIT;
+    const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+  });
+
+  it("2. fake immutable range + executable mutation + recomputed dependent hash/claims", () => {
+    const evidence = clone(simFixture.evidence);
+    const manifest = clone(simFixture.manifest);
+    const fakeAstId = "555555";
+    const offset = 200;
+    evidence.deploymentCommitBuild.immutableReferences[fakeAstId] = [{ start: offset, length: 32 }];
+    evidence.immutableIdentities!.push({
+      astId: fakeAstId,
+      name: "forged",
+      sourceFile: "contracts/StablecoinVaultSimulator.sol",
+      typeString: "bytes32",
+      derivation: { method: "chain-id" },
+      expectedValueHex: "0x0000000000000000000000000000000000000000000000000000000000aa36a7",
+    });
+    const liveBuf = Buffer.from(evidence.liveRuntime.runtimeBytecode.slice(2), "hex");
+    liveBuf.writeUInt32BE(0, offset); // arbitrary "mutation" — content doesn't matter here
+    Buffer.from("0000000000000000000000000000000000000000000000000000000000aa36a7", "hex").copy(liveBuf, offset);
+    evidence.liveRuntime.runtimeBytecode = "0x" + liveBuf.toString("hex");
+    const facts = deriveFactsFromEvidence(evidence);
+    (manifest["artifactManifest"] as Record<string, unknown>)["bytecodeHash"] = facts.normalizedBytecodeHash;
+    (manifest["artifactManifest"] as Record<string, unknown>)["executableBytecodeMatch"] =
+      facts.executableBytecodeMatch;
+    (manifest["artifactManifest"] as Record<string, unknown>)["immutableValuesIndependentlyVerified"] =
+      facts.immutableValuesIndependentlyVerified;
+    const result = checkEvidenceAgainstManifest(evidence, manifest);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /immutable authority/.test(e))).to.equal(true);
+  });
+
+  it("3. stale/wrong public-head commit labeled consistently across evidence and manifest (git-checked)", () => {
+    const evidence = clone(usdcFixture.evidence);
+    const manifest = clone(usdcFixture.manifest);
+    evidence.publicHeadBuild.headCommit = DEPLOYMENT_COMMIT;
+    manifest["publicHeadCommit"] = DEPLOYMENT_COMMIT;
+    const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+  });
+
+  it("4. a shifted metadata authority attempting to hide an executable difference, with dependent claims recomputed", () => {
+    const evidence = clone(usdcFixture.evidence);
+    const manifest = clone(usdcFixture.manifest);
+    const liveBuf = Buffer.from(evidence.liveRuntime.runtimeBytecode.slice(2), "hex");
+    const realBoundary = decodeSolcMetadataBoundary(evidence.liveRuntime.runtimeBytecode);
+    liveBuf.writeUInt16BE(realBoundary.regionSize! + 4, liveBuf.length - 2);
+    evidence.liveRuntime.runtimeBytecode = "0x" + liveBuf.toString("hex");
+    const facts = deriveFactsFromEvidence(evidence);
+    (manifest["artifactManifest"] as Record<string, unknown>)["bytecodeHash"] = facts.normalizedBytecodeHash;
+    (manifest["artifactManifest"] as Record<string, unknown>)["executableBytecodeMatch"] =
+      facts.executableBytecodeMatch;
+    (manifest["artifactManifest"] as Record<string, unknown>)["metadataHashMatch"] = facts.metadataHashMatch;
+    (manifest["artifactManifest"] as Record<string, unknown>)["metadataTrailerBytesExcluded"] =
+      facts.metadataTrailerBytesExcluded;
+    const result = checkEvidenceAgainstManifest(evidence, manifest);
+    expect(result.ok).to.equal(false);
   });
 });
