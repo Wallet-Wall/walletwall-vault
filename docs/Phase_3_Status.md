@@ -87,6 +87,8 @@ Release: `v0.4.12`
 | Same-address policy mutation after queue blocks finalization (sanctions add / allowlist revoke / composite module add) | ✅ (`test/PolicyFinalizationAuthority.test.ts`) |
 | Queue-time engine is a sticky floor across engine replacement and disable-to-`address(0)`                              | ✅                                              |
 | Daily spend booked once at admission; finalization never re-books (STATICCALL revalidation)                            | ✅                                              |
+| Control A: an engine-address swap (even after its full delay) cannot erase the queue-time composite's sticky floor     | ✅ (`test/CompositeModuleGovernanceAuthority.test.ts`) |
+| Control B: a matured, applied module removal on that SAME composite legitimately changes the outcome (address unchanged, roster changed) — address-level sticky floor != module-roster snapshot | ✅ (`test/CompositeModuleGovernanceAuthority.test.ts`) |
 
 ### Treasury quorum tests (`test/TreasuryQuorum.test.ts`)
 

@@ -41,12 +41,33 @@ import "../IPolicyEngine.sol";
  *       matching the governance friction a vault owner would need to replace the
  *       policy engine's ADDRESS outright. The module being removed stays fully
  *       active — evaluated by both {check} and {revalidate} — for the entire
- *       pending window, so a withdrawal queued while it was present remains
- *       correctly gated by it until the removal actually applies. This closes the
- *       gap where a composite owner could otherwise instantly evict a denying
- *       module (or empty the set entirely) and reach, in one transaction and zero
- *       elapsed delay, the same practical outcome a full engine-address swap would
- *       need the vault's own governance delay to reach.
+ *       pending window, so it cannot be evicted with less friction than an
+ *       engine-address swap would cost.
+ *
+ *       FRICTION-EQUIVALENT, NOT OUTCOME-EQUIVALENT FOR ALREADY-QUEUED
+ *       WITHDRAWALS. Removal now costs a composite owner the same DELAY a vault
+ *       owner would pay to swap the vault's engine address — but that is a
+ *       statement about governance FRICTION for future admissions, not a
+ *       guarantee that the two mechanisms settle an already-queued withdrawal
+ *       identically. WalletWallVault/StablecoinVaultSimulator's
+ *       finalizeWithdrawal treats the queue-time engine ADDRESS as a sticky
+ *       floor (swapping the vault's active engine after queueing cannot erase
+ *       it — see the vault's own finalizeWithdrawal docs). That floor is
+ *       ADDRESS-granular, not module-roster-granular: if this composite is
+ *       still the sticky-floor engine (its address never changed), a matured
+ *       and applied {applyRemoveModule} call on THIS SAME address still
+ *       changes what {revalidate} reports for a withdrawal that was already
+ *       queued under it, because {revalidate} always reads {_modules} live —
+ *       there is no per-withdrawal snapshot of the module roster. So: an
+ *       engine-address swap to a permissive engine cannot retroactively free
+ *       an already-queued withdrawal (the sticky floor still binds the OLD
+ *       engine), but a governed module removal on a composite that IS the
+ *       sticky-floor engine legitimately can, once its own delay has fully
+ *       elapsed and been applied. Both are intentional and correct under the
+ *       existing dual-revalidate model (queue-time engine address x current
+ *       engine address x LIVE module set(s) x live module internal state) —
+ *       they are simply not the same mechanism, and must not be described as
+ *       such.
  */
 contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     /// @notice Hard cap on registered modules; bounds check()/revalidate() gas.

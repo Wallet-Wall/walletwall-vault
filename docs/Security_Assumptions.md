@@ -346,17 +346,33 @@ contract owner.
   through `proposeRemoveModule` / `applyRemoveModule` behind a two-day
   `MODULE_REMOVAL_DELAY`, matching the friction of replacing the vault's engine
   ADDRESS outright. The module being removed stays fully active — evaluated by
-  both `check()` and `revalidate()` — for the entire pending window, so a
-  withdrawal queued while it was present remains correctly gated by it until
-  the removal actually applies. `MODULE_REMOVAL_DELAY` is a standalone constant
-  on the composite (it has no reference to any specific vault and may be wired
-  into several) matched to the two named vaults' `POLICY_ENGINE_UPDATE_DELAY`
-  BY CONVENTION, not by reference — a future vault type with a longer
-  engine-swap delay would need this re-verified before relying on the
-  invariant. The sticky floor below holds at engine-address granularity, not at
-  module-roster granularity: within a fixed composite address, `addModule` may
-  still move the roster (strengthening only, still instant) while `removeModule`
-  now requires its own governance delay as described above.
+  both `check()` and `revalidate()` — for the entire pending window, so it
+  cannot be evicted with less friction than an engine-address swap would cost.
+  `MODULE_REMOVAL_DELAY` is a standalone constant on the composite (it has no
+  reference to any specific vault and may be wired into several) matched to
+  the two named vaults' `POLICY_ENGINE_UPDATE_DELAY` BY CONVENTION, not by
+  reference — a future vault type with a longer engine-swap delay would need
+  this re-verified before relying on the invariant.
+
+  **This is friction-equivalence, not settlement-outcome-equivalence for
+  already-queued withdrawals — the two must not be conflated.** The sticky
+  floor described below holds at engine-**address** granularity, not at
+  module-**roster** granularity. An engine-address swap (e.g. to a permissive
+  engine) cannot retroactively free an already-queued withdrawal, because the
+  sticky floor still binds the OLD (queue-time) engine address regardless of
+  what the vault's CURRENT engine is. But if a composite is the queue-time
+  engine and its address never changes, its LIVE module roster is what
+  `revalidate()` reads at settlement — there is no per-withdrawal snapshot of
+  that roster. So once a proposed module removal on that same composite has
+  both fully matured and been explicitly applied, a withdrawal that was queued
+  while the module was present CAN legitimately settle, because the module is
+  simply no longer part of that composite's live roster. This is intentional
+  module-roster mutability after a governed delay, not an erosion of the
+  sticky floor: a queued withdrawal's finalization remains governed by
+  `queue-time engine address x current engine address x live module set(s) x
+  live module internal state` (unchanged from PR #152) — module removal only
+  ever changes the "live module set(s) x live module internal state" factors,
+  never the address factors the sticky floor itself is defined over.
 - Large-withdrawal finalization ALWAYS revalidates policy, read-only, with no
   address-comparison gate — address identity is not used as a proxy for policy
   freshness, so same-address state mutations (e.g. a recipient sanctioned after
