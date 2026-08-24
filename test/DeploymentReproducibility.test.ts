@@ -17,6 +17,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 import { expect } from "chai";
 
+import { checkEvidenceAgainstManifest, type EvidenceBundle } from "../scripts/lib/reproducibility-evidence";
+
 const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const VAULT_MANIFEST = join(REPRO_DIR, "walletwall-vault-sepolia.json");
@@ -53,7 +55,7 @@ function collectManifests(): string[] {
   for (const entry of readdirSync(REPRO_DIR)) {
     const full = join(REPRO_DIR, entry);
     if (statSync(full).isDirectory()) {
-      if (entry === "schema") continue;
+      if (entry === "schema" || entry === "evidence") continue;
       for (const f of readdirSync(full)) if (f.endsWith(".json")) out.push(join(full, f));
     } else if (entry.endsWith(".json")) {
       out.push(full);
@@ -138,9 +140,14 @@ describe("Deployment reproducibility — manifests are reproducible or remediati
           expect(m["reportedSourceCommitInPublicHistory"]).to.equal(true);
         });
 
-        it("is honestly reproducible: runtime bytes match and the artifact manifest proves it", () => {
+        it("is honestly reproducible: runtime bytes match the DEPLOYMENT COMMIT build (not just public HEAD), and the artifact manifest proves it", () => {
           expect(m["reproducibilityStatus"]).to.equal("reproducible");
-          expect(m["observedRuntimeBytes"]).to.equal(m["publicHeadRuntimeBytes"]);
+          // reportedCommitRuntimeBytes (compiled from the pinned deployment commit's OWN
+          // toolchain) is the decisive figure. publicHeadRuntimeBytes is a distinct,
+          // separately-captured claim (today's toolchain, which has since migrated
+          // Hardhat 2 -> 3) and must never be conflated with it.
+          expect(m["reportedCommitRuntimeBytes"]).to.equal(m["observedRuntimeBytes"]);
+          expect(m["publicHeadRuntimeBytes"]).to.be.a("number");
           const manifest = m["artifactManifest"] as Record<string, unknown>;
           expect(manifest).to.be.an("object");
           expect(manifest["sourceTag"]).to.equal("v0.4.24");
@@ -151,10 +158,19 @@ describe("Deployment reproducibility — manifests are reproducible or remediati
         it("discloses the excluded solc metadata hash precisely (does not overclaim raw-byte equality)", () => {
           const manifest = m["artifactManifest"] as Record<string, unknown>;
           expect(manifest["metadataHashMatch"]).to.equal(false);
-          expect(manifest["metadataTrailerBytesExcluded"]).to.equal(43);
+          // The decoded solc metadata region is 53 bytes; only 32 of those bytes actually
+          // differ (the ipfs hash digest) — the checker proves this by decoding the
+          // region, not by trusting a hand-set count. See ReproducibilityEvidenceCheck.test.ts.
+          expect(manifest["metadataTrailerBytesExcluded"]).to.equal(32);
           const disclosures = m["disclosures"] as string[];
           const blob = disclosures.join(" ").toLowerCase();
           expect(/metadata|cbor/.test(blob)).to.equal(true);
+        });
+
+        it("names a committed evidence bundle that validate:reproducibility replays this manifest against", () => {
+          expect(m["evidenceFile"]).to.equal(`deployments/reproducibility/evidence/${spec.file.split(/[\\/]/).pop()}`);
+          const evidencePath = join(REPRO_DIR, "evidence", spec.file.split(/[\\/]/).pop()!);
+          expect(existsSync(evidencePath), `${evidencePath} must exist`).to.equal(true);
         });
 
         if (spec.hasImmutables) {
@@ -191,10 +207,18 @@ describe("Deployment reproducibility — manifests are reproducible or remediati
             true,
             `${path}: cannot be 'reproducible' with reportedSourceCommitInPublicHistory false`,
           );
+          // reportedCommitRuntimeBytes (recompiled from the DEPLOYMENT COMMIT'S own
+          // toolchain) is the decisive comparison for "reproducible" — NOT
+          // publicHeadRuntimeBytes, which is today's toolchain and a separate claim.
           const observed = m["observedRuntimeBytes"];
-          const head = m["publicHeadRuntimeBytes"];
-          if (typeof observed === "number" && typeof head === "number") {
-            expect(observed).to.equal(head, `${path}: 'reproducible' requires matching runtime bytes`);
+          const reportedCommit = m["reportedCommitRuntimeBytes"];
+          if (typeof observed === "number" && typeof reportedCommit === "number") {
+            expect(observed).to.equal(
+              reportedCommit,
+              `${path}: 'reproducible' requires observedRuntimeBytes to match reportedCommitRuntimeBytes`,
+            );
+          } else {
+            expect.fail(`${path}: 'reproducible' requires reportedCommitRuntimeBytes to be recorded`);
           }
           const manifest = m["artifactManifest"] as Record<string, unknown> | null;
           expect(manifest, `${path}: 'reproducible' requires an artifactManifest`).to.be.an("object");
@@ -221,6 +245,22 @@ describe("Deployment reproducibility — manifests are reproducible or remediati
               /metadata|cbor/.test(blob),
               `${path}: metadataHashMatch: false requires a disclosure mentioning the excluded metadata/CBOR hash`,
             ).to.equal(true);
+          }
+
+          // When an evidenceFile is present, the manifest's claims are not merely
+          // structurally valid — they must be exactly what a fresh, deterministic
+          // replay of the committed evidence bundle derives. Mirrors
+          // scripts/validate-reproducibility.ts's evidence-based replay.
+          const evidenceFile = m["evidenceFile"];
+          if (typeof evidenceFile === "string" && evidenceFile.length > 0) {
+            const evidencePath = join(REPO_ROOT, evidenceFile);
+            expect(existsSync(evidencePath), `${path}: evidenceFile ${evidenceFile} does not exist`).to.equal(true);
+            const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as EvidenceBundle;
+            const replay = checkEvidenceAgainstManifest(evidence, m);
+            expect(
+              replay.errors,
+              `${path}: evidence replay disagreed with the manifest:\n${replay.errors.join("\n")}`,
+            ).to.deep.equal([]);
           }
         } else {
           const remediation = m["remediation"] as Record<string, unknown> | undefined;

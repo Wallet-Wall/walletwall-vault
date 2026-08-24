@@ -9,22 +9,24 @@
   "reportedSourceCommit": "35c25fa294bebea44b3089aa2435a190a5adf3fb",
   "reportedSourceCommitInPublicHistory": true,
   "observedRuntimeBytes": 1994,
+  "reportedCommitRuntimeBytes": 1994,
   "publicHeadRuntimeBytes": 1994,
   "reproducibilityStatus": "reproducible",
   "lastChecked": "2026-08-23",
+  "evidenceFile": "deployments/reproducibility/evidence/mock-usdc-sepolia.json",
   "artifactManifest": {
     "sourceTag": "v0.4.24",
-    "bytecodeHash": "0xc889aafb27bb2161bce6cbe5a96831282cc97013098dd1ec86788aefe5c6d930",
+    "bytecodeHash": "0xdf339dd87378761f1bb31229014d5ffdf061a0d9f1ac88fa42815c05f2b23a38",
     "executableBytecodeMatch": true,
     "metadataHashMatch": false,
-    "metadataTrailerBytesExcluded": 43,
+    "metadataTrailerBytesExcluded": 32,
     "constructorArgs": [],
-    "notes": "bytecodeHash is keccak256 of the live runtime bytecode with the trailing 43-byte solc CBOR metadata region zeroed out (executableBytecodeMatch covers this same normalized region). MockUSDC has no `immutable` variables, so no immutable-slot verification applies. Verified from a clean `npm ci` + `npx hardhat compile` in a worktree pinned to the deployment commit (Hardhat 2 / solc 0.8.24+commit.e11b9ed9, optimizer runs=200, evmVersion=cancun) against the live Sepolia runtime read via eth_getCode; independently cross-checked with a second solc build variant (solc-js/WASM) to rule out a compiler-binary cause for the metadata divergence."
+    "notes": "bytecodeHash is keccak256 of the live runtime bytecode with the decoded trailing solc CBOR metadata region (53 bytes total: a 2-byte length suffix plus a 51-byte CBOR map — see evidenceFile) zeroed out; executableBytecodeMatch covers this same normalized region. Of that 53-byte region, only 32 bytes actually differ between live and locally-built bytecode (the 32-byte sha256 digest inside the metadata's `ipfs` multihash) — every other byte in the region, including the `solc` version tag, is identical. MockUSDC has no `immutable` variables, so no immutable-slot verification applies. All facts on this record (executableBytecodeMatch, metadataHashMatch, metadataTrailerBytesExcluded, bytecodeHash) are deterministically RE-DERIVED from evidenceFile by `npm run validate:reproducibility` every run (scripts/lib/reproducibility-evidence.ts) — not hand-asserted. The deployment-commit build in evidenceFile was compiled from a worktree pinned to the deployment commit (Hardhat 2 / solc 0.8.24+commit.e11b9ed9, optimizer runs=200, evmVersion=cancun) via a clean `npm ci` + `npx hardhat compile`; independently cross-checked with a second solc build variant (solc-js/WASM) to rule out a compiler-binary cause for the metadata divergence."
   },
   "disclosures": [
     "TESTNET ONLY — Ethereum Sepolia. Research prototype. Not audited. No production security guarantee. Do not use real funds.",
     "MockUSDC (mUSDC) has no monetary value. There is no purchase path, no custody, and no income-generating product or promised returns. It is freely mintable by anyone.",
-    "All executable runtime bytecode was independently recompiled from public commit 35c25fa294bebea44b3089aa2435a190a5adf3fb (tag v0.4.24) and matched the live Sepolia deployment exactly. Only the trailing 43-byte solc CBOR metadata hash — a non-executed IPFS content pointer, never run by the EVM — differs, consistent with a build-environment difference (OS/toolchain/path) rather than a source or code difference; it is not claimed to match and does not affect on-chain behavior.",
+    "All executable runtime bytecode was independently recompiled from public commit 35c25fa294bebea44b3089aa2435a190a5adf3fb (tag v0.4.24) and matched the live Sepolia deployment exactly. Of the trailing 53-byte solc CBOR metadata region, 32 bytes differ (the metadata hash content, a non-executed IPFS content pointer never run by the EVM) — consistent with a build-environment difference (OS/toolchain/path) rather than a source or code difference; those 32 bytes are not claimed to match and do not affect on-chain behavior.",
     "No Ethereum mainnet deployment of this contract exists or is planned."
   ]
 }

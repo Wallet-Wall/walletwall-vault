@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/deployments/reproducibility/schema/reproducibility.schema.json",
   "title": "Deployment Reproducibility Manifest v1",
-  "description": "Records whether a public testnet deployment can be reproduced from public repository sources, and — when it cannot — the committed remediation path. A manifest may only declare reproducibilityStatus 'reproducible' when its own facts support it (reported commit in public history, matching runtime bytes, and an artifactManifest with a source tag + bytecode hash). When artifactManifest.metadataHashMatch is explicitly false (the solc build-metadata CBOR hash was excluded from the equality claim), executableBytecodeMatch, metadataTrailerBytesExcluded, and a disclosure naming the exclusion are all required — this makes a 'code matches, non-executable metadata hash does not' claim impossible to state without also disclosing its exact scope. Testnet only; this file never documents a mainnet deployment. Validated by `npm run validate:reproducibility`.",
+  "description": "Records whether a public testnet deployment can be reproduced from public repository sources, and — when it cannot — the committed remediation path. A manifest may only declare reproducibilityStatus 'reproducible' when its own facts support it (reported commit in public history, matching runtime bytes, and an artifactManifest with a source tag + bytecode hash). When `evidenceFile` points at a committed evidence bundle (deployments/reproducibility/evidence/*.json — raw captured live/build bytecode plus solc's own immutableReferences), `npm run validate:reproducibility` does not merely format-check this manifest's fields: it deterministically RE-DERIVES executableBytecodeMatch, metadataHashMatch, metadataTrailerBytesExcluded, bytecodeHash, and immutableValuesIndependentlyVerified from that evidence (scripts/lib/reproducibility-evidence.ts) and fails if the manifest's own recorded value disagrees with the recomputation — no field here is ever accepted on its own say-so. When artifactManifest.metadataHashMatch is explicitly false (the solc build-metadata CBOR hash was excluded from the equality claim), executableBytecodeMatch, metadataTrailerBytesExcluded, and a disclosure naming the exclusion are all required, AND (when an evidence bundle is present) every excluded byte must be proven to lie inside the decoded solc CBOR metadata region — never merely under a byte-count ceiling. Testnet only; this file never documents a mainnet deployment. Validated by `npm run validate:reproducibility`.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -46,12 +46,17 @@
     "observedRuntimeBytes": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Byte length of the live deployed runtime bytecode."
+      "description": "Byte length of the live deployed runtime bytecode, as measured on-chain."
+    },
+    "reportedCommitRuntimeBytes": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Byte length of the runtime bytecode recompiled from `reportedSourceCommit` specifically (the pinned historical deployment commit, using ITS OWN lockfile/toolchain) — the decisive figure for a reproducibility claim against that commit. Distinct from publicHeadRuntimeBytes: the toolchain at the deployment commit and at current public HEAD can differ (e.g. a Hardhat major-version migration), so 'matches the deployment commit' and 'matches today's HEAD' are separate claims and must not be conflated into one field."
     },
     "publicHeadRuntimeBytes": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Byte length of the runtime bytecode recompiled from public HEAD."
+      "description": "Byte length of the runtime bytecode recompiled from current public HEAD (a distinct, separately-captured build — see evidenceFile's publicHeadBuild.headCommit for the exact SHA used). Equality with observedRuntimeBytes is informational context (source has not drifted since the deployment commit), NOT the reproducibility claim itself — that is reportedCommitRuntimeBytes."
     },
     "reproducibilityStatus": {
       "type": "string",
@@ -59,6 +64,10 @@
       "description": "'reproducible' is permitted only when the facts support it (see validator honesty cross-check)."
     },
     "lastChecked": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "evidenceFile": {
+      "type": ["string", "null"],
+      "description": "Repo-relative path to a committed evidence bundle (deployments/reproducibility/evidence/*.json, see evidence.schema.json) that `npm run validate:reproducibility` uses to deterministically RE-DERIVE this manifest's artifactManifest fields, rather than trusting them as hand-set. Null/absent means no evidence-based replay is available for this manifest (facts are asserted, not machine-replayed)."
+    },
     "artifactManifest": {
       "type": ["object", "null"],
       "description": "Required (non-null) only when reproducibilityStatus is 'reproducible'.",
@@ -82,7 +91,7 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 128,
-          "description": "Required, and bounded to a small value, whenever metadataHashMatch is false: the exact number of trailing bytes excluded from the reproducibility claim (the solc CBOR metadata region only). Bounding this tightly prevents the exclusion from silently growing to cover real executable logic in a future edit."
+          "description": "Required whenever metadataHashMatch is false: the exact number of bytes that actually differ between the live and locally-built bytecode (not the size of the excluded region itself — a metadata region can be larger than its differing content, e.g. a shared version tag inside it). When evidenceFile is present, the validator PROVES this count via evidenceRange ⊆ decodedSolcMetadataRange — every differing byte offset must fall strictly inside the CBOR metadata region decoded from the bytecode's own trailing length prefix (scripts/lib/reproducibility-evidence.ts decodeSolcMetadataBoundary), not merely under this numeric ceiling. The ≤128 bound here is a defense-in-depth sanity ceiling only, in case a manifest without evidenceFile is ever added."
         },
         "immutableValuesIndependentlyVerified": {
           "type": "boolean",

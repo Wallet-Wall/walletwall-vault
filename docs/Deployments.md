@@ -133,36 +133,65 @@ deployment **exactly**. Each contract has a machine-checkable manifest, validate
 
 Last independently re-checked: **2026-08-23**.
 
+**This is a replayable claim, not a self-reported one.** Each manifest names an `evidenceFile`
+under [`deployments/reproducibility/evidence/`](../deployments/reproducibility/evidence/) — a
+committed bundle of raw, captured facts only (the live on-chain runtime bytecode; solc's own
+`deployedBytecode.object` + `immutableReferences` from a build pinned to the deployment commit;
+the same from a build at current public HEAD). It contains **no** derived verdict. Every run of
+`npm run validate:reproducibility` deterministically **re-derives** the executable-code
+comparison, the normalized hash, the decoded metadata boundary, and every immutable's
+expected-vs-observed value from that evidence (`scripts/lib/reproducibility-evidence.ts`), and
+fails if the manifest's own recorded fields disagree with the fresh recomputation. No manifest
+field is ever accepted on its own say-so.
+[`test/ReproducibilityEvidenceCheck.test.ts`](../test/ReproducibilityEvidenceCheck.test.ts) proves
+this by mutation: it tampers with the hash, an executable byte, the metadata boundary, the
+excluded-byte count, an immutable's derivation input, its observed on-chain value, its byte-range
+reference, the recorded source commit, and the recorded deployed address — one at a time — and
+asserts the checker rejects every one of those nine mutations for the correct reason.
+
 **Method (from a clean checkout pinned to the exact deployment commit, not public HEAD):**
 
 1. Checked out `35c25fa294bebea44b3089aa2435a190a5adf3fb` in an isolated worktree, ran
    `npm ci` (the commit's own committed lockfile — Hardhat 2, solc `0.8.24+commit.e11b9ed9`,
-   optimizer `runs=200`, `evmVersion=cancun`) and `npx hardhat compile`.
+   optimizer `runs=200`, `evmVersion=cancun`) and `npx hardhat compile`. This yields
+   `reportedCommitRuntimeBytes` — the decisive figure for "reproducible from the deployment
+   commit". Separately, current public HEAD (`29cac28daa208e081217f6e1c7d8015659404d8f` at
+   capture time — itself since migrated to Hardhat 3) was compiled too, giving
+   `publicHeadRuntimeBytes`: a distinct, informational claim ("source hasn't drifted since the
+   deployment commit"), never conflated with reproducibility against the deployment commit
+   itself, since the two builds can legitimately use different toolchains.
 2. Read the live runtime bytecode for all three addresses via `eth_getCode` against a public
    Sepolia RPC, and confirmed `eth_chainId` is `11155111`.
-3. Compared the locally compiled `deployedBytecode` against the live runtime. All bytes match
-   **except** a trailing 43-byte region, which is solc's own CBOR-encoded build-metadata hash
-   (an IPFS content pointer used by external tooling for source lookup — it is never executed
-   by the EVM). This was cross-checked against a second, independent solc build variant
-   (solc-js/WASM, not just Hardhat's downloaded native binary) to rule out a trivial
+3. Decoded the trailing solc CBOR metadata region directly from the bytecode's own trailing
+   2-byte length prefix (not assumed) — a genuine **53-byte** region in every case (a 2-byte
+   length suffix plus a 51-byte CBOR map: `{ipfs: <34-byte multihash>, solc: <3-byte version>}`).
+   Comparing live vs. locally-built bytecode, only **32 of those 53 bytes** actually differ — the
+   32-byte sha256 digest inside the `ipfs` multihash; the `solc` version tag and the rest of the
+   CBOR structure are byte-identical. The checker proves every differing byte lies strictly
+   inside this decoded region (`excludedRange ⊆ decodedSolcMetadataRange`), not merely under an
+   arbitrary count ceiling. This was cross-checked against a second, independent solc build
+   variant (solc-js/WASM, not just Hardhat's downloaded native binary) to rule out a trivial
    compiler-binary cause; both local builds agree with each other and both differ from the live
-   deployment in the identical way, isolated to that one trailing region.
+   deployment in the identical way, isolated to that one region.
 4. `StablecoinVaultSimulator` additionally declares one `immutable` (`token`) and inherits 7
    more from OpenZeppelin 5.6.1's `EIP712` (`_cachedDomainSeparator`, `_cachedChainId`,
    `_cachedThis`, `_hashedName`, `_hashedVersion`, `_name`, `_version`) — solc bakes these into
-   fixed byte ranges of the runtime code at construction time, so they are necessarily
+   fixed byte ranges of the runtime code at construction time (11 physical PUSH-site references
+   across those 8 variables, since `token` is referenced 4 times), so they are necessarily
    per-deployment and cannot be produced by any fresh, differently-addressed redeploy. Instead
    of redeploying, all 8 values were **independently re-derived from public inputs only**
    (the known constructor arguments, this contract's own deployed address, chain ID `11155111`,
    and the EIP-712 domain literals `"WalletWallStablecoinVault"`/`"1"` read from source) and
-   confirmed to match the live on-chain bytes exactly, byte for byte.
+   confirmed to match the live on-chain bytes exactly, byte for byte — each with its own
+   identity, derivation method, and expected/observed values recorded in the evidence bundle,
+   not folded into a single hand-set boolean.
 
 **What this claim does and does not cover:** "Reproducible" here means every byte the EVM
 actually executes — the full contract logic, and every immutable constructor value — is
-proven to come from the public commit above. It explicitly **excludes** the trailing
-metadata-hash bytes, which are not code and do not affect on-chain behavior; those are
-recorded as excluded (`metadataHashMatch: false`, `metadataTrailerBytesExcluded: 43`) rather
-than silently ignored, in every manifest.
+proven to come from the public commit above. It explicitly **excludes** the 32 differing
+metadata-hash bytes (out of a 53-byte decoded region), which are not code and do not affect
+on-chain behavior; those are recorded as excluded (`metadataHashMatch: false`,
+`metadataTrailerBytesExcluded: 32`) rather than silently ignored, in every manifest.
 
 ### Source verification (explorer)
 
