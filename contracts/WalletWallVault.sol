@@ -131,10 +131,19 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         uint256 queuedAt;
         uint256 readyAt;
         bytes32 operationId;
-        /// @dev Policy engine address active when the withdrawal was queued.
-        ///      Finalization re-checks policy only if the engine has since changed,
-        ///      preventing stale-policy bypasses without double-counting stateful
-        ///      policies (e.g. daily spend limit) that already recorded spend at queue time.
+        /// @dev Policy engine address active when the withdrawal was queued (the
+        ///      engine that ADMITTED it). Finalization revalidates against this
+        ///      engine's CURRENT state as a sticky floor — replacing or disabling
+        ///      the active engine does not erase the restrictions this withdrawal
+        ///      was admitted under — and additionally against the currently active
+        ///      engine when different. The floor holds at engine-ADDRESS
+        ///      granularity: the engine's internal configuration (sanctions list
+        ///      contents, allowlist entries, a composite's module set) is read
+        ///      LIVE at finalization and remains mutable by that engine's own
+        ///      admin. Revalidation uses the read-only {IPolicyEngine.revalidate},
+        ///      never the stateful {IPolicyEngine.check}, so stateful admission
+        ///      accounting (e.g. daily spend booked at queue time) is never
+        ///      double-counted.
         address policyEngineAtQueue;
         bool exists;
     }
@@ -291,6 +300,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error NoPendingLargeTxUpdate();
     error LargeTxUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error PolicyViolation(string reason);
+    error PolicyEngineUnavailable(address engine);
     error NoPendingPolicyEngine();
     error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error TreasuryQuorumNotMet(uint256 required, uint256 current);
@@ -738,8 +748,12 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             }
         }
 
-        if (address(policyEngine) != address(0)) {
-            (bool ok, string memory why) = policyEngine.check(
+        // Read the engine ONCE so the recorded policyEngineAtQueue is exactly the
+        // engine that admitted this withdrawal, even if governance were somehow
+        // interleaved during the external check() call.
+        address engineAtQueue = address(policyEngine);
+        if (engineAtQueue != address(0)) {
+            (bool ok, string memory why) = IPolicyEngine(engineAtQueue).check(
                 request.vaultOwner,
                 request.recipient,
                 request.amount,
@@ -763,7 +777,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             queuedAt: queuedAt,
             readyAt: readyAt,
             operationId: operationId,
-            policyEngineAtQueue: address(policyEngine),
+            policyEngineAtQueue: engineAtQueue,
             exists: true
         });
 
@@ -786,11 +800,24 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      *         `treasuryQuorumThreshold`, the required number of guardian approvals
      *         (via {approveTreasuryWithdrawal}) must be recorded before this call.
      *
-     *      2. Policy re-check — if the active policy engine has changed since the
-     *         withdrawal was queued (e.g. admin updated the engine and the new engine
-     *         sanctions the recipient), the current engine is consulted again. This
-     *         does NOT re-invoke the engine that ran at queue time, avoiding
-     *         double-counting in stateful policies such as DailySpendLimitPolicy.
+     *      2. Policy revalidation — the withdrawal must still be permitted under
+     *         CURRENT policy state, checked read-only via {IPolicyEngine.revalidate}
+     *         (never the stateful {IPolicyEngine.check}, whose admission accounting
+     *         already settled at queue time). Two engines are consulted, each only
+     *         if non-zero, and once if they are the same address:
+     *         - the QUEUE-TIME engine ({PendingWithdrawal.policyEngineAtQueue}) — a
+     *           sticky floor, so replacing or disabling the engine after queueing
+     *           cannot erase the restrictions this withdrawal was admitted under;
+     *         - the CURRENT engine — so newly imposed restrictions also apply.
+     *         Same-address internal mutation (e.g. a recipient sanctioned after
+     *         queueing) is observed because revalidation always reads live state;
+     *         address identity is never used as a proxy for policy freshness.
+     *         Fail-closed: an engine that denies, reverts, mutates state under
+     *         STATICCALL, or no longer answers blocks finalization; the owner can
+     *         always {cancelPendingWithdrawal} (ungated) and re-queue. Note that
+     *         cancellation does not release daily-spend allowance booked at
+     *         admission, so re-queueing under a daily-limit policy may have to
+     *         wait for the policy window to roll (≤ 24h).
      */
     function finalizeWithdrawal(address vaultOwner, bytes32 operationId) external nonReentrant whenNotPaused {
         PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
@@ -810,16 +837,31 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             if (current < quorumRequired) revert TreasuryQuorumNotMet(quorumRequired, current);
         }
 
-        // Gate 2: policy re-check when engine has changed since queuing
-        address currentEngine = address(policyEngine);
-        if (currentEngine != address(0) && currentEngine != pending.policyEngineAtQueue) {
-            (bool ok, string memory why) = policyEngine.check(
-                vaultOwner,
-                pending.recipient,
-                pending.amount,
-                vaults[vaultOwner].balance
-            );
-            if (!ok) revert PolicyViolation(why);
+        // Gate 2: read-only policy revalidation — always runs, no drift gate.
+        // vaultBalance keeps the same meaning as at admission ("balance before this
+        // withdrawal's deduction"): queueing reserved the amount, so reconstruct it.
+        {
+            uint256 balanceBeforeThisWithdrawal = vaults[vaultOwner].balance + pending.amount;
+            address queueEngine = pending.policyEngineAtQueue;
+            address currentEngine = address(policyEngine);
+            if (queueEngine != address(0)) {
+                _revalidatePolicy(
+                    queueEngine,
+                    vaultOwner,
+                    pending.recipient,
+                    pending.amount,
+                    balanceBeforeThisWithdrawal
+                );
+            }
+            if (currentEngine != address(0) && currentEngine != queueEngine) {
+                _revalidatePolicy(
+                    currentEngine,
+                    vaultOwner,
+                    pending.recipient,
+                    pending.amount,
+                    balanceBeforeThisWithdrawal
+                );
+            }
         }
 
         address recipient = pending.recipient;
@@ -831,6 +873,38 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (!success) revert TransferFailed();
 
         emit WithdrawalFinalized(operationId, vaultOwner, recipient, amount);
+    }
+
+    /**
+     * @dev Revalidates a pending withdrawal against one policy engine, reverting on
+     *      any outcome other than an explicit allow. Because this function is view
+     *      and calls through the {IPolicyEngine} type, the engine executes under
+     *      STATICCALL — an implementation that attempts to mutate state reverts here
+     *      instead of booking anything. Failure taxonomy, all fail-closed:
+     *      - engine has no code (never deployed / destroyed) → PolicyEngineUnavailable;
+     *      - engine reverts or does not implement {IPolicyEngine.revalidate} →
+     *        PolicyEngineUnavailable (caught below);
+     *      - engine returns malformed data → the ABI decode reverts this call directly;
+     *      - engine answers (false, reason) → PolicyViolation(reason).
+     *      The owner's escape from a persistently failing engine is
+     *      {cancelPendingWithdrawal}, which is ungated by pause and policy.
+     */
+    function _revalidatePolicy(
+        address engine,
+        address vaultOwner,
+        address recipient,
+        uint256 amount,
+        uint256 vaultBalance
+    ) internal view {
+        if (engine.code.length == 0) revert PolicyEngineUnavailable(engine);
+        try IPolicyEngine(engine).revalidate(vaultOwner, recipient, amount, vaultBalance) returns (
+            bool ok,
+            string memory why
+        ) {
+            if (!ok) revert PolicyViolation(why);
+        } catch {
+            revert PolicyEngineUnavailable(engine);
+        }
     }
 
     /**

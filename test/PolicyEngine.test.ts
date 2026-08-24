@@ -258,4 +258,97 @@ describe("Policy Engine", function () {
       expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // revalidate() unit semantics (engines called directly, no vault involved)
+  // ---------------------------------------------------------------------------
+  describe("revalidate() unit semantics", function () {
+    const AMOUNT = ethers.parseEther("1");
+    const BALANCE = ethers.parseEther("5");
+
+    it("stateless policies answer identically via check and revalidate (allowlist)", async function () {
+      // Denying state.
+      let viaCheck = await allowlistPolicy.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
+      let viaReval = await allowlistPolicy.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(viaReval).to.deep.equal(viaCheck);
+      expect(viaReval[0]).to.equal(false);
+
+      // Permitting state.
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      viaCheck = await allowlistPolicy.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
+      viaReval = await allowlistPolicy.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(viaReval).to.deep.equal(viaCheck);
+      expect(viaReval[0]).to.equal(true);
+    });
+
+    it("stateless policies answer identically via check and revalidate (sanctions)", async function () {
+      const sanctions = await (await ethers.getContractFactory("SanctionsListPolicy")).deploy();
+
+      let viaCheck = await sanctions.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
+      let viaReval = await sanctions.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(viaReval).to.deep.equal(viaCheck);
+      expect(viaReval[0]).to.equal(true);
+
+      await sanctions.addToSanctionsList(recipient.address);
+      viaCheck = await sanctions.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
+      viaReval = await sanctions.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(viaReval).to.deep.equal(viaCheck);
+      expect(viaReval[0]).to.equal(false);
+    });
+
+    it("daily-limit revalidate is a pure allow that never books, even over the limit", async function () {
+      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      const before = await dailyPolicy.remainingAllowance(owner.address);
+
+      // Even an amount far above the limit is not this method's concern: the window
+      // settles at admission (check). revalidate() books nothing and rejects nothing.
+      const [ok, reason] = await dailyPolicy.revalidate(
+        owner.address,
+        recipient.address,
+        ethers.parseEther("100"),
+        BALANCE,
+      );
+      expect(ok).to.equal(true);
+      expect(reason).to.equal("");
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
+    });
+
+    it("composite revalidate fans out over current modules and propagates the first denial", async function () {
+      const composite = await (await ethers.getContractFactory("CompositePolicyEngine")).deploy();
+      const sanctions = await (await ethers.getContractFactory("SanctionsListPolicy")).deploy();
+      await composite.addModule(await allowlistPolicy.getAddress());
+      await composite.addModule(await sanctions.getAddress());
+
+      // allowlist denies (empty) → its reason surfaces first.
+      let [ok, reason] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(ok).to.equal(false);
+      expect(reason).to.equal("recipient not on allowlist");
+
+      // Allowlist satisfied, sanctions denies → sanctions reason surfaces.
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      await sanctions.addToSanctionsList(recipient.address);
+      [ok, reason] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(ok).to.equal(false);
+      expect(reason).to.equal("recipient is sanctioned");
+
+      // All modules permit → allowed.
+      await sanctions.removeFromSanctionsList(recipient.address);
+      [ok, reason] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(ok).to.equal(true);
+      expect(reason).to.equal("");
+    });
+
+    it("an empty composite is permissive via revalidate, mirroring check", async function () {
+      const composite = await (await ethers.getContractFactory("CompositePolicyEngine")).deploy();
+      const [ok] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      expect(ok).to.equal(true);
+    });
+
+    it("a composite containing a check-only (legacy) module reverts on revalidate — fail-closed", async function () {
+      const composite = await (await ethers.getContractFactory("CompositePolicyEngine")).deploy();
+      const legacy = await (await ethers.getContractFactory("LegacyCheckOnlyPolicyMock")).deploy();
+      await composite.addModule(await legacy.getAddress());
+      await expect(composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE)).to.revert(ethers);
+    });
+  });
 });

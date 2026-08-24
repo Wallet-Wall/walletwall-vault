@@ -36,7 +36,7 @@ Release: `v0.4.12`
 |---------|--------|-------|
 | Composite policy engine | ✅ Implemented / Hardened | `CompositePolicyEngine` — fans `IPolicyEngine.check()` to N modules simultaneously; fail-closed (first denial wins); `Ownable2Step` admin; rejects zero-address and no-code module addresses; `addModule` / `removeModule` with events; backward-compatible with single-policy deployments (use it as the single engine wired into the vault) |
 | All three policies operating simultaneously | ✅ Implemented / Hardened | Tested: `DailySpendLimitPolicy + RecipientAllowlistPolicy + SanctionsListPolicy` all enforce in a single withdrawal check |
-| Policy re-check at finalization | ✅ Implemented / Hardened | `finalizeWithdrawal` re-checks the current policy engine **only when it has changed since the withdrawal was queued** (`policyEngineAtQueue` field in `PendingWithdrawal`). This prevents stale-policy bypasses (e.g. recipient added to sanctions list after queuing) while avoiding double-counting in stateful policies (e.g. `DailySpendLimitPolicy` records spend once at queue time, not again at finalization if the engine is unchanged) |
+| Policy revalidation at finalization | ✅ Implemented / Hardened | `finalizeWithdrawal` **always** revalidates policy via the read-only `IPolicyEngine.revalidate()` (STATICCALL — structurally unable to mutate policy state), consulting both the queue-time engine (`policyEngineAtQueue`, a sticky floor that survives engine replacement or disablement) and the current engine, each once. Address identity is never used as a proxy for policy freshness, so same-address mutations (e.g. recipient added to the sanctions list after queuing) block settlement. Admission (`check()`) remains the only mutating call: `DailySpendLimitPolicy` books spend once at queue time and finalization never re-books it. An earlier revision re-checked only on engine-address change, which missed same-address state mutations — fixed and regression-tested in `test/PolicyFinalizationAuthority.test.ts` / `test/SimulatorPolicyFinalizationAuthority.test.ts` |
 
 ### Events and audit logging
 
@@ -82,8 +82,11 @@ Release: `v0.4.12`
 | Daily limit exceeded blocked | ✅ |
 | First-failing module's reason returned | ✅ |
 | Empty module list is permissive | ✅ |
-| Policy failure at finalization blocks when engine changed since queuing | ✅ |
-| Finalization passes when engine unchanged (no double-check) | ✅ |
+| A denying engine installed after queueing blocks finalization | ✅ |
+| Finalization revalidates an unchanged engine against current state and passes while it still permits | ✅ |
+| Same-address policy mutation after queue blocks finalization (sanctions add / allowlist revoke / composite module add) | ✅ (`test/PolicyFinalizationAuthority.test.ts`) |
+| Queue-time engine is a sticky floor across engine replacement and disable-to-`address(0)` | ✅ |
+| Daily spend booked once at admission; finalization never re-books (STATICCALL revalidation) | ✅ |
 
 ### Treasury quorum tests (`test/TreasuryQuorum.test.ts`)
 

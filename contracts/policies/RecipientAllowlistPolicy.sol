@@ -29,6 +29,20 @@ contract RecipientAllowlistPolicy is IPolicyEngine {
         emit RecipientRemoved(msg.sender, recipient);
     }
 
+    /// @dev Single predicate shared by {check} and {revalidate} so admission and
+    ///      finalization revalidation cannot diverge. Always evaluates the CURRENT
+    ///      allowlist state — a recipient removed after a withdrawal was queued is
+    ///      therefore caught at finalization; a recipient re-added before
+    ///      finalization is permitted again.
+    function _evaluate(
+        address vaultOwner,
+        address recipient
+    ) internal view returns (bool allowed, string memory reason) {
+        if (allowlist[vaultOwner][address(0)]) return (true, "");
+        if (allowlist[vaultOwner][recipient]) return (true, "");
+        return (false, "recipient not on allowlist");
+    }
+
     /// @inheritdoc IPolicyEngine
     function check(
         address vaultOwner,
@@ -36,8 +50,16 @@ contract RecipientAllowlistPolicy is IPolicyEngine {
         uint256,
         uint256
     ) external view override returns (bool allowed, string memory reason) {
-        if (allowlist[vaultOwner][address(0)]) return (true, "");
-        if (allowlist[vaultOwner][recipient]) return (true, "");
-        return (false, "recipient not on allowlist");
+        return _evaluate(vaultOwner, recipient);
+    }
+
+    /// @inheritdoc IPolicyEngine
+    function revalidate(
+        address vaultOwner,
+        address recipient,
+        uint256,
+        uint256
+    ) external view override returns (bool allowed, string memory reason) {
+        return _evaluate(vaultOwner, recipient);
     }
 }

@@ -28,7 +28,9 @@ complete on `main`; see [Phase_3_Status.md](Phase_3_Status.md).
 - `IPolicyEngine.sol` and `contracts/policies/` — optional withdrawal-policy boundary.
   `CompositePolicyEngine` applies multiple modules together; the included modules
   implement daily spend, recipient allowlist, and sanctions controls. Large withdrawals
-  are checked at queue time and re-checked at finalization if the engine changed.
+  are admitted at queue time (`check`, may book accounting) and always revalidated
+  read-only at finalization (`revalidate`) against both the queue-time and current
+  engines.
 - `IPQCVerifier.sol` — the PQ verifier trust-boundary interface
   (`algorithmId()`, `verify(digest, publicKey, signature)`).
 - `MockMLDSAVerifier.sol` — **mock** ML-DSA-65 verifier for tests and local demos only.
