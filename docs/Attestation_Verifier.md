@@ -166,7 +166,35 @@ As a **near-term mitigation** — one that does not eliminate attestor trust but
 the hidden, immediate in-place rotation — the recommended path is an immutable-attestor
 verifier deployment: fix the attestor in the constructor and change attestors by deploying
 a new verifier that the vault adopts through its existing timelocked verifier governance.
-See [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md).
+See [Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md) and
+[Immutable-attestor variant](#immutable-attestor-variant) below.
+
+## Immutable-attestor variant
+
+[`ImmutableAttestationPQCVerifier`](../contracts/verifiers/ImmutableAttestationPQCVerifier.sol)
+is the **recommended near-term deployment choice** over the mutable
+`AttestationPQCVerifier` described above. It implements the identical `IPQCVerifier`
+boundary, the same EIP-712 domain (`name: "AttestationPQCVerifier"`, `version: "1"`), the
+same `PQCAttestation` typehash, the same `ATTESTED_ML_DSA_65_ALGORITHM_ID`, and the same
+`abi.encode(bytes, uint256, bytes32, bytes32)` verifier payload — so the attestor CLI and
+any other existing attestation tooling can target either deployment unmodified, as long as
+it is pointed at the correct verifier address (`--verifier <address>`).
+
+The only difference is governance: `attestor` is set once in the constructor (reverting on
+the zero address) and is `immutable` — there is no `updateAttestor`, no owner, and no
+admin surface of any kind. Changing the attestor means deploying a new
+`ImmutableAttestationPQCVerifier` and moving `WalletWallVault` to it through the vault's
+existing timelocked `proposePQVerifier` / `applyPQVerifierUpdate` flow, so an attestor
+change inherits the vault's two-day review window instead of taking effect instantly. See
+[Attestation_Governance_Hardening.md](Attestation_Governance_Hardening.md) for the full
+rationale and [`test/ImmutableAttestationPQCVerifier.test.ts`](../test/ImmutableAttestationPQCVerifier.test.ts)
+for its test coverage, including a structural check that its ABI exposes no
+attestor-mutation function.
+
+This variant is still **trusted attestation** — it is not ZK, not on-chain ML-DSA
+verification, not audited, and not production custody. It narrows the *administrative*
+attack surface only; it does not remove trust in the attestor key or the off-chain
+verification.
 
 ## EIP-712 attestation
 

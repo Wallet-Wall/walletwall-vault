@@ -33,7 +33,7 @@ const SIMULATOR_MANIFESTS: Array<{ subject: string; file: string; deployedAddres
   {
     subject: "MockUSDC",
     file: join(REPRO_DIR, "mock-usdc-sepolia.json"),
-    deployedAddress: "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+    deployedAddress: "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
     hasImmutables: false,
   },
   {

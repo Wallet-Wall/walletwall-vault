@@ -3,7 +3,7 @@
   "version": "1",
   "subject": "MockUSDC",
   "liveRuntime": {
-    "address": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+    "address": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
     "chainId": 11155111,
     "rpcUrl": "https://ethereum-sepolia-rpc.publicnode.com",
     "rpcMethod": "eth_getCode",

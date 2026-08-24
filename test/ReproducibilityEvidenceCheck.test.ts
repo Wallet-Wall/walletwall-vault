@@ -102,7 +102,7 @@ describe("reproducibility-evidence — immutable value derivation", () => {
 
   it("constructor-argument: zero-pads the given address to 32 bytes", () => {
     const v = deriveImmutableExpectedBytes(
-      { method: "constructor-argument", value: "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15" },
+      { method: "constructor-argument", value: "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15" },
       ctx,
     );
     expect(v).to.equal("0x0000000000000000000000008ffc8ce04789e9a7b53685a2d78cda54e6faac15");

@@ -91,7 +91,7 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
 | --- | --- |
 | Network | Ethereum Sepolia |
 | Chain ID | `11155111` |
-| `MockUSDC` | [`0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15`](https://sepolia.etherscan.io/address/0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15) |
+| `MockUSDC` | [`0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15`](https://sepolia.etherscan.io/address/0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15) |
 | `MockMLDSAVerifier` | [`0x4736138c99e0619D06663D971C8cD347de186F6d`](https://sepolia.etherscan.io/address/0x4736138c99e0619D06663D971C8cD347de186F6d) |
 | `StablecoinVaultSimulator` | [`0x32f489842DD515Fa4b4b258714F0067B8B8133ae`](https://sepolia.etherscan.io/address/0x32f489842DD515Fa4b4b258714F0067B8B8133ae) |
 | Metadata file | `deployments/sepolia/stablecoin-vault-simulator.json` |

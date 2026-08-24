@@ -167,7 +167,7 @@
       "typeString": "contract IERC20",
       "derivation": {
         "method": "constructor-argument",
-        "value": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15"
+        "value": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15"
       },
       "expectedValueHex": "0x0000000000000000000000008ffc8ce04789e9a7b53685a2d78cda54e6faac15"
     },

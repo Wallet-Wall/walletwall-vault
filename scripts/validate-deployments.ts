@@ -14,6 +14,7 @@
 
 import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { join, relative, sep } from "path";
+import { getAddress } from "ethers";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 const DEPLOYMENTS_DIR = join(REPO_ROOT, "deployments");
@@ -23,7 +24,7 @@ const EXCLUDED_DIRS = new Set(["schema", "examples", "reproducibility"]);
 
 const ALLOWED_ENVIRONMENTS = ["local", "sepolia", "base-sepolia"] as const;
 const ALLOWED_TOKEN_MODES = ["mock", "external-test-token"] as const;
-const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+export const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const COMMIT_RE = /^[0-9a-f]{40}$/;
 const SEMVER_RE = /^\d+\.\d+\.\d+/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
@@ -75,11 +76,29 @@ function collectJsonFiles(dir: string, excludeDirs: Set<string>): string[] {
   return files;
 }
 
-function validateAddress(value: unknown, fieldName: string, errors: string[]): void {
+export function validateAddress(value: unknown, fieldName: string, errors: string[]): void {
   if (value !== null && value !== undefined) {
     if (typeof value !== "string" || !ADDRESS_RE.test(value)) {
       errors.push(
         `${fieldName}: must be a 0x-prefixed 40-hex-character address or null (got ${JSON.stringify(value)})`,
+      );
+      return;
+    }
+    // Shape alone (0x + 40 hex chars) doesn't catch mis-cased addresses — a
+    // single flipped letter still matches ADDRESS_RE but is a different,
+    // invalid checksum encoding. Committed deployment metadata must use the
+    // canonical EIP-55 checksum casing so a byte-for-byte address transcription
+    // error can't silently pass as "close enough".
+    let checksummed: string;
+    try {
+      checksummed = getAddress(value);
+    } catch {
+      errors.push(`${fieldName}: must be a valid EIP-55 checksummed address (got ${JSON.stringify(value)})`);
+      return;
+    }
+    if (checksummed !== value) {
+      errors.push(
+        `${fieldName}: must use EIP-55 checksum casing (got ${JSON.stringify(value)}, expected ${JSON.stringify(checksummed)})`,
       );
     }
   }
@@ -236,4 +255,6 @@ function main(): void {
   if (failCount > 0) process.exit(1);
 }
 
-main();
+if (process.argv[1]?.includes("validate-deployments")) {
+  main();
+}

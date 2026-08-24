@@ -36,7 +36,7 @@ The simulator stack deployed to Sepolia consists of three contracts:
 
 | Contract | Address (Sepolia) | Role |
 | --- | --- | --- |
-| `MockUSDC` | `0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15` | Freely mintable mock token (mUSDC, no monetary value) |
+| `MockUSDC` | `0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15` | Freely mintable mock token (mUSDC, no monetary value) |
 | `MockMLDSAVerifier` | `0x4736138c99e0619D06663D971C8cD347de186F6d` | Structural-only PQ gate (no real on-chain ML-DSA) |
 | `StablecoinVaultSimulator` | `0x32f489842DD515Fa4b4b258714F0067B8B8133ae` | ERC-20-aware vault wired to both of the above |
 

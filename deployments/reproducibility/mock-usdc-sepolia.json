@@ -4,7 +4,7 @@
   "subject": "MockUSDC",
   "environment": "sepolia",
   "chainId": 11155111,
-  "deployedAddress": "0x8ffc8cE04789e9a7b53685a2d78CDa54E6Faac15",
+  "deployedAddress": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
   "deploymentTx": "0x9568c269484ebca53166d63bc031f189059fe2e0c45791563b02a82d97cd159b",
   "reportedSourceCommit": "35c25fa294bebea44b3089aa2435a190a5adf3fb",
   "reportedSourceCommitInPublicHistory": true,
