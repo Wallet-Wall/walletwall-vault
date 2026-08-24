@@ -47,7 +47,9 @@
     "format": "prettier --write \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
     "format:check": "prettier --check \"contracts/**/*.sol\" \"{src,scripts,test,pqc}/**/*.ts\"",
     "validate:deployments": "tsx scripts/validate-deployments.ts",
-    "validate:reproducibility": "tsx scripts/validate-reproducibility.ts"
+    "validate:reproducibility": "tsx scripts/validate-reproducibility.ts",
+    "prevalidate:bytecode-size": "hardhat compile",
+    "validate:bytecode-size": "tsx scripts/validate-bytecode-size.ts"
   },
   "keywords": [
     "solidity",
