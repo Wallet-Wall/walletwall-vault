@@ -73,9 +73,9 @@ Release: `v0.4.12`
 | `addModule` rejects random address with no code                                                                        | ✅                                              |
 | `addModule` rejects duplicate module                                                                                   | ✅                                              |
 | Non-owner cannot `addModule`                                                                                           | ✅                                              |
-| `removeModule` removes module and emits event                                                                          | ✅                                              |
-| `removeModule` reverts for unknown module                                                                              | ✅                                              |
-| Can re-add module after removal                                                                                        | ✅                                              |
+| `proposeRemoveModule` / `applyRemoveModule` removes a module (after `MODULE_REMOVAL_DELAY`) and emits `ModuleRemoved`  | ✅                                              |
+| `proposeRemoveModule` reverts for unknown module; `applyRemoveModule` reverts before the delay / with none pending     | ✅                                              |
+| Can re-add module after its removal is fully applied; a second removal needs its own fresh delay (no stale replay)     | ✅                                              |
 | Daily limit + allowlist + sanctions all pass (valid withdrawal)                                                        | ✅                                              |
 | Sanctioned recipient blocked even if allowlisted                                                                       | ✅                                              |
 | Non-allowlisted recipient blocked                                                                                      | ✅                                              |

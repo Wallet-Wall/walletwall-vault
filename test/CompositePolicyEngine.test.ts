@@ -132,25 +132,178 @@ describe("CompositePolicyEngine", function () {
       );
     });
 
-    it("removeModule removes an existing module and emits event", async function () {
-      await composite.addModule(await dailyPolicy.getAddress());
-      await expect(composite.removeModule(await dailyPolicy.getAddress()))
-        .to.emit(composite, "ModuleRemoved")
-        .withArgs(await dailyPolicy.getAddress(), 0);
-      expect(await composite.moduleCount()).to.equal(0);
-    });
+    // Module REMOVAL is timelocked (propose -> wait MODULE_REMOVAL_DELAY -> apply):
+    // removing a module can only ever WEAKEN the composite's effective policy (AND
+    // composition), so it now carries the same governance friction as replacing the
+    // vault's engine address outright. addModule stays instant (see the tests above)
+    // because adding a module can only ever STRENGTHEN it. See
+    // test/CompositeModuleGovernanceAuthority.test.ts for the full adversarial suite.
+    describe("Module removal governance (propose / apply / cancel)", function () {
+      it("MODULE_REMOVAL_DELAY matches the vault's own POLICY_ENGINE_UPDATE_DELAY by convention", async function () {
+        expect(await composite.MODULE_REMOVAL_DELAY()).to.equal(BigInt(GOVERNANCE_DELAY));
+      });
 
-    it("removeModule reverts for unknown module", async function () {
-      await expect(composite.removeModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
-        composite,
-        "ModuleNotFound",
-      );
-    });
+      it("proposeRemoveModule reverts for a module that is not currently registered", async function () {
+        await expect(composite.proposeRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "ModuleNotFound",
+        );
+      });
 
-    it("can re-add a module after removal", async function () {
-      await composite.addModule(await dailyPolicy.getAddress());
-      await composite.removeModule(await dailyPolicy.getAddress());
-      await expect(composite.addModule(await dailyPolicy.getAddress())).to.not.revert(ethers);
+      it("non-owner cannot proposeRemoveModule", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await expect(
+          composite.connect(other).proposeRemoveModule(await dailyPolicy.getAddress()),
+        ).to.be.revertedWithCustomError(composite, "OwnableUnauthorizedAccount");
+      });
+
+      it("applyRemoveModule reverts before the delay has elapsed", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "ModuleRemovalNotReady",
+        );
+        // The module is UNCHANGED and still active while the removal is pending.
+        expect(await composite.moduleCount()).to.equal(1);
+      });
+
+      it("applyRemoveModule reverts when no removal is pending", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "NoPendingModuleRemoval",
+        );
+      });
+
+      it("removes an existing module and emits ModuleRemoved once the delay has elapsed", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress()))
+          .to.emit(composite, "ModuleRemoved")
+          .withArgs(await dailyPolicy.getAddress(), 0);
+        expect(await composite.moduleCount()).to.equal(0);
+        expect(await composite.pendingModuleRemovalValidAfter(await dailyPolicy.getAddress())).to.equal(0);
+      });
+
+      it("boundary precision: apply reverts at validAfter-1 and succeeds exactly AT validAfter", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        const validAfter = await composite.pendingModuleRemovalValidAfter(await dailyPolicy.getAddress());
+
+        // setNextBlockTimestamp governs the NEXT mined block, so the assertion
+        // transaction itself must be the block mined at that timestamp -- do not
+        // call mine() in between, or the tx lands one second later than intended.
+        await networkHelpers.time.setNextBlockTimestamp(validAfter - 1n);
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "ModuleRemovalNotReady",
+        );
+
+        await networkHelpers.time.setNextBlockTimestamp(validAfter);
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.emit(composite, "ModuleRemoved");
+      });
+
+      it("non-owner cannot applyRemoveModule", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await expect(
+          composite.connect(other).applyRemoveModule(await dailyPolicy.getAddress()),
+        ).to.be.revertedWithCustomError(composite, "OwnableUnauthorizedAccount");
+      });
+
+      it("cancelRemoveModule clears a pending proposal so apply then reverts", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await expect(composite.cancelRemoveModule(await dailyPolicy.getAddress()))
+          .to.emit(composite, "ModuleRemovalCancelled")
+          .withArgs(await dailyPolicy.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "NoPendingModuleRemoval",
+        );
+        expect(await composite.moduleCount()).to.equal(1);
+      });
+
+      it("cancelRemoveModule reverts when nothing is pending", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await expect(composite.cancelRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "NoPendingModuleRemoval",
+        );
+      });
+
+      it("can re-add a module after its removal is fully applied", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await composite.applyRemoveModule(await dailyPolicy.getAddress());
+        await expect(composite.addModule(await dailyPolicy.getAddress())).to.not.revert(ethers);
+      });
+
+      it("re-adding after removal requires a FRESH full delay -- no stale-timestamp replay", async function () {
+        // Remove, then re-add, the SAME module address once already.
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await composite.applyRemoveModule(await dailyPolicy.getAddress());
+        await composite.addModule(await dailyPolicy.getAddress());
+
+        // A second removal cycle for the same address must NOT be able to reuse any
+        // stale pending-removal timestamp left over from the first cycle -- it needs
+        // its own fresh proposal and its own fresh full delay.
+        expect(await composite.pendingModuleRemovalValidAfter(await dailyPolicy.getAddress())).to.equal(0);
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "ModuleRemovalNotReady",
+        );
+        expect(await composite.moduleCount()).to.equal(1);
+      });
+
+      it("re-proposing the same module restarts the delay", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY - 10);
+        // Re-propose just before the original delay would have elapsed.
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        // The ORIGINAL window has now passed, but the restarted one has not.
+        await networkHelpers.time.increase(20);
+        await expect(composite.applyRemoveModule(await dailyPolicy.getAddress())).to.be.revertedWithCustomError(
+          composite,
+          "ModuleRemovalNotReady",
+        );
+      });
+
+      it("a module with a pending removal still counts toward MAX_MODULES until applied", async function () {
+        await composite.addModule(await dailyPolicy.getAddress());
+        await composite.proposeRemoveModule(await dailyPolicy.getAddress());
+        // Still pending (not applied): moduleCount is unchanged, still occupying a slot.
+        expect(await composite.moduleCount()).to.equal(1);
+        expect(await composite.getModules()).to.deep.equal([await dailyPolicy.getAddress()]);
+      });
+
+      it("the module being removed remains fully active (still evaluated by check/revalidate) for the entire pending window", async function () {
+        await composite.addModule(await sanctionsPolicy.getAddress());
+        await sanctionsPolicy.addToSanctionsList(sanctioned.address);
+        // revalidate() is deliberately ungated (unlike check()), so it can be called
+        // directly here without registering an admissionCaller.
+        await composite.proposeRemoveModule(await sanctionsPolicy.getAddress());
+
+        // Right up until (but not including) the apply, the module still enforces.
+        await networkHelpers.time.increase(GOVERNANCE_DELAY - 10);
+        let [ok, reason] = await composite.revalidate(owner.address, sanctioned.address, 1n, 1n);
+        expect(ok).to.equal(false);
+        expect(reason).to.equal("recipient is sanctioned");
+
+        await networkHelpers.time.increase(20);
+        await composite.applyRemoveModule(await sanctionsPolicy.getAddress());
+        [ok, reason] = await composite.revalidate(owner.address, sanctioned.address, 1n, 1n);
+        expect(ok).to.equal(true);
+      });
     });
 
     it("rejects adding the composite itself as a module (direct self-recursion)", async function () {

@@ -9,6 +9,7 @@ import {
   DailySpendLimitPolicy,
   SanctionsListPolicy,
   StablecoinVaultSimulator,
+  CompositePolicyEngine,
 } from "../typechain-types";
 import { makeSignWithdrawal, makeBuildRequest } from "./helpers/simulatorHelpers";
 
@@ -217,5 +218,47 @@ describe("Simulator policy finalization authority (parity regression)", function
       .to.be.revertedWithCustomError(sim, "PolicyEngineUnavailable")
       .withArgs(await mock.getAddress());
     expect(await mock.revalidateCalls()).to.equal(0n);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Composite module-removal governance parity: the fix lives entirely in
+  // CompositePolicyEngine.sol (vault-agnostic), so it applies identically here.
+  // Full adversarial characterization lives in
+  // test/CompositeModuleGovernanceAuthority.test.ts (WalletWallVault); this is a
+  // single parity proof that the simulator gets the same protection.
+  // ---------------------------------------------------------------------------
+  it("composite module removal stays governed on the simulator: proposing removal does not evict a denying module before finalize (parity)", async function () {
+    const MODULE_REMOVAL_DELAY = 2 * 24 * 60 * 60;
+    const composite = await (await ethers.getContractFactory("CompositePolicyEngine", admin)).deploy();
+    await composite.addModule(await allowlistPolicy.getAddress());
+    await composite.addModule(await sanctionsPolicy.getAddress());
+    await composite.connect(admin).setAdmissionCaller(await sim.getAddress(), true);
+    await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+
+    await setPolicyEngine(await composite.getAddress());
+    await enableLargeTx();
+
+    const { operationId } = await queueLarge();
+
+    // Recipient becomes sanctioned after queueing; the composite owner proposes
+    // evicting the denying module, but proposing alone does not remove it.
+    await sanctionsPolicy.addToSanctionsList(recipient.address);
+    await composite.proposeRemoveModule(await sanctionsPolicy.getAddress());
+    expect(await composite.moduleCount()).to.equal(2n);
+
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
+    // The removal was never applied, so the sanctions module is still fully
+    // active regardless of how much time has passed -- finalization is still
+    // correctly blocked, exactly as on WalletWallVault.
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyViolation")
+      .withArgs("recipient is sanctioned");
+
+    // Once the removal is actually applied (after its own full delay), the
+    // still-queued withdrawal does settle -- proving the fix gates the TIMING
+    // of removal, not the ability to ever legitimately remove a module.
+    await networkHelpers.time.increase(MODULE_REMOVAL_DELAY);
+    await composite.applyRemoveModule(await sanctionsPolicy.getAddress());
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
   });
 });

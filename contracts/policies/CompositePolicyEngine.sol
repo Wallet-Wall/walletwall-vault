@@ -26,19 +26,46 @@ import "../IPolicyEngine.sol";
  *       never be this composite itself (direct self-recursion). Indirect cycles
  *       through another composite are NOT detected on-chain — do not nest composites.
  *
- *       GOVERNANCE NOTE: addModule/removeModule take effect IMMEDIATELY (no
- *       timelock), like the content mutations of the individual policies
- *       (sanctions add/remove, allowlist add/remove). Wiring a composite into a
- *       vault therefore places the effective policy set behind the composite
- *       owner's instant control, even though replacing the vault's engine address
- *       itself requires the 2-day governance delay. Whoever owns the composite
- *       owns instant policy-set changes; deployments where the composite owner
- *       must not be able to instantly evict another party's module should not
- *       use a shared composite.
+ *       GOVERNANCE NOTE: {addModule} and module removal are deliberately
+ *       ASYMMETRIC. Composition here is AND-semantics — a withdrawal is admitted
+ *       only if EVERY active module approves it — so adding a module can only
+ *       shrink or preserve the set of withdrawals the composite accepts (strictly
+ *       monotonic strengthening), while removing one can only grow or preserve it
+ *       (strictly monotonic weakening). {addModule} stays instant, onlyOwner, no
+ *       delay: it can never weaken the effective policy, so gating it would only
+ *       cost urgent-response liveness (e.g. attaching a new sanctions module) for
+ *       no security benefit. Removal — including the transition from a non-empty
+ *       enforcing set down to a permissive empty one — is the ONLY direction that
+ *       can weaken the effective policy, so it now goes through
+ *       {proposeRemoveModule} / {applyRemoveModule} behind {MODULE_REMOVAL_DELAY},
+ *       matching the governance friction a vault owner would need to replace the
+ *       policy engine's ADDRESS outright. The module being removed stays fully
+ *       active — evaluated by both {check} and {revalidate} — for the entire
+ *       pending window, so a withdrawal queued while it was present remains
+ *       correctly gated by it until the removal actually applies. This closes the
+ *       gap where a composite owner could otherwise instantly evict a denying
+ *       module (or empty the set entirely) and reach, in one transaction and zero
+ *       elapsed delay, the same practical outcome a full engine-address swap would
+ *       need the vault's own governance delay to reach.
  */
 contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     /// @notice Hard cap on registered modules; bounds check()/revalidate() gas.
+    /// @dev A module with a pending-but-not-yet-applied removal still counts
+    ///      toward this cap (it is still in {getModules} until {applyRemoveModule}
+    ///      runs) — rotating several modules at MAX_MODULES may transiently need to
+    ///      wait for an old removal to apply before a new one can be added.
     uint256 public constant MAX_MODULES = 16;
+
+    /// @notice Governance delay for a proposed module REMOVAL to become applicable.
+    /// @dev Standalone constant on this composite, matched BY CONVENTION to the
+    ///      2-day POLICY_ENGINE_UPDATE_DELAY used by WalletWallVault and
+    ///      StablecoinVaultSimulator — NOT read from either vault (this composite
+    ///      has no reference to any specific vault and may be wired into several).
+    ///      The removal-friction invariant this composite enforces only holds
+    ///      relative to a consuming vault whose OWN engine-swap delay is >= this
+    ///      value; a future vault type with a longer engine-swap delay would need
+    ///      re-verification before being wired to a composite using this constant.
+    uint256 public constant MODULE_REMOVAL_DELAY = 2 days;
 
     address[] private _modules;
 
@@ -46,8 +73,14 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     ///         composite admits nothing until its consumer vault is registered.
     mapping(address => bool) public admissionCaller;
 
+    /// @notice Earliest timestamp at which a proposed module removal may be
+    ///         applied; zero means no removal is pending for that module.
+    mapping(address => uint256) public pendingModuleRemovalValidAfter;
+
     event ModuleAdded(address indexed module, uint256 moduleCount);
     event ModuleRemoved(address indexed module, uint256 moduleCount);
+    event ModuleRemovalProposed(address indexed module, uint256 validAfter);
+    event ModuleRemovalCancelled(address indexed module);
     event AdmissionCallerSet(address indexed caller, bool allowed);
 
     error ZeroModuleAddress();
@@ -57,6 +90,8 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     error SelfModule();
     error TooManyModules(uint256 count, uint256 max);
     error UnauthorizedAdmissionCaller(address caller);
+    error NoPendingModuleRemoval(address module);
+    error ModuleRemovalNotReady(address module, uint256 validAfter, uint256 currentTimestamp);
 
     constructor() Ownable(msg.sender) {}
 
@@ -90,11 +125,35 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     }
 
     /**
-     * @notice Removes a policy module from the composition.
-     * @dev Uses swap-and-pop so removal is O(n) for the lookup and O(1) for the
-     *      removal itself. Order is not preserved. Admin-only.
+     * @notice Proposes removing a policy module, effective after {MODULE_REMOVAL_DELAY}.
+     * @dev Admin-only. Reverts if `module` is not currently registered. The module
+     *      remains fully active — evaluated by both {check} and {revalidate} — for
+     *      the entire pending window; only {applyRemoveModule}, once due, actually
+     *      removes it. Re-proposing the same module restarts the delay, matching
+     *      this repo's other propose/apply flows (the vault's own policy-engine
+     *      swap, large-tx params, PQ verifier).
      */
-    function removeModule(address module) external onlyOwner {
+    function proposeRemoveModule(address module) external onlyOwner {
+        if (!_isModule(module)) revert ModuleNotFound(module);
+        uint256 validAfter = block.timestamp + MODULE_REMOVAL_DELAY;
+        pendingModuleRemovalValidAfter[module] = validAfter;
+        emit ModuleRemovalProposed(module, validAfter);
+    }
+
+    /**
+     * @notice Applies a previously proposed module removal once its delay has elapsed.
+     * @dev Admin-only. Uses swap-and-pop so removal is O(n) for the lookup and O(1)
+     *      for the removal itself. Order is not preserved. Re-checks membership at
+     *      apply time (not just the existence of a pending proposal) so a stale
+     *      proposal can never remove the wrong thing.
+     */
+    function applyRemoveModule(address module) external onlyOwner {
+        uint256 validAfter = pendingModuleRemovalValidAfter[module];
+        if (validAfter == 0) revert NoPendingModuleRemoval(module);
+        if (block.timestamp < validAfter) revert ModuleRemovalNotReady(module, validAfter, block.timestamp);
+
+        pendingModuleRemovalValidAfter[module] = 0;
+
         uint256 len = _modules.length;
         for (uint256 i = 0; i < len; i++) {
             if (_modules[i] == module) {
@@ -105,6 +164,25 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
             }
         }
         revert ModuleNotFound(module);
+    }
+
+    /**
+     * @notice Cancels a pending module removal.
+     * @dev Admin-only. Reverts if no removal is pending for `module`.
+     */
+    function cancelRemoveModule(address module) external onlyOwner {
+        if (pendingModuleRemovalValidAfter[module] == 0) revert NoPendingModuleRemoval(module);
+        pendingModuleRemovalValidAfter[module] = 0;
+        emit ModuleRemovalCancelled(module);
+    }
+
+    /// @dev Linear membership check — bounded by {MAX_MODULES}, so this is cheap.
+    function _isModule(address module) internal view returns (bool) {
+        uint256 len = _modules.length;
+        for (uint256 i = 0; i < len; i++) {
+            if (_modules[i] == module) return true;
+        }
+        return false;
     }
 
     /**
