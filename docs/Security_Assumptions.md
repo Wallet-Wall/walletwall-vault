@@ -157,7 +157,7 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   controls `setGuardians`. A compromise of the owner key can therefore still lead to takeover
   by installing attacker guardians and driving guardian recovery — but only after the 7-day
   `RECOVERY_DELAY`, during which the owner can `cancelRecovery`. Removing the direct mutators
-  converts what was an *instant* classical takeover into a *delayed, vetoable* one; it does
+  converts what was an _instant_ classical takeover into a _delayed, vetoable_ one; it does
   not make the classical owner key irrelevant. Hardening `setGuardians` (e.g. a timelock or
   existing-guardian consent) is possible future work, out of scope for this change.
 
@@ -253,10 +253,54 @@ contract owner.
 
 - `CompositePolicyEngine` — the single engine wired into the vault when multiple
   modules must apply simultaneously. It calls each configured module and fails on the
-  first denial. Module administration uses `Ownable2Step`.
+  first denial. Module administration uses `Ownable2Step`. Its `check()` accepts only
+  consumers registered by the owner via `setAdmissionCaller()`: because a module sees
+  the COMPOSITE as `msg.sender`, a tenant who delegates to a composite has delegated
+  to whoever can reach it, so admission authority must hold at that hop too. A fresh
+  composite admits nothing until its consumer vault is registered. `revalidate()` is
+  deliberately NOT gated — it is `view` and gating it would break the vaults'
+  fail-closed settlement revalidation. A composite carrying ONLY stateless modules
+  still requires registration: the composite cannot tell whether a module is
+  stateful, so the gate is unconditional and fail-closed, which for that particular
+  composition is a configuration step with no security benefit.
+- Rotating a vault's policy engine to a NEW intermediary that still routes to the
+  same `DailySpendLimitPolicy` changes the `msg.sender` that module observes, so an
+  armed tenant's existing delegation no longer matches and their admissions revert
+  `UnauthorizedAdmitter` until they re-delegate. `pendingPolicyEngine` is public and
+  emitted on proposal, so tenants can pre-delegate during the two-day
+  `POLICY_ENGINE_UPDATE_DELAY` for zero downtime; a tenant who misses the window is
+  restored by ONE permissionless transaction of their own
+  (`setAdmitter(newEngine, true)`, or `setDailyLimit(0)` to disarm). Withdrawals
+  already queued are unaffected, because settlement uses the ungated `revalidate()`.
+  Corollary for socially recovered vaults: `setAdmitter` and `setDailyLimit` are both
+  keyed on `msg.sender == vaultOwner`, and `executeRecovery` rotates the vault's
+  SIGNER while leaving the `vaultOwner` mapping key unchanged — so a vault recovered
+  after key loss cannot change its own daily-limit configuration. That limitation
+  predates this change (`setDailyLimit` was already `msg.sender`-keyed); admission
+  delegation now inherits it.
 - `DailySpendLimitPolicy` — per-vault vault-owner-managed rolling 24-hour spend
   cap. Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
+  Booking additionally requires ADMISSION AUTHORITY: `check()` mutates accounting
+  selected by its `vaultOwner` argument, so it also demands that `msg.sender` be an
+  admitter the subject itself delegated to via `setAdmitter()` — the same
+  `msg.sender`-keyed authority root as `setDailyLimit()`. Arming a non-zero limit
+  therefore requires delegating first (`NoAdmitterConfigured` otherwise), and the
+  last admitter cannot be revoked while a limit is armed (`LastAdmitterWhileArmed`);
+  disarming to 0 is always permitted so the escape hatch is never blocked. Owners
+  who never armed a limit need no configuration — the gate sits after the
+  `limit == 0` short-circuit, which is also the point before which nothing is
+  mutable. `revalidate()` stays ungated so settlement never depends on admission
+  authority. The delegation is TRANSITIVE and only as narrow as what the subject
+  delegated to: under direct wiring no third party can burn a tenant's allowance,
+  but delegating to a `CompositePolicyEngine` inherits that composite's
+  access-control policy, placing the set of principals that may consume the
+  tenant's admission accounting under the composite owner's instant control. That
+  is denial-class only (spend never decreases, no allowance is manufactured, queued
+  withdrawals still settle), it is bounded by the tenant's unilateral
+  `setDailyLimit(0)` escape, and it is dominated by the same owner's existing
+  ability to add an always-denying module. Delegate to a composite only where its
+  owner is already trusted for the liveness of that composition.
   For a successfully queued large withdrawal, later cancellation or recovery refunds
   the vault reservation but does not restore policy allowance; the amount remains
   counted until the policy window resets. A limit of 0 means unrestricted.
@@ -303,9 +347,9 @@ contract owner.
     floor: replacing or disabling the engine after queueing does not erase the
     restrictions the withdrawal was admitted under;
   - the **current engine** — newly imposed restrictions also apply.
-  Restrictive drift blocks finalization; permissive drift (a restriction lifted
-  before settlement) is honored. Because `revalidate()` is a STATICCALL and the
-  daily-spend policy books at admission only, no path double-counts daily spend.
+    Restrictive drift blocks finalization; permissive drift (a restriction lifted
+    before settlement) is honored. Because `revalidate()` is a STATICCALL and the
+    daily-spend policy books at admission only, no path double-counts daily spend.
 
 ## 6. Authorization & replay model
 

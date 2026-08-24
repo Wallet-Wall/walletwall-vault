@@ -26,7 +26,7 @@ Release: `v0.4.12`
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Large-withdrawal timelock | ✅ Implemented / Hardened | `largeTxThreshold`, `largeTxDelay`, timelocked `queueWithdrawal` + `finalizeWithdrawal`; governance-delayed parameter changes; cancellation preserves reserved funds |
-| Daily spend limit policy | ✅ Implemented / Hardened | `DailySpendLimitPolicy`; rolling 24-hour window; per-vault-owner configurable; 0 = unrestricted |
+| Daily spend limit policy | ✅ Implemented / Hardened | `DailySpendLimitPolicy`; rolling 24-hour window; per-vault-owner configurable; 0 = unrestricted. Admission authority: booking requires `msg.sender` to be an admitter the subject delegated to via `setAdmitter()`, so the `vaultOwner` argument selects the accounting but never authorizes it. `CompositePolicyEngine.check()` carries the matching `setAdmissionCaller()` gate, since a module observes the composite as `msg.sender`. Regression-tested in `test/DailySpendAdmissionAuthority.test.ts` |
 | Recipient allowlist policy | ✅ Implemented / Hardened | `RecipientAllowlistPolicy`; fail-safe empty list blocks all; `address(0)` opt-out; vault-owner self-managed |
 | Sanctions deny-list policy | ✅ Implemented / Hardened | `SanctionsListPolicy`; admin-controlled; `Ownable2Step`; batch add |
 

@@ -42,8 +42,13 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
 
     address[] private _modules;
 
+    /// @notice Consumers permitted to invoke {check}. Empty by default — a fresh
+    ///         composite admits nothing until its consumer vault is registered.
+    mapping(address => bool) public admissionCaller;
+
     event ModuleAdded(address indexed module, uint256 moduleCount);
     event ModuleRemoved(address indexed module, uint256 moduleCount);
+    event AdmissionCallerSet(address indexed caller, bool allowed);
 
     error ZeroModuleAddress();
     error NoCode(address module);
@@ -51,6 +56,7 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     error ModuleNotFound(address module);
     error SelfModule();
     error TooManyModules(uint256 count, uint256 max);
+    error UnauthorizedAdmissionCaller(address caller);
 
     constructor() Ownable(msg.sender) {}
 
@@ -101,6 +107,38 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
         revert ModuleNotFound(module);
     }
 
+    /**
+     * @notice Registers (or de-registers) a consumer permitted to call {check}.
+     * @dev Admin-only, and mandatory before this composite can admit anything.
+     *
+     *      WHY THIS EXISTS. {check} relays the caller-supplied `vaultOwner` to every
+     *      module. A stateful module such as {DailySpendLimitPolicy} gates its own
+     *      booking on `msg.sender`, and under composition that msg.sender is THIS
+     *      contract — so a tenant who delegates to this composite has delegated to
+     *      whoever can reach this composite. Without this gate that is everyone, and
+     *      the composite becomes a deputy for exactly the poisoning the module's own
+     *      gate refuses. Authority has to hold at every hop of a stateful path.
+     *
+     *      This adds no new authority class: the owner already holds instant,
+     *      untimelocked control of the effective policy set via {addModule} /
+     *      {removeModule}, so it can already block admissions at will.
+     *
+     *      {revalidate} is deliberately NOT gated — it is `view`, mutates nothing, and
+     *      restricting it would break the vaults' fail-closed settlement revalidation.
+     */
+    function setAdmissionCaller(address caller, bool allowed) external onlyOwner {
+        if (caller == address(0)) revert ZeroModuleAddress();
+        if (caller == address(this)) revert SelfModule();
+
+        // NB: high-level `.code.length` rather than {addModule}'s inline-assembly
+        // extcodesize — `caller` is a reserved Yul opcode (it IS msg.sender there).
+        // Both compile to EXTCODESIZE.
+        if (allowed && caller.code.length == 0) revert NoCode(caller);
+
+        admissionCaller[caller] = allowed;
+        emit AdmissionCallerSet(caller, allowed);
+    }
+
     /// @notice Returns the number of active policy modules.
     function moduleCount() external view returns (uint256) {
         return _modules.length;
@@ -121,6 +159,10 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
      *      withdrawal. Returns (true, "") only if all modules allow it.
      *      An empty module list is permissive — attach at least one module
      *      before enabling this as the vault's policy engine.
+     *
+     *      Restricted to registered consumers ({setAdmissionCaller}); an unregistered
+     *      caller reverts rather than being relayed to the modules, so this composite
+     *      cannot be used as a deputy to reach a stateful module's admission accounting.
      */
     function check(
         address vaultOwner,
@@ -128,6 +170,8 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
         uint256 amount,
         uint256 vaultBalance
     ) external override returns (bool, string memory) {
+        if (!admissionCaller[msg.sender]) revert UnauthorizedAdmissionCaller(msg.sender);
+
         uint256 len = _modules.length;
         for (uint256 i = 0; i < len; i++) {
             (bool ok, string memory why) = IPolicyEngine(_modules[i]).check(
