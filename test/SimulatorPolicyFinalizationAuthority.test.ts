@@ -13,19 +13,16 @@ import {
 import { makeSignWithdrawal, makeBuildRequest } from "./helpers/simulatorHelpers";
 
 /**
- * Parity CHARACTERIZATION: the stale-policy finalization gap is IDENTICAL in
- * StablecoinVaultSimulator (ERC-20 sibling of WalletWallVault). Same code shape at
- * contracts/StablecoinVaultSimulator.sol:712-721 — the finalize re-check fires only when
- * the engine ADDRESS changed since queue, so same-address internal mutation is never
- * re-consulted. See test/PolicyFinalizationAuthority.test.ts for the ETH-vault analysis.
- *
- * These pin ACTUAL current behavior; `VULNERABILITY`-tagged assertions are expected to
- * flip when the authority model is corrected. Kept intentionally small — the ETH-vault
- * suite carries the full P1–P7 matrix; this file only proves the ERC-20 twin is affected.
+ * Parity REGRESSION: StablecoinVaultSimulator (the ERC-20 sibling) applies the same
+ * finalization authority model as WalletWallVault — read-only revalidation of BOTH
+ * the queue-time engine (sticky floor) and the current engine, with no address-drift
+ * gate. These tests began life as characterization of the shared stale-policy bypass
+ * (PR #152) and now pin the fix on the simulator side. The full P1–P7 matrix lives in
+ * test/PolicyFinalizationAuthority.test.ts; this file proves ERC-20 parity.
  */
 const MUSDC = (n: number) => BigInt(n) * 1_000_000n;
 
-describe("Simulator policy finalization authority (parity characterization)", function () {
+describe("Simulator policy finalization authority (parity regression)", function () {
   let sim: StablecoinVaultSimulator;
   let token: MockUSDC;
   let verifier: MockMLDSAVerifier;
@@ -54,8 +51,8 @@ describe("Simulator policy finalization authority (parity characterization)", fu
     await sim.connect(admin).applyPolicyEngine();
   }
 
-  async function enableLargeTx() {
-    await sim.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
+  async function enableLargeTx(delay = LARGE_TX_DELAY) {
+    await sim.connect(admin).proposeLargeTxParams(THRESHOLD, delay);
     await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await sim.connect(admin).applyLargeTxParams();
   }
@@ -88,7 +85,7 @@ describe("Simulator policy finalization authority (parity characterization)", fu
     signWithdrawal = makeSignWithdrawal(sim, owner);
   });
 
-  it("VULNERABILITY: finalize pays a recipient sanctioned AFTER queue (same engine address)", async function () {
+  it("finalize REVERTS for a recipient sanctioned AFTER queue (same engine address)", async function () {
     await setPolicyEngine(await sanctionsPolicy.getAddress());
     await enableLargeTx();
 
@@ -99,29 +96,31 @@ describe("Simulator policy finalization authority (parity characterization)", fu
     expect(await sim.policyEngine()).to.equal(engineAtQueue); // address unchanged
 
     await networkHelpers.time.increase(LARGE_TX_DELAY);
-    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyViolation")
+      .withArgs("recipient is sanctioned");
   });
 
-  it("VULNERABILITY: finalize pays a recipient removed from the allowlist AFTER queue", async function () {
+  it("finalize REVERTS for a recipient removed from the allowlist AFTER queue", async function () {
     await allowlistPolicy.connect(owner).addRecipient(recipient.address);
     await setPolicyEngine(await allowlistPolicy.getAddress());
     await enableLargeTx();
 
     const { operationId } = await queueLarge();
     await allowlistPolicy.connect(owner).removeRecipient(recipient.address);
-    const [ok] = await allowlistPolicy.check.staticCall(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
-    expect(ok).to.equal(false);
 
     await networkHelpers.time.increase(LARGE_TX_DELAY);
-    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyViolation")
+      .withArgs("recipient not on allowlist");
   });
 
-  it("SAFE (control): finalize BLOCKS when the engine ADDRESS is replaced by a denying one", async function () {
+  it("finalize BLOCKS when the engine ADDRESS is replaced by a denying one", async function () {
     await enableLargeTx();
-    const { operationId } = await queueLarge();
+    const { operationId } = await queueLarge(); // policyEngineAtQueue == address(0)
 
     await sanctionsPolicy.addToSanctionsList(recipient.address);
-    await setPolicyEngine(await sanctionsPolicy.getAddress()); // address 0x0 -> engine
+    await setPolicyEngine(await sanctionsPolicy.getAddress()); // 0x0 -> engine
 
     await networkHelpers.time.increase(LARGE_TX_DELAY);
     await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
@@ -129,14 +128,63 @@ describe("Simulator policy finalization authority (parity characterization)", fu
       .withArgs("recipient is sanctioned");
   });
 
-  it("DailySpendLimitPolicy records spend at queue time in the simulator too", async function () {
+  it("disabling the current engine does not erase queue-time restrictions (sticky floor)", async function () {
+    await setPolicyEngine(await sanctionsPolicy.getAddress());
+    await enableLargeTx();
+    const { operationId } = await queueLarge(); // clean at admission
+
+    await sanctionsPolicy.addToSanctionsList(recipient.address);
+    await setPolicyEngine(ethers.ZeroAddress); // disabled
+    expect(await sim.policyEngine()).to.equal(ethers.ZeroAddress);
+
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyViolation")
+      .withArgs("recipient is sanctioned");
+  });
+
+  it("daily spend is booked once at queue and finalization does not book it again", async function () {
+    // One-hour large-tx delay so the policy's 24h window does not roll before finalize.
+    const SHORT_DELAY = 3600;
     const LIMIT = MUSDC(400);
     await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
     await setPolicyEngine(await dailyPolicy.getAddress());
-    await enableLargeTx();
+    await enableLargeTx(SHORT_DELAY);
 
     expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
-    await queueLarge(MUSDC(300));
+    const { operationId } = await queueLarge(MUSDC(300));
     expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - MUSDC(300));
+
+    await networkHelpers.time.increase(SHORT_DELAY);
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
+    // Settlement did not re-book (no double-count).
+    expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - MUSDC(300));
+  });
+
+  it("revalidate receives the pre-deduction balance (parity with the ETH vault)", async function () {
+    // Mock admits only when vaultBalance == DEPOSIT (the balance before this
+    // withdrawal's deduction). The old code passed the post-reservation balance at
+    // finalization, which would make this revalidation fail.
+    const mock = await (await ethers.getContractFactory("BalanceAssertingPolicyMock", admin)).deploy(DEPOSIT);
+    await setPolicyEngine(await mock.getAddress());
+    await enableLargeTx();
+    const { operationId } = await queueLarge();
+
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
+  });
+
+  it("a revalidate() that attempts a state write fails finalization closed (STATICCALL parity)", async function () {
+    const mock = await (await ethers.getContractFactory("MutatingRevalidatePolicyMock", admin)).deploy();
+    await setPolicyEngine(await mock.getAddress());
+    await enableLargeTx();
+    const { operationId } = await queueLarge();
+    expect(await mock.checkCalls()).to.equal(1n); // admission wrote normally
+
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyEngineUnavailable")
+      .withArgs(await mock.getAddress());
+    expect(await mock.revalidateCalls()).to.equal(0n);
   });
 });

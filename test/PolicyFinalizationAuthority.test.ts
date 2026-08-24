@@ -13,37 +13,26 @@ import {
 import { makeBuildRequest, makeSignWithdrawal } from "./helpers/vaultHelpers";
 
 /**
- * Adversarial CHARACTERIZATION of the delayed-withdrawal / mutable-policy authority model.
+ * Regression suite for the delayed-withdrawal / mutable-policy AUTHORITY MODEL.
  *
- * These tests do NOT assert a desired architecture. They pin the ACTUAL semantics of
- * `WalletWallVault` on the current branch so the authority model can be reasoned about
- * with evidence rather than from the docstrings.
+ * Background: `finalizeWithdrawal` formerly re-checked policy only when the engine
+ * ADDRESS changed since queue, so same-address internal mutation (a recipient
+ * sanctioned or de-allowlisted after queueing, a denying module added to a
+ * composite) was never re-consulted — a stale-policy bypass. These tests began
+ * life as characterization of that bug (PR #152); they now pin the FIXED model:
  *
- * Each assertion tagged `VULNERABILITY` records behavior that the docs claim is prevented
- * but that the code permits. When the authority model is fixed, those assertions are the
- * ones expected to flip (revert instead of succeed); the `CONTROL` assertions prove the
- * underlying policy engines themselves are wired correctly, isolating the defect to the
- * finalization gate rather than the policies.
+ *   - admission (`check`, may mutate) is split from finalization revalidation
+ *     (`revalidate`, view / STATICCALL, never re-books);
+ *   - finalization ALWAYS revalidates — no address-drift gate — against the
+ *     QUEUE-TIME engine (a sticky floor that survives replacement/disable) AND
+ *     the current engine (once, if the same address);
+ *   - restrictive drift blocks, permissive drift is honored, and stateful
+ *     admission accounting (DailySpendLimitPolicy) is booked exactly once at queue.
  *
- * Reference (current code, contracts/WalletWallVault.sol:813-823):
- *
- *     address currentEngine = address(policyEngine);
- *     if (currentEngine != address(0) && currentEngine != pending.policyEngineAtQueue) {
- *         (bool ok, string memory why) = policyEngine.check(...);
- *         if (!ok) revert PolicyViolation(why);
- *     }
- *
- * The re-check fires ONLY when the engine ADDRESS differs from the one captured at queue
- * time. Same-address internal mutation (sanctions add, allowlist remove, composite module
- * add) is therefore never re-consulted at finalization.
- *
- * Contradicted docs:
- *   - docs/Phase_3_Status.md:39 — claims this "prevents stale-policy bypasses
- *     (e.g. recipient added to sanctions list after queuing)". That exact example is P1 below.
- *   - docs/Security_Assumptions.md:261-263 — "re-checks policy only if the active engine
- *     address changed ... This closes stale-engine bypasses". Only engine REPLACEMENT is closed.
+ * Contradicted-then-corrected docs: docs/Phase_3_Status.md and
+ * docs/Security_Assumptions.md (updated in this PR to describe the new model).
  */
-describe("Policy finalization authority (adversarial characterization)", function () {
+describe("Policy finalization authority (regression)", function () {
   let vault: WalletWallVault;
   let verifier: MockMLDSAVerifier;
   let composite: CompositePolicyEngine;
@@ -77,8 +66,8 @@ describe("Policy finalization authority (adversarial characterization)", functio
     await vault.connect(admin).applyPolicyEngine();
   }
 
-  async function enableLargeTx() {
-    await vault.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
+  async function enableLargeTx(delay = LARGE_TX_DELAY) {
+    await vault.connect(admin).proposeLargeTxParams(THRESHOLD, delay);
     await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyLargeTxParams();
   }
@@ -112,8 +101,7 @@ describe("Policy finalization authority (adversarial characterization)", functio
   // P1 — SAME sanctions engine mutates after queue (address unchanged)
   // =========================================================================
   describe("P1 — same-address SanctionsListPolicy mutates after queue", function () {
-    it("CONTROL: the immediate-withdrawal path DOES honor the sanctions engine", async function () {
-      // Proves the SanctionsListPolicy is correctly wired; only the finalize gate is in question.
+    it("CONTROL: the immediate-withdrawal path honors the sanctions engine", async function () {
       await setPolicyEngine(await sanctionsPolicy.getAddress());
       await sanctionsPolicy.addToSanctionsList(recipient.address);
       const req = await buildRequest({ recipient: recipient.address, amount: ethers.parseEther("0.5") });
@@ -123,36 +111,36 @@ describe("Policy finalization authority (adversarial characterization)", functio
         .withArgs("recipient is sanctioned");
     });
 
-    it("VULNERABILITY: finalize succeeds for a recipient sanctioned AFTER queue (same engine address)", async function () {
+    it("finalize REVERTS for a recipient sanctioned AFTER queue (same engine address)", async function () {
       await setPolicyEngine(await sanctionsPolicy.getAddress());
       await enableLargeTx();
 
-      // Recipient is clean at queue time → passes the queue-time policy check.
+      // Recipient is clean at queue time → passes the queue-time admission check.
       const { operationId } = await queueLarge();
 
       // Same engine address; only its internal state mutates.
       const engineAtQueue = (await vault.pendingWithdrawals(owner.address)).policyEngineAtQueue;
       await sanctionsPolicy.addToSanctionsList(recipient.address);
-      expect(await sanctionsPolicy.isSanctioned(recipient.address)).to.equal(true);
       expect(await vault.policyEngine()).to.equal(engineAtQueue); // address unchanged
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
 
-      // docs/Phase_3_Status.md:39 claims THIS is prevented. It is not.
-      // VULNERABILITY: a now-sanctioned recipient is paid out.
-      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
-        vault,
-        "WithdrawalFinalized",
-      );
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
+
+      // Fail-closed but not fund-trapping: the owner can cancel and recover the reservation.
+      const balBefore = (await vault.getVault(owner.address)).balance;
+      await vault.connect(owner).cancelPendingWithdrawal(operationId);
+      expect((await vault.getVault(owner.address)).balance).to.equal(balBefore + LARGE_AMOUNT);
     });
   });
 
   // =========================================================================
-  // P2 — SAME composite engine mutates after queue (module added)
+  // P2 — SAME composite engine's module set / module state mutates after queue
   // =========================================================================
-  describe("P2 — same-address CompositePolicyEngine gains a denying module after queue", function () {
-    it("VULNERABILITY: finalize succeeds after a denying sanctions module is added to the composite", async function () {
-      // Composite permits at queue time (allowlist admits the recipient).
+  describe("P2 — same-address CompositePolicyEngine turns denying after queue", function () {
+    it("finalize REVERTS after a denying sanctions module is ADDED to the composite", async function () {
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await composite.addModule(await allowlistPolicy.getAddress());
       await setPolicyEngine(await composite.getAddress());
@@ -166,21 +154,13 @@ describe("Policy finalization authority (adversarial characterization)", functio
       await composite.addModule(await sanctionsPolicy.getAddress());
       expect(await vault.policyEngine()).to.equal(engineAtQueue);
 
-      // CONTROL: the composite now denies on a fresh evaluation.
-      const [ok, why] = await composite.check.staticCall(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
-      expect(ok).to.equal(false);
-      expect(why).to.equal("recipient is sanctioned");
-
       await networkHelpers.time.increase(LARGE_TX_DELAY);
-
-      // VULNERABILITY: composition now denies, but finalize does not re-consult it.
-      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
-        vault,
-        "WithdrawalFinalized",
-      );
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
     });
 
-    it("VULNERABILITY: finalize succeeds after a retained composite module's internal state turns denying", async function () {
+    it("finalize REVERTS after a retained composite module's internal state turns denying", async function () {
       // The composite KEEPS its allowlist module throughout; only the module's internal
       // state mutates (the recipient's allowlist entry is revoked after queue). Removing
       // the module itself would not deny — an empty composite is permissive — so the
@@ -192,11 +172,20 @@ describe("Policy finalization authority (adversarial characterization)", functio
 
       const { operationId } = await queueLarge();
 
-      // Remove the recipient from the allowlist module (module stays in the composite).
-      await allowlistPolicy.connect(owner).removeRecipient(recipient.address);
-      const [ok] = await composite.check.staticCall(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
-      expect(ok).to.equal(false); // composite now denies
+      await allowlistPolicy.connect(owner).removeRecipient(recipient.address); // module retained
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient not on allowlist");
+    });
 
+    it("finalize SUCCEEDS when the composite still permits at settlement", async function () {
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      await composite.addModule(await allowlistPolicy.getAddress());
+      await setPolicyEngine(await composite.getAddress());
+      await enableLargeTx();
+
+      const { operationId } = await queueLarge();
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
         vault,
@@ -206,10 +195,10 @@ describe("Policy finalization authority (adversarial characterization)", functio
   });
 
   // =========================================================================
-  // P3 — allowlist mutation after queue (address unchanged)
+  // P3 — allowlist revocation after queue (address unchanged)
   // =========================================================================
   describe("P3 — same-address RecipientAllowlistPolicy revokes permission after queue", function () {
-    it("VULNERABILITY: finalize succeeds after the recipient is removed from the allowlist", async function () {
+    it("finalize REVERTS after the recipient is removed from the allowlist", async function () {
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await setPolicyEngine(await allowlistPolicy.getAddress());
       await enableLargeTx();
@@ -217,8 +206,23 @@ describe("Policy finalization authority (adversarial characterization)", functio
       const { operationId } = await queueLarge();
 
       await allowlistPolicy.connect(owner).removeRecipient(recipient.address);
-      const [ok] = await allowlistPolicy.check.staticCall(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
-      expect(ok).to.equal(false); // policy now denies this recipient
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient not on allowlist");
+    });
+
+    it("finalize SUCCEEDS when a revoked recipient is re-added before settlement (permissive drift honored)", async function () {
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      await setPolicyEngine(await allowlistPolicy.getAddress());
+      await enableLargeTx();
+
+      const { operationId } = await queueLarge();
+
+      // Revoke, then restore before finalize. Revalidation reflects CURRENT state, so a
+      // restriction that no longer holds must not fail the withdrawal.
+      await allowlistPolicy.connect(owner).removeRecipient(recipient.address);
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
@@ -229,71 +233,67 @@ describe("Policy finalization authority (adversarial characterization)", functio
   });
 
   // =========================================================================
-  // P4 — DailySpendLimitPolicy statefulness: why "just re-run at finalize" is wrong
+  // P4 — DailySpendLimitPolicy: booked once at admission, never re-booked
   // =========================================================================
-  describe("P4 — DailySpendLimitPolicy records spend at queue time (stateful admission)", function () {
-    it("check() MUTATES the window at queue time: remaining allowance drops immediately", async function () {
+  describe("P4 — DailySpendLimitPolicy settles at admission, not finalization", function () {
+    // These two tests use a one-hour large-tx delay so the policy's 24h window does
+    // NOT roll between queue and finalize — keeping the allowance figures comparable.
+    const SHORT_DELAY = 3600;
+
+    it("spend is booked once at queue and finalization does not book it again", async function () {
       const LIMIT = ethers.parseEther("10");
       const AMOUNT = ethers.parseEther("3");
       await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
       await setPolicyEngine(await dailyPolicy.getAddress());
-      await enableLargeTx();
+      await enableLargeTx(SHORT_DELAY);
 
       expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
 
-      await queueLarge(recipient.address, AMOUNT);
+      const { operationId } = await queueLarge(recipient.address, AMOUNT);
+      // Booked at QUEUE time.
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - AMOUNT);
 
-      // Spend is recorded at QUEUE time, not finalize — proves admission is stateful.
+      await networkHelpers.time.increase(SHORT_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
+        vault,
+        "WithdrawalFinalized",
+      );
+
+      // Finalization did NOT re-book: allowance is unchanged by settlement (no double-count).
       expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - AMOUNT);
     });
 
-    it("a naive re-run of check() at finalize would DOUBLE-COUNT the same withdrawal", async function () {
-      const LIMIT = ethers.parseEther("10");
-      const AMOUNT = ethers.parseEther("3");
+    it("a withdrawal admitted exactly at the limit still finalizes (not wrongly rejected)", async function () {
+      const LIMIT = ethers.parseEther("3");
+      const AMOUNT = ethers.parseEther("3"); // consumes the entire allowance at admission
       await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
       await setPolicyEngine(await dailyPolicy.getAddress());
-      await enableLargeTx();
+      await enableLargeTx(SHORT_DELAY);
 
-      await queueLarge(recipient.address, AMOUNT);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - AMOUNT); // 7
+      const { operationId } = await queueLarge(recipient.address, AMOUNT);
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n); // fully consumed
 
-      // Simulate what "just re-run policy at finalization" would do: call check() again
-      // for the SAME logical withdrawal. It records a SECOND time.
-      await dailyPolicy.check(owner.address, recipient.address, AMOUNT, DEPOSIT);
-
-      // The one 3-ETH withdrawal has now consumed 6 ETH of the 10-ETH allowance.
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - AMOUNT - AMOUNT); // 4
-    });
-
-    it("a naive re-run can also WRONGLY REJECT an already-authorized withdrawal near the limit", async function () {
-      const LIMIT = ethers.parseEther("5");
-      const AMOUNT = ethers.parseEther("3");
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
-      await setPolicyEngine(await dailyPolicy.getAddress());
-      await enableLargeTx();
-
-      await queueLarge(recipient.address, AMOUNT); // records 3 of 5; remaining 2
-
-      // Re-running the same 3-ETH check would see spent(3)+amount(3)=6 > 5 and deny —
-      // even though this withdrawal was legitimately admitted. staticCall to avoid mutating.
-      const [ok, why] = await dailyPolicy.check.staticCall(owner.address, recipient.address, AMOUNT, DEPOSIT);
-      expect(ok).to.equal(false);
-      expect(why).to.equal("daily limit exceeded");
+      // A naive finalize re-run would see spent(3)+amount(3) > limit(3) and wrongly deny.
+      // The split model does not re-run admission, so settlement succeeds.
+      await networkHelpers.time.increase(SHORT_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
+        vault,
+        "WithdrawalFinalized",
+      );
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n);
     });
   });
 
   // =========================================================================
-  // P5 — engine ADDRESS replacement: the ONE path where re-check fires
+  // P5 — engine ADDRESS replacement (sticky queue-time floor + current engine)
   // =========================================================================
-  describe("P5 — engine address replacement re-check (documented, working path)", function () {
-    it("SAFE: finalize BLOCKS when the engine is replaced by one that denies the recipient", async function () {
+  describe("P5 — engine replacement respects both queue-time and current engines", function () {
+    it("replacement with a RESTRICTIVE engine blocks (queue had no engine)", async function () {
       await enableLargeTx();
-      // Queue with NO engine → policyEngineAtQueue == address(0).
-      const { operationId } = await queueLarge();
+      const { operationId } = await queueLarge(); // policyEngineAtQueue == address(0)
 
-      // Replace with a sanctions engine that denies the recipient (address changes 0x0 -> engine).
       await sanctionsPolicy.addToSanctionsList(recipient.address);
-      await setPolicyEngine(await sanctionsPolicy.getAddress());
+      await setPolicyEngine(await sanctionsPolicy.getAddress()); // 0x0 -> engine
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
@@ -301,12 +301,32 @@ describe("Policy finalization authority (adversarial characterization)", functio
         .withArgs("recipient is sanctioned");
     });
 
-    it("SAFE: finalize SUCCEEDS when the replacement engine permits the recipient", async function () {
+    it("replacement with a PERMISSIVE engine still respects the queue-time engine (sticky floor)", async function () {
+      // Queue under a sanctions engine while the recipient is clean (admitted).
+      await setPolicyEngine(await sanctionsPolicy.getAddress());
       await enableLargeTx();
       const { operationId } = await queueLarge();
 
+      // The queue-time engine now sanctions the recipient; then governance replaces the
+      // active engine with a permissive allowlist that admits the recipient.
+      await sanctionsPolicy.addToSanctionsList(recipient.address);
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await setPolicyEngine(await allowlistPolicy.getAddress());
+
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      // The current (permissive) engine would pass, but the sticky queue-time engine denies.
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
+    });
+
+    it("replacement with a permissive engine SUCCEEDS when the queue-time engine also still permits", async function () {
+      await setPolicyEngine(await sanctionsPolicy.getAddress());
+      await enableLargeTx();
+      const { operationId } = await queueLarge(); // clean under sanctions engine
+
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      await setPolicyEngine(await allowlistPolicy.getAddress()); // both engines permit
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
@@ -317,24 +337,34 @@ describe("Policy finalization authority (adversarial characterization)", functio
   });
 
   // =========================================================================
-  // P6 — engine disabled (set to address(0)) after queue
+  // P6 — disabling the current engine (→ address(0)) after queue
   // =========================================================================
-  describe("P6 — disabling the engine after queue skips the finalize re-check entirely", function () {
-    it("VULNERABILITY: disabling the engine (→ address(0)) after queue means NO policy at finalize", async function () {
+  describe("P6 — disabling the current engine does not erase queue-time restrictions", function () {
+    it("finalize REVERTS: queue-time engine still denies after the current engine is disabled", async function () {
       await setPolicyEngine(await sanctionsPolicy.getAddress());
       await enableLargeTx();
 
       const { operationId } = await queueLarge();
 
-      // Sanction the recipient AND disable the engine. `currentEngine == address(0)` makes the
-      // finalize re-check short-circuit before it can observe the address change.
+      // Sanction the recipient in the queue-time engine, then disable the active engine.
       await sanctionsPolicy.addToSanctionsList(recipient.address);
       await setPolicyEngine(ethers.ZeroAddress);
       expect(await vault.policyEngine()).to.equal(ethers.ZeroAddress);
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
-      // VULNERABILITY: a policy applied at queue time, the recipient is now sanctioned,
-      // yet finalize applies no policy at all.
+      // address(0) current engine must NOT mean "skip policy": the sticky floor still applies.
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
+    });
+
+    it("finalize SUCCEEDS when the disabled engine's queue-time state still permits", async function () {
+      await setPolicyEngine(await sanctionsPolicy.getAddress());
+      await enableLargeTx();
+      const { operationId } = await queueLarge(); // clean
+
+      await setPolicyEngine(ethers.ZeroAddress); // disabled; recipient never sanctioned
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
         vault,
         "WithdrawalFinalized",
@@ -343,9 +373,150 @@ describe("Policy finalization authority (adversarial characterization)", functio
   });
 
   // =========================================================================
-  // P7 — cancellation paths must not retain policy/quorum authority
+  // Deduplication — a single engine on both sides is revalidated exactly once
   // =========================================================================
-  describe("P7 — cancellation clears reserved authority", function () {
+  describe("Deduplication of the two-engine revalidation", function () {
+    // Deploys a fresh single-owner vault, queues under `heavy`, optionally swaps the
+    // current engine to a second heavy engine, then returns the gas used by finalize.
+    async function measureFinalizeGas(distinctCurrentEngine: boolean): Promise<bigint> {
+      const v = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await verifier.getAddress());
+      const heavyA = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
+
+      await v.connect(owner).createVault(owner.address, PQ_KEY, 2);
+      await v.connect(owner).deposit({ value: DEPOSIT });
+
+      await v.connect(admin).proposePolicyEngine(await heavyA.getAddress());
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await v.connect(admin).applyPolicyEngine();
+      await v.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await v.connect(admin).applyLargeTxParams();
+
+      const build = makeBuildRequest(owner, { recipient: recipient.address, amount: LARGE_AMOUNT });
+      const sign = makeSignWithdrawal(v, owner);
+      const req = await build();
+      const { ecdsaSig, pqSig } = await sign(req);
+      await v.connect(other).queueWithdrawal(req, ecdsaSig, pqSig);
+      const operationId = await v.hashWithdrawal(req);
+
+      if (distinctCurrentEngine) {
+        const heavyB = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
+        await v.connect(admin).proposePolicyEngine(await heavyB.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await v.connect(admin).applyPolicyEngine();
+      }
+
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      const tx = await v.connect(owner).finalizeWithdrawal(owner.address, operationId);
+      const receipt = await tx.wait();
+      return receipt!.gasUsed;
+    }
+
+    it("evaluates a shared queue/current engine once, not twice (gas evidence)", async function () {
+      const gasShared = await measureFinalizeGas(false); // queueEngine == currentEngine → 1 heavy eval
+      const gasDistinct = await measureFinalizeGas(true); // queueEngine != currentEngine → 2 heavy evals
+
+      // One HeavyRevalidatePolicyMock revalidation runs 4000 keccak rounds (>>100k gas).
+      // If the shared engine were evaluated twice, gasShared would already include both
+      // and the delta would be ~0. A large positive delta proves the dedup branch.
+      expect(gasDistinct).to.be.greaterThan(gasShared);
+      expect(gasDistinct - gasShared).to.be.greaterThan(100_000n);
+    });
+  });
+
+  // =========================================================================
+  // Fail-closed — revalidation must never silently grant settlement
+  // =========================================================================
+  describe("Fail-closed revalidation", function () {
+    async function queueUnderMockEngine(engineAddr: string) {
+      await setPolicyEngine(engineAddr);
+      await enableLargeTx();
+      const { operationId } = await queueLarge();
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      return operationId;
+    }
+
+    it("a revalidate() that attempts an SSTORE reverts finalization and books nothing (STATICCALL)", async function () {
+      const mock = await (await ethers.getContractFactory("MutatingRevalidatePolicyMock", admin)).deploy();
+      const operationId = await queueUnderMockEngine(await mock.getAddress());
+
+      // Admission (a normal CALL) recorded a write; revalidation (a STATICCALL) must not.
+      expect(await mock.checkCalls()).to.equal(1n);
+
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyEngineUnavailable")
+        .withArgs(await mock.getAddress());
+
+      // The write inside revalidate() was rolled back by the static-call revert.
+      expect(await mock.revalidateCalls()).to.equal(0n);
+    });
+
+    it("a reverting revalidate() fails finalization closed", async function () {
+      const mock = await (await ethers.getContractFactory("RevertingRevalidatePolicyMock", admin)).deploy();
+      const operationId = await queueUnderMockEngine(await mock.getAddress());
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyEngineUnavailable")
+        .withArgs(await mock.getAddress());
+    });
+
+    it("an engine that does not implement revalidate() (check-only) fails closed", async function () {
+      const mock = await (await ethers.getContractFactory("LegacyCheckOnlyPolicyMock", admin)).deploy();
+      const operationId = await queueUnderMockEngine(await mock.getAddress());
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyEngineUnavailable")
+        .withArgs(await mock.getAddress());
+    });
+
+    it("an engine returning malformed (undecodable) data fails closed", async function () {
+      const mock = await (await ethers.getContractFactory("MalformedReturnPolicyMock", admin)).deploy();
+      const operationId = await queueUnderMockEngine(await mock.getAddress());
+      // Return-data decode failures are raised in the CALLER and are not catchable by
+      // try/catch (Solidity semantics), so this surfaces as a raw revert rather than
+      // PolicyEngineUnavailable — still fail-closed, which is the property under test.
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.revert(ethers);
+    });
+
+    it("a CURRENT engine that has become code-less fails closed", async function () {
+      // Queue under a real engine, then point the active engine at a code-less address (an EOA).
+      await setPolicyEngine(await allowlistPolicy.getAddress());
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      await enableLargeTx();
+      const { operationId } = await queueLarge();
+
+      await setPolicyEngine(other.address); // EOA: code.length == 0
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyEngineUnavailable")
+        .withArgs(other.address);
+    });
+  });
+
+  // =========================================================================
+  // Balance semantic — revalidate receives the pre-deduction balance, like check
+  // =========================================================================
+  describe("vaultBalance semantic parity between check and revalidate", function () {
+    it("finalization reconstructs the pre-deduction balance (current + reserved), matching admission", async function () {
+      // The mock admits only when vaultBalance == DEPOSIT (the balance BEFORE the
+      // withdrawal's deduction). If finalization passed the post-reservation balance
+      // (the old bug), revalidate would see DEPOSIT - LARGE_AMOUNT and revert.
+      const mock = await (await ethers.getContractFactory("BalanceAssertingPolicyMock", admin)).deploy(DEPOSIT);
+
+      await setPolicyEngine(await mock.getAddress());
+      await enableLargeTx();
+      const { operationId } = await queueLarge(); // admission sees DEPOSIT and passes
+
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
+        vault,
+        "WithdrawalFinalized",
+      );
+    });
+  });
+
+  // =========================================================================
+  // P7 — cancellation / recovery must not retain policy or quorum authority
+  // =========================================================================
+  describe("P7 — cancellation and recovery clear reserved authority", function () {
     it("cancelPendingWithdrawal refunds, clears treasury approvals, and forbids finalize", async function () {
       await vault.connect(owner).setGuardians([guardian1.address, guardian2.address, guardian3.address]);
       await vault.connect(owner).setTreasuryQuorumThreshold(2);
@@ -359,12 +530,9 @@ describe("Policy finalization authority (adversarial characterization)", functio
       const balBefore = (await vault.getVault(owner.address)).balance;
       await expect(vault.connect(owner).cancelPendingWithdrawal(operationId)).to.emit(vault, "WithdrawalCancelled");
 
-      // Reservation refunded.
       expect((await vault.getVault(owner.address)).balance).to.equal(balBefore + LARGE_AMOUNT);
-      // Treasury authority cleared — the approvals cannot linger for reuse.
       expect(await vault.treasuryApprovalCount(operationId)).to.equal(0);
       expect(await vault.treasuryApprovals(operationId, guardian1.address)).to.equal(false);
-      // Cancelled op cannot be finalized.
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
         vault,
@@ -377,20 +545,17 @@ describe("Policy finalization authority (adversarial characterization)", functio
       await vault.connect(owner).setTreasuryQuorumThreshold(2);
       await enableLargeTx();
 
-      // Queue op #1 (nonce 0), gather 2 approvals, cancel it.
       const first = await queueLarge();
       await vault.connect(guardian1).approveTreasuryWithdrawal(owner.address, first.operationId);
       await vault.connect(guardian2).approveTreasuryWithdrawal(owner.address, first.operationId);
       await vault.connect(owner).cancelPendingWithdrawal(first.operationId);
 
-      // Re-queue (nonce is now 1) → different operationId.
       const req2 = await buildRequest({ recipient: recipient.address, amount: LARGE_AMOUNT, nonce: 1 });
       const { ecdsaSig, pqSig } = await signWithdrawal(req2);
       await vault.connect(other).queueWithdrawal(req2, ecdsaSig, pqSig);
       const op2 = await vault.hashWithdrawal(req2);
       expect(op2).to.not.equal(first.operationId);
 
-      // The new op starts with zero approvals; quorum is not met by the old approvals.
       expect(await vault.treasuryApprovalCount(op2)).to.equal(0);
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, op2))
@@ -414,7 +579,6 @@ describe("Policy finalization authority (adversarial characterization)", functio
         .to.emit(vault, "WithdrawalCancelled")
         .withArgs(operationId, owner.address, LARGE_AMOUNT);
 
-      // Pending gone, reservation refunded.
       expect((await vault.pendingWithdrawals(owner.address)).exists).to.equal(false);
       expect((await vault.getVault(owner.address)).balance).to.equal(balAfterQueue + LARGE_AMOUNT);
     });

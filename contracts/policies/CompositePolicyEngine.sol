@@ -121,4 +121,35 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
         }
         return (true, "");
     }
+
+    /**
+     * @notice Re-validates a withdrawal against every CURRENTLY registered module.
+     * @dev Fans out to each module's {revalidate} — NEVER {check}, which may
+     *      mutate admission accounting. Because this function is view, every
+     *      module call executes as a STATICCALL; a module whose revalidation
+     *      attempts to write state (or that does not implement {revalidate})
+     *      reverts the whole call, which the vault treats as fail-closed.
+     *      The module set evaluated is the CURRENT one: a denying module added
+     *      after a withdrawal was queued blocks it, and a retained module whose
+     *      internal state turned denying blocks it. An empty module list is
+     *      permissive, mirroring {check}.
+     */
+    function revalidate(
+        address vaultOwner,
+        address recipient,
+        uint256 amount,
+        uint256 vaultBalance
+    ) external view override returns (bool, string memory) {
+        uint256 len = _modules.length;
+        for (uint256 i = 0; i < len; i++) {
+            (bool ok, string memory why) = IPolicyEngine(_modules[i]).revalidate(
+                vaultOwner,
+                recipient,
+                amount,
+                vaultBalance
+            );
+            if (!ok) return (false, why);
+        }
+        return (true, "");
+    }
 }

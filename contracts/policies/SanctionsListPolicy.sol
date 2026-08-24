@@ -42,6 +42,15 @@ contract SanctionsListPolicy is IPolicyEngine, Ownable2Step {
         return _sanctioned[account];
     }
 
+    /// @dev Single predicate shared by {check} and {revalidate} so admission and
+    ///      finalization revalidation cannot diverge. Always evaluates the CURRENT
+    ///      sanctions state — a recipient sanctioned after a withdrawal was queued
+    ///      is therefore caught at finalization.
+    function _evaluate(address recipient) internal view returns (bool allowed, string memory reason) {
+        if (_sanctioned[recipient]) return (false, "recipient is sanctioned");
+        return (true, "");
+    }
+
     /// @inheritdoc IPolicyEngine
     function check(
         address,
@@ -49,7 +58,16 @@ contract SanctionsListPolicy is IPolicyEngine, Ownable2Step {
         uint256,
         uint256
     ) external view override returns (bool allowed, string memory reason) {
-        if (_sanctioned[recipient]) return (false, "recipient is sanctioned");
-        return (true, "");
+        return _evaluate(recipient);
+    }
+
+    /// @inheritdoc IPolicyEngine
+    function revalidate(
+        address,
+        address recipient,
+        uint256,
+        uint256
+    ) external view override returns (bool allowed, string memory reason) {
+        return _evaluate(recipient);
     }
 }

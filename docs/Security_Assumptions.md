@@ -217,9 +217,16 @@ remain out of scope.
 ## 5. Policy engine (optional withdrawal filter)
 
 The vault supports an optional pluggable policy engine wired in through the
-`IPolicyEngine` interface. When configured, `check()` is called inside `withdraw` or
-`queueWithdrawal` before any state changes occur. A denial reverts with
-`PolicyViolation(reason)`.
+`IPolicyEngine` interface, which splits two duties:
+
+- `check()` — **admission**: called inside `withdraw` or `queueWithdrawal` before
+  any state changes occur. It may mutate policy accounting (e.g. book daily spend).
+  A denial reverts with `PolicyViolation(reason)`.
+- `revalidate()` — **finalization revalidation**: a `view` method called inside
+  `finalizeWithdrawal`, executed as a STATICCALL so it structurally cannot mutate
+  policy state. It answers whether the queued withdrawal is still permitted under
+  CURRENT policy state, without re-booking admission accounting. Finalization never
+  calls `check()`.
 
 **Governance.** The policy engine is admin-controlled through a timelocked
 two-step flow (`proposePolicyEngine`, wait two days, `applyPolicyEngine`).
@@ -254,13 +261,26 @@ contract owner.
   add any recipient, potentially censoring legitimate withdrawals. The two-day
   governance delay protects against silently removing the engine but not against
   manipulating list contents (those calls are immediate).
-- A stateful policy engine that reverts unexpectedly (e.g. due to a bug) would
-  permanently block withdrawals from the vault. The admin can disable the engine
-  via `proposePolicyEngine(address(0))` followed by `applyPolicyEngine` after
-  the delay. A vault owner cannot bypass an active policy engine unilaterally.
-- Large-withdrawal finalization re-checks policy only if the active engine address
-  changed after queueing. This closes stale-engine bypasses while avoiding a second
-  call to the same stateful engine, which would double-count daily spend.
+- A policy engine that reverts unexpectedly (e.g. due to a bug) blocks the
+  withdrawals it gates, fail-closed. The admin can disable the engine via
+  `proposePolicyEngine(address(0))` followed by `applyPolicyEngine` after the
+  delay, which frees NEW withdrawals. A withdrawal already queued under the broken
+  engine remains gated by it (see the sticky floor below); its owner's escape is
+  `cancelPendingWithdrawal` — ungated by pause and policy — followed by re-queueing
+  under the current configuration. A vault owner cannot bypass an active policy
+  engine unilaterally.
+- Large-withdrawal finalization ALWAYS revalidates policy, read-only, with no
+  address-comparison gate — address identity is not used as a proxy for policy
+  freshness, so same-address state mutations (e.g. a recipient sanctioned after
+  queueing) are observed. Two engines are consulted, each once and only if
+  non-zero:
+  - the **queue-time engine** (recorded as `policyEngineAtQueue`) — a sticky
+    floor: replacing or disabling the engine after queueing does not erase the
+    restrictions the withdrawal was admitted under;
+  - the **current engine** — newly imposed restrictions also apply.
+  Restrictive drift blocks finalization; permissive drift (a restriction lifted
+  before settlement) is honored. Because `revalidate()` is a STATICCALL and the
+  daily-spend policy books at admission only, no path double-counts daily spend.
 
 ## 6. Authorization & replay model
 

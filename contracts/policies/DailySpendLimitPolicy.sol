@@ -58,6 +58,33 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         return (true, "");
     }
 
+    /// @inheritdoc IPolicyEngine
+    /// @dev Intentional no-op: THE DAILY SPEND LIMIT SETTLES AT ADMISSION.
+    ///      {check} already validated this withdrawal against the window AND
+    ///      booked its amount at queue time; there is nothing left for this
+    ///      policy to assert at settlement:
+    ///      - Re-booking here would double-count the same withdrawal (a 3 ETH
+    ///        withdrawal would consume 6 ETH of allowance).
+    ///      - Re-testing `spent + amount <= limit` here would wrongly reject an
+    ///        already-admitted withdrawal whose own booking (or a sibling's)
+    ///        consumed the allowance in the meantime.
+    ///      - Testing `amount <= limit` here would retroactively strand an
+    ///        admitted withdrawal after a limit reduction; the limit's meaning
+    ///        is a per-window admission total, not a per-settlement cap.
+    ///      This function is view (STATICCALL from the vault), so it could not
+    ///      book even if a future edit tried to — that attempt would revert
+    ///      finalization instead.
+    ///      Declared `pure` (strictly stronger than the interface's `view`): this
+    ///      no-op reads nothing, so the settlement can never depend on window state.
+    function revalidate(
+        address,
+        address,
+        uint256,
+        uint256
+    ) external pure override returns (bool allowed, string memory reason) {
+        return (true, "");
+    }
+
     /// @notice Remaining spend allowance in the current 24h window.
     /// @return type(uint256).max when the vault has no limit set.
     function remainingAllowance(address vaultOwner) external view returns (uint256) {

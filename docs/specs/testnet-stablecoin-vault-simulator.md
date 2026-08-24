@@ -299,7 +299,7 @@ style of `test/WalletWallVault.test.ts` and `test/AttestationPQCVerifier.test.ts
 | **Withdrawal failure** | wrong signer, expired deadline, wrong nonce, amount > balance, zero recipient, `vaultMode` mismatch, above-threshold amount routed to immediate path (`UseLargeWithdrawal`) |
 | **Replay rejection** | re-submitting a used signature reverts on `InvalidNonce`; a signature for the ETH vault domain is rejected by the simulator domain (cross-contract replay) |
 | **Bad attestation rejection** | `Hybrid`/`PqOnly` withdrawal with missing/expired/wrong-attestor/altered-payload attestation reverts `InvalidPQSignature`; valid attestor signature succeeds |
-| **Timelock / policy checks** | large-tx `queueWithdrawal` reserves funds; `finalizeWithdrawal` before `readyAt` reverts; policy allowlist/daily-limit/sanctions reject as expected; finalize re-check when policy engine changed; 2-day admin propose/apply timing |
+| **Timelock / policy checks** | large-tx `queueWithdrawal` reserves funds; `finalizeWithdrawal` before `readyAt` reverts; policy allowlist/daily-limit/sanctions reject as expected; finalize revalidates read-only against both the queue-time and current policy engines; 2-day admin propose/apply timing |
 | **Recovery / emergency path** | guardian set rules; `initiateRecovery` → support → `executeRecovery` only after 7-day delay + majority; queued withdrawal cancelled + token reservation refunded on recovery and on `rotateCredentials`; `pause()` blocks writes; `cancelPendingWithdrawal` still works while paused; treasury quorum gating |
 
 The implementation session should also run `npm run coverage` and keep the new contracts at or
