@@ -126,12 +126,12 @@
       "contracts/policies/DailySpendLimitPolicy.sol": "0x8ea9bc737216e328006727a87078733934d372678dda2defde65e1165075bbf0",
       "contracts/policies/RecipientAllowlistPolicy.sol": "0xcc4bce37617c1c66821e1b4bd4a3dc72705b6051c9938c9724c72147663422b9",
       "contracts/policies/SanctionsListPolicy.sol": "0xd76ba454883ac6f5430daf00ce5cd5a3c8b901d8c010c93c4480a770d7316f79",
-      "contracts/StablecoinVaultSimulator.sol": "0x523c089400d47e164dbae0cdc929753337ba2ba35477b368c85b329fddc6cac2",
+      "contracts/StablecoinVaultSimulator.sol": "0xdbb5079152ad38b5000c36c6bc0031e03556d023c5376a8b621825f541e5daec",
       "contracts/verifiers/AttestationPQCVerifier.sol": "0xb5ef6f5d12cda90d9e1642d8c1519a708694f0aaa1bc2f804589bf3a9eaa59f3",
       "contracts/verifiers/ImmutableAttestationPQCVerifier.sol": "0x1f8e4d4bc2fc55d8146df787d945abc996b970f503fcd23608e78958d0bad6fe",
       "contracts/verifiers/ZKMLDSAVerifier.sol": "0xaf98122c7306cebc7e46c6b646262377dc96d0dc13758e2d2764975cbf685c67",
       "contracts/WalletWallMultiSigVault.sol": "0xda14483acfa21b113aa4a8d6cf924a00d017fb115dd60f8386340f3ffc5c318a",
-      "contracts/WalletWallVault.sol": "0x64504107fde18953f1755776753c0988979abd4622ead7c5d2fe69665d51cca3"
+      "contracts/WalletWallVault.sol": "0x1bb10f75adfa0ef8e54d6e9270e83cb44dfc4213c070a1603028654a35a19fe8"
     },
     "immutableAstDeclarations": [
       {
@@ -183,39 +183,39 @@
         "typeString": "contract IERC20"
       },
       {
-        "astId": "17159",
+        "astId": "17250",
         "name": "expectedBalance",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "17161",
+        "astId": "17252",
         "name": "expectedAmount",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "18881",
+        "astId": "18972",
         "name": "attestor",
         "sourceFile": "contracts/verifiers/ImmutableAttestationPQCVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "19100",
+        "astId": "19191",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "19103",
+        "astId": "19194",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "bytes32"
       }
     ],
-    "compilerInputHash": "0x85ddafc02d152aa1aa222975cd7ce487afff52140db1d8a37a0edc557b0ee68f",
-    "headCommit": "e6c836e4e8927776ff0fc2101a19c362db9838ca",
-    "capturedAt": "2026-08-24T23:14:43.431Z"
+    "compilerInputHash": "0x5d500f38521ae55e5a71710f01c584fbd224bd9e6ef10ebf3c03eb7792ed1be8",
+    "headCommit": "06d59a038a031b693c149d2dd0e3cdc4a9d513cb",
+    "capturedAt": "2026-08-24T23:59:45.410Z"
   },
   "liveRuntime": {
     "address": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
