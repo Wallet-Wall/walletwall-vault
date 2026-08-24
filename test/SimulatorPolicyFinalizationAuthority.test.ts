@@ -161,17 +161,47 @@ describe("Simulator policy finalization authority (parity regression)", function
     expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - MUSDC(300));
   });
 
-  it("revalidate receives the pre-deduction balance (parity with the ETH vault)", async function () {
+  it("revalidate receives the pre-deduction balance and true amount (parity with the ETH vault)", async function () {
     // Mock admits only when vaultBalance == DEPOSIT (the balance before this
-    // withdrawal's deduction). The old code passed the post-reservation balance at
-    // finalization, which would make this revalidation fail.
-    const mock = await (await ethers.getContractFactory("BalanceAssertingPolicyMock", admin)).deploy(DEPOSIT);
+    // withdrawal's deduction) AND amount == LARGE_AMOUNT. The old code passed the
+    // post-reservation balance at finalization, which would make this revalidation fail.
+    const mock = await (
+      await ethers.getContractFactory("BalanceAssertingPolicyMock", admin)
+    ).deploy(DEPOSIT, LARGE_AMOUNT);
     await setPolicyEngine(await mock.getAddress());
     await enableLargeTx();
     const { operationId } = await queueLarge();
 
     await networkHelpers.time.increase(LARGE_TX_DELAY);
     await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
+  });
+
+  it("a denying CURRENT engine blocks even when the (non-zero) queue-time engine permits", async function () {
+    await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+    await setPolicyEngine(await allowlistPolicy.getAddress());
+    await enableLargeTx();
+    const { operationId } = await queueLarge();
+
+    await sanctionsPolicy.addToSanctionsList(recipient.address);
+    await setPolicyEngine(await sanctionsPolicy.getAddress()); // both engines non-zero, distinct
+
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyViolation")
+      .withArgs("recipient is sanctioned");
+  });
+
+  it("a code-less CURRENT engine fails finalization closed (parity)", async function () {
+    await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+    await setPolicyEngine(await allowlistPolicy.getAddress());
+    await enableLargeTx();
+    const { operationId } = await queueLarge();
+
+    await setPolicyEngine(other.address); // EOA: code.length == 0
+    await networkHelpers.time.increase(LARGE_TX_DELAY);
+    await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+      .to.be.revertedWithCustomError(sim, "PolicyEngineUnavailable")
+      .withArgs(other.address);
   });
 
   it("a revalidate() that attempts a state write fails finalization closed (STATICCALL parity)", async function () {

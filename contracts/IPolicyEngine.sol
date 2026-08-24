@@ -60,11 +60,15 @@ interface IPolicyEngine {
     /// @param vaultOwner   The vault whose funds are being withdrawn.
     /// @param recipient    The destination address.
     /// @param amount       The withdrawal amount (wei / token base units).
-    /// @param vaultBalance The vault's accounted balance BEFORE this
-    ///                     withdrawal's `amount` is deducted — the SAME meaning
-    ///                     as in {check}. Because queueing reserves the amount
-    ///                     (debits the vault), finalization reconstructs this as
-    ///                     `current accounted balance + reserved amount`.
+    /// @param vaultBalance The vault's CURRENT accounted balance exclusive of this
+    ///                     withdrawal's reservation, computed at finalization as
+    ///                     `current accounted balance + reserved amount`. This is the
+    ///                     same "balance before this withdrawal's deduction" SEMANTIC
+    ///                     as {check}, but it is a LIVE figure, not the admission-time
+    ///                     snapshot: deposits (including third-party depositFor) or
+    ///                     immediate withdrawals between queueing and finalization
+    ///                     move it in either direction. A balance-sensitive
+    ///                     revalidation must treat it accordingly.
     /// @return allowed True if settlement is still permitted under current state.
     /// @return reason  Human-readable denial reason; empty string when allowed.
     function revalidate(

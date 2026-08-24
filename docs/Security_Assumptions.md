@@ -267,8 +267,18 @@ contract owner.
   delay, which frees NEW withdrawals. A withdrawal already queued under the broken
   engine remains gated by it (see the sticky floor below); its owner's escape is
   `cancelPendingWithdrawal` — ungated by pause and policy — followed by re-queueing
-  under the current configuration. A vault owner cannot bypass an active policy
-  engine unilaterally.
+  under the current configuration. Note that cancellation does not restore
+  daily-spend allowance booked at admission (see the `DailySpendLimitPolicy` bullet
+  above), so re-queueing under a daily-limit policy may have to wait for the
+  24-hour window to roll. A vault owner cannot bypass an active policy engine
+  unilaterally.
+- Composite module management (`addModule`/`removeModule`) takes effect
+  IMMEDIATELY, like sanctions/allowlist content mutations — only the engine
+  ADDRESS swap is behind the two-day delay. Wiring a `CompositePolicyEngine` into
+  the vault therefore places the effective policy set behind the composite
+  owner's instant control, including instantly removing a module whose contents
+  a different party administers. The sticky floor below holds at engine-address
+  granularity; it does not freeze a composite's module roster.
 - Large-withdrawal finalization ALWAYS revalidates policy, read-only, with no
   address-comparison gate — address identity is not used as a proxy for policy
   freshness, so same-address state mutations (e.g. a recipient sanctioned after

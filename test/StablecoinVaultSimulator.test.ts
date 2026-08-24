@@ -627,7 +627,7 @@ describe("StablecoinVaultSimulator", function () {
       await expect(sim.withdraw(request, ecdsaSig, pqSig)).to.be.revertedWithCustomError(sim, "PolicyViolation");
     });
 
-    it("finalize re-checks policy when engine changed after queue", async function () {
+    it("finalize revalidates against a denying engine installed after queue", async function () {
       await enableLargeTx();
       const request = await buildRequest({ amount: LARGE_AMOUNT });
       const { ecdsaSig, pqSig } = await signWithdrawal(request);
@@ -642,10 +642,9 @@ describe("StablecoinVaultSimulator", function () {
       await networkHelpers.time.increase(LARGE_TX_DELAY);
 
       // Finalize should be blocked by the new policy
-      await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.be.revertedWithCustomError(
-        sim,
-        "PolicyViolation",
-      );
+      await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(sim, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
     });
 
     it("2-day governance delay for policy engine (propose/apply timing)", async function () {

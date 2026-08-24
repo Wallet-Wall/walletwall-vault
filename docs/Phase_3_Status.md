@@ -82,7 +82,7 @@ Release: `v0.4.12`
 | Daily limit exceeded blocked | ✅ |
 | First-failing module's reason returned | ✅ |
 | Empty module list is permissive | ✅ |
-| Policy failure at finalization blocks when engine changed since queuing | ✅ |
+| A denying engine installed after queueing blocks finalization | ✅ |
 | Finalization revalidates an unchanged engine against current state and passes while it still permits | ✅ |
 | Same-address policy mutation after queue blocks finalization (sanctions add / allowlist revoke / composite module add) | ✅ (`test/PolicyFinalizationAuthority.test.ts`) |
 | Queue-time engine is a sticky floor across engine replacement and disable-to-`address(0)` | ✅ |

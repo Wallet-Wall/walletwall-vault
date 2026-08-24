@@ -654,8 +654,11 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
             }
         }
 
-        if (address(policyEngine) != address(0)) {
-            (bool ok, string memory why) = policyEngine.check(
+        // Read the engine ONCE so the recorded policyEngineAtQueue is exactly the
+        // engine that admitted this withdrawal (mirrors WalletWallVault).
+        address engineAtQueue = address(policyEngine);
+        if (engineAtQueue != address(0)) {
+            (bool ok, string memory why) = IPolicyEngine(engineAtQueue).check(
                 request.vaultOwner,
                 request.recipient,
                 request.amount,
@@ -679,7 +682,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
             queuedAt: queuedAt,
             readyAt: readyAt,
             operationId: operationId,
-            policyEngineAtQueue: address(policyEngine),
+            policyEngineAtQueue: engineAtQueue,
             exists: true
         });
 

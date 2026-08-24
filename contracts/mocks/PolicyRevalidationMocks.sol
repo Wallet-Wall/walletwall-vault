@@ -87,24 +87,33 @@ contract HeavyRevalidatePolicyMock {
     }
 }
 
-/// @notice Engine that allows only when the reported `vaultBalance` equals the
-///         value fixed at deployment — pins the parameter's semantic ("the vault's
-///         accounted balance BEFORE this withdrawal's deduction") at BOTH call
-///         sites: admission sees the pre-debit balance directly, finalization must
-///         reconstruct the same figure (current balance + reserved amount).
+/// @notice Engine that allows only when the reported `vaultBalance` AND `amount`
+///         equal the values fixed at deployment — pins both parameters' semantics
+///         at BOTH call sites: admission sees the pre-debit balance directly,
+///         finalization must reconstruct the same figure (current balance +
+///         reserved amount) and must forward the withdrawal's true amount.
 contract BalanceAssertingPolicyMock {
     uint256 public immutable expectedBalance;
+    uint256 public immutable expectedAmount;
 
-    constructor(uint256 expected) {
-        expectedBalance = expected;
+    constructor(uint256 balance_, uint256 amount_) {
+        expectedBalance = balance_;
+        expectedAmount = amount_;
     }
 
-    function check(address, address, uint256, uint256 vaultBalance) external view returns (bool, string memory) {
+    function check(address, address, uint256 amount, uint256 vaultBalance) external view returns (bool, string memory) {
+        if (amount != expectedAmount) return (false, "unexpected admission amount");
         if (vaultBalance != expectedBalance) return (false, "unexpected admission balance");
         return (true, "");
     }
 
-    function revalidate(address, address, uint256, uint256 vaultBalance) external view returns (bool, string memory) {
+    function revalidate(
+        address,
+        address,
+        uint256 amount,
+        uint256 vaultBalance
+    ) external view returns (bool, string memory) {
+        if (amount != expectedAmount) return (false, "unexpected settlement amount");
         if (vaultBalance != expectedBalance) return (false, "unexpected settlement balance");
         return (true, "");
     }

@@ -57,7 +57,7 @@ scope and must not be modified as part of work on this prototype.
 | Large-withdrawal timelock                                       | Implemented (queue/finalize + delayed parameter governance)    |
 | Policy engine boundary                                          | Implemented (optional, delayed engine governance)              |
 | Composite policy enforcement                                    | Implemented (daily limit + allowlist + sanctions modules)      |
-| Finalization policy re-check                                    | Implemented when the active engine changed after queueing      |
+| Finalization policy revalidation                                | Implemented: always runs, read-only, queue-time + current engine |
 | Treasury guardian quorum                                        | Implemented for queued large withdrawals                       |
 | Trusted off-chain ML-DSA attestation                            | Implemented; relies on an authorized EVM attestor              |
 | On-chain ML-DSA verification                                    | Not implemented                                                |

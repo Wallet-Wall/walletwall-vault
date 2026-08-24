@@ -167,7 +167,8 @@ not just deposit/withdraw:
 
 - **Policy engine:** optional `IPolicyEngine` (recipient allowlist, daily spend limit,
   sanctions deny list, composed via `CompositePolicyEngine`) checked before a withdrawal
-  executes or queues, and re-checked at finalize if the engine address changed.
+  executes or queues, and always revalidated read-only at finalize against both the
+  queue-time and current engines.
 - **Large-tx timelock:** above-threshold withdrawals reserved at queue time, finalized only
   after the configured delay.
 - **Admin timelocks:** 2-day propose → apply for PQ verifier, policy engine, and large-tx

@@ -136,10 +136,14 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         ///      engine's CURRENT state as a sticky floor — replacing or disabling
         ///      the active engine does not erase the restrictions this withdrawal
         ///      was admitted under — and additionally against the currently active
-        ///      engine when different. Revalidation uses the read-only
-        ///      {IPolicyEngine.revalidate}, never the stateful {IPolicyEngine.check},
-        ///      so stateful admission accounting (e.g. daily spend booked at queue
-        ///      time) is never double-counted.
+        ///      engine when different. The floor holds at engine-ADDRESS
+        ///      granularity: the engine's internal configuration (sanctions list
+        ///      contents, allowlist entries, a composite's module set) is read
+        ///      LIVE at finalization and remains mutable by that engine's own
+        ///      admin. Revalidation uses the read-only {IPolicyEngine.revalidate},
+        ///      never the stateful {IPolicyEngine.check}, so stateful admission
+        ///      accounting (e.g. daily spend booked at queue time) is never
+        ///      double-counted.
         address policyEngineAtQueue;
         bool exists;
     }
@@ -744,8 +748,12 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             }
         }
 
-        if (address(policyEngine) != address(0)) {
-            (bool ok, string memory why) = policyEngine.check(
+        // Read the engine ONCE so the recorded policyEngineAtQueue is exactly the
+        // engine that admitted this withdrawal, even if governance were somehow
+        // interleaved during the external check() call.
+        address engineAtQueue = address(policyEngine);
+        if (engineAtQueue != address(0)) {
+            (bool ok, string memory why) = IPolicyEngine(engineAtQueue).check(
                 request.vaultOwner,
                 request.recipient,
                 request.amount,
@@ -769,7 +777,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             queuedAt: queuedAt,
             readyAt: readyAt,
             operationId: operationId,
-            policyEngineAtQueue: address(policyEngine),
+            policyEngineAtQueue: engineAtQueue,
             exists: true
         });
 
@@ -806,7 +814,10 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      *         address identity is never used as a proxy for policy freshness.
      *         Fail-closed: an engine that denies, reverts, mutates state under
      *         STATICCALL, or no longer answers blocks finalization; the owner can
-     *         always {cancelPendingWithdrawal} (ungated) and re-queue.
+     *         always {cancelPendingWithdrawal} (ungated) and re-queue. Note that
+     *         cancellation does not release daily-spend allowance booked at
+     *         admission, so re-queueing under a daily-limit policy may have to
+     *         wait for the policy window to roll (≤ 24h).
      */
     function finalizeWithdrawal(address vaultOwner, bytes32 operationId) external nonReentrant whenNotPaused {
         PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];

@@ -152,6 +152,28 @@ describe("CompositePolicyEngine", function () {
       await composite.removeModule(await dailyPolicy.getAddress());
       await expect(composite.addModule(await dailyPolicy.getAddress())).to.not.revert(ethers);
     });
+
+    it("rejects adding the composite itself as a module (direct self-recursion)", async function () {
+      await expect(composite.addModule(await composite.getAddress())).to.be.revertedWithCustomError(
+        composite,
+        "SelfModule",
+      );
+    });
+
+    it("enforces the MAX_MODULES hard cap", async function () {
+      const max = await composite.MAX_MODULES();
+      expect(max).to.equal(16n);
+      const Filler = await ethers.getContractFactory("LegacyCheckOnlyPolicyMock", admin);
+      for (let i = 0n; i < max; i++) {
+        const filler = await Filler.deploy();
+        await composite.addModule(await filler.getAddress());
+      }
+      expect(await composite.moduleCount()).to.equal(max);
+      const oneTooMany = await Filler.deploy();
+      await expect(composite.addModule(await oneTooMany.getAddress()))
+        .to.be.revertedWithCustomError(composite, "TooManyModules")
+        .withArgs(max, max);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -220,11 +242,11 @@ describe("CompositePolicyEngine", function () {
   });
 
   // ---------------------------------------------------------------------------
-  // Finalization re-check when policy engine changes
+  // Finalization policy revalidation
   // ---------------------------------------------------------------------------
 
-  describe("Finalization re-check on policy engine change", function () {
-    it("policy failure at finalization blocks if engine changed since queueing", async function () {
+  describe("Finalization policy revalidation", function () {
+    it("a denying engine installed after queueing blocks finalization", async function () {
       // Enable large-tx timelock so we can queue
       await enableLargeTx();
 

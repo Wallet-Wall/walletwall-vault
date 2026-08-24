@@ -334,6 +334,44 @@ describe("Policy finalization authority (regression)", function () {
         "WithdrawalFinalized",
       );
     });
+
+    it("a denying CURRENT engine blocks even when the (non-zero) queue-time engine permits", async function () {
+      // Both engines non-zero and distinct: queue-time allowlist permits, the
+      // replacement sanctions engine denies — the current engine's denial must
+      // not be discarded just because the queue-time engine passed.
+      await allowlistPolicy.connect(owner).addRecipient(recipient.address);
+      await setPolicyEngine(await allowlistPolicy.getAddress());
+      await enableLargeTx();
+      const { operationId } = await queueLarge();
+
+      await sanctionsPolicy.addToSanctionsList(recipient.address);
+      await setPolicyEngine(await sanctionsPolicy.getAddress());
+
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
+    });
+
+    it("drift onto a STATEFUL current engine settles without booking (revalidate is not admission)", async function () {
+      // Queue with NO engine, then install DailySpendLimitPolicy with a limit far
+      // BELOW the pending amount as the current engine. The pending withdrawal was
+      // never admitted by (or booked into) that engine; its revalidate must neither
+      // apply admission semantics (which would wrongly deny) nor book anything.
+      await enableLargeTx();
+      const { operationId } = await queueLarge(); // policyEngineAtQueue == address(0)
+
+      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("0.1")); // << LARGE_AMOUNT
+      await setPolicyEngine(await dailyPolicy.getAddress());
+
+      await networkHelpers.time.increase(LARGE_TX_DELAY);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
+        vault,
+        "WithdrawalFinalized",
+      );
+      // Nothing was booked into the window by settlement.
+      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(ethers.parseEther("0.1"));
+    });
   });
 
   // =========================================================================
@@ -376,18 +414,21 @@ describe("Policy finalization authority (regression)", function () {
   // Deduplication — a single engine on both sides is revalidated exactly once
   // =========================================================================
   describe("Deduplication of the two-engine revalidation", function () {
-    // Deploys a fresh single-owner vault, queues under `heavy`, optionally swaps the
-    // current engine to a second heavy engine, then returns the gas used by finalize.
-    async function measureFinalizeGas(distinctCurrentEngine: boolean): Promise<bigint> {
+    // Deploys a fresh single-owner vault and measures finalize gas in one of three
+    // configurations: no engine at all, a single heavy engine on BOTH sides (shared
+    // address), or two distinct heavy engines (queue-time + replacement).
+    async function measureFinalizeGas(mode: "none" | "shared" | "distinct"): Promise<bigint> {
       const v = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await verifier.getAddress());
-      const heavyA = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
 
       await v.connect(owner).createVault(owner.address, PQ_KEY, 2);
       await v.connect(owner).deposit({ value: DEPOSIT });
 
-      await v.connect(admin).proposePolicyEngine(await heavyA.getAddress());
-      await networkHelpers.time.increase(GOVERNANCE_DELAY);
-      await v.connect(admin).applyPolicyEngine();
+      if (mode !== "none") {
+        const heavyA = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
+        await v.connect(admin).proposePolicyEngine(await heavyA.getAddress());
+        await networkHelpers.time.increase(GOVERNANCE_DELAY);
+        await v.connect(admin).applyPolicyEngine();
+      }
       await v.connect(admin).proposeLargeTxParams(THRESHOLD, LARGE_TX_DELAY);
       await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await v.connect(admin).applyLargeTxParams();
@@ -399,7 +440,7 @@ describe("Policy finalization authority (regression)", function () {
       await v.connect(other).queueWithdrawal(req, ecdsaSig, pqSig);
       const operationId = await v.hashWithdrawal(req);
 
-      if (distinctCurrentEngine) {
+      if (mode === "distinct") {
         const heavyB = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
         await v.connect(admin).proposePolicyEngine(await heavyB.getAddress());
         await networkHelpers.time.increase(GOVERNANCE_DELAY);
@@ -412,15 +453,25 @@ describe("Policy finalization authority (regression)", function () {
       return receipt!.gasUsed;
     }
 
-    it("evaluates a shared queue/current engine once, not twice (gas evidence)", async function () {
-      const gasShared = await measureFinalizeGas(false); // queueEngine == currentEngine → 1 heavy eval
-      const gasDistinct = await measureFinalizeGas(true); // queueEngine != currentEngine → 2 heavy evals
+    it("evaluates a shared queue/current engine exactly once (gas evidence)", async function () {
+      // Independently estimate the cost of ONE heavy revalidation (call overhead
+      // included) so the assertions below are absolute, not self-referential.
+      const heavy = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
+      const oneHeavy = await heavy.revalidate.estimateGas(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
 
-      // One HeavyRevalidatePolicyMock revalidation runs 4000 keccak rounds (>>100k gas).
-      // If the shared engine were evaluated twice, gasShared would already include both
-      // and the delta would be ~0. A large positive delta proves the dedup branch.
-      expect(gasDistinct).to.be.greaterThan(gasShared);
-      expect(gasDistinct - gasShared).to.be.greaterThan(100_000n);
+      const gasNone = await measureFinalizeGas("none"); // 0 heavy evals
+      const gasShared = await measureFinalizeGas("shared"); // must be exactly 1
+      const gasDistinct = await measureFinalizeGas("distinct"); // must be exactly 2
+
+      const sharedCost = gasShared - gasNone;
+      // At least one heavy evaluation ran…
+      expect(sharedCost).to.be.greaterThan(oneHeavy / 2n);
+      // …and fewer than two (kills any double-evaluation of the shared engine).
+      expect(sharedCost).to.be.lessThan((oneHeavy * 8n) / 5n);
+      // The distinct configuration runs exactly one more evaluation than shared.
+      const extra = gasDistinct - gasShared;
+      expect(extra).to.be.greaterThan(oneHeavy / 2n);
+      expect(extra).to.be.lessThan((oneHeavy * 8n) / 5n);
     });
   });
 
@@ -476,6 +527,18 @@ describe("Policy finalization authority (regression)", function () {
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.revert(ethers);
     });
 
+    it("a composite containing a check-only module fails finalization closed (propagated)", async function () {
+      // Admission works (composite.check fans out to the legacy module's check), but
+      // revalidation cannot: the module lacks revalidate, the composite's view fan-out
+      // reverts, and the vault converts that to PolicyEngineUnavailable(composite).
+      const legacy = await (await ethers.getContractFactory("LegacyCheckOnlyPolicyMock", admin)).deploy();
+      await composite.addModule(await legacy.getAddress());
+      const operationId = await queueUnderMockEngine(await composite.getAddress());
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
+        .to.be.revertedWithCustomError(vault, "PolicyEngineUnavailable")
+        .withArgs(await composite.getAddress());
+    });
+
     it("a CURRENT engine that has become code-less fails closed", async function () {
       // Queue under a real engine, then point the active engine at a code-less address (an EOA).
       await setPolicyEngine(await allowlistPolicy.getAddress());
@@ -499,7 +562,9 @@ describe("Policy finalization authority (regression)", function () {
       // The mock admits only when vaultBalance == DEPOSIT (the balance BEFORE the
       // withdrawal's deduction). If finalization passed the post-reservation balance
       // (the old bug), revalidate would see DEPOSIT - LARGE_AMOUNT and revert.
-      const mock = await (await ethers.getContractFactory("BalanceAssertingPolicyMock", admin)).deploy(DEPOSIT);
+      const mock = await (
+        await ethers.getContractFactory("BalanceAssertingPolicyMock", admin)
+      ).deploy(DEPOSIT, LARGE_AMOUNT);
 
       await setPolicyEngine(await mock.getAddress());
       await enableLargeTx();
