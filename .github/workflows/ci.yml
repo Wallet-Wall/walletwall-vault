@@ -17,6 +17,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # Full history (not the default shallow depth-1 clone): the deployment-truth
+          # reproducibility validator (npm run validate:reproducibility) independently
+          # verifies each manifest's reportedSourceCommit is real, reachable git history
+          # via local `git merge-base --is-ancestor`, and re-verifies each build capture's
+          # sourceDigests against that commit's actual git objects via `git show` — both
+          # need the historical commit's objects present locally. No network fetch is
+          # performed by the validator itself; this checkout step is what makes the
+          # objects available for it to read.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7

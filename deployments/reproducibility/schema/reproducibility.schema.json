@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://github.com/Wallet-Wall/walletwall-vault/blob/main/deployments/reproducibility/schema/reproducibility.schema.json",
   "title": "Deployment Reproducibility Manifest v1",
-  "description": "Records whether a public testnet deployment can be reproduced from public repository sources, and — when it cannot — the committed remediation path. A manifest may only declare reproducibilityStatus 'reproducible' when its own facts support it (reported commit in public history, matching runtime bytes, and an artifactManifest with a source tag + bytecode hash). Testnet only; this file never documents a mainnet deployment. Validated by `npm run validate:reproducibility`.",
+  "description": "Records whether a public testnet deployment can be reproduced from public repository sources, and — when it cannot — the committed remediation path. A manifest may only declare reproducibilityStatus 'reproducible' when its own facts support it (reported commit in public history, matching runtime bytes, and an artifactManifest with a source tag + bytecode hash). When `evidenceFile` points at a committed evidence bundle (deployments/reproducibility/evidence/*.json — raw captured live/build bytecode plus solc's own immutableReferences), `npm run validate:reproducibility` does not merely format-check this manifest's fields: it deterministically RE-DERIVES executableBytecodeMatch, metadataHashMatch, metadataTrailerBytesExcluded, bytecodeHash, and immutableValuesIndependentlyVerified from that evidence (scripts/lib/reproducibility-evidence.ts) and fails if the manifest's own recorded value disagrees with the recomputation — no field here is ever accepted on its own say-so. When artifactManifest.metadataHashMatch is explicitly false (the solc build-metadata CBOR hash was excluded from the equality claim), executableBytecodeMatch, metadataTrailerBytesExcluded, and a disclosure naming the exclusion are all required, AND (when an evidence bundle is present) every excluded byte must be proven to lie inside the decoded solc CBOR metadata region — never merely under a byte-count ceiling. Testnet only; this file never documents a mainnet deployment. Validated by `npm run validate:reproducibility`.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -46,12 +46,22 @@
     "observedRuntimeBytes": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Byte length of the live deployed runtime bytecode."
+      "description": "Byte length of the live deployed runtime bytecode, as measured on-chain."
+    },
+    "reportedCommitRuntimeBytes": {
+      "type": ["integer", "null"],
+      "minimum": 0,
+      "description": "Byte length of the runtime bytecode recompiled from `reportedSourceCommit` specifically (the pinned historical deployment commit, using ITS OWN lockfile/toolchain) — the decisive figure for a reproducibility claim against that commit. Distinct from publicHeadRuntimeBytes: the toolchain at the deployment commit and at current public HEAD can differ (e.g. a Hardhat major-version migration), so 'matches the deployment commit' and 'matches today's HEAD' are separate claims and must not be conflated into one field."
     },
     "publicHeadRuntimeBytes": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Byte length of the runtime bytecode recompiled from public HEAD."
+      "description": "Byte length of the runtime bytecode recompiled from current public HEAD (a distinct, separately-captured build — see publicHeadCommit for the exact SHA used). Equality with observedRuntimeBytes is informational context (source has not drifted since the deployment commit), NOT the reproducibility claim itself — that is reportedCommitRuntimeBytes."
+    },
+    "publicHeadCommit": {
+      "type": ["string", "null"],
+      "pattern": "^[0-9a-f]{40}$",
+      "description": "The exact commit SHA the publicHeadRuntimeBytes build was captured at (cross-checked against evidenceFile's publicHeadBuild.headCommit when evidenceFile is present). Pinning this prevents a stale or substituted public-HEAD capture from being silently relabeled as current."
     },
     "reproducibilityStatus": {
       "type": "string",
@@ -59,13 +69,44 @@
       "description": "'reproducible' is permitted only when the facts support it (see validator honesty cross-check)."
     },
     "lastChecked": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "evidenceFile": {
+      "type": ["string", "null"],
+      "description": "Repo-relative path to a committed evidence bundle (deployments/reproducibility/evidence/*.json, see evidence.schema.json) that `npm run validate:reproducibility` uses to deterministically RE-DERIVE this manifest's artifactManifest fields, rather than trusting them as hand-set. Null/absent means no evidence-based replay is available for this manifest (facts are asserted, not machine-replayed)."
+    },
     "artifactManifest": {
       "type": ["object", "null"],
       "description": "Required (non-null) only when reproducibilityStatus is 'reproducible'.",
       "additionalProperties": true,
       "properties": {
         "sourceTag": { "type": "string" },
-        "bytecodeHash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+        "bytecodeHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256 of the runtime bytecode this claim actually covers. Equal to the raw on-chain runtime hash when metadataHashMatch is true; equal to the metadata-trailer-normalized hash when metadataHashMatch is false (see metadataTrailerBytesExcluded)."
+        },
+        "executableBytecodeMatch": {
+          "type": "boolean",
+          "description": "True only if every EXECUTED runtime byte (i.e. excluding the trailing solc metadata region, and — for contracts with `immutable` variables — excluding the per-deployment immutable slots, whose values are instead verified independently) is byte-for-byte identical between the live on-chain deployment and a clean local recompile."
+        },
+        "metadataHashMatch": {
+          "type": "boolean",
+          "description": "True only if the trailing solc CBOR build-metadata hash (a non-executed IPFS content pointer, not run by the EVM) also matches byte-for-byte between the live deployment and a clean local recompile. This is commonly false even for genuinely reproducible source, since the metadata hash is sensitive to the exact build environment (OS/toolchain/path) that produced it — see metadataTrailerBytesExcluded."
+        },
+        "metadataTrailerBytesExcluded": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 128,
+          "description": "Required whenever metadataHashMatch is false: the exact number of bytes that actually differ between the live and locally-built bytecode (not the size of the excluded region itself — a metadata region can be larger than its differing content, e.g. a shared version tag inside it). When evidenceFile is present, the validator PROVES this count via evidenceRange ⊆ decodedSolcMetadataRange — every differing byte offset must fall strictly inside the CBOR metadata region decoded from the bytecode's own trailing length prefix (scripts/lib/reproducibility-evidence.ts decodeSolcMetadataBoundary), not merely under this numeric ceiling. The ≤128 bound here is a defense-in-depth sanity ceiling only, in case a manifest without evidenceFile is ever added."
+        },
+        "immutableValuesIndependentlyVerified": {
+          "type": "boolean",
+          "description": "For contracts with `immutable` variables only: true if every immutable slot's on-chain value was independently re-derived from public inputs (constructor arguments, the contract's own deployed address, chain ID, and any relevant construction-time constants) and matched, rather than merely observed."
+        },
+        "constructorArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "The exact constructor arguments used at deployment, in order, as recorded in the deployment metadata — supports independently re-deriving any immutable variable values."
+        }
       }
     },
     "remediation": {

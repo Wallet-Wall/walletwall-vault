@@ -95,11 +95,12 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
 | `MockMLDSAVerifier` | [`0x4736138c99e0619D06663D971C8cD347de186F6d`](https://sepolia.etherscan.io/address/0x4736138c99e0619D06663D971C8cD347de186F6d) |
 | `StablecoinVaultSimulator` | [`0x32f489842DD515Fa4b4b258714F0067B8B8133ae`](https://sepolia.etherscan.io/address/0x32f489842DD515Fa4b4b258714F0067B8B8133ae) |
 | Metadata file | `deployments/sepolia/stablecoin-vault-simulator.json` |
-| Deployment commit | `35c25fa294bebea44b3089aa2435a190a5adf3fb` |
+| Deployment commit | [`35c25fa294bebea44b3089aa2435a190a5adf3fb`](https://github.com/Wallet-Wall/walletwall-vault/commit/35c25fa294bebea44b3089aa2435a190a5adf3fb) (tag `v0.4.24`) |
 | Deployed package version | `0.4.24` |
-| Repo package version (this PR) | `0.4.26` |
+| Repo package version (this PR) | `0.10.12` |
 | Deployed at | `2026-06-18T20:23:48.000Z` |
-| Source verification | Not configured |
+| Explorer source verification | Not configured (see [Source verification](#source-verification-explorer) below — a distinct claim from reproducibility) |
+| Reproducibility (from public source) | **Reproducible** — see [Reproducibility](#reproducibility) below |
 
 **Limitations and disclosures:**
 
@@ -110,8 +111,130 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
   cryptographic verification.
 - No mainnet deployment exists or is planned.
 - No custody of real assets.
-- Source verification is not configured. Bytecode reproducibility from
-  `35c25fa294bebea44b3089aa2435a190a5adf3fb` has not been independently confirmed.
+- Explorer source verification is not configured for these addresses (a distinct claim from
+  reproducibility — see below).
+- Reproducibility from `35c25fa294bebea44b3089aa2435a190a5adf3fb` **has** been independently
+  confirmed for all three contracts, with an explicit, machine-checkable scope: see
+  [Reproducibility](#reproducibility).
+
+### Reproducibility
+
+All executable runtime bytecode, and — for `StablecoinVaultSimulator` — all 8 EIP-712 /
+`immutable` constructor-time values, were independently reproduced from public commit
+`35c25fa294bebea44b3089aa2435a190a5adf3fb` (tag `v0.4.24`) and matched the live Sepolia
+deployment **exactly**. Each contract has a machine-checkable manifest, validated by
+`npm run validate:reproducibility`:
+
+| Contract | Manifest | Runtime bytes | Executable code match | Metadata hash match |
+| --- | --- | --- | --- | --- |
+| `MockUSDC` | [`deployments/reproducibility/mock-usdc-sepolia.json`](../deployments/reproducibility/mock-usdc-sepolia.json) | `1,994` | ✅ exact | ❌ excluded (see below) |
+| `MockMLDSAVerifier` | [`deployments/reproducibility/mock-mldsa-verifier-sepolia.json`](../deployments/reproducibility/mock-mldsa-verifier-sepolia.json) | `569` | ✅ exact | ❌ excluded (see below) |
+| `StablecoinVaultSimulator` | [`deployments/reproducibility/stablecoin-vault-simulator-sepolia.json`](../deployments/reproducibility/stablecoin-vault-simulator-sepolia.json) | `21,979` | ✅ exact (incl. all 8 immutables) | ❌ excluded (see below) |
+
+Last independently re-checked: **2026-08-23**.
+
+**This is a replayable claim, not a self-reported one.** Each manifest names an `evidenceFile`
+under [`deployments/reproducibility/evidence/`](../deployments/reproducibility/evidence/) — a
+committed bundle of raw, captured facts only (the live on-chain runtime bytecode; solc's own
+`deployedBytecode.object` + `immutableReferences` from a build pinned to the deployment commit;
+the same from a build at current public HEAD). It contains **no** derived verdict. Every run of
+`npm run validate:reproducibility` deterministically **re-derives** the executable-code
+comparison, the normalized hash, the decoded metadata boundary, and every immutable's
+expected-vs-observed value from that evidence (`scripts/lib/reproducibility-evidence.ts`), and
+fails if the manifest's own recorded fields disagree with the fresh recomputation. No manifest
+field is ever accepted on its own say-so.
+[`test/ReproducibilityEvidenceCheck.test.ts`](../test/ReproducibilityEvidenceCheck.test.ts) proves
+this by mutation: it tampers with the hash, an executable byte, the metadata boundary, the
+excluded-byte count, an immutable's derivation input, its observed on-chain value, its byte-range
+reference, the recorded source commit, the recorded deployed address, and the live runtime code
+hash — one at a time — and asserts the checker rejects every one of those ten mutations for the
+correct reason.
+
+To replay every manifest against its committed evidence yourself (offline, no network,
+no toolchain — just reads the committed bundles): `npx tsx scripts/reproducibility-evidence.ts
+check`. This is the same check `npm run validate:reproducibility` runs automatically; the
+standalone command is useful for a quick re-verification without the rest of that validator's
+output. `scripts/reproducibility-evidence.ts` also has `capture-live` (reads live on-chain
+bytecode from a public RPC with provenance) and `capture-build` (records a Hardhat build already
+compiled locally) subcommands — see the script's header for exact usage — which is how the
+evidence bundles below were produced.
+
+**Method (from a clean checkout pinned to the exact deployment commit, not public HEAD):**
+
+1. Checked out `35c25fa294bebea44b3089aa2435a190a5adf3fb` in an isolated worktree, ran
+   `npm ci` (the commit's own committed lockfile — Hardhat 2, solc `0.8.24+commit.e11b9ed9`,
+   optimizer `runs=200`, `evmVersion=cancun`) and `npx hardhat compile`. This yields
+   `reportedCommitRuntimeBytes` — the decisive figure for "reproducible from the deployment
+   commit". Separately, current public HEAD (`5792975d4db331156845de72addbae95d079c0f8` at
+   capture time — itself since migrated to Hardhat 3) was compiled too, giving
+   `publicHeadRuntimeBytes`: a distinct, informational claim ("source hasn't drifted since the
+   deployment commit"), never conflated with reproducibility against the deployment commit
+   itself, since the two builds can legitimately use different toolchains. Both builds' `capture-build`
+   step binds `sourceDigests` to the literal `content` embedded in solc's own standard-json input
+   (not a separately-taken disk snapshot), so a source digest can only ever describe what solc
+   actually compiled, never merely what happens to sit on disk with a matching filename —
+   `sourceDigests` is independently re-verified by the checker against the claimed commit's real
+   git objects (`git show`), and is the actual replayed source-binding authority. Each build
+   capture also records a `compilerInputHash` — keccak256 of the full canonical compiler input,
+   including dependency sources — but this is a **capture-time audit fingerprint only**: the
+   committed evidence bundle does not retain the full standard-json input, so
+   `validate:reproducibility` cannot independently recompute or replay `compilerInputHash`
+   offline; it exists for a party who separately retains the original build-info (e.g. CI build
+   artifacts) to audit against. `npm run validate:reproducibility` additionally requires
+   `publicHeadBuild.headCommit` to be non-stale: it rejects the claim if any commit between that
+   capture and the validating repo's current HEAD touched one of the source files it covers, even
+   when the manifest and evidence agree with each other on the (stale) commit. This staleness
+   check currently watches only the `sourceDigests`-covered Solidity source paths — it does not
+   watch `hardhat.config.ts`, `package.json`/`package-lock.json`, or other compiler/toolchain
+   configuration, so a non-stale result does not by itself guarantee current HEAD recompiles
+   byte-identically under every possible toolchain/config change since that commit (tracked as a
+   follow-up). It also independently re-checks that `liveRuntime.runtimeCodeHash` really is
+   `keccak256(liveRuntime.runtimeBytecode)`, rather than trusting the two fields to agree because
+   they were captured together.
+2. Read the live runtime bytecode for all three addresses via `eth_getCode` against a public
+   Sepolia RPC, and confirmed `eth_chainId` is `11155111`.
+3. Decoded the trailing solc CBOR metadata region directly from the bytecode's own trailing
+   2-byte length prefix (not assumed) — a genuine **53-byte** region in every case (a 2-byte
+   length suffix plus a 51-byte CBOR map: `{ipfs: <34-byte multihash>, solc: <3-byte version>}`).
+   Comparing live vs. locally-built bytecode, only **32 of those 53 bytes** actually differ — the
+   32-byte sha256 digest inside the `ipfs` multihash; the `solc` version tag and the rest of the
+   CBOR structure are byte-identical. The checker proves every differing byte lies strictly
+   inside this decoded region (`excludedRange ⊆ decodedSolcMetadataRange`), not merely under an
+   arbitrary count ceiling. This was cross-checked against a second, independent solc build
+   variant (solc-js/WASM, not just Hardhat's downloaded native binary) to rule out a trivial
+   compiler-binary cause; both local builds agree with each other and both differ from the live
+   deployment in the identical way, isolated to that one region.
+4. `StablecoinVaultSimulator` additionally declares one `immutable` (`token`) and inherits 7
+   more from OpenZeppelin 5.6.1's `EIP712` (`_cachedDomainSeparator`, `_cachedChainId`,
+   `_cachedThis`, `_hashedName`, `_hashedVersion`, `_name`, `_version`) — solc bakes these into
+   fixed byte ranges of the runtime code at construction time (11 physical PUSH-site references
+   across those 8 variables, since `token` is referenced 4 times), so they are necessarily
+   per-deployment and cannot be produced by any fresh, differently-addressed redeploy. Instead
+   of redeploying, all 8 values were **independently re-derived from public inputs only**
+   (the known constructor arguments, this contract's own deployed address, chain ID `11155111`,
+   and the EIP-712 domain literals `"WalletWallStablecoinVault"`/`"1"` read from source) and
+   confirmed to match the live on-chain bytes exactly, byte for byte — each with its own
+   identity, derivation method, and expected/observed values recorded in the evidence bundle,
+   not folded into a single hand-set boolean.
+
+**What this claim does and does not cover:** "Reproducible" here means every byte the EVM
+actually executes — the full contract logic, and every immutable constructor value — is
+proven to come from the public commit above. It explicitly **excludes** the 32 differing
+metadata-hash bytes (out of a 53-byte decoded region), which are not code and do not affect
+on-chain behavior; those are recorded as excluded (`metadataHashMatch: false`,
+`metadataTrailerBytesExcluded: 32`) rather than silently ignored, in every manifest.
+
+### Source verification (explorer)
+
+None of the three addresses are marked "verified" on a public explorer today. Explorer source
+verification and source-level reproducibility (above) are **distinct claims**: verification
+publishes source to a specific explorer/UI for human/API browsing, while this repo's
+reproducibility record is an independent, machine-checkable comparison against public git
+history. Given the confirmed compiler settings above, explorer verification for all three
+addresses is a low-risk, deterministic follow-up (flatten or standard-JSON-input verify via
+`hardhat-verify`/Etherscan or Sourcify using solc `0.8.24`, optimizer `runs=200`,
+`evmVersion=cancun`, source commit `35c25fa294bebea44b3089aa2435a190a5adf3fb`); it requires an
+explorer API key to actually submit and is intentionally **not** performed by this record.
 
 ### Safe deployment path: the deploy-only script
 
