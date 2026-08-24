@@ -152,6 +152,28 @@ describe("CompositePolicyEngine", function () {
       await composite.removeModule(await dailyPolicy.getAddress());
       await expect(composite.addModule(await dailyPolicy.getAddress())).to.not.revert(ethers);
     });
+
+    it("rejects adding the composite itself as a module (direct self-recursion)", async function () {
+      await expect(composite.addModule(await composite.getAddress())).to.be.revertedWithCustomError(
+        composite,
+        "SelfModule",
+      );
+    });
+
+    it("enforces the MAX_MODULES hard cap", async function () {
+      const max = await composite.MAX_MODULES();
+      expect(max).to.equal(16n);
+      const Filler = await ethers.getContractFactory("LegacyCheckOnlyPolicyMock", admin);
+      for (let i = 0n; i < max; i++) {
+        const filler = await Filler.deploy();
+        await composite.addModule(await filler.getAddress());
+      }
+      expect(await composite.moduleCount()).to.equal(max);
+      const oneTooMany = await Filler.deploy();
+      await expect(composite.addModule(await oneTooMany.getAddress()))
+        .to.be.revertedWithCustomError(composite, "TooManyModules")
+        .withArgs(max, max);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -220,11 +242,11 @@ describe("CompositePolicyEngine", function () {
   });
 
   // ---------------------------------------------------------------------------
-  // Finalization re-check when policy engine changes
+  // Finalization policy revalidation
   // ---------------------------------------------------------------------------
 
-  describe("Finalization re-check on policy engine change", function () {
-    it("policy failure at finalization blocks if engine changed since queueing", async function () {
+  describe("Finalization policy revalidation", function () {
+    it("a denying engine installed after queueing blocks finalization", async function () {
       // Enable large-tx timelock so we can queue
       await enableLargeTx();
 
@@ -243,34 +265,26 @@ describe("CompositePolicyEngine", function () {
       // Pass the large-tx timelock
       await networkHelpers.time.increase(LARGE_TX_DELAY);
 
-      // Finalization must be blocked because current engine != engine at queue time
-      // and the new engine rejects the recipient
+      // Finalization revalidates the CURRENT engine (queued with none), which
+      // rejects the recipient — so settlement is blocked.
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId))
         .to.be.revertedWithCustomError(vault, "PolicyViolation")
         .withArgs("recipient is sanctioned");
     });
 
-    it("finalization passes when engine is unchanged (no double-check)", async function () {
-      // Set up daily limit policy on composite, wire into vault
-      await composite.addModule(await dailyPolicy.getAddress());
-      await dailyPolicy.connect(owner).setDailyLimit(DAILY_LIMIT);
-      await setPolicyEngine(await composite.getAddress());
-
-      // Enable large-tx
-      await enableLargeTx();
-
-      // Queue large withdrawal (within daily limit: 4 ETH but limit is 2 ETH... let's adjust)
-      const buildLarge = makeBuildRequest(owner, { recipient: recipient.address, amount: ethers.parseEther("1.5") });
-
-      // But THRESHOLD is 3 ETH and amount is 1.5 ETH < threshold — so it's not a large withdrawal.
-      // Let me use an amount above the threshold: 4 ETH > THRESHOLD (3 ETH).
-      // But daily limit is 2 ETH, and 4 ETH > limit — would be blocked at queue networkHelpers.time.
-      // Use a fresh composite with NO daily limit and add allowlist that always passes.
+    it("finalization revalidates an unchanged engine against current state and passes while it still permits", async function () {
+      // Composite with an allowlist module that admits the recipient; engine unchanged
+      // between queue and finalize. Finalization re-validates the composite (read-only
+      // fan-out over the CURRENT module set); since the allowlist still permits, the
+      // withdrawal settles. The restrictive-drift counterparts (module added, module
+      // state turned denying) live in test/PolicyFinalizationAuthority.test.ts P2.
       const Composite2 = await ethers.getContractFactory("CompositePolicyEngine", admin);
       const composite2 = await Composite2.deploy();
       await composite2.addModule(await allowlistPolicy.getAddress());
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await setPolicyEngine(await composite2.getAddress());
+
+      await enableLargeTx();
 
       const buildLarge2 = makeBuildRequest(owner, { recipient: recipient.address, amount: LARGE_AMOUNT });
       const req2 = await buildLarge2();
@@ -280,7 +294,6 @@ describe("CompositePolicyEngine", function () {
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
 
-      // Engine is unchanged → no re-check → finalization succeeds
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId2)).to.emit(
         vault,
         "WithdrawalFinalized",

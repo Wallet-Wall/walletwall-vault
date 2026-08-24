@@ -154,6 +154,10 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         uint256 queuedAt;
         uint256 readyAt;
         bytes32 operationId;
+        /// @dev Engine that ADMITTED this withdrawal at queue time. Finalization
+        ///      revalidates its CURRENT state as a sticky floor (plus the currently
+        ///      active engine when different) via the read-only
+        ///      {IPolicyEngine.revalidate} — see WalletWallVault for the full model.
         address policyEngineAtQueue;
         bool exists;
     }
@@ -278,6 +282,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     error NoPendingLargeTxUpdate();
     error LargeTxUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error PolicyViolation(string reason);
+    error PolicyEngineUnavailable(address engine);
     error NoPendingPolicyEngine();
     error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error TreasuryQuorumNotMet(uint256 required, uint256 current);
@@ -649,8 +654,11 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
             }
         }
 
-        if (address(policyEngine) != address(0)) {
-            (bool ok, string memory why) = policyEngine.check(
+        // Read the engine ONCE so the recorded policyEngineAtQueue is exactly the
+        // engine that admitted this withdrawal (mirrors WalletWallVault).
+        address engineAtQueue = address(policyEngine);
+        if (engineAtQueue != address(0)) {
+            (bool ok, string memory why) = IPolicyEngine(engineAtQueue).check(
                 request.vaultOwner,
                 request.recipient,
                 request.amount,
@@ -674,7 +682,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
             queuedAt: queuedAt,
             readyAt: readyAt,
             operationId: operationId,
-            policyEngineAtQueue: address(policyEngine),
+            policyEngineAtQueue: engineAtQueue,
             exists: true
         });
 
@@ -709,15 +717,33 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
             if (current < quorumRequired) revert TreasuryQuorumNotMet(quorumRequired, current);
         }
 
-        address currentEngine = address(policyEngine);
-        if (currentEngine != address(0) && currentEngine != pending.policyEngineAtQueue) {
-            (bool ok, string memory why) = policyEngine.check(
-                vaultOwner,
-                pending.recipient,
-                pending.amount,
-                vaults[vaultOwner].balance
-            );
-            if (!ok) revert PolicyViolation(why);
+        // Read-only policy revalidation — always runs, no drift gate. Mirrors
+        // WalletWallVault.finalizeWithdrawal exactly: queue-time engine is a sticky
+        // floor, current engine adds newly imposed restrictions, each consulted once.
+        // vaultBalance keeps its admission meaning ("balance before this withdrawal's
+        // deduction"), reconstructed because queueing reserved the amount.
+        {
+            uint256 balanceBeforeThisWithdrawal = vaults[vaultOwner].balance + pending.amount;
+            address queueEngine = pending.policyEngineAtQueue;
+            address currentEngine = address(policyEngine);
+            if (queueEngine != address(0)) {
+                _revalidatePolicy(
+                    queueEngine,
+                    vaultOwner,
+                    pending.recipient,
+                    pending.amount,
+                    balanceBeforeThisWithdrawal
+                );
+            }
+            if (currentEngine != address(0) && currentEngine != queueEngine) {
+                _revalidatePolicy(
+                    currentEngine,
+                    vaultOwner,
+                    pending.recipient,
+                    pending.amount,
+                    balanceBeforeThisWithdrawal
+                );
+            }
         }
 
         address recipient = pending.recipient;
@@ -729,6 +755,32 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         token.safeTransfer(recipient, amount);
 
         emit WithdrawalFinalized(operationId, vaultOwner, recipient, amount);
+    }
+
+    /**
+     * @dev Revalidates a pending withdrawal against one policy engine, reverting on
+     *      any outcome other than an explicit allow. Identical to
+     *      WalletWallVault._revalidatePolicy — view, so the engine executes under
+     *      STATICCALL and cannot mutate state; no-code, reverting, non-conforming,
+     *      or denying engines all fail closed ({cancelPendingWithdrawal} remains the
+     *      ungated escape).
+     */
+    function _revalidatePolicy(
+        address engine,
+        address vaultOwner,
+        address recipient,
+        uint256 amount,
+        uint256 vaultBalance
+    ) internal view {
+        if (engine.code.length == 0) revert PolicyEngineUnavailable(engine);
+        try IPolicyEngine(engine).revalidate(vaultOwner, recipient, amount, vaultBalance) returns (
+            bool ok,
+            string memory why
+        ) {
+            if (!ok) revert PolicyViolation(why);
+        } catch {
+            revert PolicyEngineUnavailable(engine);
+        }
     }
 
     /**

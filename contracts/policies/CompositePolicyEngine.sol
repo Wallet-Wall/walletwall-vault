@@ -21,10 +21,25 @@ import "../IPolicyEngine.sol";
  *       implement IPolicyEngine. Modules with no deployed code are rejected at
  *       registration time.
  *
- *       The module list is bounded only by the cost of iterating it on each
- *       check() call. Keep the set small (≤ ~10) for predictable gas.
+ *       The module list is hard-capped at {MAX_MODULES} so a misconfigured set can
+ *       never make check()/revalidate() un-runnable within a block, and a module can
+ *       never be this composite itself (direct self-recursion). Indirect cycles
+ *       through another composite are NOT detected on-chain — do not nest composites.
+ *
+ *       GOVERNANCE NOTE: addModule/removeModule take effect IMMEDIATELY (no
+ *       timelock), like the content mutations of the individual policies
+ *       (sanctions add/remove, allowlist add/remove). Wiring a composite into a
+ *       vault therefore places the effective policy set behind the composite
+ *       owner's instant control, even though replacing the vault's engine address
+ *       itself requires the 2-day governance delay. Whoever owns the composite
+ *       owns instant policy-set changes; deployments where the composite owner
+ *       must not be able to instantly evict another party's module should not
+ *       use a shared composite.
  */
 contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
+    /// @notice Hard cap on registered modules; bounds check()/revalidate() gas.
+    uint256 public constant MAX_MODULES = 16;
+
     address[] private _modules;
 
     event ModuleAdded(address indexed module, uint256 moduleCount);
@@ -34,6 +49,8 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     error NoCode(address module);
     error DuplicateModule(address module);
     error ModuleNotFound(address module);
+    error SelfModule();
+    error TooManyModules(uint256 count, uint256 max);
 
     constructor() Ownable(msg.sender) {}
 
@@ -48,6 +65,7 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
      */
     function addModule(address module) external onlyOwner {
         if (module == address(0)) revert ZeroModuleAddress();
+        if (module == address(this)) revert SelfModule();
 
         uint256 size;
         assembly {
@@ -56,6 +74,7 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
         if (size == 0) revert NoCode(module);
 
         uint256 len = _modules.length;
+        if (len >= MAX_MODULES) revert TooManyModules(len, MAX_MODULES);
         for (uint256 i = 0; i < len; i++) {
             if (_modules[i] == module) revert DuplicateModule(module);
         }
@@ -112,6 +131,37 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
         uint256 len = _modules.length;
         for (uint256 i = 0; i < len; i++) {
             (bool ok, string memory why) = IPolicyEngine(_modules[i]).check(
+                vaultOwner,
+                recipient,
+                amount,
+                vaultBalance
+            );
+            if (!ok) return (false, why);
+        }
+        return (true, "");
+    }
+
+    /**
+     * @notice Re-validates a withdrawal against every CURRENTLY registered module.
+     * @dev Fans out to each module's {revalidate} — NEVER {check}, which may
+     *      mutate admission accounting. Because this function is view, every
+     *      module call executes as a STATICCALL; a module whose revalidation
+     *      attempts to write state (or that does not implement {revalidate})
+     *      reverts the whole call, which the vault treats as fail-closed.
+     *      The module set evaluated is the CURRENT one: a denying module added
+     *      after a withdrawal was queued blocks it, and a retained module whose
+     *      internal state turned denying blocks it. An empty module list is
+     *      permissive, mirroring {check}.
+     */
+    function revalidate(
+        address vaultOwner,
+        address recipient,
+        uint256 amount,
+        uint256 vaultBalance
+    ) external view override returns (bool, string memory) {
+        uint256 len = _modules.length;
+        for (uint256 i = 0; i < len; i++) {
+            (bool ok, string memory why) = IPolicyEngine(_modules[i]).revalidate(
                 vaultOwner,
                 recipient,
                 amount,

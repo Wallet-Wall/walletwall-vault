@@ -316,7 +316,7 @@ The active Ethereum Sepolia test deployment and deprecated historical deployment
 recorded in [docs/Deployments.md](docs/Deployments.md). The active deployment is wired
 to `MockMLDSAVerifier`; it is for testnet integration only and provides no real PQ
 verification. Its observed runtime is `20,508` bytes, while current public HEAD
-recompiles to `22,195` bytes; exact deployment reproducibility is pending public
+recompiles to `22,367` bytes; exact deployment reproducibility is pending public
 source/artifact alignment.
 
 ## How a withdrawal works (off-chain signing)
@@ -372,9 +372,12 @@ await vault.withdraw(request, ecdsaSignature, pqSignature);
 - **Policy boundary:** an optional `IPolicyEngine` can reject withdrawals before state
   changes. `CompositePolicyEngine` composes the daily spend, recipient allowlist, and
   sanctions modules so all enabled checks must pass.
-- **Finalization policy check:** a queued withdrawal is checked against the current
-  policy engine again if the engine address changed after queueing. The unchanged
-  stateful engine is not called twice, avoiding double-counting daily spend.
+- **Finalization policy revalidation:** a queued withdrawal is always revalidated at
+  finalization via the read-only `IPolicyEngine.revalidate()` (a STATICCALL that cannot
+  book accounting), against both the engine that admitted it at queue time (a sticky
+  floor that survives engine replacement or disablement) and the current engine.
+  Same-address policy mutations are observed; daily spend is booked once at queue and
+  never re-booked, which is what prevents double-counting.
 - **Treasury quorum:** vault owners can require guardian approvals before a queued large
   withdrawal finalizes. Approvals are scoped to the queued operation and cleared on
   cancellation, recovery, rotation, or guardian-set replacement.

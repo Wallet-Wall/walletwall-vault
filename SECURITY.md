@@ -57,7 +57,7 @@ scope and must not be modified as part of work on this prototype.
 | Large-withdrawal timelock                                       | Implemented (queue/finalize + delayed parameter governance)    |
 | Policy engine boundary                                          | Implemented (optional, delayed engine governance)              |
 | Composite policy enforcement                                    | Implemented (daily limit + allowlist + sanctions modules)      |
-| Finalization policy re-check                                    | Implemented when the active engine changed after queueing      |
+| Finalization policy revalidation                                | Implemented: always runs, read-only, queue-time + current engine |
 | Treasury guardian quorum                                        | Implemented for queued large withdrawals                       |
 | Trusted off-chain ML-DSA attestation                            | Implemented; relies on an authorized EVM attestor              |
 | On-chain ML-DSA verification                                    | Not implemented                                                |
@@ -70,7 +70,7 @@ only because an authorized attestor signature is enforced.
 The active Sepolia deployment documented in [docs/Deployments.md](docs/Deployments.md)
 uses the mock verifier. It is an active **testnet** integration target, not a production
 or mainnet deployment. Its observed `20,508`-byte runtime is not reproducible from
-current public HEAD, which recompiles to `22,195` bytes; provenance alignment remains
+current public HEAD, which recompiles to `22,367` bytes; provenance alignment remains
 an explicit follow-up.
 
 To prevent an unsafe configuration, **`PqOnly` mode is disabled at the contract level
