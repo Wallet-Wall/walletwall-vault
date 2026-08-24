@@ -147,6 +147,7 @@ describe("Simulator policy finalization authority (parity regression)", function
     // One-hour large-tx delay so the policy's 24h window does not roll before finalize.
     const SHORT_DELAY = 3600;
     const LIMIT = MUSDC(400);
+    await dailyPolicy.connect(owner).setAdmitter(await sim.getAddress(), true);
     await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
     await setPolicyEngine(await dailyPolicy.getAddress());
     await enableLargeTx(SHORT_DELAY);

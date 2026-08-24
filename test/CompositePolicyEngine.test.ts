@@ -187,8 +187,13 @@ describe("CompositePolicyEngine", function () {
       await composite.addModule(await allowlistPolicy.getAddress());
       await composite.addModule(await sanctionsPolicy.getAddress());
 
-      // Configure policies for owner's vault
+      // Configure policies for owner's vault. With a composite in the path, the owner
+      // delegates admission authority to the COMPOSITE (that is the msg.sender the
+      // stateful module observes), and the composite's admin registers the vault as the
+      // consumer permitted to invoke it. Authority holds at both hops.
+      await dailyPolicy.connect(owner).setAdmitter(await composite.getAddress(), true);
       await dailyPolicy.connect(owner).setDailyLimit(DAILY_LIMIT);
+      await composite.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       // No sanctioned addresses by default
 
@@ -236,6 +241,7 @@ describe("CompositePolicyEngine", function () {
       // Deploy a fresh composite with no modules
       const Composite = await ethers.getContractFactory("CompositePolicyEngine", admin);
       const emptyComposite = await Composite.deploy();
+      await emptyComposite.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
       await setPolicyEngine(await emptyComposite.getAddress());
       await expect(withdraw()).to.emit(vault, "Withdrawn");
     });
@@ -281,6 +287,7 @@ describe("CompositePolicyEngine", function () {
       const Composite2 = await ethers.getContractFactory("CompositePolicyEngine", admin);
       const composite2 = await Composite2.deploy();
       await composite2.addModule(await allowlistPolicy.getAddress());
+      await composite2.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await setPolicyEngine(await composite2.getAddress());
 

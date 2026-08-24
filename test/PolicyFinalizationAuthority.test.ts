@@ -61,9 +61,21 @@ describe("Policy finalization authority (regression)", function () {
   let signWithdrawal: ReturnType<typeof makeSignWithdrawal>;
 
   async function setPolicyEngine(engine: string) {
+    // A composite relays admissions only from registered consumers, so wiring one into
+    // the vault means registering the vault on it. Idempotent, and a no-op for the
+    // single-module engines.
+    if (engine === (await composite.getAddress())) {
+      await composite.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
+    }
     await vault.connect(admin).proposePolicyEngine(engine);
     await networkHelpers.time.increase(GOVERNANCE_DELAY);
     await vault.connect(admin).applyPolicyEngine();
+  }
+
+  /// Delegates admission authority for `owner` to the vault, then arms `limit`.
+  async function armDailyLimit(limit: bigint) {
+    await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
+    await dailyPolicy.connect(owner).setDailyLimit(limit);
   }
 
   async function enableLargeTx(delay = LARGE_TX_DELAY) {
@@ -243,7 +255,7 @@ describe("Policy finalization authority (regression)", function () {
     it("spend is booked once at queue and finalization does not book it again", async function () {
       const LIMIT = ethers.parseEther("10");
       const AMOUNT = ethers.parseEther("3");
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+      await armDailyLimit(LIMIT);
       await setPolicyEngine(await dailyPolicy.getAddress());
       await enableLargeTx(SHORT_DELAY);
 
@@ -266,7 +278,7 @@ describe("Policy finalization authority (regression)", function () {
     it("a withdrawal admitted exactly at the limit still finalizes (not wrongly rejected)", async function () {
       const LIMIT = ethers.parseEther("3");
       const AMOUNT = ethers.parseEther("3"); // consumes the entire allowance at admission
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+      await armDailyLimit(LIMIT);
       await setPolicyEngine(await dailyPolicy.getAddress());
       await enableLargeTx(SHORT_DELAY);
 
@@ -361,7 +373,7 @@ describe("Policy finalization authority (regression)", function () {
       await enableLargeTx();
       const { operationId } = await queueLarge(); // policyEngineAtQueue == address(0)
 
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("0.1")); // << LARGE_AMOUNT
+      await armDailyLimit(ethers.parseEther("0.1")); // << LARGE_AMOUNT
       await setPolicyEngine(await dailyPolicy.getAddress());
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);

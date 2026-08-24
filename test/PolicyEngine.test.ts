@@ -104,6 +104,9 @@ describe("Policy Engine", function () {
   describe("DailySpendLimitPolicy", function () {
     beforeEach(async function () {
       await setPolicyEngine(await dailyPolicy.getAddress());
+      // Arming a limit requires the owner to first delegate admission authority to the
+      // contract that will book against them — here, the vault itself.
+      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
     });
 
     it("no limit set (0) — all withdrawals pass", async function () {
@@ -213,6 +216,7 @@ describe("Policy Engine", function () {
   describe("Credential rotation interaction", function () {
     it("preserves daily-spend policy counters across a credential rotation", async function () {
       await setPolicyEngine(await dailyPolicy.getAddress());
+      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
       await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
 
       // Consume 0.6 of the 1.0 daily allowance (nonce 0 -> 1).
@@ -297,6 +301,8 @@ describe("Policy Engine", function () {
     });
 
     it("daily-limit revalidate is a pure allow that never books, even over the limit", async function () {
+      // No vault involved here, so the owner self-delegates — the standalone case.
+      await dailyPolicy.connect(owner).setAdmitter(owner.address, true);
       await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
       const before = await dailyPolicy.remainingAllowance(owner.address);
 

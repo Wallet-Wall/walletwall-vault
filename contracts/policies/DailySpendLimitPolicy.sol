@@ -12,22 +12,104 @@ import "../IPolicyEngine.sol";
 ///      including the spend record is rolled back automatically.
 ///
 ///      A limit of 0 means unrestricted (default). Set a non-zero limit to enable.
+///
+///      ADMISSION AUTHORITY. {check} is the contract's only state-mutating policy
+///      entrypoint, and the accounting it mutates is selected by its `vaultOwner`
+///      ARGUMENT. An argument cannot authorize anything, so booking additionally
+///      requires that `msg.sender` be an admitter the subject itself delegated to via
+///      {setAdmitter} — a msg.sender-keyed setter, the same authority root as
+///      {setDailyLimit}. The `vaultOwner` argument therefore only selects WHICH
+///      delegation list is consulted; it never by itself satisfies the check.
+///
+///      The delegation is BY ADDRESS, so it is sound only if every hop between the
+///      vault and this module is itself caller-bound. {CompositePolicyEngine} carries
+///      the matching gate for that reason: a tenant who delegates to a composite would
+///      otherwise be poisonable through the composite's own admission entrypoint.
+///
+///      This contract has NO owner and no admin: every authority IN IT is held by the
+///      vault owner whose accounting is at stake. Under DIRECT wiring (delegate to the
+///      vault) that is the whole story — no third party can burn a tenant's allowance.
+///
+///      Delegation is transitive, though, so the guarantee is only as narrow as what the
+///      subject delegated to. Delegating to a {CompositePolicyEngine} inherits THAT
+///      composite's access-control policy: its owner chooses which consumers may invoke
+///      it, and can therefore point a registered consumer at this module and burn the
+///      delegating tenant's allowance. That is denial-class only — spend never decreases,
+///      no allowance is manufactured, and settlement of an already-queued withdrawal is
+///      unaffected — the tenant can always escape instantly with setDailyLimit(0), and
+///      the same principal already holds strictly stronger, unescapable denials
+///      (adding an always-denying module). Delegate to a composite only where its owner
+///      is already trusted for the liveness of that composition.
 contract DailySpendLimitPolicy is IPolicyEngine {
     uint256 public constant WINDOW = 24 hours;
 
     /// @notice Per-vault daily spend limit in wei. 0 = unrestricted.
     mapping(address => uint256) public dailyLimit;
 
+    /// @notice admitter[vaultOwner][caller] — `caller` may book admission spend against
+    ///         `vaultOwner`. Written ONLY by a transaction whose msg.sender IS
+    ///         `vaultOwner`, so the delegation can never be forged by a third party.
+    mapping(address => mapping(address => bool)) public admitter;
+
+    /// @notice How many admitters `vaultOwner` has delegated to. Lets {setDailyLimit}
+    ///         refuse to arm a limit that no caller could ever satisfy.
+    mapping(address => uint256) public admitterCount;
+
     mapping(address => uint256) private _windowStart;
     mapping(address => uint256) private _windowSpent;
 
     event DailyLimitSet(address indexed vaultOwner, uint256 limit);
+    event AdmitterSet(address indexed vaultOwner, address indexed admitter, bool allowed);
+
+    /// @notice `caller` is not an admitter the subject delegated to.
+    error UnauthorizedAdmitter(address caller, address vaultOwner);
+    /// @notice Refuses to arm a limit before any admitter exists (would brick the owner).
+    error NoAdmitterConfigured(address vaultOwner);
+    /// @notice Refuses to remove the last admitter while a limit is armed.
+    error LastAdmitterWhileArmed(address vaultOwner);
+    /// @notice A delegated admitter other than the subject itself must be a contract.
+    error AdmitterNotAContract(address admitter);
+    error ZeroAdmitter();
 
     /// @notice Sets the caller's daily spend limit.
+    /// @dev Arming a non-zero limit requires at least one admitter, so the failure
+    ///      surfaces here — on the configuration transaction — instead of later, as an
+    ///      unexplained revert on the owner's next withdrawal. Disarming (`limit == 0`)
+    ///      is deliberately exempt: the documented escape hatch must never be blocked.
     /// @param limit Max ETH (wei) withdrawable within a 24h window. 0 = unrestricted.
     function setDailyLimit(uint256 limit) external {
+        if (limit != 0 && admitterCount[msg.sender] == 0) revert NoAdmitterConfigured(msg.sender);
         dailyLimit[msg.sender] = limit;
         emit DailyLimitSet(msg.sender, limit);
+    }
+
+    /// @notice Delegates (or revokes) authority to book admission spend against the caller.
+    /// @dev The caller IS the subject: `admitter[msg.sender][caller]` is the only write,
+    ///      so this introduces no new principal and no contract owner. Authorize the vault
+    ///      that will admit your withdrawals — or the composite engine, if one sits between.
+    ///
+    ///      A delegate other than the subject itself must have code: an EOA admitter could
+    ///      burn the subject's allowance at will, which is the very defect this gate closes.
+    ///      Self-delegation is permitted and harmless — subject and delegate coincide, so it
+    ///      grants nobody else anything, and it keeps standalone/direct use available.
+    /// @param caller  The address permitted to call {check} for the caller's accounting.
+    /// @param allowed True to delegate, false to revoke.
+    function setAdmitter(address caller, bool allowed) external {
+        if (caller == address(0)) revert ZeroAdmitter();
+        if (allowed && caller != msg.sender && caller.code.length == 0) {
+            revert AdmitterNotAContract(caller);
+        }
+
+        bool previous = admitter[msg.sender][caller];
+        if (previous == allowed) return; // idempotent — keeps admitterCount exact
+
+        if (!allowed && admitterCount[msg.sender] == 1 && dailyLimit[msg.sender] != 0) {
+            revert LastAdmitterWhileArmed(msg.sender);
+        }
+
+        admitter[msg.sender][caller] = allowed;
+        admitterCount[msg.sender] = allowed ? admitterCount[msg.sender] + 1 : admitterCount[msg.sender] - 1;
+        emit AdmitterSet(msg.sender, caller, allowed);
     }
 
     /// @inheritdoc IPolicyEngine
@@ -39,6 +121,22 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ) external override returns (bool allowed, string memory reason) {
         uint256 limit = dailyLimit[vaultOwner];
         if (limit == 0) return (true, "");
+
+        // AUTHORITY BEFORE POLICY. Derived from msg.sender; `vaultOwner` only selects
+        // which delegation list is consulted. Reverting (rather than returning a denial)
+        // keeps a misconfiguration distinguishable from a policy decision — the vaults do
+        // not wrap this call in try/catch, so the error reaches the caller intact.
+        //
+        // Placed AFTER the `limit == 0` return so the gate constrains exactly the armed
+        // set — which is exactly the attackable set, since an unarmed subject returns
+        // above without touching storage. Owners who never armed a limit need no
+        // configuration and cannot be locked out by this change.
+        //
+        // Placed BEFORE the first storage read so an unauthorized caller can never plant
+        // a `_windowSpent` value at all. That also forecloses the near-max-limit case,
+        // where the denial branch below is unreachable and a planted ceiling value would
+        // make every later admission revert on the checked add instead of denying.
+        if (!admitter[vaultOwner][msg.sender]) revert UnauthorizedAdmitter(msg.sender, vaultOwner);
 
         uint256 start = _windowStart[vaultOwner];
         uint256 spent = _windowSpent[vaultOwner];
