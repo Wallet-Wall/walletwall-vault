@@ -42,7 +42,7 @@ const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const EVIDENCE_DIR = join(REPRO_DIR, "evidence");
 const DEPLOYMENT_COMMIT = "35c25fa294bebea44b3089aa2435a190a5adf3fb";
-const PUBLIC_HEAD_COMMIT = "ba345745dbd5015775238c2ebebe4c3789580583";
+const PUBLIC_HEAD_COMMIT = "21c13efbad8cb6a0d674b51b626c4e66f9b3631a";
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
