@@ -50,7 +50,7 @@ failure in any of them fails the `build-test` job on that commit.
 | `npm run coverage` | Runs Solidity coverage instrumentation. |
 | `npm run validate:deployments` | Validates every committed `deployments/` record (excluding `schema/`, `examples/`, `reproducibility/`) against the required shape and testnet-only safety rules. Deterministic, offline. |
 | `npm run validate:reproducibility` | Validates every committed `deployments/reproducibility/` manifest: a manifest may only claim `reproducibilityStatus: "reproducible"` when its own recorded facts support that; otherwise it must carry a concrete remediation plan. Deterministic, offline. |
-| `npm run validate:bytecode-size` | Post-compile EIP-170 gate: fails if any of `WalletWallVault`, `StablecoinVaultSimulator`, `WalletWallMultiSigVault`, `MockMLDSAVerifier`, `AttestationPQCVerifier`, or `ZKMLDSAVerifier` has RUNTIME (deployed) bytecode over 24,576 bytes. Creation bytecode is reported but never gated. Deterministic, offline; requires `npm run compile` first (run automatically via the `prevalidate:bytecode-size` hook). |
+| `npm run validate:bytecode-size` | Post-compile EIP-170 gate: fails if any of `WalletWallVault`, `StablecoinVaultSimulator`, `WalletWallMultiSigVault`, `MockMLDSAVerifier`, `AttestationPQCVerifier`, `ImmutableAttestationPQCVerifier`, or `ZKMLDSAVerifier` has RUNTIME (deployed) bytecode over 24,576 bytes. Creation bytecode is reported but never gated. Deterministic, offline; requires `npm run compile` first (run automatically via the `prevalidate:bytecode-size` hook). |
 
 ## Current Test Focus
 

@@ -316,7 +316,7 @@ The active Ethereum Sepolia test deployment and deprecated historical deployment
 recorded in [docs/Deployments.md](docs/Deployments.md). The active deployment is wired
 to `MockMLDSAVerifier`; it is for testnet integration only and provides no real PQ
 verification. Its observed runtime is `20,508` bytes, while current public HEAD
-recompiles to `22,138` bytes; exact deployment reproducibility is pending public
+recompiles to `22,195` bytes; exact deployment reproducibility is pending public
 source/artifact alignment.
 
 ## How a withdrawal works (off-chain signing)

@@ -3,8 +3,20 @@
 > Research prototype. Not audited. Not production custody. Do not use real funds.
 
 This document analyzes the remaining architectural risk in the trusted-attestation
-verifier — the **attestation governance model** — and lays out hardening options before
-any implementation. It is a planning document. It does **not** change any contract.
+verifier — the **attestation governance model** — and lays out hardening options.
+
+## Status
+
+**Option A (immutable-attestor verifier) is implemented.**
+[`ImmutableAttestationPQCVerifier`](../contracts/verifiers/ImmutableAttestationPQCVerifier.sol)
+is available alongside the original, still-supported
+[`AttestationPQCVerifier`](../contracts/verifiers/AttestationPQCVerifier.sol). It is the
+recommended near-term deployment choice; see
+[Attestation_Verifier.md](Attestation_Verifier.md#immutable-attestor-variant) for the
+usage guidance and [`test/ImmutableAttestationPQCVerifier.test.ts`](../test/ImmutableAttestationPQCVerifier.test.ts)
+for its test coverage, including structural proof that its ABI exposes no
+attestor-mutation function. The rest of this document is retained as the design
+rationale; it does not change any contract.
 
 It builds on the asymmetry already documented in
 [Attestation_Verifier.md](Attestation_Verifier.md#attestor-rotation-delay-asymmetry),
@@ -149,24 +161,24 @@ ML-DSA verification, **not** production custody, **not** audited, and involves *
 funds**. It narrows the *administrative* attack surface; it does not remove trust in the
 attestor key or the off-chain verification.
 
-## Follow-up checklist (for a future implementation PR)
+## Follow-up checklist (implemented)
 
 > Tracking aid only. Do not open GitHub issues from this document.
 
 **Implement immutable-attestor verifier variant**
 
-- [ ] Add `ImmutableAttestationPQCVerifier` implementing `IPQCVerifier`, with `attestor`
+- [x] Add `ImmutableAttestationPQCVerifier` implementing `IPQCVerifier`, with `attestor`
       set once in the constructor (reverting on the zero address) and no `updateAttestor`.
-- [ ] Reuse the existing EIP-712 domain, `PQCAttestation` typehash, and `algorithmId`, and
+- [x] Reuse the existing EIP-712 domain, `PQCAttestation` typehash, and `algorithmId`, and
       keep the `abi.encode(bytes, uint256, bytes32, bytes32)` payload ABI-compatible.
-- [ ] Mirror the existing verification checks (payload shape, deadline, public-key hash,
+- [x] Mirror the existing verification checks (payload shape, deadline, public-key hash,
       EIP-712 recovery, verifier-address and chain-id binding).
-- [ ] Add `test/ImmutableAttestationPQCVerifier.test.ts` covering valid/invalid
+- [x] Add `test/ImmutableAttestationPQCVerifier.test.ts` covering valid/invalid
       attestation, wrong attestor, expiry, altered fields, malformed payload, verifier
       binding, and the *absence* of any attestor-rotation path.
-- [ ] Keep the mutable `AttestationPQCVerifier` available as the legacy/research path;
+- [x] Keep the mutable `AttestationPQCVerifier` available as the legacy/research path;
       document immutable-attestor as the recommended near-term deployment.
-- [ ] Document the operational flow: change attestor ⇒ deploy a new verifier ⇒ move the
+- [x] Document the operational flow: change attestor ⇒ deploy a new verifier ⇒ move the
       vault via `proposePQVerifier` / `applyPQVerifierUpdate`.
 
 ## See also
