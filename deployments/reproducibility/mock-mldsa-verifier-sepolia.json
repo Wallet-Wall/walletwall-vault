@@ -11,7 +11,7 @@
   "observedRuntimeBytes": 569,
   "reportedCommitRuntimeBytes": 569,
   "publicHeadRuntimeBytes": 569,
-  "publicHeadCommit": "5792975d4db331156845de72addbae95d079c0f8",
+  "publicHeadCommit": "5291478e3b9671ef9baca4a6de4c7d8c634194e2",
   "reproducibilityStatus": "reproducible",
   "lastChecked": "2026-08-23",
   "evidenceFile": "deployments/reproducibility/evidence/mock-mldsa-verifier-sepolia.json",

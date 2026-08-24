@@ -116,13 +116,14 @@
       "contracts/MockMLDSAVerifier.sol": "0x2904c2ce4ac3de52569481c132075d4d8b6f5e0e41083e3081699daad603c5cf",
       "contracts/mocks/AlwaysFalsePQCVerifier.sol": "0xc2ebc4b63f61e98c9d73daa3607e4c6f1c1a3d45a857415d51f4364a5237e959",
       "contracts/mocks/AlwaysTruePQCVerifier.sol": "0xf91d509aa751811f2fe771c1ea47642bd60ce7bbcefc3b0f1906ba8587cfedcb",
+      "contracts/mocks/DailySpendAdmissionMocks.sol": "0x6a9a39ef9e52d03e52ef393b831fd1fabb303fabb88fad3252c8d59e01775788",
       "contracts/mocks/ForceSend.sol": "0xd2b7f2b06341c35914666c4103cd33bd1f368af668f1a2280a5e26bebca69d5f",
       "contracts/mocks/MockSP1Verifier.sol": "0xbe8a0f9e522d5ac439339e945cc1ce513c7a64076b6c4286bbb88dec007bb231",
       "contracts/mocks/MockUSDC.sol": "0xf3234021fd43cc5f59284032dccf1481259601d0a01950ab148bd6730663c667",
       "contracts/mocks/PolicyRevalidationMocks.sol": "0x86001a01602d5e61d99c2e2b5fca6b18ca700bd96f58b378c01b39de9f1d4831",
       "contracts/mocks/RejectEther.sol": "0x65a18729f548cc8d7c956de3f0ab8631a38a41041d478f9628074acce3b58f6d",
-      "contracts/policies/CompositePolicyEngine.sol": "0xcee971ffb76d6f61507555f3fde94172711f808f4e1d86082eb4100bc420d7e9",
-      "contracts/policies/DailySpendLimitPolicy.sol": "0x3d7cfd7e73eca8b42d7de1e2dc99954a963eb88a5012aa4ed120aa156ff70e61",
+      "contracts/policies/CompositePolicyEngine.sol": "0xac9e6f16bde13491a9d08a14325e8725e69c4d37026e6b6a348a27ede4b5dd92",
+      "contracts/policies/DailySpendLimitPolicy.sol": "0x8ea9bc737216e328006727a87078733934d372678dda2defde65e1165075bbf0",
       "contracts/policies/RecipientAllowlistPolicy.sol": "0xcc4bce37617c1c66821e1b4bd4a3dc72705b6051c9938c9724c72147663422b9",
       "contracts/policies/SanctionsListPolicy.sol": "0xd76ba454883ac6f5430daf00ce5cd5a3c8b901d8c010c93c4480a770d7316f79",
       "contracts/StablecoinVaultSimulator.sol": "0x523c089400d47e164dbae0cdc929753337ba2ba35477b368c85b329fddc6cac2",
@@ -182,39 +183,39 @@
         "typeString": "contract IERC20"
       },
       {
-        "astId": "17037",
+        "astId": "17159",
         "name": "expectedBalance",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "17039",
+        "astId": "17161",
         "name": "expectedAmount",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "18331",
+        "astId": "18717",
         "name": "attestor",
         "sourceFile": "contracts/verifiers/ImmutableAttestationPQCVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "18550",
+        "astId": "18936",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "18553",
+        "astId": "18939",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "bytes32"
       }
     ],
-    "compilerInputHash": "0x0a910e212d0633c72b742cb8f63dd5d939ed8488c1f7bb7a06a3348eac1001d2",
-    "headCommit": "5792975d4db331156845de72addbae95d079c0f8",
-    "capturedAt": "2026-08-24T01:31:50.396Z"
+    "compilerInputHash": "0x8ba189cf9d4ae2ea0d4a2a302122bb3678d8362b4f9d4ee176b1fa68293b9d92",
+    "headCommit": "ba345745dbd5015775238c2ebebe4c3789580583",
+    "capturedAt": "2026-08-24T03:20:19.930Z"
   },
   "liveRuntime": {
     "address": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",

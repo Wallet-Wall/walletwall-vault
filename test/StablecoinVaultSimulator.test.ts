@@ -610,6 +610,7 @@ describe("StablecoinVaultSimulator", function () {
 
     it("daily spend limit rejects over-limit withdrawal", async function () {
       // setDailyLimit is called by the vault owner (msg.sender = limit key)
+      await dailyPolicy.connect(owner).setAdmitter(await sim.getAddress(), true);
       await dailyPolicy.connect(owner).setDailyLimit(SMALL_AMOUNT - 1n);
       await setPolicyEngine(await dailyPolicy.getAddress());
 
