@@ -97,7 +97,7 @@ deployed to Ethereum Sepolia on 2026-06-18. The metadata record is at
 | Metadata file | `deployments/sepolia/stablecoin-vault-simulator.json` |
 | Deployment commit | [`35c25fa294bebea44b3089aa2435a190a5adf3fb`](https://github.com/Wallet-Wall/walletwall-vault/commit/35c25fa294bebea44b3089aa2435a190a5adf3fb) (tag `v0.4.24`) |
 | Deployed package version | `0.4.24` |
-| Repo package version (this PR) | `0.10.7` |
+| Repo package version (this PR) | `0.10.10` |
 | Deployed at | `2026-06-18T20:23:48.000Z` |
 | Explorer source verification | Not configured (see [Source verification](#source-verification-explorer) below — a distinct claim from reproducibility) |
 | Reproducibility (from public source) | **Reproducible** — see [Reproducibility](#reproducibility) below |
@@ -148,6 +148,15 @@ this by mutation: it tampers with the hash, an executable byte, the metadata bou
 excluded-byte count, an immutable's derivation input, its observed on-chain value, its byte-range
 reference, the recorded source commit, and the recorded deployed address — one at a time — and
 asserts the checker rejects every one of those nine mutations for the correct reason.
+
+To replay every manifest against its committed evidence yourself (offline, no network,
+no toolchain — just reads the committed bundles): `npx tsx scripts/reproducibility-evidence.ts
+check`. This is the same check `npm run validate:reproducibility` runs automatically; the
+standalone command is useful for a quick re-verification without the rest of that validator's
+output. `scripts/reproducibility-evidence.ts` also has `capture-live` (reads live on-chain
+bytecode from a public RPC with provenance) and `capture-build` (records a Hardhat build already
+compiled locally) subcommands — see the script's header for exact usage — which is how the
+evidence bundles below were produced.
 
 **Method (from a clean checkout pinned to the exact deployment commit, not public HEAD):**
 
