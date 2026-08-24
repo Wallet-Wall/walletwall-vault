@@ -32,6 +32,7 @@ import {
   deriveImmutableExpectedBytes,
   encodeShortString,
   validateImmutableAuthority,
+  verifyPublicHeadCommitNotStale,
   verifyReportedCommitInPublicHistory,
   verifySourceDigestsAgainstCommit,
   type EvidenceBundle,
@@ -41,7 +42,7 @@ const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const EVIDENCE_DIR = join(REPRO_DIR, "evidence");
 const DEPLOYMENT_COMMIT = "35c25fa294bebea44b3089aa2435a190a5adf3fb";
-const PUBLIC_HEAD_COMMIT = "fca346457c94cdaf6b1b5bc2f824cdd15ff9972f";
+const PUBLIC_HEAD_COMMIT = "5792975d4db331156845de72addbae95d079c0f8";
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
@@ -406,6 +407,72 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
 });
 
 // ─────────────────────────────────────────────────────────────────────────
+// Blocker 2 (round 2) — a publicHeadBuild that is internally self-consistent
+// (evidence.headCommit === manifest.publicHeadCommit, and sourceDigests that
+// genuinely verify against THAT commit's real git content) can still be
+// STALE: commits landing between it and the validating repo's current HEAD
+// may have touched the very source files it claims to cover, without the
+// capture ever being refreshed. Blocker A/B close "is this commit real and
+// does its content match" — this closes "is this commit still current for
+// the files it covers", a distinct temporal property neither of those checks
+// can see.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
+  it("the real, freshly-recaptured publicHeadCommit is NOT stale for its own covered files", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
+    const result = verifyPublicHeadCommitNotStale(
+      PUBLIC_HEAD_COMMIT,
+      Object.keys(fixture.evidence.publicHeadBuild.sourceDigests),
+      REPO_ROOT,
+    );
+    expect(result.stale, result.error).to.equal(false);
+  });
+
+  it("the old deployment commit IS stale relative to current HEAD for StablecoinVaultSimulator.sol (PR #152 changed it after DEPLOYMENT_COMMIT)", () => {
+    const result = verifyPublicHeadCommitNotStale(
+      DEPLOYMENT_COMMIT,
+      ["contracts/StablecoinVaultSimulator.sol"],
+      REPO_ROOT,
+    );
+    expect(result.stale).to.equal(true);
+    expect(result.staleCommits.length).to.be.greaterThan(0);
+  });
+
+  it("a commit whose object is not locally available returns stale: null (inconclusive), never a false 'not stale'", () => {
+    const fabricated = "e".repeat(40);
+    const result = verifyPublicHeadCommitNotStale(fabricated, ["contracts/MockUSDC.sol"], REPO_ROOT);
+    expect(result.stale).to.equal(null);
+  });
+
+  it("checkEvidenceAgainstManifest common-mode regression: an OLDER real commit, consistently relabeled as publicHeadCommit on BOTH evidence and manifest, with sourceDigests that are genuinely VALID for that older commit (so the source-commit binding check alone would pass), is still rejected — because it is stale, not because it is inconsistent or unverifiable", () => {
+    const fixture = loadFixtures().find((f) => f.slug === "stablecoin-vault-simulator-sepolia")!;
+    const evidence = clone(fixture.evidence);
+    const manifest = clone(fixture.manifest);
+    // Reuse the REAL, git-verified deploymentCommitBuild digests (genuinely valid for
+    // DEPLOYMENT_COMMIT) as if they were the publicHeadBuild — self-consistent labeling on
+    // both sides, and the digest/binding check on its own has nothing to object to here.
+    evidence.publicHeadBuild.headCommit = DEPLOYMENT_COMMIT;
+    evidence.publicHeadBuild.sourceDigests = clone(evidence.deploymentCommitBuild.sourceDigests);
+    manifest["publicHeadCommit"] = DEPLOYMENT_COMMIT;
+
+    // Confirm the digest/binding check by itself is satisfied — isolating that staleness,
+    // not a digest mismatch, is what must fail this.
+    const bindingOnly = verifySourceDigestsAgainstCommit(
+      DEPLOYMENT_COMMIT,
+      evidence.publicHeadBuild.sourceDigests,
+      REPO_ROOT,
+    );
+    expect(bindingOnly.ok, bindingOnly.errors.join("\n")).to.equal(true);
+
+    const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /public-head staleness/.test(e))).to.equal(true);
+    expect(result.errors.some((e) => /public-head binding/.test(e))).to.equal(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
 // Blocker C — immutable byte-range AUTHORITY. An AST id may only claim an
 // exclusion range if it is both declared in immutableIdentities AND actually
 // present in the build's own machine-derived immutableAstDeclarations.
@@ -647,5 +714,16 @@ describe("common-mode mutations — manifest and evidence updated together, self
       facts.metadataTrailerBytesExcluded;
     const result = checkEvidenceAgainstManifest(evidence, manifest);
     expect(result.ok).to.equal(false);
+  });
+
+  it("5. a stale publicHeadCommit consistently relabeled AND given genuinely valid sourceDigests for that older commit — self-consistent and digest-valid, still rejected as stale", () => {
+    const evidence = clone(simFixture.evidence);
+    const manifest = clone(simFixture.manifest);
+    evidence.publicHeadBuild.headCommit = DEPLOYMENT_COMMIT;
+    evidence.publicHeadBuild.sourceDigests = clone(evidence.deploymentCommitBuild.sourceDigests);
+    manifest["publicHeadCommit"] = DEPLOYMENT_COMMIT;
+    const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
+    expect(result.ok).to.equal(false);
+    expect(result.errors.some((e) => /public-head staleness/.test(e))).to.equal(true);
   });
 });

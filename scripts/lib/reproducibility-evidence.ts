@@ -326,8 +326,10 @@ export interface BuildCapture {
   deployedBytecodeObject: string;
   /** solc's own deployedBytecode.immutableReferences, keyed by AST node id (string). */
   immutableReferences: Record<string, Array<{ start: number; length: number }>>;
-  /** Per-source-file keccak256 of the RAW file bytes, taken from solc's own metadata.sources and cross-checked against the files actually on disk at capture time (see verifySourceDigestsAgainstCommit for the offline half of this proof). */
+  /** Per-local-source-file keccak256 of the LITERAL content embedded in the compiler's OWN standard-json input (compilerInput.sources[path].content) — not a disk snapshot taken separately. Proven by construction to be exactly what produced deployedBytecodeObject; verifySourceDigestsAgainstCommit re-verifies these against `git show <commit>:<path>` at check time, closing the full chain (git commit -> compiler input -> compiler output). */
   sourceDigests: Record<string, string>;
+  /** keccak256 of a canonical (recursively key-sorted) JSON serialization of the FULL solc standard-json input (language, ALL sources including dependencies, settings) that produced this build — a single audit fingerprint of the complete compilation input, freezing even the parts (dependency source content) git does not govern. */
+  compilerInputHash: string;
   /** Every immutable VariableDeclaration the compiler's AST reports, across the whole compilation unit — the independent authority for Blocker C. Empty array if the build has no immutables anywhere relevant. */
   immutableAstDeclarations: ImmutableAstDeclaration[];
 }
@@ -474,6 +476,51 @@ export function verifySourceDigestsAgainstCommit(
     }
   }
   return { ok: errors.length === 0, errors, checked: true };
+}
+
+export interface StalenessCheck {
+  /** null means "could not be determined" (commit object unavailable locally). */
+  stale: boolean | null;
+  /** Commits (oneline) that touched a covered source file between headCommit and current HEAD. */
+  staleCommits: string[];
+  error?: string;
+}
+
+/**
+ * A "public HEAD" capture is not required to equal the CURRENT tip bit-for-bit — main moves
+ * constantly, and re-capturing on every unrelated commit would make this claim impossible to
+ * keep current. It IS required to still accurately represent what current HEAD would compile
+ * for the files this build actually depends on. This checks exactly that: does any commit
+ * between `headCommit` and the validating repo's current HEAD touch any of `sourceFiles`? If
+ * so, the capture is stale for THIS build regardless of whether it's an "old" commit in the
+ * abstract — and if not, an older headCommit is not stale in any sense that matters, since
+ * recompiling current HEAD would produce byte-identical output for those files.
+ *
+ * Requires headCommit's objects to be locally available (a full-history checkout); returns
+ * `stale: null` (never a false "not stale") when that can't be determined.
+ */
+export function verifyPublicHeadCommitNotStale(
+  headCommit: string,
+  sourceFiles: string[],
+  repoRoot: string,
+): StalenessCheck {
+  const availability = checkCommitObjectAvailable(headCommit, repoRoot);
+  if (!availability.commitObjectPresent) {
+    return { stale: null, staleCommits: [], error: availability.error };
+  }
+  if (sourceFiles.length === 0) {
+    return { stale: null, staleCommits: [], error: "no source files given to check staleness against" };
+  }
+  const result = runGit(["log", "--oneline", `${headCommit}..HEAD`, "--", ...sourceFiles], repoRoot);
+  if (!result.ok) {
+    return { stale: null, staleCommits: [], error: `git log ${headCommit}..HEAD failed for the given source files` };
+  }
+  const lines = result.stdout
+    .toString("utf8")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  return { stale: lines.length > 0, staleCommits: lines };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -851,6 +898,22 @@ export function checkEvidenceAgainstManifest(
     );
     if (!headDigestCheck.ok) {
       for (const e of headDigestCheck.errors) errors.push(`[public-head binding] ${e}`);
+    }
+    // A publicHeadBuild need not equal the CURRENT tip bit-for-bit, but it must still
+    // accurately represent current HEAD for the specific files it covers — reject it if any
+    // commit between headCommit and this repo's current HEAD touched one of those files,
+    // even when evidence and manifest agree with each other on headCommit/publicHeadCommit.
+    const staleness = verifyPublicHeadCommitNotStale(
+      evidence.publicHeadBuild.headCommit,
+      Object.keys(evidence.publicHeadBuild.sourceDigests),
+      repoRoot,
+    );
+    if (staleness.stale === null) {
+      errors.push(`[public-head staleness] could not be determined: ${staleness.error}`);
+    } else if (staleness.stale) {
+      errors.push(
+        `[public-head staleness] publicHeadBuild.headCommit (${evidence.publicHeadBuild.headCommit}) is stale: ${staleness.staleCommits.length} commit(s) touched its covered source files since then and are not reflected — ${staleness.staleCommits.slice(0, 3).join("; ")}${staleness.staleCommits.length > 3 ? "; ..." : ""} — recapture publicHeadBuild from current HEAD`,
+      );
     }
   }
 

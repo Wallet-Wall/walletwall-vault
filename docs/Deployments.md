@@ -129,7 +129,7 @@ deployment **exactly**. Each contract has a machine-checkable manifest, validate
 | --- | --- | --- | --- | --- |
 | `MockUSDC` | [`deployments/reproducibility/mock-usdc-sepolia.json`](../deployments/reproducibility/mock-usdc-sepolia.json) | `1,994` | ✅ exact | ❌ excluded (see below) |
 | `MockMLDSAVerifier` | [`deployments/reproducibility/mock-mldsa-verifier-sepolia.json`](../deployments/reproducibility/mock-mldsa-verifier-sepolia.json) | `569` | ✅ exact | ❌ excluded (see below) |
-| `StablecoinVaultSimulator` | [`deployments/reproducibility/stablecoin-vault-simulator-sepolia.json`](../deployments/reproducibility/stablecoin-vault-simulator-sepolia.json) | `21,807` | ✅ exact (incl. all 8 immutables) | ❌ excluded (see below) |
+| `StablecoinVaultSimulator` | [`deployments/reproducibility/stablecoin-vault-simulator-sepolia.json`](../deployments/reproducibility/stablecoin-vault-simulator-sepolia.json) | `21,979` | ✅ exact (incl. all 8 immutables) | ❌ excluded (see below) |
 
 Last independently re-checked: **2026-08-23**.
 
@@ -164,11 +164,19 @@ evidence bundles below were produced.
    `npm ci` (the commit's own committed lockfile — Hardhat 2, solc `0.8.24+commit.e11b9ed9`,
    optimizer `runs=200`, `evmVersion=cancun`) and `npx hardhat compile`. This yields
    `reportedCommitRuntimeBytes` — the decisive figure for "reproducible from the deployment
-   commit". Separately, current public HEAD (`29cac28daa208e081217f6e1c7d8015659404d8f` at
+   commit". Separately, current public HEAD (`5792975d4db331156845de72addbae95d079c0f8` at
    capture time — itself since migrated to Hardhat 3) was compiled too, giving
    `publicHeadRuntimeBytes`: a distinct, informational claim ("source hasn't drifted since the
    deployment commit"), never conflated with reproducibility against the deployment commit
-   itself, since the two builds can legitimately use different toolchains.
+   itself, since the two builds can legitimately use different toolchains. Both builds' `capture-build`
+   step binds `sourceDigests` to the literal `content` embedded in solc's own standard-json input
+   (not a separately-taken disk snapshot), and records a `compilerInputHash` — keccak256 of the
+   full canonical compiler input, including dependency sources — so a source digest can only ever
+   describe what solc actually compiled, never merely what happens to sit on disk with a matching
+   filename. `npm run validate:reproducibility` additionally requires `publicHeadBuild.headCommit`
+   to be non-stale: it rejects the claim if any commit between that capture and the validating
+   repo's current HEAD touched one of the source files it covers, even when the manifest and
+   evidence agree with each other on the (stale) commit.
 2. Read the live runtime bytecode for all three addresses via `eth_getCode` against a public
    Sepolia RPC, and confirmed `eth_chainId` is `11155111`.
 3. Decoded the trailing solc CBOR metadata region directly from the bytecode's own trailing

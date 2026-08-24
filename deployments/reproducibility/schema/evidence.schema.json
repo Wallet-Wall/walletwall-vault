@@ -98,6 +98,7 @@
         "deployedBytecodeObject",
         "immutableReferences",
         "sourceDigests",
+        "compilerInputHash",
         "immutableAstDeclarations"
       ],
       "properties": {
@@ -136,8 +137,13 @@
         },
         "sourceDigests": {
           "type": "object",
-          "description": "keccak256 of the raw bytes of every compiled LOCAL project source file (paths under contracts/, tracked in this repo's git history), as they existed on disk at capture time — verified there by the capture tool, and re-verified by the checker against the claimed commit's actual git objects (git show) whenever it has repo access. Third-party dependency sources (e.g. node_modules-resolved @openzeppelin/... imports) are deliberately excluded: they aren't tracked in this repo's git history, so a git-commit binding check can't apply to them — package-lock.json's own integrity hashes (enforced by `npm ci`) already cover that.",
+          "description": "keccak256 of the LITERAL content embedded in the compiler's OWN standard-json input for every compiled LOCAL project source file (paths under contracts/, tracked in this repo's git history) — NOT a disk snapshot taken separately. Proven by construction to be exactly what produced deployedBytecodeObject; re-verified by the checker against the claimed commit's actual git objects (git show) whenever it has repo access. Third-party dependency sources (e.g. node_modules-resolved @openzeppelin/... imports) are deliberately excluded here: they aren't tracked in this repo's git history, so a git-commit binding check can't apply to them — package-lock.json's own integrity hashes (enforced by `npm ci`) already cover that; they ARE still folded into compilerInputHash below.",
           "additionalProperties": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" }
+        },
+        "compilerInputHash": {
+          "type": "string",
+          "pattern": "^0x[0-9a-fA-F]{64}$",
+          "description": "keccak256 of a canonical (recursively key-sorted) JSON serialization of the FULL solc standard-json input (language, ALL sources including dependencies, settings) that produced this build — a single audit fingerprint of the complete compilation input, freezing even the parts (dependency source content) git does not govern. For a Hardhat-3 split input/output pair, the pairing is proven via the tool's own matching `id` field on both files, not merely a filename convention."
         },
         "immutableAstDeclarations": {
           "type": "array",

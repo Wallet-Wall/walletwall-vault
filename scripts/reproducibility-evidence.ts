@@ -55,7 +55,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
-import { keccak256 } from "ethers";
+import { keccak256, toUtf8Bytes } from "ethers";
 
 import {
   checkEvidenceAgainstManifest,
@@ -185,52 +185,100 @@ function compilerSettingsFromInput(input: {
   };
 }
 
+interface CompilerInput {
+  language: string;
+  sources: Record<string, { content?: string; urls?: string[] }>;
+  settings: { optimizer: { enabled: boolean; runs: number }; evmVersion: string };
+}
+
 interface LoadedBuild {
   compiler: CompilerSettings;
   deployedBytecode: { object: string; immutableReferences?: Record<string, unknown> };
-  /** Every source file key the compiler actually processed for this build (output.sources is
-   * always present, unlike the optional `metadata` output selection — Hardhat 3's default
-   * config omits `metadata`, so this is derived from a field guaranteed to exist instead). */
-  compiledSourceKeys: string[];
+  /** The ACTUAL solc standard-json input this output was produced from — the compiler's own
+   * record of what it was asked to compile, including literal source content, not merely a
+   * disk snapshot taken separately at capture time. See loadCompilerInputFor. */
+  compilerInput: CompilerInput;
+  compilerInputHash: string;
   fullOutput: { output: { sources: Record<string, { ast?: unknown }> } };
+}
+
+/**
+ * Load the solc standard-json INPUT that actually produced a given build-info's OUTPUT,
+ * proving the pairing rather than assuming it from filenames.
+ *
+ * Hardhat 2 emits one build-info file containing both `input` and `output` together — no
+ * pairing ambiguity is possible. Hardhat 3 splits them into a `<id>.json` input file and a
+ * sibling `<id>.output.json` output file; BOTH carry the SAME `id` (Hardhat's own internal
+ * pairing key, not a filename convention). This function requires that `id` to be present on
+ * both sides and to match before trusting the pair — "same directory, plausible filename" is
+ * explicitly NOT accepted as proof they belong together.
+ */
+function loadCompilerInputFor(buildInfoPath: string, raw: Record<string, unknown>): CompilerInput {
+  if (raw["input"]) {
+    return raw["input"] as CompilerInput; // Hardhat 2: input and output are the same file.
+  }
+  const siblingInputPath = buildInfoPath.endsWith(".output.json")
+    ? buildInfoPath.slice(0, -".output.json".length) + ".json"
+    : null;
+  if (!siblingInputPath || !existsSync(siblingInputPath)) {
+    throw new Error(
+      `${buildInfoPath}: has no "input" field and no sibling "<id>.json" input file was found — cannot bind this output to a compiler input`,
+    );
+  }
+  const siblingInput = JSON.parse(readFileSync(siblingInputPath, "utf8")) as Record<string, unknown>;
+  const outputId = raw["id"];
+  const inputId = siblingInput["id"];
+  if (outputId === undefined || inputId === undefined) {
+    throw new Error(
+      `capture-build: cannot verify the input/output pairing for ${buildInfoPath} — missing "id" field on the output file, the sibling input file (${siblingInputPath}), or both. Refusing to accept a sibling file merely because its filename fits the convention.`,
+    );
+  }
+  if (outputId !== inputId) {
+    throw new Error(
+      `capture-build: output file id "${String(outputId)}" (${buildInfoPath}) does not match sibling input file id "${String(inputId)}" (${siblingInputPath}) — these are not actually the same compilation and cannot be bound together`,
+    );
+  }
+  if (!siblingInput["input"]) {
+    throw new Error(`${siblingInputPath}: has a matching id but no "input" field — not a valid solc input file`);
+  }
+  return siblingInput["input"] as CompilerInput;
+}
+
+/** Deterministic JSON serialization (recursively sorted object keys) so compilerInputHash does
+ * not depend on incidental key-insertion order. */
+function canonicalStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return "[" + value.map(canonicalStringify).join(",") + "]";
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonicalStringify(obj[k])).join(",") + "}";
 }
 
 /** Hardhat 2 (single build-info file, has both `input`/`solcLongVersion` and `output.contracts`)
  * and Hardhat 3 (split into a `<id>.json` input file and a `<id>.output.json` output file) both
  * produce the same solc standard-json `output.contracts[file][name]` shape once loaded. Hardhat
- * 3 additionally namespaces source keys under "project/". If `buildInfoPath` is a Hardhat-3
- * `.output.json` file, its sibling `.json` input file (same id, compiler settings) is read too. */
+ * 3 additionally namespaces source keys under "project/". */
 function loadContractOutput(buildInfoPath: string, sourceFile: string, contractName: string): LoadedBuild {
-  const raw = JSON.parse(readFileSync(buildInfoPath, "utf8"));
-  if (!raw.output?.contracts) {
+  const raw = JSON.parse(readFileSync(buildInfoPath, "utf8")) as Record<string, unknown>;
+  const output = raw["output"] as { contracts?: Record<string, Record<string, unknown>> } | undefined;
+  if (!output?.contracts) {
     throw new Error(`${buildInfoPath} does not look like a solc build-info/output file (no output.contracts)`);
   }
-  let settings = raw.input?.settings ?? raw.settings;
-  let solcLongVersion = raw.solcLongVersion;
-  if (!settings || !solcLongVersion) {
-    const siblingInputPath = buildInfoPath.endsWith(".output.json")
-      ? buildInfoPath.slice(0, -".output.json".length) + ".json"
-      : null;
-    if (siblingInputPath && existsSync(siblingInputPath)) {
-      const siblingInput = JSON.parse(readFileSync(siblingInputPath, "utf8"));
-      settings = settings ?? siblingInput.input?.settings ?? siblingInput.settings;
-      solcLongVersion = solcLongVersion ?? siblingInput.solcLongVersion;
-    }
-  }
-  if (!settings || !solcLongVersion) {
-    throw new Error(
-      `${buildInfoPath}: could not find compiler settings/solcLongVersion (checked the file itself and its sibling input file)`,
-    );
-  }
+  const compilerInput = loadCompilerInputFor(buildInfoPath, raw);
+  const solcLongVersion = (raw["solcLongVersion"] as string | undefined) ?? "unknown";
+  const compilerInputHash = keccak256(toUtf8Bytes(canonicalStringify(compilerInput)));
+
   const candidates = [sourceFile, `project/${sourceFile}`];
   for (const key of candidates) {
-    const contract = raw.output.contracts[key]?.[contractName];
+    const contract = output.contracts[key]?.[contractName] as
+      { evm: { deployedBytecode: LoadedBuild["deployedBytecode"] } } | undefined;
     if (contract) {
       return {
-        compiler: compilerSettingsFromInput({ solcLongVersion, settings }),
+        compiler: compilerSettingsFromInput({ solcLongVersion, settings: compilerInput.settings }),
         deployedBytecode: contract.evm.deployedBytecode,
-        compiledSourceKeys: Object.keys(raw.output.sources ?? {}),
-        fullOutput: raw,
+        compilerInput,
+        compilerInputHash,
+        fullOutput: raw as LoadedBuild["fullOutput"],
       };
     }
   }
@@ -240,39 +288,56 @@ function loadContractOutput(buildInfoPath: string, sourceFile: string, contractN
 }
 
 /**
- * keccak256 of the RAW bytes of every compiled LOCAL project source file (i.e. under
- * contracts/, tracked in this repo's git history) as it actually exists on disk right now —
- * the capture-time half of Blocker A's binding; verifySourceDigestsAgainstCommit later
- * re-verifies these against git history at check time.
+ * keccak256 of the LITERAL source content solc's own compiler input recorded for every
+ * compiled LOCAL project source file (i.e. under contracts/, tracked in this repo's git
+ * history) — NOT a separately-taken disk snapshot. This is what closes the full chain: the
+ * content hashed here is proven (by construction — it's the compiler's own recorded input) to
+ * be exactly what produced deployedBytecodeObject, so comparing it against
+ * `git show <commit>:<path>` (verifySourceDigestsAgainstCommit, at check time) proves the
+ * OUTPUT — not merely a disk snapshot taken separately — came from that commit's real content.
  *
- * Third-party dependency sources (e.g. "@openzeppelin/contracts/...", resolved from
- * node_modules) are deliberately NOT included here: they are not tracked in this repo's git
- * history, so a git-commit binding check cannot apply to them — their integrity is already the
- * job of package-lock.json's own integrity hashes, verified by `npm ci`, a different and
- * already-adequate boundary. This function still requires they exist on disk (so a genuinely
- * broken/missing node_modules install fails loudly rather than silently), it just doesn't
- * record them for git-based re-verification.
+ * Third-party dependency sources (e.g. "@openzeppelin/contracts/...") are deliberately NOT
+ * included: they are not tracked in this repo's git history, so a git-commit binding check
+ * cannot apply to them — package-lock.json's own integrity hashes (enforced by `npm ci`)
+ * already cover that boundary. They ARE still folded into compilerInputHash (see
+ * loadContractOutput), which hashes the ENTIRE compiler input — sources, settings, and
+ * language — so the complete compilation input is frozen and auditable even where git is not
+ * the authority for a given source.
  */
-function computeSourceDigests(compiledSourceKeys: string[], cwd: string): Record<string, string> {
+function deriveSourceDigestsFromCompilerInput(compilerInput: CompilerInput): Record<string, string> {
   const digests: Record<string, string> = {};
-  for (const rawKey of compiledSourceKeys) {
-    // Hardhat 3 namespaces local project sources under "project/"; strip it for the on-disk
-    // path. Dependency sources use various schemes (Hardhat 2: bare "@scope/pkg/..." resolved
-    // under node_modules; Hardhat 3: "npm/@scope/pkg@version/...") that are deliberately NOT
-    // resolved or hashed here at all — see the doc comment above: dependency integrity is
-    // package-lock.json's job, not this function's.
-    if (!rawKey.startsWith("project/") && !rawKey.startsWith("contracts/")) continue;
+  for (const [rawKey, entry] of Object.entries(compilerInput.sources)) {
     const diskPath = rawKey.startsWith("project/") ? rawKey.slice("project/".length) : rawKey;
     if (!diskPath.startsWith("contracts/")) continue;
-    const fullPath = join(cwd, diskPath);
-    if (!existsSync(fullPath)) {
+    if (typeof entry.content !== "string") {
       throw new Error(
-        `capture-build: compiled local project source file "${diskPath}" does not exist on disk at ${fullPath}`,
+        `capture-build: compiler input for local source "${diskPath}" has no embedded literal content (got a URL reference instead) — cannot bind it to git without the actual compiled text`,
       );
     }
-    digests[diskPath] = keccak256(readFileSync(fullPath));
+    digests[diskPath] = keccak256(toUtf8Bytes(entry.content));
   }
   return digests;
+}
+
+/**
+ * Sanity check (not itself part of the committed evidence): confirms the files currently on
+ * disk in this worktree still match what the compiler input says it compiled, catching operator
+ * error (e.g. editing a file after compiling, before running capture-build) as an immediate,
+ * loud failure rather than silently recording a mismatch between output and disk state.
+ */
+function verifyDigestsMatchWorkingTree(sourceDigests: Record<string, string>, cwd: string): void {
+  for (const [diskPath, expectedDigest] of Object.entries(sourceDigests)) {
+    const fullPath = join(cwd, diskPath);
+    if (!existsSync(fullPath)) {
+      throw new Error(`capture-build: "${diskPath}" is in the compiler input but missing from disk at ${fullPath}`);
+    }
+    const actual = keccak256(readFileSync(fullPath));
+    if (actual.toLowerCase() !== expectedDigest.toLowerCase()) {
+      throw new Error(
+        `capture-build: "${diskPath}" on disk (keccak256 ${actual}) no longer matches the compiler input that produced this build-info (${expectedDigest}) — the working tree has drifted since compilation; recompile before capturing`,
+      );
+    }
+  }
 }
 
 interface AstVariableDeclaration {
@@ -354,12 +419,15 @@ export function captureBuild(flags: Record<string, string>): void {
   }
   const boundCommit = actualHead;
 
-  const { compiler, deployedBytecode, compiledSourceKeys, fullOutput } = loadContractOutput(
+  const { compiler, deployedBytecode, compilerInput, compilerInputHash, fullOutput } = loadContractOutput(
     buildInfoPath,
     sourceFile,
     contractName,
   );
-  const sourceDigests = computeSourceDigests(compiledSourceKeys, cwd);
+  // The chain this closes: git commit -> (proven identical to) compiler input content ->
+  // (proven, by construction — it's the SAME object) compiler output/deployedBytecode.
+  const sourceDigests = deriveSourceDigestsFromCompilerInput(compilerInput);
+  verifyDigestsMatchWorkingTree(sourceDigests, cwd);
   const immutableAstDeclarations = extractImmutableAstDeclarations(fullOutput);
 
   const capture: BuildCapture = {
@@ -372,6 +440,7 @@ export function captureBuild(flags: Record<string, string>): void {
     immutableReferences: (deployedBytecode.immutableReferences as BuildCapture["immutableReferences"]) ?? {},
     sourceDigests,
     immutableAstDeclarations,
+    compilerInputHash,
   };
 
   const evidence = loadOrInitEvidence(outPath, subject);
@@ -382,7 +451,10 @@ export function captureBuild(flags: Record<string, string>): void {
   }
   writeEvidence(outPath, evidence);
   console.log(`  bound to commit ${boundCommit} (verified via git rev-parse HEAD at ${cwd})`);
-  console.log(`  ${Object.keys(sourceDigests).length} source file digest(s) verified against the working tree`);
+  console.log(`  compilerInputHash ${compilerInputHash}`);
+  console.log(
+    `  ${Object.keys(sourceDigests).length} source file digest(s) derived from the compiler's own input and confirmed to still match the working tree`,
+  );
   console.log(`  ${immutableAstDeclarations.length} immutable AST declaration(s) found across the compilation unit`);
 }
 
