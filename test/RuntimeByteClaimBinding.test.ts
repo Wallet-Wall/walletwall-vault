@@ -16,6 +16,7 @@
 import { join } from "node:path";
 
 import { expect } from "chai";
+import { globalOptions } from "hardhat";
 
 import { collectRuntimeByteClaims } from "../scripts/lib/runtime-byte-claim-sources";
 import {
@@ -209,6 +210,23 @@ describe("runtime-byte claim binding", function () {
     // dedicated CI step; this makes a plain `npm test` fail too, so the drift
     // cannot survive a local run either.
     it("every published runtime-byte claim in this tree matches the compiler", function () {
+      if (globalOptions.coverage) {
+        // `hardhat test --coverage` recompiles with coverage instrumentation, which
+        // injects tracking code and disables the optimizer. Every contract's runtime
+        // bytecode is legitimately inflated — measured under coverage, WalletWallVault
+        // is 41,026 bytes against a real 22,701, and StablecoinVaultSimulator 40,401
+        // against 22,301 — so the published claims SHOULD disagree there, and a
+        // comparison in that mode would be measuring the instrumentation.
+        //
+        // Skipped rather than silently passed, so this stays honest about what a
+        // coverage run can prove. The binding gate for real deployment artifacts is
+        // the dedicated CI step that runs immediately after a plain `npm run compile`
+        // and before any coverage recompile; test/CIValidatorCoverage.test.ts pins
+        // that the step exists, is unconditional, and runs post-compile. Same
+        // reasoning and same treatment as the EIP-170 ceiling assertions in
+        // test/BytecodeSizeBudget.test.ts, which share this measurement primitive.
+        this.skip();
+      }
       const collected = collectRuntimeByteClaims(join(import.meta.dirname, ".."));
       expect(collected.errors, "collection").to.deep.equal([]);
       const result = reconcileRuntimeByteClaims({
