@@ -355,15 +355,27 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
     expect(result.ok, result.errors.join("\n")).to.equal(true);
   });
 
-  it("the real public-head build's sourceDigests verify against actual git history", () => {
+  it("the real public-head build's covered content still matches current HEAD, whether or not its anchor survived", () => {
+    // REPLACES an assertion that the public-head anchor verifies against git
+    // history. That property is unachievable under a squash-merge workflow: the
+    // capture must be taken on a PR branch, and squashing erases exactly that
+    // commit — so the old test passed only in a clone that happened to still
+    // hold the branch objects, and failed in CI and for every third party.
+    //
+    // The anchor state is deliberately NOT pinned to one value: it is
+    // environment-dependent (present in a long-lived local clone, absent in a
+    // fresh one), and pinning it would reintroduce a test that passes here and
+    // fails there. What must hold everywhere is that the content is fresh and
+    // the anchor is not actively contradicted.
     const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
-    const result = verifySourceDigestsAgainstCommit(
+    const result = verifyCoveredContentAgainstHead(
       PUBLIC_HEAD_COMMIT,
       fixture.evidence.publicHeadBuild.sourceDigests,
       REPO_ROOT,
     );
-    expect(result.checked).to.equal(true);
-    expect(result.ok, result.errors.join("\n")).to.equal(true);
+    expect(result.stale, result.error ?? "").to.equal(false);
+    expect(result.capturedContentDigest).to.equal(result.headContentDigest);
+    expect(result.anchor, result.anchorDetail).to.not.equal("contradicted");
   });
 
   it("a WRONG recorded digest for a real file at a real commit is rejected", () => {

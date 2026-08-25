@@ -53,7 +53,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -349,6 +349,44 @@ describe("covered-content commitment is the freshness authority", () => {
       const result = verifyCoveredContentAgainstHead(captureCommit, digestsFor(ORIGINAL), shallow);
       expect(result.stale).to.equal(true);
     });
+  });
+
+  describe("the committed evidence bundles — anchor availability must not move the verdict", () => {
+    // The systemic guard for the class of bug this PR fixes. A test that
+    // depends on a dangling object passes in a long-lived clone and fails in
+    // CI and for every third party, so the property worth pinning is not
+    // "the anchor resolves" but "the verdict does not care whether it does".
+    // Comparing the real anchor against a guaranteed-absent one exercises both
+    // branches in ANY environment, including one where every object happens to
+    // be present.
+    const REPO = join(import.meta.dirname, "..");
+    const EVIDENCE_DIR = join(REPO, "deployments", "reproducibility", "evidence");
+    const GUARANTEED_ABSENT = "0".repeat(39) + "1";
+
+    for (const file of readdirSync(EVIDENCE_DIR).filter((f) => f.endsWith(".json"))) {
+      it(`${file}: the freshness verdict is identical with and without its anchor`, () => {
+        const evidence = JSON.parse(readFileSync(join(EVIDENCE_DIR, file), "utf8")) as {
+          publicHeadBuild: { headCommit: string; sourceDigests: Record<string, string> };
+        };
+        const withAnchor = verifyCoveredContentAgainstHead(
+          evidence.publicHeadBuild.headCommit,
+          evidence.publicHeadBuild.sourceDigests,
+          REPO,
+        );
+        const withoutAnchor = verifyCoveredContentAgainstHead(
+          GUARANTEED_ABSENT,
+          evidence.publicHeadBuild.sourceDigests,
+          REPO,
+        );
+
+        expect(withoutAnchor.anchor, "the control must genuinely lack an anchor").to.equal("unavailable");
+        expect(withAnchor.stale, withAnchor.error ?? "").to.equal(withoutAnchor.stale);
+        expect(withAnchor.capturedContentDigest).to.equal(withoutAnchor.capturedContentDigest);
+        expect(withAnchor.headContentDigest).to.equal(withoutAnchor.headContentDigest);
+        // And the committed evidence is in fact fresh, by the durable property.
+        expect(withAnchor.stale, "committed evidence must not be stale").to.equal(false);
+      });
+    }
   });
 
   describe("genuinely uncomputable cases stay inconclusive", () => {
