@@ -122,11 +122,21 @@ describe("CI workflow — deployment-truth and bytecode-size gates run in normal
       expect(step).to.not.include("--write");
     });
 
+    it("runs npm run validate:sp1-pin-parity", function () {
+      // zkvm/host is deliberately outside CI, the "Validate SP1 host Cargo.lock" job
+      // checks that lockfile's own internal consistency and never guest-vs-host
+      // parity, the TS<->Rust differential test is skipped, and no ELF or vKey is
+      // committed. Without this step a split SP1 bump — guest moved, host left
+      // behind, as in #150 — goes fully green.
+      expect(job).to.include("npm run validate:sp1-pin-parity");
+    });
+
     for (const cmd of [
       "npm run validate:deployments",
       "npm run validate:reproducibility",
       "npm run validate:bytecode-size",
       "npm run validate:runtime-byte-claims",
+      "npm run validate:sp1-pin-parity",
     ]) {
       it(`"${cmd}" step is unconditional (no if:, no continue-on-error escape hatch)`, function () {
         const step = stepBlockContaining(job, cmd);

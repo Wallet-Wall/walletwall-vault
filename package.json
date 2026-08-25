@@ -51,7 +51,8 @@
     "prevalidate:bytecode-size": "hardhat compile",
     "validate:bytecode-size": "tsx scripts/validate-bytecode-size.ts",
     "prevalidate:runtime-byte-claims": "hardhat compile",
-    "validate:runtime-byte-claims": "tsx scripts/validate-runtime-byte-claims.ts"
+    "validate:runtime-byte-claims": "tsx scripts/validate-runtime-byte-claims.ts",
+    "validate:sp1-pin-parity": "tsx scripts/validate-sp1-pin-parity.ts"
   },
   "keywords": [
     "solidity",
