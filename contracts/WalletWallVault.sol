@@ -100,6 +100,33 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @notice Governance delay for changes to large-transaction parameters.
     uint256 public constant LARGE_TX_PARAMS_UPDATE_DELAY = 2 days;
 
+    /// @notice How long a MATURED governance proposal stays applicable before expiring.
+    /// @dev WHY AN UPPER BOUND EXISTS. A propose/apply delay is only worth the reaction
+    ///      window it actually delivers at the instant the change takes effect. With no
+    ///      expiry a matured proposal stays exercisable forever, so an owner can PRE-ARM
+    ///      one at a quiet moment — when nothing is at stake and no observer has cause to
+    ///      react — let the delay lapse unapplied, and bank an INSTANT swap indefinitely.
+    ///      Exercised at the moment it matters, that costs zero delay and gives zero fresh
+    ///      notice, which is precisely what the delay exists to prevent.
+    ///
+    ///      This binds hardest on {pqVerifier}. It is contract-level, not per-vault, so one
+    ///      swap moves the authorization authority for EVERY vault at once; in
+    ///      {VaultMode.PqOnly} it is the SOLE gate (no classical fallback) and, unlike the
+    ///      policy engine, nothing pins the verifier a withdrawal was admitted under — there
+    ///      is no queue-time sticky floor for it. It also gates {rotateCredentials}, so a
+    ///      forging verifier enables credential takeover, not merely one withdrawal. The
+    ///      {PqOnlyDisabledForMockVerifier} guard runs only at vault CREATION, so a banked
+    ///      swap can retroactively restore exactly the configuration that guard forbids for
+    ///      vaults that already exist.
+    ///
+    ///      Bounding the applicable window restores bounded warning: any governance action
+    ///      executable right now was announced by its proposal event within the last
+    ///      DELAY + GOVERNANCE_GRACE_PERIOD. The 2-day delay / 14-day grace pairing matches
+    ///      Compound's Timelock, which carries a GRACE_PERIOD for this same reason. The
+    ///      window is generous on purpose: expiry is an anti-banking bound, not an execution
+    ///      race, so an honest operator is never realistically rushed.
+    uint256 public constant GOVERNANCE_GRACE_PERIOD = 14 days;
+
     struct RecoveryRequest {
         address newEcdsaSigner;
         bytes newPQPublicKey;
@@ -281,6 +308,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @dev Proves only that the address is code-bearing at this instant — not
     ///      interface conformance, behavioral correctness, or future availability.
     error NoCode(address account);
+    /// @notice A matured governance proposal outlived {GOVERNANCE_GRACE_PERIOD}; re-propose.
+    error ProposalExpired(uint256 validAfter, uint256 expiresAt, uint256 currentTimestamp);
     error NotAGuardian();
     error AlreadySupported();
     error RecoveryNotReady();
@@ -1061,6 +1090,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (block.timestamp < validAfter) {
             revert PQVerifierUpdateNotReady(validAfter, block.timestamp);
         }
+        _requireNotExpired(validAfter);
 
         if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
@@ -1098,6 +1128,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (block.timestamp < validAfter) {
             revert LargeTxUpdateNotReady(validAfter, block.timestamp);
         }
+        _requireNotExpired(validAfter);
 
         uint256 newThreshold = pendingLargeTxThreshold;
         uint256 newDelay = pendingLargeTxDelay;
@@ -1158,6 +1189,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (block.timestamp < pendingPolicyEngineValidAfter) {
             revert PolicyEngineUpdateNotReady(pendingPolicyEngineValidAfter, block.timestamp);
         }
+        _requireNotExpired(pendingPolicyEngineValidAfter);
+
         address newEngine = pendingPolicyEngine;
         _requireCodeBearingPolicyEngine(newEngine);
 
@@ -1172,6 +1205,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     ///      always passes; any other address must be code-bearing at this instant.
     function _requireCodeBearingPolicyEngine(address engine) private view {
         if (engine != address(0) && engine.code.length == 0) revert PolicyEngineUnavailable(engine);
+    }
+
+    /// @dev Reverts once a matured proposal has outlived {GOVERNANCE_GRACE_PERIOD}.
+    ///      Callers run this AFTER their own not-ready check and BEFORE mutating any
+    ///      state, so a rejected apply leaves both the active value and the pending
+    ///      proposal untouched — the proposal stays clearable via its cancel entrypoint,
+    ///      and re-proposing pays a fresh full delay.
+    function _requireNotExpired(uint256 validAfter) private view {
+        uint256 expiresAt = validAfter + GOVERNANCE_GRACE_PERIOD;
+        if (block.timestamp > expiresAt) revert ProposalExpired(validAfter, expiresAt, block.timestamp);
     }
 
     /**

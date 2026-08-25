@@ -91,6 +91,32 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   `PQ_VERIFIER_UPDATE_DELAY`, and applies it with `applyPQVerifierUpdate`. The active
   verifier remains unchanged during the delay. The owner can clear a pending proposal
   with `cancelPQVerifierUpdate` before it is applied.
+- **A matured governance proposal EXPIRES after `GOVERNANCE_GRACE_PERIOD` (14 days).**
+  A propose/apply delay is only worth the reaction window it delivers at the instant
+  the change takes effect. Previously no matured proposal expired, so an owner could
+  PRE-ARM one at a quiet moment — nothing at stake, no observer with cause to react —
+  let the two days lapse unapplied, and bank an instantly-exercisable swap
+  indefinitely; exercised at the moment it mattered it cost zero delay and gave zero
+  fresh notice. This binds hardest on the PQ verifier: `pqVerifier` is
+  contract-level rather than per-vault, so ONE swap moves the authorization authority
+  for every vault at once; in `VaultMode.PqOnly` it is the SOLE authorization gate
+  (there is no classical fallback, and unlike the policy engine nothing pins the
+  verifier a withdrawal was admitted under — there is no queue-time sticky floor for
+  it); it also gates `rotateCredentials`, so a forging verifier enables credential
+  takeover rather than a single withdrawal; and the `PqOnlyDisabledForMockVerifier`
+  guard runs only at vault CREATION, so a banked swap can retroactively restore
+  exactly the configuration that guard forbids for vaults that already exist. The
+  bound applies uniformly to all three governance pairs on BOTH vaults
+  (`proposePQVerifier`, `proposePolicyEngine`, `proposeLargeTxParams`). Past the
+  window a proposal buys no head start — it must be re-proposed and pay a fresh full
+  delay — and it remains clearable via its cancel entrypoint. A rejected expired
+  apply mutates nothing, leaving both the active value and the pending proposal
+  intact. The property restored is bounded warning: any governance action executable
+  right now was announced by its proposal event within the last
+  `DELAY + GOVERNANCE_GRACE_PERIOD`, so monitoring those events gives a finite,
+  guaranteed horizon instead of requiring perfect recall of every proposal ever made.
+  The 2-day delay / 14-day grace pairing matches Compound's Timelock `GRACE_PERIOD`,
+  which exists for this same reason.
 - **Governance now enforces a code-bearing destination at proposal and execution**,
   identically on `WalletWallVault` and `StablecoinVaultSimulator` — each has its own
   independent PQ verifier trust boundary, with its own `pqVerifier`/`pendingPQVerifier`

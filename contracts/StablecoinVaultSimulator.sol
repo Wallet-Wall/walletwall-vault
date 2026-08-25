@@ -127,6 +127,18 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     /// @notice Governance delay for changes to large-transaction parameters.
     uint256 public constant LARGE_TX_PARAMS_UPDATE_DELAY = 2 days;
 
+    /// @notice How long a MATURED governance proposal stays applicable before expiring.
+    /// @dev A propose/apply delay is only worth the reaction window it delivers at the
+    ///      instant the change takes effect. With no expiry a matured proposal stays
+    ///      exercisable forever, so an owner can PRE-ARM one at a quiet moment, let the
+    ///      delay lapse unapplied, and bank an INSTANT swap indefinitely — costing zero
+    ///      delay and giving zero fresh notice exactly when it matters. Bounding the
+    ///      window restores bounded warning: any governance action executable right now
+    ///      was announced by its proposal event within the last
+    ///      DELAY + GOVERNANCE_GRACE_PERIOD. Mirrors WalletWallVault; the 2-day / 14-day
+    ///      pairing matches Compound's Timelock GRACE_PERIOD.
+    uint256 public constant GOVERNANCE_GRACE_PERIOD = 14 days;
+
     // -----------------------------------------------------------------------
     // Recovery structs
     // -----------------------------------------------------------------------
@@ -263,6 +275,8 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     /// @dev Proves only that the address is code-bearing at this instant — not
     ///      interface conformance, behavioral correctness, or future availability.
     error NoCode(address account);
+    /// @notice A matured governance proposal outlived {GOVERNANCE_GRACE_PERIOD}; re-propose.
+    error ProposalExpired(uint256 validAfter, uint256 expiresAt, uint256 currentTimestamp);
     error NotAGuardian();
     error AlreadySupported();
     error RecoveryNotReady();
@@ -911,6 +925,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (block.timestamp < validAfter) {
             revert PQVerifierUpdateNotReady(validAfter, block.timestamp);
         }
+        _requireNotExpired(validAfter);
 
         if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
@@ -944,6 +959,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (block.timestamp < validAfter) {
             revert LargeTxUpdateNotReady(validAfter, block.timestamp);
         }
+        _requireNotExpired(validAfter);
 
         uint256 newThreshold = pendingLargeTxThreshold;
         uint256 newDelay = pendingLargeTxDelay;
@@ -995,6 +1011,8 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (block.timestamp < pendingPolicyEngineValidAfter) {
             revert PolicyEngineUpdateNotReady(pendingPolicyEngineValidAfter, block.timestamp);
         }
+        _requireNotExpired(pendingPolicyEngineValidAfter);
+
         address newEngine = pendingPolicyEngine;
         _requireCodeBearingPolicyEngine(newEngine);
 
@@ -1009,6 +1027,14 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     ///      always passes; any other address must be code-bearing at this instant.
     function _requireCodeBearingPolicyEngine(address engine) private view {
         if (engine != address(0) && engine.code.length == 0) revert PolicyEngineUnavailable(engine);
+    }
+
+    /// @dev Reverts once a matured proposal has outlived {GOVERNANCE_GRACE_PERIOD}.
+    ///      Runs AFTER the not-ready check and BEFORE any state mutation, so a rejected
+    ///      apply leaves both the active value and the pending proposal untouched.
+    function _requireNotExpired(uint256 validAfter) private view {
+        uint256 expiresAt = validAfter + GOVERNANCE_GRACE_PERIOD;
+        if (block.timestamp > expiresAt) revert ProposalExpired(validAfter, expiresAt, block.timestamp);
     }
 
     function cancelPolicyEngine() external onlyOwner {
