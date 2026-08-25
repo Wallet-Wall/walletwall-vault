@@ -61,7 +61,7 @@
     "publicHeadCommit": {
       "type": ["string", "null"],
       "pattern": "^[0-9a-f]{40}$",
-      "description": "The exact commit SHA the publicHeadRuntimeBytes build was captured at (cross-checked against evidenceFile's publicHeadBuild.headCommit when evidenceFile is present). Pinning this prevents a stale or substituted public-HEAD capture from being silently relabeled as current."
+      "description": "The exact commit SHA the publicHeadRuntimeBytes build was captured at (cross-checked against evidenceFile's publicHeadBuild.headCommit when evidenceFile is present). PROVENANCE HINT, NOT AN AUTHORITY: it records WHERE the capture happened, while the capture's sourceDigests — and the canonical covered-content commitment derived from them — record WHAT content was captured, and only the latter decides freshness. A public-HEAD capture must be taken on a PR branch, because that is the only place the content exists; squash-merging then erases that commit, so requiring the object to remain reachable would reject evidence no honest workflow could produce differently. When the object IS available its tree is corroborated against the recorded digests and a disagreement is a hard failure (the label would describe content the commit never held); when it is absent the state is 'anchor-unavailable' and the freshness verdict — recorded digests vs current HEAD's tree — is unaffected. Absence asserts nothing about cause: an erased branch tip, a never-fetched object, a collected object, and a SHA that never existed are indistinguishable from git."
     },
     "reproducibilityStatus": {
       "type": "string",
