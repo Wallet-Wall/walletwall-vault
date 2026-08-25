@@ -1,5 +1,5 @@
 /**
- * Staleness AUTHORITY: `verifyPublicHeadCommitNotStale` must decide staleness from
+ * Staleness AUTHORITY: `verifyCoveredContentAgainstHead` must decide staleness from
  * source CONTENT, never from commit topology.
  *
  * The bug this closes: the function's own name and docstring claimed a
@@ -35,7 +35,7 @@ import { join } from "node:path";
 import { expect } from "chai";
 import { keccak256, toUtf8Bytes } from "ethers";
 
-import { verifyPublicHeadCommitNotStale } from "../scripts/lib/reproducibility-evidence";
+import { verifyCoveredContentAgainstHead } from "../scripts/lib/reproducibility-evidence";
 
 const COVERED = "contracts/Covered.sol";
 const ORIGINAL = "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\ncontract Covered { uint256 a; }\n";
@@ -83,7 +83,7 @@ function oldTopologyStale(captureCommit: string, repoDir: string): boolean {
   return out.trim().length > 0;
 }
 
-describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit topology", () => {
+describe("verifyCoveredContentAgainstHead — staleness is CONTENT, not commit topology", () => {
   let dir: string;
 
   beforeEach(() => {
@@ -121,7 +121,7 @@ describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit to
     expect(oldTopologyStale(branchHead, repoDir), "old topology check should have flagged this").to.equal(true);
 
     // The content-based authority correctly reports NOT stale.
-    const result = verifyPublicHeadCommitNotStale(branchHead, captured, repoDir);
+    const result = verifyCoveredContentAgainstHead(branchHead, captured, repoDir);
     expect(result.stale, JSON.stringify(result.changedFiles)).to.equal(false);
     expect(result.changedFiles).to.deep.equal([]);
   });
@@ -136,7 +136,7 @@ describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit to
     writeCovered(repoDir, MUTATED);
     commitAll(repoDir, "edit covered source");
 
-    const result = verifyPublicHeadCommitNotStale(captureCommit, captured, repoDir);
+    const result = verifyCoveredContentAgainstHead(captureCommit, captured, repoDir);
     expect(result.stale).to.equal(true);
     expect(result.changedFiles).to.have.lengthOf(1);
     expect(result.changedFiles[0]).to.contain(COVERED);
@@ -158,23 +158,38 @@ describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit to
     // Two later commits touched the path, so the old topology check would flag it...
     expect(oldTopologyStale(captureCommit, repoDir), "old topology check should have flagged this").to.equal(true);
     // ...but the content is identical to what was captured, so it is NOT stale.
-    const result = verifyPublicHeadCommitNotStale(captureCommit, captured, repoDir);
+    const result = verifyCoveredContentAgainstHead(captureCommit, captured, repoDir);
     expect(result.stale, JSON.stringify(result.changedFiles)).to.equal(false);
   });
 
-  it("CONTROL 4: an unavailable capture commit is INCONCLUSIVE (null), never a false 'not stale'", () => {
+  it("CONTROL 4: an unavailable capture commit yields anchor-unavailable — freshness still decided by content", () => {
+    // DELIBERATE SEMANTIC CHANGE. This control previously required `stale: null`
+    // whenever the capture commit's object was absent, on the reasoning that a
+    // shallow checkout cannot authenticate the digests either. Two things were
+    // conflated there. First, "object absent" does not mean "repo is shallow" —
+    // it is equally an erased branch tip, a never-fetched object, or a collected
+    // one, and git cannot tell them apart. Second, and decisively, the digests do
+    // not need the historical commit to be authenticated: they are compared
+    // against CURRENT HEAD's tree, which is real, present, and authenticated in
+    // any checkout able to run this at all.
+    //
+    // Keeping the old coupling made a squash-merge workflow unserviceable: a
+    // public-HEAD capture can only be taken on the PR branch, and squashing
+    // erases that anchor, so correct evidence failed on every later run. The
+    // absence is now REPORTED as lost provenance rather than converted into an
+    // unprovable freshness verdict. See ReproducibilityAnchorAuthority.test.ts
+    // for the full set, including a genuine merge --squash + gc erasure.
     const repoDir = initRepo(dir);
     writeCovered(repoDir, ORIGINAL);
     commitAll(repoDir, "add covered source");
 
-    // Content at HEAD matches the capture perfectly — so a naive content-only
-    // implementation would happily answer "not stale". It must not: on a shallow
-    // checkout the surrounding evidence chain that authenticates these digests
-    // (verifySourceDigestsAgainstCommit) cannot run either, so freshness is unproven.
     const fabricated = "e".repeat(40);
-    const result = verifyPublicHeadCommitNotStale(fabricated, digestsFor(ORIGINAL), repoDir);
-    expect(result.stale).to.equal(null);
-    expect(result.error).to.be.a("string");
+    const result = verifyCoveredContentAgainstHead(fabricated, digestsFor(ORIGINAL), repoDir);
+    expect(result.stale).to.equal(false);
+    expect(result.anchor).to.equal("unavailable");
+    // Crucially NOT upgraded to corroborated provenance just because content matched.
+    expect(result.anchor).to.not.equal("verified");
+    expect(result.anchorDetail).to.be.a("string");
   });
 
   it("CONTROL 5: a wrong/tampered recorded source digest FAILS (stale), even with clean topology", () => {
@@ -187,7 +202,7 @@ describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit to
     expect(oldTopologyStale(captureCommit, repoDir), "topology is clean on this fixture").to.equal(false);
 
     const tampered = { [COVERED]: keccak256(toUtf8Bytes("something the repo never contained")) };
-    const result = verifyPublicHeadCommitNotStale(captureCommit, tampered, repoDir);
+    const result = verifyCoveredContentAgainstHead(captureCommit, tampered, repoDir);
     expect(result.stale).to.equal(true);
     expect(result.changedFiles[0]).to.contain(COVERED);
   });
@@ -201,7 +216,7 @@ describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit to
     git(["rm", COVERED], repoDir);
     commitAll(repoDir, "remove covered source");
 
-    const result = verifyPublicHeadCommitNotStale(captureCommit, captured, repoDir);
+    const result = verifyCoveredContentAgainstHead(captureCommit, captured, repoDir);
     expect(result.stale).to.equal(true);
     expect(result.changedFiles[0]).to.contain("no longer present at current HEAD");
   });
@@ -211,7 +226,7 @@ describe("verifyPublicHeadCommitNotStale — staleness is CONTENT, not commit to
     writeCovered(repoDir, ORIGINAL);
     const captureCommit = commitAll(repoDir, "add covered source");
 
-    const result = verifyPublicHeadCommitNotStale(captureCommit, {}, repoDir);
+    const result = verifyCoveredContentAgainstHead(captureCommit, {}, repoDir);
     expect(result.stale).to.equal(null);
     expect(result.error).to.contain("no source files");
   });

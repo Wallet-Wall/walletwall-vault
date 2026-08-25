@@ -68,11 +68,15 @@
  *     `verifyReportedCommitInPublicHistory`).
  *   - Whether `publicHeadBuild` is STALE for the source files it covers,
  *     relative to the validating repo's own current HEAD — see
- *     `verifyPublicHeadCommitNotStale`. Staleness is defined purely as
+ *     `verifyCoveredContentAgainstHead`. Staleness is defined purely as
  *     CONTENT divergence: the recorded `sourceDigests` are compared against
  *     the same paths read out of current HEAD's tree, NOT against commit
  *     topology, so a squash/rebase that preserves the tree is not stale while
- *     any real source change is. This walks only the repo-owned Solidity
+ *     any real source change is. The capture's own commit SHA is a PROVENANCE
+ *     HINT there, not an authority: it is corroborated when its object is
+ *     available (and a disagreement with the recorded digests is a hard
+ *     failure), but its absence — which a squash merge guarantees for any
+ *     branch-taken capture — does not change the verdict. This walks only the repo-owned Solidity
  *     paths recorded in `sourceDigests`; it does NOT currently watch
  *     `hardhat.config.ts`, `package.json`/`package-lock.json`, or other
  *     compiler/toolchain configuration, so it does not by itself guarantee
@@ -509,99 +513,198 @@ export function verifySourceDigestsAgainstCommit(
   return { ok: errors.length === 0, errors, checked: true };
 }
 
-export interface StalenessCheck {
-  /** null means "could not be determined" (commit object unavailable locally). */
-  stale: boolean | null;
+/**
+ * Canonical, order-independent commitment to the COVERED SOURCE CONTENT a build
+ * capture recorded — the durable answer to "what was captured".
+ *
+ * Derived from `sourceDigests` on every use and deliberately NOT stored in the
+ * evidence bundle. A stored copy would be one more hand-maintained value that
+ * could drift from the thing it summarises, which is exactly the class of defect
+ * the runtime-byte claim gate exists to prevent; a value that is always
+ * recomputed cannot go stale.
+ *
+ * Commits to the path SET as well as the content, so adding, removing, or
+ * renaming a covered file changes the commitment even when every remaining
+ * file's bytes are untouched. Path separators are normalised so a
+ * Windows-shaped key cannot fork the commitment for identical content.
+ */
+export function canonicalCoveredContentDigest(sourceDigests: Record<string, string>): string {
+  const entries = Object.entries(sourceDigests)
+    .map(([path, digest]) => [path.split("\\").join("/"), digest.toLowerCase()] as const)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  // JSON of a sorted pair array is unambiguous: no separator character can be
+  // smuggled through a path to make two different maps serialise identically.
+  return keccak256(Buffer.from(JSON.stringify(entries), "utf8"));
+}
+
+/**
+ * How much the capture's recorded commit SHA could be corroborated. Provenance
+ * only — see {CoveredContentCheck.stale} for the property this never decides.
+ */
+export type AnchorCorroboration =
+  /** The object is present and its tree agrees with every recorded digest. */
+  | "verified"
+  /** The object is present and its tree DISAGREES — the label describes content it never held. */
+  | "contradicted"
   /**
-   * The covered source files whose CONTENT at current HEAD disagrees with the digest the
-   * capture recorded (or which no longer exist at HEAD), each with the concrete divergence.
-   * This is the staleness AUTHORITY: non-empty iff `stale === true`.
+   * The object is not in this checkout's object database. Git cannot say why:
+   * a squash-erased branch tip, a fabricated SHA, an object never fetched, and
+   * a garbage-collected object are indistinguishable from here. `fetch-depth: 0`
+   * gives complete history for FETCHED REFS — it does not make every object that
+   * ever existed locally available. So this state asserts nothing about cause.
    */
+  | "unavailable";
+
+export interface CoveredContentCheck {
+  /**
+   * THE freshness verdict: does current HEAD's covered content still equal what
+   * the capture recorded? `null` only when genuinely uncomputable (HEAD cannot
+   * be resolved, or the capture bound no files at all) — never as a stand-in for
+   * "the anchor was missing".
+   */
+  stale: boolean | null;
+  /** Covered paths whose content at HEAD disagrees with the capture, with the divergence. */
   changedFiles: string[];
+  /** Canonical commitment recomputed from the capture's own recorded digests. */
+  capturedContentDigest: string;
+  /** The same commitment computed over current HEAD; null if any covered path is unreadable there. */
+  headContentDigest: string | null;
+  /** Provenance corroboration. NEVER an input to `stale`. */
+  anchor: AnchorCorroboration;
+  /** Human-readable account of what the anchor could and could not establish. */
+  anchorDetail: string;
   error?: string;
 }
 
 /**
- * A "public HEAD" capture is not required to equal the CURRENT tip bit-for-bit — main moves
- * constantly, and re-capturing on every unrelated commit would make this claim impossible to
- * keep current. It IS required to still accurately reflect the CONTENT of current HEAD for the
- * specific files this build's `sourceDigests` covers. This function defines staleness as exactly
- * that, and nothing else:
+ * Decide freshness from the covered-content commitment, and corroborate the
+ * capture's commit SHA separately without ever letting it decide the verdict.
  *
- *     public-head evidence is stale
- *     IFF current HEAD's covered source CONTENT != the content the evidence says it captured
+ *     capture -> per-file digests -> canonical commitment    (WHAT was captured)
+ *                                        |
+ *                                     compare
+ *                                        |
+ *     current HEAD's covered content -> same commitment      (authenticated target)
+ *                                        |
+ *                                  freshness verdict
  *
- * It therefore compares the recorded `sourceDigests` directly against the same paths read out of
- * current HEAD's git tree (`git show HEAD:<path>`), rather than asking whether some later commit
- * happened to TOUCH those paths.
+ *     anchorCommit                                           (WHERE it happened)
+ *       present -> corroborate its tree; DISAGREEMENT is a hard failure the
+ *                  caller must surface, because a provenance label that
+ *                  describes content the commit never held is a false record
+ *       absent  -> "unavailable"; the verdict above is unaffected
  *
- * WHY CONTENT, NOT COMMIT TOPOLOGY. This check previously ran
- * `git log <headCommit>..HEAD -- <sourceFiles>` and reported staleness whenever any intervening
- * commit touched a covered path. That is a topology question, not a content question, and the two
- * diverge precisely under this repo's normal squash-merge workflow: squash-merging a PR replaces
- * its branch history with a NEW single-parent commit that necessarily "touches" every covered path
- * the PR edited, so evidence captured on the PR branch — with byte-identical resulting content —
- * was reported stale the instant it merged. PR #159 is the worked example: branch head 14fd579 was
- * squashed into 091c04c (single parent d96ad7d), immediately invalidating the public-head evidence
- * that PR had correctly recaptured pre-merge, and forcing a post-merge repair. Content comparison
- * survives squash, rebase, cherry-pick, and any other history rewrite that preserves the tree,
- * while still catching every real source change — including a change that is later reverted back
- * to the captured content, which is correctly NOT stale because the content again matches.
+ * WHY THE ANCHOR CANNOT BE A PRECONDITION. This function's predecessor required
+ * the anchor object to be present before it would answer at all. Under a
+ * squash-merge workflow that is unsatisfiable by any honest process: a
+ * public-HEAD capture must be taken on the PR branch, because that is the only
+ * place the content exists, and squashing replaces those commits — so the
+ * capture's own anchor can never be retained by main. PR #164 followed the
+ * documented recapture process exactly and produced three anchors main could not
+ * keep, turning CI red on evidence whose digests still match HEAD byte for byte.
  *
- * IMPORTANT — this is a SOURCE-CONTENT check, not a recompilation guarantee: `sourceDigests` here
- * covers only the repo-owned Solidity paths the capture recorded. It does NOT watch
- * `hardhat.config.ts`, `package.json`/`package-lock.json`, or other compiler/toolchain
- * configuration. `stale: false` therefore means "these exact source files have the same content at
- * current HEAD" — it does NOT by itself mathematically guarantee that recompiling current HEAD
- * would produce byte-identical output, since a toolchain/compiler-settings/dependency change with
- * no edit to a covered file would go undetected by this function. (Tracked as a follow-up; not
- * addressed by this function today.)
+ * WHY CONTENT IS SUFFICIENT. The comparison target is current HEAD's tree, which
+ * is real, present, and authenticated in any checkout able to run this at all. A
+ * forged digest fails against it, so a missing or fabricated anchor label buys an
+ * attacker nothing. What a missing anchor costs is AUDITABILITY — "go look at
+ * where this was taken" — not safety, and it is reported rather than hidden.
  *
- * Requires headCommit's objects to be locally available (a full-history checkout). That is not
- * needed for the content comparison itself, but it is deliberately retained as a PRECONDITION: on
- * a shallow checkout the surrounding evidence chain (notably
- * {verifySourceDigestsAgainstCommit}, which binds these same digests to the capture commit) cannot
- * be verified either, and answering "not stale" there would assert freshness on the strength of
- * digests nothing has authenticated. Returns `stale: null` — never a false "not stale" — in that
- * case, and likewise when HEAD itself cannot be resolved or when the capture bound no files at all.
+ * WHY SHALLOWNESS NO LONGER GATES THIS. "Stored covered-content commitment equals
+ * current HEAD content" is computable in a shallow checkout, because HEAD is
+ * present by definition. Shallow history matters for HISTORICAL ANCESTRY —
+ * {verifyReportedCommitInPublicHistory} and the deployment-commit binding in
+ * {verifySourceDigestsAgainstCommit} — which keep their fail-closed behaviour.
+ * Carrying the coupling here only produced false negatives.
  */
-export function verifyPublicHeadCommitNotStale(
-  headCommit: string,
+export function verifyCoveredContentAgainstHead(
+  anchorCommit: string,
   sourceDigests: Record<string, string>,
   repoRoot: string,
-): StalenessCheck {
-  const availability = checkCommitObjectAvailable(headCommit, repoRoot);
-  if (!availability.commitObjectPresent) {
-    return { stale: null, changedFiles: [], error: availability.error };
-  }
+): CoveredContentCheck {
+  const capturedContentDigest = canonicalCoveredContentDigest(sourceDigests);
   const entries = Object.entries(sourceDigests);
+
+  // ── Anchor corroboration, computed independently of the verdict ──────────
+  let anchor: AnchorCorroboration = "unavailable";
+  let anchorDetail =
+    `anchor commit ${anchorCommit} is not in this checkout's object database, so the capture's ` +
+    `provenance could not be corroborated; the cause is not observable from git (an erased branch ` +
+    `tip, a never-fetched object, a collected object, and a SHA that never existed are ` +
+    `indistinguishable). This does not affect the freshness verdict, which rests on content.`;
+  if (checkCommitObjectAvailable(anchorCommit, repoRoot).commitObjectPresent) {
+    const disagreements: string[] = [];
+    for (const [file, recordedDigest] of entries) {
+      const blob = runGit(["show", `${anchorCommit}:${file}`], repoRoot);
+      if (!blob.ok) {
+        disagreements.push(`${file}: not present at the anchor commit`);
+        continue;
+      }
+      const actual = keccak256(blob.stdout);
+      if (actual.toLowerCase() !== recordedDigest.toLowerCase()) {
+        disagreements.push(`${file}: anchor tree holds ${actual}, capture recorded ${recordedDigest}`);
+      }
+    }
+    if (disagreements.length > 0) {
+      anchor = "contradicted";
+      anchorDetail =
+        `anchor commit ${anchorCommit} is present but its tree CONTRADICTS the recorded digests — ` +
+        `the capture names a commit that never held the content it claims to describe: ` +
+        `${disagreements.slice(0, 3).join("; ")}${disagreements.length > 3 ? "; ..." : ""}`;
+    } else if (entries.length > 0) {
+      anchor = "verified";
+      anchorDetail = `anchor commit ${anchorCommit} is present and its tree agrees with every recorded digest`;
+    }
+  }
+
   if (entries.length === 0) {
     return {
       stale: null,
       changedFiles: [],
-      error: "sourceDigests is empty — a capture that bound no source files proves nothing about staleness",
+      capturedContentDigest,
+      headContentDigest: null,
+      anchor,
+      anchorDetail,
+      error: "sourceDigests is empty — a capture that bound no source files proves nothing about freshness",
     };
   }
-  // Resolve HEAD once. A missing/broken HEAD is inconclusive; a specific file
-  // missing UNDER a resolvable HEAD is a real content change (deleted/renamed).
-  const head = runGit(["rev-parse", "HEAD"], repoRoot);
-  if (!head.ok) {
-    return { stale: null, changedFiles: [], error: "could not resolve current HEAD to compare covered source content" };
+
+  if (!runGit(["rev-parse", "HEAD"], repoRoot).ok) {
+    return {
+      stale: null,
+      changedFiles: [],
+      capturedContentDigest,
+      headContentDigest: null,
+      anchor,
+      anchorDetail,
+      error: "could not resolve current HEAD to compare covered source content",
+    };
   }
 
   const changedFiles: string[] = [];
+  const headDigests: Record<string, string> = {};
+  let headReadable = true;
   for (const [file, recordedDigest] of entries) {
     const blob = runGit(["show", `HEAD:${file}`], repoRoot);
     if (!blob.ok) {
       changedFiles.push(`${file}: no longer present at current HEAD (deleted or renamed since capture)`);
+      headReadable = false;
       continue;
     }
     const headDigest = keccak256(blob.stdout);
+    headDigests[file] = headDigest;
     if (headDigest.toLowerCase() !== recordedDigest.toLowerCase()) {
       changedFiles.push(`${file}: content at HEAD is ${headDigest}, capture recorded ${recordedDigest}`);
     }
   }
-  return { stale: changedFiles.length > 0, changedFiles };
+
+  return {
+    stale: changedFiles.length > 0,
+    changedFiles,
+    capturedContentDigest,
+    headContentDigest: headReadable ? canonicalCoveredContentDigest(headDigests) : null,
+    anchor,
+    anchorDetail,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -980,33 +1083,32 @@ export function checkEvidenceAgainstManifest(
     if (!digestCheck.ok) {
       for (const e of digestCheck.errors) errors.push(`[source-commit binding] ${e}`);
     }
-    // The SAME binding proof applies to the public-HEAD capture: a stale or substituted
-    // headCommit label cannot be trusted just because it matches the manifest's own
-    // publicHeadCommit — both could be consistently wrong. Independently verifying
-    // sourceDigests against that commit's real git objects closes that common-mode gap.
-    const headDigestCheck = verifySourceDigestsAgainstCommit(
+    // ── public-HEAD capture: content is the authority, the commit is a hint ──
+    // Unlike the deployment commit above — a published, tagged, ancestor commit whose
+    // reachability is a genuine provenance claim — a public-HEAD capture is necessarily
+    // taken on a PR branch, because that is the only place the content exists. Squashing
+    // then replaces those commits, so requiring the anchor object would fail evidence that
+    // no honest workflow could have produced differently. The freshness property is
+    // therefore decided by the covered-content commitment against current HEAD, and the
+    // anchor is corroborated separately without ever deciding the verdict.
+    const coveredContent = verifyCoveredContentAgainstHead(
       evidence.publicHeadBuild.headCommit,
       evidence.publicHeadBuild.sourceDigests,
       repoRoot,
     );
-    if (!headDigestCheck.ok) {
-      for (const e of headDigestCheck.errors) errors.push(`[public-head binding] ${e}`);
-    }
-    // A publicHeadBuild need not equal the CURRENT tip bit-for-bit, but the CONTENT it recorded
-    // for the files it covers must still match current HEAD's content for those same paths.
-    // Compared by digest, not by commit topology, so a squash/rebase that preserves the tree is
-    // correctly NOT stale while any real source change (or a deletion/rename) is.
-    const staleness = verifyPublicHeadCommitNotStale(
-      evidence.publicHeadBuild.headCommit,
-      evidence.publicHeadBuild.sourceDigests,
-      repoRoot,
-    );
-    if (staleness.stale === null) {
-      errors.push(`[public-head staleness] could not be determined: ${staleness.error}`);
-    } else if (staleness.stale) {
+    if (coveredContent.stale === null) {
+      errors.push(`[public-head freshness] could not be determined: ${coveredContent.error}`);
+    } else if (coveredContent.stale) {
       errors.push(
-        `[public-head staleness] publicHeadBuild (headCommit ${evidence.publicHeadBuild.headCommit}) is stale: ${staleness.changedFiles.length} covered source file(s) differ in CONTENT from current HEAD — ${staleness.changedFiles.slice(0, 3).join("; ")}${staleness.changedFiles.length > 3 ? "; ..." : ""} — recapture publicHeadBuild from current HEAD`,
+        `[public-head freshness] publicHeadBuild is stale: ${coveredContent.changedFiles.length} covered source file(s) differ in CONTENT from current HEAD — ${coveredContent.changedFiles.slice(0, 3).join("; ")}${coveredContent.changedFiles.length > 3 ? "; ..." : ""} — recapture publicHeadBuild from current HEAD (captured commitment ${coveredContent.capturedContentDigest})`,
       );
+    }
+    // An anchor that IS present and disagrees with the recorded digests is a false
+    // record — the capture names a commit that never held the content it describes.
+    // That is a hard failure, never something to pass over because the content happens
+    // to match HEAD today.
+    if (coveredContent.anchor === "contradicted") {
+      errors.push(`[public-head provenance] ${coveredContent.anchorDetail}`);
     }
   }
 

@@ -32,7 +32,7 @@ import {
   deriveImmutableExpectedBytes,
   encodeShortString,
   validateImmutableAuthority,
-  verifyPublicHeadCommitNotStale,
+  verifyCoveredContentAgainstHead,
   verifyReportedCommitInPublicHistory,
   verifySourceDigestsAgainstCommit,
   type EvidenceBundle,
@@ -413,7 +413,7 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
     manifest["publicHeadCommit"] = DEPLOYMENT_COMMIT;
     const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
     expect(result.ok).to.equal(false);
-    expect(result.errors.some((e) => /public-head binding/.test(e))).to.equal(true);
+    expect(result.errors.some((e) => /public-head provenance/.test(e))).to.equal(true);
   });
 });
 
@@ -434,10 +434,10 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
 // distinction exists to close.
 // ─────────────────────────────────────────────────────────────────────────
 
-describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
+describe("verifyCoveredContentAgainstHead — Blocker 2", () => {
   it("the real, freshly-recaptured publicHeadCommit is NOT stale for its own covered files", () => {
     const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
-    const result = verifyPublicHeadCommitNotStale(
+    const result = verifyCoveredContentAgainstHead(
       PUBLIC_HEAD_COMMIT,
       fixture.evidence.publicHeadBuild.sourceDigests,
       REPO_ROOT,
@@ -450,7 +450,7 @@ describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
     // for DEPLOYMENT_COMMIT, so this is a real content divergence against current HEAD,
     // not a fabricated one.
     const fixture = loadFixtures().find((f) => f.slug === "stablecoin-vault-simulator-sepolia")!;
-    const result = verifyPublicHeadCommitNotStale(
+    const result = verifyCoveredContentAgainstHead(
       DEPLOYMENT_COMMIT,
       fixture.evidence.deploymentCommitBuild.sourceDigests,
       REPO_ROOT,
@@ -460,15 +460,25 @@ describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
     expect(result.changedFiles.some((f) => f.includes("contracts/StablecoinVaultSimulator.sol"))).to.equal(true);
   });
 
-  it("a commit whose object is not locally available returns stale: null (inconclusive), never a false 'not stale'", () => {
+  it("a commit whose object is not locally available yields anchor-unavailable, with freshness still decided by content", () => {
+    // DELIBERATE SEMANTIC CHANGE — see ReproducibilityAnchorAuthority.test.ts.
+    // An absent anchor object used to force `stale: null`, which the manifest
+    // checker escalates to a hard error. That made a squash-merge workflow
+    // unserviceable: a public-HEAD capture can only be taken on the PR branch,
+    // and squashing erases exactly that commit. Freshness is now decided by the
+    // covered-content commitment against current HEAD — real, present, and
+    // authenticated data — and lost provenance is reported, not converted into
+    // an unprovable verdict.
     const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
     const fabricated = "e".repeat(40);
-    const result = verifyPublicHeadCommitNotStale(
+    const result = verifyCoveredContentAgainstHead(
       fabricated,
       fixture.evidence.publicHeadBuild.sourceDigests,
       REPO_ROOT,
     );
-    expect(result.stale).to.equal(null);
+    expect(result.stale).to.equal(false);
+    expect(result.anchor).to.equal("unavailable");
+    expect(result.anchor).to.not.equal("verified");
   });
 
   it("checkEvidenceAgainstManifest common-mode regression: an OLDER real commit, consistently relabeled as publicHeadCommit on BOTH evidence and manifest, with sourceDigests that are genuinely VALID for that older commit (so the source-commit binding check alone would pass), is still rejected — because it is stale, not because it is inconsistent or unverifiable", () => {
@@ -493,8 +503,8 @@ describe("verifyPublicHeadCommitNotStale — Blocker 2", () => {
 
     const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
     expect(result.ok).to.equal(false);
-    expect(result.errors.some((e) => /public-head staleness/.test(e))).to.equal(true);
-    expect(result.errors.some((e) => /public-head binding/.test(e))).to.equal(false);
+    expect(result.errors.some((e) => /public-head freshness/.test(e))).to.equal(true);
+    expect(result.errors.some((e) => /public-head provenance/.test(e))).to.equal(false);
   });
 });
 
@@ -750,6 +760,6 @@ describe("common-mode mutations — manifest and evidence updated together, self
     manifest["publicHeadCommit"] = DEPLOYMENT_COMMIT;
     const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
     expect(result.ok).to.equal(false);
-    expect(result.errors.some((e) => /public-head staleness/.test(e))).to.equal(true);
+    expect(result.errors.some((e) => /public-head freshness/.test(e))).to.equal(true);
   });
 });
