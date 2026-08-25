@@ -228,25 +228,36 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect(tReset - tEnd).to.equal(1);
     });
 
-    it("NO ROLLING GUARANTEE: a third window cannot be reached inside the same 24h interval", async function () {
-      // Establishes the exact reachable bound: 2x, not 3x. Window N+2 cannot
-      // start earlier than t0 + 2*WINDOW, which is outside the 24h interval
-      // that already contains windows N and N+1.
+    it("TIGHT BOUND: the earliest THIRD reset is secondAnchor + WINDOW, so 2x is the ceiling", async function () {
+      // Executable proof that the reachable bound is 2x and never 3x. Windows N and
+      // N+1 can both land inside one 24h interval; window N+2 cannot join them,
+      // because the earliest instant it can open is exactly one full WINDOW after
+      // N+1 opened -- which is already outside that interval.
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
-      await expect(withdrawAt(vault, owner, LIMIT, 1, t0 + WINDOW)).to.emit(vault, "Withdrawn");
 
-      // The latest instant still inside the 24h interval that began at t0 + 1.
-      const stillSameRollingInterval = t0 + WINDOW + (WINDOW - 1) - (WINDOW - 1);
-      expect(stillSameRollingInterval).to.equal(t0 + WINDOW);
+      const secondAnchor = t0 + WINDOW;
+      await expect(withdrawAt(vault, owner, LIMIT, 1, secondAnchor)).to.emit(vault, "Withdrawn");
+      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
 
-      // One second after the second window opened, no further reset is available.
-      const req = request(owner.address, recipient.address, 1n, 2, t0 + WINDOW + 3601);
-      const { ecdsaSig, pqSig } = await signEth(vault, owner, req);
-      await networkHelpers.time.setNextBlockTimestamp(t0 + WINDOW + 1);
-      await expect(vault.withdraw(req, ecdsaSig, pqSig))
-        .to.be.revertedWithCustomError(vault, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      // Denied one second in, and still denied at the LAST instant before the
+      // third window may open. Nothing in between reopens it.
+      for (const t of [secondAnchor + 1, secondAnchor + WINDOW - 1]) {
+        const req = request(owner.address, recipient.address, 1n, 2, t + 3600);
+        const sigs = await signEth(vault, owner, req);
+        await networkHelpers.time.setNextBlockTimestamp(t);
+        await expect(vault.withdraw(req, sigs.ecdsaSig, sigs.pqSig))
+          .to.be.revertedWithCustomError(vault, "PolicyViolation")
+          .withArgs("daily limit exceeded");
+      }
+
+      // And admitted at EXACTLY secondAnchor + WINDOW -- the earliest third reset.
+      await expect(withdrawAt(vault, owner, LIMIT, 2, secondAnchor + WINDOW)).to.emit(vault, "Withdrawn");
+
+      // That instant is a full WINDOW after the second window opened, so the 24h
+      // interval that held windows N and N+1 cannot also hold N+2.
+      expect(secondAnchor + WINDOW - secondAnchor).to.equal(WINDOW);
+      expect(secondAnchor + WINDOW).to.be.greaterThan(t0 + WINDOW + (WINDOW - 1));
     });
 
     it("ANCHOR DRIFT: the window anchors on the first ADMITTED spend, not on a fixed calendar boundary", async function () {

@@ -274,9 +274,13 @@ docs, or app copy:
   `DailySpendLimitPolicy` is NOT: it ACCUMULATES a quantity, and `IPolicyEngine`
   declares `amount` polymorphic ("wei / token base units") with no normalization on
   the path. One instance shared between this simulator and the ETH vault would sum
-  incommensurable units into a single accumulator. Deploy a SEPARATE
-  `DailySpendLimitPolicy` instance per (consumer, asset) until explicit subject
-  dimensioning lands.
+  incommensurable units into a single accumulator. Until explicit subject propagation
+  lands, use a dedicated `DailySpendLimitPolicy` instance per (consumer, asset) AND
+  make the policy PATH consumer-specific — install it directly for that consumer, or
+  behind a consumer-specific `CompositePolicyEngine`. Do NOT place it behind a
+  `CompositePolicyEngine` shared by multiple consumers: the composite fans every call
+  out to every module and every module sees the composite as `msg.sender`, so separate
+  instances behind one shared composite would still both observe both consumers.
 - [`pqc/ml-dsa.ts`](../../pqc/ml-dsa.ts) and [`scripts/attestor-cli.ts`](../../scripts/attestor-cli.ts)
   — off-chain ML-DSA-65 signing + attestation, unchanged.
 - Test helpers in `test/helpers/` and the ML-DSA fixtures under `test/fixtures/mldsa/`.
