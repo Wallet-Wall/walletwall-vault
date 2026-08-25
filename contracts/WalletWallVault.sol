@@ -787,7 +787,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         address engineAtQueue = address(policyEngine);
         if (engineAtQueue != address(0)) {
             (bool ok, string memory why) = IPolicyEngine(engineAtQueue).check(
-                request.vaultOwner,
+                _policySubject(request.vaultOwner),
                 request.recipient,
                 request.amount,
                 vault.balance
@@ -877,19 +877,18 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
             uint256 balanceBeforeThisWithdrawal = vaults[vaultOwner].balance + pending.amount;
             address queueEngine = pending.policyEngineAtQueue;
             address currentEngine = address(policyEngine);
+            // Rebuilt from the SAME trusted sources as at admission — address(this), the
+            // pending withdrawal's recorded owner, and this vault's fixed asset — so a
+            // queued withdrawal can never settle under a different subject identity than
+            // the one it was admitted under. Built once and shared by both revalidations.
+            PolicySubject memory subject = _policySubject(vaultOwner);
             if (queueEngine != address(0)) {
-                _revalidatePolicy(
-                    queueEngine,
-                    vaultOwner,
-                    pending.recipient,
-                    pending.amount,
-                    balanceBeforeThisWithdrawal
-                );
+                _revalidatePolicy(queueEngine, subject, pending.recipient, pending.amount, balanceBeforeThisWithdrawal);
             }
             if (currentEngine != address(0) && currentEngine != queueEngine) {
                 _revalidatePolicy(
                     currentEngine,
-                    vaultOwner,
+                    subject,
                     pending.recipient,
                     pending.amount,
                     balanceBeforeThisWithdrawal
@@ -924,13 +923,13 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      */
     function _revalidatePolicy(
         address engine,
-        address vaultOwner,
+        PolicySubject memory subject,
         address recipient,
         uint256 amount,
         uint256 vaultBalance
     ) internal view {
         if (engine.code.length == 0) revert PolicyEngineUnavailable(engine);
-        try IPolicyEngine(engine).revalidate(vaultOwner, recipient, amount, vaultBalance) returns (
+        try IPolicyEngine(engine).revalidate(subject, recipient, amount, vaultBalance) returns (
             bool ok,
             string memory why
         ) {
@@ -938,6 +937,44 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         } catch {
             revert PolicyEngineUnavailable(engine);
         }
+    }
+
+    /**
+     * @dev Mints the canonical {PolicySubject} for a withdrawal evaluated by THIS vault.
+     *      No field is attacker-chosen at the point of use, but the three fields earn
+     *      that status in TWO different ways, and the distinction matters when
+     *      reviewing this boundary:
+     *
+     *      - `consumer` and `asset` are trusted BY PROVENANCE. They are read from this
+     *        contract's own execution context and never appear in the request at all,
+     *        so there is no value a caller could have supplied for them.
+     *      - `owner` is trusted BY AUTHENTICATION. It IS request-body data —
+     *        `request.vaultOwner`, chosen by whoever assembled the calldata — and
+     *        claiming otherwise would misdescribe the boundary. What makes it safe is
+     *        that every path reaching this function has already recovered the EIP-712
+     *        signature over the whole request and required it to match
+     *        `vault.ecdsaSigner` / `vault.pqPublicKey` for the vault registered under
+     *        that very address, and has confirmed the vault exists. A forged
+     *        `vaultOwner` therefore fails signature verification before any policy call
+     *        is made. The guarantee is only as strong as that check: any future caller
+     *        of this helper MUST be downstream of the same verification.
+     *
+     *      Detail on each field:
+     *
+     *      - `consumer` is `address(this)`. A vault cannot misreport its own address,
+     *        and because the value travels in calldata rather than being re-derived per
+     *        hop, it survives {CompositePolicyEngine} intact — the composite's modules
+     *        see THIS vault, not the composite.
+     *      - `owner` is the request's `vaultOwner`, authenticated as above. Relay is
+     *        permissionless — anyone may submit someone else's signed request — so
+     *        `msg.sender` carries no identity here and is deliberately unused.
+     *      - `asset` is `address(0)`: this vault custodies native ETH only, so `amount`
+     *        is always wei. The constant is not a placeholder — address(0) IS the
+     *        canonical native-asset identifier for {PolicySubject}, and it can never
+     *        collide with an ERC-20 token address.
+     */
+    function _policySubject(address vaultOwner) internal view returns (PolicySubject memory) {
+        return PolicySubject({consumer: address(this), owner: vaultOwner, asset: address(0)});
     }
 
     /**
@@ -1010,7 +1047,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
         if (address(policyEngine) != address(0)) {
             (bool ok, string memory why) = policyEngine.check(
-                request.vaultOwner,
+                _policySubject(request.vaultOwner),
                 request.recipient,
                 request.amount,
                 vault.balance

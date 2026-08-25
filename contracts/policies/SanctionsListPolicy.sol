@@ -52,8 +52,12 @@ contract SanctionsListPolicy is IPolicyEngine, Ownable2Step {
     }
 
     /// @inheritdoc IPolicyEngine
+    /// @dev The {PolicySubject} is accepted and ignored in full — this policy screens
+    ///      the RECIPIENT against a global list, so it is neither tenant-scoped nor
+    ///      consumer-scoped nor asset-scoped. A sanctioned address is sanctioned for
+    ///      everyone. Naming the parameter would imply a scoping that does not exist.
     function check(
-        address,
+        PolicySubject calldata,
         address recipient,
         uint256,
         uint256
@@ -63,7 +67,7 @@ contract SanctionsListPolicy is IPolicyEngine, Ownable2Step {
 
     /// @inheritdoc IPolicyEngine
     function revalidate(
-        address,
+        PolicySubject calldata,
         address recipient,
         uint256,
         uint256

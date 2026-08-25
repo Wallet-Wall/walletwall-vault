@@ -11,6 +11,7 @@ import {
   SanctionsListPolicy,
 } from "../typechain-types";
 import { makeBuildRequest, makeSignWithdrawal } from "./helpers/vaultHelpers";
+import { NATIVE_ASSET } from "./helpers/policySubject";
 
 /**
  * Regression suite for the delayed-withdrawal / mutable-policy AUTHORITY MODEL.
@@ -73,9 +74,16 @@ describe("Policy finalization authority (regression)", function () {
   }
 
   /// Delegates admission authority for `owner` to the vault, then arms `limit`.
+  /// Both are scoped to the subject this vault actually mints — (vault, owner, ETH).
   async function armDailyLimit(limit: bigint) {
-    await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
-    await dailyPolicy.connect(owner).setDailyLimit(limit);
+    const vaultAddress = await vault.getAddress();
+    await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+    await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, limit);
+  }
+
+  /// Remaining allowance for `owner` under this vault's native-ETH subject.
+  async function ownerAllowance() {
+    return dailyPolicy.remainingAllowance(await vault.getAddress(), owner.address, NATIVE_ASSET);
   }
 
   async function enableLargeTx(delay = LARGE_TX_DELAY) {
@@ -259,11 +267,11 @@ describe("Policy finalization authority (regression)", function () {
       await setPolicyEngine(await dailyPolicy.getAddress());
       await enableLargeTx(SHORT_DELAY);
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await ownerAllowance()).to.equal(LIMIT);
 
       const { operationId } = await queueLarge(recipient.address, AMOUNT);
       // Booked at QUEUE time.
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - AMOUNT);
+      expect(await ownerAllowance()).to.equal(LIMIT - AMOUNT);
 
       await networkHelpers.time.increase(SHORT_DELAY);
       await expect(vault.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(
@@ -272,7 +280,7 @@ describe("Policy finalization authority (regression)", function () {
       );
 
       // Finalization did NOT re-book: allowance is unchanged by settlement (no double-count).
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - AMOUNT);
+      expect(await ownerAllowance()).to.equal(LIMIT - AMOUNT);
     });
 
     it("a withdrawal admitted exactly at the limit still finalizes (not wrongly rejected)", async function () {
@@ -283,7 +291,7 @@ describe("Policy finalization authority (regression)", function () {
       await enableLargeTx(SHORT_DELAY);
 
       const { operationId } = await queueLarge(recipient.address, AMOUNT);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n); // fully consumed
+      expect(await ownerAllowance()).to.equal(0n); // fully consumed
 
       // A naive finalize re-run would see spent(3)+amount(3) > limit(3) and wrongly deny.
       // The split model does not re-run admission, so settlement succeeds.
@@ -292,7 +300,7 @@ describe("Policy finalization authority (regression)", function () {
         vault,
         "WithdrawalFinalized",
       );
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await ownerAllowance()).to.equal(0n);
     });
   });
 
@@ -382,7 +390,7 @@ describe("Policy finalization authority (regression)", function () {
         "WithdrawalFinalized",
       );
       // Nothing was booked into the window by settlement.
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(ethers.parseEther("0.1"));
+      expect(await ownerAllowance()).to.equal(ethers.parseEther("0.1"));
     });
   });
 
@@ -469,7 +477,12 @@ describe("Policy finalization authority (regression)", function () {
       // Independently estimate the cost of ONE heavy revalidation (call overhead
       // included) so the assertions below are absolute, not self-referential.
       const heavy = await (await ethers.getContractFactory("HeavyRevalidatePolicyMock", admin)).deploy();
-      const oneHeavy = await heavy.revalidate.estimateGas(owner.address, recipient.address, LARGE_AMOUNT, DEPOSIT);
+      const oneHeavy = await heavy.revalidate.estimateGas(
+        { consumer: await vault.getAddress(), owner: owner.address, asset: NATIVE_ASSET },
+        recipient.address,
+        LARGE_AMOUNT,
+        DEPOSIT,
+      );
 
       const gasNone = await measureFinalizeGas("none"); // 0 heavy evals
       const gasShared = await measureFinalizeGas("shared"); // must be exactly 1

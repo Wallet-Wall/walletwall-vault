@@ -9,6 +9,7 @@ import {
   RecipientAllowlistPolicy,
 } from "../typechain-types";
 import { makeSignWithdrawal, makeBuildRequest } from "./helpers/vaultHelpers";
+import { NATIVE_ASSET } from "./helpers/policySubject";
 
 describe("Policy Engine", function () {
   let vault: WalletWallVault;
@@ -18,6 +19,15 @@ describe("Policy Engine", function () {
   let owner: HardhatEthersSigner;
   let recipient: HardhatEthersSigner;
   let other: HardhatEthersSigner;
+
+  /// Cached in beforeEach: this suite's single consumer. Every subject below is
+  /// (this vault, some owner, native ETH).
+  let vaultAddress: string;
+
+  /** The subject THIS vault mints for `o` — the same triple production code builds. */
+  const subj = (o: string) => ({ consumer: vaultAddress, owner: o, asset: NATIVE_ASSET });
+  /** Remaining allowance for `o` under this vault's native-ETH subject. */
+  const allowanceOf = (o: string) => dailyPolicy.remainingAllowance(vaultAddress, o, NATIVE_ASSET);
 
   const PQ_KEY = ethers.hexlify(ethers.randomBytes(1952));
   const GOVERNANCE_DELAY = 2 * 24 * 60 * 60;
@@ -45,6 +55,7 @@ describe("Policy Engine", function () {
 
     const Vault = await ethers.getContractFactory("WalletWallVault");
     vault = await Vault.deploy(await verifier.getAddress());
+    vaultAddress = await vault.getAddress();
 
     const DailyPolicy = await ethers.getContractFactory("DailySpendLimitPolicy");
     dailyPolicy = await DailyPolicy.deploy();
@@ -106,7 +117,7 @@ describe("Policy Engine", function () {
       await setPolicyEngine(await dailyPolicy.getAddress());
       // Arming a limit requires the owner to first delegate admission authority to the
       // contract that will book against them — here, the vault itself.
-      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
     });
 
     it("no limit set (0) — all withdrawals pass", async function () {
@@ -114,19 +125,19 @@ describe("Policy Engine", function () {
     });
 
     it("within limit — withdrawal succeeds", async function () {
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("1"));
       await expect(withdraw({ amount: ethers.parseEther("0.5") })).to.emit(vault, "Withdrawn");
     });
 
     it("over limit — withdrawal reverts with PolicyViolation", async function () {
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("1"));
       await expect(withdraw({ amount: ethers.parseEther("1.5") }))
         .to.be.revertedWithCustomError(vault, "PolicyViolation")
         .withArgs("daily limit exceeded");
     });
 
     it("cumulative spend tracked across withdrawals in same window", async function () {
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("1"));
       await withdraw({ amount: ethers.parseEther("0.6") });
       await expect(withdraw({ amount: ethers.parseEther("0.5"), nonce: 1 }))
         .to.be.revertedWithCustomError(vault, "PolicyViolation")
@@ -134,7 +145,7 @@ describe("Policy Engine", function () {
     });
 
     it("window resets after 24h — full limit available again", async function () {
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("1"));
       await withdraw({ amount: ethers.parseEther("0.9") });
 
       await networkHelpers.time.increase(24 * 60 * 60);
@@ -144,29 +155,29 @@ describe("Policy Engine", function () {
 
     it("remainingAllowance reflects spend correctly", async function () {
       const limit = ethers.parseEther("1");
-      await dailyPolicy.connect(owner).setDailyLimit(limit);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, limit);
       const spent = ethers.parseEther("0.4");
       await withdraw({ amount: spent });
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(limit - spent);
+      expect(await allowanceOf(owner.address)).to.equal(limit - spent);
     });
 
     it("remainingAllowance returns max uint256 when no limit set", async function () {
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(ethers.MaxUint256);
+      expect(await allowanceOf(owner.address)).to.equal(ethers.MaxUint256);
     });
 
     it("different vault owners have independent limits", async function () {
       const otherVaultOwner = other;
       await vault.connect(otherVaultOwner).createVault(otherVaultOwner.address, PQ_KEY, 2);
 
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("0.3"));
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("0.3"));
 
       await expect(withdraw({ amount: ethers.parseEther("0.5") })).to.be.revertedWithCustomError(
         vault,
         "PolicyViolation",
       );
 
-      expect(await dailyPolicy.remainingAllowance(otherVaultOwner.address)).to.equal(ethers.MaxUint256);
+      expect(await allowanceOf(otherVaultOwner.address)).to.equal(ethers.MaxUint256);
     });
   });
 
@@ -216,12 +227,12 @@ describe("Policy Engine", function () {
   describe("Credential rotation interaction", function () {
     it("preserves daily-spend policy counters across a credential rotation", async function () {
       await setPolicyEngine(await dailyPolicy.getAddress());
-      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("1"));
 
       // Consume 0.6 of the 1.0 daily allowance (nonce 0 -> 1).
       await withdraw({ amount: ethers.parseEther("0.6") });
-      const before = await dailyPolicy.remainingAllowance(owner.address);
+      const before = await allowanceOf(owner.address);
       expect(before).to.equal(ethers.parseEther("0.4"));
 
       // Rotate credentials. Policy state is keyed by the vault owner address, which a
@@ -259,7 +270,7 @@ describe("Policy Engine", function () {
       };
       await vault.rotateCredentials(owner.address, other.address, newKey, deadline, auth);
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
+      expect(await allowanceOf(owner.address)).to.equal(before);
     });
   });
 
@@ -272,15 +283,15 @@ describe("Policy Engine", function () {
 
     it("stateless policies answer identically via check and revalidate (allowlist)", async function () {
       // Denying state.
-      let viaCheck = await allowlistPolicy.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
-      let viaReval = await allowlistPolicy.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      let viaCheck = await allowlistPolicy.check.staticCall(subj(owner.address), recipient.address, AMOUNT, BALANCE);
+      let viaReval = await allowlistPolicy.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(viaReval).to.deep.equal(viaCheck);
       expect(viaReval[0]).to.equal(false);
 
       // Permitting state.
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
-      viaCheck = await allowlistPolicy.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
-      viaReval = await allowlistPolicy.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      viaCheck = await allowlistPolicy.check.staticCall(subj(owner.address), recipient.address, AMOUNT, BALANCE);
+      viaReval = await allowlistPolicy.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(viaReval).to.deep.equal(viaCheck);
       expect(viaReval[0]).to.equal(true);
     });
@@ -288,35 +299,35 @@ describe("Policy Engine", function () {
     it("stateless policies answer identically via check and revalidate (sanctions)", async function () {
       const sanctions = await (await ethers.getContractFactory("SanctionsListPolicy")).deploy();
 
-      let viaCheck = await sanctions.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
-      let viaReval = await sanctions.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      let viaCheck = await sanctions.check.staticCall(subj(owner.address), recipient.address, AMOUNT, BALANCE);
+      let viaReval = await sanctions.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(viaReval).to.deep.equal(viaCheck);
       expect(viaReval[0]).to.equal(true);
 
       await sanctions.addToSanctionsList(recipient.address);
-      viaCheck = await sanctions.check.staticCall(owner.address, recipient.address, AMOUNT, BALANCE);
-      viaReval = await sanctions.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      viaCheck = await sanctions.check.staticCall(subj(owner.address), recipient.address, AMOUNT, BALANCE);
+      viaReval = await sanctions.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(viaReval).to.deep.equal(viaCheck);
       expect(viaReval[0]).to.equal(false);
     });
 
     it("daily-limit revalidate is a pure allow that never books, even over the limit", async function () {
       // No vault involved here, so the owner self-delegates — the standalone case.
-      await dailyPolicy.connect(owner).setAdmitter(owner.address, true);
-      await dailyPolicy.connect(owner).setDailyLimit(ethers.parseEther("1"));
-      const before = await dailyPolicy.remainingAllowance(owner.address);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.parseEther("1"));
+      const before = await allowanceOf(owner.address);
 
       // Even an amount far above the limit is not this method's concern: the window
       // settles at admission (check). revalidate() books nothing and rejects nothing.
       const [ok, reason] = await dailyPolicy.revalidate(
-        owner.address,
+        subj(owner.address),
         recipient.address,
         ethers.parseEther("100"),
         BALANCE,
       );
       expect(ok).to.equal(true);
       expect(reason).to.equal("");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
+      expect(await allowanceOf(owner.address)).to.equal(before);
     });
 
     it("composite revalidate fans out over current modules and propagates the first denial", async function () {
@@ -326,27 +337,27 @@ describe("Policy Engine", function () {
       await composite.addModule(await sanctions.getAddress());
 
       // allowlist denies (empty) → its reason surfaces first.
-      let [ok, reason] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      let [ok, reason] = await composite.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(ok).to.equal(false);
       expect(reason).to.equal("recipient not on allowlist");
 
       // Allowlist satisfied, sanctions denies → sanctions reason surfaces.
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       await sanctions.addToSanctionsList(recipient.address);
-      [ok, reason] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      [ok, reason] = await composite.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(ok).to.equal(false);
       expect(reason).to.equal("recipient is sanctioned");
 
       // All modules permit → allowed.
       await sanctions.removeFromSanctionsList(recipient.address);
-      [ok, reason] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      [ok, reason] = await composite.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(ok).to.equal(true);
       expect(reason).to.equal("");
     });
 
     it("an empty composite is permissive via revalidate, mirroring check", async function () {
       const composite = await (await ethers.getContractFactory("CompositePolicyEngine")).deploy();
-      const [ok] = await composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE);
+      const [ok] = await composite.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE);
       expect(ok).to.equal(true);
     });
 
@@ -354,7 +365,7 @@ describe("Policy Engine", function () {
       const composite = await (await ethers.getContractFactory("CompositePolicyEngine")).deploy();
       const legacy = await (await ethers.getContractFactory("LegacyCheckOnlyPolicyMock")).deploy();
       await composite.addModule(await legacy.getAddress());
-      await expect(composite.revalidate(owner.address, recipient.address, AMOUNT, BALANCE)).to.revert(ethers);
+      await expect(composite.revalidate(subj(owner.address), recipient.address, AMOUNT, BALANCE)).to.revert(ethers);
     });
   });
 });

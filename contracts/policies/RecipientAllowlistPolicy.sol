@@ -9,6 +9,25 @@ import "../IPolicyEngine.sol";
 ///      Opt-out: adding address(0) permits any recipient.
 ///      Admin has no control over individual vault allowlists — each vault owner
 ///      manages their own set directly.
+///
+///      SUBJECT SCOPE: DELIBERATELY OWNER-KEYED. This policy receives the full
+///      {PolicySubject} but keys its allowlist on `subject.owner` alone, ignoring
+///      `consumer` and `asset`. That is a decision about what KIND of policy this is,
+///      not an oversight. An allowlist is an ADDRESS PREDICATE: "may this tenant pay
+///      this recipient". It is idempotent and consumes nothing, so evaluating it from
+///      two different consumers, or for two different assets, yields the same answer
+///      and leaves no residue — there is no bucket for two consumers to race for.
+///      Dimensioning it would force every tenant to re-declare an identical allowlist
+///      per vault and per asset, buying no isolation.
+///
+///      Contrast {DailySpendLimitPolicy}, which is a QUANTITY ACCUMULATOR over a finite
+///      budget: there, two consumers sharing one bucket is exactly the defect, so it
+///      keys on all three dimensions. The distinction — predicate versus accumulator —
+///      is the reason these two policies key differently, and any new module should be
+///      classified the same way before choosing its key.
+///
+///      No asset semantics are invented here: `subject.asset` is not read at all,
+///      rather than being folded in as a pretend dimension.
 contract RecipientAllowlistPolicy is IPolicyEngine {
     /// @notice vaultOwner => recipient => allowed
     mapping(address => mapping(address => bool)) public allowlist;
@@ -45,21 +64,21 @@ contract RecipientAllowlistPolicy is IPolicyEngine {
 
     /// @inheritdoc IPolicyEngine
     function check(
-        address vaultOwner,
+        PolicySubject calldata subject,
         address recipient,
         uint256,
         uint256
     ) external view override returns (bool allowed, string memory reason) {
-        return _evaluate(vaultOwner, recipient);
+        return _evaluate(subject.owner, recipient);
     }
 
     /// @inheritdoc IPolicyEngine
     function revalidate(
-        address vaultOwner,
+        PolicySubject calldata subject,
         address recipient,
         uint256,
         uint256
     ) external view override returns (bool allowed, string memory reason) {
-        return _evaluate(vaultOwner, recipient);
+        return _evaluate(subject.owner, recipient);
     }
 }
