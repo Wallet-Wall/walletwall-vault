@@ -102,3 +102,58 @@ contract FakeVaultMock {
         return IAdmissionCheck(policyEngine).check(subject, recipient, amount, vaultBalance);
     }
 }
+
+/// @notice Books several admissions against one subject inside a SINGLE transaction,
+///         and therefore inside a single `block.timestamp`.
+/// @dev TEST ONLY. Exists because same-second accounting cannot be exercised from an
+///      EOA: one externally-owned transaction is one block, and Hardhat requires
+///      strictly increasing block timestamps. Disabling automine would reach the same
+///      state, but the suite shares ONE network connection across every test file, so a
+///      test that failed mid-batch would leave automine off for everything after it.
+///
+///      The subject names THIS contract as consumer, exactly as a real vault mints its
+///      own — so it reaches a bucket the test arms for this address and no other.
+///      Each `amounts[i]` is a separate {IPolicyEngine-check} call, which is what makes
+///      it a genuine test of coalescing rather than of one pre-summed amount: the
+///      policy must arrive at the same total having been asked `n` separate times.
+contract DailySpendBatchAdmitterMock {
+    address public policyEngine;
+
+    /// @notice Emitted per sub-call so a test can assert WHICH admission was refused,
+    ///         not merely that the batch as a whole failed.
+    event Admission(uint256 index, bool allowed, string reason);
+
+    constructor(address policyEngine_) {
+        policyEngine = policyEngine_;
+    }
+
+    /// @param vaultOwner The owner slot of the subject to book against.
+    /// @param asset      address(0) for native ETH, else the ERC-20 address.
+    /// @param amounts    One admission per element, all in this one block.
+    function admitBatch(address vaultOwner, address asset, uint256[] calldata amounts) external {
+        _batch(address(this), vaultOwner, asset, amounts);
+    }
+
+    /// @notice As {admitBatch}, but naming an arbitrary `consumer`.
+    /// @dev Lets a test batch against a subject whose consumer is a REAL vault, so
+    ///      same-second behaviour can be exercised on the very bucket the vault path
+    ///      fills. It confers no authority: this contract still has to have been
+    ///      delegated for that exact subject, which is asserted separately by
+    ///      test/DailySpendAdmissionAuthority.test.ts.
+    function admitBatchAs(address consumer, address vaultOwner, address asset, uint256[] calldata amounts) external {
+        _batch(consumer, vaultOwner, asset, amounts);
+    }
+
+    function _batch(address consumer, address vaultOwner, address asset, uint256[] calldata amounts) private {
+        PolicySubject memory subject = PolicySubject({consumer: consumer, owner: vaultOwner, asset: asset});
+        for (uint256 i = 0; i < amounts.length; i++) {
+            (bool allowed, string memory reason) = IAdmissionCheck(policyEngine).check(
+                subject,
+                address(this),
+                amounts[i],
+                0
+            );
+            emit Admission(i, allowed, reason);
+        }
+    }
+}

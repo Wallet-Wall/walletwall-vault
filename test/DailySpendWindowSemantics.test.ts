@@ -22,10 +22,19 @@ import { NATIVE_ASSET } from "./helpers/policySubject";
  *
  *   TIME  — is the window rolling (any 24h interval capped) or tumbling (a fixed
  *           window that zeroes on the first call after expiry)?
- *           STILL TUMBLING. Unchanged by the policy-subject work, and deliberately so:
- *           rolling accounting has to know WHICH bucket it decays, so it was sequenced
- *           after subject identity. Every assertion in PART 1 stands as written; only
- *           the configuration API around it gained its subject coordinates.
+ *           NOW ROLLING. PART 1 previously characterized a TUMBLING window and pinned
+ *           the `2 * limit` boundary burst as a reachable fact; those two burst cases
+ *           are now INVERTED and assert the burst is refused. They are kept in place,
+ *           rather than replaced with fresh happy-path tests, precisely so the closure
+ *           is visible as a diff against the construction that used to succeed.
+ *
+ *           HISTORICAL, NOT CURRENT: every mention of `windowStart`, `windowSpent`, a
+ *           tumbling reset or a `2 * limit` ceiling in this file describes behaviour
+ *           that NO LONGER EXISTS. The live invariant is a true trailing-24h cap; its
+ *           adversarial matrix is test/DailySpendRollingWindow.test.ts, which is the
+ *           authority on rolling semantics. This file remains the authority on the
+ *           SCOPE half — that PART 2 still passes unchanged is the evidence that
+ *           rolling accounting did not weaken subject isolation.
  *
  *   SCOPE — is spend accounting isolated per vault contract and per asset, or only per
  *           owner address?
@@ -169,7 +178,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
   // =====================================================================
   // PART 1 — TIME SEMANTICS
   // =====================================================================
-  describe("TIME: the window is tumbling (reset-on-first-call), not rolling", function () {
+  describe("TIME: the window is a rolling per-spend ledger, not a tumbling reset", function () {
     const LIMIT = ethers.parseEther("1");
     let vault: WalletWallVault;
 
@@ -180,7 +189,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await armFor(owner, vault, LIMIT);
     });
 
-    it("BOUNDARY: window is exhausted at windowStart + WINDOW - 1 (one second before expiry)", async function () {
+    it("BOUNDARY: a full-limit spend leaves nothing at t0 + WINDOW - 1 (one second before it expires)", async function () {
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
       expect(await allowanceFor(vault, owner.address)).to.equal(0n);
@@ -195,7 +204,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
         .withArgs("daily limit exceeded");
     });
 
-    it("BOUNDARY: the window resets at EXACTLY windowStart + WINDOW (comparison is >=)", async function () {
+    it("BOUNDARY: a spend expires at EXACTLY t0 + WINDOW (comparison is >=)", async function () {
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
       expect(await allowanceFor(vault, owner.address)).to.equal(0n);
@@ -219,70 +228,76 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
-    it("MAXIMUM BURST: 2*LIMIT - 1 wei is admitted across a 1-second interval", async function () {
+    it("MAXIMUM BURST REFUSED: the old 2*LIMIT - 1 construction is denied at the boundary", async function () {
+      // INVERTED. On the tumbling implementation every step below was admitted and this
+      // test asserted a 1.99x burst across a ONE-SECOND interval. The construction is
+      // replayed verbatim; only the expected outcome of the final step changed.
       const t0 = (await networkHelpers.time.latest()) + 10;
 
-      // Anchor the window with the smallest spend the vault will accept
-      // (withdraw() rejects amount == 0 with ZeroAmount).
+      // Anchor with the smallest spend the vault will accept (withdraw() rejects
+      // amount == 0 with ZeroAmount). Under a rolling ledger this is no longer an
+      // "anchor" at all — it is simply a 1-wei entry that expires at t0 + WINDOW.
       await withdrawAt(vault, owner, 1n, 0, t0);
 
-      // Fill window N to the brim, one second before it expires.
+      // Fill to the brim one second before that entry ages out.
       const tEnd = t0 + WINDOW - 1;
       await expect(withdrawAt(vault, owner, LIMIT - 1n, 1, tEnd)).to.emit(vault, "Withdrawn");
       expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
-      // One second later the window has expired: the full limit is available.
+      // One second later, ONLY the 1-wei entry has expired. The tumbling window handed
+      // back the entire limit here; the rolling ledger hands back exactly one wei.
       const tReset = t0 + WINDOW;
-      await expect(withdrawAt(vault, owner, LIMIT, 2, tReset)).to.emit(vault, "Withdrawn");
+      await expect(withdrawAt(vault, owner, LIMIT, 2, tReset))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("daily limit exceeded");
 
-      const burst = LIMIT - 1n + LIMIT;
-      const elapsed = tReset - tEnd;
-      expect(burst).to.equal(2n * LIMIT - 1n);
-      expect(elapsed).to.equal(1);
+      await networkHelpers.time.increaseTo(tReset);
+      expect(await allowanceFor(vault, owner.address)).to.equal(1n);
 
-      // The trailing 24h interval ending at tReset is [t0 + 1, t0 + WINDOW].
-      // It contains the tEnd spend and the tReset spend, and excludes the
-      // 1-wei anchor at t0 — so a genuine rolling cap of LIMIT is violated
-      // by very nearly a factor of two.
-      expect(burst).to.be.greaterThan(LIMIT);
-      expect((burst * 100n) / LIMIT).to.equal(199n); // 1.99x, i.e. 2x minus one wei
+      // The most that can be admitted in that trailing 24h is LIMIT, reached exactly.
+      await expect(withdrawAt(vault, owner, 1n, 2, tReset + 1)).to.emit(vault, "Withdrawn");
+      const consumer = await vault.getAddress();
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
     });
 
-    it("MAXIMUM BURST: exactly 2*LIMIT when the window is anchored by a zero-amount check", async function () {
-      // The vault path cannot send amount 0, but a self-delegated subject can
-      // call the policy directly. A zero-amount check still writes _windowStart,
-      // so it anchors a window at no allowance cost.
+    it("MAXIMUM BURST REFUSED: a zero-amount check no longer buys a free anchor", async function () {
+      // INVERTED. The exact-2x figure required a zero-amount check to move `windowStart`
+      // at no allowance cost. A rolling ledger books amounts rather than anchors, so a
+      // zero amount is a true no-op and the construction loses its free step.
       await policy.connect(owner).setAdmitter(await vault.getAddress(), NATIVE_ASSET, owner.address, true);
 
+      const consumer = await vault.getAddress();
       const t0 = (await networkHelpers.time.latest()) + 10;
       await networkHelpers.time.setNextBlockTimestamp(t0);
       await policy
         .connect(owner)
-        .check(
-          { consumer: await vault.getAddress(), owner: owner.address, asset: NATIVE_ASSET },
-          recipient.address,
-          0n,
-          0n,
-        );
+        .check({ consumer, owner: owner.address, asset: NATIVE_ASSET }, recipient.address, 0n, 0n);
+
+      // It changed nothing: no allowance consumed, and — the part that used to matter —
+      // no ledger entry created, so nothing exists to expire at t0 + WINDOW.
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
 
       const tEnd = t0 + WINDOW - 1;
       await expect(withdrawAt(vault, owner, LIMIT, 0, tEnd)).to.emit(vault, "Withdrawn");
       expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
-      const tReset = t0 + WINDOW;
-      await expect(withdrawAt(vault, owner, LIMIT, 1, tReset)).to.emit(vault, "Withdrawn");
+      // The second full limit, which used to complete an exact 2x, is refused.
+      await expect(withdrawAt(vault, owner, LIMIT, 1, t0 + WINDOW))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("daily limit exceeded");
 
-      // 2x the nominal limit, in a one-second wall-clock interval.
-      expect(2n * LIMIT).to.equal(ethers.parseEther("2"));
-      expect(tReset - tEnd).to.equal(1);
+      // It only becomes admissible a full WINDOW after the spend it follows.
+      await expect(withdrawAt(vault, owner, LIMIT, 1, tEnd + WINDOW)).to.emit(vault, "Withdrawn");
     });
 
-    it("TIGHT BOUND: the earliest THIRD reset is secondAnchor + WINDOW, so 2x is the ceiling", async function () {
-      // Executable proof that the reachable bound is 2x and never 3x. Windows N and
-      // N+1 can both land inside one 24h interval; window N+2 cannot join them,
-      // because the earliest instant it can open is exactly one full WINDOW after
-      // N+1 opened -- which is already outside that interval.
+    it("CADENCE: full-limit spends are admissible exactly WINDOW apart, and never sooner", async function () {
+      // RETAINED, REINTERPRETED. On the tumbling implementation this was the proof that
+      // the burst ceiling was 2x and not 3x. Every step still passes, but it no longer
+      // demonstrates a ceiling ABOVE the limit: spends exactly WINDOW apart never share
+      // a trailing 24h interval, so the total inside any such interval is exactly LIMIT.
+      // It now reads as the cadence a fully-spending subject may sustain.
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
 
@@ -310,8 +325,9 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect(secondAnchor + WINDOW).to.be.greaterThan(t0 + WINDOW + (WINDOW - 1));
     });
 
-    it("ANCHOR DRIFT: the window anchors on the first ADMITTED spend, not on a fixed calendar boundary", async function () {
-      // A denied check does not persist a reset, so the anchor is attacker-chosen.
+    it("NO CALENDAR: expiry is measured from each spend, not from a fixed calendar boundary", async function () {
+      // There is no shared anchor to drift: each entry expires a WINDOW after ITSELF,
+      // wherever in the day it happened to fall.
       const t0 = (await networkHelpers.time.latest()) + 1000;
       await withdrawAt(vault, owner, ethers.parseEther("0.1"), 0, t0);
 
@@ -327,11 +343,12 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
-    it("ANCHOR IS SPEND-CHOSEN: arming a limit does not start a window; the first admitted spend does", async function () {
-      // _windowStart is 0 until the first admitted check, and 0 + WINDOW is in the
-      // distant past, so the first spend always resets. Whoever controls the first
-      // spend therefore chooses where the 24h boundary falls — the boundary is not
-      // fixed by the configuration, and not by any calendar.
+    it("ARMING IS NOT A SPEND: arming a limit puts nothing on the ledger; only a spend does", async function () {
+      // Arming writes `limit` and nothing else, so an idle subject accumulates no
+      // history however long it waits. Under the tumbling model this mattered because
+      // whoever made the first spend CHOSE where the shared 24h boundary fell; now
+      // there is no shared boundary to choose, and this asserts only that configuration
+      // alone never consumes allowance.
       const armedAt = await networkHelpers.time.latest();
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
 
@@ -339,7 +356,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await networkHelpers.time.increaseTo(armedAt + WINDOW * 3);
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
 
-      // The spend anchors the window here, three days after arming.
+      // The first spend lands here, three days after arming, and expires a WINDOW later.
       const anchor = armedAt + WINDOW * 3 + 10;
       await withdrawAt(vault, owner, LIMIT, 0, anchor);
       expect(await allowanceFor(vault, owner.address)).to.equal(0n);
@@ -350,11 +367,11 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
-    it("DENIED ATTEMPTS DO NOT RE-ANCHOR: windows stay at least WINDOW apart", async function () {
-      // The reset is computed into locals and only persisted on the admit path, so a
-      // denial after expiry leaves _windowStart untouched. This is what makes the
-      // reachable bound EXACTLY 2x rather than unbounded: successive window anchors
-      // can never be closer together than WINDOW.
+    it("DENIED ATTEMPTS BOOK NOTHING: a refused request leaves the ledger untouched", async function () {
+      // Expiry is computed into locals and only persisted on the admit path, so a
+      // denied request writes no entry and advances no index. Under the tumbling model
+      // this is what held the burst to 2x; under the rolling ledger it is what stops a
+      // stream of over-limit attempts from planting history or consuming capacity.
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
 
@@ -368,8 +385,8 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
         .to.be.revertedWithCustomError(vault, "PolicyViolation")
         .withArgs("daily limit exceeded");
 
-      // The anchor did not move to afterExpiry: a later admitted spend re-anchors
-      // there instead, and its own window runs a full WINDOW from that point.
+      // Nothing was booked at afterExpiry: the next ADMITTED spend is the only thing
+      // that creates an entry, and that entry runs a full WINDOW from its own instant.
       const admitAt = afterExpiry + 500;
       await expect(withdrawAt(vault, owner, LIMIT, 1, admitAt)).to.emit(vault, "Withdrawn");
       await networkHelpers.time.increaseTo(admitAt + WINDOW - 1);
@@ -401,35 +418,37 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT - amount);
     });
 
-    it("RAW vs EFFECTIVE: windowSpent is stored state and does NOT decay; remainingAllowance does", async function () {
-      // The two getters answer different questions, and reading the raw one as though
-      // it were the effective figure is the trap the tumbling model sets: after a
-      // window expires, the accumulator still holds the OLD total until the next
-      // admitted check() re-anchors it. Anyone reasoning about headroom from
-      // `limit - windowSpent` would conclude the tenant is still exhausted when they
-      // are not. Pinned so the distinction cannot be quietly erased.
+    it("NO RAW/EFFECTIVE SPLIT: rollingSpent and remainingAllowance always agree", async function () {
+      // INVERTED. This test used to pin a DISAGREEMENT: `windowSpent` was a raw
+      // accumulator that did not decay, so for up to a full day it reported a tenant
+      // exhausted while `remainingAllowance` reported them free. That split was a real
+      // trap for anyone computing headroom as `limit - windowSpent`, and the getters
+      // that created it are gone. Both survivors now compute expiry through the SAME
+      // routine the admission path uses, so the two can no longer drift apart.
       const consumer = await vault.getAddress();
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
 
-      expect(await policy.windowSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
-      expect(await policy.windowStart(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0));
-      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
+      const agree = async () => {
+        const spent = await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET);
+        const remaining = await allowanceFor(vault, owner.address);
+        expect(spent + remaining).to.equal(LIMIT);
+        return { spent, remaining };
+      };
 
-      // Step past the window boundary WITHOUT spending anything.
+      expect((await agree()).spent).to.equal(LIMIT);
+
+      // Step past the boundary WITHOUT spending anything. No transaction runs, so raw
+      // storage cannot have changed — yet both views decay together, because both are
+      // evaluated against the calling block's timestamp rather than read from a field.
       await networkHelpers.time.increaseTo(t0 + WINDOW);
+      expect((await agree()).spent).to.equal(0n);
 
-      // Effective allowance has recovered in full…
-      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
-      // …while the raw accumulator and anchor are untouched: no transaction ran, and
-      // storage cannot change without one.
-      expect(await policy.windowSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
-      expect(await policy.windowStart(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0));
-
-      // The next admitted spend is what re-anchors and resets both.
+      // And they stay in agreement across a partial spend.
       await withdrawAt(vault, owner, LIMIT / 4n, 1, t0 + WINDOW + 5);
-      expect(await policy.windowStart(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0 + WINDOW + 5));
-      expect(await policy.windowSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT / 4n);
+      const after = await agree();
+      expect(after.spent).to.equal(LIMIT / 4n);
+      expect(after.remaining).to.equal(LIMIT - LIMIT / 4n);
     });
   });
 
@@ -518,7 +537,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await expect(vaultA.withdraw(req, ecdsaSig, pqSig)).to.emit(vaultA, "Withdrawn");
     });
 
-    it("CROSS-VAULT WINDOW: a spend in one vault does not move the other's window anchor", async function () {
+    it("CROSS-VAULT EXPIRY: a spend in one vault does not put anything on the other's ledger", async function () {
       const vaultA = await deployEthVault();
       const vaultB = await deployEthVault();
       const engine = await policy.getAddress();
@@ -533,21 +552,27 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       const a = await vaultA.getAddress();
       const b = await vaultB.getAddress();
 
-      // Vault A anchors ITS window at t0 and spends half.
+      // Vault A books a half-limit entry at t0 on ITS ledger.
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vaultA, owner, ethers.parseEther("0.5"), 0, t0);
-      expect(await policy.windowStart(a, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0));
-      // Vault B has no anchor at all yet — A's spend did not start B's clock.
-      expect(await policy.windowStart(b, owner.address, NATIVE_ASSET)).to.equal(0n);
+      expect(await policy.oldestActiveEntry(a, owner.address, NATIVE_ASSET)).to.deep.equal([
+        BigInt(t0),
+        ethers.parseEther("0.5"),
+      ]);
+      // Vault B's ledger is still empty — A's spend put nothing on it.
+      expect(await policy.activeEntryCount(b, owner.address, NATIVE_ASSET)).to.equal(0n);
       expect(await allowanceFor(vaultB, owner.address)).to.equal(ethers.parseEther("1"));
 
-      // Vault B anchors its OWN window later and gets its own full limit.
+      // Vault B books its OWN entry later, against its own full limit.
       await withdrawAt(vaultB, owner, ethers.parseEther("1"), 0, t0 + 5);
-      expect(await policy.windowStart(b, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0 + 5));
+      expect(await policy.oldestActiveEntry(b, owner.address, NATIVE_ASSET)).to.deep.equal([
+        BigInt(t0 + 5),
+        ethers.parseEther("1"),
+      ]);
       expect(await allowanceFor(vaultB, owner.address)).to.equal(0n);
       expect(await allowanceFor(vaultA, owner.address)).to.equal(ethers.parseEther("0.5"));
 
-      // Each window expires on its OWN clock, five seconds apart.
+      // Each entry expires on its OWN clock, five seconds apart.
       await networkHelpers.time.increaseTo(t0 + WINDOW);
       expect(await allowanceFor(vaultA, owner.address)).to.equal(ethers.parseEther("1")); // A rolled
       expect(await allowanceFor(vaultB, owner.address)).to.equal(0n); // B has not

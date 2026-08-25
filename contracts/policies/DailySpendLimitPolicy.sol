@@ -5,61 +5,109 @@ import "../IPolicyEngine.sol";
 
 /// @title DailySpendLimitPolicy
 /// @notice Caps how much of ONE asset ONE tenant may withdraw through ONE vault
-///         contract within a 24-hour window.
+///         contract during any TRAILING 24-hour interval.
 ///
 /// @dev  =======================================================================
-///       TIME SEMANTICS: THE WINDOW IS TUMBLING, NOT ROLLING. READ THIS FIRST.
+///       TIME SEMANTICS: A TRUE ROLLING 24-HOUR LEDGER. READ THIS FIRST.
 ///       =======================================================================
 ///
-///       INTENDED PRODUCT INVARIANT: a true ROLLING 24-hour cap — at every instant,
-///       the total admitted over the preceding 24 hours is at most `limit`.
+///       THE INVARIANT. For an armed subject `S` at every instant `T`:
 ///
-///       WHAT THIS CONTRACT ACTUALLY IMPLEMENTS: a TUMBLING (reset-on-first-call)
-///       window. {check} compares `block.timestamp` against a single stored
-///       `windowStart` anchor; when the anchor is at least {WINDOW} old the anchor is
-///       moved to now and `windowSpent` is reset to zero. Nothing decays gradually and
-///       no history of individual spends is retained, so the cap is per-window, not
-///       per-trailing-24-hours.
+///           sum{ a : (t, a) admitted for S, t > T - WINDOW }  <=  limit(S)
 ///
-///       THE OBSERVABLE GAP. Because a window can be re-anchored the instant the old
-///       one expires, spend can cluster across a boundary:
+///       It is enough to test this at admission: between admissions the left-hand side
+///       only ever falls, because entries age out and none are added.
 ///
-///       - Over the NORMAL signed vault withdrawal path, `2 * limit - 1` wei is
-///         admissible across a ONE-SECOND interval: spend `limit - 1` at
-///         `windowStart + WINDOW - 1`, then the full `limit` one second later at
-///         `windowStart + WINDOW`, where the `>=` comparison re-anchors.
-///       - Exactly `2 * limit` requires anchoring the first window with a ZERO-AMOUNT
-///         {check} called directly by an authorized admitter, because both vaults
-///         reject `amount == 0` before any policy call and so cannot produce that
-///         anchor themselves.
-///       - The bound is TIGHT: a third window cannot begin until {WINDOW} after the
-///         second anchor, so `2 * limit` is the ceiling within any 24-hour span, not a
-///         first term in a series.
+///       THE EXACT BOUNDARY. An entry booked at `t` is counted while `block.timestamp <
+///       t + WINDOW` and expires at EXACTLY `t + WINDOW`. The live set is the half-open
+///       interval `(T - WINDOW, T]`. This is the same `>=` instant the previous
+///       tumbling window used for its reset, kept deliberately so the boundary did not
+///       move under existing operators while its MEANING changed.
 ///
-///       These are pinned as executable facts in test/DailySpendWindowSemantics.test.ts.
+///       HOW. {check} appends `(block.timestamp, amount)` to a per-subject ring and
+///       maintains the running total incrementally; expiry is a prefix scan from the
+///       oldest entry that stops at the first live one. Nothing resets: allowance
+///       returns in the same increments it was consumed, at the instants the individual
+///       spends age out. See {_liveAt}, which is the single definition of "live" shared
+///       by admission and every getter.
 ///
-///       ROLLING ENFORCEMENT REMAINS PENDING. It is deliberately NOT implemented here.
-///       Rolling accounting has to know WHICH bucket it is decaying, so it was
-///       sequenced after subject identity was fixed — which is what this contract's
-///       current version does. Treat the cap as "at most `2 * limit` per 24 hours,
-///       `limit` per tumbling window" until rolling lands.
+///       =======================================================================
+///       LEDGER CAPACITY: WHY A CAP IS UNAVOIDABLE, AND WHAT IT COSTS.
+///       =======================================================================
+///
+///       To know exactly how much allowance expires at each future instant, the
+///       contract must retain the TIMING of live spends. Bounded storage holds at most
+///       {MAX_ACTIVE_ENTRIES} distinct `(time, amount)` pairs, so more than that many
+///       distinct live spend-instants cannot be represented exactly. EXACT AND BOUNDED
+///       THEREFORE IMPLIES A CAP — the only open choice is what to do at the cap:
+///
+///       - REFUSE the admission (chosen). Accounting stays exact; a subject that has
+///         already booked {MAX_ACTIVE_ENTRIES} distinct seconds inside the window is
+///         refused a spend in a NEW second, with reason "daily spend ledger full".
+///       - MERGE the two oldest entries at the newer timestamp (rejected). Never
+///         admits above `limit`, but holds old spend on the books LONGER than the true
+///         trailing window, so the cap would be conservative rather than exact. This
+///         contract would then be claiming a guarantee it does not implement.
+///
+///       THE REFUSAL IS SELF-HEALING AND NOT ATTACKER-REACHABLE. A slot frees the
+///       instant the oldest entry expires, so a full ledger is never a permanent brick;
+///       and entries can only be appended by a caller the subject's own owner delegated
+///       via {setAdmitter}, so no third party can fill it. Same-second admissions
+///       coalesce into one entry, so a burst inside a single block costs one slot.
+///       {activeEntryCount} exposes the occupancy, since a capacity refusal is
+///       otherwise indistinguishable from a limit refusal.
+///
+///       BOUNDED WORK. Admission and every getter scan at most {MAX_ACTIVE_ENTRIES}
+///       entries, a CONSTANT that does not grow with lifetime withdrawal count. Each
+///       entry is dropped exactly once, so amortized cost per admission is O(1).
+///
+///       =======================================================================
+///       WHAT THIS CAP DOES NOT COVER.
+///       =======================================================================
+///
+///       WHILE DISARMED, NOTHING IS RECORDED. `limit == 0` means unrestricted, and
+///       {check} returns before booking, so spends made while disarmed never reach the
+///       ledger and are not retroactively counted when a limit is armed again. The
+///       guarantee above therefore binds over intervals in which the subject has been
+///       CONTINUOUSLY ARMED. This is not a way to launder history — {setDailyLimit}
+///       does not touch the ledger, so a disarm/re-arm cycle leaves existing entries
+///       intact and expiring on their original schedule — but a subject that is
+///       genuinely unrestricted for a period has no accounting for that period.
+///
+///       That matters because {setDailyLimit} is keyed on `msg.sender`, so whoever
+///       controls the owner address can disarm outright. Where the vault owner and its
+///       withdrawal signer are the same key — the common case — a compromised signer
+///       could already remove the cap entirely. That is a property of the
+///       configuration authority, unchanged by rolling accounting, and it is the reason
+///       this cap is a damage LIMITER rather than a containment boundary.
+///
+///       ADMISSION, NOT SETTLEMENT. Spend is booked when a withdrawal is ADMITTED, and
+///       expires a WINDOW after that instant. For a queued large transaction that is
+///       queue time, not finalize time, so a large-transaction delay longer than
+///       {WINDOW} releases the allowance before the payment settles. Settlement is
+///       admission plus a per-withdrawal delay fixed at queue time, so settled outflow
+///       inherits the admitted spacing rather than compressing it.
 ///
 ///       =======================================================================
 ///       SCOPE SEMANTICS: ACCOUNTING IS KEYED BY THE FULL POLICY SUBJECT.
 ///       =======================================================================
 ///
-///       Every piece of per-bucket state — the limit, the window anchor, the spend
-///       accumulator, the delegation list and its count — hangs off a single
-///       {subjectKey}: `keccak256(abi.encode(consumer, owner, asset))`.
+///       Every piece of per-bucket state — the limit, the spend ledger and its running
+///       total, the delegation list and its count — hangs off a single {subjectKey}:
+///       `keccak256(abi.encode(consumer, owner, asset))`. The ledger lives INSIDE the
+///       same {SpendState} struct as the limit, so there is no second mapping that
+///       could be reached with a different key.
 ///
 ///       WHY ALL THREE DIMENSIONS. This module is a QUANTITY ACCUMULATOR over a finite
 ///       budget, and a quantity accumulator is never identity-agnostic:
 ///
 ///       - Without `consumer`, two vault contracts serving the same tenant draw from
-///         one accumulator, so a spend in vault A denies vault B and A's anchor sets
-///         B's clock. Behind a shared {CompositePolicyEngine} that collapse used to be
-///         unavoidable, which is why the previous release documented a workaround of
-///         one dedicated policy instance per consumer.
+///         one ledger, so a spend in vault A denies vault B and A's entries dictate
+///         when B's allowance returns. Behind a shared {CompositePolicyEngine} that
+///         collapse used to be unavoidable, which is why the previous release
+///         documented a workaround of one dedicated policy instance per consumer.
+///         Ledger CAPACITY is per subject for the same reason: a shared ring would let
+///         one busy tenant deny every other tenant of the same vault.
 ///       - Without `asset`, `amount` values in different denominations add into one
 ///         scalar — 1 ETH (1e18 wei) and 1 mUSDC (1e6 base units) are incomparable
 ///         magnitudes, so a limit meaningful for one is nonsense for the other.
@@ -70,8 +118,7 @@ import "../IPolicyEngine.sol";
 ///
 ///       AGGREGATE EXPOSURE CHANGES, ON PURPOSE. Because buckets are independent, a
 ///       tenant who arms `limit` for N distinct subjects can spend up to `N * limit`
-///       per window in total (and up to `2 * N * limit` per 24 hours given the
-///       tumbling bound above). The previous owner-keyed model capped the tenant at
+///       per trailing 24 hours in total. The previous owner-keyed model capped the tenant at
 ///       ONE `limit` across everything. That aggregate cap was not a feature being
 ///       given up cheaply — it was inseparable from the interference defect, since the
 ///       only reason vault A could constrain vault B's total was that they shared the
@@ -145,23 +192,69 @@ import "../IPolicyEngine.sol";
 contract DailySpendLimitPolicy is IPolicyEngine {
     uint256 public constant WINDOW = 24 hours;
 
+    /// @notice How many distinct-second spends one subject may hold inside the trailing
+    ///         window at once.
+    /// @dev THE PRICE OF BEING BOTH EXACT AND BOUNDED — see the LEDGER CAPACITY section
+    ///      of the contract-level documentation for why some such cap is unavoidable.
+    ///      A power of two so the ring index is a mask rather than a division.
+    uint256 public constant MAX_ACTIVE_ENTRIES = 32;
+
+    /// @dev `MAX_ACTIVE_ENTRIES - 1`. Ring arithmetic uses `& _RING_MASK`, which is
+    ///      equivalent to `% MAX_ACTIVE_ENTRIES` only because the capacity is a power
+    ///      of two; changing one without the other silently corrupts indexing.
+    uint256 private constant _RING_MASK = MAX_ACTIVE_ENTRIES - 1;
+
+    /// @notice The largest single amount this policy can book, `type(uint192).max`.
+    /// @dev A ledger entry packs its timestamp and amount into ONE storage slot, which
+    ///      is what keeps a prune step at one SLOAD per expired entry. That costs 64
+    ///      bits of amount range. The ceiling is ~6.28e57 base units — twenty-four
+    ///      orders of magnitude beyond the total supply of any real asset — and
+    ///      exceeding it is a clean DENIAL, never a silent truncation and never the
+    ///      arithmetic panic the previous accumulator produced near `type(uint256).max`.
+    ///      The `limit` itself is deliberately NOT capped: an owner reaching for
+    ///      "effectively unlimited" may still set `type(uint256).max`.
+    uint256 public constant MAX_BOOKABLE_AMOUNT = type(uint192).max;
+
+    /// @notice One admitted spend: how much, and when it was booked.
+    /// @dev Packed into a single 256-bit slot (`uint64` + `uint192`). `uint64` seconds
+    ///      overflows in the year 584942417355, so the cast in {check} cannot truncate
+    ///      any timestamp this chain will produce.
+    struct Entry {
+        uint64 at;
+        uint192 amount;
+    }
+
     /// @notice All per-subject accounting, gathered into one struct so a single
     ///         {subjectKey} resolves the whole bucket.
-    /// @dev One mapping of four contiguous slots rather than four parallel mappings:
-    ///      the fields are always read and written together, and co-locating them makes
-    ///      it structurally impossible for one field to be keyed differently from
-    ///      another — the exact split-identity defect that keying `limit` by owner while
-    ///      keying `windowSpent` by subject would have introduced.
+    /// @dev One mapping of contiguous slots rather than parallel mappings: the fields
+    ///      are always read and written together, and co-locating them makes it
+    ///      structurally impossible for one field to be keyed differently from another
+    ///      — the exact split-identity defect that keying `limit` by owner while keying
+    ///      the spend ledger by subject would have introduced. The ring lives INSIDE
+    ///      this struct for the same reason: there is no second mapping that could be
+    ///      reached with a different key.
     struct SpendState {
-        /// @dev Max spend per window, denominated in the subject's asset. 0 = unrestricted.
+        /// @dev Max spend per trailing window, denominated in the subject's asset.
+        ///      0 = unrestricted.
         uint256 limit;
-        /// @dev Timestamp anchoring the current tumbling window.
-        uint256 windowStart;
-        /// @dev Amount already booked inside the current window.
-        uint256 windowSpent;
         /// @dev How many admitters this subject's owner has delegated to. Lets
         ///      {setDailyLimit} refuse to arm a limit that no caller could satisfy.
         uint256 admitterCount;
+        /// @dev Sum of the ring entries that were live AS OF THE LAST WRITE. Storage
+        ///      cannot change without a transaction, so this is a raw figure that lags
+        ///      expiry; every read path recomputes through {_liveAt} instead of
+        ///      trusting it. Maintained incrementally so admission never has to sum the
+        ///      whole ring.
+        uint256 rollingSpent;
+        /// @dev Ring index of the OLDEST live entry.
+        uint32 head;
+        /// @dev Number of live entries, `0 <= count <= MAX_ACTIVE_ENTRIES`.
+        uint32 count;
+        /// @dev The spend ledger. Entries are appended at `(head + count) & _RING_MASK`
+        ///      and expire from `head`, so they are always in non-decreasing timestamp
+        ///      order — which is what makes expiry a prefix scan that stops at the
+        ///      first live entry rather than a search.
+        Entry[MAX_ACTIVE_ENTRIES] ring;
     }
 
     mapping(bytes32 => SpendState) private _state;
@@ -336,32 +429,118 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         // above without touching spend storage. Owners who never armed a limit need no
         // configuration and cannot be locked out by this ordering.
         //
-        // Placed BEFORE the window reads so an unauthorized caller can never plant a
-        // `windowSpent` value at all. That also forecloses the near-max-limit case,
-        // where the denial branch below is unreachable and a planted ceiling value would
-        // make every later admission revert on the checked add instead of denying.
+        // Placed BEFORE the ledger reads so an unauthorized caller can never append an
+        // entry, advance an index or plant a spend total. Under a ring that is a
+        // stronger requirement than it was under a single accumulator: appending also
+        // consumes one of a subject's MAX_ACTIVE_ENTRIES slots, so an unauthorized
+        // append would be a capacity attack as well as an accounting one.
         if (!_admitter[key][msg.sender]) {
             revert UnauthorizedAdmitter(msg.sender, subject.consumer, subject.owner, subject.asset);
         }
 
-        uint256 start = s.windowStart;
-        uint256 spent = s.windowSpent;
+        uint256 nowTs = block.timestamp;
+        uint256 storedCount = s.count;
 
-        // Tumbling reset, not a rolling decay — see the contract-level TIME SEMANTICS
-        // note for the exact 2*limit bound this permits across a window boundary.
-        if (block.timestamp >= start + WINDOW) {
-            start = block.timestamp;
-            spent = 0;
+        // Expire everything that has aged out of the trailing window. Computed into
+        // locals: a DENIED request must leave storage untouched, exactly as the
+        // previous accumulator's reset did.
+        (uint256 head, uint256 count, uint256 spent) = _liveAt(s, nowTs);
+
+        // Above `MAX_BOOKABLE_AMOUNT` the entry could not be represented, so refuse it
+        // rather than truncate. Ordered BEFORE the limit test so the reason string
+        // names the real cause even when the amount would also breach the limit.
+        if (amount > MAX_BOOKABLE_AMOUNT) {
+            return (false, "amount exceeds bookable range");
         }
 
+        // THE ROLLING INVARIANT. `spent` is the exact total admitted for this subject
+        // over `(nowTs - WINDOW, nowTs]`, so admitting `amount` keeps that total at or
+        // below `limit`. Cannot overflow: `spent <= MAX_ACTIVE_ENTRIES *
+        // MAX_BOOKABLE_AMOUNT < 2**197` and `amount <= 2**192`.
         if (spent + amount > limit) {
             return (false, "daily limit exceeded");
         }
 
-        s.windowStart = start;
-        s.windowSpent = spent + amount;
+        if (amount != 0) {
+            // Same-second admissions coalesce into the newest entry. This is exact —
+            // they share an expiry instant, so one entry of `a + b` at `t` decays
+            // identically to two of `a` and `b` at `t` — and it keeps a burst of
+            // withdrawals inside one block from consuming the ledger.
+            // `count == 0` is handled first: `head + count - 1` would underflow, and an
+            // empty ledger has no entry to coalesce into.
+            uint256 newest = count == 0 ? 0 : (head + count - 1) & _RING_MASK;
+            bool coalesce =
+                count != 0 &&
+                    uint256(s.ring[newest].at) == nowTs &&
+                    uint256(s.ring[newest].amount) + amount <= MAX_BOOKABLE_AMOUNT;
+
+            // Capacity is checked only when a NEW slot is actually required, and after
+            // coalescing has had its chance, so a full ledger never refuses a spend it
+            // could have absorbed into the entry it already holds for this second.
+            if (!coalesce && count == MAX_ACTIVE_ENTRIES) {
+                return (false, "daily spend ledger full");
+            }
+
+            if (coalesce) {
+                s.ring[newest].amount = uint192(uint256(s.ring[newest].amount) + amount);
+            } else {
+                s.ring[(head + count) & _RING_MASK] = Entry({at: uint64(nowTs), amount: uint192(amount)});
+                unchecked {
+                    count++;
+                }
+            }
+            spent += amount;
+        } else if (count == storedCount) {
+            // A zero amount that expired nothing changes no state at all. Returning
+            // here is what denies the old exploit its free anchor: a zero-amount
+            // {check} can no longer move a window boundary, because there is no
+            // boundary to move — only entries, and this one books none.
+            return (true, "");
+        }
+
+        s.rollingSpent = spent;
+        s.head = uint32(head);
+        s.count = uint32(count);
 
         return (true, "");
+    }
+
+    /// @dev The trailing-window state of `s` as of `nowTs`, with expired entries
+    ///      dropped. THE SINGLE DEFINITION OF "LIVE": {check} and every getter route
+    ///      through this, so observability and admission can never disagree about what
+    ///      has aged out — the failure mode the old raw `windowSpent` getter invited.
+    ///
+    ///      BOUNDARY CONVENTION. An entry booked at `t` is live while `nowTs < t +
+    ///      WINDOW` and expires at EXACTLY `t + WINDOW`, so the live set is the
+    ///      half-open interval `(nowTs - WINDOW, nowTs]`. That is the same `>=`
+    ///      convention the tumbling window used for its reset, carried over deliberately
+    ///      so the boundary instant did not silently move under existing operators.
+    ///
+    ///      BOUNDED WORK. Entries are in non-decreasing timestamp order, so the scan
+    ///      stops at the first live entry, and it can never run more than `count <=
+    ///      MAX_ACTIVE_ENTRIES` iterations. Each entry is dropped exactly once across
+    ///      its lifetime, so the amortized cost per admission is O(1) and the worst
+    ///      case is a constant that does NOT grow with lifetime activity.
+    /// @return head  Ring index of the oldest still-live entry.
+    /// @return count How many entries remain live.
+    /// @return spent Exact total admitted over the trailing window.
+    function _liveAt(
+        SpendState storage s,
+        uint256 nowTs
+    ) private view returns (uint256 head, uint256 count, uint256 spent) {
+        head = s.head;
+        count = s.count;
+        spent = s.rollingSpent;
+
+        while (count != 0) {
+            Entry storage e = s.ring[head];
+            if (uint256(e.at) + WINDOW > nowTs) break;
+            spent -= e.amount;
+            head = (head + 1) & _RING_MASK;
+            unchecked {
+                count--;
+            }
+        }
     }
 
     /// @inheritdoc IPolicyEngine
@@ -376,7 +555,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///        consumed the allowance in the meantime.
     ///      - Testing `amount <= limit` here would retroactively strand an
     ///        admitted withdrawal after a limit reduction; the limit's meaning
-    ///        is a per-window admission total, not a per-settlement cap.
+    ///        is a trailing-window ADMISSION total, not a per-settlement cap.
     ///      This function is view (STATICCALL from the vault), so it could not
     ///      book even if a future edit tried to — that attempt would revert
     ///      finalization instead.
@@ -412,10 +591,28 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         return _state[_subjectKey(consumer, owner, asset)].admitterCount;
     }
 
-    /// @notice Remaining spend allowance for one subject in its current window.
-    /// @dev Reports the TUMBLING window's residue: once `windowStart + WINDOW` is
-    ///      reached the full limit is reported again, which is the same `>=`
-    ///      re-anchoring {check} performs. It is not a rolling-24h figure.
+    /// @notice Total admitted for one subject over the trailing {WINDOW} ending NOW.
+    /// @dev EFFECTIVE, NOT RAW. Computed through the same {_liveAt} expiry the
+    ///      admission path uses, evaluated at the calling block's `block.timestamp`, so
+    ///      it decays with the clock and needs no transaction to become accurate. An
+    ///      entry booked at `t` is included while `block.timestamp < t + WINDOW` and
+    ///      drops out at exactly `t + WINDOW`.
+    ///
+    ///      This REPLACES the old `windowSpent`, which reported a raw accumulator that
+    ///      did not decay and therefore disagreed with {remainingAllowance} for up to a
+    ///      full day. There is deliberately no raw equivalent: the stored figure is an
+    ///      implementation detail of incremental maintenance, and publishing it again
+    ///      would re-create exactly that trap.
+    /// @return Admitted total over `(now - WINDOW, now]`, in the subject's base units.
+    function rollingSpent(address consumer, address owner, address asset) external view returns (uint256) {
+        (, , uint256 spent) = _liveAt(_state[_subjectKey(consumer, owner, asset)], block.timestamp);
+        return spent;
+    }
+
+    /// @notice Remaining spend allowance for one subject over the trailing {WINDOW}.
+    /// @dev `limit - rollingSpent`, floored at zero so a limit lowered below the
+    ///      subject's current trailing spend reports 0 rather than reverting. Agrees
+    ///      with {check} by construction — both read expiry through {_liveAt}.
     /// @return type(uint256).max when the subject has no limit set.
     function remainingAllowance(address consumer, address owner, address asset) external view returns (uint256) {
         SpendState storage s = _state[_subjectKey(consumer, owner, asset)];
@@ -423,29 +620,39 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         uint256 limit = s.limit;
         if (limit == 0) return type(uint256).max;
 
-        if (block.timestamp >= s.windowStart + WINDOW) {
-            return limit;
-        }
-
-        uint256 spent = s.windowSpent;
+        (, , uint256 spent) = _liveAt(s, block.timestamp);
         return spent >= limit ? 0 : limit - spent;
     }
 
-    /// @notice The timestamp anchoring one subject's current tumbling window.
-    /// @dev Exposed so operators and tests can observe the anchor directly rather than
-    ///      inferring it from {remainingAllowance} transitions. 0 means no spend has
-    ///      ever been admitted for this subject.
-    function windowStart(address consumer, address owner, address asset) external view returns (uint256) {
-        return _state[_subjectKey(consumer, owner, asset)].windowStart;
+    /// @notice How many ledger entries one subject currently holds inside the window.
+    /// @dev Observability for the {MAX_ACTIVE_ENTRIES} capacity denial: at
+    ///      `MAX_ACTIVE_ENTRIES` a spend in a NEW second is refused with "daily spend
+    ///      ledger full" until the oldest entry ages out. Operators watching this
+    ///      approach the cap can see the refusal coming; without it the denial would be
+    ///      indistinguishable from a limit breach.
+    function activeEntryCount(address consumer, address owner, address asset) external view returns (uint256) {
+        (, uint256 count, ) = _liveAt(_state[_subjectKey(consumer, owner, asset)], block.timestamp);
+        return count;
     }
 
-    /// @notice Amount already booked for one subject inside its current window.
-    /// @dev RAW STORAGE, NOT AN EFFECTIVE FIGURE: this is the stored accumulator and is
-    ///      NOT reset by the passage of time. After a window has expired this still
-    ///      reports the previous window's total until the next admitted {check}
-    ///      re-anchors. Use {remainingAllowance} for the figure that accounts for
-    ///      expiry.
-    function windowSpent(address consumer, address owner, address asset) external view returns (uint256) {
-        return _state[_subjectKey(consumer, owner, asset)].windowSpent;
+    /// @notice The oldest live ledger entry for one subject: when it was booked, and
+    ///         how much it holds.
+    /// @dev Exposed because it is the only fact an operator needs to answer "when does
+    ///      allowance next return, and how much of it" without replaying history: the
+    ///      entry frees `amount` at exactly `at + WINDOW`. Returns `(0, 0)` when the
+    ///      ledger is empty — unambiguous, since a booked entry always has a non-zero
+    ///      amount and a timestamp in the recent past.
+    /// @return at     Timestamp the entry was booked; it expires at `at + WINDOW`.
+    /// @return amount Allowance that returns at that instant.
+    function oldestActiveEntry(
+        address consumer,
+        address owner,
+        address asset
+    ) external view returns (uint256 at, uint256 amount) {
+        SpendState storage s = _state[_subjectKey(consumer, owner, asset)];
+        (uint256 head, uint256 count, ) = _liveAt(s, block.timestamp);
+        if (count == 0) return (0, 0);
+        Entry storage e = s.ring[head];
+        return (uint256(e.at), uint256(e.amount));
     }
 }
