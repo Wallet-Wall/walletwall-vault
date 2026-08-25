@@ -306,7 +306,7 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
   // PART C — SEVERAL ADMISSIONS IN ONE BLOCK
   // =====================================================================
   describe("C — same-timestamp admissions", function () {
-    it("C1: admissions sharing a block coalesce into ONE entry and total exactly", async function () {
+    it("C1: admissions sharing a block coalesce into ONE entry when representable, and total exactly", async function () {
       const Batch = await ethers.getContractFactory("DailySpendBatchAdmitterMock");
       const batch = await Batch.deploy(await policy.getAddress());
       await batch.waitForDeployment();
@@ -320,7 +320,10 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
 
       // Asked three separate times, the ledger arrives at the same total as one spend…
       expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(ethers.parseEther("0.6"));
-      // …and holds it in a SINGLE slot, because the three share an expiry instant.
+      // …and holds it in a SINGLE slot, because the three share an expiry instant and
+      // their combined amount is representable. D2d covers the case where it is not:
+      // coalescing is declined and a second entry is appended at the same instant, so
+      // the cap counts ENTRIES rather than distinct seconds.
       expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(1n);
     });
 
@@ -367,7 +370,7 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
   // PART D — LEDGER CAPACITY AND BOUNDED WORK
   // =====================================================================
   describe("D — bounded ledger capacity", function () {
-    it("D1: MAX_ACTIVE_ENTRIES distinct-second spends fit; the next NEW second is refused", async function () {
+    it("D1: MAX_ACTIVE_ENTRIES entries fit; the next spend needing a new one is refused", async function () {
       const consumer = await vault.getAddress();
       const cap = Number(await policy.MAX_ACTIVE_ENTRIES());
       const each = LIMIT / BigInt(cap * 2); // half the limit across a full ledger
@@ -379,7 +382,10 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(cap));
 
       // Allowance remains — this is a CAPACITY refusal, not a limit refusal, and the
-      // reason string has to say so or an operator cannot tell them apart.
+      // reason string has to say so or an operator cannot tell them apart. Note what
+      // this pins about the getters: remainingAllowance() reports a POSITIVE figure at
+      // the same instant check() refuses. The two are not in conflict; they answer
+      // different questions, and only activeEntryCount() answers the capacity one.
       expect(await allowance()).to.equal(LIMIT / 2n);
       await expect(withdrawAt(owner, each, cap, t0 + cap))
         .to.be.revertedWithCustomError(vault, "PolicyViolation")

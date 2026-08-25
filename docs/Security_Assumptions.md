@@ -375,21 +375,43 @@ its code).
   A zero-amount `check()` books nothing and creates no entry, so it no longer buys an
   anchor of any kind.
   LEDGER CAPACITY — A NEW DENIAL MODE: exactness with bounded storage is only possible
-  with a cap on how many distinct spend-INSTANTS a subject may hold inside the window,
-  because reproducing expiry exactly requires retaining their timing. That cap is
-  `MAX_ACTIVE_ENTRIES = 32` per `(consumer, owner, asset)`. A spend in a 33rd distinct
-  second while 32 are live is refused with reason `"daily spend ledger full"` — distinct
-  from `"daily limit exceeded"`, and observable in advance via `activeEntryCount()`.
-  The refusal is SELF-HEALING (a slot frees the instant the oldest entry expires, so a
-  full ledger is never a permanent brick) and is not attacker-reachable (only a caller
-  the subject's own owner delegated via `setAdmitter()` can append). Admissions sharing
-  a block coalesce into one entry, so a same-block burst costs one slot. The rejected
-  alternative was merging the two oldest entries at the newer timestamp: it never admits
-  above `L`, but holds old spend on the books longer than the true trailing window, which
-  would make the cap conservative rather than exact.
+  with a cap on how many spend records a subject may hold inside the window, because
+  reproducing expiry exactly requires retaining their timing. That cap is
+  `MAX_ACTIVE_ENTRIES = 32` LIVE LEDGER ENTRIES per `(consumer, owner, asset)`. A spend
+  that would need a 33rd entry is refused with reason `"daily spend ledger full"` —
+  distinct from `"daily limit exceeded"`, and observable in advance via
+  `activeEntryCount()`. The refusal is SELF-HEALING (a slot frees the instant the oldest
+  entry expires, so a full ledger is never a permanent brick) and is not
+  attacker-reachable (only a caller the subject's own owner delegated via
+  `setAdmitter()` can append).
+  THE CAP COUNTS ENTRIES, NOT DISTINCT SECONDS. Admissions sharing a timestamp coalesce
+  into one entry ONLY while their combined amount stays representable in the entry's
+  packed `uint192` (see MAX_BOOKABLE_AMOUNT below); above that the booking appends a
+  SECOND entry at the same instant. That is equally exact — entries sharing a timestamp
+  expire together — but it consumes another slot, so a same-timestamp burst usually
+  costs one slot and, at `uint192`-scale amounts no real asset reaches, may cost more.
+  Read `activeEntryCount()` rather than counting spends. Pinned by D2d in
+  `test/DailySpendRollingWindow.test.ts`.
+  The rejected alternative was merging the two oldest entries at the newer timestamp: it
+  never admits above `L`, but holds old spend on the books longer than the true trailing
+  window, which would make the cap conservative rather than exact.
   BOUNDED WORK: admission and every getter scan at most 32 entries — a constant that does
   NOT grow with lifetime withdrawal count — and each entry is dropped exactly once, so
   amortized cost per admission is O(1).
+  OBSERVABILITY IS ABOUT EXPIRY, NOT ADMISSIBILITY: `rollingSpent()` and
+  `remainingAllowance()` route through the same expiry routine the admission path uses,
+  so they cannot disagree with `check()` about WHAT HAS AGED OUT — the failure the old
+  raw `windowSpent()` invited. They do not model the capacity constraint, so a positive
+  `remainingAllowance()` can coexist with a `"daily spend ledger full"` refusal. Read
+  `remainingAllowance()` as "how much of the cap is unused", not "this much is
+  admissible right now"; pair it with `activeEntryCount()` for the latter.
+  BLOCK TIMESTAMPS: this policy's invariant is DEFINED in chain time — at most `L`
+  admitted over the chain-time interval `(T - WINDOW, T]`. Entry timestamps are not
+  caller-supplied; each was written by a previously admitted transaction from its own
+  block. Proposer latitude over timestamps therefore cannot make the contract admit more
+  than `L` within its own measured window, only shift where that window falls against
+  wall-clock time. A cap denominated in 24 hours of chain time has no other clock
+  available to it. (Slither `2-1-timestamp` on `_liveAt` is triaged on this basis.)
   SCOPE OF THE GUARANTEE: the invariant binds over intervals in which the subject has
   been CONTINUOUSLY ARMED. While `limit == 0` the subject is unrestricted and `check()`
   returns before booking, so spends made while disarmed are not recorded and are not

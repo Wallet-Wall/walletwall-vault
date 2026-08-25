@@ -37,13 +37,13 @@ import "../IPolicyEngine.sol";
 ///
 ///       To know exactly how much allowance expires at each future instant, the
 ///       contract must retain the TIMING of live spends. Bounded storage holds at most
-///       {MAX_ACTIVE_ENTRIES} distinct `(time, amount)` pairs, so more than that many
-///       distinct live spend-instants cannot be represented exactly. EXACT AND BOUNDED
-///       THEREFORE IMPLIES A CAP — the only open choice is what to do at the cap:
+///       {MAX_ACTIVE_ENTRIES} `(time, amount)` pairs, so a history needing more entries
+///       than that cannot be represented exactly. EXACT AND BOUNDED THEREFORE IMPLIES A
+///       CAP — the only open choice is what to do at the cap:
 ///
-///       - REFUSE the admission (chosen). Accounting stays exact; a subject that has
-///         already booked {MAX_ACTIVE_ENTRIES} distinct seconds inside the window is
-///         refused a spend in a NEW second, with reason "daily spend ledger full".
+///       - REFUSE the admission (chosen). Accounting stays exact; a subject already
+///         holding {MAX_ACTIVE_ENTRIES} LIVE ENTRIES is refused any spend that would
+///         need a new one, with reason "daily spend ledger full".
 ///       - MERGE the two oldest entries at the newer timestamp (rejected). Never
 ///         admits above `limit`, but holds old spend on the books LONGER than the true
 ///         trailing window, so the cap would be conservative rather than exact. This
@@ -52,10 +52,17 @@ import "../IPolicyEngine.sol";
 ///       THE REFUSAL IS SELF-HEALING AND NOT ATTACKER-REACHABLE. A slot frees the
 ///       instant the oldest entry expires, so a full ledger is never a permanent brick;
 ///       and entries can only be appended by a caller the subject's own owner delegated
-///       via {setAdmitter}, so no third party can fill it. Same-second admissions
-///       coalesce into one entry, so a burst inside a single block costs one slot.
-///       {activeEntryCount} exposes the occupancy, since a capacity refusal is
-///       otherwise indistinguishable from a limit refusal.
+///       via {setAdmitter}, so no third party can fill it.
+///
+///       THE CAP COUNTS ENTRIES, NOT DISTINCT SECONDS. Admissions sharing a timestamp
+///       coalesce into one entry ONLY while their combined amount stays representable
+///       in the entry's packed `uint192` — see {MAX_BOOKABLE_AMOUNT}. Above that the
+///       booking appends a SECOND entry at the same instant, which is equally exact
+///       (entries sharing a timestamp expire together) but consumes another slot. So a
+///       same-timestamp burst usually costs one slot and, at `uint192`-scale amounts no
+///       real asset reaches, may cost more than one. {activeEntryCount} reports the
+///       actual occupancy for exactly this reason, and a capacity refusal carries its
+///       own reason string so it is never mistaken for a limit refusal.
 ///
 ///       BOUNDED WORK. Admission and every getter scan at most {MAX_ACTIVE_ENTRIES}
 ///       entries, a CONSTANT that does not grow with lifetime withdrawal count. Each
@@ -192,9 +199,15 @@ import "../IPolicyEngine.sol";
 contract DailySpendLimitPolicy is IPolicyEngine {
     uint256 public constant WINDOW = 24 hours;
 
-    /// @notice How many distinct-second spends one subject may hold inside the trailing
+    /// @notice How many LIVE LEDGER ENTRIES one subject may hold inside the trailing
     ///         window at once.
-    /// @dev THE PRICE OF BEING BOTH EXACT AND BOUNDED — see the LEDGER CAPACITY section
+    /// @dev Entries, NOT distinct seconds: admissions sharing a timestamp normally
+    ///      coalesce into one entry, but only while their combined amount fits the
+    ///      packed `uint192` (see {MAX_BOOKABLE_AMOUNT}), so an exceptionally large
+    ///      same-timestamp total occupies more than one slot. Read {activeEntryCount}
+    ///      rather than counting spends.
+    ///
+    ///      THE PRICE OF BEING BOTH EXACT AND BOUNDED — see the LEDGER CAPACITY section
     ///      of the contract-level documentation for why some such cap is unavoidable.
     ///      A power of two so the ring index is a mask rather than a division.
     uint256 public constant MAX_ACTIVE_ENTRIES = 32;
@@ -507,8 +520,23 @@ contract DailySpendLimitPolicy is IPolicyEngine {
 
     /// @dev The trailing-window state of `s` as of `nowTs`, with expired entries
     ///      dropped. THE SINGLE DEFINITION OF "LIVE": {check} and every getter route
-    ///      through this, so observability and admission can never disagree about what
-    ///      has aged out — the failure mode the old raw `windowSpent` getter invited.
+    ///      through this, so observability and admission cannot disagree about WHAT HAS
+    ///      AGED OUT — the failure mode the old raw `windowSpent` getter invited.
+    ///
+    ///      THAT AGREEMENT IS ABOUT EXPIRY ONLY, NOT ABOUT ADMISSIBILITY. Admission has
+    ///      a second, independent constraint — ledger capacity — that this routine does
+    ///      not model, so {remainingAllowance} may report a positive figure at the same
+    ///      instant {check} refuses with "daily spend ledger full". That is deliberate,
+    ///      and it is why the two refusals carry different reason strings.
+    ///
+    ///      ON USING BLOCK TIMESTAMPS. The invariant this policy enforces is DEFINED in
+    ///      chain time: at most `limit` admitted over the chain-time interval
+    ///      `(nowTs - WINDOW, nowTs]`. Entry timestamps are not caller-supplied — each
+    ///      was written by a previously admitted transaction from its own block. So
+    ///      whatever latitude a proposer has over timestamps, it cannot make this
+    ///      contract admit more than `limit` within its own measured window; it can only
+    ///      shift where that window falls against wall-clock time. A policy capping
+    ///      spend per 24 hours of chain time has no other clock available to it.
     ///
     ///      BOUNDARY CONVENTION. An entry booked at `t` is live while `nowTs < t +
     ///      WINDOW` and expires at EXACTLY `t + WINDOW`, so the live set is the
@@ -609,10 +637,17 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         return spent;
     }
 
-    /// @notice Remaining spend allowance for one subject over the trailing {WINDOW}.
+    /// @notice Remaining SPEND-CAP allowance for one subject over the trailing {WINDOW}.
     /// @dev `limit - rollingSpent`, floored at zero so a limit lowered below the
     ///      subject's current trailing spend reports 0 rather than reverting. Agrees
-    ///      with {check} by construction — both read expiry through {_liveAt}.
+    ///      with {check} about EXPIRY by construction — both read it through {_liveAt}.
+    ///
+    ///      IT IS NOT A PROMISE THAT THIS MUCH IS ADMISSIBLE RIGHT NOW. Admission has a
+    ///      second, independent constraint: a subject holding {MAX_ACTIVE_ENTRIES} live
+    ///      entries is refused any spend needing a new one, whatever this reports. So a
+    ///      positive figure here can coexist with a "daily spend ledger full" refusal —
+    ///      pair this with {activeEntryCount} to answer "will my next spend be
+    ///      admitted", and read this alone only as "how much of the cap is unused".
     /// @return type(uint256).max when the subject has no limit set.
     function remainingAllowance(address consumer, address owner, address asset) external view returns (uint256) {
         SpendState storage s = _state[_subjectKey(consumer, owner, asset)];
