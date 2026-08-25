@@ -11,9 +11,9 @@
   "observedRuntimeBytes": 21807,
   "reportedCommitRuntimeBytes": 21807,
   "publicHeadRuntimeBytes": 22485,
-  "publicHeadCommit": "3e5324c19c7a17cf51cf95a31f29ce61410a1963",
+  "publicHeadCommit": "55386cb6a871926e32823ca726ab43872db6a50b",
   "reproducibilityStatus": "reproducible",
-  "lastChecked": "2026-08-24",
+  "lastChecked": "2026-08-25",
   "evidenceFile": "deployments/reproducibility/evidence/stablecoin-vault-simulator-sepolia.json",
   "artifactManifest": {
     "sourceTag": "v0.4.24",
