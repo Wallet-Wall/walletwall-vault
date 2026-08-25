@@ -344,8 +344,21 @@ its code).
   after key loss cannot change its own daily-limit configuration. That limitation
   predates this change (`setDailyLimit` was already `msg.sender`-keyed); admission
   delegation now inherits it.
-- `DailySpendLimitPolicy` — per-vault vault-owner-managed rolling 24-hour spend
-  cap. Each vault owner sets their own limit via `setDailyLimit()`. Spending is
+- `DailySpendLimitPolicy` — per-vault vault-owner-managed 24-hour spend cap.
+  WINDOW SEMANTICS: the intended invariant is a true ROLLING 24-hour cap, but the
+  current implementation enforces a TUMBLING/reset window. Up to 2x the limit is
+  reachable inside a single 24-hour interval (spend the limit at
+  `windowStart + WINDOW - 1`, then the limit again one second later); the bound is
+  exactly 2x, because a denied call does not persist the reset and successive
+  anchors are therefore at least WINDOW apart. SUBJECT SCOPE: accounting is keyed
+  by the `vaultOwner` argument alone and carries no consumer-contract and no asset
+  dimension, so a single instance delegated to two consumers accumulates their
+  amounts — which may be in different raw units — into one scalar. Tenant
+  isolation within one consumer is correct. Until rolling enforcement and explicit
+  subject dimensioning land, deploy ONE instance per (consumer, asset); that is an
+  operational convention, not an invariant the contract enforces. Both behaviours
+  are pinned by `test/DailySpendWindowSemantics.test.ts`.
+  Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
   Booking additionally requires ADMISSION AUTHORITY: `check()` mutates accounting
   selected by its `vaultOwner` argument, so it also demands that `msg.sender` be an

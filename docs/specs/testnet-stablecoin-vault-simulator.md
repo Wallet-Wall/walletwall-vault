@@ -268,8 +268,15 @@ docs, or app copy:
 - [`MockMLDSAVerifier`](../../contracts/MockMLDSAVerifier.sol) — local/test verifier.
 - [`IPolicyEngine`](../../contracts/IPolicyEngine.sol) and
   [`contracts/policies/`](../../contracts/policies/) — `CompositePolicyEngine`,
-  `DailySpendLimitPolicy`, `RecipientAllowlistPolicy`, `SanctionsListPolicy`. These are
-  asset-agnostic (they take amounts/addresses) and can be reused directly.
+  `DailySpendLimitPolicy`, `RecipientAllowlistPolicy`, `SanctionsListPolicy`.
+  `RecipientAllowlistPolicy` and `SanctionsListPolicy` are genuinely asset-agnostic —
+  they are address predicates that never read `amount` — and can be reused directly.
+  `DailySpendLimitPolicy` is NOT: it ACCUMULATES a quantity, and `IPolicyEngine`
+  declares `amount` polymorphic ("wei / token base units") with no normalization on
+  the path. One instance shared between this simulator and the ETH vault would sum
+  incommensurable units into a single accumulator. Deploy a SEPARATE
+  `DailySpendLimitPolicy` instance per (consumer, asset) until explicit subject
+  dimensioning lands.
 - [`pqc/ml-dsa.ts`](../../pqc/ml-dsa.ts) and [`scripts/attestor-cli.ts`](../../scripts/attestor-cli.ts)
   — off-chain ML-DSA-65 signing + attestation, unchanged.
 - Test helpers in `test/helpers/` and the ML-DSA fixtures under `test/fixtures/mldsa/`.

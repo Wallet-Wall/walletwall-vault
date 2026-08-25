@@ -4,7 +4,39 @@ pragma solidity ^0.8.20;
 import "../IPolicyEngine.sol";
 
 /// @title DailySpendLimitPolicy
-/// @notice Caps total ETH withdrawn from a vault within any rolling 24-hour window.
+/// @notice Caps total spend admitted for a vault owner per 24-hour window.
+///
+/// @dev WINDOW SEMANTICS — INTENDED vs CURRENTLY ENFORCED. The intended product
+///      invariant is a TRUE ROLLING 24-hour cap: at most `limit` inside ANY trailing
+///      24-hour interval. THIS IMPLEMENTATION DOES NOT PROVIDE THAT YET, and earlier
+///      revisions of this comment wrongly asserted it did.
+///
+///      What is enforced today is a TUMBLING / RESET window. `_windowStart` re-anchors
+///      to `block.timestamp` and `spent` is zeroed wholesale on the first ADMITTED call
+///      at or after `_windowStart + WINDOW`. A caller may therefore spend up to `limit`
+///      at `_windowStart + WINDOW - 1` and a further `limit` one second later, so up to
+///      2 * limit is reachable inside a single 24-hour interval. The bound is EXACTLY 2x
+///      and no looser: a denied call does not persist the reset, so successive window
+///      anchors are always at least WINDOW apart and no third window fits. The anchor is
+///      also chosen by the first admitted spend, not by any calendar — arming a limit
+///      starts no window.
+///
+///      Rolling enforcement is PENDING. Until it lands, treat this module as a
+///      per-window cap whose worst case is 2 * limit per 24 hours, not as a rolling cap.
+///      test/DailySpendWindowSemantics.test.ts pins the behaviour described here.
+///
+/// @dev SUBJECT SCOPE — INTENDED vs CURRENTLY ENFORCED. Accounting is keyed by the
+///      `vaultOwner` ARGUMENT alone. It carries NO consumer-contract dimension and NO
+///      asset dimension, so one instance wired into more than one consumer accumulates
+///      every consumer's amounts into a single scalar — including amounts denominated in
+///      different units, since {IPolicyEngine} declares `amount` polymorphic ("wei /
+///      token base units") and nothing on the path normalizes it. Tenant isolation
+///      WITHIN one consumer is correct; the consumer and asset dimensions are missing.
+///
+///      Explicit subject dimensioning is PENDING. Until it lands, deploy ONE instance per
+///      (consumer, asset) and do not delegate a single instance to two consumers. That is
+///      an operational convention, NOT an invariant this contract enforces.
+///
 /// @dev Each vault owner sets their own limit via setDailyLimit(). Spending is
 ///      recorded at check() time — for large-tx withdrawals this is at queue time,
 ///      not finalize time, which is intentional and conservative. If the outer
@@ -43,7 +75,8 @@ import "../IPolicyEngine.sol";
 contract DailySpendLimitPolicy is IPolicyEngine {
     uint256 public constant WINDOW = 24 hours;
 
-    /// @notice Per-vault daily spend limit in wei. 0 = unrestricted.
+    /// @notice Per-owner spend limit for one window, in the raw units the consumer
+    ///         passes to {check} (wei, or token base units). 0 = unrestricted.
     mapping(address => uint256) public dailyLimit;
 
     /// @notice admitter[vaultOwner][caller] — `caller` may book admission spend against
@@ -76,7 +109,9 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///      surfaces here — on the configuration transaction — instead of later, as an
     ///      unexplained revert on the owner's next withdrawal. Disarming (`limit == 0`)
     ///      is deliberately exempt: the documented escape hatch must never be blocked.
-    /// @param limit Max ETH (wei) withdrawable within a 24h window. 0 = unrestricted.
+    /// @param limit Max withdrawable within ONE 24h window, in the raw units the
+    ///        consumer passes to {check}. Not a rolling-24h cap — see the window
+    ///        semantics note on the contract. 0 = unrestricted.
     function setDailyLimit(uint256 limit) external {
         if (limit != 0 && admitterCount[msg.sender] == 0) revert NoAdmitterConfigured(msg.sender);
         dailyLimit[msg.sender] = limit;
@@ -183,7 +218,9 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         return (true, "");
     }
 
-    /// @notice Remaining spend allowance in the current 24h window.
+    /// @notice Remaining spend allowance in the CURRENT window (the tumbling window
+    ///         anchored at the last reset), not the amount still available under a
+    ///         rolling 24h cap. Those differ; see the window semantics note above.
     /// @return type(uint256).max when the vault has no limit set.
     function remainingAllowance(address vaultOwner) external view returns (uint256) {
         uint256 limit = dailyLimit[vaultOwner];

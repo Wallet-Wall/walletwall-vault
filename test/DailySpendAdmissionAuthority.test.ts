@@ -433,7 +433,8 @@ describe("Daily-spend admission authority (regression)", function () {
   });
 
   // =========================================================================
-  // E — ROLLING-WINDOW SEMANTICS (unchanged for the legitimate path)
+  // E — WINDOW SEMANTICS (tumbling/reset today; rolling enforcement pending)
+  //     Unchanged for the legitimate path. See test/DailySpendWindowSemantics.test.ts.
   // =========================================================================
   describe("E — window semantics for the authorized path", function () {
     beforeEach(async function () {

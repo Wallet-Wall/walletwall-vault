@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 /**
  * @title Daily-spend admission authority adversarial mocks
  * @notice TEST ONLY. These contracts exercise the admission-time authority model of
- *         {DailySpendLimitPolicy} — who may cause its rolling-window accounting to
+ *         {DailySpendLimitPolicy} — who may cause its 24-hour window accounting to
  *         mutate. None has a production purpose.
  *
  * @dev They deliberately do NOT declare `is IPolicyEngine`: the poisoner is a caller,
