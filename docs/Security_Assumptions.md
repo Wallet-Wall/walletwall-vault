@@ -323,7 +323,19 @@ its code).
   consumers registered by the owner via `setAdmissionCaller()`: because a module sees
   the COMPOSITE as `msg.sender`, a tenant who delegates to a composite has delegated
   to whoever can reach it, so admission authority must hold at that hop too. A fresh
-  composite admits nothing until its consumer vault is registered. `revalidate()` is
+  composite admits nothing until its consumer vault is registered. Registration
+  is necessary but NOT sufficient: `check()` additionally requires
+  `subject.consumer == msg.sender`, so a registered consumer cannot present a subject
+  naming a DIFFERENT consumer and book into that consumer's accounting
+  (`SubjectConsumerMismatch`). The two gates answer different questions — "may this
+  caller use this composite" and "is this caller the consumer it claims to be" — and
+  neither implies the other. A side effect: because the binding compares against
+  `msg.sender`, a composite nested inside another composite can no longer admit
+  anything, so the "do not nest composites" warning is now mechanically enforced on the
+  admission path rather than merely documented. Subject fields are relayed to every
+  module unchanged; the composite never substitutes `address(this)` for
+  `subject.consumer`, never zeroes `subject.asset`, and never rewrites
+  `subject.owner`. `revalidate()` is
   deliberately NOT gated — it is `view` and gating it would break the vaults'
   fail-closed settlement revalidation. A composite carrying ONLY stateless modules
   still requires registration: the composite cannot tell whether a module is
@@ -336,7 +348,8 @@ its code).
   emitted on proposal, so tenants can pre-delegate during the two-day
   `POLICY_ENGINE_UPDATE_DELAY` for zero downtime; a tenant who misses the window is
   restored by ONE permissionless transaction of their own
-  (`setAdmitter(newEngine, true)`, or `setDailyLimit(0)` to disarm). Withdrawals
+  (`setAdmitter(consumer, asset, newEngine, true)`, or
+  `setDailyLimit(consumer, asset, 0)` to disarm). Withdrawals
   already queued are unaffected, because settlement uses the ungated `revalidate()`.
   Corollary for socially recovered vaults: `setAdmitter` and `setDailyLimit` are both
   keyed on `msg.sender == vaultOwner`, and `executeRecovery` rotates the vault's
@@ -357,35 +370,48 @@ its code).
     directly by an authorized admitter (e.g. a self-delegated subject), which costs
     no allowance.
   The bound is exactly 2x and no looser, because a denied call does not persist the
-  reset and successive anchors are therefore at least WINDOW apart. SUBJECT SCOPE: accounting is keyed
-  by the `vaultOwner` argument alone and carries no consumer-contract and no asset
-  dimension, so a single instance delegated to two consumers accumulates their
-  amounts — which may be in different raw units — into one scalar. Tenant
-  isolation within one consumer is correct. Until rolling enforcement and explicit
-  subject propagation land, the workaround must make the POLICY PATH
-  consumer-specific, not merely the instance: a shared `CompositePolicyEngine` fans
-  every call out to EVERY registered module and every module sees the composite as
-  `msg.sender`, so two separate DailySpend instances behind one shared composite
-  would still both observe both consumers. Therefore:
-    - use a dedicated `DailySpendLimitPolicy` instance per (consumer, asset), AND
-    - either install it directly for that consumer, or place it behind a
-      CONSUMER-SPECIFIC `CompositePolicyEngine`.
-    - Do NOT place DailySpend behind a `CompositePolicyEngine` shared by multiple
-      consumers.
-  All of that is an operational convention, not an invariant the contract enforces. Both behaviours
-  are pinned by `test/DailySpendWindowSemantics.test.ts`.
-  NOTE: the contract's own NatSpec still describes this as a rolling window and is
-  therefore currently WRONG. It is corrected in the follow-up PR that introduces an
-  explicit policy subject, because editing `contracts/**` restages the reproducibility
-  evidence bundles (they bind covered `contracts/` content to HEAD) and that cost
-  belongs with a PR that changes contracts anyway. Until then, THIS document and
-  `test/DailySpendWindowSemantics.test.ts` are the authority on window semantics.
+  reset and successive anchors are therefore at least WINDOW apart. SUBJECT SCOPE: accounting is now keyed
+  by the full POLICY SUBJECT — `(consumer, owner, asset)` — hashed with
+  `keccak256(abi.encode(...))` into a single bucket identifier. The subject is minted
+  by the ORIGINATING vault from trusted state (`consumer = address(this)`, `owner` =
+  the EIP-712-authenticated request owner, `asset` = `address(0)` for native ETH or
+  the immutable token) and is relayed unchanged through `CompositePolicyEngine`, so a
+  module always sees the vault that originated the withdrawal rather than whatever
+  intermediary happened to call it. Consequently:
+    - two vault contracts serving the same tenant no longer share an accumulator or a
+      window anchor;
+    - wei and token base units can no longer sum into one scalar;
+    - a shared `CompositePolicyEngine` may serve several consumers WITHOUT merging
+      their spend state.
+  The previous release's operational workaround — a dedicated `DailySpendLimitPolicy`
+  instance per (consumer, asset), installed directly or behind a CONSUMER-SPECIFIC
+  composite, and never behind a shared one — is therefore RETIRED. It was a convention;
+  the separation is now an invariant the contract enforces.
+  AGGREGATE EXPOSURE CHANGED WITH IT: buckets are independent, so a tenant who arms
+  `limit` for N subjects may spend up to `N * limit` per window in total, where the
+  old owner-keyed model capped them at ONE `limit` across everything. That aggregate
+  cap was inseparable from the interference defect — the only reason one vault could
+  constrain another's total was that they shared the bucket — and no cross-subject cap
+  is provided in its place. Arm only the subjects you intend, and size each limit
+  knowing the others exist. Tenant isolation within one consumer is unchanged and
+  remains correct. Both the time and scope behaviours are pinned by
+  `test/DailySpendWindowSemantics.test.ts`, and subject propagation across the whole
+  boundary by `test/PolicySubjectPropagation.test.ts`.
+  The contract's own NatSpec previously described this as a rolling window and was
+  therefore WRONG; it is corrected as part of the same change that introduced the
+  explicit subject, and now states the tumbling semantics, the `2L` bound, and the
+  pending status of rolling enforcement directly. THIS document and
+  `test/DailySpendWindowSemantics.test.ts` remain the authority on window semantics.
   Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
   Booking additionally requires ADMISSION AUTHORITY: `check()` mutates accounting
-  selected by its `vaultOwner` argument, so it also demands that `msg.sender` be an
-  admitter the subject itself delegated to via `setAdmitter()` — the same
-  `msg.sender`-keyed authority root as `setDailyLimit()`. Arming a non-zero limit
+  selected by its `PolicySubject` argument, so it also demands that `msg.sender` be an
+  admitter delegated FOR THAT EXACT SUBJECT via `setAdmitter()` — the same
+  `msg.sender`-keyed authority root as `setDailyLimit()`, since both setters force
+  `msg.sender` into the subject's `owner` slot and so can only ever configure a bucket
+  the caller owns. Authority granted for one `(consumer, owner, asset)` confers nothing
+  for any other, so an admitter trusted for vault X cannot present a subject naming
+  vault Y and book there. Arming a non-zero limit
   therefore requires delegating first (`NoAdmitterConfigured` otherwise), and the
   last admitter cannot be revoked while a limit is armed (`LastAdmitterWhileArmed`);
   disarming to 0 is always permitted so the escape hatch is never blocked. Owners
@@ -399,9 +425,17 @@ its code).
   tenant's admission accounting under the composite owner's instant control. That
   is denial-class only (spend never decreases, no allowance is manufactured, queued
   withdrawals still settle), it is bounded by the tenant's unilateral
-  `setDailyLimit(0)` escape, and it is dominated by the same owner's existing
+  `setDailyLimit(consumer, asset, 0)` escape, and it is dominated by the same owner's
+  existing
   ability to add an always-denying module. Delegate to a composite only where its
   owner is already trusted for the liveness of that composition.
+  NARROWED BY SUBJECT PROPAGATION: the composite owner can still register arbitrary
+  relays, but a relay must name ITSELF as `subject.consumer` to get past the
+  composite's binding, so it can only ever reach a bucket keyed to the relay — one no
+  tenant arms. A tenant's real bucket, keyed to their vault, is now reachable only by
+  that vault. The residual composite-owner power is DENIAL (adding a denying module),
+  not consumption of the tenant's allowance. Pinned as C7/C7b in
+  `test/DailySpendAdmissionAuthority.test.ts`.
   For a successfully queued large withdrawal, later cancellation or recovery refunds
   the vault reservation but does not restore policy allowance; the amount remains
   counted until the policy window resets. A limit of 0 means unrestricted.

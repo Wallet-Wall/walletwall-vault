@@ -148,19 +148,23 @@ describe("Simulator policy finalization authority (parity regression)", function
     // One-hour large-tx delay so the policy's 24h window does not roll before finalize.
     const SHORT_DELAY = 3600;
     const LIMIT = MUSDC(400);
-    await dailyPolicy.connect(owner).setAdmitter(await sim.getAddress(), true);
-    await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+    const simAddress = await sim.getAddress();
+    const tokenAddress = await token.getAddress();
+    await dailyPolicy.connect(owner).setAdmitter(simAddress, tokenAddress, simAddress, true);
+    await dailyPolicy.connect(owner).setDailyLimit(simAddress, tokenAddress, LIMIT);
     await setPolicyEngine(await dailyPolicy.getAddress());
     await enableLargeTx(SHORT_DELAY);
 
-    expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+    const allowance = () => dailyPolicy.remainingAllowance(simAddress, owner.address, tokenAddress);
+
+    expect(await allowance()).to.equal(LIMIT);
     const { operationId } = await queueLarge(MUSDC(300));
-    expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - MUSDC(300));
+    expect(await allowance()).to.equal(LIMIT - MUSDC(300));
 
     await networkHelpers.time.increase(SHORT_DELAY);
     await expect(sim.connect(owner).finalizeWithdrawal(owner.address, operationId)).to.emit(sim, "WithdrawalFinalized");
     // Settlement did not re-book (no double-count).
-    expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - MUSDC(300));
+    expect(await allowance()).to.equal(LIMIT - MUSDC(300));
   });
 
   it("revalidate receives the pre-deduction balance and true amount (parity with the ETH vault)", async function () {

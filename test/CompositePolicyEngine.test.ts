@@ -11,6 +11,7 @@ import {
   SanctionsListPolicy,
 } from "../typechain-types";
 import { makeBuildRequest, makeSignWithdrawal } from "./helpers/vaultHelpers";
+import { ethSubject, NATIVE_ASSET } from "./helpers/policySubject";
 
 describe("CompositePolicyEngine", function () {
   let vault: WalletWallVault;
@@ -294,14 +295,15 @@ describe("CompositePolicyEngine", function () {
         await composite.proposeRemoveModule(await sanctionsPolicy.getAddress());
 
         // Right up until (but not including) the apply, the module still enforces.
+        const subject = await ethSubject(vault, owner.address);
         await networkHelpers.time.increase(GOVERNANCE_DELAY - 10);
-        let [ok, reason] = await composite.revalidate(owner.address, sanctioned.address, 1n, 1n);
+        let [ok, reason] = await composite.revalidate(subject, sanctioned.address, 1n, 1n);
         expect(ok).to.equal(false);
         expect(reason).to.equal("recipient is sanctioned");
 
         await networkHelpers.time.increase(20);
         await composite.applyRemoveModule(await sanctionsPolicy.getAddress());
-        [ok, reason] = await composite.revalidate(owner.address, sanctioned.address, 1n, 1n);
+        [ok, reason] = await composite.revalidate(subject, sanctioned.address, 1n, 1n);
         expect(ok).to.equal(true);
       });
     });
@@ -344,9 +346,13 @@ describe("CompositePolicyEngine", function () {
       // delegates admission authority to the COMPOSITE (that is the msg.sender the
       // stateful module observes), and the composite's admin registers the vault as the
       // consumer permitted to invoke it. Authority holds at both hops.
-      await dailyPolicy.connect(owner).setAdmitter(await composite.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(DAILY_LIMIT);
-      await composite.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
+      // The delegation is scoped to the SUBJECT the vault will mint — (this vault,
+      // owner, native ETH) — not to the owner globally, so it confers nothing for any
+      // other consumer or asset.
+      const vaultAddress = await vault.getAddress();
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await composite.getAddress(), true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, DAILY_LIMIT);
+      await composite.connect(admin).setAdmissionCaller(vaultAddress, true);
       await allowlistPolicy.connect(owner).addRecipient(recipient.address);
       // No sanctioned addresses by default
 

@@ -677,7 +677,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         address engineAtQueue = address(policyEngine);
         if (engineAtQueue != address(0)) {
             (bool ok, string memory why) = IPolicyEngine(engineAtQueue).check(
-                request.vaultOwner,
+                _policySubject(request.vaultOwner),
                 request.recipient,
                 request.amount,
                 vault.balance
@@ -744,19 +744,18 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
             uint256 balanceBeforeThisWithdrawal = vaults[vaultOwner].balance + pending.amount;
             address queueEngine = pending.policyEngineAtQueue;
             address currentEngine = address(policyEngine);
+            // Rebuilt from the SAME trusted sources as at admission — address(this), the
+            // pending withdrawal's recorded owner, and this simulator's immutable token —
+            // so a queued withdrawal can never settle under a different subject identity
+            // than the one it was admitted under. Built once, shared by both revalidations.
+            PolicySubject memory subject = _policySubject(vaultOwner);
             if (queueEngine != address(0)) {
-                _revalidatePolicy(
-                    queueEngine,
-                    vaultOwner,
-                    pending.recipient,
-                    pending.amount,
-                    balanceBeforeThisWithdrawal
-                );
+                _revalidatePolicy(queueEngine, subject, pending.recipient, pending.amount, balanceBeforeThisWithdrawal);
             }
             if (currentEngine != address(0) && currentEngine != queueEngine) {
                 _revalidatePolicy(
                     currentEngine,
-                    vaultOwner,
+                    subject,
                     pending.recipient,
                     pending.amount,
                     balanceBeforeThisWithdrawal
@@ -785,13 +784,13 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
      */
     function _revalidatePolicy(
         address engine,
-        address vaultOwner,
+        PolicySubject memory subject,
         address recipient,
         uint256 amount,
         uint256 vaultBalance
     ) internal view {
         if (engine.code.length == 0) revert PolicyEngineUnavailable(engine);
-        try IPolicyEngine(engine).revalidate(vaultOwner, recipient, amount, vaultBalance) returns (
+        try IPolicyEngine(engine).revalidate(subject, recipient, amount, vaultBalance) returns (
             bool ok,
             string memory why
         ) {
@@ -799,6 +798,28 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         } catch {
             revert PolicyEngineUnavailable(engine);
         }
+    }
+
+    /**
+     * @dev Mints the canonical {PolicySubject} for a withdrawal evaluated by THIS
+     *      simulator. Mirrors WalletWallVault._policySubject exactly except for the
+     *      asset dimension. Every field comes from trusted execution context, never
+     *      from the request body or from `msg.sender`:
+     *
+     *      - `consumer` is `address(this)`, so modules behind a shared
+     *        {CompositePolicyEngine} see THIS simulator rather than the composite.
+     *      - `owner` is the request's `vaultOwner`, reached only AFTER the EIP-712
+     *        signature over the request has been verified against
+     *        `vault.ecdsaSigner` / `vault.pqPublicKey`. Relay is permissionless, so
+     *        `msg.sender` is deliberately unused.
+     *      - `asset` is `address(token)` — the single ERC-20 fixed at construction and
+     *        `immutable` thereafter, so `amount` is always that token's base units
+     *        (6 decimals for mUSDC). It can never be address(0): the constructor
+     *        rejects a zero token, so this simulator's subjects are structurally
+     *        incapable of colliding with a native-ETH subject.
+     */
+    function _policySubject(address vaultOwner) internal view returns (PolicySubject memory) {
+        return PolicySubject({consumer: address(this), owner: vaultOwner, asset: address(token)});
     }
 
     /**
@@ -861,7 +882,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
 
         if (address(policyEngine) != address(0)) {
             (bool ok, string memory why) = policyEngine.check(
-                request.vaultOwner,
+                _policySubject(request.vaultOwner),
                 request.recipient,
                 request.amount,
                 vault.balance

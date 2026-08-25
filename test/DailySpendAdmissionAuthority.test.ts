@@ -17,6 +17,7 @@ import {
   makeBuildRequest as makeSimBuildRequest,
   makeSignWithdrawal as makeSimSignWithdrawal,
 } from "./helpers/simulatorHelpers";
+import { NATIVE_ASSET } from "./helpers/policySubject";
 
 /**
  * Regression suite for the DailySpendLimitPolicy ADMISSION AUTHORITY model.
@@ -34,12 +35,26 @@ import {
  * CompositePolicyEngine — moving no funds, owning no vault, for well under 80k gas, and
  * renewably once per window. They now pin the FIXED model:
  *
- *   - booking requires `admitter[vaultOwner][msg.sender]`, a delegation only the
- *     SUBJECT can write (msg.sender-keyed, same authority root as setDailyLimit);
- *   - the `vaultOwner` argument only selects which delegation list is consulted;
+ *   - booking requires `_admitter[subjectKey][msg.sender]`, a delegation only the
+ *     subject's OWNER can write (both setters force msg.sender into the subject's
+ *     owner slot, the same authority root as setDailyLimit);
+ *   - the PolicySubject argument only selects which delegation list is consulted, and
+ *     authority granted for one (consumer, owner, asset) confers nothing for another;
  *   - the gate holds at EVERY hop: CompositePolicyEngine carries the matching
- *     `admissionCaller` gate, without which it relays the same attack to the module;
+ *     `admissionCaller` gate, without which it relays the same attack to the module,
+ *     PLUS a `subject.consumer == msg.sender` binding so a registered consumer cannot
+ *     impersonate a different one;
  *   - `revalidate` stays ungated, `pure`, and non-booking — PR #152's split is intact.
+ *
+ * UPDATED BY POLICY-SUBJECT PROPAGATION. Three cases changed meaning rather than
+ * merely changing shape, and each says so at its own site:
+ *   - A8 now splits into "honest subject reaches only its own bucket" and "spoofed
+ *     consumer is refused";
+ *   - C3 dies one hop earlier, at the composite's consumer binding;
+ *   - C7 previously pinned an ACCEPTED weakness (a composite owner could burn a
+ *     delegating tenant's allowance). That is now structurally impossible, so C7
+ *     asserts its absence and C7b states the residual composite-owner power exactly,
+ *     so the improvement is not over-read.
  *
  * Base: origin/main 5792975d4db331156845de72addbae95d079c0f8 (includes merged PR #152).
  */
@@ -71,6 +86,16 @@ describe("Daily-spend admission authority (regression)", function () {
   let buildRequest: ReturnType<typeof makeBuildRequest>;
   let signWithdrawal: ReturnType<typeof makeSignWithdrawal>;
 
+  /// The ETH vault's address, cached in beforeEach. This suite's default consumer.
+  let vaultAddress: string;
+
+  /** The subject the ETH vault mints for `o`: (vault, o, native ETH). */
+  const subj = (o: string) => ({ consumer: vaultAddress, owner: o, asset: NATIVE_ASSET });
+  /** Remaining allowance for `o` under the ETH vault's native subject. */
+  const allowanceOf = (o: string) => dailyPolicy.remainingAllowance(vaultAddress, o, NATIVE_ASSET);
+  /** Whether `caller` is delegated for `o`'s ETH-vault subject. */
+  const admitterOf = (o: string, caller: string) => dailyPolicy.admitter(vaultAddress, o, NATIVE_ASSET, caller);
+
   async function setPolicyEngine(engine: string) {
     await vault.connect(admin).proposePolicyEngine(engine);
     await networkHelpers.time.increase(GOVERNANCE_DELAY);
@@ -85,8 +110,8 @@ describe("Daily-spend admission authority (regression)", function () {
 
   /** The canonical direct wiring: owner delegates to the vault, then arms the limit. */
   async function armViaVault(limit = LIMIT) {
-    await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
-    await dailyPolicy.connect(owner).setDailyLimit(limit);
+    await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+    await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, limit);
     await setPolicyEngine(await dailyPolicy.getAddress());
   }
 
@@ -109,6 +134,7 @@ describe("Daily-spend admission authority (regression)", function () {
 
     verifier = await (await ethers.getContractFactory("MockMLDSAVerifier", admin)).deploy();
     vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await verifier.getAddress());
+    vaultAddress = await vault.getAddress();
     composite = await (await ethers.getContractFactory("CompositePolicyEngine", admin)).deploy();
     dailyPolicy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
     poisoner = await (await ethers.getContractFactory("DailySpendPoisonerMock", attacker)).deploy();
@@ -135,36 +161,42 @@ describe("Daily-spend admission authority (regression)", function () {
       await expect(vault.connect(attacker).proposePolicyEngine(ethers.ZeroAddress))
         .to.be.revertedWithCustomError(vault, "OwnableUnauthorizedAccount")
         .withArgs(attacker.address);
-      expect(await dailyPolicy.admitter(owner.address, attacker.address)).to.equal(false);
+      expect(await admitterOf(owner.address, attacker.address)).to.equal(false);
     });
 
     it("A2: an arbitrary EOA calling check() is REFUSED and consumes nothing", async function () {
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
 
-      await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, ethers.parseEther("3"), 0n))
+      await expect(
+        dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, ethers.parseEther("3"), 0n),
+      )
         .to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter")
-        .withArgs(attacker.address, owner.address);
+        .withArgs(attacker.address, vaultAddress, owner.address, NATIVE_ASSET);
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("A3: the refusal is a REVERT, not a silent denial — even for a static probe", async function () {
       // An authority failure must stay distinguishable from a policy decision. A denial
       // would return (false, "daily limit exceeded"); a misconfiguration reverts.
       await expect(
-        dailyPolicy.connect(attacker).check.staticCall(owner.address, attacker.address, LIMIT, 0n),
+        dailyPolicy.connect(attacker).check.staticCall(subj(owner.address), attacker.address, LIMIT, 0n),
       ).to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter");
     });
 
     it("A4: the victim's subsequent withdrawal still succeeds (no residual damage)", async function () {
-      await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
+      await expect(dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n)).to.revert(
+        ethers,
+      );
       await expect(withdrawSmall(ethers.parseEther("0.5"))).to.not.revert(ethers);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
     });
 
     it("A5: the QUEUED (large-tx) admission path is likewise unaffected", async function () {
       await enableLargeTx();
-      await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
+      await expect(dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n)).to.revert(
+        ethers,
+      );
 
       const req = await buildRequest({ recipient: recipient.address, amount: LARGE_AMOUNT });
       const { ecdsaSig, pqSig } = await signWithdrawal(req);
@@ -173,31 +205,62 @@ describe("Daily-spend admission authority (regression)", function () {
 
     it("A7: an arbitrary CONTRACT caller is refused exactly as an EOA is", async function () {
       await expect(
-        poisoner.connect(attacker).poison(await dailyPolicy.getAddress(), owner.address, attacker.address, LIMIT, 0n),
+        poisoner
+          .connect(attacker)
+          .poison(
+            await dailyPolicy.getAddress(),
+            vaultAddress,
+            owner.address,
+            NATIVE_ASSET,
+            attacker.address,
+            LIMIT,
+            0n,
+          ),
       ).to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter");
 
       expect(await poisoner.callCount()).to.equal(0n);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
-    it("A8: a contract that merely CLAIMS to be a vault is refused", async function () {
+    it("A8: a contract that merely CLAIMS to be a vault reaches only its OWN subject", async function () {
       // Authority is an explicit registration, never a property inferred from the caller's
       // own claims — a caller that answers `policyEngine()`/`owner()` proves nothing.
+      //
+      // Under subject propagation this splits into two distinct refusals, and BOTH
+      // matter. Asserting only one would leave the other silently untested.
       const fake: FakeVaultMock = await (
         await ethers.getContractFactory("FakeVaultMock", attacker)
       ).deploy(await dailyPolicy.getAddress());
+      const fakeAddress = await fake.getAddress();
 
+      // (i) Minting an HONEST subject (consumer = itself, as a real vault does) lands on
+      // a bucket keyed to the fake, which nobody armed. It is therefore an inert no-op:
+      // it does not revert, and — the part that matters — it consumes nothing of the
+      // victim's allowance, because it never addressed the victim's bucket at all.
       await expect(
-        fake.connect(attacker).admit(owner.address, attacker.address, LIMIT, 0n),
-      ).to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+        fake.connect(attacker).admit(owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n),
+      ).to.not.revert(ethers);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
+      expect(await dailyPolicy.remainingAllowance(fakeAddress, owner.address, NATIVE_ASSET)).to.equal(
+        ethers.MaxUint256,
+      );
+
+      // (ii) SPOOFING the real vault as `consumer` does address the victim's bucket — and
+      // is refused, because the delegation for that subject names the vault, not this
+      // contract. Naming a consumer never confers that consumer's authority.
+      await expect(
+        fake.connect(attacker).admitAs(vaultAddress, owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n),
+      )
+        .to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter")
+        .withArgs(fakeAddress, vaultAddress, owner.address, NATIVE_ASSET);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("A9: supplying the REAL vault address as an argument does not confer its authority", async function () {
       // The vault address appears only as calldata here; authority is msg.sender.
-      await expect(dailyPolicy.connect(attacker).check(owner.address, await vault.getAddress(), LIMIT, DEPOSIT))
+      await expect(dailyPolicy.connect(attacker).check(subj(owner.address), await vault.getAddress(), LIMIT, DEPOSIT))
         .to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter")
-        .withArgs(attacker.address, owner.address);
+        .withArgs(attacker.address, vaultAddress, owner.address, NATIVE_ASSET);
     });
 
     it("A9b: supplying ANOTHER vault's address as an argument is equally powerless", async function () {
@@ -206,19 +269,19 @@ describe("Daily-spend admission authority (regression)", function () {
       ).deploy(await verifier.getAddress());
 
       await expect(
-        dailyPolicy.connect(attacker).check(owner.address, await otherVault.getAddress(), LIMIT, 0n),
+        dailyPolicy.connect(attacker).check(subj(owner.address), await otherVault.getAddress(), LIMIT, 0n),
       ).to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("A10: an owner with NO limit set needs no delegation and is never locked out", async function () {
       // The gate sits after the `limit == 0` short-circuit, so the unarmed majority
       // require no configuration — and have nothing to poison in the first place.
-      expect(await dailyPolicy.remainingAllowance(victim2.address)).to.equal(ethers.MaxUint256);
-      await expect(dailyPolicy.connect(attacker).check(victim2.address, attacker.address, LIMIT, 0n)).to.not.revert(
-        ethers,
-      );
-      expect(await dailyPolicy.remainingAllowance(victim2.address)).to.equal(ethers.MaxUint256);
+      expect(await allowanceOf(victim2.address)).to.equal(ethers.MaxUint256);
+      await expect(
+        dailyPolicy.connect(attacker).check(subj(victim2.address), attacker.address, LIMIT, 0n),
+      ).to.not.revert(ethers);
+      expect(await allowanceOf(victim2.address)).to.equal(ethers.MaxUint256);
     });
   });
 
@@ -233,19 +296,25 @@ describe("Daily-spend admission authority (regression)", function () {
     it("B1: five repeated attack attempts leave the allowance exactly untouched", async function () {
       const step = ethers.parseEther("1");
       for (let i = 0; i < 5; i++) {
-        await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, step, 0n)).to.revert(ethers);
+        await expect(dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, step, 0n)).to.revert(
+          ethers,
+        );
       }
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("B4: distinct armed victims are each protected independently", async function () {
-      await dailyPolicy.connect(victim2).setAdmitter(await vault.getAddress(), true);
-      await dailyPolicy.connect(victim2).setDailyLimit(LIMIT);
+      await dailyPolicy.connect(victim2).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+      await dailyPolicy.connect(victim2).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
 
-      await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
-      await expect(dailyPolicy.connect(attacker).check(victim2.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
-      expect(await dailyPolicy.remainingAllowance(victim2.address)).to.equal(LIMIT);
+      await expect(dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n)).to.revert(
+        ethers,
+      );
+      await expect(dailyPolicy.connect(attacker).check(subj(victim2.address), attacker.address, LIMIT, 0n)).to.revert(
+        ethers,
+      );
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(victim2.address)).to.equal(LIMIT);
     });
 
     it("B5: the near-max-limit PANIC escalation is foreclosed", async function () {
@@ -254,14 +323,14 @@ describe("Daily-spend admission authority (regression)", function () {
       // commit an attacker could book _windowSpent to the ceiling and make every later
       // admission revert on the CHECKED ADD — Panic(0x11), not a policy denial. The gate
       // sits before the first storage read, so no such value can be planted.
-      await dailyPolicy.connect(victim2).setAdmitter(await vault.getAddress(), true);
-      await dailyPolicy.connect(victim2).setDailyLimit(ethers.MaxUint256);
+      await dailyPolicy.connect(victim2).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+      await dailyPolicy.connect(victim2).setDailyLimit(vaultAddress, NATIVE_ASSET, ethers.MaxUint256);
 
       await expect(
-        dailyPolicy.connect(attacker).check(victim2.address, attacker.address, ethers.MaxUint256, 0n),
+        dailyPolicy.connect(attacker).check(subj(victim2.address), attacker.address, ethers.MaxUint256, 0n),
       ).to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter");
 
-      expect(await dailyPolicy.remainingAllowance(victim2.address)).to.equal(ethers.MaxUint256);
+      expect(await allowanceOf(victim2.address)).to.equal(ethers.MaxUint256);
     });
   });
 
@@ -273,79 +342,137 @@ describe("Daily-spend admission authority (regression)", function () {
       await composite.connect(admin).addModule(await dailyPolicy.getAddress());
       // Under composition the module observes the COMPOSITE as msg.sender, so that is
       // what the owner delegates to; the composite's admin registers the vault in turn.
-      await dailyPolicy.connect(owner).setAdmitter(await composite.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await composite.getAddress(), true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
       await composite.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
       await setPolicyEngine(await composite.getAddress());
     });
 
     it("C1: CompositePolicyEngine.check() refuses an unregistered caller", async function () {
       await expect(
-        dailyPolicy.connect(attacker).check.staticCall(owner.address, attacker.address, LIMIT, 0n),
+        dailyPolicy.connect(attacker).check.staticCall(subj(owner.address), attacker.address, LIMIT, 0n),
       ).to.revert(ethers);
-      await expect(composite.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n))
+      await expect(composite.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n))
         .to.be.revertedWithCustomError(composite, "UnauthorizedAdmissionCaller")
         .withArgs(attacker.address);
     });
 
     it("C2: the composite can no longer be used to launder the attack into the module", async function () {
-      await expect(composite.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      await expect(composite.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n)).to.revert(
+        ethers,
+      );
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
       await expect(withdrawSmall(ethers.parseEther("0.5"))).to.not.revert(ethers);
     });
 
     it("C3: an attacker's OWN composite cannot borrow the victim's delegation", async function () {
       // The attacker fully controls a second composite — they can register themselves on
-      // it and install the real module. The module's subject-bound gate still refuses,
-      // because the victim delegated to the LEGITIMATE composite, not this one.
+      // it and install the real module. Two routes exist and both are closed.
       const evil = await (await ethers.getContractFactory("CompositePolicyEngine", attacker)).deploy();
+      const evilAddress = await evil.getAddress();
+      const poisonerAddress = await poisoner.getAddress();
       await evil.connect(attacker).addModule(await dailyPolicy.getAddress());
-      await evil.connect(attacker).setAdmissionCaller(await poisoner.getAddress(), true);
+      await evil.connect(attacker).setAdmissionCaller(poisonerAddress, true);
 
+      // (i) Naming the VICTIM'S vault as consumer is rejected by the evil composite's own
+      // consumer binding — a composite relays only for the caller that IS the consumer,
+      // and the poisoner is not the vault. The attack dies one hop earlier than before.
       await expect(
-        poisoner.connect(attacker).poison(await evil.getAddress(), owner.address, attacker.address, LIMIT, 0n),
+        poisoner
+          .connect(attacker)
+          .poison(evilAddress, vaultAddress, owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n),
       )
-        .to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter")
-        .withArgs(await evil.getAddress(), owner.address);
+        .to.be.revertedWithCustomError(evil, "SubjectConsumerMismatch")
+        .withArgs(vaultAddress, poisonerAddress);
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      // (ii) Being HONEST about the consumer gets through the composite but lands on the
+      // poisoner's own unarmed bucket — never the victim's.
+      await expect(
+        poisoner
+          .connect(attacker)
+          .poison(evilAddress, poisonerAddress, owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n),
+      ).to.not.revert(ethers);
+
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("C4: the module registered in the composite is still refused on a DIRECT call", async function () {
-      await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      await expect(dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n)).to.revert(
+        ethers,
+      );
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("C5: the LEGITIMATE vault -> composite -> module path books exactly once", async function () {
       const amount = ethers.parseEther("0.5");
       await expect(withdrawSmall(amount)).to.emit(vault, "Withdrawn");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - amount);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - amount);
     });
 
-    it("C7: ACCEPTED TRADE-OFF — the composite owner may point a non-vault relay at the module", async function () {
-      // Delegation is transitive, so delegating to a composite inherits THAT composite's
-      // access-control policy. Its owner can register an arbitrary code-bearing consumer,
-      // which then books against the delegating tenant. Pinned deliberately rather than
-      // left implicit: it is denial-class only (spend never decreases), the tenant escapes
-      // instantly with setDailyLimit(0), and the same owner already holds a strictly
-      // stronger, unescapable denial via addModule(alwaysDeny).
-      await composite.connect(admin).setAdmissionCaller(await poisoner.getAddress(), true);
+    it("C7: TRADE-OFF RETIRED — a registered relay can no longer burn the tenant's vault allowance", async function () {
+      // PREVIOUSLY AN ACCEPTED WEAKNESS, NOW STRUCTURALLY CLOSED.
+      //
+      // Before subject propagation this test asserted the attack SUCCEEDED: delegation is
+      // transitive, so a tenant delegating to a composite inherited that composite's
+      // access control, and its owner could register an arbitrary code-bearing relay
+      // which then burned the tenant's whole allowance. It was documented as an accepted
+      // denial-class trade-off.
+      //
+      // The consumer binding removes it. A relay reaching the composite must name ITSELF
+      // as `subject.consumer`, so it can only ever address a bucket keyed to the relay —
+      // and no tenant arms such a bucket. The tenant's real bucket, (vault, owner, ETH),
+      // is now reachable only by the vault itself.
+      const poisonerAddress = await poisoner.getAddress();
+      const compositeAddress = await composite.getAddress();
+      await composite.connect(admin).setAdmissionCaller(poisonerAddress, true);
 
-      await poisoner.connect(attacker).poison(await composite.getAddress(), owner.address, attacker.address, LIMIT, 0n);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n);
+      // Route 1: claim the tenant's vault as consumer — refused by the binding.
+      await expect(
+        poisoner
+          .connect(attacker)
+          .poison(compositeAddress, vaultAddress, owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n),
+      )
+        .to.be.revertedWithCustomError(composite, "SubjectConsumerMismatch")
+        .withArgs(vaultAddress, poisonerAddress);
 
-      // The tenant's escape hatch is unilateral and immediate.
-      await dailyPolicy.connect(owner).setDailyLimit(0);
+      // Route 2: be honest — reaches the module, but against the relay's own bucket.
+      await poisoner
+        .connect(attacker)
+        .poison(compositeAddress, poisonerAddress, owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n);
+
+      // The tenant's allowance is intact under BOTH routes, and their withdrawals work.
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
       await expect(withdrawSmall(ethers.parseEther("0.5"))).to.not.revert(ethers);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
+    });
+
+    it("C7b: the composite owner RETAINS its unescapable denial powers (scope of C7 stated exactly)", async function () {
+      // C7 must not be read as "the composite owner is now harmless". Adding a denying
+      // module is still instant, still unilateral, and still blocks the tenant — that
+      // authority was never the thing subject propagation removed. What changed is only
+      // that the owner can no longer reach the tenant's ACCOUNTING. Stating the residual
+      // power explicitly keeps C7 an honest claim rather than an over-read one.
+      const denier = await (await ethers.getContractFactory("SanctionsListPolicy", admin)).deploy();
+      await denier.connect(admin).addToSanctionsList(recipient.address);
+      await composite.connect(admin).addModule(await denier.getAddress());
+
+      await expect(withdrawSmall(ethers.parseEther("0.5")))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("recipient is sanctioned");
+
+      // Denial only — the tenant's allowance was never touched.
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("C8: an UNREGISTERED relay gets nowhere, even pointed at the legitimate composite", async function () {
       // The control for C7: without the composite owner's registration the same relay is
       // refused at the composite hop, so C7 is about that registration, not about the relay.
       await expect(
-        poisoner.connect(attacker).poison(await composite.getAddress(), owner.address, attacker.address, LIMIT, 0n),
+        poisoner
+          .connect(attacker)
+          .poison(await composite.getAddress(), vaultAddress, owner.address, NATIVE_ASSET, attacker.address, LIMIT, 0n),
       ).to.be.revertedWithCustomError(composite, "UnauthorizedAdmissionCaller");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
     });
 
     it("C6: composite revalidate() stays UNGATED so settlement never fails on authority", async function () {
@@ -353,7 +480,7 @@ describe("Daily-spend admission authority (regression)", function () {
       // fail-closed settlement revalidation for every caller.
       const [ok, reason] = await composite
         .connect(attacker)
-        .revalidate(owner.address, recipient.address, LIMIT * 100n, 0n);
+        .revalidate(subj(owner.address), recipient.address, LIMIT * 100n, 0n);
       expect(ok).to.equal(true);
       expect(reason).to.equal("");
     });
@@ -380,49 +507,80 @@ describe("Daily-spend admission authority (regression)", function () {
     });
 
     it("D1: delegation is per (subject, caller) — one vault's grant does not cover another", async function () {
-      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
 
-      expect(await dailyPolicy.admitter(owner.address, await vault.getAddress())).to.equal(true);
-      expect(await dailyPolicy.admitter(owner.address, await sim.getAddress())).to.equal(false);
+      expect(await admitterOf(owner.address, await vault.getAddress())).to.equal(true);
+      expect(await admitterOf(owner.address, await sim.getAddress())).to.equal(false);
       // A different subject's grant is likewise irrelevant to this subject.
-      expect(await dailyPolicy.admitter(victim2.address, await vault.getAddress())).to.equal(false);
+      expect(await admitterOf(victim2.address, await vault.getAddress())).to.equal(false);
     });
 
-    it("D2: two DELEGATED vaults still share one spend window (pre-existing, unchanged)", async function () {
-      // ADJACENT FINDING, deliberately NOT changed here: accounting is keyed on the
-      // vaultOwner alone and carries no vault identity, so one policy instance wired into
-      // both vaults shares a single window across incommensurable units (wei vs 6-decimal
-      // token base units). The authority fix does not alter this; it is recorded as a
-      // separate follow-up rather than silently folded into a security fix.
-      const sharedLimit = MUSDC(400);
-      await dailyPolicy.connect(owner).setAdmitter(await sim.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(sharedLimit);
+    it("D2: two DELEGATED vaults now hold INDEPENDENT spend windows (previously shared)", async function () {
+      // INVERTED BY THIS PR. Before subject propagation, accounting was keyed on the
+      // vaultOwner alone and carried no consumer or asset dimension, so ONE policy
+      // instance wired into both vaults shared a single accumulator across
+      // incommensurable units (wei vs 6-decimal token base units). This test asserted
+      // exactly that collapse. It now asserts its absence.
+      const simAddress = await sim.getAddress();
+      const tokenAddress = await token.getAddress();
+      const simLimit = MUSDC(400);
+
+      // Arm BOTH subjects for the same owner: the ETH vault and the token simulator.
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
+      await dailyPolicy.connect(owner).setAdmitter(simAddress, tokenAddress, simAddress, true);
+      await dailyPolicy.connect(owner).setDailyLimit(simAddress, tokenAddress, simLimit);
 
       await sim.connect(admin).proposePolicyEngine(await dailyPolicy.getAddress());
       await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await sim.connect(admin).applyPolicyEngine();
+      await setPolicyEngine(await dailyPolicy.getAddress());
 
+      const simAllowance = () => dailyPolicy.remainingAllowance(simAddress, owner.address, tokenAddress);
+
+      // Spend token units through the simulator.
       const simBuild = makeSimBuildRequest(owner, { recipient: recipient.address, amount: MUSDC(100) });
       const simSign = makeSimSignWithdrawal(sim, owner);
       const req = await simBuild({ recipient: recipient.address, amount: MUSDC(100) });
       const { ecdsaSig, pqSig } = await simSign(req);
       await sim.connect(other).withdraw(req, ecdsaSig, pqSig);
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(sharedLimit - MUSDC(100));
+      // Only the token subject moved. The ETH subject is untouched — no shared scalar.
+      expect(await simAllowance()).to.equal(simLimit - MUSDC(100));
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
+
+      // And the reverse: spending ETH does not consume the token allowance.
+      await withdrawSmall(ethers.parseEther("1"));
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - ethers.parseEther("1"));
+      expect(await simAllowance()).to.equal(simLimit - MUSDC(100));
     });
 
     it("D3: an attacker can no longer poison the ETH surface to block a STABLECOIN admission", async function () {
+      const simAddress = await sim.getAddress();
+      const tokenAddress = await token.getAddress();
       const sharedLimit = MUSDC(400);
-      await dailyPolicy.connect(owner).setAdmitter(await sim.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(sharedLimit);
+      await dailyPolicy.connect(owner).setAdmitter(simAddress, tokenAddress, simAddress, true);
+      await dailyPolicy.connect(owner).setDailyLimit(simAddress, tokenAddress, sharedLimit);
       await sim.connect(admin).proposePolicyEngine(await dailyPolicy.getAddress());
       await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await sim.connect(admin).applyPolicyEngine();
 
-      await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, sharedLimit, 0n)).to.revert(
-        ethers,
-      );
+      await expect(
+        dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, sharedLimit, 0n),
+      ).to.not.revert(ethers); // ETH subject is unarmed, so this is an inert no-op…
+
+      // …and, crucially, the attacker cannot reach the ARMED token subject either.
+      await expect(
+        dailyPolicy
+          .connect(attacker)
+          .check(
+            { consumer: simAddress, owner: owner.address, asset: tokenAddress },
+            attacker.address,
+            sharedLimit,
+            0n,
+          ),
+      ).to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter");
 
       const simBuild = makeSimBuildRequest(owner, { recipient: recipient.address, amount: MUSDC(100) });
       const simSign = makeSimSignWithdrawal(sim, owner);
@@ -443,7 +601,7 @@ describe("Daily-spend admission authority (regression)", function () {
 
     it("E1: a legitimately exhausted window still denies — cleanly, not by revert", async function () {
       await withdrawSmall(LIMIT);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceOf(owner.address)).to.equal(0n);
       await expect(withdrawSmall(ethers.parseEther("0.5"), 1))
         .to.be.revertedWithCustomError(vault, "PolicyViolation")
         .withArgs("daily limit exceeded");
@@ -455,18 +613,20 @@ describe("Daily-spend admission authority (regression)", function () {
 
       await networkHelpers.time.setNextBlockTimestamp(spentAt + WINDOW - 1);
       await networkHelpers.mine();
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceOf(owner.address)).to.equal(0n);
 
       await networkHelpers.time.setNextBlockTimestamp(spentAt + WINDOW);
       await networkHelpers.mine();
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
       await expect(withdrawSmall(ethers.parseEther("0.5"), 1)).to.not.revert(ethers);
     });
 
     it("E3: an attacker cannot re-open or re-exhaust the window at any point in the cycle", async function () {
       for (let day = 0; day < 3; day++) {
-        await expect(dailyPolicy.connect(attacker).check(owner.address, attacker.address, LIMIT, 0n)).to.revert(ethers);
-        expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+        await expect(dailyPolicy.connect(attacker).check(subj(owner.address), attacker.address, LIMIT, 0n)).to.revert(
+          ethers,
+        );
+        expect(await allowanceOf(owner.address)).to.equal(LIMIT);
         await networkHelpers.time.increase(WINDOW);
       }
     });
@@ -483,37 +643,37 @@ describe("Daily-spend admission authority (regression)", function () {
     it("F1: a legitimate immediate withdrawal books EXACTLY once", async function () {
       const amount = ethers.parseEther("0.5");
       await withdrawSmall(amount);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - amount);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - amount);
     });
 
     it("F2: queueing books once and finalization does NOT re-book", async function () {
       await enableLargeTx();
       const { operationId } = await queueLarge();
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
 
       await networkHelpers.time.increase(LARGE_TX_DELAY);
       await vault.connect(owner).finalizeWithdrawal(owner.address, operationId);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
     });
 
     it("F3: revalidate() is ungated, non-mutating, and allows unconditionally", async function () {
       await withdrawSmall(ethers.parseEther("0.5"));
-      const before = await dailyPolicy.remainingAllowance(owner.address);
+      const before = await allowanceOf(owner.address);
       // Called by a completely unauthorized address — settlement must never depend on
       // admission authority, or a revoked delegation would strand queued withdrawals.
       const [ok, reason] = await dailyPolicy
         .connect(attacker)
-        .revalidate(owner.address, recipient.address, LIMIT * 100n, 0n);
+        .revalidate(subj(owner.address), recipient.address, LIMIT * 100n, 0n);
       expect(ok).to.equal(true);
       expect(reason).to.equal("");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
+      expect(await allowanceOf(owner.address)).to.equal(before);
     });
 
     it("F3b: revalidate() survives STATICCALL — it performs no write at all", async function () {
       // The vault invokes revalidate through a `view` interface, i.e. under STATICCALL.
       // Reproduce that constraint exactly: any SSTORE would make this revert.
       const iface = dailyPolicy.interface;
-      const data = iface.encodeFunctionData("revalidate", [owner.address, recipient.address, LIMIT, DEPOSIT]);
+      const data = iface.encodeFunctionData("revalidate", [subj(owner.address), recipient.address, LIMIT, DEPOSIT]);
       const raw = await ethers.provider.call({ to: await dailyPolicy.getAddress(), data });
       const [ok, reason] = iface.decodeFunctionResult("revalidate", raw);
       expect(ok).to.equal(true);
@@ -523,10 +683,10 @@ describe("Daily-spend admission authority (regression)", function () {
     it("F4: cancellation does NOT release booked allowance (documented invariant)", async function () {
       await enableLargeTx();
       const { operationId } = await queueLarge();
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
 
       await vault.connect(owner).cancelPendingWithdrawal(operationId);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - LARGE_AMOUNT);
     });
 
     it("F5: re-queueing after cancellation books AGAIN (documented invariant)", async function () {
@@ -539,14 +699,14 @@ describe("Daily-spend admission authority (regression)", function () {
       const { ecdsaSig, pqSig } = await signWithdrawal(req);
       await vault.connect(other).queueWithdrawal(req, ecdsaSig, pqSig);
 
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - LARGE_AMOUNT * 2n);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - LARGE_AMOUNT * 2n);
     });
 
     it("F6: an exactly-at-limit admission is permitted and lands on zero", async function () {
       await withdrawSmall(LIMIT - ethers.parseEther("0.5"), 0);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(ethers.parseEther("0.5"));
+      expect(await allowanceOf(owner.address)).to.equal(ethers.parseEther("0.5"));
       await withdrawSmall(ethers.parseEther("0.5"), 1);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceOf(owner.address)).to.equal(0n);
     });
 
     it("F7: one wei beyond the limit is denied", async function () {
@@ -564,7 +724,7 @@ describe("Daily-spend admission authority (regression)", function () {
 
     it("F8: a reverted outer withdrawal rolls the booking back", async function () {
       const rejector = await (await ethers.getContractFactory("RejectEther", admin)).deploy();
-      const before = await dailyPolicy.remainingAllowance(owner.address);
+      const before = await allowanceOf(owner.address);
 
       const req = await buildRequest({
         recipient: await rejector.getAddress(),
@@ -575,20 +735,22 @@ describe("Daily-spend admission authority (regression)", function () {
         vault,
         "TransferFailed",
       );
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(before);
+      expect(await allowanceOf(owner.address)).to.equal(before);
     });
 
     it("F9: STANDALONE use survives — a self-delegating owner may drive check() directly", async function () {
       const standalone = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
-      await standalone.connect(owner).setAdmitter(owner.address, true);
-      await standalone.connect(owner).setDailyLimit(LIMIT);
+      await standalone.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await standalone.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
 
-      await standalone.connect(owner).check(owner.address, recipient.address, ethers.parseEther("2"), 0n);
-      expect(await standalone.remainingAllowance(owner.address)).to.equal(LIMIT - ethers.parseEther("2"));
+      await standalone.connect(owner).check(subj(owner.address), recipient.address, ethers.parseEther("2"), 0n);
+      expect(await standalone.remainingAllowance(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(
+        LIMIT - ethers.parseEther("2"),
+      );
 
       // Self-delegation grants nobody else anything.
       await expect(
-        standalone.connect(attacker).check(owner.address, attacker.address, 1n, 0n),
+        standalone.connect(attacker).check(subj(owner.address), attacker.address, 1n, 0n),
       ).to.be.revertedWithCustomError(standalone, "UnauthorizedAdmitter");
     });
   });
@@ -600,47 +762,50 @@ describe("Daily-spend admission authority (regression)", function () {
     it("G1: only the SUBJECT can write its own delegation list", async function () {
       // There is no setter that takes a subject; msg.sender IS the subject. An attacker
       // delegating to themselves only ever writes their own (empty, unread) list.
-      await dailyPolicy.connect(attacker).setAdmitter(await vault.getAddress(), true);
-      expect(await dailyPolicy.admitter(attacker.address, await vault.getAddress())).to.equal(true);
-      expect(await dailyPolicy.admitter(owner.address, await vault.getAddress())).to.equal(false);
+      await dailyPolicy.connect(attacker).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
+      expect(await admitterOf(attacker.address, await vault.getAddress())).to.equal(true);
+      expect(await admitterOf(owner.address, await vault.getAddress())).to.equal(false);
     });
 
     it("G2: arming a limit with no admitter is refused at CONFIGURATION time", async function () {
-      await expect(dailyPolicy.connect(owner).setDailyLimit(LIMIT))
+      await expect(dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT))
         .to.be.revertedWithCustomError(dailyPolicy, "NoAdmitterConfigured")
-        .withArgs(owner.address);
+        .withArgs(vaultAddress, owner.address, NATIVE_ASSET);
     });
 
     it("G3: disarming to 0 is always permitted — the escape hatch is never blocked", async function () {
-      await expect(dailyPolicy.connect(owner).setDailyLimit(0)).to.not.revert(ethers);
-      expect(await dailyPolicy.dailyLimit(owner.address)).to.equal(0n);
+      await expect(dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, 0)).to.not.revert(ethers);
+      expect(await dailyPolicy.dailyLimit(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
     it("G4: the zero address cannot be delegated to", async function () {
-      await expect(dailyPolicy.connect(owner).setAdmitter(ethers.ZeroAddress, true)).to.be.revertedWithCustomError(
-        dailyPolicy,
-        "ZeroAdmitter",
-      );
+      await expect(
+        dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, ethers.ZeroAddress, true),
+      ).to.be.revertedWithCustomError(dailyPolicy, "ZeroAdmitter");
     });
 
     it("G5: a code-less (EOA) delegate is refused; self-delegation is allowed", async function () {
-      await expect(dailyPolicy.connect(owner).setAdmitter(attacker.address, true))
+      await expect(dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, attacker.address, true))
         .to.be.revertedWithCustomError(dailyPolicy, "AdmitterNotAContract")
         .withArgs(attacker.address);
 
-      await expect(dailyPolicy.connect(owner).setAdmitter(owner.address, true)).to.not.revert(ethers);
+      await expect(
+        dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true),
+      ).to.not.revert(ethers);
     });
 
     it("G6: revoking the LAST admitter while armed is refused (self-brick guard)", async function () {
       await armViaVault();
-      await expect(dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), false))
+      await expect(dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await vault.getAddress(), false))
         .to.be.revertedWithCustomError(dailyPolicy, "LastAdmitterWhileArmed")
-        .withArgs(owner.address);
+        .withArgs(vaultAddress, owner.address, NATIVE_ASSET);
 
       // Disarm first, then revoke — the documented order.
-      await dailyPolicy.connect(owner).setDailyLimit(0);
-      await expect(dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), false)).to.not.revert(ethers);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.equal(0n);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, 0);
+      await expect(
+        dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await vault.getAddress(), false),
+      ).to.not.revert(ethers);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
     it("G7: rotating between two admitters never trips the self-brick guard", async function () {
@@ -649,22 +814,24 @@ describe("Daily-spend admission authority (regression)", function () {
         await ethers.getContractFactory("WalletWallVault", admin)
       ).deploy(await verifier.getAddress());
 
-      await dailyPolicy.connect(owner).setAdmitter(await second.getAddress(), true);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.equal(2n);
-      await expect(dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), false)).to.not.revert(ethers);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.equal(1n);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await second.getAddress(), true);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(2n);
+      await expect(
+        dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await vault.getAddress(), false),
+      ).to.not.revert(ethers);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(1n);
     });
 
     it("G8: setAdmitter is idempotent and keeps admitterCount exact", async function () {
       const v = await vault.getAddress();
-      await dailyPolicy.connect(owner).setAdmitter(v, true);
-      await dailyPolicy.connect(owner).setAdmitter(v, true);
-      await dailyPolicy.connect(owner).setAdmitter(v, true);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.equal(1n);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, true);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(1n);
 
-      await dailyPolicy.connect(owner).setAdmitter(v, false);
-      await dailyPolicy.connect(owner).setAdmitter(v, false);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.equal(0n);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, false);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, false);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
     it("G9: revoking a delegation takes effect immediately on the next admission", async function () {
@@ -673,8 +840,8 @@ describe("Daily-spend admission authority (regression)", function () {
 
       // Add a second admitter so the last-admitter guard does not apply, then revoke
       // the vault's own delegation.
-      await dailyPolicy.connect(owner).setAdmitter(owner.address, true);
-      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), false);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await vault.getAddress(), false);
 
       await expect(withdrawSmall(ethers.parseEther("0.5"), 1)).to.be.revertedWithCustomError(
         dailyPolicy,
@@ -702,31 +869,28 @@ describe("Daily-spend admission authority (regression)", function () {
       const v = await vault.getAddress();
 
       // Route 1 — arm first, delegate later. Refused by the arming guard.
-      await expect(dailyPolicy.connect(owner).setDailyLimit(LIMIT)).to.be.revertedWithCustomError(
-        dailyPolicy,
-        "NoAdmitterConfigured",
-      );
+      await expect(
+        dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT),
+      ).to.be.revertedWithCustomError(dailyPolicy, "NoAdmitterConfigured");
 
       // Route 2 — delegate, arm, then revoke back to zero. Refused by the self-brick guard.
-      await dailyPolicy.connect(owner).setAdmitter(v, true);
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
-      await expect(dailyPolicy.connect(owner).setAdmitter(v, false)).to.be.revertedWithCustomError(
-        dailyPolicy,
-        "LastAdmitterWhileArmed",
-      );
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
+      await expect(
+        dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, false),
+      ).to.be.revertedWithCustomError(dailyPolicy, "LastAdmitterWhileArmed");
 
       // Route 3 — grow to two, then revoke both. The second revocation is refused.
-      await dailyPolicy.connect(owner).setAdmitter(owner.address, true);
-      await dailyPolicy.connect(owner).setAdmitter(v, false);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.equal(1n);
-      await expect(dailyPolicy.connect(owner).setAdmitter(owner.address, false)).to.be.revertedWithCustomError(
-        dailyPolicy,
-        "LastAdmitterWhileArmed",
-      );
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, v, false);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(1n);
+      await expect(
+        dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, false),
+      ).to.be.revertedWithCustomError(dailyPolicy, "LastAdmitterWhileArmed");
 
       // The invariant held throughout.
-      expect(await dailyPolicy.dailyLimit(owner.address)).to.equal(LIMIT);
-      expect(await dailyPolicy.admitterCount(owner.address)).to.be.greaterThanOrEqual(1n);
+      expect(await dailyPolicy.dailyLimit(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      expect(await dailyPolicy.admitterCount(vaultAddress, owner.address, NATIVE_ASSET)).to.be.greaterThanOrEqual(1n);
     });
 
     it("G13: an engine ROTATION invalidates a delegation, and one tenant tx restores it", async function () {
@@ -747,7 +911,7 @@ describe("Daily-spend admission authority (regression)", function () {
       );
 
       // Recovery is ONE permissionless transaction the tenant sends themselves.
-      await dailyPolicy.connect(owner).setAdmitter(await relay.getAddress(), true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await relay.getAddress(), true);
       await expect(withdrawSmall(ethers.parseEther("0.5"), 1)).to.not.revert(ethers);
     });
 
@@ -791,8 +955,8 @@ describe("Daily-spend admission authority (regression)", function () {
       // was legitimately registered, then de-registered, must be refused exactly like
       // one that was never registered — setAdmissionCaller is not additive-only.
       await composite.connect(admin).addModule(await dailyPolicy.getAddress());
-      await dailyPolicy.connect(owner).setAdmitter(await composite.getAddress(), true);
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await composite.getAddress(), true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
       await composite.connect(admin).setAdmissionCaller(await vault.getAddress(), true);
       await setPolicyEngine(await composite.getAddress());
 
@@ -804,7 +968,7 @@ describe("Daily-spend admission authority (regression)", function () {
         .to.be.revertedWithCustomError(composite, "UnauthorizedAdmissionCaller")
         .withArgs(await vault.getAddress());
       // No partial effect: the denied attempt did not book against the allowance.
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
     });
   });
 
@@ -819,20 +983,20 @@ describe("Daily-spend admission authority (regression)", function () {
       // setAdmitter after wiring a stateful policy in. It must fail CLOSED (block
       // withdrawals) and ATTRIBUTABLY (the real custom error, not a generic revert or a
       // silent bypass) — never fail OPEN.
-      await dailyPolicy.connect(owner).setAdmitter(owner.address, true);
-      await dailyPolicy.connect(owner).setDailyLimit(LIMIT);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
       await setPolicyEngine(await dailyPolicy.getAddress());
 
       await expect(withdrawSmall(ethers.parseEther("0.5")))
         .to.be.revertedWithCustomError(dailyPolicy, "UnauthorizedAdmitter")
-        .withArgs(await vault.getAddress(), owner.address);
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT);
+        .withArgs(await vault.getAddress(), vaultAddress, owner.address, NATIVE_ASSET);
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT);
 
       // Wiring the missing delegation heals it immediately — this is a misconfiguration,
       // not a design dead end.
-      await dailyPolicy.connect(owner).setAdmitter(await vault.getAddress(), true);
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, vaultAddress, true);
       await expect(withdrawSmall(ethers.parseEther("0.5"))).to.emit(vault, "Withdrawn");
-      expect(await dailyPolicy.remainingAllowance(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
+      expect(await allowanceOf(owner.address)).to.equal(LIMIT - ethers.parseEther("0.5"));
     });
   });
 });

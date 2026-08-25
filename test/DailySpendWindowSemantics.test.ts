@@ -11,19 +11,33 @@ import {
   CompositePolicyEngine,
 } from "../typechain-types";
 import { WITHDRAWAL_TYPES } from "./helpers/vaultHelpers";
+import { NATIVE_ASSET } from "./helpers/policySubject";
 
 /**
- * INVESTIGATION TESTS — DailySpendLimitPolicy time and scope semantics.
+ * DailySpendLimitPolicy time and scope semantics.
  *
- * These tests change NO production behaviour. They exist to make the CURRENT
- * behaviour of DailySpendLimitPolicy undeniable, so a semantics decision can be
- * made from evidence rather than from NatSpec prose.
+ * Originally an INVESTIGATION suite: it made the then-current behaviour undeniable so
+ * a semantics decision could be made from evidence rather than from NatSpec prose.
+ * The two questions it asked have now been answered differently:
  *
- * Two independent questions:
  *   TIME  — is the window rolling (any 24h interval capped) or tumbling (a fixed
  *           window that zeroes on the first call after expiry)?
- *   SCOPE — is spend accounting isolated per vault contract and per asset, or
- *           only per owner address?
+ *           STILL TUMBLING. Unchanged by the policy-subject work, and deliberately so:
+ *           rolling accounting has to know WHICH bucket it decays, so it was sequenced
+ *           after subject identity. Every assertion in PART 1 stands as written; only
+ *           the configuration API around it gained its subject coordinates.
+ *
+ *   SCOPE — is spend accounting isolated per vault contract and per asset, or only per
+ *           owner address?
+ *           NOW ISOLATED. PART 2 previously characterized a COLLAPSE — one accumulator
+ *           shared across vault contracts, one scalar shared across incommensurable
+ *           denominations, one bucket shared by every consumer behind a composite — and
+ *           now asserts that collapse's absence. The TENANT ISOLATION case is the
+ *           control: it did not change, and proves these tests can still observe a
+ *           shared bucket where one legitimately exists.
+ *
+ * Cross-boundary propagation (what the vaults mint, what the composite relays, what a
+ * spoofing caller can reach) is covered by test/PolicySubjectPropagation.test.ts.
  */
 describe("DailySpendLimitPolicy — window and scope semantics (investigation)", function () {
   const WINDOW = 24 * 60 * 60;
@@ -110,6 +124,36 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
     await sim.connect(admin).applyPolicyEngine();
   }
 
+  // ---------------------------------------------------------------------
+  // Subject-scoped configuration and reads.
+  //
+  // Every bucket is (consumer, owner, asset). These helpers take the consumer
+  // as a contract handle so a test can never silently read one subject while
+  // arming another — the mistake that a bare owner-keyed API made easy.
+  // ---------------------------------------------------------------------
+  interface HasAddress {
+    getAddress(): Promise<string>;
+  }
+
+  /** Delegates `admitterContract` (default: the consumer itself) and arms `limit`. */
+  async function armFor(
+    signer: HardhatEthersSigner,
+    consumer: HasAddress,
+    limit: bigint,
+    asset: string = NATIVE_ASSET,
+    admitterContract?: HasAddress,
+  ) {
+    const consumerAddress = await consumer.getAddress();
+    const delegate = admitterContract ? await admitterContract.getAddress() : consumerAddress;
+    await policy.connect(signer).setAdmitter(consumerAddress, asset, delegate, true);
+    await policy.connect(signer).setDailyLimit(consumerAddress, asset, limit);
+  }
+
+  /** Remaining allowance for the (consumer, owner, asset) bucket. */
+  async function allowanceFor(consumer: HasAddress, owner_: string, asset: string = NATIVE_ASSET) {
+    return policy.remainingAllowance(await consumer.getAddress(), owner_, asset);
+  }
+
   beforeEach(async function () {
     [admin, owner, recipient] = await ethers.getSigners();
 
@@ -133,14 +177,13 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       vault = await deployEthVault();
       await installEngine(vault, await policy.getAddress());
       await vault.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("20") });
-      await policy.connect(owner).setAdmitter(await vault.getAddress(), true);
-      await policy.connect(owner).setDailyLimit(LIMIT);
+      await armFor(owner, vault, LIMIT);
     });
 
     it("BOUNDARY: window is exhausted at windowStart + WINDOW - 1 (one second before expiry)", async function () {
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       // One second BEFORE expiry: still the same window, allowance exhausted.
       const justBefore = t0 + WINDOW - 1;
@@ -155,11 +198,11 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
     it("BOUNDARY: the window resets at EXACTLY windowStart + WINDOW (comparison is >=)", async function () {
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, LIMIT, 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       // Exactly AT expiry: the full limit is available again.
       await expect(withdrawAt(vault, owner, LIMIT, 1, t0 + WINDOW)).to.emit(vault, "Withdrawn");
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
     });
 
     it("BOUNDARY: remainingAllowance agrees with check() on both sides of the boundary", async function () {
@@ -168,12 +211,12 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
 
       // Mine a block exactly one second before expiry and read the view there.
       await networkHelpers.time.increaseTo(t0 + WINDOW - 1);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       // Mine a block exactly at expiry; the view reports a full fresh limit
       // even though no reset has been written to storage yet.
       await networkHelpers.time.increaseTo(t0 + WINDOW);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
     it("MAXIMUM BURST: 2*LIMIT - 1 wei is admitted across a 1-second interval", async function () {
@@ -186,7 +229,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       // Fill window N to the brim, one second before it expires.
       const tEnd = t0 + WINDOW - 1;
       await expect(withdrawAt(vault, owner, LIMIT - 1n, 1, tEnd)).to.emit(vault, "Withdrawn");
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       // One second later the window has expired: the full limit is available.
       const tReset = t0 + WINDOW;
@@ -209,16 +252,23 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       // The vault path cannot send amount 0, but a self-delegated subject can
       // call the policy directly. A zero-amount check still writes _windowStart,
       // so it anchors a window at no allowance cost.
-      await policy.connect(owner).setAdmitter(owner.address, true);
+      await policy.connect(owner).setAdmitter(await vault.getAddress(), NATIVE_ASSET, owner.address, true);
 
       const t0 = (await networkHelpers.time.latest()) + 10;
       await networkHelpers.time.setNextBlockTimestamp(t0);
-      await policy.connect(owner).check(owner.address, recipient.address, 0n, 0n);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      await policy
+        .connect(owner)
+        .check(
+          { consumer: await vault.getAddress(), owner: owner.address, asset: NATIVE_ASSET },
+          recipient.address,
+          0n,
+          0n,
+        );
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
 
       const tEnd = t0 + WINDOW - 1;
       await expect(withdrawAt(vault, owner, LIMIT, 0, tEnd)).to.emit(vault, "Withdrawn");
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       const tReset = t0 + WINDOW;
       await expect(withdrawAt(vault, owner, LIMIT, 1, tReset)).to.emit(vault, "Withdrawn");
@@ -238,7 +288,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
 
       const secondAnchor = t0 + WINDOW;
       await expect(withdrawAt(vault, owner, LIMIT, 1, secondAnchor)).to.emit(vault, "Withdrawn");
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       // Denied one second in, and still denied at the LAST instant before the
       // third window may open. Nothing in between reopens it.
@@ -265,16 +315,16 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       const t0 = (await networkHelpers.time.latest()) + 1000;
       await withdrawAt(vault, owner, ethers.parseEther("0.1"), 0, t0);
 
-      const windowStartProbe = await policy.remainingAllowance(owner.address);
+      const windowStartProbe = await allowanceFor(vault, owner.address);
       expect(windowStartProbe).to.equal(LIMIT - ethers.parseEther("0.1"));
 
       // Still the same window one second before expiry.
       await networkHelpers.time.increaseTo(t0 + WINDOW - 1);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT - ethers.parseEther("0.1"));
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT - ethers.parseEther("0.1"));
 
       // Fresh window from the instant of expiry, wherever t0 happened to fall.
       await networkHelpers.time.increaseTo(t0 + WINDOW);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
     it("ANCHOR IS SPEND-CHOSEN: arming a limit does not start a window; the first admitted spend does", async function () {
@@ -283,21 +333,21 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       // spend therefore chooses where the 24h boundary falls — the boundary is not
       // fixed by the configuration, and not by any calendar.
       const armedAt = await networkHelpers.time.latest();
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
 
       // Sit idle for most of a day. No window has started, so nothing expires.
       await networkHelpers.time.increaseTo(armedAt + WINDOW * 3);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
 
       // The spend anchors the window here, three days after arming.
       const anchor = armedAt + WINDOW * 3 + 10;
       await withdrawAt(vault, owner, LIMIT, 0, anchor);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
 
       await networkHelpers.time.increaseTo(anchor + WINDOW - 1);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
       await networkHelpers.time.increaseTo(anchor + WINDOW);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
     it("DENIED ATTEMPTS DO NOT RE-ANCHOR: windows stay at least WINDOW apart", async function () {
@@ -323,9 +373,9 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       const admitAt = afterExpiry + 500;
       await expect(withdrawAt(vault, owner, LIMIT, 1, admitAt)).to.emit(vault, "Withdrawn");
       await networkHelpers.time.increaseTo(admitAt + WINDOW - 1);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
       await networkHelpers.time.increaseTo(admitAt + WINDOW);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
     });
 
     it("QUEUED PATH: spend books at queue time and a cancellation does NOT return the allowance", async function () {
@@ -341,39 +391,53 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await vault.queueWithdrawal(req, ecdsaSig, pqSig);
 
       // Booked at QUEUE time, before any settlement.
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT - amount);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT - amount);
 
       // Cancelling refunds the vault balance but not the daily allowance.
       const pending = await vault.pendingWithdrawals(owner.address);
       const balanceBefore = (await vault.getVault(owner.address)).balance;
       await vault.connect(owner).cancelPendingWithdrawal(pending.operationId);
       expect((await vault.getVault(owner.address)).balance).to.equal(balanceBefore + amount);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(LIMIT - amount);
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT - amount);
     });
   });
 
   // =====================================================================
   // PART 2 — SCOPE SEMANTICS
   // =====================================================================
-  describe("SCOPE: accounting is keyed by owner address only — no vault and no asset dimension", function () {
-    it("STATE MODEL: nothing binds a policy instance to one vault contract", async function () {
+  describe("SCOPE: accounting is keyed by the full (consumer, owner, asset) subject", function () {
+    // INVERTED BY THE POLICY-SUBJECT PROPAGATION CHANGE.
+    //
+    // Every test in this block previously asserted a COLLAPSE: one accumulator shared
+    // across vault contracts, one scalar shared across incommensurable denominations,
+    // one bucket shared by every consumer behind a composite. Those were faithful
+    // characterizations of owner-only keying. They now assert the collapse's absence.
+    //
+    // The one test that did NOT change is TENANT ISOLATION: owner-keying was always
+    // correct for the tenant dimension, and it remains the control proving these tests
+    // can still observe a shared bucket when one legitimately exists.
+
+    it("STATE MODEL: one policy instance holds independent state per consumer", async function () {
       const vaultA = await deployEthVault();
       const vaultB = await deployEthVault();
+      const a = await vaultA.getAddress();
+      const b = await vaultB.getAddress();
 
-      await policy.connect(owner).setAdmitter(await vaultA.getAddress(), true);
-      await policy.connect(owner).setAdmitter(await vaultB.getAddress(), true);
+      await armFor(owner, vaultA, ethers.parseEther("1"));
+      await armFor(owner, vaultB, ethers.parseEther("7"));
 
-      // Both delegations coexist; the policy has no notion of "my vault".
-      expect(await policy.admitter(owner.address, await vaultA.getAddress())).to.equal(true);
-      expect(await policy.admitter(owner.address, await vaultB.getAddress())).to.equal(true);
-      expect(await policy.admitterCount(owner.address)).to.equal(2n);
-
-      // There is exactly one limit and one allowance per owner, not per vault.
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
-      expect(await policy.dailyLimit(owner.address)).to.equal(ethers.parseEther("1"));
+      // Two limits, two delegation lists, two counters — for ONE owner.
+      expect(await policy.dailyLimit(a, owner.address, NATIVE_ASSET)).to.equal(ethers.parseEther("1"));
+      expect(await policy.dailyLimit(b, owner.address, NATIVE_ASSET)).to.equal(ethers.parseEther("7"));
+      expect(await policy.admitter(a, owner.address, NATIVE_ASSET, a)).to.equal(true);
+      expect(await policy.admitter(b, owner.address, NATIVE_ASSET, b)).to.equal(true);
+      // A delegation for one consumer confers nothing for the other.
+      expect(await policy.admitter(a, owner.address, NATIVE_ASSET, b)).to.equal(false);
+      expect(await policy.admitterCount(a, owner.address, NATIVE_ASSET)).to.equal(1n);
+      expect(await policy.admitterCount(b, owner.address, NATIVE_ASSET)).to.equal(1n);
     });
 
-    it("CROSS-VAULT: two separately-authorized vault contracts share ONE accumulator", async function () {
+    it("CROSS-VAULT: two separately-authorized vault contracts hold INDEPENDENT accumulators", async function () {
       const vaultA = await deployEthVault();
       const vaultB = await deployEthVault();
       const engine = await policy.getAddress();
@@ -383,25 +447,25 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await vaultA.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
       await vaultB.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
 
-      await policy.connect(owner).setAdmitter(await vaultA.getAddress(), true);
-      await policy.connect(owner).setAdmitter(await vaultB.getAddress(), true);
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await armFor(owner, vaultA, ethers.parseEther("1"));
+      await armFor(owner, vaultB, ethers.parseEther("1"));
 
-      // Vault A consumes the whole allowance.
+      // Vault A consumes its OWN whole allowance.
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vaultA, owner, ethers.parseEther("1"), 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vaultA, owner.address)).to.equal(0n);
 
-      // Vault B — a different contract, with its own funded balance and its own
-      // nonce — is now denied. Neither vault spent anything from the other.
+      // Vault B is untouched and still admits — the previous behaviour denied here.
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(ethers.parseEther("1"));
       const req = request(owner.address, recipient.address, ethers.parseEther("0.5"), 0, t0 + 3600);
       const { ecdsaSig, pqSig } = await signEth(vaultB, owner, req);
-      await expect(vaultB.withdraw(req, ecdsaSig, pqSig))
-        .to.be.revertedWithCustomError(vaultB, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      await expect(vaultB.withdraw(req, ecdsaSig, pqSig)).to.emit(vaultB, "Withdrawn");
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(ethers.parseEther("0.5"));
+      // …and spending in B did not refund or disturb A.
+      expect(await allowanceFor(vaultA, owner.address)).to.equal(0n);
     });
 
-    it("CROSS-VAULT (reversed): the same denial occurs in the opposite order", async function () {
+    it("CROSS-VAULT (reversed): independence holds in the opposite order", async function () {
       const vaultA = await deployEthVault();
       const vaultB = await deployEthVault();
       const engine = await policy.getAddress();
@@ -410,22 +474,20 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
 
       await vaultA.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
       await vaultB.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
-      await policy.connect(owner).setAdmitter(await vaultA.getAddress(), true);
-      await policy.connect(owner).setAdmitter(await vaultB.getAddress(), true);
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await armFor(owner, vaultA, ethers.parseEther("1"));
+      await armFor(owner, vaultB, ethers.parseEther("1"));
 
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vaultB, owner, ethers.parseEther("1"), 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(0n);
+      expect(await allowanceFor(vaultA, owner.address)).to.equal(ethers.parseEther("1"));
 
       const req = request(owner.address, recipient.address, ethers.parseEther("0.5"), 0, t0 + 3600);
       const { ecdsaSig, pqSig } = await signEth(vaultA, owner, req);
-      await expect(vaultA.withdraw(req, ecdsaSig, pqSig))
-        .to.be.revertedWithCustomError(vaultA, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      await expect(vaultA.withdraw(req, ecdsaSig, pqSig)).to.emit(vaultA, "Withdrawn");
     });
 
-    it("CROSS-VAULT WINDOW: a spend in one vault moves the window anchor for the other", async function () {
+    it("CROSS-VAULT WINDOW: a spend in one vault does not move the other's window anchor", async function () {
       const vaultA = await deployEthVault();
       const vaultB = await deployEthVault();
       const engine = await policy.getAddress();
@@ -434,27 +496,35 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
 
       await vaultA.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
       await vaultB.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
-      await policy.connect(owner).setAdmitter(await vaultA.getAddress(), true);
-      await policy.connect(owner).setAdmitter(await vaultB.getAddress(), true);
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await armFor(owner, vaultA, ethers.parseEther("1"));
+      await armFor(owner, vaultB, ethers.parseEther("1"));
 
-      // Vault A anchors the window at t0 and spends half.
+      const a = await vaultA.getAddress();
+      const b = await vaultB.getAddress();
+
+      // Vault A anchors ITS window at t0 and spends half.
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vaultA, owner, ethers.parseEther("0.5"), 0, t0);
+      expect(await policy.windowStart(a, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0));
+      // Vault B has no anchor at all yet — A's spend did not start B's clock.
+      expect(await policy.windowStart(b, owner.address, NATIVE_ASSET)).to.equal(0n);
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(ethers.parseEther("1"));
 
-      // Vault B sees vault A's residue, not a fresh limit.
-      expect(await policy.remainingAllowance(owner.address)).to.equal(ethers.parseEther("0.5"));
-      await expect(withdrawAt(vaultB, owner, ethers.parseEther("0.5"), 0, t0 + 5)).to.emit(vaultB, "Withdrawn");
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      // Vault B anchors its OWN window later and gets its own full limit.
+      await withdrawAt(vaultB, owner, ethers.parseEther("1"), 0, t0 + 5);
+      expect(await policy.windowStart(b, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0 + 5));
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(0n);
+      expect(await allowanceFor(vaultA, owner.address)).to.equal(ethers.parseEther("0.5"));
 
-      // And vault B's window expires on vault A's clock.
-      await networkHelpers.time.increaseTo(t0 + WINDOW - 1);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      // Each window expires on its OWN clock, five seconds apart.
       await networkHelpers.time.increaseTo(t0 + WINDOW);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(ethers.parseEther("1"));
+      expect(await allowanceFor(vaultA, owner.address)).to.equal(ethers.parseEther("1")); // A rolled
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(0n); // B has not
+      await networkHelpers.time.increaseTo(t0 + 5 + WINDOW);
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(ethers.parseEther("1"));
     });
 
-    it("CROSS-ASSET: wei and 6-decimal token base units accumulate in the same scalar", async function () {
+    it("CROSS-ASSET: wei and 6-decimal token base units never share a scalar", async function () {
       // One owner, two vault contracts denominated in different assets, one policy.
       const ethVault = await deployEthVault();
 
@@ -478,13 +548,13 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await token.connect(owner).approve(await sim.getAddress(), deposit);
       await sim.connect(owner).deposit(deposit);
 
-      await policy.connect(owner).setAdmitter(await ethVault.getAddress(), true);
-      await policy.connect(owner).setAdmitter(await sim.getAddress(), true);
-
-      // The owner's stated intent: "at most 1 ETH per day". The limit is a bare
-      // uint256 with no asset tag, so it is simultaneously the stablecoin limit.
-      const limit = ethers.parseEther("1");
-      await policy.connect(owner).setDailyLimit(limit);
+      const tokenAddress = await token.getAddress();
+      // Each limit is now expressed in ITS OWN denomination and cannot be mistaken for
+      // the other: "1 ETH per day" and "200 mUSDC per day" are separate buckets.
+      const ethLimit = ethers.parseEther("1");
+      const usdcLimit = 200_000_000n;
+      await armFor(owner, ethVault, ethLimit);
+      await armFor(owner, sim, usdcLimit, tokenAddress);
 
       // Withdraw 100 mUSDC (1e8 base units) from the stablecoin vault.
       const usdcAmount = 100_000_000n;
@@ -493,33 +563,93 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       const { ecdsaSig, pqSig } = await signToken(sim, owner, req);
       await expect(sim.withdraw(req, ecdsaSig, pqSig)).to.emit(sim, "Withdrawn");
 
-      // 1e8 token base units were subtracted from a 1e18 wei allowance directly.
-      expect(await policy.remainingAllowance(owner.address)).to.equal(limit - usdcAmount);
-
-      // The 100 mUSDC withdrawal consumed one ten-billionth of the "1 ETH" limit:
-      // the stablecoin leg is effectively unlimited under an ETH-scaled limit.
-      const consumedPpb = (usdcAmount * 1_000_000_000n) / limit;
-      expect(consumedPpb).to.equal(0n);
+      // Token units were debited from the TOKEN bucket only…
+      expect(await allowanceFor(sim, owner.address, tokenAddress)).to.equal(usdcLimit - usdcAmount);
+      // …and the wei-denominated bucket is untouched. Previously 1e8 base units were
+      // subtracted from a 1e18 wei allowance directly.
+      expect(await allowanceFor(ethVault, owner.address)).to.equal(ethLimit);
     });
 
-    it("CROSS-ASSET (reversed): an ETH-scaled limit set for token units denies trivial ETH spends", async function () {
+    it("CROSS-ASSET (reversed): a token-scaled limit cannot deny trivial ETH spends", async function () {
       const ethVault = await deployEthVault();
       await installEngine(ethVault, await policy.getAddress());
       await ethVault.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
-      await policy.connect(owner).setAdmitter(await ethVault.getAddress(), true);
 
-      // An owner reasoning in stablecoin base units sets "1000 mUSDC per day".
-      const limit = 1_000_000_000n; // 1000 * 1e6
-      await policy.connect(owner).setDailyLimit(limit);
+      const Token = await ethers.getContractFactory("MockUSDC");
+      const token: MockUSDC = await Token.deploy();
+      await token.waitForDeployment();
+      const Sim = await ethers.getContractFactory("StablecoinVaultSimulator", admin);
+      const sim: StablecoinVaultSimulator = await Sim.deploy(await token.getAddress(), await verifier.getAddress());
+      await sim.waitForDeployment();
 
-      // The same number read as wei is 1 gwei — so 2 gwei of ETH is refused.
+      // An owner reasoning in stablecoin base units sets "1000 mUSDC per day" — on the
+      // TOKEN subject, where that number means what they think it means.
+      await armFor(owner, sim, 1_000_000_000n, await token.getAddress());
+      // The ETH subject is separately armed at a sane wei figure.
+      await armFor(owner, ethVault, ethers.parseEther("1"));
+
+      // 2 gwei of ETH is now trivially admitted; previously the token-scaled number was
+      // read as wei (1 gwei) and denied it.
       const twoGwei = 2_000_000_000n;
       const deadline = (await networkHelpers.time.latest()) + 3600;
       const req = request(owner.address, recipient.address, twoGwei, 0, deadline);
       const { ecdsaSig, pqSig } = await signEth(ethVault, owner, req);
-      await expect(ethVault.withdraw(req, ecdsaSig, pqSig))
-        .to.be.revertedWithCustomError(ethVault, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      await expect(ethVault.withdraw(req, ecdsaSig, pqSig)).to.emit(ethVault, "Withdrawn");
+    });
+
+    it("ETH vs ERC-20: address(0) and a token address are structurally distinct keys", async function () {
+      const Token = await ethers.getContractFactory("MockUSDC");
+      const token: MockUSDC = await Token.deploy();
+      await token.waitForDeployment();
+      const tokenAddress = await token.getAddress();
+
+      const vault = await deployEthVault();
+      const consumer = await vault.getAddress();
+
+      expect(await policy.subjectKey({ consumer, owner: owner.address, asset: NATIVE_ASSET })).to.not.equal(
+        await policy.subjectKey({ consumer, owner: owner.address, asset: tokenAddress }),
+      );
+
+      // And they behave as distinct buckets, not merely as distinct hashes.
+      await armFor(owner, vault, ethers.parseEther("1"));
+      await armFor(owner, vault, 500_000n, tokenAddress);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(ethers.parseEther("1"));
+      expect(await policy.dailyLimit(consumer, owner.address, tokenAddress)).to.equal(500_000n);
+    });
+
+    it("SAME CONSUMER + OWNER, DIFFERENT ASSET: independent buckets on ONE consumer", async function () {
+      // Both production consumers are single-asset, so a multi-asset consumer is built
+      // here on purpose — the subject is designed for one, and the dimension must be
+      // exercised rather than assumed. FakeVaultMock mints `consumer: address(this)`
+      // exactly as a real vault does, and lets the asset vary per call.
+      const Token = await ethers.getContractFactory("MockUSDC");
+      const tokenA: MockUSDC = await Token.deploy();
+      const tokenB: MockUSDC = await Token.deploy();
+      await tokenA.waitForDeployment();
+      await tokenB.waitForDeployment();
+      const assetA = await tokenA.getAddress();
+      const assetB = await tokenB.getAddress();
+
+      const Fake = await ethers.getContractFactory("FakeVaultMock", admin);
+      const multiAsset = await Fake.deploy(await policy.getAddress());
+      await multiAsset.waitForDeployment();
+      const consumer = await multiAsset.getAddress();
+
+      // One consumer, one owner, two assets — each armed and delegated separately.
+      await policy.connect(owner).setAdmitter(consumer, assetA, consumer, true);
+      await policy.connect(owner).setDailyLimit(consumer, assetA, 1_000n);
+      await policy.connect(owner).setAdmitter(consumer, assetB, consumer, true);
+      await policy.connect(owner).setDailyLimit(consumer, assetB, 1_000n);
+
+      // Exhaust asset A entirely through the consumer's own admission path.
+      await multiAsset.admit(owner.address, assetA, recipient.address, 1_000n, 0n);
+      expect(await policy.remainingAllowance(consumer, owner.address, assetA)).to.equal(0n);
+      // Asset B is untouched, on the very same consumer and owner.
+      expect(await policy.remainingAllowance(consumer, owner.address, assetB)).to.equal(1_000n);
+
+      // And B still admits.
+      await multiAsset.admit(owner.address, assetB, recipient.address, 1_000n, 0n);
+      expect(await policy.remainingAllowance(consumer, owner.address, assetB)).to.equal(0n);
     });
 
     it("NO NORMALIZATION: the amount reaching the policy is the raw request amount", async function () {
@@ -528,16 +658,20 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       const ethVault = await deployEthVault();
       await installEngine(ethVault, await policy.getAddress());
       await ethVault.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
-      await policy.connect(owner).setAdmitter(await ethVault.getAddress(), true);
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
+      await armFor(owner, ethVault, ethers.parseEther("1"));
 
       const odd = 123_456_789n; // an amount no scaling factor would preserve
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(ethVault, owner, odd, 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(ethers.parseEther("1") - odd);
+      expect(await allowanceFor(ethVault, owner.address)).to.equal(ethers.parseEther("1") - odd);
     });
 
-    it("COMPOSITE: one composite relays vaultOwner verbatim and can serve several consumers", async function () {
+    it("COMPOSITE AMPLIFICATION: one shared composite serves several consumers WITHOUT merging them", async function () {
+      // THE #170 WORKAROUND, RETIRED. The previous release documented that a
+      // CompositePolicyEngine must never be shared across consumers, because the
+      // module saw only the owner and every vault behind the composite drew on one
+      // bucket. This test asserted that merge. It now asserts separation: the subject
+      // survives the composite, so sharing is mechanically safe.
       const Composite = await ethers.getContractFactory("CompositePolicyEngine", admin);
       const composite: CompositePolicyEngine = await Composite.deploy();
       await composite.waitForDeployment();
@@ -549,35 +683,33 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await installEngine(vaultA, engine);
       await installEngine(vaultB, engine);
 
-      // The COMPOSITE owner registers both consumers; the subject delegates once.
+      // The COMPOSITE owner registers both consumers.
       await composite.connect(admin).setAdmissionCaller(await vaultA.getAddress(), true);
       await composite.connect(admin).setAdmissionCaller(await vaultB.getAddress(), true);
-      expect(await composite.admissionCaller(await vaultA.getAddress())).to.equal(true);
-      expect(await composite.admissionCaller(await vaultB.getAddress())).to.equal(true);
 
       await vaultA.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
       await vaultB.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
 
-      // A SINGLE delegation — to the composite — now covers both vaults.
-      await policy.connect(owner).setAdmitter(engine, true);
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
-      expect(await policy.admitterCount(owner.address)).to.equal(1n);
+      // The tenant delegates to the COMPOSITE — separately for each consumer's subject,
+      // because authority is per subject even when the delegate is the same contract.
+      await armFor(owner, vaultA, ethers.parseEther("1"), NATIVE_ASSET, composite);
+      await armFor(owner, vaultB, ethers.parseEther("1"), NATIVE_ASSET, composite);
 
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vaultA, owner, ethers.parseEther("1"), 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
+      expect(await allowanceFor(vaultA, owner.address)).to.equal(0n);
 
+      // Through the SAME composite, vault B still has its own full allowance.
+      expect(await allowanceFor(vaultB, owner.address)).to.equal(ethers.parseEther("1"));
       const req = request(owner.address, recipient.address, ethers.parseEther("0.5"), 0, t0 + 3600);
       const { ecdsaSig, pqSig } = await signEth(vaultB, owner, req);
-      await expect(vaultB.withdraw(req, ecdsaSig, pqSig))
-        .to.be.revertedWithCustomError(vaultB, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      await expect(vaultB.withdraw(req, ecdsaSig, pqSig)).to.emit(vaultB, "Withdrawn");
     });
 
     it("TENANT ISOLATION HOLDS: two owners inside one vault contract never share a bucket", async function () {
-      // The control case. Subject keying by owner address is correct for the
-      // multi-tenant dimension; only the vault-contract and asset dimensions
-      // are missing.
+      // The control case, UNCHANGED by this PR. Owner keying was always correct for the
+      // multi-tenant dimension; the consumer and asset dimensions are what were missing.
+      // It also proves these tests can still observe a shared bucket where one exists.
       const [, , , second] = await ethers.getSigners();
       const vault = await deployEthVault();
       await installEngine(vault, await policy.getAddress());
@@ -585,15 +717,13 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await vault.connect(owner).createVault(owner.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
       await vault.connect(second).createVault(second.address, PQ_KEY, HYBRID, { value: ethers.parseEther("10") });
 
-      await policy.connect(owner).setAdmitter(await vault.getAddress(), true);
-      await policy.connect(second).setAdmitter(await vault.getAddress(), true);
-      await policy.connect(owner).setDailyLimit(ethers.parseEther("1"));
-      await policy.connect(second).setDailyLimit(ethers.parseEther("1"));
+      await armFor(owner, vault, ethers.parseEther("1"));
+      await armFor(second, vault, ethers.parseEther("1"));
 
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(vault, owner, ethers.parseEther("1"), 0, t0);
-      expect(await policy.remainingAllowance(owner.address)).to.equal(0n);
-      expect(await policy.remainingAllowance(second.address)).to.equal(ethers.parseEther("1"));
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
+      expect(await allowanceFor(vault, second.address)).to.equal(ethers.parseEther("1"));
 
       const req = request(second.address, recipient.address, ethers.parseEther("1"), 0, t0 + 3600);
       const { ecdsaSig, pqSig } = await signEth(vault, second, req);

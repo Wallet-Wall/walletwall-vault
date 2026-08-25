@@ -137,6 +137,8 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     error SelfModule();
     error TooManyModules(uint256 count, uint256 max);
     error UnauthorizedAdmissionCaller(address caller);
+    /// @notice The relayed subject claims a consumer other than the authenticated caller.
+    error SubjectConsumerMismatch(address claimedConsumer, address caller);
     error NoPendingModuleRemoval(address module);
     error ModuleRemovalNotReady(address module, uint256 validAfter, uint256 currentTimestamp);
     /// @notice The proposal matured but its applicable window has closed; re-propose.
@@ -302,23 +304,40 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
      *      Restricted to registered consumers ({setAdmissionCaller}); an unregistered
      *      caller reverts rather than being relayed to the modules, so this composite
      *      cannot be used as a deputy to reach a stateful module's admission accounting.
+     *
+     *      SUBJECT PRESERVATION IS THE POINT OF THIS FUNCTION. `subject` is relayed to
+     *      every module BYTE-FOR-BYTE. This composite never substitutes
+     *      `subject.consumer` with `address(this)`, never zeroes `subject.asset`, and
+     *      never rewrites `subject.owner` — doing any of those would re-collapse the
+     *      identities the subject exists to keep apart, and would make one shared
+     *      composite silently merge the spend accounting of every vault behind it.
+     *
+     *      TWO INDEPENDENT GATES, ANSWERING DIFFERENT QUESTIONS. `admissionCaller`
+     *      answers "may this caller use this composite at all". The consumer binding
+     *      below answers "is this caller the consumer it CLAIMS to be" — without it, a
+     *      registered consumer could present a subject naming a DIFFERENT registered
+     *      consumer and book spend into that consumer's bucket. Neither gate implies
+     *      the other, so both are required.
+     *
+     *      A side effect worth naming: because the binding requires
+     *      `subject.consumer == msg.sender`, a composite nested inside another
+     *      composite can no longer admit anything (the inner one would see the outer
+     *      composite as caller while the subject still names the vault). The "do not
+     *      nest composites" warning above is therefore now MECHANICALLY enforced on the
+     *      admission path rather than merely documented.
      */
     function check(
-        address vaultOwner,
+        PolicySubject calldata subject,
         address recipient,
         uint256 amount,
         uint256 vaultBalance
     ) external override returns (bool, string memory) {
         if (!admissionCaller[msg.sender]) revert UnauthorizedAdmissionCaller(msg.sender);
+        if (subject.consumer != msg.sender) revert SubjectConsumerMismatch(subject.consumer, msg.sender);
 
         uint256 len = _modules.length;
         for (uint256 i = 0; i < len; i++) {
-            (bool ok, string memory why) = IPolicyEngine(_modules[i]).check(
-                vaultOwner,
-                recipient,
-                amount,
-                vaultBalance
-            );
+            (bool ok, string memory why) = IPolicyEngine(_modules[i]).check(subject, recipient, amount, vaultBalance);
             if (!ok) return (false, why);
         }
         return (true, "");
@@ -335,9 +354,24 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
      *      after a withdrawal was queued blocks it, and a retained module whose
      *      internal state turned denying blocks it. An empty module list is
      *      permissive, mirroring {check}.
+     *
+     *      `subject` is relayed unchanged here too, so a module sees the same identity
+     *      at settlement that it saw at admission.
+     *
+     *      WHY THIS PATH CARRIES NEITHER GATE. {check}'s two gates exist because it
+     *      MUTATES module accounting: an unauthorized or consumer-spoofing caller could
+     *      otherwise book spend into a bucket that is not theirs. This function is
+     *      `view`, so every module call it makes executes under STATICCALL and can book
+     *      nothing at all. What remains is a caller who lies about a subject and
+     *      receives, as a return value to themselves, an answer about someone else's
+     *      state — the same information any module's own public getters already expose.
+     *      Adding a gate here would buy no confidentiality and would add a new way for
+     *      an honest settlement to fail closed, since the vaults call this on the
+     *      QUEUE-TIME engine as well as the current one and treat any revert as
+     *      PolicyEngineUnavailable.
      */
     function revalidate(
-        address vaultOwner,
+        PolicySubject calldata subject,
         address recipient,
         uint256 amount,
         uint256 vaultBalance
@@ -345,7 +379,7 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
         uint256 len = _modules.length;
         for (uint256 i = 0; i < len; i++) {
             (bool ok, string memory why) = IPolicyEngine(_modules[i]).revalidate(
-                vaultOwner,
+                subject,
                 recipient,
                 amount,
                 vaultBalance
