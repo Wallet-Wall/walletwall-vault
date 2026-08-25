@@ -64,6 +64,21 @@ jobs:
           # Read-only: --write (refresh) is a deliberate local action, never a CI step.
           npm run validate:runtime-byte-claims
 
+      - name: Validate SP1 pin parity (deterministic; no SP1 toolchain, no cargo, no network)
+        run: |
+          set -euo pipefail
+          # zkvm/host/Cargo.toml's own version note: sp1-zkvm (guest), sp1-sdk and
+          # sp1-build (host) must name the SAME SP1 release — "If you bump one, bump
+          # all three together, then re-extract the program vKey." Nothing else here
+          # would catch a split: zkvm/host is deliberately outside CI, the
+          # "Validate SP1 host Cargo.lock" job checks that lockfile's own internal
+          # consistency and never guest-vs-host parity, the TS<->Rust differential
+          # test is skipped, and no ELF or vKey is committed whose drift would show
+          # it. Pure Cargo.toml text inspection, so it runs here even though the host
+          # crate itself cannot. Proves the DECLARED releases agree — not that the
+          # release builds or proves correctly (see docs/ZK_Prover_Runbook.md).
+          npm run validate:sp1-pin-parity
+
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
 
