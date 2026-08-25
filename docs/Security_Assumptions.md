@@ -391,6 +391,25 @@ its code).
   reference — a future vault type with a longer engine-swap delay would need
   this re-verified before relying on the invariant.
 
+  **A matured removal proposal EXPIRES.** `MODULE_REMOVAL_DELAY` only buys a
+  reaction window if the proposal cannot be banked, so `applyRemoveModule` is
+  applicable only within `[validAfter, validAfter + MODULE_REMOVAL_GRACE_PERIOD]`
+  (14 days, matching Compound's Timelock `GRACE_PERIOD`). Without that bound a
+  matured proposal stayed exercisable forever, so a composite owner could
+  pre-arm one at a quiet moment — nothing queued, no observer with cause to
+  react — let the two days lapse unapplied, and bank an INSTANT eviction
+  indefinitely. Exercised at the moment the module actually stood between the
+  owner and a settlement, that cost zero delay and gave zero warning, which is
+  exactly what the delay exists to prevent; such a pre-armed proposal could
+  free an already-queued withdrawal that `revalidate()` was correctly blocking.
+  With expiry, any removal executable right now was announced by a
+  `ModuleRemovalProposed` event within the last
+  `MODULE_REMOVAL_DELAY + MODULE_REMOVAL_GRACE_PERIOD`, so monitoring that event
+  gives a finite, guaranteed horizon rather than requiring perfect recall of
+  every proposal ever made. An expired proposal buys no head start — removal
+  needs a fresh proposal and a fresh full delay — and can still be cleared with
+  `cancelRemoveModule`.
+
   **This is friction-equivalence, not settlement-outcome-equivalence for
   already-queued withdrawals — the two must not be conflated.** The sticky
   floor described below holds at engine-**address** granularity, not at

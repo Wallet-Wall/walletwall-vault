@@ -42,7 +42,11 @@ import "../IPolicyEngine.sol";
  *       policy engine's ADDRESS outright. The module being removed stays fully
  *       active — evaluated by both {check} and {revalidate} — for the entire
  *       pending window, so it cannot be evicted with less friction than an
- *       engine-address swap would cost.
+ *       engine-address swap would cost. That friction is real only because a
+ *       matured proposal also EXPIRES after {MODULE_REMOVAL_GRACE_PERIOD}: an
+ *       unbounded one could be pre-armed at a quiet moment and banked, making the
+ *       eviction instant exactly when it mattered and delivering none of the
+ *       warning the delay is supposed to buy.
  *
  *       FRICTION-EQUIVALENT, NOT OUTCOME-EQUIVALENT FOR ALREADY-QUEUED
  *       WITHDRAWALS. Removal now costs a composite owner the same DELAY a vault
@@ -88,6 +92,28 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     ///      re-verification before being wired to a composite using this constant.
     uint256 public constant MODULE_REMOVAL_DELAY = 2 days;
 
+    /// @notice How long a matured removal proposal stays applicable before it expires.
+    /// @dev WHY AN UPPER BOUND EXISTS. {MODULE_REMOVAL_DELAY} is only worth the
+    ///      reaction window it actually delivers at the moment a module is evicted.
+    ///      Without an expiry, a matured proposal stays exercisable forever, so an
+    ///      owner can PRE-ARM one at a quiet moment — when nothing is queued and no
+    ///      observer has cause to react — let the delay lapse unapplied, and then bank
+    ///      an INSTANT eviction indefinitely. Exercised at the moment the module
+    ///      actually stands between the owner and a settlement, that costs zero delay
+    ///      and yields zero warning, which is precisely the outcome the delay exists to
+    ///      prevent. Bounding the applicable window restores the intended property:
+    ///      any removal executable right now was announced by a
+    ///      {ModuleRemovalProposed} event within the last
+    ///      MODULE_REMOVAL_DELAY + MODULE_REMOVAL_GRACE_PERIOD, so monitoring that
+    ///      event gives a finite, guaranteed horizon instead of requiring perfect
+    ///      recall of every proposal ever made.
+    ///
+    ///      The 2-day delay / 14-day grace pairing matches Compound's Timelock, which
+    ///      carries a GRACE_PERIOD for this same reason. The grace window is generous
+    ///      on purpose: expiry is an anti-banking bound, not an execution race, so an
+    ///      honest operator applying a matured removal is never realistically rushed.
+    uint256 public constant MODULE_REMOVAL_GRACE_PERIOD = 14 days;
+
     address[] private _modules;
 
     /// @notice Consumers permitted to invoke {check}. Empty by default — a fresh
@@ -113,6 +139,8 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
     error UnauthorizedAdmissionCaller(address caller);
     error NoPendingModuleRemoval(address module);
     error ModuleRemovalNotReady(address module, uint256 validAfter, uint256 currentTimestamp);
+    /// @notice The proposal matured but its applicable window has closed; re-propose.
+    error ModuleRemovalExpired(address module, uint256 validAfter, uint256 expiresAt, uint256 currentTimestamp);
 
     constructor() Ownable(msg.sender) {}
 
@@ -167,11 +195,23 @@ contract CompositePolicyEngine is IPolicyEngine, Ownable2Step {
      *      for the removal itself. Order is not preserved. Re-checks membership at
      *      apply time (not just the existence of a pending proposal) so a stale
      *      proposal can never remove the wrong thing.
+     *
+     *      Applicable only within [validAfter, validAfter + {MODULE_REMOVAL_GRACE_PERIOD}].
+     *      Past that the proposal has EXPIRED and buys no head start: removal requires a
+     *      fresh {proposeRemoveModule} and a fresh full delay. See
+     *      {MODULE_REMOVAL_GRACE_PERIOD} for why an unbounded window would void the
+     *      delay's entire purpose. An expired proposal can still be cleared with
+     *      {cancelRemoveModule}.
      */
     function applyRemoveModule(address module) external onlyOwner {
         uint256 validAfter = pendingModuleRemovalValidAfter[module];
         if (validAfter == 0) revert NoPendingModuleRemoval(module);
         if (block.timestamp < validAfter) revert ModuleRemovalNotReady(module, validAfter, block.timestamp);
+
+        uint256 expiresAt = validAfter + MODULE_REMOVAL_GRACE_PERIOD;
+        if (block.timestamp > expiresAt) {
+            revert ModuleRemovalExpired(module, validAfter, expiresAt, block.timestamp);
+        }
 
         pendingModuleRemovalValidAfter[module] = 0;
 
