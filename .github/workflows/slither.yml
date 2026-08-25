@@ -50,7 +50,19 @@ jobs:
           ignore-compile: true
           fail-on: none
           sarif: slither-results.sarif
-          slither-args: --compile-force-framework hardhat --exclude-dependencies
+          # --filter-paths excludes ONLY the two adversarial test-fixture files.
+          # Both deliberately violate the shapes Slither checks for, because that
+          # violation IS the test: PolicyRevalidationMocks omits `is IPolicyEngine`
+          # so a non-view `revalidate` override compiles at all (proving finalization
+          # cannot mutate policy state under STATICCALL), and DailySpendAdmissionMocks
+          # impersonates a vault it was never authorized as. Making either conform to
+          # the detectors would delete the coverage. Scoped per-file, NOT to
+          # contracts/mocks/ as a whole: MockMLDSAVerifier and MockUSDC also live
+          # there, are really deployed to Sepolia, carry reproducibility evidence,
+          # and must stay under analysis.
+          slither-args: >-
+            --compile-force-framework hardhat --exclude-dependencies
+            --filter-paths "contracts/mocks/PolicyRevalidationMocks.sol,contracts/mocks/DailySpendAdmissionMocks.sol"
 
       - name: Upload Slither SARIF
         if: ${{ always() && hashFiles('slither-results.sarif') != '' }}
