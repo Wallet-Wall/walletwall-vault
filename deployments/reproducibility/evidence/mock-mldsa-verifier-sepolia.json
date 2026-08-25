@@ -123,7 +123,7 @@
       "contracts/mocks/PolicyRevalidationMocks.sol": "0xdec134bc1447ed28c8fc7dcafc2faaabd46d15563ae3adeb8444d1d3a457c130",
       "contracts/mocks/RejectEther.sol": "0x65a18729f548cc8d7c956de3f0ab8631a38a41041d478f9628074acce3b58f6d",
       "contracts/policies/CompositePolicyEngine.sol": "0x22b606e061895a0667cd10073b93cc718ea3963dad102a7eb8a9b3c94a1f5ec9",
-      "contracts/policies/DailySpendLimitPolicy.sol": "0x372c0be7f6bc06c56561869bb0cbe62f46b5ade5ba1bca42dcb63d21ac132a65",
+      "contracts/policies/DailySpendLimitPolicy.sol": "0x575fe7d5d0ce4bec409d8f3b6887be24b38f9dca129612394922d2dd961ed4e3",
       "contracts/policies/RecipientAllowlistPolicy.sol": "0xc14d6b761da678dceac684c16fd0e5a128e32fc1f2178dc85494800aa58ad9de",
       "contracts/policies/SanctionsListPolicy.sol": "0x4e94157be5a2d2e4800054d4fc556fccb456bd4d9bd0a52aff493482beca15c5",
       "contracts/StablecoinVaultSimulator.sol": "0xabc9234b4ed5accc82d116e3d395e7776d0858974c7cd81d8ae3d16c26387129",
@@ -213,9 +213,9 @@
         "typeString": "bytes32"
       }
     ],
-    "compilerInputHash": "0x4e3b03f6023cbec2f177ae588a1d0ac2beda69cd6d80a824b6d6a04924b3298f",
-    "headCommit": "55386cb6a871926e32823ca726ab43872db6a50b",
-    "capturedAt": "2026-08-25T22:19:55.324Z"
+    "compilerInputHash": "0x419de36109a1270944883353ea3104f83583fd57ea27fdabae7ee200909a9314",
+    "headCommit": "ad59915e83a2c3567eda1513e2461024349421c7",
+    "capturedAt": "2026-08-25T22:47:01.328Z"
   },
   "liveRuntime": {
     "address": "0x4736138c99e0619D06663D971C8cD347de186F6d",
