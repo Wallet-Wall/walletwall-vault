@@ -344,8 +344,43 @@ its code).
   after key loss cannot change its own daily-limit configuration. That limitation
   predates this change (`setDailyLimit` was already `msg.sender`-keyed); admission
   delegation now inherits it.
-- `DailySpendLimitPolicy` — per-vault vault-owner-managed rolling 24-hour spend
-  cap. Each vault owner sets their own limit via `setDailyLimit()`. Spending is
+- `DailySpendLimitPolicy` — per-vault vault-owner-managed 24-hour spend cap.
+  WINDOW SEMANTICS: the intended invariant is a true ROLLING 24-hour cap, but the
+  current implementation enforces a TUMBLING/reset window. Close to 2x the limit is
+  reachable inside a single 24-hour interval, and the exact figure depends on how the
+  window was anchored:
+  - through the normal signed vault withdrawal path, `2L - 1 wei` within ONE SECOND
+    (anchor with 1 wei at `t0`, spend `L - 1` at `t0 + WINDOW - 1`, spend `L` at
+    `t0 + WINDOW`). Both vaults reject `amount == 0`, so the anchoring spend always
+    costs at least 1 wei on this path.
+  - EXACTLY `2L` only when the window is anchored by a zero-amount `check()` called
+    directly by an authorized admitter (e.g. a self-delegated subject), which costs
+    no allowance.
+  The bound is exactly 2x and no looser, because a denied call does not persist the
+  reset and successive anchors are therefore at least WINDOW apart. SUBJECT SCOPE: accounting is keyed
+  by the `vaultOwner` argument alone and carries no consumer-contract and no asset
+  dimension, so a single instance delegated to two consumers accumulates their
+  amounts — which may be in different raw units — into one scalar. Tenant
+  isolation within one consumer is correct. Until rolling enforcement and explicit
+  subject propagation land, the workaround must make the POLICY PATH
+  consumer-specific, not merely the instance: a shared `CompositePolicyEngine` fans
+  every call out to EVERY registered module and every module sees the composite as
+  `msg.sender`, so two separate DailySpend instances behind one shared composite
+  would still both observe both consumers. Therefore:
+    - use a dedicated `DailySpendLimitPolicy` instance per (consumer, asset), AND
+    - either install it directly for that consumer, or place it behind a
+      CONSUMER-SPECIFIC `CompositePolicyEngine`.
+    - Do NOT place DailySpend behind a `CompositePolicyEngine` shared by multiple
+      consumers.
+  All of that is an operational convention, not an invariant the contract enforces. Both behaviours
+  are pinned by `test/DailySpendWindowSemantics.test.ts`.
+  NOTE: the contract's own NatSpec still describes this as a rolling window and is
+  therefore currently WRONG. It is corrected in the follow-up PR that introduces an
+  explicit policy subject, because editing `contracts/**` restages the reproducibility
+  evidence bundles (they bind covered `contracts/` content to HEAD) and that cost
+  belongs with a PR that changes contracts anyway. Until then, THIS document and
+  `test/DailySpendWindowSemantics.test.ts` are the authority on window semantics.
+  Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
   Booking additionally requires ADMISSION AUTHORITY: `check()` mutates accounting
   selected by its `vaultOwner` argument, so it also demands that `msg.sender` be an
