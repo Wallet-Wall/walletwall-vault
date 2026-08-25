@@ -125,11 +125,11 @@ All executable runtime bytecode, and — for `StablecoinVaultSimulator` — all 
 deployment **exactly**. Each contract has a machine-checkable manifest, validated by
 `npm run validate:reproducibility`:
 
-| Contract | Manifest | Runtime bytes | Executable code match | Metadata hash match |
+| Contract | Manifest | Deployment runtime bytes | Executable code match | Metadata hash match |
 | --- | --- | --- | --- | --- |
 | `MockUSDC` | [`deployments/reproducibility/mock-usdc-sepolia.json`](../deployments/reproducibility/mock-usdc-sepolia.json) | `1,994` | ✅ exact | ❌ excluded (see below) |
 | `MockMLDSAVerifier` | [`deployments/reproducibility/mock-mldsa-verifier-sepolia.json`](../deployments/reproducibility/mock-mldsa-verifier-sepolia.json) | `569` | ✅ exact | ❌ excluded (see below) |
-| `StablecoinVaultSimulator` | [`deployments/reproducibility/stablecoin-vault-simulator-sepolia.json`](../deployments/reproducibility/stablecoin-vault-simulator-sepolia.json) | `21,979` | ✅ exact (incl. all 8 immutables) | ❌ excluded (see below) |
+| `StablecoinVaultSimulator` | [`deployments/reproducibility/stablecoin-vault-simulator-sepolia.json`](../deployments/reproducibility/stablecoin-vault-simulator-sepolia.json) | `21,807` | ✅ exact (incl. all 8 immutables) | ❌ excluded (see below) |
 
 Last independently re-checked: **2026-08-23**.
 
@@ -169,7 +169,10 @@ evidence bundles below were produced.
    capture time — itself since migrated to Hardhat 3) was compiled too, giving
    `publicHeadRuntimeBytes`: a distinct, informational claim ("source hasn't drifted since the
    deployment commit"), never conflated with reproducibility against the deployment commit
-   itself, since the two builds can legitimately use different toolchains. Both builds' `capture-build`
+   itself, since the two builds can legitimately use different toolchains. Informational, but not
+   unchecked — `npm run validate:runtime-byte-claims` recompiles each subject and rejects any
+   published copy of that number, in a manifest or in prose, that the compiler disagrees with.
+   Both builds' `capture-build`
    step binds `sourceDigests` to the literal `content` embedded in solc's own standard-json input
    (not a separately-taken disk snapshot), so a source digest can only ever describe what solc
    actually compiled, never merely what happens to sit on disk with a matching filename —

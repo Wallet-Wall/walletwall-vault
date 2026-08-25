@@ -52,6 +52,18 @@ jobs:
           # bytecode is reported but never gated. No network, no chain, no proving.
           npm run validate:bytecode-size
 
+      - name: Validate runtime-byte claims against the compiler (deterministic, no network)
+        run: |
+          set -euo pipefail
+          # Every published claim about a contract's RUNTIME bytecode size — the
+          # reproducibility manifests' publicHeadRuntimeBytes, the evidence bundles'
+          # captured public-HEAD build, and the README / SECURITY.md / docs/Deployments.md
+          # prose — must equal the size solc just produced. Reuses the same measurement
+          # primitive as the EIP-170 step above; never compares one record to another,
+          # because two records agreeing is not evidence when both are hand-refreshed.
+          # Read-only: --write (refresh) is a deliberate local action, never a CI step.
+          npm run validate:runtime-byte-claims
+
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
 

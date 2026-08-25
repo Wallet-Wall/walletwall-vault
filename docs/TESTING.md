@@ -27,6 +27,7 @@ npm run format:check
 npm run validate:deployments
 npm run validate:reproducibility
 npm run validate:bytecode-size
+npm run validate:runtime-byte-claims
 ```
 
 Optional coverage run:
@@ -51,6 +52,7 @@ failure in any of them fails the `build-test` job on that commit.
 | `npm run validate:deployments` | Validates every committed `deployments/` record (excluding `schema/`, `examples/`, `reproducibility/`) against the required shape and testnet-only safety rules. Deterministic, offline. |
 | `npm run validate:reproducibility` | Validates every committed `deployments/reproducibility/` manifest: a manifest may only claim `reproducibilityStatus: "reproducible"` when its own recorded facts support that; otherwise it must carry a concrete remediation plan. Deterministic, offline. |
 | `npm run validate:bytecode-size` | Post-compile EIP-170 gate: fails if any of `WalletWallVault`, `StablecoinVaultSimulator`, `WalletWallMultiSigVault`, `MockMLDSAVerifier`, `AttestationPQCVerifier`, `ImmutableAttestationPQCVerifier`, or `ZKMLDSAVerifier` has RUNTIME (deployed) bytecode over 24,576 bytes. Creation bytecode is reported but never gated. Deterministic, offline; requires `npm run compile` first (run automatically via the `prevalidate:bytecode-size` hook). |
+| `npm run validate:runtime-byte-claims` | Post-compile gate binding every **published** runtime-byte claim to the compiler: the reproducibility manifests' `publicHeadRuntimeBytes` (including remediation-gated records, which the reproducibility replay skips), the evidence bundles' captured public-HEAD build, and the byte counts written in `README.md`, `SECURITY.md`, `docs/Deployments.md`, and the manifests' own remediation prose. Shares its measurement primitive with `validate:bytecode-size`, and compares only against a freshly compiled artifact — never against another record, since two hand-refreshed records agreeing is not independent evidence. Also fails on a claim about a contract nothing measures, on a published byte count no registered site watches, and on a registered locator that has stopped matching. `observed-live` claims (what a past deployment actually put on chain) are checked for internal consistency but never overruled by the compiler. Deterministic, offline; `-- --write` performs a deliberate refresh and is never run in CI. |
 
 ## Current Test Focus
 

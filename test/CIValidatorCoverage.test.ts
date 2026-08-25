@@ -99,10 +99,34 @@ describe("CI workflow — deployment-truth and bytecode-size gates run in normal
       expect(compileIdx).to.be.lessThan(sizeIdx);
     });
 
+    it("runs npm run validate:runtime-byte-claims", function () {
+      // Without this step a contract-size change can merge while the published
+      // reproducibility manifests, evidence bundles, and README/SECURITY/Deployments
+      // prose still advertise the previous byte count — the exact drift that went
+      // undetected across two releases.
+      expect(job).to.include("npm run validate:runtime-byte-claims");
+    });
+
+    it("compiles before the runtime-byte claim gate (the compiler IS the authority it checks against)", function () {
+      const compileIdx = job.indexOf("npm run compile");
+      const claimsIdx = job.indexOf("npm run validate:runtime-byte-claims");
+      expect(compileIdx, "npm run compile step not found").to.be.greaterThan(-1);
+      expect(claimsIdx, "npm run validate:runtime-byte-claims step not found").to.be.greaterThan(-1);
+      expect(compileIdx).to.be.lessThan(claimsIdx);
+    });
+
+    it("never runs the runtime-byte claim gate in --write mode in CI", function () {
+      // A CI step that refreshed the claims it is meant to verify would always pass
+      // and prove nothing. Refresh is a deliberate local action only.
+      const step = stepBlockContaining(job, "npm run validate:runtime-byte-claims");
+      expect(step).to.not.include("--write");
+    });
+
     for (const cmd of [
       "npm run validate:deployments",
       "npm run validate:reproducibility",
       "npm run validate:bytecode-size",
+      "npm run validate:runtime-byte-claims",
     ]) {
       it(`"${cmd}" step is unconditional (no if:, no continue-on-error escape hatch)`, function () {
         const step = stepBlockContaining(job, cmd);
