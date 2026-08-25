@@ -461,6 +461,80 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
   });
 
   // =====================================================================
+  // PART D2 — ARITHMETIC EDGES NEAR type(uint256).max
+  // =====================================================================
+  describe("D2 — the bookable-amount ceiling denies cleanly, never panics", function () {
+    // A ledger entry packs (uint64 timestamp, uint192 amount) into one slot, so an
+    // amount above type(uint192).max cannot be represented. The failure mode chosen for
+    // that is a DENIAL. The alternative — capping `limit` instead — is not available:
+    // test/DailySpendAdmissionAuthority.test.ts B5 pins that an owner reaching for
+    // "effectively unlimited" may still set type(uint256).max.
+    let consumer: string;
+    const subj = () => ({ consumer, owner: owner.address, asset: NATIVE_ASSET });
+
+    beforeEach(async function () {
+      consumer = await vault.getAddress();
+      await policy.connect(owner).setAdmitter(consumer, NATIVE_ASSET, owner.address, true);
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, ethers.MaxUint256);
+    });
+
+    it("D2a: an armed limit of type(uint256).max is still settable", async function () {
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(ethers.MaxUint256);
+    });
+
+    it("D2b: amount == type(uint256).max is DENIED with its own reason, not a panic", async function () {
+      // Under the previous accumulator this construction reached a checked add and could
+      // produce Panic(0x11) rather than a decision. A caller must be able to tell "I was
+      // refused" from "the contract broke".
+      const [allowed, reason] = await policy
+        .connect(owner)
+        .check.staticCall(subj(), recipient.address, ethers.MaxUint256, 0n);
+      expect(allowed).to.equal(false);
+      expect(reason).to.equal("amount exceeds bookable range");
+
+      await expect(policy.connect(owner).check(subj(), recipient.address, ethers.MaxUint256, 0n)).to.not.revert(ethers);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+      expect(await rollingSpent()).to.equal(0n);
+    });
+
+    it("D2c: exactly MAX_BOOKABLE_AMOUNT is admitted and booked as one entry", async function () {
+      // The boundary is inclusive on the admitted side, so the denial in D2b is about
+      // representability and nothing else.
+      const max = await policy.MAX_BOOKABLE_AMOUNT();
+      const [allowed] = await policy.connect(owner).check.staticCall(subj(), recipient.address, max, 0n);
+      expect(allowed).to.equal(true);
+
+      await policy.connect(owner).check(subj(), recipient.address, max, 0n);
+      expect(await rollingSpent()).to.equal(max);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(1n);
+    });
+
+    it("D2d: a second MAX_BOOKABLE_AMOUNT in the SAME second appends rather than overflowing", async function () {
+      // Coalescing would overflow uint192 here, so it must be declined in favour of a
+      // fresh entry. Both are still exact: two entries at the same instant expire
+      // together, so the trailing total is the same either way.
+      const Batch = await ethers.getContractFactory("DailySpendBatchAdmitterMock");
+      const batch = await Batch.deploy(await policy.getAddress());
+      await batch.waitForDeployment();
+      await policy.connect(owner).setAdmitter(consumer, NATIVE_ASSET, await batch.getAddress(), true);
+
+      const max = await policy.MAX_BOOKABLE_AMOUNT();
+      const at = (await networkHelpers.time.latest()) + 10;
+      await networkHelpers.time.setNextBlockTimestamp(at);
+      await batch.admitBatchAs(consumer, owner.address, NATIVE_ASSET, [max, max]);
+
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(2n);
+      expect(await rollingSpent()).to.equal(max * 2n);
+
+      // They still expire as one instant, together.
+      await networkHelpers.time.increaseTo(at + WINDOW - 1);
+      expect(await rollingSpent()).to.equal(max * 2n);
+      await networkHelpers.time.increaseTo(at + WINDOW);
+      expect(await rollingSpent()).to.equal(0n);
+    });
+  });
+
+  // =====================================================================
   // PART E — LIMIT CHANGES MUST NOT REWRITE HISTORY
   // =====================================================================
   describe("E — raising, lowering, disarming and re-arming", function () {
