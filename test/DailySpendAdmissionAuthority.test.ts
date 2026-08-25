@@ -591,8 +591,10 @@ describe("Daily-spend admission authority (regression)", function () {
   });
 
   // =========================================================================
-  // E — WINDOW SEMANTICS (tumbling/reset today; rolling enforcement pending)
-  //     Unchanged for the legitimate path. See test/DailySpendWindowSemantics.test.ts.
+  // E — WINDOW SEMANTICS (a true rolling 24h ledger)
+  //     Unchanged for the legitimate path: a single spend still exhausts the cap and
+  //     still recovers a full WINDOW later, because one entry expires exactly a WINDOW
+  //     after itself. The rolling matrix is test/DailySpendRollingWindow.test.ts.
   // =========================================================================
   describe("E — window semantics for the authorized path", function () {
     beforeEach(async function () {

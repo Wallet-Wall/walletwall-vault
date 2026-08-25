@@ -358,19 +358,77 @@ its code).
   predates this change (`setDailyLimit` was already `msg.sender`-keyed); admission
   delegation now inherits it.
 - `DailySpendLimitPolicy` — per-vault vault-owner-managed 24-hour spend cap.
-  WINDOW SEMANTICS: the intended invariant is a true ROLLING 24-hour cap, but the
-  current implementation enforces a TUMBLING/reset window. Close to 2x the limit is
-  reachable inside a single 24-hour interval, and the exact figure depends on how the
-  window was anchored:
-  - through the normal signed vault withdrawal path, `2L - 1 wei` within ONE SECOND
-    (anchor with 1 wei at `t0`, spend `L - 1` at `t0 + WINDOW - 1`, spend `L` at
-    `t0 + WINDOW`). Both vaults reject `amount == 0`, so the anchoring spend always
-    costs at least 1 wei on this path.
-  - EXACTLY `2L` only when the window is anchored by a zero-amount `check()` called
-    directly by an authorized admitter (e.g. a self-delegated subject), which costs
-    no allowance.
-  The bound is exactly 2x and no looser, because a denied call does not persist the
-  reset and successive anchors are therefore at least WINDOW apart. SUBJECT SCOPE: accounting is now keyed
+  WINDOW SEMANTICS: a TRUE ROLLING 24-hour cap. For an armed subject at every instant
+  `T`, the sum of amounts admitted at times `t` with `t > T - WINDOW` is at most `L`.
+  EXACT BOUNDARY: an entry booked at `t` is counted while `block.timestamp < t + WINDOW`
+  and expires at EXACTLY `t + WINDOW` — the live set is the half-open interval
+  `(T - WINDOW, T]`. That is the same `>=` instant the previous tumbling implementation
+  used for its reset, retained deliberately so the boundary did not move while its
+  meaning changed. Allowance returns in the increments it was consumed, as individual
+  spends age out, rather than resetting.
+  HISTORICAL — NO LONGER REACHABLE: the previous release enforced a TUMBLING/reset
+  window under which close to 2x the limit was reachable inside one 24-hour interval
+  (`2L - 1 wei` within ONE SECOND over the signed vault path, and exactly `2L` when a
+  zero-amount `check()` from an authorized admitter anchored the window for free).
+  Both constructions are now REFUSED, and the two tests that pinned them as reachable
+  have been inverted in place rather than replaced, so the closure reads as a diff.
+  A zero-amount `check()` books nothing and creates no entry, so it no longer buys an
+  anchor of any kind.
+  LEDGER CAPACITY — A NEW DENIAL MODE: exactness with bounded storage is only possible
+  with a cap on how many spend records a subject may hold inside the window, because
+  reproducing expiry exactly requires retaining their timing. That cap is
+  `MAX_ACTIVE_ENTRIES = 32` LIVE LEDGER ENTRIES per `(consumer, owner, asset)`. A spend
+  that would need a 33rd entry is refused with reason `"daily spend ledger full"` —
+  distinct from `"daily limit exceeded"`, and observable in advance via
+  `activeEntryCount()`. The refusal is SELF-HEALING (a slot frees the instant the oldest
+  entry expires, so a full ledger is never a permanent brick) and is not
+  attacker-reachable (only a caller the subject's own owner delegated via
+  `setAdmitter()` can append).
+  THE CAP COUNTS ENTRIES, NOT DISTINCT SECONDS. Admissions sharing a timestamp coalesce
+  into one entry ONLY while their combined amount stays representable in the entry's
+  packed `uint192` (see MAX_BOOKABLE_AMOUNT below); above that the booking appends a
+  SECOND entry at the same instant. That is equally exact — entries sharing a timestamp
+  expire together — but it consumes another slot, so a same-timestamp burst usually
+  costs one slot and, at `uint192`-scale amounts no real asset reaches, may cost more.
+  Read `activeEntryCount()` rather than counting spends. Pinned by D2d in
+  `test/DailySpendRollingWindow.test.ts`.
+  The rejected alternative was merging the two oldest entries at the newer timestamp: it
+  never admits above `L`, but holds old spend on the books longer than the true trailing
+  window, which would make the cap conservative rather than exact.
+  BOUNDED WORK: admission and every getter scan at most 32 entries — a constant that does
+  NOT grow with lifetime withdrawal count — and each entry is dropped exactly once, so
+  amortized cost per admission is O(1).
+  OBSERVABILITY IS ABOUT EXPIRY, NOT ADMISSIBILITY: `rollingSpent()` and
+  `remainingAllowance()` route through the same expiry routine the admission path uses,
+  so they cannot disagree with `check()` about WHAT HAS AGED OUT — the failure the old
+  raw `windowSpent()` invited. They do not model the capacity constraint, so a positive
+  `remainingAllowance()` can coexist with a `"daily spend ledger full"` refusal. Read
+  `remainingAllowance()` as "how much of the cap is unused", not "this much is
+  admissible right now"; pair it with `activeEntryCount()` for the latter.
+  BLOCK TIMESTAMPS: this policy's invariant is DEFINED in chain time — at most `L`
+  admitted over the chain-time interval `(T - WINDOW, T]`. Entry timestamps are not
+  caller-supplied; each was written by a previously admitted transaction from its own
+  block. Proposer latitude over timestamps therefore cannot make the contract admit more
+  than `L` within its own measured window, only shift where that window falls against
+  wall-clock time. A cap denominated in 24 hours of chain time has no other clock
+  available to it. (Slither `2-1-timestamp` on `_liveAt` is triaged on this basis.)
+  SCOPE OF THE GUARANTEE: the invariant binds over intervals in which the subject has
+  been CONTINUOUSLY ARMED. While `limit == 0` the subject is unrestricted and `check()`
+  returns before booking, so spends made while disarmed are not recorded and are not
+  counted retroactively when a limit is armed again. This is not a laundering route —
+  `setDailyLimit()` does not touch the ledger, so a disarm/re-arm cycle leaves existing
+  entries intact and expiring on their original schedule — but note that
+  `setDailyLimit()` is `msg.sender`-keyed, so whoever controls the owner address can
+  disarm outright. Where the vault owner and its withdrawal signer are the same key (the
+  common case) a compromised signer could already remove the cap entirely; that is a
+  property of the configuration authority, unchanged by rolling accounting, and it is
+  why this cap is a damage LIMITER rather than a containment boundary.
+  ADMISSION, NOT SETTLEMENT: spend is booked when a withdrawal is ADMITTED and expires a
+  WINDOW after that instant. For a queued large transaction that is queue time, so a
+  large-transaction delay longer than WINDOW releases the allowance before the payment
+  settles; settlement is admission plus a per-withdrawal delay fixed at queue time, so
+  settled outflow inherits the admitted spacing rather than compressing it.
+  SUBJECT SCOPE: accounting is now keyed
   by the full POLICY SUBJECT — `(consumer, owner, asset)` — hashed with
   `keccak256(abi.encode(...))` into a single bucket identifier. The subject is minted
   by the ORIGINATING vault from trusted state (`consumer = address(this)`, `owner` =
@@ -394,14 +452,16 @@ its code).
   constrain another's total was that they shared the bucket — and no cross-subject cap
   is provided in its place. Arm only the subjects you intend, and size each limit
   knowing the others exist. Tenant isolation within one consumer is unchanged and
-  remains correct. Both the time and scope behaviours are pinned by
-  `test/DailySpendWindowSemantics.test.ts`, and subject propagation across the whole
-  boundary by `test/PolicySubjectPropagation.test.ts`.
-  The contract's own NatSpec previously described this as a rolling window and was
-  therefore WRONG; it is corrected as part of the same change that introduced the
-  explicit subject, and now states the tumbling semantics, the `2L` bound, and the
-  pending status of rolling enforcement directly. THIS document and
-  `test/DailySpendWindowSemantics.test.ts` remain the authority on window semantics.
+  remains correct. The ROLLING invariant, its exact boundary, ledger capacity, subject
+  isolation under rolling accounting, queue/finalize single-booking and revert atomicity
+  are pinned by `test/DailySpendRollingWindow.test.ts`; the SCOPE behaviours and the
+  inverted historical burst constructions by `test/DailySpendWindowSemantics.test.ts`;
+  and subject propagation across the whole boundary by
+  `test/PolicySubjectPropagation.test.ts`.
+  DOCUMENTATION HISTORY: the contract's NatSpec once described a rolling window it did
+  not implement, was corrected to state the tumbling semantics and the `2L` bound
+  truthfully, and now describes the rolling ledger that replaced them. THIS document and
+  `test/DailySpendRollingWindow.test.ts` are the authority on window semantics.
   Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
   Booking additionally requires ADMISSION AUTHORITY: `check()` mutates accounting

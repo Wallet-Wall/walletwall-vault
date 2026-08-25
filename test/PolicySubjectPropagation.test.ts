@@ -38,8 +38,11 @@ import { NATIVE_ASSET } from "./helpers/policySubject";
  * that MUST differ between the direct and composite paths, so it doubles as proof that
  * the composite hop actually happened rather than being silently bypassed.
  *
- * Scope note: the tumbling-vs-rolling TIME semantics are deliberately unchanged and are
- * covered by test/DailySpendWindowSemantics.test.ts.
+ * Scope note: TIME semantics are out of scope here and are covered by
+ * test/DailySpendRollingWindow.test.ts (the rolling invariant) and
+ * test/DailySpendWindowSemantics.test.ts (scope, plus the inverted historical bursts).
+ * That this suite passes UNCHANGED across the rolling-accounting change is itself the
+ * evidence that subject propagation was not weakened by it.
  */
 describe("Policy subject propagation (trust boundary)", function () {
   const GOVERNANCE_DELAY = 2 * 24 * 60 * 60;
