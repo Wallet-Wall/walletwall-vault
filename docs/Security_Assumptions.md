@@ -91,6 +91,26 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   `PQ_VERIFIER_UPDATE_DELAY`, and applies it with `applyPQVerifierUpdate`. The active
   verifier remains unchanged during the delay. The owner can clear a pending proposal
   with `cancelPQVerifierUpdate` before it is applied.
+- **Governance now enforces a code-bearing destination at proposal and execution**,
+  identically on `WalletWallVault` and `StablecoinVaultSimulator` — each has its own
+  independent PQ verifier trust boundary, with its own `pqVerifier`/`pendingPQVerifier`
+  state and its own `proposePQVerifier`/`applyPQVerifierUpdate` pair, and this guard
+  applies to both. `proposePQVerifier` rejects any nonzero `newVerifier` whose
+  `code.length` is zero (`NoCode`), and `applyPQVerifierUpdate` independently re-checks
+  the SAME condition on the pending verifier immediately before it takes effect. The
+  re-check exists
+  because the two-day delay separates proposal from execution: a destination that
+  was code-bearing when proposed can become code-less before the delay elapses (see
+  the `AttestationPQCVerifier`/`ImmutableAttestationPQCVerifier` bullets above for
+  why a verifier might later be redeployed or retired), and proposal-time validation
+  alone does not carry forward. A rejected apply mutates no state — the active
+  verifier and the pending proposal are both left exactly as they were, so the
+  proposal remains recoverable via `cancelPQVerifierUpdate`. **This guard proves
+  only that the address held runtime code at the instant the call executed** — not
+  interface conformance, behavioral correctness, immutability of that code, or
+  future availability; a code-bearing address can still be `AlwaysFalsePQCVerifier`
+  or any other contract that misbehaves once installed. It does not change who is
+  trusted once a verifier is active (see the next bullet).
 - **Why mutable instead of immutable:** the verifier trust boundary is specifically
   intended to support replacing the mock with a future attestation, ZK, or chain-native
   verifier. Immutability would require redeploying the entire vault contract and would
@@ -249,6 +269,23 @@ two-step flow (`proposePolicyEngine`, wait two days, `applyPolicyEngine`).
 to the PQ verifier also apply here: the delay does not eliminate trust in the
 contract owner.
 
+**Governance now enforces a code-bearing destination at proposal and execution**,
+identically on `WalletWallVault` and `StablecoinVaultSimulator`. `proposePolicyEngine`
+rejects any nonzero `newEngine` whose `code.length` is zero (`PolicyEngineUnavailable`),
+and `applyPolicyEngine` independently re-checks the SAME condition on the pending
+engine immediately before it takes effect — the re-check exists because the two-day
+delay separates proposal from execution, and a destination that was code-bearing when
+proposed can become code-less before the delay elapses. `address(0)` is exempt from
+this check at both points and remains a valid, intentional way to disable the policy
+engine. A rejected apply mutates no state — the active engine and the pending
+proposal are both left exactly as they were, so the proposal remains recoverable via
+`cancelPolicyEngine`. **This guard proves only that the address held runtime code at
+the instant the call executed** — not interface conformance, behavioral correctness,
+immutability of that code, or future availability; a code-bearing address can still
+misbehave once installed (the existing `revalidate()` fail-closed check, described
+above, is the separate runtime defense for a CURRENTLY active engine that later loses
+its code).
+
 **Included reference implementations (research / non-audited):**
 
 - `CompositePolicyEngine` — the single engine wired into the vault when multiple
@@ -370,9 +407,10 @@ contract owner.
   module-roster mutability after a governed delay, not an erosion of the
   sticky floor: a queued withdrawal's finalization remains governed by
   `queue-time engine address x current engine address x live module set(s) x
-  live module internal state` (unchanged from PR #152) — module removal only
+live module internal state` (unchanged from PR #152) — module removal only
   ever changes the "live module set(s) x live module internal state" factors,
   never the address factors the sticky floor itself is defined over.
+
 - Large-withdrawal finalization ALWAYS revalidates policy, read-only, with no
   address-comparison gate — address identity is not used as a proxy for policy
   freshness, so same-address state mutations (e.g. a recipient sanctioned after
