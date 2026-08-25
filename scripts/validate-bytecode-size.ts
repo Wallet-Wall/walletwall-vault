@@ -23,7 +23,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
-const ARTIFACTS_DIR = join(REPO_ROOT, "artifacts", "contracts");
+
+/**
+ * Root of the compiled Hardhat artifacts this gate measures. Exported so every
+ * other runtime-bytecode consumer resolves artifacts the same way instead of
+ * growing its own path convention — see scripts/lib/runtime-byte-claim-sources.ts,
+ * which reuses this module's measurement rather than re-parsing bytecode.
+ */
+export const ARTIFACTS_DIR = join(REPO_ROOT, "artifacts", "contracts");
 
 /**
  * EIP-170's runtime bytecode ceiling, in bytes. A protocol constant — never tune
@@ -96,7 +103,7 @@ export const TARGET_CONTRACTS: ContractSizeTarget[] = [
   },
 ];
 
-interface HardhatArtifact {
+export interface HardhatArtifact {
   contractName: string;
   /** CREATION bytecode (constructor + init code) — NOT gated by this check. */
   bytecode: string;
@@ -155,14 +162,35 @@ export function evaluateArtifact(name: string, artifact: HardhatArtifact): SizeR
   return evaluateSize(name, runtimeBytes, creationBytes);
 }
 
-function loadArtifact(target: ContractSizeTarget): HardhatArtifact {
-  const path = join(ARTIFACTS_DIR, target.artifactRelPath);
+/**
+ * Load one compiled artifact by its path relative to {ARTIFACTS_DIR}.
+ *
+ * Exported as the single artifact-reading entry point: the runtime-byte claim
+ * gate measures contracts this module's EIP-170 target list does not cover
+ * (MockUSDC), and it must do so through the SAME loader and the SAME
+ * {hexByteLength} rather than a second, subtly-different bytecode parser.
+ * `context` only names the caller in the error message.
+ */
+export function loadArtifactByRelPath(artifactRelPath: string, context: string): HardhatArtifact {
+  const path = join(ARTIFACTS_DIR, artifactRelPath);
   if (!existsSync(path)) {
-    throw new Error(
-      `${path} does not exist — run \`npm run compile\` before validate:bytecode-size (target: ${target.name})`,
-    );
+    throw new Error(`${path} does not exist — run \`npm run compile\` first (target: ${context})`);
   }
   return JSON.parse(readFileSync(path, "utf8")) as HardhatArtifact;
+}
+
+/**
+ * Byte length of a contract's RUNTIME (deployed) bytecode, read from the
+ * compiler's own artifact. This is THE measurement primitive: the EIP-170
+ * ceiling gate and the runtime-byte claim gate both resolve to this one
+ * function, so the two can never disagree about what a contract's size is.
+ */
+export function measureRuntimeBytes(artifactRelPath: string, context: string): number {
+  return hexByteLength(loadArtifactByRelPath(artifactRelPath, context).deployedBytecode);
+}
+
+function loadArtifact(target: ContractSizeTarget): HardhatArtifact {
+  return loadArtifactByRelPath(target.artifactRelPath, target.name);
 }
 
 export function collectReports(targets: ContractSizeTarget[] = TARGET_CONTRACTS): SizeReport[] {

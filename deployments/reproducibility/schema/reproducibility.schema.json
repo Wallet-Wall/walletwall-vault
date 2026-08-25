@@ -56,7 +56,7 @@
     "publicHeadRuntimeBytes": {
       "type": ["integer", "null"],
       "minimum": 0,
-      "description": "Byte length of the runtime bytecode recompiled from current public HEAD (a distinct, separately-captured build — see publicHeadCommit for the exact SHA used). Equality with observedRuntimeBytes is informational context (source has not drifted since the deployment commit), NOT the reproducibility claim itself — that is reportedCommitRuntimeBytes."
+      "description": "Byte length of the runtime bytecode recompiled from current public HEAD (a distinct, separately-captured build — see publicHeadCommit for the exact SHA used). Equality with observedRuntimeBytes is informational context (source has not drifted since the deployment commit), NOT the reproducibility claim itself — that is reportedCommitRuntimeBytes. MECHANICALLY BOUND: `npm run validate:runtime-byte-claims` recompiles the subject and fails if this value differs, for EVERY record regardless of reproducibilityStatus or whether an evidenceFile is present — the evidence replay in validate-reproducibility.ts runs only for `reproducible` records, which is how a remediation-gated record once carried a stale value through two releases. The authority is the compiled artifact, never another record: this field, the evidence bundle's publicHeadBuild, and the prose copies in README.md / SECURITY.md / docs/Deployments.md / this record's own remediation text are all compared to solc independently, so editing several of them to the same wrong value still fails."
     },
     "publicHeadCommit": {
       "type": ["string", "null"],

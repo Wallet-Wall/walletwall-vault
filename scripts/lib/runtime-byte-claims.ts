@@ -1,0 +1,195 @@
+/**
+ * Runtime-byte claim reconciliation — the pure core.
+ *
+ * Every published claim about a contract's RUNTIME (deployed) bytecode size is
+ * mechanically bound to one authority: the byte length of `deployedBytecode` in
+ * the compiler's own artifact.
+ *
+ *     solc / hardhat compile
+ *           |
+ *     artifacts/contracts/**\/<Name>.json .deployedBytecode
+ *           |
+ *     measurement  (hexByteLength — the SAME primitive the EIP-170 gate uses)
+ *           |
+ *     +-----+--------------------------------+
+ *     |                                      |
+ *   EIP-170 ceiling check           runtime-byte claim check  <- this module
+ *                                            |
+ *                            reproducibility manifests + published prose
+ *
+ * WHY THIS EXISTS. `publicHeadRuntimeBytes` for WalletWallVault said 22,367 in
+ * four separate places long after the compiled contract had become 22,574, and
+ * no gate failed. That record is `remediation-gated` and carries no
+ * `evidenceFile`, and scripts/validate-reproducibility.ts nests its entire
+ * evidence replay inside `if (status === "reproducible")` — so the number was
+ * only ever type-checked as "a non-negative integer". It was repaired by hand;
+ * nothing stopped it recurring.
+ *
+ * WHY IT COMPARES AGAINST THE COMPILER AND NOT AGAINST OTHER RECORDS. The
+ * pre-existing manifest/evidence cross-check DOES compare
+ * `publicHeadRuntimeBytes` — but against
+ * `evidence.publicHeadBuild.deployedBytecodeObject`, a checked-in COPY of solc
+ * output that nothing re-derives (it is read at exactly one place, and only for
+ * its `.length`). Two artifacts agreeing is not independent evidence when both
+ * descend from the same manually-refreshed capture: edit the manifest and the
+ * evidence bundle together and every existing gate stays green. That is the
+ * common-mode failure this module is built to kill, so the authority here is
+ * always a freshly compiled artifact, never another record.
+ *
+ * SLOTS. Two kinds of runtime-byte claim exist in this repo and only one of
+ * them is the compiler's to adjudicate:
+ *
+ *   - `public-head`   — "current public HEAD recompiles to N bytes". Derived
+ *                       from today's compiler output; MUST equal the
+ *                       measurement.
+ *   - `observed-live` — "the live deployment's runtime is N bytes". A fact
+ *                       about a past on-chain deployment. The compiler cannot
+ *                       adjudicate it and must never overwrite it — for
+ *                       WalletWallVault the two legitimately differ (20,508
+ *                       live vs 22,701 at HEAD), and that divergence is the
+ *                       entire reason its record is remediation-gated. Copies
+ *                       of an `observed-live` claim must still agree with each
+ *                       other, which is all this module can honestly assert
+ *                       about them.
+ *
+ * Pure: no I/O, no git, no network. Collection of measurements and declarations
+ * lives in runtime-byte-claim-sources.ts; this file only decides.
+ */
+
+/** Which kind of runtime-byte claim a declaration makes. See module header. */
+export type ClaimSlot = "public-head" | "observed-live";
+
+/** One contract's runtime bytecode size, measured from the compiler's own artifact. */
+export interface RuntimeByteMeasurement {
+  /** Contract name, matching the `subject` used by reproducibility manifests. */
+  subject: string;
+  /** Repo-relative artifact path the measurement was read from, for error messages. */
+  artifactRelPath: string;
+  /** Byte length of `deployedBytecode` (runtime code), never `bytecode` (creation code). */
+  runtimeBytes: number;
+}
+
+/** One published claim about a contract's runtime bytecode size. */
+export interface RuntimeByteDeclaration {
+  /** Repo-relative file the claim physically lives in, with a locator suffix where useful. */
+  location: string;
+  subject: string;
+  slot: ClaimSlot;
+  value: number;
+}
+
+export interface ReconcileInput {
+  measurements: RuntimeByteMeasurement[];
+  declarations: RuntimeByteDeclaration[];
+  /**
+   * Subjects that MUST have a measurement. Derived from what is actually on
+   * disk (every reproducibility manifest's `subject`), so adding a manifest for
+   * an unmeasured contract fails rather than silently going unchecked.
+   */
+  coverageRequired: string[];
+}
+
+export interface ReconcileResult {
+  ok: boolean;
+  errors: string[];
+}
+
+function isNonNegativeInteger(v: number): boolean {
+  return Number.isInteger(v) && v >= 0;
+}
+
+function slotLabel(slot: ClaimSlot): string {
+  return slot === "public-head" ? "public-HEAD" : "observed-live";
+}
+
+/**
+ * Decide whether every declaration is consistent with the compiler measurements.
+ *
+ * Checks are deliberately independent of one another and all errors are
+ * collected rather than short-circuited: a conflicting pair where one side
+ * happens to match the compiler must report BOTH the conflict and the stale
+ * value, and a value wrong in four files must name all four — a gate that
+ * reported only the first would make a partial fix look complete.
+ */
+export function reconcileRuntimeByteClaims(input: ReconcileInput): ReconcileResult {
+  const errors: string[] = [];
+  const bySubject = new Map<string, RuntimeByteMeasurement>();
+
+  for (const m of input.measurements) {
+    const existing = bySubject.get(m.subject);
+    if (existing) {
+      // Two artifacts claiming to be the same subject would make "the"
+      // measurement ambiguous, and an ambiguous authority is not an authority.
+      errors.push(
+        `${m.subject}: measured twice, from ${existing.artifactRelPath} (${existing.runtimeBytes} bytes) and ` +
+          `${m.artifactRelPath} (${m.runtimeBytes} bytes) — a subject must bind to exactly one compiler artifact`,
+      );
+      continue;
+    }
+    bySubject.set(m.subject, m);
+  }
+
+  // ── Coverage: a subject that must be measured, but is not ────────────────
+  for (const subject of input.coverageRequired) {
+    if (!bySubject.has(subject)) {
+      errors.push(
+        `${subject}: no runtime bytecode measurement is bound to this subject — it is published as a ` +
+          `reproducibility subject, so its runtime-byte claims must be checkable against a compiler artifact`,
+      );
+    }
+  }
+
+  // ── Per-declaration: shape, then off-declaration, then staleness ─────────
+  const wellFormed: RuntimeByteDeclaration[] = [];
+  for (const d of input.declarations) {
+    if (!isNonNegativeInteger(d.value)) {
+      errors.push(
+        `${d.location}: ${d.subject} ${slotLabel(d.slot)} runtime-byte value ${String(d.value)} is not a non-negative integer`,
+      );
+      continue;
+    }
+    if (!bySubject.has(d.subject)) {
+      errors.push(
+        `${d.location}: declares ${slotLabel(d.slot)} runtime bytes for "${d.subject}", which has no bound ` +
+          `compiler measurement — add it to RUNTIME_BYTE_SUBJECTS so the claim is checkable, or remove the claim`,
+      );
+      continue;
+    }
+    wellFormed.push(d);
+  }
+
+  // ── Conflicting declarations (independent of the measurement) ────────────
+  // Runs on its own so that copies which agree with each other but disagree
+  // with the compiler are NOT excused, and copies which disagree with each
+  // other are caught even in slots the compiler cannot adjudicate.
+  const groups = new Map<string, RuntimeByteDeclaration[]>();
+  for (const d of wellFormed) {
+    const key = JSON.stringify([d.subject, d.slot]);
+    const list = groups.get(key);
+    if (list) list.push(d);
+    else groups.set(key, [d]);
+  }
+  for (const group of groups.values()) {
+    const distinct = new Set(group.map((d) => d.value));
+    if (distinct.size > 1) {
+      const sites = group.map((d) => `${d.location} = ${d.value}`).join("; ");
+      errors.push(`${group[0].subject} ${slotLabel(group[0].slot)} runtime bytes: conflicting declarations — ${sites}`);
+    }
+  }
+
+  // ── Staleness: the actual binding to the compiler ────────────────────────
+  // `observed-live` is deliberately excluded: it records a past on-chain fact
+  // that today's compiler has no standing to overrule (see module header).
+  for (const d of wellFormed) {
+    if (d.slot !== "public-head") continue;
+    const m = bySubject.get(d.subject)!;
+    if (d.value !== m.runtimeBytes) {
+      errors.push(
+        `${d.location}: ${d.subject} public-HEAD runtime bytes claims ${d.value}, but the compiler ` +
+          `measurement (${m.artifactRelPath}) is ${m.runtimeBytes} — refresh the claim, do not adjust the gate`,
+      );
+    }
+  }
+
+  return { ok: errors.length === 0, errors };
+}
