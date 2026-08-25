@@ -41,8 +41,35 @@ import {
 const REPO_ROOT = join(import.meta.dirname, "..");
 const REPRO_DIR = join(REPO_ROOT, "deployments", "reproducibility");
 const EVIDENCE_DIR = join(REPRO_DIR, "evidence");
+/**
+ * A genuine HISTORICAL pin. This commit is what the Sepolia deployment was built
+ * from; it must never move, so it is written out literally on purpose.
+ */
 const DEPLOYMENT_COMMIT = "35c25fa294bebea44b3089aa2435a190a5adf3fb";
-const PUBLIC_HEAD_COMMIT = "30439c46a43ea431d94ace40c80e66879cb06508";
+
+/**
+ * The public-head anchor is NOT pinned literally.
+ *
+ * It moves every time `contracts/**` changes and the evidence is recaptured, so a
+ * literal here was a fourth hand-maintained copy of a value the repo already records
+ * in two machine-checked places — and, unlike the runtime-byte claims, nothing swept
+ * for it. It went stale on the next recapture and failed a test that had nothing to do
+ * with the change being made.
+ *
+ * Reading it from the manifest is not circular. The manifest only DECLARES which
+ * commit a capture claims; the authority this test checks against is git's object
+ * store and the current working tree, neither of which the manifest can influence.
+ * `checkEvidenceAgainstManifest` separately asserts that this declaration agrees with
+ * the bundle's own `publicHeadBuild.headCommit`, so the two records cannot drift apart
+ * unnoticed either.
+ */
+function publicHeadAnchor(slug = "mock-usdc-sepolia"): string {
+  const anchor = loadFixtures().find((f) => f.slug === slug)!.manifest["publicHeadCommit"];
+  if (typeof anchor !== "string" || !/^[0-9a-f]{40}$/.test(anchor)) {
+    throw new Error(`publicHeadAnchor(${slug}): manifest has no usable publicHeadCommit (${String(anchor)})`);
+  }
+  return anchor;
+}
 
 function loadJson<T>(path: string): T {
   return JSON.parse(readFileSync(path, "utf8")) as T;
@@ -369,7 +396,7 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
     // the anchor is not actively contradicted.
     const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
     const result = verifyCoveredContentAgainstHead(
-      PUBLIC_HEAD_COMMIT,
+      publicHeadAnchor(),
       fixture.evidence.publicHeadBuild.sourceDigests,
       REPO_ROOT,
     );
@@ -407,8 +434,8 @@ describe("verifySourceDigestsAgainstCommit — Blocker A offline verification", 
     // commit's real git history does not match (package.json alone differs across commits
     // in this repo's history, let alone contracts/).
     const manifest = clone(fixture.manifest);
-    evidence.deploymentCommitBuild.commit = PUBLIC_HEAD_COMMIT;
-    manifest["reportedSourceCommit"] = PUBLIC_HEAD_COMMIT;
+    evidence.deploymentCommitBuild.commit = publicHeadAnchor();
+    manifest["reportedSourceCommit"] = publicHeadAnchor();
     const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
     expect(result.ok).to.equal(false);
     expect(result.errors.some((e) => /source-commit binding/.test(e))).to.equal(true);
@@ -450,7 +477,7 @@ describe("verifyCoveredContentAgainstHead — Blocker 2", () => {
   it("the real, freshly-recaptured publicHeadCommit is NOT stale for its own covered files", () => {
     const fixture = loadFixtures().find((f) => f.slug === "mock-usdc-sepolia")!;
     const result = verifyCoveredContentAgainstHead(
-      PUBLIC_HEAD_COMMIT,
+      publicHeadAnchor(),
       fixture.evidence.publicHeadBuild.sourceDigests,
       REPO_ROOT,
     );
@@ -702,8 +729,8 @@ describe("common-mode mutations — manifest and evidence updated together, self
   it("1. wrong build-info + matching fake commit labels on both manifest and evidence (git-checked)", () => {
     const evidence = clone(usdcFixture.evidence);
     const manifest = clone(usdcFixture.manifest);
-    evidence.deploymentCommitBuild.commit = PUBLIC_HEAD_COMMIT;
-    manifest["reportedSourceCommit"] = PUBLIC_HEAD_COMMIT;
+    evidence.deploymentCommitBuild.commit = publicHeadAnchor();
+    manifest["reportedSourceCommit"] = publicHeadAnchor();
     const result = checkEvidenceAgainstManifest(evidence, manifest, REPO_ROOT);
     expect(result.ok).to.equal(false);
   });
