@@ -400,6 +400,37 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       expect((await vault.getVault(owner.address)).balance).to.equal(balanceBefore + amount);
       expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT - amount);
     });
+
+    it("RAW vs EFFECTIVE: windowSpent is stored state and does NOT decay; remainingAllowance does", async function () {
+      // The two getters answer different questions, and reading the raw one as though
+      // it were the effective figure is the trap the tumbling model sets: after a
+      // window expires, the accumulator still holds the OLD total until the next
+      // admitted check() re-anchors it. Anyone reasoning about headroom from
+      // `limit - windowSpent` would conclude the tenant is still exhausted when they
+      // are not. Pinned so the distinction cannot be quietly erased.
+      const consumer = await vault.getAddress();
+      const t0 = (await networkHelpers.time.latest()) + 10;
+      await withdrawAt(vault, owner, LIMIT, 0, t0);
+
+      expect(await policy.windowSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      expect(await policy.windowStart(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0));
+      expect(await allowanceFor(vault, owner.address)).to.equal(0n);
+
+      // Step past the window boundary WITHOUT spending anything.
+      await networkHelpers.time.increaseTo(t0 + WINDOW);
+
+      // Effective allowance has recovered in full…
+      expect(await allowanceFor(vault, owner.address)).to.equal(LIMIT);
+      // …while the raw accumulator and anchor are untouched: no transaction ran, and
+      // storage cannot change without one.
+      expect(await policy.windowSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      expect(await policy.windowStart(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0));
+
+      // The next admitted spend is what re-anchors and resets both.
+      await withdrawAt(vault, owner, LIMIT / 4n, 1, t0 + WINDOW + 5);
+      expect(await policy.windowStart(consumer, owner.address, NATIVE_ASSET)).to.equal(BigInt(t0 + WINDOW + 5));
+      expect(await policy.windowSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT / 4n);
+    });
   });
 
   // =====================================================================
