@@ -358,6 +358,12 @@ its code).
   subject dimensioning land, deploy ONE instance per (consumer, asset); that is an
   operational convention, not an invariant the contract enforces. Both behaviours
   are pinned by `test/DailySpendWindowSemantics.test.ts`.
+  NOTE: the contract's own NatSpec still describes this as a rolling window and is
+  therefore currently WRONG. It is corrected in the follow-up PR that introduces an
+  explicit policy subject, because editing `contracts/**` restages the reproducibility
+  evidence bundles (they bind covered `contracts/` content to HEAD) and that cost
+  belongs with a PR that changes contracts anyway. Until then, THIS document and
+  `test/DailySpendWindowSemantics.test.ts` are the authority on window semantics.
   Each vault owner sets their own limit via `setDailyLimit()`. Spending is
   recorded at `check()` time and rolled back if the outer transaction reverts.
   Booking additionally requires ADMISSION AUTHORITY: `check()` mutates accounting

@@ -202,7 +202,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       // 1-wei anchor at t0 — so a genuine rolling cap of LIMIT is violated
       // by very nearly a factor of two.
       expect(burst).to.be.greaterThan(LIMIT);
-      expect(burst * 100n / LIMIT).to.equal(199n); // 1.99x, i.e. 2x minus one wei
+      expect((burst * 100n) / LIMIT).to.equal(199n); // 1.99x, i.e. 2x minus one wei
     });
 
     it("MAXIMUM BURST: exactly 2*LIMIT when the window is anchored by a zero-amount check", async function () {
@@ -452,10 +452,7 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
       await token.waitForDeployment();
 
       const Sim = await ethers.getContractFactory("StablecoinVaultSimulator", admin);
-      const sim: StablecoinVaultSimulator = await Sim.deploy(
-        await token.getAddress(),
-        await verifier.getAddress(),
-      );
+      const sim: StablecoinVaultSimulator = await Sim.deploy(await token.getAddress(), await verifier.getAddress());
       await sim.waitForDeployment();
 
       const engine = await policy.getAddress();

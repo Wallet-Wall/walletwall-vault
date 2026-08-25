@@ -11,10 +11,8 @@ pragma solidity ^0.8.20;
 ///
 ///      - {check} is ADMISSION: it runs when a withdrawal is committed
 ///        (immediate `withdraw` and `queueWithdrawal`). It MAY mutate policy
-///        accounting — e.g. DailySpendLimitPolicy books spend into its 24-hour
-///        window here, exactly once per withdrawal. That window is currently a
-///        TUMBLING/reset window, not the rolling one its product invariant calls
-///        for; see the window semantics note on DailySpendLimitPolicy.
+///        accounting — e.g. DailySpendLimitPolicy books spend into its rolling
+///        window here, exactly once per withdrawal.
 ///
 ///      - {revalidate} is FINALIZATION REVALIDATION: it runs when a queued
 ///        withdrawal settles (`finalizeWithdrawal`). It answers "given CURRENT
