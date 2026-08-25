@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.10.23",
+  "version": "0.10.24",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "type": "module",
   "main": "index.js",
@@ -51,7 +51,8 @@
     "prevalidate:bytecode-size": "hardhat compile",
     "validate:bytecode-size": "tsx scripts/validate-bytecode-size.ts",
     "prevalidate:runtime-byte-claims": "hardhat compile",
-    "validate:runtime-byte-claims": "tsx scripts/validate-runtime-byte-claims.ts"
+    "validate:runtime-byte-claims": "tsx scripts/validate-runtime-byte-claims.ts",
+    "validate:sp1-pin-parity": "tsx scripts/validate-sp1-pin-parity.ts"
   },
   "keywords": [
     "solidity",

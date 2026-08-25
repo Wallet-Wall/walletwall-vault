@@ -47,17 +47,39 @@ updates:
         patterns:
           - "*"
 
+  # The SP1 crates are exact-pinned to ONE release across three crates:
+  # zkvm/guest's `sp1-zkvm`, and zkvm/host's `sp1-sdk` + `sp1-build`. See the
+  # version note in zkvm/host/Cargo.toml: "If you bump one, bump all three
+  # together, then re-extract the program vKey."
+  #
+  # Dependabot groups only WITHIN a single ecosystem entry, and guest and host are
+  # necessarily separate `directory:` entries — so it cannot express that
+  # three-crate bump and will always propose a guest-only or host-only split
+  # (e.g. #150, sp1-zkvm 6.3.1 -> 6.4.0 in /zkvm/guest alone). Merging such a PR
+  # leaves guest and host on different SP1 releases, and nothing detects it:
+  # zkvm/host is deliberately NOT in CI (it needs the sp1up toolchain), and the
+  # "Validate SP1 host Cargo.lock" job only checks that lockfile's own internal
+  # consistency, never guest-vs-host version parity.
+  #
+  # So SP1 bumps are ignored here and stay a deliberate maintainer operation:
+  # move all three pins together, rebuild the guest, re-extract the vKey, and
+  # verify with docs/ZK_Prover_Runbook.md. Every other cargo update in these
+  # directories keeps flowing normally.
   - package-ecosystem: cargo
     directory: /zkvm/guest
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "sp1-*"
 
   - package-ecosystem: cargo
     directory: /zkvm/host
     schedule:
       interval: weekly
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "sp1-*"
 
   - package-ecosystem: cargo
     directory: /zkvm/evidence-validator
