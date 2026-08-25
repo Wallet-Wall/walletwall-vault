@@ -259,6 +259,10 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     error UseRotateCredentials();
     error NoPendingPQVerifier();
     error PQVerifierUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
+    /// @notice A proposed or pending governance destination has no runtime code.
+    /// @dev Proves only that the address is code-bearing at this instant — not
+    ///      interface conformance, behavioral correctness, or future availability.
+    error NoCode(address account);
     error NotAGuardian();
     error AlreadySupported();
     error RecoveryNotReady();
@@ -867,8 +871,12 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     // Admin — PQ verifier governance
     // -----------------------------------------------------------------------
 
+    /// @dev Admin-only. A later proposal replaces the pending proposal and restarts
+    ///      the delay. `newVerifier` must have code at proposal time; see
+    ///      {applyPQVerifierUpdate} for why that alone is not sufficient.
     function proposePQVerifier(address newVerifier) external onlyOwner {
         if (newVerifier == address(0)) revert ZeroAddress();
+        if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
         uint256 validAfter = block.timestamp + PQ_VERIFIER_UPDATE_DELAY;
         pendingPQVerifier = newVerifier;
@@ -887,6 +895,14 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         emit PQVerifierUpdateCancelled(cancelledVerifier);
     }
 
+    /// @dev Admin-only. Re-checks that the pending verifier still has code,
+    ///      independent of the check already performed in {proposePQVerifier}: a
+    ///      governance delay separates proposal from execution, and a destination
+    ///      that was code-bearing at proposal time can become code-less before the
+    ///      delay elapses. This re-check runs before any state is mutated, so a
+    ///      rejected apply leaves the active verifier and the pending proposal
+    ///      untouched — the proposal remains recoverable via
+    ///      {cancelPQVerifierUpdate}.
     function applyPQVerifierUpdate() external onlyOwner {
         address newVerifier = pendingPQVerifier;
         if (newVerifier == address(0)) revert NoPendingPQVerifier();
@@ -895,6 +911,8 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (block.timestamp < validAfter) {
             revert PQVerifierUpdateNotReady(validAfter, block.timestamp);
         }
+
+        if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
         address oldVerifier = address(pqVerifier);
         pqVerifier = IPQCVerifier(newVerifier);

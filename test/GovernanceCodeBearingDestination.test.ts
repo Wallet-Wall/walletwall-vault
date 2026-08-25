@@ -15,8 +15,9 @@ import {
  * Governance destinations must be structurally executable at BOTH proposal time
  * AND apply time.
  *
- * Background: `proposePQVerifier` / `applyPQVerifierUpdate` (WalletWallVault) and
- * `proposePolicyEngine` / `applyPolicyEngine` (WalletWallVault, StablecoinVaultSimulator)
+ * Background: `proposePQVerifier` / `applyPQVerifierUpdate` (WalletWallVault,
+ * StablecoinVaultSimulator — each has its own independent PQ verifier trust boundary)
+ * and `proposePolicyEngine` / `applyPolicyEngine` (WalletWallVault, StablecoinVaultSimulator)
  * accepted any nonzero address as a governance destination — including an EOA, or a
  * contract that later loses its code before the governance delay elapses and the
  * proposal is applied. A governance delay separates proposal from execution; proposal-time
@@ -271,6 +272,70 @@ describe("Governance destinations must be code-bearing (security)", function () 
   });
 
   // =========================================================================
+  // PQ verifier governance — StablecoinVaultSimulator (its own independent trust
+  // boundary, separate state/governance flow from WalletWallVault's)
+  // =========================================================================
+  describe("StablecoinVaultSimulator — PQ verifier governance", function () {
+    it("18. rejects a nonzero EOA proposed as PQ verifier", async function () {
+      await expect(sim.connect(admin).proposePQVerifier(eoa.address))
+        .to.be.revertedWithCustomError(sim, "NoCode")
+        .withArgs(eoa.address);
+    });
+
+    it("19. apply rejects a pending PQ verifier that lost its code before the delay matured", async function () {
+      const target = await verifier2.getAddress();
+      await sim.connect(admin).proposePQVerifier(target);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await wipeCode(target);
+
+      await expect(sim.connect(admin).applyPQVerifierUpdate())
+        .to.be.revertedWithCustomError(sim, "NoCode")
+        .withArgs(target);
+    });
+
+    it("20. a failed apply leaves the active PQ verifier unchanged", async function () {
+      const target = await verifier2.getAddress();
+      await sim.connect(admin).proposePQVerifier(target);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await wipeCode(target);
+
+      await expect(sim.connect(admin).applyPQVerifierUpdate()).to.revert(ethers);
+
+      expect(await sim.pqVerifier()).to.equal(await verifier.getAddress());
+    });
+
+    it("21. a failed apply leaves the pending PQ verifier proposal intact and cancellable", async function () {
+      const target = await verifier2.getAddress();
+      await sim.connect(admin).proposePQVerifier(target);
+      const validAfter = await sim.pendingPQVerifierValidAfter();
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await wipeCode(target);
+
+      await expect(sim.connect(admin).applyPQVerifierUpdate()).to.revert(ethers);
+
+      expect(await sim.pendingPQVerifier()).to.equal(target);
+      expect(await sim.pendingPQVerifierValidAfter()).to.equal(validAfter);
+
+      await expect(sim.connect(admin).cancelPQVerifierUpdate())
+        .to.emit(sim, "PQVerifierUpdateCancelled")
+        .withArgs(target);
+    });
+
+    it("22. a valid PQ verifier contract still applies successfully after the full delay", async function () {
+      const target = await verifier2.getAddress();
+      await sim.connect(admin).proposePQVerifier(target);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+
+      await expect(sim.connect(admin).applyPQVerifierUpdate())
+        .to.emit(sim, "PQVerifierUpdated")
+        .withArgs(await verifier.getAddress(), target);
+
+      expect(await sim.pqVerifier()).to.equal(target);
+      expect(await sim.pendingPQVerifier()).to.equal(ethers.ZeroAddress);
+    });
+  });
+
+  // =========================================================================
   // 16. Non-owner governance behavior remains unchanged
   // =========================================================================
   describe("16. non-owner governance behavior remains unchanged", function () {
@@ -312,6 +377,20 @@ describe("Governance destinations must be code-bearing (security)", function () 
         "OwnableUnauthorizedAccount",
       );
     });
+
+    it("StablecoinVaultSimulator PQ verifier propose/apply stay owner-gated", async function () {
+      await expect(sim.connect(nonOwner).proposePQVerifier(await verifier2.getAddress())).to.be.revertedWithCustomError(
+        sim,
+        "OwnableUnauthorizedAccount",
+      );
+
+      await sim.connect(admin).proposePQVerifier(await verifier2.getAddress());
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await expect(sim.connect(nonOwner).applyPQVerifierUpdate()).to.be.revertedWithCustomError(
+        sim,
+        "OwnableUnauthorizedAccount",
+      );
+    });
   });
 
   // =========================================================================
@@ -344,6 +423,20 @@ describe("Governance destinations must be code-bearing (security)", function () 
       await networkHelpers.time.increase(GOVERNANCE_DELAY);
       await expect(vault.connect(admin).applyPolicyEngine()).to.not.revert(ethers);
       expect(await vault.policyEngine()).to.equal(target);
+    });
+
+    it("StablecoinVaultSimulator PQ verifier apply still reverts before the delay matures, still succeeds once it has", async function () {
+      const target = await verifier2.getAddress();
+      await sim.connect(admin).proposePQVerifier(target);
+
+      await expect(sim.connect(admin).applyPQVerifierUpdate()).to.be.revertedWithCustomError(
+        sim,
+        "PQVerifierUpdateNotReady",
+      );
+
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await expect(sim.connect(admin).applyPQVerifierUpdate()).to.not.revert(ethers);
+      expect(await sim.pqVerifier()).to.equal(target);
     });
   });
 });

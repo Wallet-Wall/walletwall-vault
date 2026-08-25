@@ -91,10 +91,14 @@ custody. See [Attestation_Verifier.md](Attestation_Verifier.md) and
   `PQ_VERIFIER_UPDATE_DELAY`, and applies it with `applyPQVerifierUpdate`. The active
   verifier remains unchanged during the delay. The owner can clear a pending proposal
   with `cancelPQVerifierUpdate` before it is applied.
-- **Governance now enforces a code-bearing destination at proposal and execution.**
-  `proposePQVerifier` rejects any nonzero `newVerifier` whose `code.length` is zero
-  (`NoCode`), and `applyPQVerifierUpdate` independently re-checks the SAME condition
-  on the pending verifier immediately before it takes effect. The re-check exists
+- **Governance now enforces a code-bearing destination at proposal and execution**,
+  identically on `WalletWallVault` and `StablecoinVaultSimulator` — each has its own
+  independent PQ verifier trust boundary, with its own `pqVerifier`/`pendingPQVerifier`
+  state and its own `proposePQVerifier`/`applyPQVerifierUpdate` pair, and this guard
+  applies to both. `proposePQVerifier` rejects any nonzero `newVerifier` whose
+  `code.length` is zero (`NoCode`), and `applyPQVerifierUpdate` independently re-checks
+  the SAME condition on the pending verifier immediately before it takes effect. The
+  re-check exists
   because the two-day delay separates proposal from execution: a destination that
   was code-bearing when proposed can become code-less before the delay elapses (see
   the `AttestationPQCVerifier`/`ImmutableAttestationPQCVerifier` bullets above for
@@ -403,9 +407,10 @@ its code).
   module-roster mutability after a governed delay, not an erosion of the
   sticky floor: a queued withdrawal's finalization remains governed by
   `queue-time engine address x current engine address x live module set(s) x
-  live module internal state` (unchanged from PR #152) — module removal only
+live module internal state` (unchanged from PR #152) — module removal only
   ever changes the "live module set(s) x live module internal state" factors,
   never the address factors the sticky floor itself is defined over.
+
 - Large-withdrawal finalization ALWAYS revalidates policy, read-only, with no
   address-comparison gate — address identity is not used as a proxy for policy
   freshness, so same-address state mutations (e.g. a recipient sanctioned after
