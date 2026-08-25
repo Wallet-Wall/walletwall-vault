@@ -803,15 +803,21 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     /**
      * @dev Mints the canonical {PolicySubject} for a withdrawal evaluated by THIS
      *      simulator. Mirrors WalletWallVault._policySubject exactly except for the
-     *      asset dimension. Every field comes from trusted execution context, never
-     *      from the request body or from `msg.sender`:
+     *      asset dimension, including the trust argument: `consumer` and `asset` are
+     *      trusted BY PROVENANCE (read from this contract's own state, absent from the
+     *      request entirely), while `owner` is trusted BY AUTHENTICATION — it IS
+     *      request-body data, made safe by the EIP-712 signature check that every path
+     *      to this function has already passed, not by any claim that it came from
+     *      somewhere else.
      *
      *      - `consumer` is `address(this)`, so modules behind a shared
      *        {CompositePolicyEngine} see THIS simulator rather than the composite.
      *      - `owner` is the request's `vaultOwner`, reached only AFTER the EIP-712
      *        signature over the request has been verified against
-     *        `vault.ecdsaSigner` / `vault.pqPublicKey`. Relay is permissionless, so
-     *        `msg.sender` is deliberately unused.
+     *        `vault.ecdsaSigner` / `vault.pqPublicKey` for the vault registered under
+     *        that address. Relay is permissionless — anyone may submit someone else's
+     *        signed request — so `msg.sender` carries no identity here and is
+     *        deliberately unused.
      *      - `asset` is `address(token)` — the single ERC-20 fixed at construction and
      *        `immutable` thereafter, so `amount` is always that token's base units
      *        (6 decimals for mUSDC). It can never be address(0): the constructor

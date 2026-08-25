@@ -419,22 +419,26 @@ its code).
   `limit == 0` short-circuit, which is also the point before which nothing is
   mutable. `revalidate()` stays ungated so settlement never depends on admission
   authority. The delegation is TRANSITIVE and only as narrow as what the subject
-  delegated to: under direct wiring no third party can burn a tenant's allowance,
-  but delegating to a `CompositePolicyEngine` inherits that composite's
-  access-control policy, placing the set of principals that may consume the
-  tenant's admission accounting under the composite owner's instant control. That
-  is denial-class only (spend never decreases, no allowance is manufactured, queued
-  withdrawals still settle), it is bounded by the tenant's unilateral
-  `setDailyLimit(consumer, asset, 0)` escape, and it is dominated by the same owner's
-  existing
-  ability to add an always-denying module. Delegate to a composite only where its
-  owner is already trusted for the liveness of that composition.
-  NARROWED BY SUBJECT PROPAGATION: the composite owner can still register arbitrary
-  relays, but a relay must name ITSELF as `subject.consumer` to get past the
-  composite's binding, so it can only ever reach a bucket keyed to the relay — one no
-  tenant arms. A tenant's real bucket, keyed to their vault, is now reachable only by
-  that vault. The residual composite-owner power is DENIAL (adding a denying module),
-  not consumption of the tenant's allowance. Pinned as C7/C7b in
+  delegated to, so delegating to a `CompositePolicyEngine` inherits that composite's
+  access-control policy — its owner chooses which consumers may invoke it. What that
+  buys the composite owner changed with subject propagation, and the current position
+  is: they CANNOT consume the tenant's allowance, and they CAN deny outright.
+  - Cannot consume: `CompositePolicyEngine.check()` requires
+    `subject.consumer == msg.sender`, so a registered relay can only present a subject
+    naming ITSELF as consumer and therefore only ever reaches a bucket keyed to the
+    relay — one no tenant arms. The tenant's own bucket names their VAULT as consumer
+    and is reachable only by that vault. (Before subject propagation this was a real,
+    documented weakness: the composite owner could register an arbitrary relay and burn
+    the delegating tenant's allowance.)
+  - Can deny: the composite owner may add an always-denying module and block the
+    tenant's withdrawals. That is unescapable within the composition and is strictly
+    stronger than the allowance burn ever was, so the operational advice is unchanged —
+    delegate to a composite only where its owner is already trusted for the liveness of
+    that composition. It touches no accounting: spend never moves, no allowance is
+    manufactured, queued withdrawals still settle, and no other subject is affected.
+  The tenant's unilateral escape from the ACCOUNTING side remains
+  `setDailyLimit(consumer, asset, 0)`. Both halves are pinned — C7 asserts the burn is
+  impossible, C7b asserts the denial power survives — in
   `test/DailySpendAdmissionAuthority.test.ts`.
   For a successfully queued large withdrawal, later cancellation or recovery refunds
   the vault reservation but does not restore policy allowance; the amount remains

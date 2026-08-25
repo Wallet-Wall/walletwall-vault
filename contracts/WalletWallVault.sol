@@ -941,17 +941,33 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
     /**
      * @dev Mints the canonical {PolicySubject} for a withdrawal evaluated by THIS vault.
-     *      Every field comes from trusted execution context, never from the request
-     *      body or from `msg.sender`:
+     *      No field is attacker-chosen at the point of use, but the three fields earn
+     *      that status in TWO different ways, and the distinction matters when
+     *      reviewing this boundary:
+     *
+     *      - `consumer` and `asset` are trusted BY PROVENANCE. They are read from this
+     *        contract's own execution context and never appear in the request at all,
+     *        so there is no value a caller could have supplied for them.
+     *      - `owner` is trusted BY AUTHENTICATION. It IS request-body data —
+     *        `request.vaultOwner`, chosen by whoever assembled the calldata — and
+     *        claiming otherwise would misdescribe the boundary. What makes it safe is
+     *        that every path reaching this function has already recovered the EIP-712
+     *        signature over the whole request and required it to match
+     *        `vault.ecdsaSigner` / `vault.pqPublicKey` for the vault registered under
+     *        that very address, and has confirmed the vault exists. A forged
+     *        `vaultOwner` therefore fails signature verification before any policy call
+     *        is made. The guarantee is only as strong as that check: any future caller
+     *        of this helper MUST be downstream of the same verification.
+     *
+     *      Detail on each field:
      *
      *      - `consumer` is `address(this)`. A vault cannot misreport its own address,
      *        and because the value travels in calldata rather than being re-derived per
      *        hop, it survives {CompositePolicyEngine} intact — the composite's modules
      *        see THIS vault, not the composite.
-     *      - `owner` is the caller-supplied `vaultOwner`, but only ever reached here
-     *        AFTER the vault has verified the EIP-712 signature over the request
-     *        against `vault.ecdsaSigner` / `vault.pqPublicKey` and confirmed the vault
-     *        exists. Relay is permissionless, so `msg.sender` is deliberately unused.
+     *      - `owner` is the request's `vaultOwner`, authenticated as above. Relay is
+     *        permissionless — anyone may submit someone else's signed request — so
+     *        `msg.sender` carries no identity here and is deliberately unused.
      *      - `asset` is `address(0)`: this vault custodies native ETH only, so `amount`
      *        is always wei. The constant is not a placeholder — address(0) IS the
      *        canonical native-asset identifier for {PolicySubject}, and it can never

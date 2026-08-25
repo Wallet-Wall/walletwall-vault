@@ -2,8 +2,17 @@
 pragma solidity ^0.8.20;
 
 /// @notice The canonical identity of WHAT a policy evaluation is about.
-/// @dev Three dimensions, all of them minted by the ORIGINATING vault from its own
-///      trusted execution context and relayed unchanged to every module:
+/// @dev Three dimensions, assembled by the ORIGINATING vault and relayed unchanged to
+///      every module. None is attacker-chosen at the point of use, but they earn that
+///      status in two different ways and the difference is part of the contract:
+///      `consumer` and `asset` are trusted BY PROVENANCE (read from the vault's own
+///      execution context, never present in the request), while `owner` is trusted BY
+///      AUTHENTICATION — it is request-body data whose safety rests entirely on the
+///      EIP-712 signature check the vault performs before calling. A consumer that
+///      supplies `owner` without that check would break this interface's guarantees
+///      while still satisfying its types.
+///
+///      The three dimensions:
 ///
 ///      - `consumer` — the vault contract that originated this decision. It is always
 ///        `address(this)` at the mint site, so a vault cannot misreport it, and it is

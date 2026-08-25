@@ -110,18 +110,31 @@ import "../IPolicyEngine.sol";
 ///       accounting separate.
 ///
 ///       This contract has NO owner and no admin: every authority IN IT is held by the
-///       tenant whose accounting is at stake. Delegation is transitive, though, so the
-///       guarantee is only as narrow as what the subject delegated to. Delegating to a
-///       {CompositePolicyEngine} inherits THAT composite's access-control policy: its
-///       owner chooses which consumers may invoke it, and can therefore point a
-///       registered consumer at this module and burn the delegating tenant's allowance
-///       FOR THAT SUBJECT. That is denial-class only — spend never decreases, no
-///       allowance is manufactured, no other subject is touched, and settlement of an
-///       already-queued withdrawal is unaffected — the tenant can always escape
-///       instantly with `setDailyLimit(consumer, asset, 0)`, and the same principal
-///       already holds strictly stronger, unescapable denials (adding an always-denying
-///       module). Delegate to a composite only where its owner is already trusted for
-///       the liveness of that composition.
+///       tenant whose accounting is at stake.
+///
+///       WHAT A COMPOSITE OWNER CAN AND CANNOT DO. Delegation is transitive, so
+///       delegating to a {CompositePolicyEngine} inherits that composite's
+///       access-control policy — its owner chooses which consumers may invoke it.
+///       Before subject propagation that let the composite owner register an arbitrary
+///       relay and burn the delegating tenant's allowance. IT NO LONGER DOES.
+///       {CompositePolicyEngine.check} requires `subject.consumer == msg.sender`, so a
+///       relay can only ever present a subject naming ITSELF as consumer, and therefore
+///       can only ever reach a bucket keyed to the relay — a bucket no tenant arms. The
+///       tenant's own bucket names their VAULT as consumer and is reachable only by
+///       that vault.
+///
+///       What remains to the composite owner is DENIAL, not consumption: they can add
+///       an always-denying module and block the tenant's withdrawals outright. That
+///       power is unescapable within the composition and strictly stronger than the
+///       allowance burn ever was, so the operational advice is unchanged — delegate to
+///       a composite only where its owner is already trusted for the liveness of that
+///       composition. But it touches no accounting: spend never moves, no allowance is
+///       manufactured, no other subject is affected, and settlement of an
+///       already-queued withdrawal is unaffected. The tenant's unilateral escape from
+///       the ACCOUNTING side remains `setDailyLimit(consumer, asset, 0)`.
+///
+///       Both halves are pinned: C7 asserts the burn is impossible, C7b asserts the
+///       denial power survives, in test/DailySpendAdmissionAuthority.test.ts.
 ///
 ///       Spending is recorded at {check} time — for large-tx withdrawals this is at
 ///       queue time, not finalize time, which is intentional and conservative. If the
