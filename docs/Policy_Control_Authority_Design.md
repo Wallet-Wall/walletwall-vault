@@ -2,16 +2,22 @@
 
 > **RESEARCH PROTOTYPE — NOT AUDITED — TESTNET / LOCAL DEMO ONLY. DO NOT USE WITH REAL FUNDS.**
 
-> **STATUS: DESIGN ONLY. NO CONTRACT CHANGES.** Revision 2, incorporating review. The
-> open questions of revision 1 are now settled (§12); the remaining unsettled items are
-> listed in §13.
+> **STATUS: DESIGN ONLY. NO CONTRACT CHANGES.** Revision 3. O1–O5 settled in §12; U1
+> resolved in §6.3; remaining unsettled items in §15.
 >
 > Base commit: `4e685be` (main, after #172 `v0.12.0`).
 
-**The thesis of this revision:** *the epoch solves stale authority; it does not by itself
-prove who the new authority is.* Revision 1 closed the first half and left the second open,
-which allowed an attacker-installed controller to survive recovery and recreate the exact
-orphaning defect this design exists to remove (§6).
+**Two rules carry this design:**
+
+> *The epoch solves stale authority; it does not by itself prove who the new authority is.*
+
+Revision 1 closed only the first half, which let an attacker-installed controller survive
+recovery and recreate the orphaning defect (§6).
+
+> *Emergency response may freeze authority; it may never relax authority.*
+
+Revision 3 adds the bridge circuit breaker under that constraint (§6.3), which is why it is
+a one-way pause and not an emergency unenrol.
 
 ## 1. The seam
 
@@ -63,6 +69,7 @@ Settled inputs, not open questions.
 | **L8** | Queued withdrawals are tested against strengthening and pending/applied weakening. The queue-time engine floor must not turn a policy-control proposal into retroactive admission authority. |
 | **L9** | **(NEW — see §6)** A WalletWall subject may enter controller mode **only** with a controller whose authentication semantics are bound to that consumer's current credential lifecycle. Arbitrary controller contracts are not valid containment controllers. |
 | **L10** | **(NEW — see §5)** Every authenticated configuration intent is replay-bound by a **dedicated policy-control nonce**, independent of the withdrawal nonce. |
+| **L11** | **(NEW — see §6.3)** Emergency response may **freeze** authority; it may never **relax** authority. The canonical bridge carries a one-way global pause, held by a dedicated immutable pauser, with no `unpause()` and no emergency unenrol. |
 
 ## 3. Limit strength as an order (L1)
 
@@ -259,6 +266,110 @@ Rejected on EIP-170: it puts the authentication code back inside vaults holding 
   reintroduce the defect in §6; it must be stated, not smoothed over.
 - Non-WalletWall consumers never enter controller mode and keep Path 1 (L4).
 
+
+### 6.3 Emergency pause of the canonical bridge (U1 — RESOLVED)
+
+§6.2 accepts a concentration risk: one canonical bridge is one blast radius. That risk has
+no natural remedy elsewhere in the design, because **a bridge implementation bug has no
+epoch event that makes it stop being buggy.** The epoch handles *credential* compromise
+beautifully — credential authority has a lifecycle. Code correctness does not.
+
+> **U1 RESOLVED — one-way global bridge pause, no emergency unenrol and no unpause.**
+> A dedicated immutable emergency-pauser may permanently halt configuration through that
+> bridge instance. Pausing never changes an enforced policy value, controller, accounting
+> state, or authorization path; therefore the pauser gains denial capability only, never
+> spend or weakening authority. A paused bridge is retired and replaced, not resumed.
+
+#### Why not an emergency unenrol
+
+Unenrolment changes authority from `canonical bridge → owner-direct`. That is plainly a
+**weakening**: it reopens the compromised-owner bypass this whole design exists to close.
+An emergency primitive that relaxes authority is not a circuit breaker; it is a backdoor
+with a good reason attached.
+
+#### The primitive
+
+```solidity
+contract PolicyControlBridge {
+    address public immutable EMERGENCY_PAUSER;   // one selector: pause()
+    bool    public paused;                       // one-way
+
+    function pause() external {
+        if (msg.sender != EMERGENCY_PAUSER) revert NotPauser();
+        paused = true;                            // no unpause(), by construction
+        emit BridgeRetired();
+    }
+}
+```
+
+`pause()` immediately and permanently disables **all bridge-originated policy-configuration
+calls on that bridge instance**. It does **not**: alter any daily limit; clear any
+controller; re-enable Path 1; affect `check()` / `revalidate()` / already-enforced policy;
+or touch the vault, the epoch, or the rolling ledger.
+
+The pauser holds **one selector**. No upgrade, controller, nonce, limit, proposal, verifier,
+or unpause capability.
+
+#### The subtle requirement: pause must block the APPLY half
+
+Every mutating bridge entrypoint hits the same gate — strengthen, propose weakening,
+**apply weakening**, controller lifecycle, and admitter repair if routed through the bridge.
+Otherwise:
+
+```
+1. attacker exploits the bridge
+2. proposes 1 ETH → 0
+3. proposal matures
+4. incident detected, bridge paused
+5. attacker applies the already-mature proposal anyway    ← the hole
+```
+
+The stored policy proposal is left **untouched**. It simply becomes unreachable through
+that retired controller.
+
+#### Why this cannot relax anything: the policy is pause-unaware
+
+The gate lives entirely in the **bridge**, never in the policy. The policy's controller path
+is `msg.sender == controller`; a paused bridge simply never makes the call. So:
+
+- `DailySpendLimitPolicy` needs **zero** pause awareness, and gains no ambient admin role —
+  preserving the property that the policy has no owner at all;
+- there is no policy code path along which a pause could accidentally permit something;
+- the mechanism can be, as intended, almost stupidly simple.
+
+#### Recovery is replacement, not resumption
+
+```
+Bridge v1 paused  →  deploy Bridge v2 + a policy instance bound immutably to Bridge v2
+                  →  deliberately re-establish policy/controller state
+                  →  existing policy-engine governance switches to the replacement
+```
+
+This is the architecture already chosen: bridge provenance is immutable (§6.1), proposal
+migration is forbidden (L7), and authority is re-established deliberately rather than
+carried across implementations.
+
+**Consequence to state plainly:** a controller-active subject on the retired instance is
+frozen **permanently**, not temporarily. Its last enforced limit stays enforced until the
+vault's policy-engine governance moves to the replacement. That is the intended availability
+damage, and it is why the pauser is a genuinely serious principal despite holding one
+selector.
+
+**Second consequence:** restoration therefore depends on vault-admin engine governance
+(§7.2). The admin cannot relax anything through the pause itself, but they are on the
+restoration path.
+
+#### Immutable pauser, and what that costs
+
+`EMERGENCY_PAUSER` is immutable — no rotation, no `transferOwnership`, no renounce. Losing
+the pauser key loses only the *freeze* capability, which is the fail-safe direction: the
+system continues operating under its last configuration. A rotatable pauser would add a
+lever whose compromise buys more than the pause itself.
+
+Pause must be observable: a `BridgeRetired` event and a public `paused()` getter, with a
+distinct revert reason so a tenant whose configuration call fails can tell retirement from
+an ordinary authorization failure.
+
 ## 7. Trust table
 
 | Principal | Spend | Strengthen | Propose weakening | Apply weakening | Enrol/unenrol controller | Repair admitters |
@@ -267,7 +378,8 @@ Rejected on EIP-170: it puts the authentication code back inside vaults holding 
 | **Tenant, stale credentials** | ✘ | ✘ | ✘ | ✘ epoch/nonce | ✘ | ✘ |
 | **`vaultOwner` key**, PRISTINE | ✘¹ | ✔ immediate | ✔ | ✔ after delay | ✔ enrol only | ✔ immediate |
 | **`vaultOwner` key**, controller-active | ✘¹ | ✘ | ✘ | ✘ | ✘ | ✘ |
-| **Vault contract admin** (`onlyOwner`) | ✘ | ✘ | ✘ | ✘ | ✘ | ✘ — **but see §7.1** |
+| **Vault contract admin** (`onlyOwner`) | ✘ | ✘ | ✘ | ✘ | ✘ | ✘ — **but see §7.1 and §7.2** |
+| **Emergency pauser** (§6.3) | ✘ | ✘ | ✘ | ✘ | ✘ | ✘ — holds **only** `pause()` |
 | **Guardian majority** | ✔² | ✔² | ✔² | ✔² | ✔² | ✔² |
 | **Delegated admitter** | books only | ✘ | ✘ | ✘ | ✘ | ✘ |
 | **Arbitrary caller / arbitrary controller** | ✘ | ✘ | ✘ | ✘ | ✘ (L9) | ✘ |
@@ -313,6 +425,44 @@ Testable form: an admin who swaps the PQ verifier gains policy-control capabilit
 they already had withdrawal capability under that mode. No mode may show the admin gaining
 policy control while lacking spend capability.
 
+
+### 7.2 A second overclaim: the admin can disconnect the policy entirely
+
+The same class of error as §7.1 — asserting an independence the system does not have —
+applies to the trust table's vault-admin row, and it is worth stating before implementation
+rather than after.
+
+```solidity
+// WalletWallVault.sol — zero is explicitly ALLOWED
+function _requireCodeBearingPolicyEngine(address engine) private view {
+    if (engine != address(0) && engine.code.length == 0) revert PolicyEngineUnavailable(engine);
+}
+
+// WalletWallVault.sol:1048 — and zero means "no policy"
+if (address(policyEngine) != address(0)) { ... check ... }
+```
+
+So the vault admin may propose `address(0)`, wait out `POLICY_ENGINE_UPDATE_DELAY`, and
+**disable policy enforcement entirely for that consumer** — without touching the policy,
+the limit, the controller, or the ledger.
+
+This is **pre-existing** and out of scope for this lane, but it bounds what this design can
+truthfully claim:
+
+- The containment boundary is **tenant credentials *plus* vault-admin engine governance**,
+  not tenant credentials alone.
+- A pending engine swap is **not epoch-bound**. Recovery invalidates tenant-side weakening
+  proposals; it does *not* invalidate a pending swap to `address(0)`. That is a weakening
+  path this design does not reach.
+- Timing is comparable — the engine-update delay and `POLICY_CONTROL_DELAY` are both on the
+  order of the governance reaction window — so the admin path is not meaningfully faster,
+  only differently authorized.
+
+**Recorded as a known limit, not fixed here.** Closing it means constraining vault-admin
+engine governance itself, which is a separate lane with its own recovery-liveness questions.
+The trust table's admin row should be read as "no *new* authority from this design",
+consistent with the corrected L6.
+
 ## 8. Transition matrix
 
 `E` = epoch unchanged since binding. `E'` = epoch bumped. `C` = controller-active.
@@ -340,6 +490,11 @@ policy control while lacking spend capability.
 | T18 | any config | vault admin qua admin | — | **revert** (L6, §7.1) |
 | T19 | any bridge action | replayed intent | nonce consumed | **revert** `IntentAlreadyUsed` |
 | T20 | any bridge action | intent for another consumer/policy | — | **revert** — `consumer`/`policy` are signed (§5.2) |
+| T21 | `pause()` | emergency pauser | not paused | `paused = true`, permanent; `BridgeRetired` |
+| T22 | `pause()` | anyone else (incl. vault admin) | — | **revert** `NotPauser` |
+| T23 | any bridge mutation | any | `paused` | **revert** `BridgeRetired` — including **applyWeakening on a MATURE proposal** |
+| T24 | `unpause()` | — | — | **does not exist** — no callable path returns `paused → active` |
+| T25 | `check()` / `revalidate()` | vault | `paused` | **unaffected** — enforcement continues at the last configured value |
 
 **T12 changed from revision 1**, per O2: retaining owner-direct cancellation would leave a
 compromised `vaultOwner` a permanent policy-administration DoS lever — able to cancel every
@@ -475,6 +630,46 @@ GIVEN  bridge asked to authenticate for an owner with no vault at `consumer`
 THEN   fail closed — getVault(...).exists == false must revert, never authenticate
 ```
 
+
+### 9.12 Pause blocks the apply half of a mature weakening
+
+```
+GIVEN  controller-active; attacker has proposed 1 ETH → 0; the proposal has MATURED
+WHEN   the emergency pauser calls pause()
+  AND  the attacker calls applyWeakening through the bridge
+THEN   revert BridgeRetired
+  AND  dailyLimit is STILL 1 ETH
+  AND  the stored proposal is UNCHANGED — untouched, merely unreachable
+```
+
+This is the ordering that makes pause a real circuit breaker rather than a partial one.
+
+### 9.13 Pause freezes the control plane and nothing else
+
+```
+GIVEN  controller-active, armed at 1 ETH, a live rolling ledger, epoch E
+WHEN   pause()
+THEN   dailyLimit, rollingSpent, activeEntryCount, oldestActiveEntry, controller,
+       controllerInitialized and policyControlEpoch are ALL bit-identical to before
+  AND  check() still admits within the limit and still refuses above it
+  AND  revalidate() is unaffected; queued withdrawals still finalize
+  AND  Path 1 is STILL disabled — pausing does not re-enable owner-direct authority
+  AND  strengthening, proposing and unenrolling all revert BridgeRetired
+```
+
+The Path 1 assertion is the one that proves pause cannot relax authority.
+
+### 9.14 Pauser capability is exactly one selector
+
+```
+GIVEN  the configured emergency pauser
+THEN   it cannot set, strengthen or weaken any limit
+  AND  it cannot enrol, unenrol or replace a controller
+  AND  it cannot consume or reset a nonce, alter an epoch, or touch the verifier
+  AND  there is no unpause path callable by anyone, including the pauser
+CONTROL  the vault admin cannot pause unless it IS the configured pauser address
+```
+
 ## 10. Failure and liveness analysis
 
 ### 10.1 Grace window is mandatory
@@ -504,9 +699,23 @@ the property most likely to be silently lost by a later "just add a hook" change
 ### 10.4 Canonical bridge concentration risk
 
 Stated plainly in §6.2: one bridge, one blast radius. Accepted deliberately, because
-arbitrary controllers reintroduce §6's defect.
+arbitrary controllers reintroduce §6's defect — and mitigated, not removed, by the one-way
+pause of §6.3. The pause is a containment primitive, not a repair: it stops further
+control-plane mutation and hands the system to the replacement path.
 
-### 10.5 Nonce liveness
+### 10.5 Compromised pauser
+
+A compromised pauser obtains **global configuration denial of service** across every subject
+enrolled on that bridge: no strengthening, no proposals, no applies, no controller changes,
+permanently, on that instance. It obtains **no** loss of funds and **no** weakening — every
+enforced value survives untouched, and withdrawals continue to be checked against them.
+
+That is an explicit new trust assumption and a tightly bounded one, and it is the reason the
+pauser is a dedicated immutable address rather than either vault's `onlyOwner` or a generic
+`Ownable` admin: the blast radius of that role must not be reachable from any role that
+already holds other powers.
+
+### 10.6 Nonce liveness
 
 An intent signed and never submitted consumes no nonce (the nonce increments on
 *successful* use), so it cannot wedge the sequence. `deadline` bounds how long a signed
@@ -569,7 +778,8 @@ headroom, redesign — do not weaken the gate.
 | **G — lockout repair** | §9.6 plus both existing-guard controls |
 | **H — direct users** | §9.7 including the never-unmanageable regression |
 | **I — grace window** | apply at `validAfter`; at `expiresAt - 1`; at `expiresAt` (reverts); pre-arm-then-wait defeats nothing |
-| **J — bridge authentication / provenance** (NEW) | same-intent replay; cross-consumer replay; cross-policy replay; expired intent; stale-epoch intent; ECDSA / PQ / Hybrid mode correctness; malicious arbitrary-controller enrolment; recovery after an attacker proposed controller replacement (§9.10); nonexistent-vault fail-closed (§9.11) |
+| **J — bridge authentication / provenance** | same-intent replay; cross-consumer replay; cross-policy replay; expired intent; stale-epoch intent; ECDSA / PQ / Hybrid mode correctness; malicious arbitrary-controller enrolment; recovery after an attacker proposed controller replacement (§9.10); nonexistent-vault fail-closed (§9.11) |
+| **K — emergency pause** (NEW) | pauser cannot set/strengthen/weaken limits; vault admin cannot pause unless it *is* the configured pauser; pause blocks fresh strengthening; pause blocks proposal creation; **pause blocks application of an already-mature weakening** (§9.12); pause leaves `dailyLimit`, rolling ledger, controller and epoch bit-identical (§9.13); pause does not affect `check()` / `revalidate()`; **no callable path transitions `paused → active`**; unenrolment remains delayed even while paused; Path 1 stays disabled while paused |
 
 ### 13.1 Required mutants
 
@@ -589,6 +799,10 @@ implementation and passing immediately has demonstrated nothing.
 | **M9** | **arbitrary controller accepted instead of the canonical bridge** | **J — malicious enrolment (§9.9)** |
 | **M10** | **`policy` omitted from the signed struct** | **J — cross-policy replay** |
 | **M11** | **enrolment gated on `limit == 0` instead of `controllerInitialized`** | **J — re-enrol after disarm (O3)** |
+| **M12** | **`applyWeakening` omitted from the pause gate** | **K — §9.12, the mature-proposal hole** |
+| **M13** | **an `unpause()` path added** | **K — no `paused → active` transition exists** |
+| **M14** | **pause also clears the controller (i.e. an "emergency unenrol")** | **K — §9.13, Path 1 must stay disabled** |
+| **M15** | **pauser check widened to the vault admin** | **K — admin cannot pause unless configured as pauser** |
 
 ## 14. Migration and compatibility
 
@@ -604,7 +818,6 @@ implementation and passing immediately has demonstrated nothing.
 
 | # | Question |
 |---|---|
-| **U1** | Does the bridge need a pause/abandon path if a bug is found, given §10.4's concentration risk — and if so, who holds it without recreating an admin lever over policy control? |
 | **U2** | Should `enrolController` require the tenant's signed intent even in `PRISTINE`, or is `msg.sender == owner` sufficient for a one-time transition that only ever *adds* protection? |
 | **U3** | Exact `expiresAt` grace duration. #163/#164 set a precedent; confirm it transfers. |
 
