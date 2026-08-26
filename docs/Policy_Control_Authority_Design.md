@@ -2,8 +2,9 @@
 
 > **RESEARCH PROTOTYPE — NOT AUDITED — TESTNET / LOCAL DEMO ONLY. DO NOT USE WITH REAL FUNDS.**
 
-> **STATUS: DESIGN ONLY. NO CONTRACT CHANGES.** Revision 3. O1–O5 settled in §12; U1
-> resolved in §6.3; remaining unsettled items in §15.
+> **STATUS: IMPLEMENTATION CONTRACT — DESIGN ONLY, NO CONTRACT CHANGES.** Revision 4.
+> L1–L11 locked (§2.1); O1–O5 settled (§12); U1 resolved (§6.3); U2 and U3 resolved (§15).
+> **No open design questions remain.** The `v0.13.0` Solidity lane implements this document.
 >
 > Base commit: `4e685be` (main, after #172 `v0.12.0`).
 
@@ -109,7 +110,8 @@ LEGACY / DIRECT SUBJECT        owner-direct (Path 1); timelocked weakening; NO e
         ▼
 WALLETWALL SUBJECT, PRISTINE   controllerInitialized == false
         │
-        │  enrollController(canonical bridge)  ── ONE-TIME, IMMEDIATE (§12, O3)
+        │  enrolController(canonical bridge)  ── ONE-TIME, IMMEDIATE,
+        │                                        SIGNED by current credentials (§15, U2)
         ▼
 WALLETWALL SUBJECT, CONTROLLER-ACTIVE
         · only current tenant credentials, via the bridge, have configuration capability
@@ -376,7 +378,7 @@ an ordinary authorization failure.
 |---|---|---|---|---|---|---|
 | **Tenant, current credentials** (via bridge) | ✔ | ✔ immediate | ✔ | ✔ after delay, same epoch | ✔ (unenrol delayed) | ✔ immediate |
 | **Tenant, stale credentials** | ✘ | ✘ | ✘ | ✘ epoch/nonce | ✘ | ✘ |
-| **`vaultOwner` key**, PRISTINE | ✘¹ | ✔ immediate | ✔ | ✔ after delay | ✔ enrol only | ✔ immediate |
+| **`vaultOwner` key**, PRISTINE | ✘¹ | ✔ immediate | ✔ | ✔ after delay | ✘ — enrolment is **signed**, not `msg.sender` (U2) | ✔ immediate |
 | **`vaultOwner` key**, controller-active | ✘¹ | ✘ | ✘ | ✘ | ✘ | ✘ |
 | **Vault contract admin** (`onlyOwner`) | ✘ | ✘ | ✘ | ✘ | ✘ | ✘ — **but see §7.1 and §7.2** |
 | **Emergency pauser** (§6.3) | ✘ | ✘ | ✘ | ✘ | ✘ | ✘ — holds **only** `pause()` |
@@ -482,7 +484,8 @@ consistent with the corrected L6.
 | T10 | applyWeakening | any | past `expiresAt` | **revert** `WeakeningExpired` |
 | T11 | cancelWeakening | bridge | `C` | cleared immediately (strengthening-ward) |
 | T12 | cancelWeakening | owner | `C` | **revert** — Path 1 has zero capability (O2) |
-| T13 | enrolController | owner **or** bridge | `P`, controller == canonical | immediate, one-time; sets `controllerInitialized` |
+| T13 | enrolController | **bridge only**, on a signed `EnrollController` intent from *current* credentials | `P`, controller == canonical | immediate, one-time; sets `controllerInitialized` |
+| T13b | enrolController | owner via `msg.sender` | `P` | **revert** — no owner-direct bootstrap (U2) |
 | T14 | enrolController | anyone | controller != canonical | **revert** `NotCanonicalBridge` (L9) |
 | T15 | unenrolController | bridge | `C` | **weakening**: delayed, expiring, epoch-bound |
 | T16 | setAdmitter(add) | authorized path | — | immediate (L5, §9.6) |
@@ -670,6 +673,23 @@ THEN   it cannot set, strengthen or weaken any limit
 CONTROL  the vault admin cannot pause unless it IS the configured pauser address
 ```
 
+### 9.15 Recovery while PRISTINE — enrolment capability must follow the credentials (U2)
+
+The regression that pins §15.1:
+
+```
+GIVEN  a WalletWall subject still PRISTINE (controllerInitialized == false)
+  AND  the original vaultOwner key is compromised
+WHEN   guardian recovery succeeds and rotates ecdsaSigner / pqPublicKey
+THEN   the RECOVERED credentials CAN enrol the canonical bridge, immediately,
+       via a signed EnrollController intent bound to the NEW epoch
+  AND  the STALE vaultOwner address CANNOT enrol — msg.sender confers nothing
+  AND  a pre-recovery EnrollController signature is refused (StaleControlEpoch),
+       exactly as a pre-recovery weakening proposal is
+CONTROL  enrolment remains one-time: a second enrolment attempt reverts even with
+         a validly signed intent, because controllerInitialized is already true
+```
+
 ## 10. Failure and liveness analysis
 
 ### 10.1 Grace window is mandatory
@@ -757,9 +777,9 @@ headroom, redesign — do not weaken the gate.
 
 | # | Decision |
 |---|---|
-| **O1** | **Fixed delay.** `POLICY_CONTROL_DELAY = 2 days`, matching the existing governance reaction window. **Non-configurable in v1** — a configurable delay is another ordered governance object with recursive weakening semantics, more storage and more tests, for no present value. Bounded grace as in #163/#164. |
+| **O1** | **Fixed delay.** `POLICY_CONTROL_DELAY = 2 days`, matching the existing governance reaction window. **Non-configurable in v1** — a configurable delay is another ordered governance object with recursive weakening semantics, more storage and more tests, for no present value. Grace is `POLICY_CONTROL_GRACE_PERIOD = 14 days` (§15, U3). |
 | **O2** | **No owner-direct cancellation once controller mode is active.** Path 1 has *zero* capability. Retaining cancellation would leave a compromised `vaultOwner` a permanent policy-administration DoS lever surviving recovery. Epoch invalidation supplies the emergency protection. |
-| **O3** | **Immediate one-time initial enrolment**, gated on an explicit `controllerInitialized` transition — **not** on `limit == 0`, since a disarmed subject returns to zero. `PRISTINE → canonical bridge` is immediate; every later replacement/removal is delayed and epoch-bound. |
+| **O3** | **Immediate one-time initial enrolment**, gated on an explicit `controllerInitialized` transition — **not** on `limit == 0`, since a disarmed subject returns to zero. `PRISTINE → canonical bridge` is immediate **and signed by current credentials** (§15, U2); every later replacement/removal is delayed and epoch-bound. |
 | **O4** | **One shared bridge.** State keyed by `(consumer, owner)`; `consumer` is a signed field, so a signature for the ETH vault cannot replay against the stablecoin sibling. Interface differences are handled by narrow adapters, never by cloning security-sensitive code. |
 | **O5** | **E1 only** (explicit vault-owned counter). The fingerprint adapter (E2) is **not** shipped: it is non-monotonic and can resurrect a stale proposal if credentials rotate back, and with `policyEngineAddress` `null` in every deployment manifest there is no live armed state forcing us to accept that weakness. E2 stays documented as a possible legacy adapter, out of scope for `v0.13.0`. |
 
@@ -778,7 +798,7 @@ headroom, redesign — do not weaken the gate.
 | **G — lockout repair** | §9.6 plus both existing-guard controls |
 | **H — direct users** | §9.7 including the never-unmanageable regression |
 | **I — grace window** | apply at `validAfter`; at `expiresAt - 1`; at `expiresAt` (reverts); pre-arm-then-wait defeats nothing |
-| **J — bridge authentication / provenance** | same-intent replay; cross-consumer replay; cross-policy replay; expired intent; stale-epoch intent; ECDSA / PQ / Hybrid mode correctness; malicious arbitrary-controller enrolment; recovery after an attacker proposed controller replacement (§9.10); nonexistent-vault fail-closed (§9.11) |
+| **J — bridge authentication / provenance** | same-intent replay; cross-consumer replay; cross-policy replay; expired intent; stale-epoch intent; ECDSA / PQ / Hybrid mode correctness; malicious arbitrary-controller enrolment; recovery after an attacker proposed controller replacement (§9.10); nonexistent-vault fail-closed (§9.11); **recovery while PRISTINE — recovered credentials enrol, stale `vaultOwner` cannot (§9.15)** |
 | **K — emergency pause** (NEW) | pauser cannot set/strengthen/weaken limits; vault admin cannot pause unless it *is* the configured pauser; pause blocks fresh strengthening; pause blocks proposal creation; **pause blocks application of an already-mature weakening** (§9.12); pause leaves `dailyLimit`, rolling ledger, controller and epoch bit-identical (§9.13); pause does not affect `check()` / `revalidate()`; **no callable path transitions `paused → active`**; unenrolment remains delayed even while paused; Path 1 stays disabled while paused |
 
 ### 13.1 Required mutants
@@ -803,6 +823,7 @@ implementation and passing immediately has demonstrated nothing.
 | **M13** | **an `unpause()` path added** | **K — no `paused → active` transition exists** |
 | **M14** | **pause also clears the controller (i.e. an "emergency unenrol")** | **K — §9.13, Path 1 must stay disabled** |
 | **M15** | **pauser check widened to the vault admin** | **K — admin cannot pause unless configured as pauser** |
+| **M16** | **signed enrolment replaced by `msg.sender == owner`** | **J — §9.15: the stale `vaultOwner` must NOT be able to enrol after recovery** |
 
 ## 14. Migration and compatibility
 
@@ -814,12 +835,41 @@ implementation and passing immediately has demonstrated nothing.
 - Lowering a nonzero limit is unchanged.
 - Semver: breaking minor on the `0.x` line, `0.12.x → 0.13.0`, by #172's reasoning.
 
-## 15. Remaining unsettled
+## 15. Final resolutions (U2, U3)
 
 | # | Question |
 |---|---|
-| **U2** | Should `enrolController` require the tenant's signed intent even in `PRISTINE`, or is `msg.sender == owner` sufficient for a one-time transition that only ever *adds* protection? |
-| **U3** | Exact `expiresAt` grace duration. #163/#164 set a precedent; confirm it transfers. |
+| **U2 — RESOLVED** | **Signed, not `msg.sender == owner`.** The one-time `PRISTINE → canonical bridge` enrolment stays **immediate**, but must carry an `EnrollController` intent signed by the vault's **current** credentials and submitted through the canonical bridge. Immediate is safe because the transition only ever *adds* containment. |
+| **U3 — RESOLVED** | `POLICY_CONTROL_GRACE_PERIOD = **14 days**`, matching the existing 2-day-delay / 14-day-grace governance pattern. No new duration is introduced. |
+
+### 15.1 Why enrolment must be signed, not owner-direct
+
+The deciding case is **recovery *before* enrolment**, and it is not hypothetical:
+
+```
+GIVEN  a vault still PRISTINE when the original vaultOwner key is compromised
+WHEN   guardian recovery rotates the actual spending credentials
+THEN   under an owner-direct bootstrap (msg.sender == owner), the RECOVERED tenant
+       cannot enrol the controller without cooperation from the STALE key
+```
+
+That is a smaller instance of the exact orphaning defect this work exists to eliminate
+(§1) — authority stranded on an address that recovery does not move. Requiring the signed
+intent binds enrolment to the **credential lifecycle** rather than to the address, so
+recovery carries enrolment capability with it like every other configuration action.
+
+**There is no bootstrap circularity.** The policy already knows the canonical bridge
+immutably (§6.1), so the bridge can authenticate an `EnrollController` intent *before* it
+is installed as the subject's controller. Nothing has to trust the bridge into existence.
+
+The intent is the `EnrollController` struct already specified in §5.2, and it binds the
+same epoch, nonce and deadline as every other intent — so a pre-recovery enrolment
+signature dies at recovery exactly like a pre-recovery weakening proposal.
+
+**Scope note carried forward:** the vault-admin `address(0)` finding (§7.2) stays **out of
+`v0.13.0` scope**. This lane protects against tenant-credential compromise, subject to the
+existing vault-admin engine-governance trust assumption. Closing the admin's ability to
+disconnect enforcement is a separate governance-hardening lane.
 
 ---
 
