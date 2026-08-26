@@ -2,19 +2,24 @@
 
 > **RESEARCH PROTOTYPE — NOT AUDITED — TESTNET / LOCAL DEMO ONLY. DO NOT USE WITH REAL FUNDS.**
 
-> **STATUS: DESIGN ONLY. NO CONTRACT CHANGES.** This document is for review before any
-> Solidity is written. Every code shape below is a proposal, not an implementation, and
-> the open questions in §12 are expected to change it.
+> **STATUS: DESIGN ONLY. NO CONTRACT CHANGES.** Revision 2, incorporating review. The
+> open questions of revision 1 are now settled (§12); the remaining unsettled items are
+> listed in §13.
 >
 > Base commit: `4e685be` (main, after #172 `v0.12.0`).
 
+**The thesis of this revision:** *the epoch solves stale authority; it does not by itself
+prove who the new authority is.* Revision 1 closed the first half and left the second open,
+which allowed an attacker-installed controller to survive recovery and recreate the exact
+orphaning defect this design exists to remove (§6).
+
 ## 1. The seam
 
-`DailySpendLimitPolicy` now enforces an exact rolling 24-hour cap (#172). That cap is
-still only a **damage limiter**, not a containment boundary, because the credential it
-constrains can remove it.
+`DailySpendLimitPolicy` now enforces an exact rolling 24-hour cap (#172). That cap is still
+only a **damage limiter**, not a containment boundary, because the credential it constrains
+can remove it.
 
-Two facts on `main`, both verified rather than assumed:
+Two facts on `main`, verified rather than assumed:
 
 ```solidity
 // contracts/policies/DailySpendLimitPolicy.sol:363 — setDailyLimit
@@ -26,20 +31,15 @@ vault.ecdsaSigner  = recoveredSigner;            // only the CREDENTIALS rotate
 vault.pqPublicKey  = recoveredPQPublicKey;
 ```
 
-`limit == 0` means unrestricted and is currently an immediately available escape hatch,
-deliberately exempt from the anti-lockout guard at line 349.
-
-These produce two **opposite** failures from the same root cause — configuration
-authority is bound to a *credential-bearing address* rather than to a lifecycle:
+One root cause — configuration authority bound to a *credential-bearing address* rather
+than to a lifecycle — produces two **opposite** failures:
 
 | Failure | Mechanism | Consequence |
 |---|---|---|
 | **Compromise** | Attacker holding the `vaultOwner` key calls `setDailyLimit(consumer, asset, 0)` | The damage limiter is removed in one transaction, before any guardian can react |
-| **Recovery** | `executeRecovery` rotates `ecdsaSigner` / `pqPublicKey` but not the `vaultOwner` mapping key | Recovered credentials can spend but **cannot configure**; the compromised address retains policy control *permanently*, since no further rotation is coming |
+| **Recovery** | `executeRecovery` rotates credentials but not the `vaultOwner` mapping key | Recovered credentials can spend but **cannot configure** — permanently, since no further rotation is coming |
 
-The second is the more surprising one and the reason a delay alone is insufficient. Adding
-a two-day timelock to `setDailyLimit` would slow the attacker down and leave the legitimate
-recovered tenant with **no** path to policy control at all.
+A timelock alone fixes the first and makes the second worse.
 
 ## 2. Target property
 
@@ -49,23 +49,24 @@ recovered tenant with **no** path to policy control at all.
 
 ### 2.1 Locked design points
 
-These are settled inputs to the design, not open questions.
+Settled inputs, not open questions.
 
 | # | Point |
 |---|---|
 | **L1** | Limit strength is an explicit **order**, not a numeric comparison. `0` is maximally permissive. `0→n` and `n→smaller` are immediate strengthening; `n→larger` and `n→0` are delayed weakening. |
-| **L2** | A **monotonic policy-control epoch owned by the vault**, bumped on both `rotateCredentials` and `executeRecovery`. Weakening proposals bind the epoch and become invalid when credential authority changes. **No policy callbacks during recovery.** |
+| **L2** | A **monotonic policy-control epoch owned by the vault**, bumped on both `rotateCredentials` and `executeRecovery`. Weakening proposals and signed bridge intents both bind it. **No policy callbacks during recovery.** |
 | **L3** | `PolicySubject.owner` remains the stable accounting identity. The rotating signer is **never** substituted for it. |
-| **L4** | Direct / non-vault consumers are modelled explicitly. They are **not** silently made dependent on a WalletWall vault bridge. |
-| **L5** | Recovery from admission lockout is preserved. Limit weakening and admitter/liveness repair are **separate** actions, not forced through one delay. |
-| **L6** | Any vault bridge authenticates the tenant's **current credentials** and never inherits `WalletWallVault`'s contract-admin (`onlyOwner`) authority. |
-| **L7** | Pending weakening proposals have exact semantics across policy-engine replacement. **Default: no migration** — authority is re-established deliberately. |
-| **L8** | Queued withdrawals are tested against both strengthening and pending/applied weakening. The queue-time engine floor must not turn a policy-control proposal into retroactive admission authority. |
+| **L4** | Direct / non-vault consumers are modelled explicitly and keep Path 1. They are **not** silently made dependent on a bridge, and do **not** receive the stronger containment guarantee. |
+| **L5** | Recovery from admission lockout is preserved. Limit weakening and admitter/liveness repair are **separate** actions. |
+| **L6** | **(REVISED — see §7)** The vault admin receives no **new or direct** policy-control authority from the bridge. Bridge authentication inherits **exactly** the vault's existing credential-verifier trust assumptions and no more. |
+| **L7** | Pending weakening proposals have exact semantics across policy-engine replacement. **Default: no migration.** |
+| **L8** | Queued withdrawals are tested against strengthening and pending/applied weakening. The queue-time engine floor must not turn a policy-control proposal into retroactive admission authority. |
+| **L9** | **(NEW — see §6)** A WalletWall subject may enter controller mode **only** with a controller whose authentication semantics are bound to that consumer's current credential lifecycle. Arbitrary controller contracts are not valid containment controllers. |
+| **L10** | **(NEW — see §5)** Every authenticated configuration intent is replay-bound by a **dedicated policy-control nonce**, independent of the withdrawal nonce. |
 
 ## 3. Limit strength as an order (L1)
 
-The bug in any numeric framing is that `0` is not the bottom of the range — it is the
-**top of the permissiveness lattice**:
+`0` is not the bottom of the range — it is the **top of the permissiveness lattice**:
 
 ```
         0  (unrestricted)          ← most permissive
@@ -75,417 +76,459 @@ The bug in any numeric framing is that `0` is not the bottom of the range — it
      small                          ← most restrictive
 ```
 
-Define `permits(a) ⊒ permits(b)` as "configuration `a` admits at least everything `b`
-admits". Then:
-
 | Transition | Numeric reading | Correct classification | Timing |
 |---|---|---|---|
 | `0 → n` | "increase" | **STRENGTHENING** — arming protection where none existed | Immediate |
 | `n → m`, `m < n` | decrease | STRENGTHENING | Immediate |
 | `n → m`, `m > n` | increase | WEAKENING | Delayed |
-| `n → 0` | "decrease" | **WEAKENING** — maximal, removes the cap entirely | Delayed |
-| `0 → 0`, `n → n` | — | no-op | Rejected as no-op |
+| `n → 0` | "decrease" | **WEAKENING** — maximal | Delayed |
+| `0 → 0`, `n → n` | — | no-op | Rejected |
 
-Both extremes invert under a numeric rule, which is why the implementation must compute a
-single predicate:
+Both extremes invert under a numeric rule, so the implementation must compute:
 
 ```
-isWeakening(old, new) :=  (new == 0 && old != 0)          // disarming
+isWeakening(old, new) :=  (new == 0 && old != 0)
                        || (old != 0 && new != 0 && new > old)
 ```
 
 and must **not** be expressed as `new > old`.
 
-> **Note for review.** `0 → n` being immediate is what lets a tenant arm protection the
-> moment they suspect something, with no waiting period. That is a security-positive
-> property and the main reason the order matters rather than being pedantry.
+## 4. State model
 
-## 4. Trust table
+```
+LEGACY / DIRECT SUBJECT        owner-direct (Path 1); timelocked weakening; NO epoch guarantee
+        │
+        │  (WalletWall consumer only)
+        ▼
+WALLETWALL SUBJECT, PRISTINE   controllerInitialized == false
+        │
+        │  enrollController(canonical bridge)  ── ONE-TIME, IMMEDIATE (§12, O3)
+        ▼
+WALLETWALL SUBJECT, CONTROLLER-ACTIVE
+        · only current tenant credentials, via the bridge, have configuration capability
+        · the old vaultOwner address has NONE — including no cancellation (§12, O2)
+        · controller removal/replacement: delayed, expiring, epoch-bound
+```
 
-Principals, and what each may do to an armed subject under the proposed design.
+**`PRISTINE` is an explicit one-time flag, not `limit == 0`.** Those are not equivalent: a
+previously armed subject can be disarmed and return to zero. Gating first enrollment on
+`limit == 0` would let an attacker re-enroll instantly after a disarm.
 
-| Principal | Spend | Strengthen | Propose weakening | Apply weakening | Repair admitters |
-|---|---|---|---|---|---|
-| **Tenant, current credentials** (via bridge) | ✔ | ✔ immediate | ✔ | ✔ after delay, same epoch | ✔ immediate |
-| **Tenant, stale credentials** (pre-rotation) | ✘ (nonce/sig) | ✘ | ✘ | ✘ epoch mismatch | ✘ |
-| **`vaultOwner` address key**, no controller set | ✘¹ | ✔ immediate | ✔ | ✔ after delay | ✔ immediate |
-| **`vaultOwner` address key**, controller set | ✘¹ | ✘ | ✘ | ✘ | ✘ |
-| **Vault contract admin** (`onlyOwner`) | ✘ | ✘ | ✘ | ✘ | ✘ |
-| **Guardian minority** | ✘ | ✘ | ✘ | ✘ | ✘ |
-| **Guardian majority** | ✔² | ✔² | ✔² | ✔² | ✔² |
-| **Delegated admitter** (composite/vault) | books only | ✘ | ✘ | ✘ | ✘ |
-| **Arbitrary caller** | ✘ | ✘ | ✘ | ✘ | ✘ |
+## 5. Bridge authentication and replay model (L10)
+
+Revision 1 said the bridge would "verify an EIP-712 configuration intent" without defining
+the message, nonce ownership, or replay boundary. That was the largest hole in the design.
+Without it:
+
+- a valid old **strengthening** intent (`setLimit(1 wei)`) could be replayed to freeze the
+  tenant repeatedly;
+- a signed **proposal** intent could be replayed after the proposal expired, minting a
+  fresh proposal and resetting the clock.
+
+### 5.1 Dedicated nonce
+
+```solidity
+// PolicyControlBridge
+mapping(address consumer => mapping(address owner => uint256)) public controlNonce;
+```
+
+Keyed by `(consumer, vaultOwner)`, **never** the withdrawal nonce. Policy administration
+must not invalidate signed withdrawals, and ordinary withdrawals must not invalidate a
+policy-control transaction. The two authorities move on different clocks and coupling them
+creates cross-domain griefing in both directions.
+
+Nonces are **sequential**, not an unordered bitmap: policy-control actions are inherently
+ordered (enroll → propose → apply), and reordering them would be a bug rather than a
+feature. `deadline` bounds the liveness cost of an unsubmitted intent.
+
+### 5.2 Signed intent
+
+Every authenticated configuration intent binds, at minimum:
+
+```
+consumer · owner · policy · asset · action · value/target
+         · policyControlEpoch · controlNonce · deadline
+```
+
+with `chainId` and the **bridge address** supplied by the EIP-712 domain separator.
+
+**Proposal: one EIP-712 struct (and therefore one typehash) per action**, rather than a
+single struct with a union `value/target` field:
+
+```solidity
+struct EnrollController { address consumer; address owner; address policy; address controller;
+                          uint64 epoch; uint256 nonce; uint256 deadline; }
+struct SetLimit         { address consumer; address owner; address policy; address asset;
+                          uint256 newLimit; uint64 epoch; uint256 nonce; uint256 deadline; }
+struct ProposeWeakening { address consumer; address owner; address policy; address asset;
+                          uint256 newLimit; uint64 epoch; uint256 nonce; uint256 deadline; }
+struct ApplyWeakening   { address consumer; address owner; address policy; address asset;
+                          uint64 epoch; uint256 nonce; uint256 deadline; }
+struct SetAdmitter      { address consumer; address owner; address policy; address asset;
+                          address admitter; bool allowed;
+                          uint64 epoch; uint256 nonce; uint256 deadline; }
+```
+
+Distinct typehashes make **cross-action confusion structurally impossible** rather than
+merely checked: the same signed bytes cannot be reinterpreted as a different action,
+because the typehash is part of the digest. A union field would put that safety on an
+`action` discriminator the implementation has to remember to validate.
+
+### 5.3 Two clocks, deliberately distinct
+
+`deadline` bounds **submission of the intent**. `validAfter` / `expiresAt` bound
+**maturity of the resulting proposal**. They must never be conflated: a short intent
+deadline does not shorten the timelock, and a matured proposal does not extend an expired
+intent.
+
+### 5.4 Epoch appears twice, on purpose
+
+The signed intent binds the epoch *and* the stored proposal binds the epoch. This is
+deliberate redundancy: the first kills a signature that predates a rotation, the second
+kills a proposal whose authority changed after it was stored. Either alone leaves a gap.
+
+### 5.5 `applyWeakening` requires a fresh intent
+
+Applying a matured weakening requires its own signed intent bound to the **current** epoch
+and nonce, rather than being permissionless.
+
+Rationale: it forces the attacker to hold current credentials at **both** propose time and
+apply time. A permissionless apply would let anyone push a matured proposal through, which
+removes the tenant's ability to simply decline to apply — and with O2 removing owner-direct
+cancellation, declining to apply is a capability worth preserving.
+
+*Alternative considered:* permissionless apply, relying on `boundEpoch` alone. Rejected as
+strictly weaker for the cost of one signature on a rare operation.
+
+## 6. Controller provenance (L9) — the recovery-orphaning defect, wearing a new address
+
+Revision 1 said "once `controller != 0`, owner-direct authority disappears entirely" and
+placed no provenance constraint on what may become the controller. That permits:
+
+```
+vaultOwner compromised
+  → attacker installs a MALICIOUS controller
+  → guardian recovery succeeds
+  → PolicySubject.owner is stable (L3), so the subject is unchanged
+  → the malicious controller is still installed
+  → Path 1 is still disabled
+  → recovered credentials still cannot administer policy
+```
+
+**The epoch does not help here.** It invalidates *pending actions*; the installed
+controller is *settled state*. This is the original orphaning defect with an extra hop.
+
+### 6.1 Resolution: only a canonical bridge may hold controller mode
+
+```solidity
+contract DailySpendLimitPolicy {
+    address public immutable POLICY_CONTROL_BRIDGE;   // set at construction
+    // enrollController(...) accepts ONLY POLICY_CONTROL_BRIDGE
+}
+```
+
+| Property | Result |
+|---|---|
+| Attacker installs an arbitrary controller | Impossible — the policy rejects any address but the canonical bridge |
+| Vault admin influences policy control | No — the bridge is fixed at policy deployment, not admin-selected |
+| Bridge upgrade | Requires a **new policy instance** and deliberate re-enrolment, consistent with L7's no-migration default |
+
+*Alternative considered — the consumer names its own bridge* (`consumer.authorizedBridge()`).
+Rejected: the vault's bridge pointer would be admin-governed, handing the vault admin a
+lever over tenant policy control and violating even the revised L6.
+
+*Alternative considered — `controller == consumer`* (the vault is its own bridge).
+Rejected on EIP-170: it puts the authentication code back inside vaults holding 1,725 /
+2,091 bytes of headroom (§10.2).
+
+### 6.2 Consequences worth stating
+
+- With a canonical bridge, "controller replacement" collapses to **enrol / unenrol**.
+  Unenrolment re-enables Path 1 and is therefore a weakening — delayed, expiring,
+  epoch-bound.
+- **An attacker enrolling the canonical bridge does not help them.** The bridge demands
+  *current* credentials, which recovery rotates away. Enrolment by an attacker is
+  functionally the tenant's own enrolment.
+- **A fake consumer buys nothing.** The bridge reads credentials from `subject.consumer`;
+  a fabricated consumer reaches a bucket keyed to the fabrication, which no tenant armed.
+  This is the same argument #171 established for admission and is reused here rather than
+  re-derived.
+- **Honest cost:** the canonical bridge is a single point of failure for every enrolled
+  subject. A bug in it compromises all of them, where arbitrary controllers would have
+  isolated blast radius. This design accepts that trade because arbitrary controllers
+  reintroduce the defect in §6; it must be stated, not smoothed over.
+- Non-WalletWall consumers never enter controller mode and keep Path 1 (L4).
+
+## 7. Trust table
+
+| Principal | Spend | Strengthen | Propose weakening | Apply weakening | Enrol/unenrol controller | Repair admitters |
+|---|---|---|---|---|---|---|
+| **Tenant, current credentials** (via bridge) | ✔ | ✔ immediate | ✔ | ✔ after delay, same epoch | ✔ (unenrol delayed) | ✔ immediate |
+| **Tenant, stale credentials** | ✘ | ✘ | ✘ | ✘ epoch/nonce | ✘ | ✘ |
+| **`vaultOwner` key**, PRISTINE | ✘¹ | ✔ immediate | ✔ | ✔ after delay | ✔ enrol only | ✔ immediate |
+| **`vaultOwner` key**, controller-active | ✘¹ | ✘ | ✘ | ✘ | ✘ | ✘ |
+| **Vault contract admin** (`onlyOwner`) | ✘ | ✘ | ✘ | ✘ | ✘ | ✘ — **but see §7.1** |
+| **Guardian majority** | ✔² | ✔² | ✔² | ✔² | ✔² | ✔² |
+| **Delegated admitter** | books only | ✘ | ✘ | ✘ | ✘ | ✘ |
+| **Arbitrary caller / arbitrary controller** | ✘ | ✘ | ✘ | ✘ | ✘ (L9) | ✘ |
 
 ¹ The `vaultOwner` address is not itself a spending credential — withdrawal requires the
-EIP-712 signature of `vault.ecdsaSigner` (+ PQ). In the common deployment they are the same
-key, which is precisely the conflation this design separates.
+signature of `vault.ecdsaSigner` and/or the PQ key per `VaultMode`. In the common
+deployment they are the same key, which is the conflation this design separates.
 
-² A guardian majority can already recover the vault and rotate credentials to itself, so it
-can reach any state a legitimate tenant can. This is not a new power; it is the existing
-trust assumption of social recovery and must be stated, not engineered around.
+² A guardian majority can already recover the vault and rotate credentials to itself. Not a
+new power; the existing trust assumption of social recovery.
 
-**L6 restated as an invariant to test:** no row for the vault contract admin has a ✔.
-`proposePolicyEngine` / `applyPolicyEngine` must confer nothing over tenant limits.
+### 7.1 The L6 correction — an independence the system does not actually have
 
-## 5. Proposed state machine and API
-
-### 5.1 Two authorization paths
-
-```
-Path 1  OWNER-DIRECT     msg.sender == subject.owner
-Path 2  CONTROLLER       msg.sender == subject.controller   (controller != 0)
-```
-
-**When a controller is set, Path 1 is disabled entirely** — not merely for weakening.
-
-That "entirely" is deliberate and is the answer to a liveness attack described in §8.3: if
-Path 1 retained *strengthening*, a compromised `vaultOwner` key could instantly set the
-limit to 1 wei and freeze the tenant's withdrawals for the full weakening delay. Disabling
-Path 1 outright once a controller exists removes that.
-
-Setting **or clearing** the controller is itself a weakening action (delayed, epoch-bound).
-Otherwise an attacker would simply clear the controller to re-enable Path 1.
-
-### 5.2 Per-subject state added to `SpendState`
+Revision 1 claimed that putting the bridge outside the vault **structurally** denies the
+vault admin any policy-control capability. That is too strong, and the mechanism is on
+`main`:
 
 ```solidity
-struct PendingWeakening {
-    uint256 newLimit;      // proposed configuration
-    uint64  validAfter;    // propose + DELAY
-    uint64  expiresAt;     // validAfter + GRACE   (bounded; see §8.2)
-    uint64  boundEpoch;    // vault policy-control epoch at propose time
-}
+// both vaults
+IPQCVerifier public pqVerifier;                         // MUTABLE
+function proposePQVerifier(address) external onlyOwner; // timelocked, admin-governed
+function applyPQVerifierUpdate() external onlyOwner;
 
-// added to SpendState
-address          controller;   // 0 = Path 1 only
-PendingWeakening pending;
+// WalletWallVault.sol:669-670
+bool needEcdsa = mode == VaultMode.EcdsaOnly || mode == VaultMode.Hybrid;
+bool needPq    = mode == VaultMode.PqOnly    || mode == VaultMode.Hybrid;
 ```
 
-### 5.3 Vault-side additions
+In **`Hybrid`** mode, control of the verifier does not supply the required ECDSA
+signature, so the admin cannot forge a tenant intent.
 
-```solidity
-mapping(address => uint64) public policyControlEpoch;   // keyed by vaultOwner (L3: not by signer)
-// ++ in executeRecovery
-// ++ in rotateCredentials
-// NOT touched by initiateRecovery, guardian support, withdrawals, or engine replacement
-```
+In **`PqOnly`** mode, `needEcdsa == false` and the PQ verifier is the *sole* authenticator.
+Whatever authority already exists over that verifier is therefore relevant to any bridge
+that authenticates against the vault's credential machinery.
 
-The epoch is keyed by `vaultOwner`, the same stable identity the accounting uses (L3).
+**Corrected L6:** the vault admin receives no *new or direct* policy-control authority from
+the bridge; bridge authentication **inherits exactly** the vault's existing
+credential-verifier trust assumptions and no more. That is a weaker claim than revision 1
+made and a truthful one — and it is stronger assurance than asserting an independence that
+does not exist.
 
-### 5.4 Lifecycle
+Testable form: an admin who swaps the PQ verifier gains policy-control capability **iff**
+they already had withdrawal capability under that mode. No mode may show the admin gaining
+policy control while lacking spend capability.
 
-```
-                    strengthen (immediate)
-        ┌──────────────────────────────────────────┐
-        │                                          ▼
-   ┌─────────┐  proposeWeakening   ┌─────────┐  block.timestamp >= validAfter   ┌────────┐
-   │  IDLE   │────────────────────▶│ PENDING │─────────────────────────────────▶│ MATURE │
-   └─────────┘                     └─────────┘                                  └────────┘
-        ▲                            │     │                                      │    │
-        │  cancelWeakening           │     │ epoch changed                        │    │ applyWeakening
-        └────────────────────────────┘     │ (recovery / rotation)                │    ▼
-        │                                  ▼                                      │  IDLE
-        │                              ┌──────┐                                   │
-        └──────────────────────────────│ DEAD │◀──────────────────────────────────┘
-                       (implicit)      └──────┘        block.timestamp >= expiresAt
-```
+## 8. Transition matrix
 
-`DEAD` is **implicit** — nothing is written when a proposal dies. `applyWeakening`
-re-derives liveness from `(boundEpoch, validAfter, expiresAt)` and refuses. This is what
-makes L2's "no policy callbacks during recovery" achievable: recovery invalidates by
-changing a number the proposal already bound, not by reaching into the policy.
-
-### 5.5 Why an epoch rather than a callback
-
-A `revoke`-style hook on `IPolicyEngine` was considered and **rejected**:
-
-- `executeRecovery` today calls **no** policy contract at all. A revoke hook would newly
-  couple recovery liveness to policy-module behaviour.
-- Under `CompositePolicyEngine` the vault sees one engine but there are N modules, so the
-  hook must fan out. Fan-out over attacker-influenced module lists is unbounded work.
-- **Any module that reverts would brick `executeRecovery`.** Recovery must never be
-  brickable; a fail-closed recovery is a permanently lost vault.
-
-The epoch achieves atomic invalidation with a single storage write, no fan-out, no revert
-surface, and composes to any number of modules for free.
-
-## 6. Transition matrix
-
-`E` = epoch unchanged since propose. `E'` = epoch bumped. `C` = controller set.
+`E` = epoch unchanged since binding. `E'` = epoch bumped. `C` = controller-active.
+`P` = PRISTINE.
 
 | # | Action | Caller | Precondition | Result |
 |---|---|---|---|---|
-| T1 | strengthen | controller | `C` | applied immediately |
-| T2 | strengthen | owner | `!C` | applied immediately |
+| T1 | strengthen | bridge (authenticated) | `C` | immediate |
+| T2 | strengthen | owner | `P` | immediate |
 | T3 | strengthen | owner | `C` | **revert** `ControllerPathRequired` |
-| T4 | proposeWeakening | controller | `C`, no pending | `PENDING`, binds epoch |
+| T4 | proposeWeakening | bridge | `C`, none pending | `PENDING`, binds epoch |
 | T5 | proposeWeakening | owner | `C` | **revert** `ControllerPathRequired` |
-| T6 | proposeWeakening | any authorized | pending exists | **revert** `WeakeningAlreadyPending` |
-| T7 | applyWeakening | authorized | `MATURE`, `E` | applied; `pending` cleared |
-| T8 | applyWeakening | authorized | `MATURE`, `E'` | **revert** `StaleControlEpoch` |
-| T9 | applyWeakening | authorized | `PENDING` (immature) | **revert** `WeakeningNotReady` |
-| T10 | applyWeakening | authorized | past `expiresAt` | **revert** `WeakeningExpired` |
-| T11 | cancelWeakening | authorized | pending exists | cleared; no delay (cancelling is strengthening-ward) |
-| T12 | setController | authorized | — | **weakening**: delayed + epoch-bound |
-| T13 | setAdmitter(add) | authorized | — | immediate (L5; see §7.6) |
-| T14 | setAdmitter(remove) | authorized | not last-while-armed | immediate (existing guard retained) |
-| T15 | any config | vault admin | — | **revert** — admin is not a principal here (L6) |
+| T6 | proposeWeakening | authorized | pending exists | **revert** `WeakeningAlreadyPending` |
+| T7 | applyWeakening | bridge (fresh intent) | `MATURE`, `E` | applied; cleared |
+| T8 | applyWeakening | any | `MATURE`, `E'` | **revert** `StaleControlEpoch` |
+| T9 | applyWeakening | any | immature | **revert** `WeakeningNotReady` |
+| T10 | applyWeakening | any | past `expiresAt` | **revert** `WeakeningExpired` |
+| T11 | cancelWeakening | bridge | `C` | cleared immediately (strengthening-ward) |
+| T12 | cancelWeakening | owner | `C` | **revert** — Path 1 has zero capability (O2) |
+| T13 | enrolController | owner **or** bridge | `P`, controller == canonical | immediate, one-time; sets `controllerInitialized` |
+| T14 | enrolController | anyone | controller != canonical | **revert** `NotCanonicalBridge` (L9) |
+| T15 | unenrolController | bridge | `C` | **weakening**: delayed, expiring, epoch-bound |
+| T16 | setAdmitter(add) | authorized path | — | immediate (L5, §9.6) |
+| T17 | setAdmitter(remove) | authorized path | not last-while-armed | immediate; existing guard retained |
+| T18 | any config | vault admin qua admin | — | **revert** (L6, §7.1) |
+| T19 | any bridge action | replayed intent | nonce consumed | **revert** `IntentAlreadyUsed` |
+| T20 | any bridge action | intent for another consumer/policy | — | **revert** — `consumer`/`policy` are signed (§5.2) |
 
-**T11 is deliberate**: cancelling a pending weakening moves *toward* restriction, so by L1's
-order it needs no delay. This also gives a recovered tenant an immediate way to kill an
-attacker's in-flight proposal without waiting for the epoch to do it.
+**T12 changed from revision 1**, per O2: retaining owner-direct cancellation would leave a
+compromised `vaultOwner` a permanent policy-administration DoS lever — able to cancel every
+legitimate weakening proposal forever, even after recovery restored spending credentials.
+Epoch invalidation already provides the emergency protection cancellation was meant to give.
 
-## 7. Adversarial scenarios (executable)
+## 9. Adversarial scenarios (executable)
 
-These are written as executable specifications, not prose. Each becomes a test in
-`test/PolicyControlAuthority.test.ts`.
+Each becomes a test in `test/PolicyControlAuthority.test.ts`.
 
-### 7.1 Signer/credential rotation with pending weakening
-
-```
-GIVEN  subject (vault, alice, ETH) armed at limit = 1 ETH, controller = vault
-  AND  a weakening proposal (1 ETH → 0) made at T0, validAfter = T0 + DELAY
-WHEN   alice calls rotateCredentials(newSigner, newPQKey) at T0 + 1h
-  AND  anyone calls applyWeakening at T0 + DELAY
-THEN   revert StaleControlEpoch
-  AND  dailyLimit is still 1 ETH
-  AND  a NEW proposal made with the new credentials matures normally
-```
-
-**Control (must also pass):** rotation with **no** pending weakening changes no policy
-state at all — `dailyLimit`, `rollingSpent`, `activeEntryCount`, `controller` all identical
-before and after. Without this control, a test suite cannot distinguish "rotation kills
-proposals" from "rotation clobbers policy state".
-
-### 7.2 Guardian recovery with pending weakening
+### 9.1 Signer/credential rotation with pending weakening
 
 ```
-GIVEN  subject armed at 1 ETH, controller = vault
-  AND  ATTACKER holds the compromised credentials
-  AND  attacker has a pending weakening (1 ETH → 0) that matures at T0 + DELAY
-WHEN   guardians reach majority and executeRecovery succeeds at T0 + 1h
-THEN   policyControlEpoch[alice] has incremented
-  AND  attacker's applyWeakening at T0 + DELAY reverts StaleControlEpoch
-  AND  executeRecovery made NO call to any policy contract   ← assert via call trace / gas
-  AND  the recovered credentials can propose and apply their own weakening
+GIVEN  subject (vault, alice, ETH) armed at 1 ETH, controller-active
+  AND  a weakening proposal (1 ETH → 0) at T0, validAfter = T0 + DELAY
+WHEN   alice calls rotateCredentials at T0 + 1h
+  AND  applyWeakening at T0 + DELAY
+THEN   revert StaleControlEpoch; dailyLimit still 1 ETH
+  AND  a NEW proposal under the new credentials matures normally
+CONTROL  rotation with NO pending weakening changes no policy state at all
+         (dailyLimit, rollingSpent, activeEntryCount, controller identical)
 ```
 
-**The `NO call to any policy contract` assertion is the important one.** It is what pins
-L2 mechanically rather than by inspection.
-
-### 7.3 Recovery INITIATION must not invalidate legitimate control
+### 9.2 Guardian recovery with pending weakening
 
 ```
-GIVEN  subject armed, controller = vault, LEGITIMATE pending weakening
-WHEN   a single malicious guardian calls initiateRecovery
-  AND  the recovery never reaches majority
-THEN   policyControlEpoch is UNCHANGED
-  AND  the legitimate weakening still applies at validAfter
+GIVEN  attacker holds compromised credentials; pending weakening maturing at T0 + DELAY
+WHEN   executeRecovery succeeds at T0 + 1h
+THEN   policyControlEpoch[alice] incremented
+  AND  attacker's applyWeakening reverts StaleControlEpoch
+  AND  executeRecovery made NO call to any policy contract     ← assert via trace
+  AND  recovered credentials can propose and apply their own weakening
 ```
 
-Rationale: a malicious guardian must not be able to DoS policy administration merely by
-opening a request. Only *successful* recovery bumps the epoch.
-
-**Known and accepted:** a guardian *majority* can repeatedly recover and so repeatedly kill
-proposals. That majority can already rotate credentials to itself and drain the vault, so
-this is not a new power (§4, note 2).
-
-### 7.4 Policy-engine replacement, before and after maturity (L7)
-
-Four distinct cases, because "the engine" and "the policy module holding the proposal" are
-not the same object:
+### 9.3 Recovery INITIATION must not invalidate legitimate control
 
 ```
-GIVEN  a pending weakening in policy instance P
-
-CASE A  vault swaps engine P → P2 (a DIFFERENT DailySpendLimitPolicy instance)
-THEN    P2 has no limit, no controller, no proposal — authority is re-established
-        deliberately (L7 default: NO migration)
-  AND   P's proposal is untouched, and remains applicable to P — which now governs nothing
-  AND   the tenant is NOT silently left believing P2 is armed        ← assert dailyLimit(P2) == 0
-
-CASE B  vault swaps engine P → composite C, where C wraps the SAME instance P
-THEN    the proposal SURVIVES: it lives in P, keyed by subject, and the engine wiring
-        did not change the subject
-  AND   applyWeakening still works, same epoch
-
-CASE C  swap occurs BEFORE validAfter
-THEN    identical to A/B — engine wiring is not an input to proposal maturity
-
-CASE D  swap occurs AFTER maturity but before apply
-THEN    identical — maturity is a function of (validAfter, expiresAt, epoch) only
+GIVEN  legitimate pending weakening
+WHEN   one malicious guardian calls initiateRecovery; majority never reached
+THEN   policyControlEpoch UNCHANGED; the legitimate weakening still applies
 ```
 
-**Invariant across all four:** engine replacement never mutates `policyControlEpoch`, and
-never causes a proposal to become applicable that was not already applicable.
-
-### 7.5 Queued withdrawal across tightening/weakening transitions (L8)
+### 9.4 Policy-engine replacement (L7)
 
 ```
-GIVEN  subject armed at 1 ETH, large-tx threshold 0.2 ETH, delay D < WINDOW
-  AND  a withdrawal of 0.9 ETH queued at Tq (admission booked once, per #172 F1)
-
-CASE A  STRENGTHENING mid-queue: limit lowered to 0.1 ETH at Tq + 1
-THEN    finalizeWithdrawal still succeeds — revalidate() is pure and books nothing
-  AND   rollingSpent is unchanged (0.9 ETH), activeEntryCount == 1
-  AND   the queued withdrawal is NOT retroactively stranded
-
-CASE B  PENDING weakening mid-queue
-THEN    finalization is completely unaffected — a PROPOSAL is not a configuration
-  AND   assert the queue-time engine floor (policyEngineAtQueue) does not consult
-        `pending` at all                                    ← this is the L8 trap
-
-CASE C  weakening APPLIED mid-queue (1 ETH → 2 ETH)
-THEN    finalization unaffected; rollingSpent unchanged
-  AND   remainingAllowance increases by exactly 1 ETH — the ledger is not rewritten
+CASE A  engine P → different instance P2   → P2 unarmed, no controller, no proposal;
+                                             assert dailyLimit(P2) == 0 so the tenant is
+                                             not left believing P2 is armed
+CASE B  engine P → composite wrapping SAME P → proposal SURVIVES (it lives in P)
+CASE C  swap BEFORE validAfter              → identical; wiring is not an input to maturity
+CASE D  swap AFTER maturity, before apply   → identical
+INVARIANT  replacement never mutates policyControlEpoch and never makes an inapplicable
+           proposal applicable
 ```
 
-**The L8 trap, stated precisely:** `finalizeWithdrawal` revalidates against *both* the
-queue-time engine and the current engine. If `applyWeakening` were ever reachable through
-a `revalidate` path, a policy-control proposal would become retroactive admission
-authority. `revalidate` is `pure` in `DailySpendLimitPolicy` today, and this design must
-keep it that way — assert it, do not assume it.
-
-### 7.6 Admitter loss / misconfiguration while armed (L5)
-
-The existing guards depend on instant disarm as their escape hatch:
-
-```solidity
-if (limit != 0 && s.admitterCount == 0) revert NoAdmitterConfigured(...);   // arming
-if (!allowed && s.admitterCount == 1 && s.limit != 0) revert LastAdmitterWhileArmed(...);
-```
-
-Delaying disarm would delay that escape. L5 resolves this by **separating the two axes**:
+### 9.5 Queued withdrawal across transitions (L8)
 
 ```
-GIVEN  subject armed at 1 ETH, its only admitter is a composite whose owner has
-       added an always-denying module (an unescapable DENIAL power per #171)
+CASE A  STRENGTHENING mid-queue  → finalize still succeeds; revalidate is pure; ledger
+                                   unchanged; queued withdrawal NOT retroactively stranded
+CASE B  PENDING weakening        → finalization unaffected; assert the queue-time engine
+                                   floor never reads `pending`          ← the L8 trap
+CASE C  weakening APPLIED        → finalization unaffected; remainingAllowance rises by
+                                   exactly the delta; ledger not rewritten
+```
+
+### 9.6 Admitter loss while armed (L5)
+
+```
+GIVEN  the only admitter is a composite whose owner added an always-denying module
 WHEN   the tenant adds a second, direct admitter
-THEN   the add is IMMEDIATE — it is a liveness repair, not a weakening
-  AND  withdrawals resume through the new admitter without waiting DELAY
-```
-
-Justification that adding an admitter is not a weakening: it does not raise the cap. A new
-admitter can consume allowance the existing admitter could already consume, so under
-compromise it confers no capability the attacker lacks. **Strength is a property of the
-limit; authority is a property of the admitter set.** Conflating them is what forces both
-through one delay.
-
-```
+THEN   IMMEDIATE — liveness repair, not weakening; withdrawals resume without DELAY
 CONTROL  removing the last admitter while armed still reverts LastAdmitterWhileArmed
   AND    arming with zero admitters still reverts NoAdmitterConfigured
 ```
 
-### 7.7 Direct policy users with no WalletWall bridge (L4)
+Justification: adding an admitter does not raise the cap, and confers on an attacker no
+capability the existing admitter did not already give them. **Strength is a property of the
+limit; authority is a property of the admitter set.**
+
+### 9.7 Direct policy users, no bridge (L4)
 
 ```
-GIVEN  a subject whose consumer is NOT a bridge-implementing vault
-  AND  controller == 0
-
-THEN   Path 1 remains available: msg.sender == owner
-  AND  strengthening is immediate
-  AND  weakening is STILL delayed (propose → delay → apply → grace)
-  AND  there is NO epoch to bind — the consumer has no credential lifecycle
-  AND  applyWeakening therefore checks only (validAfter, expiresAt)
+GIVEN  consumer is not a WalletWall vault; PRISTINE forever
+THEN   Path 1 available; strengthening immediate; weakening STILL delayed
+  AND  no epoch to bind — applyWeakening checks only (validAfter, expiresAt)
+REGRESSION  an existing directly-configured armed subject can still reach limit == 0
+            via propose → delay → apply. It must NEVER become permanently unmanageable.
 ```
 
-**This must be explicit in the API, not emergent.** A direct user gets the timelock but not
-epoch-based revocation, because there is no rotation event to derive one from. That is an
-honest degradation and must be documented as such — the alternative (silently requiring a
-bridge) would permanently brick every already-armed direct subject, including its ability to
-disarm.
+### 9.8 Compromised credential proposes weakening immediately before recovery
 
 ```
-REGRESSION  an existing directly-configured armed subject on main can still reach
-            limit == 0 after this change (via propose → delay → apply).
-            It must NEVER become permanently unmanageable.
+WHEN   attacker proposes (1 ETH → 0) at T0; recovery succeeds at T0 + 2 days
+THEN   applyWeakening reverts StaleControlEpoch in BOTH orderings —
+       recovery BEFORE maturity, and recovery AFTER maturity
+  AND  recovery never enumerated pending proposals anywhere
 ```
 
-### 7.8 Compromised credential proposes weakening immediately before recovery
+**Both orderings matter.** Recovery *after* maturity is the case an implementation that
+checks the epoch only at propose time gets wrong.
 
-The case that motivates the whole epoch design:
+### 9.9 Malicious controller enrolment (L9) — the §6 defect
 
 ```
-GIVEN  attacker has compromised credentials; subject armed at 1 ETH; controller = vault
-WHEN   attacker calls proposeWeakening(1 ETH → 0) at T0
-  AND  guardians begin recovery at T0 + 1 minute
-  AND  executeRecovery succeeds at T0 + 2 days (< validAfter, or > validAfter — test BOTH)
-THEN   in both orderings, applyWeakening reverts StaleControlEpoch
-  AND  recovery did not need to know the proposal existed
-  AND  no enumeration of pending proposals occurred anywhere in the recovery path
+GIVEN  attacker holds the compromised vaultOwner key; subject PRISTINE
+WHEN   attacker calls enrolController(maliciousController)
+THEN   revert NotCanonicalBridge
+
+AND THEN, the full sequence that revision 1 permitted:
+GIVEN  attacker enrols the CANONICAL bridge (allowed, and harmless — §6.2)
+WHEN   guardian recovery succeeds
+THEN   the recovered credentials CAN administer policy through that same bridge
+  AND  the attacker's stale credentials cannot (epoch + nonce)
 ```
 
-**Both orderings matter.** If recovery completes *after* maturity, the proposal is in
-`MATURE` state and the epoch check is the only thing standing between the attacker and the
-disarm. That is the case most likely to be got wrong by an implementation that checks the
-epoch at propose time only.
+### 9.10 Recovery after an attacker proposed controller REMOVAL
 
-## 8. Failure and liveness analysis
+```
+GIVEN  controller-active; attacker (pre-recovery credentials) proposes unenrolController
+WHEN   recovery succeeds before the proposal matures
+THEN   applyUnenrol reverts StaleControlEpoch; controller mode SURVIVES
+  AND  Path 1 remains disabled, so the compromised vaultOwner regains nothing
+```
 
-### 8.1 What this closes
+This is the mirror of §9.8 and the reason unenrolment must be epoch-bound: otherwise an
+attacker escapes containment by removing the container.
 
-Instant removal of the cap by a compromised credential, and the permanent orphaning of
-policy control after recovery. Both are the target property in §2.
+### 9.11 Vault does not exist / credentials unset
 
-### 8.2 Grace window is mandatory
+```
+GIVEN  bridge asked to authenticate for an owner with no vault at `consumer`
+THEN   fail closed — getVault(...).exists == false must revert, never authenticate
+```
 
-A matured proposal that never expires defeats its own timelock: an attacker pre-arms a
-weakening at a quiet moment, and at the moment of use the friction is zero. `expiresAt`
-must be bounded and non-optional. This mirrors the module-removal expiry already shipped in
-the composite engine (#163/#164).
+## 10. Failure and liveness analysis
 
-### 8.3 Accepted residual: the freeze DoS
+### 10.1 Grace window is mandatory
 
-Whoever can strengthen instantly can freeze the tenant's withdrawals instantly (set the
-limit to 1 wei), and un-freezing is weakening, therefore delayed.
+A matured proposal that never expires defeats its own timelock: pre-arm at a quiet moment
+and friction at the moment of use is zero. `expiresAt` is bounded and non-optional,
+mirroring the composite module-removal expiry shipped in #163/#164.
 
-This is **intrinsic to L1**, not a flaw in the mechanism: any design where protection can
-be armed immediately grants the same power to whoever holds that ability. The alternatives
-are worse — delaying strengthening would delay protection.
+### 10.2 Accepted residual: the freeze DoS
 
-Mitigation is by *scoping who can do it*: once a controller is set, only the controller can
-strengthen, so a compromised `vaultOwner` address alone cannot freeze. A compromised
-*signer* can, for the duration of the weakening delay, and that is exactly the window
-recovery exists to close.
+Whoever can strengthen instantly can freeze withdrawals instantly (limit → 1 wei), and
+un-freezing is weakening, therefore delayed.
 
-**Classification: denial, never loss.** It must be documented in
-`docs/Security_Assumptions.md` and pinned by a test that asserts funds remain withdrawable
-after the delay elapses.
+Intrinsic to L1 — delaying strengthening would delay protection, which is worse. Scoped by
+§5/§6: once controller-active, only current credentials via the bridge can strengthen, so a
+compromised `vaultOwner` address alone cannot freeze. A compromised *signer* can, for the
+duration of the delay — exactly the window recovery exists to close.
+**Classification: denial, never loss.** Pinned by a test that funds are withdrawable once
+the delay elapses.
 
-### 8.4 Recovery liveness is preserved by construction
+### 10.3 Recovery liveness preserved by construction
 
-No path in `executeRecovery` calls a policy contract; the epoch increment is a local
-storage write that cannot revert on external behaviour. **A test must assert this
-mechanically** (§7.2), because it is the property most likely to be silently lost by a
-later "just add a hook" change.
+No path in `executeRecovery` calls a policy contract; the epoch increment is a local write
+that cannot revert on external behaviour. **Asserted mechanically** (§9.2), because it is
+the property most likely to be silently lost by a later "just add a hook" change.
 
-### 8.5 Bootstrap ordering
+### 10.4 Canonical bridge concentration risk
 
-Setting a controller is a weakening action (T12), so the *first* controller cannot be set
-instantly. For a subject that has never been armed (`limit == 0`), there is nothing to
-weaken — **open question O3 in §12**: whether `setController` on an unarmed subject should
-be immediate. Getting this wrong makes the feature unusable for new tenants.
+Stated plainly in §6.2: one bridge, one blast radius. Accepted deliberately, because
+arbitrary controllers reintroduce §6's defect.
 
-## 9. Storage and gas implications
+### 10.5 Nonce liveness
 
-### 9.1 Policy storage per subject
+An intent signed and never submitted consumes no nonce (the nonce increments on
+*successful* use), so it cannot wedge the sequence. `deadline` bounds how long a signed
+intent remains submittable.
 
-| Field | Type | Notes |
-|---|---|---|
-| `controller` | `address` | 160 bits |
-| `pending.validAfter` | `uint64` | packs with controller (160 + 64 + 32 spare) |
-| `pending.expiresAt` | `uint64` | |
-| `pending.boundEpoch` | `uint64` | |
-| `pending.newLimit` | `uint256` | own slot — cannot be narrowed; `type(uint256).max` must stay settable (pinned by `DailySpendAdmissionAuthority` B5) |
+## 11. Storage, gas, EIP-170
 
-Roughly **+2 slots per subject**, and only for subjects that actually use the feature —
-a subject with no controller and no pending proposal writes neither.
+### 11.1 Policy storage per subject
 
-Admission cost (`check`) must be **unchanged**: none of these fields are on the hot path.
-This is a hard requirement to measure, given #172 already added ~30.5k gas to a steady-state
-armed withdrawal.
+| Field | Type |
+|---|---|
+| `controller` | `address` (160 bits; packs with the flags/timestamps below) |
+| `controllerInitialized` | `bool` |
+| `pending.validAfter` / `expiresAt` / `boundEpoch` | `uint64` ×3 |
+| `pending.newLimit` | `uint256` — own slot; `type(uint256).max` must stay settable (pinned by `DailySpendAdmissionAuthority` B5) |
 
-### 9.2 EIP-170 — the binding constraint this time
+≈ **+2 slots per subject**, written only by subjects that use the feature.
+
+**Hard requirement: `check()` cost is unchanged.** None of these fields are on the
+admission hot path — #172 already added ~30.5k gas to a steady-state armed withdrawal.
+
+### 11.2 EIP-170 — binding this time
 
 | Contract | Runtime | Headroom |
 |---|---|---|
@@ -493,102 +536,80 @@ armed withdrawal.
 | `StablecoinVaultSimulator` | 22,485 | **2,091** |
 | `DailySpendLimitPolicy` | 3,907 | 20,669 |
 
-Unlike #172 — where the vaults were byte-identical — this design **must** modify both
-vaults, because only they can bump the epoch on `rotateCredentials` / `executeRecovery`.
+Unlike #172, both vaults **must** change: only they can bump the epoch. `getVault()`
+already exposes `ecdsaSigner` and `pqPublicKey`, so the bridge lives **outside** the vault
+and each vault grows by a mapping, two increments, and a getter.
 
-**Therefore the bridge must not live in the vault.** `getVault(address)` already returns
-the full `VaultOwner` struct including `ecdsaSigner` and `pqPublicKey`, so an external
-`PolicyControlBridge` contract can:
+Measure at the **first compiling implementation**, not at the end (#172 discipline).
+**STOP CONDITION:** if either vault crosses the gate or lands in dangerously small
+headroom, redesign — do not weaken the gate.
 
-1. read the tenant's **current** credentials from the vault,
-2. verify an EIP-712 configuration intent against them,
-3. call the policy as the registered `controller`.
+## 12. Settled decisions (formerly O1–O5)
 
-The vault then grows by only a mapping, two increments, and a getter — an estimate to be
-**measured at the first compiling implementation, not at the end** (the #172 discipline).
+| # | Decision |
+|---|---|
+| **O1** | **Fixed delay.** `POLICY_CONTROL_DELAY = 2 days`, matching the existing governance reaction window. **Non-configurable in v1** — a configurable delay is another ordered governance object with recursive weakening semantics, more storage and more tests, for no present value. Bounded grace as in #163/#164. |
+| **O2** | **No owner-direct cancellation once controller mode is active.** Path 1 has *zero* capability. Retaining cancellation would leave a compromised `vaultOwner` a permanent policy-administration DoS lever surviving recovery. Epoch invalidation supplies the emergency protection. |
+| **O3** | **Immediate one-time initial enrolment**, gated on an explicit `controllerInitialized` transition — **not** on `limit == 0`, since a disarmed subject returns to zero. `PRISTINE → canonical bridge` is immediate; every later replacement/removal is delayed and epoch-bound. |
+| **O4** | **One shared bridge.** State keyed by `(consumer, owner)`; `consumer` is a signed field, so a signature for the ETH vault cannot replay against the stablecoin sibling. Interface differences are handled by narrow adapters, never by cloning security-sensitive code. |
+| **O5** | **E1 only** (explicit vault-owned counter). The fingerprint adapter (E2) is **not** shipped: it is non-monotonic and can resurrect a stale proposal if credentials rotate back, and with `policyEngineAddress` `null` in every deployment manifest there is no live armed state forcing us to accept that weakness. E2 stays documented as a possible legacy adapter, out of scope for `v0.13.0`. |
 
-**STOP CONDITION:** if either vault crosses the gate or lands in dangerously small headroom,
-redesign — do not weaken the gate.
+## 13. Test plan
 
-An external bridge also satisfies L6 structurally: a separate contract has no access to
-`WalletWallVault`'s `onlyOwner` role, so admin authority cannot leak into policy control
-even by mistake.
-
-## 10. Migration and backward compatibility
-
-### 10.1 Already-deployed vaults have no epoch
-
-Vaults deployed before this change cannot bump a counter that does not exist in their
-bytecode, and they are not upgradeable. Two options:
-
-| Option | Mechanism | Trade-off |
-|---|---|---|
-| **E1 — explicit counter** (the locked choice, L2) | `mapping(address => uint64) policyControlEpoch`, bumped in `rotateCredentials` / `executeRecovery` | Monotonic and cheap to read; requires new vault bytecode, so it applies only to newly deployed vaults |
-| **E2 — credential fingerprint** | `keccak256(abi.encode(vault.ecdsaSigner, vault.pqPublicKey))` read via the existing `getVault` | Works against **already-deployed** vaults with zero vault changes; but **not monotonic** — rotating back to a previous credential pair revives a stale proposal — and reading it copies a ~1,952-byte PQ key |
-
-Recommendation for review: **E1 as the design, E2 as a documented adapter** for
-already-deployed vaults, with its non-monotonicity stated as a known weakness rather than
-smoothed over. Rotating *back* to a compromised key is already catastrophic, but "already
-catastrophic" is a reason to document, not to omit.
-
-### 10.2 Existing armed subjects
-
-`policyEngineAddress` is `null` in every deployment manifest, so there are no on-chain
-armed subjects to migrate today. The compatibility story is therefore about **API**
-consumers, not state:
-
-- `setDailyLimit(consumer, asset, 0)` changes from immediate to delayed. **Breaking.**
-- `setDailyLimit` with a *lower* nonzero value keeps working unchanged.
-- Any integrator relying on instant disarm must move to propose/apply.
-
-Semver: another breaking minor on the `0.x` line (`0.12.0 → 0.13.0`), by the same reasoning
-as #172.
-
-### 10.3 No proposal migration (L7)
-
-Proposals do not migrate across policy instances. A tenant switching to a new policy
-instance re-establishes controller and limit deliberately. §7.4 CASE A asserts the tenant
-is not left believing the new instance is armed.
-
-## 11. Adversarial test plan
-
-`test/PolicyControlAuthority.test.ts`, mirroring #172's structure.
+`test/PolicyControlAuthority.test.ts`.
 
 | Group | Cases |
 |---|---|
-| **A — strength order** | all five §3 transitions; `0→n` immediate; `n→0` delayed; no-op rejected; the `new > old` mutant must be killed |
-| **B — epoch binding** | apply at same epoch; after `rotateCredentials`; after `executeRecovery`; after both; apply before vs after maturity with an intervening bump (§7.8) |
-| **C — recovery liveness** | `executeRecovery` makes no policy call; recovery succeeds with a reverting policy module installed; `initiateRecovery` does not bump (§7.3) |
-| **D — path exclusivity** | Path 1 disabled once controller set (T3/T5); clearing controller is delayed (T12); vault admin has no path (T15) |
-| **E — engine replacement** | §7.4 CASES A–D |
-| **F — queued withdrawals** | §7.5 CASES A–C; `revalidate` is still `pure`; queue-time floor never reads `pending` |
-| **G — lockout repair** | §7.6 plus both existing-guard controls |
-| **H — direct users** | §7.7 including the regression that an existing armed direct subject can still reach `limit == 0` |
+| **A — strength order** | all §3 transitions; `0→n` immediate; `n→0` delayed; no-op rejected |
+| **B — epoch binding** | same epoch; after `rotateCredentials`; after `executeRecovery`; both; apply before *and* after maturity with an intervening bump (§9.8) |
+| **C — recovery liveness** | no policy call in `executeRecovery`; recovery succeeds with a reverting policy module installed; `initiateRecovery` does not bump (§9.3) |
+| **D — path exclusivity** | T3/T5/T12; Path 1 has zero capability once controller-active; vault admin has no path |
+| **E — engine replacement** | §9.4 CASES A–D |
+| **F — queued withdrawals** | §9.5 CASES A–C; `revalidate` still `pure`; queue-time floor never reads `pending` |
+| **G — lockout repair** | §9.6 plus both existing-guard controls |
+| **H — direct users** | §9.7 including the never-unmanageable regression |
 | **I — grace window** | apply at `validAfter`; at `expiresAt - 1`; at `expiresAt` (reverts); pre-arm-then-wait defeats nothing |
+| **J — bridge authentication / provenance** (NEW) | same-intent replay; cross-consumer replay; cross-policy replay; expired intent; stale-epoch intent; ECDSA / PQ / Hybrid mode correctness; malicious arbitrary-controller enrolment; recovery after an attacker proposed controller replacement (§9.10); nonexistent-vault fail-closed (§9.11) |
 
-**Mutation discrimination is required, not optional.** Every group above must kill a
-targeted mutant, on the #172 lesson that a test written after the implementation and
-passing immediately has demonstrated nothing. Minimum mutants:
+### 13.1 Required mutants
 
-1. `isWeakening` replaced by `new > old` — must be killed by A.
-2. Epoch checked at propose time only, not at apply — must be killed by B (§7.8 ordering).
-3. `initiateRecovery` also bumps the epoch — must be killed by C.
-4. Path 1 left enabled for strengthening when a controller is set — must be killed by D.
-5. `expiresAt` check removed — must be killed by I.
-6. `setAdmitter(add)` routed through the weakening delay — must be killed by G.
+Mutation discrimination is mandatory, on the #172 lesson that a test written after the
+implementation and passing immediately has demonstrated nothing.
 
-## 12. Open questions for review
-
-| # | Question | Why it changes the design |
+| # | Mutant | Killed by |
 |---|---|---|
-| **O1** | Should `DELAY` match the vault's existing 2-day governance delay, or be tenant-configurable? Tenant-configurable means *lowering the delay is itself a weakening*, which is recursive but tractable. | Determines whether the timelock is a constant or another ordered field |
-| **O2** | Is `cancelWeakening` (T11) available to Path 1 even when a controller is set? Arguing yes: cancelling is strengthening-ward and gives a locked-out tenant an emergency brake. Arguing no: it is an authority split. | Affects whether a compromised owner key retains *any* capability |
-| **O3** | Should `setController` be immediate on a subject that has never been armed (`limit == 0`)? Otherwise bootstrap requires a delay before protection can even be configured (§8.5). | Makes the feature usable or unusable for new tenants |
-| **O4** | Do `StablecoinVaultSimulator` and `WalletWallVault` share one bridge, or one each? Shared means the bridge must key by `(consumer, owner)` and re-derive credentials per consumer. | Bytecode and trust-surface implications |
-| **O5** | E1 only, or E1 + the E2 adapter (§10.1)? | Decides whether already-deployed vaults are in scope at all |
+| M1 | `isWeakening` replaced by `new > old` | A |
+| M2 | epoch checked at propose time only | B (§9.8 ordering) |
+| M3 | `initiateRecovery` also bumps the epoch | C |
+| M4 | Path 1 left enabled for strengthening when controller-active | D |
+| M5 | `expiresAt` check removed | I |
+| M6 | `setAdmitter(add)` routed through the weakening delay | G |
+| **M7** | **bridge nonce not incremented** | **J — same-intent replay** |
+| **M8** | **`consumer` omitted from the signed struct** | **J — cross-consumer replay** |
+| **M9** | **arbitrary controller accepted instead of the canonical bridge** | **J — malicious enrolment (§9.9)** |
+| **M10** | **`policy` omitted from the signed struct** | **J — cross-policy replay** |
+| **M11** | **enrolment gated on `limit == 0` instead of `controllerInitialized`** | **J — re-enrol after disarm (O3)** |
+
+## 14. Migration and compatibility
+
+- No proposal migration across policy instances (L7). §9.4 CASE A asserts the tenant is not
+  left believing a new instance is armed.
+- `policyEngineAddress` is `null` in every deployment manifest, so there is **no on-chain
+  armed state to migrate**. Compatibility is an API story, not a state story.
+- `setDailyLimit(consumer, asset, 0)` moves from immediate to delayed — **breaking**.
+- Lowering a nonzero limit is unchanged.
+- Semver: breaking minor on the `0.x` line, `0.12.x → 0.13.0`, by #172's reasoning.
+
+## 15. Remaining unsettled
+
+| # | Question |
+|---|---|
+| **U1** | Does the bridge need a pause/abandon path if a bug is found, given §10.4's concentration risk — and if so, who holds it without recreating an admin lever over policy control? |
+| **U2** | Should `enrolController` require the tenant's signed intent even in `PRISTINE`, or is `msg.sender == owner` sufficient for a one-time transition that only ever *adds* protection? |
+| **U3** | Exact `expiresAt` grace duration. #163/#164 set a precedent; confirm it transfers. |
 
 ---
 
-**Next step after review:** settle O1–O5, then implement in the order
+**Next step:** on approval of this revision, open the `v0.13.0` Solidity lane in the order
 `epoch → bridge → policy state machine → tests`, measuring both vaults' bytecode at the
-first compiling implementation rather than at the end.
+first compiling implementation.
