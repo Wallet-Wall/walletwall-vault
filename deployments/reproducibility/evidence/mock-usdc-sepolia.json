@@ -117,7 +117,7 @@
       "contracts/mocks/AlwaysFalsePQCVerifier.sol": "0xc2ebc4b63f61e98c9d73daa3607e4c6f1c1a3d45a857415d51f4364a5237e959",
       "contracts/mocks/AlwaysRevertingPolicyEngine.sol": "0x9cbafcf80e7372c453fb242315175301630d76133ff7801de2855a7378c30945",
       "contracts/mocks/AlwaysTruePQCVerifier.sol": "0xf91d509aa751811f2fe771c1ea47642bd60ce7bbcefc3b0f1906ba8587cfedcb",
-      "contracts/mocks/DailySpendAdmissionMocks.sol": "0x555cb8b88fa8d767d4334fca6c4d0090754361b58ba46a5cb0f969e23fd97ce1",
+      "contracts/mocks/DailySpendAdmissionMocks.sol": "0x045b3800a51550d95ce5a390464b2bffe4203e330d26082ca77fd18d5ab85147",
       "contracts/mocks/ForceSend.sol": "0xd2b7f2b06341c35914666c4103cd33bd1f368af668f1a2280a5e26bebca69d5f",
       "contracts/mocks/MockSP1Verifier.sol": "0xbe8a0f9e522d5ac439339e945cc1ce513c7a64076b6c4286bbb88dec007bb231",
       "contracts/mocks/MockUSDC.sol": "0xf3234021fd43cc5f59284032dccf1481259601d0a01950ab148bd6730663c667",
@@ -192,45 +192,45 @@
         "typeString": "contract IERC20"
       },
       {
-        "astId": "19163",
+        "astId": "19120",
         "name": "expectedBalance",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "19165",
+        "astId": "19122",
         "name": "expectedAmount",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "20172",
+        "astId": "20129",
         "name": "POLICY_CONTROL_BRIDGE",
         "sourceFile": "contracts/policies/DailySpendLimitPolicy.sol",
         "typeString": "address"
       },
       {
-        "astId": "23010",
+        "astId": "22967",
         "name": "attestor",
         "sourceFile": "contracts/verifiers/ImmutableAttestationPQCVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "23229",
+        "astId": "23186",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "23232",
+        "astId": "23189",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "bytes32"
       }
     ],
-    "compilerInputHash": "0xade1c7aa7af4d6f0ec8ba71bdaa27ef2fb8c790775f8b9b84790294eece5a418",
-    "headCommit": "ca0ee03a380fdab4456b5fbbc64df7033230ef78",
-    "capturedAt": "2026-08-27T12:51:09.959Z"
+    "compilerInputHash": "0xa5a54e2c8b116e51459661932fd608b29bd2d55122c5d2f5f347dd50e6822bae",
+    "headCommit": "a3b0a53c3670e36d3b4d406f89ec6b773a84e0ad",
+    "capturedAt": "2026-08-27T13:55:16.624Z"
   },
   "liveRuntime": {
     "address": "0x8ffc8CE04789e9a7b53685a2d78CDa54E6Faac15",
