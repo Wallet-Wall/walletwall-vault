@@ -705,48 +705,65 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       await expect(bridgeSetAdmitter(eoa.address, true)).to.be.revertedWithCustomError(policy, "AdmitterNotAContract");
     });
 
-    it("F4 (§9.6, L5): a broken relay admitter is repaired by adding a second, direct admitter — IMMEDIATE, no delay", async function () {
+    it("F4 (§9.6, L5): the vault's own withdrawal path is repaired by re-admitting IT — IMMEDIATE, no delay", async function () {
       // See the §9.6 erratum in the design doc: the literal "composite whose owner
       // added an always-denying module" scenario is not executable against
-      // CompositePolicyEngine's real AND/fail-closed composition — a sibling module's
-      // denial happens one layer above DailySpendLimitPolicy and cannot be repaired by
-      // widening ITS admitter list. This is the strongest truthful replacement: a
-      // registered admitter whose OWN relay logic breaks, independent of any composite.
+      // CompositePolicyEngine's real AND/fail-closed composition. This test proves the
+      // strongest truthful replacement instead — and it must exercise the REAL
+      // admission-path caller, not a stand-in: DailySpendLimitPolicy.check() authorizes
+      // msg.sender (see _admitter[key][msg.sender] in check()), and for a genuine vault
+      // withdrawal msg.sender is address(vault) itself (WalletWallVault._policySubject
+      // sets subject.consumer = address(this), and the vault is the one calling
+      // policyEngine.check()) — never the EOA that merely SIGNED the request. An earlier
+      // version of this test authorized `owner` and called policy.check() directly as
+      // owner, which proved owner could call check() but proved nothing about whether
+      // vault.withdraw() itself — the actual liveness property §9.6 promises — resumes.
       await enrol();
-      const Relay = await ethers.getContractFactory("RevertingAdmitterRelayMock");
-      const relay = await Relay.deploy();
-      await relay.waitForDeployment();
-      const relayAddress = await relay.getAddress();
 
-      // Reach "the only admitter is the relay" without ever touching zero admitters:
-      // add the relay FIRST (now two), then remove the vault's own (now not "last").
-      await bridgeSetAdmitter(relayAddress, true);
+      // The vault (`consumer`) is already the sole admitter from the outer beforeEach.
+      // Add owner as a SECOND admitter first so removing the vault doesn't trip
+      // LastAdmitterWhileArmed — F2 already proves the owner is exempt from the
+      // contract-code check. This second admitter is scaffolding for the removal step,
+      // not itself the repair: owner being an admitter is irrelevant to the vault's own
+      // call path, which is exactly what this test goes on to demonstrate.
+      await bridgeSetAdmitter(owner.address, true);
       await bridgeSetAdmitter(consumer, false);
       expect(await policy.admitter(consumer, owner.address, NATIVE_ASSET, consumer)).to.equal(false);
-      expect(await policy.admitter(consumer, owner.address, NATIVE_ASSET, relayAddress)).to.equal(true);
 
-      // CONTROL: the last-admitter guard protects a non-owner relay exactly as it
-      // protects the vault's own address — it is not identity-specific.
-      await expect(bridgeSetAdmitter(relayAddress, false)).to.be.revertedWithCustomError(
+      const request = {
+        vaultOwner: owner.address,
+        recipient: recipient.address,
+        amount: 1n,
+        nonce: 0,
+        deadline: (await networkHelpers.time.latest()) + 3600,
+        vaultMode: HYBRID,
+      };
+      const withdrawalDomain = {
+        name: "WalletWallVault",
+        version: "1",
+        chainId: (await ethers.provider.getNetwork()).chainId,
+        verifyingContract: consumer,
+      };
+      const ecdsaSig = await owner.signTypedData(withdrawalDomain, WITHDRAWAL_TYPES, request);
+      const pqSig = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      // The engine-path caller (the vault itself) is unauthorized: a real, validly
+      // signed withdrawal reverts. The revert unwinds the whole transaction, so
+      // vault.nonce is never consumed and the SAME signed request can be retried
+      // verbatim once the caller is reauthorized.
+      await expect(vault.withdraw(request, ecdsaSig, pqSig)).to.be.revertedWithCustomError(
         policy,
-        "LastAdmitterWhileArmed",
+        "UnauthorizedAdmitter",
       );
 
-      // The relay is registered but its own logic is broken — every admission through
-      // it fails, independent of anything DailySpendLimitPolicy's own state says.
-      await expect(
-        relay.relay(await policy.getAddress(), consumer, owner.address, NATIVE_ASSET, recipient.address, 1n, 0n),
-      ).to.be.revertedWithCustomError(relay, "RelayIsDown");
+      // Liveness repair: through the bridge, immediately re-admit the vault — the
+      // ACTUAL admission-path caller — with no delay of any kind.
+      await bridgeSetAdmitter(consumer, true);
+      expect(await policy.admitter(consumer, owner.address, NATIVE_ASSET, consumer)).to.equal(true);
 
-      // Liveness repair: the tenant adds a SECOND, DIRECT admitter — themselves —
-      // exactly as F2 already proves is exempt from the contract-code check.
-      await bridgeSetAdmitter(owner.address, true);
-
-      // Withdrawals resume THROUGH THE NEW ADMITTER immediately — zero elapsed time,
-      // no delay of any kind, proving this is a liveness repair, not a weakening.
-      await expect(
-        policy.connect(owner).check({ consumer, owner: owner.address, asset: NATIVE_ASSET }, recipient.address, 1n, 0n),
-      ).to.not.revert(ethers);
+      // Retrying the identical signed request now succeeds, at the same timestamp,
+      // proving this is a liveness repair and not a weakening.
+      await expect(vault.withdraw(request, ecdsaSig, pqSig)).to.emit(vault, "Withdrawn");
     });
   });
 

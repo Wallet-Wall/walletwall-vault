@@ -603,12 +603,18 @@ CONTROL  removing the last admitter while armed still reverts LastAdmitterWhileA
 > The strongest truthful, executable property in the same spirit (L5: admitter loss is
 > repairable, immediately, without weakening) is scoped to what
 > `setAdmitter`/`bridgeSetAdmitter` actually govern — `DailySpendLimitPolicy`'s OWN
-> admitter list — rather than to denial happening in a different contract entirely: a
-> registered admitter that is a RELAY CONTRACT whose own logic breaks (reverts
-> unconditionally, independent of any composite/module wiring) is repaired by adding a
-> SECOND, direct admitter, with no delay, and the CONTROL clauses (`LastAdmitterWhileArmed`,
-> `NoAdmitterConfigured`) hold exactly as written. See `RevertingAdmitterRelayMock` and
-> `PolicyControlStateMachine.test.ts` F4.
+> admitter list — rather than to denial happening in a different contract entirely:
+> `check()` authorizes `msg.sender` (`_admitter[key][msg.sender]`), and for a real vault
+> withdrawal `msg.sender` IS the vault contract itself, since `WalletWallVault` calls
+> `policyEngine.check(...)` directly. The property this test proves is therefore: when
+> the CURRENT engine-path caller (the vault) becomes unauthorized, controller-authenticated
+> admitter repair — REAUTHORIZING THAT SAME CALLER — restores it immediately, with no
+> delay, and the CONTROL clauses (`LastAdmitterWhileArmed`, `NoAdmitterConfigured`) hold
+> exactly as written. This is deliberately narrower than "add a second, direct admitter":
+> widening the admitter list with an address that is NOT actually on the vault → engine →
+> DailySpend call path (e.g. the owner EOA, which never itself calls `check()`) proves
+> only that the new address could call `check()` if it chose to — not that withdrawals
+> through the real call path resume. See `PolicyControlStateMachine.test.ts` F4.
 
 Justification: adding an admitter does not raise the cap, and confers on an attacker no
 capability the existing admitter did not already give them. **Strength is a property of the

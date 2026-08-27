@@ -157,33 +157,3 @@ contract DailySpendBatchAdmitterMock {
         }
     }
 }
-
-/// @notice A registered ADMITTER whose own relay logic is broken — reverts
-///         unconditionally before ever reaching the policy's {check}. Stands in for a
-///         delegate contract (a batching relay, a smart-wallet module — any non-owner
-///         admitter) that stops functioning for reasons entirely outside the policy's
-///         own control, so a test can prove the OTHER registered admitter is what
-///         `setAdmitter`/`bridgeSetAdmitter`'s liveness repair (design doc §9.6, L5) is
-///         actually responsible for restoring — not the relay's own internal health.
-contract RevertingAdmitterRelayMock {
-    error RelayIsDown();
-
-    function relay(
-        address policy,
-        address consumer,
-        address vaultOwner,
-        address asset,
-        address recipient,
-        uint256 amount,
-        uint256 vaultBalance
-    ) external pure returns (bool, string memory) {
-        policy;
-        consumer;
-        vaultOwner;
-        asset;
-        recipient;
-        amount;
-        vaultBalance;
-        revert RelayIsDown();
-    }
-}
