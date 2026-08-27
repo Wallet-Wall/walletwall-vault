@@ -19,7 +19,7 @@ Status: **active testnet**
 | Deployment transaction | [`0x8f15e6c99ee4ac789836716c75d26a8dc8df240dad731cbc8a7c9515e91cc3e1`](https://sepolia.etherscan.io/tx/0x8f15e6c99ee4ac789836716c75d26a8dc8df240dad731cbc8a7c9515e91cc3e1) |
 | Reported source commit | `828bf219c0e2612fcd1aba5f085c4abeba29de88` |
 | Live Sepolia runtime observed | `20,508` bytes |
-| Current public HEAD runtime | `23,016` bytes |
+| Current public HEAD runtime | `23,121` bytes |
 | Reproducibility status | **Remediation-gated** — not reproducible from public sources today; see the remediation runbook below |
 | Machine-checkable manifest | [`deployments/reproducibility/walletwall-vault-sepolia.json`](../deployments/reproducibility/walletwall-vault-sepolia.json) (validated by `npm run validate:reproducibility`) |
 | Last independently re-checked | 2026-08-23 |
@@ -38,7 +38,7 @@ contract-flow testing, and frontend testing with Sepolia test ETH.
 
 This is a valid, live, and tested Sepolia deployment. However, the reported source
 commit `828bf219c0e2612fcd1aba5f085c4abeba29de88` is absent from the public repository
-history, and the current public HEAD recompiles `WalletWallVault` to a `23,016`-byte
+history, and the current public HEAD recompiles `WalletWallVault` to a `23,121`-byte
 runtime rather than the observed `20,508`-byte deployed runtime.
 
 The public repository therefore does **not** currently provide a clean third-party

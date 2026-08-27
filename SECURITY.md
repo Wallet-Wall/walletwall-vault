@@ -70,7 +70,7 @@ only because an authorized attestor signature is enforced.
 The active Sepolia deployment documented in [docs/Deployments.md](docs/Deployments.md)
 uses the mock verifier. It is an active **testnet** integration target, not a production
 or mainnet deployment. Its observed `20,508`-byte runtime is not reproducible from
-current public HEAD, which recompiles to `23,016` bytes; provenance alignment remains
+current public HEAD, which recompiles to `23,121` bytes; provenance alignment remains
 an explicit follow-up.
 
 To prevent an unsafe configuration, **`PqOnly` mode is disabled at the contract level

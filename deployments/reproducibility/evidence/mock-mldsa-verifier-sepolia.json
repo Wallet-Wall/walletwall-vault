@@ -117,7 +117,7 @@
       "contracts/mocks/AlwaysFalsePQCVerifier.sol": "0xc2ebc4b63f61e98c9d73daa3607e4c6f1c1a3d45a857415d51f4364a5237e959",
       "contracts/mocks/AlwaysRevertingPolicyEngine.sol": "0x9cbafcf80e7372c453fb242315175301630d76133ff7801de2855a7378c30945",
       "contracts/mocks/AlwaysTruePQCVerifier.sol": "0xf91d509aa751811f2fe771c1ea47642bd60ce7bbcefc3b0f1906ba8587cfedcb",
-      "contracts/mocks/DailySpendAdmissionMocks.sol": "0x045b3800a51550d95ce5a390464b2bffe4203e330d26082ca77fd18d5ab85147",
+      "contracts/mocks/DailySpendAdmissionMocks.sol": "0x555cb8b88fa8d767d4334fca6c4d0090754361b58ba46a5cb0f969e23fd97ce1",
       "contracts/mocks/ForceSend.sol": "0xd2b7f2b06341c35914666c4103cd33bd1f368af668f1a2280a5e26bebca69d5f",
       "contracts/mocks/MockSP1Verifier.sol": "0xbe8a0f9e522d5ac439339e945cc1ce513c7a64076b6c4286bbb88dec007bb231",
       "contracts/mocks/MockUSDC.sol": "0xf3234021fd43cc5f59284032dccf1481259601d0a01950ab148bd6730663c667",
@@ -125,16 +125,16 @@
       "contracts/mocks/PolicyRevalidationMocks.sol": "0xdec134bc1447ed28c8fc7dcafc2faaabd46d15563ae3adeb8444d1d3a457c130",
       "contracts/mocks/RejectEther.sol": "0x65a18729f548cc8d7c956de3f0ab8631a38a41041d478f9628074acce3b58f6d",
       "contracts/policies/CompositePolicyEngine.sol": "0x22b606e061895a0667cd10073b93cc718ea3963dad102a7eb8a9b3c94a1f5ec9",
-      "contracts/policies/DailySpendLimitPolicy.sol": "0x3f8e269a6fbf4cff484377d0b2ac079edfce5e7a0c871810b8c47d142efc8a4f",
+      "contracts/policies/DailySpendLimitPolicy.sol": "0x9d473281beb9dfdfd88d4ece4471407bbaf061ce65972ca46fa81f7e191ad4ca",
       "contracts/policies/RecipientAllowlistPolicy.sol": "0xc14d6b761da678dceac684c16fd0e5a128e32fc1f2178dc85494800aa58ad9de",
       "contracts/policies/SanctionsListPolicy.sol": "0x4e94157be5a2d2e4800054d4fc556fccb456bd4d9bd0a52aff493482beca15c5",
-      "contracts/PolicyControlBridge.sol": "0x3433f141b7b46addefbb7f76fbcea79fde807ea641d91f02f3505a3bdd70711d",
-      "contracts/StablecoinVaultSimulator.sol": "0xd72b6e19cfbde64f806727f7f4c335b06d700e0e1979a5655adea98b023c71fd",
+      "contracts/PolicyControlBridge.sol": "0xeecf32505cee685020a6e836ad299fe835fbe2ab3096fee86221ff1156ca9e5c",
+      "contracts/StablecoinVaultSimulator.sol": "0x173596690dc90dc553863ba8de91c6aeda859020c7b3865be08eaaaa6895e0c4",
       "contracts/verifiers/AttestationPQCVerifier.sol": "0xb5ef6f5d12cda90d9e1642d8c1519a708694f0aaa1bc2f804589bf3a9eaa59f3",
       "contracts/verifiers/ImmutableAttestationPQCVerifier.sol": "0x1f8e4d4bc2fc55d8146df787d945abc996b970f503fcd23608e78958d0bad6fe",
       "contracts/verifiers/ZKMLDSAVerifier.sol": "0xaf98122c7306cebc7e46c6b646262377dc96d0dc13758e2d2764975cbf685c67",
       "contracts/WalletWallMultiSigVault.sol": "0xda14483acfa21b113aa4a8d6cf924a00d017fb115dd60f8386340f3ffc5c318a",
-      "contracts/WalletWallVault.sol": "0x54f3aa49200b0a9589e163a4457ea9d41993310887336d02d2f13c7c67e21770"
+      "contracts/WalletWallVault.sol": "0xd2e7a65451a8bfc876d90caba808d086751afbed24d505535114d0ac9ba5dc93"
     },
     "immutableAstDeclarations": [
       {
@@ -186,51 +186,51 @@
         "typeString": "address"
       },
       {
-        "astId": "10428",
+        "astId": "10421",
         "name": "token",
         "sourceFile": "contracts/StablecoinVaultSimulator.sol",
         "typeString": "contract IERC20"
       },
       {
-        "astId": "19127",
+        "astId": "19163",
         "name": "expectedBalance",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "19129",
+        "astId": "19165",
         "name": "expectedAmount",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "20136",
+        "astId": "20172",
         "name": "POLICY_CONTROL_BRIDGE",
         "sourceFile": "contracts/policies/DailySpendLimitPolicy.sol",
         "typeString": "address"
       },
       {
-        "astId": "22946",
+        "astId": "23010",
         "name": "attestor",
         "sourceFile": "contracts/verifiers/ImmutableAttestationPQCVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "23165",
+        "astId": "23229",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "23168",
+        "astId": "23232",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "bytes32"
       }
     ],
-    "compilerInputHash": "0x5931067af1ccd8f5b09868137052c3eac94316d2633cd310024d3d5e7fd1a2e1",
-    "headCommit": "b381fbff207c046aacea86004941c958b07ba885",
-    "capturedAt": "2026-08-27T04:38:35.468Z"
+    "compilerInputHash": "0xade1c7aa7af4d6f0ec8ba71bdaa27ef2fb8c790775f8b9b84790294eece5a418",
+    "headCommit": "ca0ee03a380fdab4456b5fbbc64df7033230ef78",
+    "capturedAt": "2026-08-27T12:51:08.726Z"
   },
   "liveRuntime": {
     "address": "0x4736138c99e0619D06663D971C8cD347de186F6d",
