@@ -9,13 +9,13 @@
   "reportedSourceCommit": "828bf219c0e2612fcd1aba5f085c4abeba29de88",
   "reportedSourceCommitInPublicHistory": false,
   "observedRuntimeBytes": 20508,
-  "publicHeadRuntimeBytes": 22851,
+  "publicHeadRuntimeBytes": 23016,
   "reproducibilityStatus": "remediation-gated",
   "lastChecked": "2026-08-23",
   "artifactManifest": null,
   "remediation": {
     "chosenPath": "redeploy-from-public-head",
-    "rationale": "The reported source commit 828bf219c0e2612fcd1aba5f085c4abeba29de88 is absent from public repository history, and public HEAD recompiles WalletWallVault to a 22,851-byte runtime rather than the deployed 20,508-byte runtime. Because the original deployment commit cannot be published, the honest path to a clean third-party reproduction is to redeploy from public HEAD and replace this record.",
+    "rationale": "The reported source commit 828bf219c0e2612fcd1aba5f085c4abeba29de88 is absent from public repository history, and public HEAD recompiles WalletWallVault to a 23,016-byte runtime rather than the deployed 20,508-byte runtime. Because the original deployment commit cannot be published, the honest path to a clean third-party reproduction is to redeploy from public HEAD and replace this record.",
     "steps": [
       "From a clean checkout of public main, run `npm ci` and `npm run compile`; record the compiler version, optimizer settings, and the keccak256 of the WalletWallVault runtime bytecode (this becomes artifactManifest.bytecodeHash).",
       "Deploy WalletWallVault + MockMLDSAVerifier from public HEAD to Ethereum Sepolia (chainId 11155111) using the safe deploy path; never use a real-funds wallet, only a funded throwaway Sepolia testnet key.",
