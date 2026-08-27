@@ -98,6 +98,16 @@ describe("PolicyControlBridge — core authentication pipeline", function () {
     await target.waitForDeployment();
   });
 
+  it("constructor: a zero emergencyPauser reverts ZeroEmergencyPauser — zero would permanently remove the L11 circuit breaker", async function () {
+    const Bridge = await ethers.getContractFactory("PolicyControlBridge");
+    await expect(Bridge.deploy(ethers.ZeroAddress)).to.be.revertedWithCustomError(Bridge, "ZeroEmergencyPauser");
+  });
+
+  it("constructor: a real (EOA) emergencyPauser deploys successfully — it is never called as a contract, so no code-length check applies", async function () {
+    const Bridge = await ethers.getContractFactory("PolicyControlBridge");
+    await expect(Bridge.deploy(pauser.address)).to.not.revert(ethers);
+  });
+
   it("forwards a validly-signed enrollController intent to the named policy", async function () {
     const { request, ecdsaSignature, pqSignature } = await signEnroll();
     await bridge.enrollController(request, ecdsaSignature, pqSignature);

@@ -1350,4 +1350,30 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 2n);
     });
   });
+
+  // =====================================================================
+  // K — CONSTRUCTOR VALIDATION (round-2 review): the canonical bridge must be
+  //     code-bearing and nonzero, or "the canonical bridge authenticates
+  //     current credentials" depends on an unchecked deployment argument — an
+  //     EOA supplied here could call every bridge* function directly as the
+  //     trusted controller, bypassing every signature/epoch/nonce/pause check
+  //     PolicyControlBridge exists to enforce.
+  // =====================================================================
+  describe("K — constructor rejects a non-canonical POLICY_CONTROL_BRIDGE", function () {
+    it("K1: a zero policyControlBridge reverts ZeroPolicyControlBridge", async function () {
+      const Policy = await ethers.getContractFactory("DailySpendLimitPolicy");
+      await expect(Policy.deploy(ethers.ZeroAddress)).to.be.revertedWithCustomError(Policy, "ZeroPolicyControlBridge");
+    });
+
+    it("K2: an EOA policyControlBridge reverts PolicyControlBridgeNotAContract — worse than zero, since an EOA could otherwise silently assume the trusted-controller role", async function () {
+      const Policy = await ethers.getContractFactory("DailySpendLimitPolicy");
+      const [, , , , eoa] = await ethers.getSigners();
+      await expect(Policy.deploy(eoa.address)).to.be.revertedWithCustomError(Policy, "PolicyControlBridgeNotAContract");
+    });
+
+    it("K3: a real bridge contract deploys successfully", async function () {
+      const Policy = await ethers.getContractFactory("DailySpendLimitPolicy");
+      await expect(Policy.deploy(await bridge.getAddress())).to.not.revert(ethers);
+    });
+  });
 });
