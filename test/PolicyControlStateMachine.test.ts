@@ -1143,4 +1143,150 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT / 2n);
     });
   });
+
+  // =====================================================================
+  // I — QUEUED WITHDRAWAL ACROSS TRANSITIONS (§9.5, L8)
+  // =====================================================================
+  describe("I — queued (large-tx) withdrawals interact correctly with strengthening/weakening", function () {
+    const THRESHOLD = ethers.parseEther("0.5");
+    const QUEUE_DELAY = 60 * 60;
+
+    async function ethDomain() {
+      return {
+        name: "WalletWallVault",
+        version: "1",
+        chainId: (await ethers.provider.getNetwork()).chainId,
+        verifyingContract: consumer,
+      };
+    }
+
+    async function queue(amount: bigint) {
+      const deadline = (await networkHelpers.time.latest()) + 3600 * 24;
+      const req = {
+        vaultOwner: owner.address,
+        recipient: recipient.address,
+        amount,
+        nonce: 0,
+        deadline,
+        vaultMode: HYBRID,
+      };
+      const ecdsaSig = await owner.signTypedData(await ethDomain(), WITHDRAWAL_TYPES, req);
+      const pqSig = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+      return vault.queueWithdrawal(req, ecdsaSig, pqSig);
+    }
+
+    beforeEach(async function () {
+      await enrol();
+      await vault.connect(admin).proposeLargeTxParams(THRESHOLD, QUEUE_DELAY);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await vault.connect(admin).applyLargeTxParams();
+    });
+
+    it("I1 CASE A: strengthening mid-queue never strands or double-books the queued withdrawal", async function () {
+      const amount = ethers.parseEther("0.6"); // > THRESHOLD, <= LIMIT
+      await queue(amount);
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(amount);
+
+      await strengthen(ethers.parseEther("0.8")); // 1 -> 0.8, still a valid strengthen
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(ethers.parseEther("0.8"));
+
+      await networkHelpers.time.increase(QUEUE_DELAY + 1);
+      const pending = await vault.pendingWithdrawals(owner.address);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, pending.operationId)).to.not.revert(ethers);
+
+      // Finalization is a pure revalidate() — it neither re-books nor is blocked by the
+      // now-lower limit retroactively applying to an already-admitted withdrawal.
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(amount);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(ethers.parseEther("0.8"));
+    });
+
+    it("I2 CASE B: a PENDING weakening never leaks into admission — the queue-time floor reads `limit`, not `pending` (the L8 trap)", async function () {
+      await proposeWeakening(LIMIT * 3n); // pending — s.limit is STILL LIMIT (1 ETH)
+
+      // Between the CURRENT limit and the PENDING one: admissible only if the engine
+      // wrongly consulted `pending.newLimit` instead of the enforced `limit`.
+      const amount = LIMIT + ethers.parseEther("0.5");
+      await expect(queue(amount))
+        .to.be.revertedWithCustomError(vault, "PolicyViolation")
+        .withArgs("daily limit exceeded");
+    });
+
+    it("I3 CASE C: a weakening applied mid-queue rewrites `limit` alone — never the ledger", async function () {
+      const amount = ethers.parseEther("0.6");
+      await queue(amount);
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(amount);
+
+      await proposeWeakening(LIMIT * 2n); // 1 -> 2 ETH
+
+      // POLICY_CONTROL_DELAY (2 days) exceeds WINDOW (24h), so by the time ANY
+      // weakening can mature, the queued entry has ALREADY aged out on its own clock
+      // (E1's finding, reused here) — applying the weakening must not ADDITIONALLY
+      // touch the ledger beyond that ordinary, independent decay.
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+
+      await applyWeakening();
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 2n);
+      // The apply touched ONLY `limit` — the ledger is exactly as decay left it.
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+      expect(await policy.remainingAllowance(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 2n);
+
+      const pending = await vault.pendingWithdrawals(owner.address);
+      await expect(vault.connect(owner).finalizeWithdrawal(owner.address, pending.operationId)).to.not.revert(ethers);
+      // Finalization (a pure revalidate()) leaves the ledger untouched too.
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+    });
+  });
+
+  // =====================================================================
+  // J — POLICY-ENGINE REPLACEMENT (§9.4, L7: no migration, ever)
+  // =====================================================================
+  describe("J — replacing the vault's policy engine never migrates or mutates state", function () {
+    it("J1 CASE A: swapping to a DIFFERENT policy instance leaves it unarmed, uncontrolled, with no proposal", async function () {
+      await enrol();
+      await proposeWeakening(LIMIT * 2n); // leave a pending weakening in P
+
+      const Policy2 = await ethers.getContractFactory("DailySpendLimitPolicy");
+      const policy2 = await Policy2.deploy(await bridge.getAddress());
+      await policy2.waitForDeployment();
+
+      await vault.connect(admin).proposePolicyEngine(await policy2.getAddress());
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await vault.connect(admin).applyPolicyEngine();
+
+      // P2 starts genuinely PRISTINE — not armed, no controller, nothing pending.
+      expect(await policy2.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+      await policy2.connect(owner).setAdmitter(consumer, NATIVE_ASSET, consumer, true);
+      await expect(policy2.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT)).to.not.revert(ethers);
+
+      // Engine replacement is a vault-governance action, wholly independent of the
+      // credential lifecycle — it never touches the epoch.
+      expect(await vault.policyControlEpoch(owner.address)).to.equal(0n);
+
+      // P's own state — including the now-abandoned pending proposal — is untouched.
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+    });
+
+    it("J2 CASE B: swapping to a composite that wraps the SAME instance leaves its pending proposal intact — it lives in P, not in the wiring", async function () {
+      await enrol();
+      await proposeWeakening(LIMIT * 2n);
+
+      const Composite = await ethers.getContractFactory("CompositePolicyEngine", admin);
+      const composite = await Composite.deploy();
+      await composite.waitForDeployment();
+      await composite.connect(admin).addModule(await policy.getAddress());
+
+      await vault.connect(admin).proposePolicyEngine(await composite.getAddress());
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await vault.connect(admin).applyPolicyEngine();
+
+      // P's proposal survives being wrapped — apply it DIRECTLY against P, exactly as
+      // if nothing had changed, since the vault's engine pointer never touched P itself.
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await applyWeakening();
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 2n);
+    });
+  });
 });
