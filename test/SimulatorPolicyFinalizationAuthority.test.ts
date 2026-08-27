@@ -74,7 +74,10 @@ describe("Simulator policy finalization authority (parity regression)", function
       await ethers.getContractFactory("StablecoinVaultSimulator", admin)
     ).deploy(await token.getAddress(), await verifier.getAddress());
     allowlistPolicy = await (await ethers.getContractFactory("RecipientAllowlistPolicy", admin)).deploy();
-    dailyPolicy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
+    const bridge = await (await ethers.getContractFactory("PolicyControlBridge", admin)).deploy(admin.address);
+    dailyPolicy = await (
+      await ethers.getContractFactory("DailySpendLimitPolicy", admin)
+    ).deploy(await bridge.getAddress());
     sanctionsPolicy = await (await ethers.getContractFactory("SanctionsListPolicy", admin)).deploy();
 
     await sim.connect(owner).createVault(owner.address, PQ_KEY, 2);

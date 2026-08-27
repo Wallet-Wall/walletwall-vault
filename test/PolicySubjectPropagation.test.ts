@@ -110,7 +110,8 @@ describe("Policy subject propagation (trust boundary)", function () {
     vaultAddress = await vault.getAddress();
     probe = await (await ethers.getContractFactory("SubjectRecordingPolicyMock", admin)).deploy();
     composite = await (await ethers.getContractFactory("CompositePolicyEngine", admin)).deploy();
-    policy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
+    const bridge = await (await ethers.getContractFactory("PolicyControlBridge", admin)).deploy(admin.address);
+    policy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy(await bridge.getAddress());
 
     await vault.connect(owner).createVault(owner.address, PQ_KEY, HYBRID);
     await vault.connect(owner).deposit({ value: DEPOSIT });

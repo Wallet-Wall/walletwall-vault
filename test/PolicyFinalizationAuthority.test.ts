@@ -106,7 +106,10 @@ describe("Policy finalization authority (regression)", function () {
     verifier = await (await ethers.getContractFactory("MockMLDSAVerifier", admin)).deploy();
     vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await verifier.getAddress());
     composite = await (await ethers.getContractFactory("CompositePolicyEngine", admin)).deploy();
-    dailyPolicy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
+    const bridge = await (await ethers.getContractFactory("PolicyControlBridge", admin)).deploy(admin.address);
+    dailyPolicy = await (
+      await ethers.getContractFactory("DailySpendLimitPolicy", admin)
+    ).deploy(await bridge.getAddress());
     allowlistPolicy = await (await ethers.getContractFactory("RecipientAllowlistPolicy", admin)).deploy();
     sanctionsPolicy = await (await ethers.getContractFactory("SanctionsListPolicy", admin)).deploy();
 

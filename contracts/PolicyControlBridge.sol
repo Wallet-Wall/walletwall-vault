@@ -40,6 +40,22 @@ interface IPolicyControlCredentialSource {
 ///         immutable POLICY_CONTROL_BRIDGE it was constructed with (design doc §6.1, L9).
 interface IPolicyControlTarget {
     function bridgeEnrollController(address consumer, address owner, address asset, address controller) external;
+
+    function bridgeStrengthenLimit(address consumer, address owner, address asset, uint256 newLimit) external;
+
+    function bridgeProposeWeakening(
+        address consumer,
+        address owner,
+        address asset,
+        uint256 newLimit,
+        uint64 epoch
+    ) external;
+
+    function bridgeApplyWeakening(address consumer, address owner, address asset, uint64 epoch) external;
+
+    function bridgeCancelWeakening(address consumer, address owner, address asset) external;
+
+    function bridgeSetAdmitter(address consumer, address owner, address asset, address caller, bool allowed) external;
 }
 
 /// @title PolicyControlBridge
@@ -109,6 +125,60 @@ contract PolicyControlBridge is EIP712 {
         uint256 deadline;
     }
 
+    struct StrengthenLimitIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        uint256 newLimit;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
+    struct ProposeWeakeningIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        uint256 newLimit;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
+    struct ApplyWeakeningIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
+    struct CancelWeakeningIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
+    struct SetAdmitterIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        address admitter;
+        bool allowed;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
     /// @dev Includes `asset`, unlike the design doc's illustrative struct sketch in §5.2.
     ///      Every OTHER signed action there (SetLimit, ProposeWeakening, ApplyWeakening,
     ///      SetAdmitter) is scoped to a full (consumer, owner, asset) subject, matching
@@ -120,6 +190,43 @@ contract PolicyControlBridge is EIP712 {
     ///      conservatively rather than implemented as a new, wider capability.
     bytes32 private constant ENROLL_CONTROLLER_TYPEHASH = keccak256(
         "EnrollController(address consumer,address owner,address policy,address asset,address controller,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    bytes32 private constant STRENGTHEN_LIMIT_TYPEHASH = keccak256(
+        "StrengthenLimit(address consumer,address owner,address policy,address asset,uint256 newLimit,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @dev DISTINCT from {STRENGTHEN_LIMIT_TYPEHASH} despite the identical field list —
+    ///      §5.2's whole point. A tenant signing "ProposeWeakening" is knowingly starting
+    ///      a delayed governance action, not authorizing an immediate change; the
+    ///      typehash makes that distinction part of the digest itself, not a value the
+    ///      policy has to classify after the fact from data that could have moved
+    ///      between signing and execution.
+    bytes32 private constant PROPOSE_WEAKENING_TYPEHASH = keccak256(
+        "ProposeWeakening(address consumer,address owner,address policy,address asset,uint256 newLimit,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @dev Requiring a FRESH signed intent to apply a matured weakening (design doc
+    ///      §5.5) forces the caller to hold CURRENT credentials at apply time, not just
+    ///      at propose time — and, with O2 removing owner-direct cancellation, preserves
+    ///      the tenant's ability to simply decline to apply by never signing this.
+    bytes32 private constant APPLY_WEAKENING_TYPEHASH = keccak256(
+        "ApplyWeakening(address consumer,address owner,address policy,address asset,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @dev Not named in the design doc's illustrative §5.2 list, which enumerates five
+    ///      structs without stating the list is closed. Cancellation is a mutating
+    ///      bridge entrypoint exactly like the other five (it clears storage), so it
+    ///      needs the same replay-bound, epoch-bound, pausable signed-intent treatment —
+    ///      omitting it would leave the one mutating action in the whole lane reachable
+    ///      without a signature. Shape mirrors {ApplyWeakeningIntent} exactly; the
+    ///      typehash differs so a cancel signature can never be replayed as an apply.
+    bytes32 private constant CANCEL_WEAKENING_TYPEHASH = keccak256(
+        "CancelWeakening(address consumer,address owner,address policy,address asset,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    bytes32 private constant SET_ADMITTER_TYPEHASH = keccak256(
+        "SetAdmitter(address consumer,address owner,address policy,address asset,address admitter,bool allowed,uint64 epoch,uint256 nonce,uint256 deadline)"
     );
 
     event BridgeRetired();
@@ -200,6 +307,144 @@ contract PolicyControlBridge is EIP712 {
         emit ControllerEnrolled(intent.consumer, intent.owner, intent.policy, intent.asset);
     }
 
+    /// @notice Immediate strengthening once controller-active. Reverts at the policy
+    ///         ({DailySpendLimitPolicy.WrongTransitionKind}) if `newLimit` would actually
+    ///         be a weakening — a signed StrengthenLimit intent authorizes only that.
+    function strengthenLimit(
+        StrengthenLimitIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _strengthenLimitDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeStrengthenLimit(
+            intent.consumer,
+            intent.owner,
+            intent.asset,
+            intent.newLimit
+        );
+    }
+
+    /// @notice Proposes a weakening once controller-active. Matures after the policy's
+    ///         own POLICY_CONTROL_DELAY; must be separately applied via
+    ///         {applyWeakening} with a FRESH signed intent (§5.5).
+    function proposeWeakening(
+        ProposeWeakeningIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _proposeWeakeningDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeProposeWeakening(
+            intent.consumer,
+            intent.owner,
+            intent.asset,
+            intent.newLimit,
+            intent.epoch
+        );
+    }
+
+    /// @notice Applies a matured weakening. Blocked once {paused} EVEN IF the proposal
+    ///         is already mature — the subtle requirement design doc §6.3/§9.12 exists
+    ///         to close: pausing after an attacker proposes but before they apply must
+    ///         not leave the apply half reachable.
+    function applyWeakening(
+        ApplyWeakeningIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _applyWeakeningDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeApplyWeakening(
+            intent.consumer,
+            intent.owner,
+            intent.asset,
+            intent.epoch
+        );
+    }
+
+    /// @notice Cancels a pending weakening, immediately — strengthening-ward, so this
+    ///         needs no epoch re-check at the policy beyond the bridge's own freshness
+    ///         proof for THIS intent.
+    function cancelWeakening(
+        CancelWeakeningIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _cancelWeakeningDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeCancelWeakening(intent.consumer, intent.owner, intent.asset);
+    }
+
+    /// @notice Admitter repair (add or remove a delegated admission caller) once
+    ///         controller-active. Immediate — a liveness action, not a weakening (L5):
+    ///         adding an admitter confers no capability an existing one lacked.
+    function setAdmitter(
+        SetAdmitterIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _setAdmitterDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeSetAdmitter(
+            intent.consumer,
+            intent.owner,
+            intent.asset,
+            intent.admitter,
+            intent.allowed
+        );
+    }
+
     function _requireNotPaused() private view {
         if (paused) revert BridgeIsPaused();
     }
@@ -217,6 +462,100 @@ contract PolicyControlBridge is EIP712 {
                         intent.policy,
                         intent.asset,
                         intent.controller,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _strengthenLimitDigest(StrengthenLimitIntent calldata intent) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        STRENGTHEN_LIMIT_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.newLimit,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _proposeWeakeningDigest(ProposeWeakeningIntent calldata intent) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        PROPOSE_WEAKENING_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.newLimit,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _applyWeakeningDigest(ApplyWeakeningIntent calldata intent) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        APPLY_WEAKENING_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _cancelWeakeningDigest(CancelWeakeningIntent calldata intent) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        CANCEL_WEAKENING_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _setAdmitterDigest(SetAdmitterIntent calldata intent) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        SET_ADMITTER_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.admitter,
+                        intent.allowed,
                         intent.epoch,
                         intent.nonce,
                         intent.deadline

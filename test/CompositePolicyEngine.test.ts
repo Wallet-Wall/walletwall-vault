@@ -69,8 +69,11 @@ describe("CompositePolicyEngine", function () {
     const Composite = await ethers.getContractFactory("CompositePolicyEngine", admin);
     composite = await Composite.deploy();
 
+    const Bridge = await ethers.getContractFactory("PolicyControlBridge", admin);
+    const bridge = await Bridge.deploy(admin.address);
+
     const DailyPolicy = await ethers.getContractFactory("DailySpendLimitPolicy", admin);
-    dailyPolicy = await DailyPolicy.deploy();
+    dailyPolicy = await DailyPolicy.deploy(await bridge.getAddress());
 
     const AllowlistPolicy = await ethers.getContractFactory("RecipientAllowlistPolicy", admin);
     allowlistPolicy = await AllowlistPolicy.deploy();
