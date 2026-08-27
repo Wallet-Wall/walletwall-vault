@@ -253,7 +253,20 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///      state never migrates (L7).
     address public immutable POLICY_CONTROL_BRIDGE;
 
+    /// @notice `policyControlBridge` was the zero address at construction.
+    error ZeroPolicyControlBridge();
+    /// @notice `policyControlBridge` was an EOA at construction — an EOA supplied here
+    ///         would be able to call every `bridge*` function directly as the trusted
+    ///         controller, bypassing PolicyControlBridge's signatures, epoch checks,
+    ///         nonce checks, and pause entirely. A malicious CONTRACT deliberately
+    ///         installed here is still possible — deployment integrity remains a trust
+    ///         assumption this check cannot remove — but this closes the accidental
+    ///         zero/EOA case that would silently drop the whole authentication boundary.
+    error PolicyControlBridgeNotAContract(address policyControlBridge);
+
     constructor(address policyControlBridge) {
+        if (policyControlBridge == address(0)) revert ZeroPolicyControlBridge();
+        if (policyControlBridge.code.length == 0) revert PolicyControlBridgeNotAContract(policyControlBridge);
         POLICY_CONTROL_BRIDGE = policyControlBridge;
     }
 

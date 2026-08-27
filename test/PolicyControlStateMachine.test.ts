@@ -704,6 +704,50 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       const [, , , , eoa] = await ethers.getSigners();
       await expect(bridgeSetAdmitter(eoa.address, true)).to.be.revertedWithCustomError(policy, "AdmitterNotAContract");
     });
+
+    it("F4 (§9.6, L5): a broken relay admitter is repaired by adding a second, direct admitter — IMMEDIATE, no delay", async function () {
+      // See the §9.6 erratum in the design doc: the literal "composite whose owner
+      // added an always-denying module" scenario is not executable against
+      // CompositePolicyEngine's real AND/fail-closed composition — a sibling module's
+      // denial happens one layer above DailySpendLimitPolicy and cannot be repaired by
+      // widening ITS admitter list. This is the strongest truthful replacement: a
+      // registered admitter whose OWN relay logic breaks, independent of any composite.
+      await enrol();
+      const Relay = await ethers.getContractFactory("RevertingAdmitterRelayMock");
+      const relay = await Relay.deploy();
+      await relay.waitForDeployment();
+      const relayAddress = await relay.getAddress();
+
+      // Reach "the only admitter is the relay" without ever touching zero admitters:
+      // add the relay FIRST (now two), then remove the vault's own (now not "last").
+      await bridgeSetAdmitter(relayAddress, true);
+      await bridgeSetAdmitter(consumer, false);
+      expect(await policy.admitter(consumer, owner.address, NATIVE_ASSET, consumer)).to.equal(false);
+      expect(await policy.admitter(consumer, owner.address, NATIVE_ASSET, relayAddress)).to.equal(true);
+
+      // CONTROL: the last-admitter guard protects a non-owner relay exactly as it
+      // protects the vault's own address — it is not identity-specific.
+      await expect(bridgeSetAdmitter(relayAddress, false)).to.be.revertedWithCustomError(
+        policy,
+        "LastAdmitterWhileArmed",
+      );
+
+      // The relay is registered but its own logic is broken — every admission through
+      // it fails, independent of anything DailySpendLimitPolicy's own state says.
+      await expect(
+        relay.relay(await policy.getAddress(), consumer, owner.address, NATIVE_ASSET, recipient.address, 1n, 0n),
+      ).to.be.revertedWithCustomError(relay, "RelayIsDown");
+
+      // Liveness repair: the tenant adds a SECOND, DIRECT admitter — themselves —
+      // exactly as F2 already proves is exempt from the contract-code check.
+      await bridgeSetAdmitter(owner.address, true);
+
+      // Withdrawals resume THROUGH THE NEW ADMITTER immediately — zero elapsed time,
+      // no delay of any kind, proving this is a liveness repair, not a weakening.
+      await expect(
+        policy.connect(owner).check({ consumer, owner: owner.address, asset: NATIVE_ASSET }, recipient.address, 1n, 0n),
+      ).to.not.revert(ethers);
+    });
   });
 
   // =====================================================================

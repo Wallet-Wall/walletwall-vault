@@ -201,11 +201,13 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     ///      policy engine can never block credential rotation or account recovery —
     ///      see docs/Policy_Control_Authority_Design.md §10.3.
     ///
-    ///      Incremented inside `unchecked` alongside `nonce` at both call sites: a
-    ///      `uint64` wraps only after 2^64 rotations/recoveries for one vaultOwner,
-    ///      astronomically beyond any real usage, so this is a bounded-in-practice
-    ///      counter, not a literally-unbounded one, despite the "monotonic" framing
-    ///      above.
+    ///      Incremented with CHECKED arithmetic (unlike `nonce` at the same call
+    ///      sites, which stays `unchecked`): "monotonic" above is meant literally, not
+    ///      as a bounded-in-practice approximation — a `uint64` would in fact wrap only
+    ///      after 2^64 rotations/recoveries for one vaultOwner, astronomically beyond
+    ///      any real usage, but this repo does not rely on that separately-reasoned
+    ///      fact to back an executable claim when the checked increment can make the
+    ///      claim true by construction instead, at a trivial bytecode cost.
     mapping(address => uint64) public policyControlEpoch;
     mapping(address => address[]) public vaultGuardians;
     mapping(address => RecoveryRequest) public recoveryRequests;
@@ -455,10 +457,12 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         vault.pqPublicKey = recoveredPQPublicKey;
         unchecked {
             vault.nonce++;
-            // Credential authority has genuinely changed: any policy-control action a
-            // stale key signed or proposed must stop binding here.
-            policyControlEpoch[vaultOwner]++;
         }
+        // Credential authority has genuinely changed: any policy-control action a
+        // stale key signed or proposed must stop binding here. CHECKED, not unchecked
+        // like `nonce` above — see {policyControlEpoch}'s own doc for why this field's
+        // monotonic claim is meant literally.
+        policyControlEpoch[vaultOwner]++;
 
         delete recoveryRequests[vaultOwner];
         address[] storage guardians = vaultGuardians[vaultOwner];
@@ -553,10 +557,11 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         vault.pqPublicKey = newPQPublicKey;
         unchecked {
             vault.nonce++;
-            // See {policyControlEpoch}: rotation is the other event that must invalidate
-            // any policy-control action the OLD credentials signed or proposed.
-            policyControlEpoch[vaultOwner]++;
         }
+        // See {policyControlEpoch}: rotation is the other event that must invalidate
+        // any policy-control action the OLD credentials signed or proposed. CHECKED —
+        // see {policyControlEpoch}'s own doc.
+        policyControlEpoch[vaultOwner]++;
 
         PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
         if (pending.exists) {

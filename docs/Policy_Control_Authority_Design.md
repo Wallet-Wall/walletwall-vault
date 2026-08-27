@@ -585,6 +585,31 @@ CONTROL  removing the last admitter while armed still reverts LastAdmitterWhileA
   AND    arming with zero admitters still reverts NoAdmitterConfigured
 ```
 
+> **Erratum (found during v0.13.0 implementation):** as literally written, this scenario
+> is not executable against `CompositePolicyEngine`'s actual composition semantics.
+> `CompositePolicyEngine.check()` is a `for` loop over its modules that returns `(false,
+> why)` on the FIRST denying module (§6.2's own file, `check()`) — an AND, fail-closed
+> composition. If a composite is the vault's engine, wraps `DailySpendLimitPolicy` as
+> one module, and gains an always-denying (or reverting) SIBLING module, the composite
+> itself refuses the withdrawal regardless of what `DailySpendLimitPolicy` — or its
+> admitter list — would decide; `DailySpendLimitPolicy.check()` may not even be reached.
+> Widening `DailySpendLimitPolicy`'s OWN admitter list cannot repair a denial that
+> happens one layer above it, in a DIFFERENT contract's module list. The two REAL
+> repairs for a composite-level denial — the composite owner evicting the denying
+> module via `proposeRemoveModule`/`applyRemoveModule`, or the vault owner replacing
+> the vault's engine via `proposePolicyEngine`/`applyPolicyEngine` — are BOTH
+> timelocked, not "IMMEDIATE... without DELAY" as this scenario requires.
+>
+> The strongest truthful, executable property in the same spirit (L5: admitter loss is
+> repairable, immediately, without weakening) is scoped to what
+> `setAdmitter`/`bridgeSetAdmitter` actually govern — `DailySpendLimitPolicy`'s OWN
+> admitter list — rather than to denial happening in a different contract entirely: a
+> registered admitter that is a RELAY CONTRACT whose own logic breaks (reverts
+> unconditionally, independent of any composite/module wiring) is repaired by adding a
+> SECOND, direct admitter, with no delay, and the CONTROL clauses (`LastAdmitterWhileArmed`,
+> `NoAdmitterConfigured`) hold exactly as written. See `RevertingAdmitterRelayMock` and
+> `PolicyControlStateMachine.test.ts` F4.
+
 Justification: adding an admitter does not raise the cap, and confers on an attacker no
 capability the existing admitter did not already give them. **Strength is a property of the
 limit; authority is a property of the admitter set.**

@@ -297,8 +297,15 @@ contract PolicyControlBridge is EIP712 {
     /// @notice The named consumer reports no vault for `owner` — fail closed rather than
     ///         authenticate against zeroed/default credentials (§9.11).
     error VaultDoesNotExist();
+    /// @notice `emergencyPauser` was the zero address at construction. Zero does not
+    ///         directly weaken any limit, but it permanently removes the circuit
+    ///         breaker L11 says this bridge must carry — no address could ever satisfy
+    ///         `msg.sender == EMERGENCY_PAUSER`, so {pause} would be permanently
+    ///         uncallable.
+    error ZeroEmergencyPauser();
 
     constructor(address emergencyPauser) EIP712("WalletWallPolicyControlBridge", "1") {
+        if (emergencyPauser == address(0)) revert ZeroEmergencyPauser();
         EMERGENCY_PAUSER = emergencyPauser;
     }
 
@@ -326,7 +333,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -335,13 +341,19 @@ contract PolicyControlBridge is EIP712 {
             pqSignature
         );
 
+        // Emitted BEFORE the external call: this bridge-level event is purely
+        // informational (the policy emits its own ControllerEnrolled with the same
+        // facts), and emitting first avoids ordering it after an external interaction —
+        // a downstream revert rolls back the whole transaction, event included, either
+        // way, so this is a style fix for the scanner's reentrancy heuristic, not a
+        // response to an actual reentrancy risk (no state is written after the call).
+        emit ControllerEnrolled(intent.consumer, intent.owner, intent.policy, intent.asset);
         IPolicyControlTarget(intent.policy).bridgeEnrollController(
             intent.consumer,
             intent.owner,
             intent.asset,
             intent.controller
         );
-        emit ControllerEnrolled(intent.consumer, intent.owner, intent.policy, intent.asset);
     }
 
     /// @notice Immediate strengthening once controller-active. Reverts at the policy
@@ -356,7 +368,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -384,7 +395,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -414,7 +424,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -442,7 +451,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -466,7 +474,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -495,7 +502,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -523,7 +529,6 @@ contract PolicyControlBridge is EIP712 {
         _verifyAndConsume(
             intent.consumer,
             intent.owner,
-            intent.policy,
             intent.epoch,
             intent.nonce,
             intent.deadline,
@@ -705,10 +710,14 @@ contract PolicyControlBridge is EIP712 {
     ///      credentials, read live via {IPolicyControlCredentialSource}. Reverts fail
     ///      closed on a nonexistent vault (§9.11) rather than authenticating against
     ///      zeroed defaults.
+    ///
+    ///      Deliberately takes no `policy` parameter: `intent.policy` is already
+    ///      cryptographically bound inside the action digest (every typehash includes
+    ///      it), so a second, unauthenticated copy passed alongside for a same-request
+    ///      comparison would add no security value — GHAS flagged it as unused.
     function _verifyAndConsume(
         address consumer,
         address owner,
-        address policy,
         uint64 signedEpoch,
         uint256 signedNonce,
         uint256 deadline,
@@ -716,8 +725,6 @@ contract PolicyControlBridge is EIP712 {
         bytes calldata ecdsaSignature,
         bytes calldata pqSignature
     ) private {
-        policy; // reserved for future action-target checks; unused for now
-
         if (block.timestamp > deadline) revert IntentExpired(deadline, block.timestamp);
 
         uint256 expectedNonce = controlNonce[consumer][owner];
