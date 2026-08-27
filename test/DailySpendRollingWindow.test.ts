@@ -611,25 +611,47 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       // event and clear the ledger with it. Then `setDailyLimit(0)` followed by
       // `setDailyLimit(L)` would be a one-transaction allowance refill, defeating the
       // cap entirely for anyone who can call the setter.
+      //
+      // Under v0.13.0 that exact one-transaction attack is structurally impossible
+      // regardless of timing: disarming is a WEAKENING, so `setDailyLimit(0)` only ever
+      // PROPOSES, and a same-transaction `setDailyLimit(LIMIT)` collides with that
+      // pending proposal (WeakeningAlreadyPending) rather than instantly re-arming. A
+      // genuine round trip can only span the full POLICY_CONTROL_DELAY (2 days), by
+      // which point WINDOW (24h) has already elapsed and the ledger has decayed on its
+      // OWN schedule regardless (E1's finding, mirrored downward) — this test proves
+      // both layers, not just the timing coincidence.
+      const POLICY_CONTROL_DELAY = 2 * 24 * 60 * 60;
       const consumer = await consumerOf();
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(owner, LIMIT, 0, t0);
       expect(await allowance()).to.equal(0n);
 
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, 0);
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT);
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, 0); // propose disarm only
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      expect(await rollingSpent()).to.equal(LIMIT); // untouched by proposing
 
-      // History survived the round trip untouched.
-      expect(await rollingSpent()).to.equal(LIMIT);
-      expect(await allowance()).to.equal(0n);
-      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(1n);
-      await expect(withdrawAt(owner, 1n, 1, t0 + HOUR))
-        .to.be.revertedWithCustomError(vault, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      // The attack this test guards against cannot even be ATTEMPTED: proposing does
+      // not mutate `limit`, so a same-instant "re-arm" to LIMIT is asking for the
+      // CURRENT (still unchanged) stored value — rejected as a no-op (§3) before the
+      // pending-weakening machinery is even consulted.
+      await expect(policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT)).to.be.revertedWithCustomError(
+        policy,
+        "NoOpTransition",
+      );
 
-      // It still expires when it always would have, not a window after re-arming.
-      await networkHelpers.time.increaseTo(t0 + WINDOW);
+      // A genuine round trip spans the full delay — the ledger has already decayed on
+      // ITS OWN schedule by then, never the setter's.
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      expect(await rollingSpent()).to.equal(0n);
+      await policy.connect(owner).applyWeakening(consumer, NATIVE_ASSET);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT); // re-arm, 0 -> LIMIT, immediate
+
+      // History survived the whole round trip untouched.
+      expect(await rollingSpent()).to.equal(0n);
       expect(await allowance()).to.equal(LIMIT);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
     it("E4: setDailyLimit touches the ledger in no way at all", async function () {

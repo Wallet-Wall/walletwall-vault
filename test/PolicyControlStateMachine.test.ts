@@ -14,7 +14,7 @@ import { NATIVE_ASSET } from "./helpers/policySubject";
  * This suite exercises the state machine end-to-end through the REAL PolicyControlBridge
  * (not a mock target), because the properties that matter — epoch staleness on APPLY, the
  * pause blocking an already-mature weakening, canonical-bridge-only enrolment — are only
- *真 meaningful when authentication is genuinely wired through.
+ * meaningful when authentication is genuinely wired through.
  *
  * DailySpendAdmissionAuthority.test.ts, PolicySubjectPropagation.test.ts, and
  * DailySpendRollingWindow.test.ts remain the authority on admission/rolling/isolation and
@@ -100,6 +100,28 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       { name: "deadline", type: "uint256" },
     ],
   };
+  const PROPOSE_UNENROLL_TYPES = {
+    ProposeUnenrollController: [
+      { name: "consumer", type: "address" },
+      { name: "owner", type: "address" },
+      { name: "policy", type: "address" },
+      { name: "asset", type: "address" },
+      { name: "epoch", type: "uint64" },
+      { name: "nonce", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+    ],
+  };
+  const APPLY_UNENROLL_TYPES = {
+    ApplyUnenrollController: [
+      { name: "consumer", type: "address" },
+      { name: "owner", type: "address" },
+      { name: "policy", type: "address" },
+      { name: "asset", type: "address" },
+      { name: "epoch", type: "uint64" },
+      { name: "nonce", type: "uint256" },
+      { name: "deadline", type: "uint256" },
+    ],
+  };
 
   let admin: HardhatEthersSigner;
   let owner: HardhatEthersSigner;
@@ -134,7 +156,9 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       | "proposeWeakening"
       | "applyWeakening"
       | "cancelWeakening"
-      | "setAdmitter",
+      | "setAdmitter"
+      | "proposeUnenrollController"
+      | "applyUnenrollController",
     types: Record<string, Array<{ name: string; type: string }>>,
     extra: Record<string, unknown>,
     overrides: Partial<Record<string, unknown>> = {},
@@ -180,6 +204,49 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
   async function bridgeSetAdmitter(admitter: string, allowed: boolean) {
     return signAndSend("setAdmitter", SET_ADMITTER_TYPES, { admitter, allowed });
   }
+  async function proposeUnenrol(overrides: Partial<Record<string, unknown>> = {}) {
+    return signAndSend("proposeUnenrollController", PROPOSE_UNENROLL_TYPES, {}, overrides);
+  }
+  async function applyUnenrol(overrides: Partial<Record<string, unknown>> = {}) {
+    return signAndSend("applyUnenrollController", APPLY_UNENROLL_TYPES, {}, overrides);
+  }
+
+  /** Rotates the vault's credentials to `newSigner`, bumping policyControlEpoch — the
+   *  recovery-equivalent event §9.8/§9.10 reason about. Returns nothing; callers read
+   *  {currentEpoch} / {nextNonce} afterward exactly as they would after a real recovery. */
+  async function rotateTo(newSigner: HardhatEthersSigner) {
+    const deadline = (await networkHelpers.time.latest()) + 3600;
+    const domain = {
+      name: "WalletWallVault",
+      version: "1",
+      chainId: (await ethers.provider.getNetwork()).chainId,
+      verifyingContract: consumer,
+    };
+    const ROTATION_TYPES = {
+      RotateCredentials: [
+        { name: "vaultOwner", type: "address" },
+        { name: "newEcdsaSigner", type: "address" },
+        { name: "newPQPublicKey", type: "bytes" },
+        { name: "nonce", type: "uint256" },
+        { name: "deadline", type: "uint256" },
+      ],
+    };
+    const newPq = ethers.hexlify(ethers.randomBytes(1952));
+    const req = {
+      vaultOwner: owner.address,
+      newEcdsaSigner: newSigner.address,
+      newPQPublicKey: newPq,
+      nonce: Number(await vault.nonces(owner.address)),
+      deadline,
+    };
+    const blob = () => ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+    await vault.rotateCredentials(owner.address, newSigner.address, newPq, deadline, {
+      currentEcdsaSignature: await owner.signTypedData(domain, ROTATION_TYPES, req),
+      currentPqSignature: blob(),
+      newEcdsaSignature: await newSigner.signTypedData(domain, ROTATION_TYPES, req),
+      newPqSignature: blob(),
+    });
+  }
 
   beforeEach(async function () {
     [admin, owner, recipient, pauser] = await ethers.getSigners();
@@ -214,10 +281,13 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
   // =====================================================================
   describe("A — Path 1: strength order determines immediate vs delayed", function () {
     it("A1: 0 -> n is immediate strengthening (arming from unrestricted)", async function () {
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, 0);
-      await policy.connect(owner).setAdmitter(consumer, NATIVE_ASSET, consumer, true);
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT);
-      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      // A genuinely never-armed asset, so `limit` starts at its true zero default —
+      // weakening the beforeEach's already-armed NATIVE_ASSET down to 0 would itself
+      // be a DELAYED transition and never actually reach 0 for this test to arm from.
+      const freshAsset = ethers.Wallet.createRandom().address;
+      await policy.connect(owner).setAdmitter(consumer, freshAsset, consumer, true);
+      await policy.connect(owner).setDailyLimit(consumer, freshAsset, LIMIT);
+      expect(await policy.dailyLimit(consumer, owner.address, freshAsset)).to.equal(LIMIT);
     });
 
     it("A2: n -> smaller is immediate strengthening", async function () {
@@ -278,9 +348,22 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       ).to.be.revertedWithCustomError(policy, "WeakeningAlreadyPending");
     });
 
-    it("A10: a no-op (n -> n) is neither strengthening nor weakening — it is simply a no-op", async function () {
-      await expect(policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT)).to.not.revert(ethers);
+    it("A10: a no-op (n -> n) is neither strengthening nor weakening — design doc §3 classifies it Rejected", async function () {
+      await expect(policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT)).to.be.revertedWithCustomError(
+        policy,
+        "NoOpTransition",
+      );
       expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+    });
+
+    it("A11: a no-op (0 -> 0) is also rejected", async function () {
+      // A never-armed asset: `limit` starts at 0, so this is a genuine 0 -> 0 attempt,
+      // not a second weakening proposal colliding with an already-pending one.
+      const freshAsset = ethers.Wallet.createRandom().address;
+      await expect(policy.connect(owner).setDailyLimit(consumer, freshAsset, 0)).to.be.revertedWithCustomError(
+        policy,
+        "NoOpTransition",
+      );
     });
   });
 
@@ -363,6 +446,10 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
     it("C4: the bridge, via a fresh signed intent, CAN strengthen immediately", async function () {
       await strengthen(LIMIT / 4n);
       expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT / 4n);
+    });
+
+    it("C4b: bridgeStrengthenLimit with a no-op value reverts NoOpTransition, same as Path 1 (§3)", async function () {
+      await expect(strengthen(LIMIT)).to.be.revertedWithCustomError(policy, "NoOpTransition");
     });
 
     it("C5: the bridge CAN propose, and later apply, a weakening", async function () {
@@ -602,6 +689,209 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       await enrol();
       const [, , , , eoa] = await ethers.getSigners();
       await expect(bridgeSetAdmitter(eoa.address, true)).to.be.revertedWithCustomError(policy, "AdmitterNotAContract");
+    });
+  });
+
+  // =====================================================================
+  // G — CONTROLLER UNENROLMENT (T15, §6.2): a WEAKENING — delayed, expiring,
+  //     epoch-bound — that RE-ENABLES Path 1. controllerInitialized stays sticky
+  //     forever regardless, so this policy instance can never be re-bootstrapped.
+  // =====================================================================
+  describe("G — controller unenrolment (T15) re-enables Path 1 but never re-arms enrolment", function () {
+    beforeEach(async function () {
+      await enrol();
+    });
+
+    it("G1: proposing unenrolment does not itself disable the controller — apply is still required", async function () {
+      await proposeUnenrol();
+      // Not yet applied: Path 1 still dead, exactly as a pending limit weakening
+      // leaves the OLD limit enforced until applied.
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+
+    it("G2: applying before maturity reverts WeakeningNotReady", async function () {
+      await proposeUnenrol();
+      await expect(applyUnenrol()).to.be.revertedWithCustomError(policy, "WeakeningNotReady");
+    });
+
+    it("G3: applying after the grace period expires reverts WeakeningExpired", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY + POLICY_CONTROL_GRACE + 1);
+      await expect(applyUnenrol()).to.be.revertedWithCustomError(policy, "WeakeningExpired");
+    });
+
+    it("G4: a matured, epoch-fresh unenrolment clears the controller and RE-ENABLES Path 1 (§6.2)", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await applyUnenrol();
+
+      // Path 1 lives again — a strengthening move now succeeds owner-direct.
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT / 2n);
+    });
+
+    it("G4b: applyWeakening (Path 1) is also usable again after unenrolment, not just setDailyLimit", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await applyUnenrol();
+
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT * 2n); // n -> larger, weakening
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await policy.connect(owner).applyWeakening(consumer, NATIVE_ASSET);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 2n);
+    });
+
+    it("G4c: cancelWeakening (Path 1) is also usable again after unenrolment", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await applyUnenrol();
+
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT * 2n);
+      await policy.connect(owner).cancelWeakening(consumer, NATIVE_ASSET);
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await expect(policy.connect(owner).applyWeakening(consumer, NATIVE_ASSET)).to.be.revertedWithCustomError(
+        policy,
+        "NoWeakeningPending",
+      );
+    });
+
+    it("G4d: setAdmitter (Path 1) is also usable again after unenrolment", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await applyUnenrol();
+
+      await policy.connect(owner).setAdmitter(consumer, NATIVE_ASSET, owner.address, true);
+      expect(await policy.admitter(consumer, owner.address, NATIVE_ASSET, owner.address)).to.equal(true);
+    });
+
+    it("G5: after unenrolment, re-enrolling reverts AlreadyEnrolled — controllerInitialized never resets (O3)", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await applyUnenrol();
+
+      await expect(enrol()).to.be.revertedWithCustomError(policy, "AlreadyEnrolled");
+    });
+
+    it("G6: cancelling a pending unenrolment keeps the controller active — Path 1 stays dead", async function () {
+      await proposeUnenrol();
+      await cancelWeakening();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+
+      await expect(applyUnenrol()).to.be.revertedWithCustomError(policy, "NoWeakeningPending");
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+
+    it("G7a: a pending LIMIT weakening blocks proposing an unenrolment (shared pending slot)", async function () {
+      await proposeWeakening(LIMIT * 2n);
+      await expect(proposeUnenrol()).to.be.revertedWithCustomError(policy, "WeakeningAlreadyPending");
+    });
+
+    it("G7b: a pending UNENROLMENT blocks proposing a limit weakening (shared pending slot)", async function () {
+      await proposeUnenrol();
+      await expect(proposeWeakening(LIMIT * 2n)).to.be.revertedWithCustomError(policy, "WeakeningAlreadyPending");
+    });
+
+    it("G8: bridgeApplyWeakening cannot complete a pending UNENROLMENT (WrongTransitionKind)", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await expect(applyWeakening()).to.be.revertedWithCustomError(policy, "WrongTransitionKind");
+      // Untouched — the controller is still active, proposal still pending.
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+
+    it("G9: bridgeApplyUnenrollController cannot complete a pending LIMIT weakening (WrongTransitionKind)", async function () {
+      await proposeWeakening(LIMIT * 2n);
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await expect(applyUnenrol()).to.be.revertedWithCustomError(policy, "WrongTransitionKind");
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+    });
+
+    it("G10: recovery before maturity stales the BRIDGE signature — mirrors §9.8/D1 for T15 (§9.10)", async function () {
+      await proposeUnenrol(); // attacker/owner, while still holding current creds, epoch 0
+
+      const newSigner = recipient;
+      await rotateTo(newSigner); // recovery-equivalent: bumps the epoch to 1
+
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+
+      // The OLD stale signature (epoch 0) is submitted after the epoch moved to 1.
+      const domain = await bridgeDomain();
+      const staleRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        epoch: 0,
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const ecdsaSignature = await owner.signTypedData(domain, APPLY_UNENROLL_TYPES, staleRequest);
+      const pqSignature = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      await expect(
+        bridge.applyUnenrollController(staleRequest, ecdsaSignature, pqSignature),
+      ).to.be.revertedWithCustomError(bridge, "StaleControlEpoch");
+
+      // §9.10: the controller SURVIVES — the compromised vaultOwner regains nothing.
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+
+    it("G11: the POLICY's own boundEpoch check rejects a stale proposal even via a FRESH post-recovery signature (§9.10, mirrors D2)", async function () {
+      await proposeUnenrol(); // boundEpoch = 0
+
+      const newSigner = recipient;
+      await rotateTo(newSigner); // epoch -> 1
+
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+
+      // FRESH intent: signed by the NEW (current) signer, at the NEW (current) epoch —
+      // the bridge's own checks pass this cleanly. Only the POLICY's stored-proposal
+      // boundEpoch check can catch it now.
+      const domain = await bridgeDomain();
+      const freshRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        epoch: await currentEpoch(), // == 1
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const ecdsaSignature = await newSigner.signTypedData(domain, APPLY_UNENROLL_TYPES, freshRequest);
+      const pqSignature = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      await expect(
+        bridge.applyUnenrollController(freshRequest, ecdsaSignature, pqSignature),
+      ).to.be.revertedWithCustomError(policy, "StaleControlEpoch");
+
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+
+    it("G12: pause blocks a fresh proposeUnenrollController call", async function () {
+      await bridge.connect(pauser).pause();
+      await expect(proposeUnenrol()).to.be.revertedWithCustomError(bridge, "BridgeIsPaused");
+    });
+
+    it("G13: pause blocks applying an already-matured unenrolment (§9.12's reasoning, mirrors E1)", async function () {
+      await proposeUnenrol();
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      await bridge.connect(pauser).pause();
+
+      await expect(applyUnenrol()).to.be.revertedWithCustomError(bridge, "BridgeIsPaused");
+      // Untouched — merely unreachable.
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
     });
   });
 });

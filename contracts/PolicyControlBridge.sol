@@ -56,6 +56,10 @@ interface IPolicyControlTarget {
     function bridgeCancelWeakening(address consumer, address owner, address asset) external;
 
     function bridgeSetAdmitter(address consumer, address owner, address asset, address caller, bool allowed) external;
+
+    function bridgeProposeUnenrollController(address consumer, address owner, address asset, uint64 epoch) external;
+
+    function bridgeApplyUnenrollController(address consumer, address owner, address asset, uint64 epoch) external;
 }
 
 /// @title PolicyControlBridge
@@ -167,6 +171,26 @@ contract PolicyControlBridge is EIP712 {
         uint256 deadline;
     }
 
+    struct ProposeUnenrollControllerIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
+    struct ApplyUnenrollControllerIntent {
+        address consumer;
+        address owner;
+        address policy;
+        address asset;
+        uint64 epoch;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
     struct SetAdmitterIntent {
         address consumer;
         address owner;
@@ -227,6 +251,19 @@ contract PolicyControlBridge is EIP712 {
 
     bytes32 private constant SET_ADMITTER_TYPEHASH = keccak256(
         "SetAdmitter(address consumer,address owner,address policy,address asset,address admitter,bool allowed,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    /// @dev T15 (design doc §6.2, §8): unenrolment is a WEAKENING, so it gets its own
+    ///      propose/apply pair and its own typehashes, exactly like a limit weakening —
+    ///      a signed ProposeWeakening/ApplyWeakening intent must never be reinterpretable
+    ///      as authorizing a controller removal, or vice versa (enforced again, one layer
+    ///      past signature verification, by DailySpendLimitPolicy's WrongTransitionKind).
+    bytes32 private constant PROPOSE_UNENROLL_CONTROLLER_TYPEHASH = keccak256(
+        "ProposeUnenrollController(address consumer,address owner,address policy,address asset,uint64 epoch,uint256 nonce,uint256 deadline)"
+    );
+
+    bytes32 private constant APPLY_UNENROLL_CONTROLLER_TYPEHASH = keccak256(
+        "ApplyUnenrollController(address consumer,address owner,address policy,address asset,uint64 epoch,uint256 nonce,uint256 deadline)"
     );
 
     event BridgeRetired();
@@ -416,6 +453,64 @@ contract PolicyControlBridge is EIP712 {
         IPolicyControlTarget(intent.policy).bridgeCancelWeakening(intent.consumer, intent.owner, intent.asset);
     }
 
+    /// @notice Proposes a controller removal (T15) once controller-active — a
+    ///         WEAKENING, so it matures after the policy's own POLICY_CONTROL_DELAY and
+    ///         must be separately applied via {applyUnenrollController} with a FRESH
+    ///         signed intent, exactly like {proposeWeakening}/{applyWeakening} (§6.2).
+    function proposeUnenrollController(
+        ProposeUnenrollControllerIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _proposeUnenrollControllerDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeProposeUnenrollController(
+            intent.consumer,
+            intent.owner,
+            intent.asset,
+            intent.epoch
+        );
+    }
+
+    /// @notice Applies a matured controller-removal proposal. Blocked once {paused}
+    ///         even if already mature, exactly like {applyWeakening} (§9.12's reasoning
+    ///         applies identically here — pausing after a proposed removal matures but
+    ///         before it is applied must not leave the apply half reachable).
+    function applyUnenrollController(
+        ApplyUnenrollControllerIntent calldata intent,
+        bytes calldata ecdsaSignature,
+        bytes calldata pqSignature
+    ) external {
+        _requireNotPaused();
+        _verifyAndConsume(
+            intent.consumer,
+            intent.owner,
+            intent.policy,
+            intent.epoch,
+            intent.nonce,
+            intent.deadline,
+            _applyUnenrollControllerDigest(intent),
+            ecdsaSignature,
+            pqSignature
+        );
+        IPolicyControlTarget(intent.policy).bridgeApplyUnenrollController(
+            intent.consumer,
+            intent.owner,
+            intent.asset,
+            intent.epoch
+        );
+    }
+
     /// @notice Admitter repair (add or remove a delegated admission caller) once
     ///         controller-active. Immediate — a liveness action, not a weakening (L5):
     ///         adding an admitter confers no capability an existing one lacked.
@@ -532,6 +627,46 @@ contract PolicyControlBridge is EIP712 {
                 keccak256(
                     abi.encode(
                         CANCEL_WEAKENING_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _proposeUnenrollControllerDigest(
+        ProposeUnenrollControllerIntent calldata intent
+    ) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        PROPOSE_UNENROLL_CONTROLLER_TYPEHASH,
+                        intent.consumer,
+                        intent.owner,
+                        intent.policy,
+                        intent.asset,
+                        intent.epoch,
+                        intent.nonce,
+                        intent.deadline
+                    )
+                )
+            );
+    }
+
+    function _applyUnenrollControllerDigest(
+        ApplyUnenrollControllerIntent calldata intent
+    ) private view returns (bytes32) {
+        return
+            _hashTypedDataV4(
+                keccak256(
+                    abi.encode(
+                        APPLY_UNENROLL_CONTROLLER_TYPEHASH,
                         intent.consumer,
                         intent.owner,
                         intent.policy,

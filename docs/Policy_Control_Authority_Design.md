@@ -164,8 +164,19 @@ with `chainId` and the **bridge address** supplied by the EIP-712 domain separat
 **Proposal: one EIP-712 struct (and therefore one typehash) per action**, rather than a
 single struct with a union `value/target` field:
 
+> **Erratum (found during v0.13.0 implementation):** the `EnrollController` sketch below
+> omits `asset`, contradicting the "every authenticated configuration intent binds...
+> asset" opening line of this section and the field list every OTHER struct here
+> carries. `DailySpendLimitPolicy.SpendState` is keyed by the full `(consumer, owner,
+> asset)` subject, so an `asset`-less enrolment would be the one action in the whole
+> lane granting BROADER authority than its own subject accounting is scoped to.
+> Corrected in the shipped implementation to include `asset`, matching every other
+> struct and the opening line — this is a doc-sketch omission, not a deliberate
+> narrower scope.
+
 ```solidity
-struct EnrollController { address consumer; address owner; address policy; address controller;
+struct EnrollController { address consumer; address owner; address policy; address asset;
+                          address controller;
                           uint64 epoch; uint256 nonce; uint256 deadline; }
 struct SetLimit         { address consumer; address owner; address policy; address asset;
                           uint256 newLimit; uint64 epoch; uint256 nonce; uint256 deadline; }

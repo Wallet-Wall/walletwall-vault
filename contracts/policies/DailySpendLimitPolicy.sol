@@ -300,17 +300,24 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         /// @dev address(0): Path 1 (owner-direct) is available. Any other value: ONLY
         ///      that address (always {POLICY_CONTROL_BRIDGE} once set — see
         ///      {bridgeEnrollController}) may strengthen, propose, apply, or cancel for
-        ///      this subject. Path 1 has ZERO capability while this is set — see
-        ///      {controllerInitialized} for why it stays disabled even after a future
-        ///      unenrolment.
+        ///      this subject. Path 1 has ZERO capability while this is set.
+        ///      {bridgeApplyUnenrollController} returns this to address(0), which
+        ///      RE-ENABLES Path 1 (design doc §6.2) — unlike {controllerInitialized},
+        ///      this field is NOT sticky.
         address controller;
         /// @dev Sticky one-time flag: set on the FIRST successful enrolment and never
-        ///      cleared again, including by a future unenrolment (not yet implemented —
-        ///      see the PR description). Gates Path 1 availability independently of the
-        ///      current value of {controller}, so a subject that graduates to the
-        ///      stronger containment model can never fall back to the weaker one.
+        ///      cleared again, including by unenrolment. Gates ONLY the one-time
+        ///      {bridgeEnrollController} bootstrap (O3) — once true, THIS policy
+        ///      instance can never be bootstrapped into controller mode again, even
+        ///      after a later unenrolment returns {controller} to address(0) and Path 1
+        ///      to availability. A tenant wanting controller-mode protection again
+        ///      after a deliberate unenrolment needs a NEW policy instance (L7, design
+        ///      doc §6.1) — this field is what makes that a hard architectural boundary
+        ///      rather than a one-transaction reset.
         bool controllerInitialized;
-        /// @dev The one pending weakening a subject may hold at a time, created by
+        /// @dev The one pending weakening-CLASS transition a subject may hold at a
+        ///      time — a limit change (either path) or a controller removal (bridge
+        ///      only, T15; see {PendingWeakening.isUnenrollment}) — created by
         ///      WHICHEVER path currently has authority. `boundEpoch` is meaningful only
         ///      for a bridge-created proposal; Path 1 leaves it at its zero default and
         ///      Path 1's own apply/cancel never consult it, matching the design doc's
@@ -322,11 +329,22 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///      presence from `validAfter == 0`, so a genuine (if degenerate) proposal
     ///      timestamped at the Unix epoch is never confused with "no proposal".
     struct PendingWeakening {
+        /// @dev Meaningless when {isUnenrollment} is true — an unenrolment carries no
+        ///      limit payload; it only ever clears {SpendState.controller}.
         uint256 newLimit;
         uint64 validAfter;
         uint64 expiresAt;
         uint64 boundEpoch;
         bool exists;
+        /// @dev Discriminates the ONE pending-transition slot a subject may hold: a
+        ///      limit change (false) or a controller removal (true, T15) — both are
+        ///      "weakenings" sharing one delay/grace/epoch pipeline, so a subject can
+        ///      never hold a pending limit change AND a pending unenrolment at once.
+        ///      {_applyWeakening} branches on this; {bridgeApplyWeakening} and
+        ///      {bridgeApplyUnenrollController} each refuse to complete the OTHER kind
+        ///      (WrongTransitionKind), so a signed intent for one action can never be
+        ///      used to finish the other.
+        bool isUnenrollment;
     }
 
     mapping(bytes32 => SpendState) private _state;
@@ -374,15 +392,29 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     event WeakeningProposed(bytes32 indexed subjectKey, uint256 newLimit, uint256 validAfter, uint256 expiresAt);
     event WeakeningApplied(bytes32 indexed subjectKey, uint256 newLimit);
     event WeakeningCancelled(bytes32 indexed subjectKey);
+    /// @notice A controller removal (T15) was proposed — delayed, expiring, epoch-bound,
+    ///         exactly like a limit weakening (design doc §6.2).
+    event UnenrollmentProposed(bytes32 indexed subjectKey, uint256 validAfter, uint256 expiresAt);
+    /// @notice A matured, epoch-fresh unenrolment completed: {SpendState.controller} is
+    ///         back to address(0) and Path 1 is available again for this subject.
+    ///         {SpendState.controllerInitialized} is UNCHANGED — still true forever.
+    event ControllerUnenrolled(
+        bytes32 indexed subjectKey,
+        address indexed consumer,
+        address indexed owner,
+        address asset
+    );
 
-    /// @notice Path 1 (owner-direct) was used on a subject that has ever enrolled a
-    ///         controller — {SpendState.controllerInitialized} is sticky and true.
+    /// @notice Path 1 (owner-direct) was used while a controller is currently active
+    ///         for this subject ({SpendState.controller} != address(0)).
     error ControllerPathRequired(address consumer, address owner, address asset);
     /// @notice {bridgeEnrollController} was reached by anyone but {POLICY_CONTROL_BRIDGE},
     ///         or asked to install a controller other than {POLICY_CONTROL_BRIDGE} itself.
     error NotCanonicalBridge(address attempted);
-    /// @notice A subject already has a non-zero controller; enrolment is one-time until
-    ///         a future unenrolment (not yet implemented) returns it to address(0).
+    /// @notice {bridgeEnrollController} was called on a subject that has EVER completed
+    ///         the one-time bootstrap — {SpendState.controllerInitialized} is sticky and
+    ///         permanent, so this reverts even after a later unenrolment (O3, design doc
+    ///         §6.1: a fresh policy instance is required instead of a re-bootstrap).
     error AlreadyEnrolled(address consumer, address owner, address asset);
     /// @notice A weakening was proposed while one is already pending for this subject.
     error WeakeningAlreadyPending(address consumer, address owner, address asset);
@@ -405,6 +437,10 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///         exception for the current legitimate owner choosing to apply an
     ///         old-epoch proposal — a fresh proposal costs one transaction.
     error StaleControlEpoch(address consumer, address owner, address asset, uint64 expected, uint64 provided);
+    /// @notice `setDailyLimit`/`bridgeStrengthenLimit` was called with the subject's
+    ///         CURRENT limit — neither strengthening nor weakening (design doc §3: the
+    ///         `0→0`/`n→n` row is classified "Rejected", not silently accepted).
+    error NoOpTransition(address consumer, address owner, address asset);
 
     // -------------------------------------------------------------------------
     // Subject keying
@@ -466,20 +502,21 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///      {POLICY_CONTROL_DELAY} and must be separately applied via
     ///      {applyWeakening} — see docs/Policy_Control_Authority_Design.md §3-4.
     ///
-    ///      Reverts {ControllerPathRequired} once this subject has EVER enrolled a
-    ///      controller ({SpendState.controllerInitialized}), even if it is later
-    ///      unenrolled — Path 1 does not return once a subject has graduated to the
-    ///      stronger containment model (L9's spirit, applied to authority as well as to
-    ///      the controller value itself).
+    ///      Reverts {ControllerPathRequired} while a controller is currently active for
+    ///      this subject ({SpendState.controller} != address(0)) — Path 1 returns once
+    ///      that controller is unenrolled (design doc §6.2), though a subject that has
+    ///      EVER enrolled can never re-enrol on THIS policy instance
+    ///      ({SpendState.controllerInitialized}, O3).
     function setDailyLimit(address consumer, address asset, uint256 limit) external {
         if (consumer == address(0)) revert ZeroConsumer();
 
         bytes32 key = _subjectKey(consumer, msg.sender, asset);
         SpendState storage s = _state[key];
-        if (s.controllerInitialized) revert ControllerPathRequired(consumer, msg.sender, asset);
+        if (s.controller != address(0)) revert ControllerPathRequired(consumer, msg.sender, asset);
+        if (limit == s.limit) revert NoOpTransition(consumer, msg.sender, asset);
 
         if (_isWeakening(s.limit, limit)) {
-            _proposeWeakening(s, key, consumer, msg.sender, asset, limit, 0);
+            _proposeWeakening(s, key, consumer, msg.sender, asset, limit, 0, false);
             return;
         }
 
@@ -493,7 +530,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     function applyWeakening(address consumer, address asset) external {
         bytes32 key = _subjectKey(consumer, msg.sender, asset);
         SpendState storage s = _state[key];
-        if (s.controllerInitialized) revert ControllerPathRequired(consumer, msg.sender, asset);
+        if (s.controller != address(0)) revert ControllerPathRequired(consumer, msg.sender, asset);
         _applyWeakening(s, key, consumer, msg.sender, asset);
     }
 
@@ -505,7 +542,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     function cancelWeakening(address consumer, address asset) external {
         bytes32 key = _subjectKey(consumer, msg.sender, asset);
         SpendState storage s = _state[key];
-        if (s.controllerInitialized) revert ControllerPathRequired(consumer, msg.sender, asset);
+        if (s.controller != address(0)) revert ControllerPathRequired(consumer, msg.sender, asset);
         if (!s.pending.exists) revert NoWeakeningPending(consumer, msg.sender, asset);
         delete s.pending;
         emit WeakeningCancelled(key);
@@ -531,7 +568,8 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         address owner,
         address asset,
         uint256 newLimit,
-        uint64 boundEpoch
+        uint64 boundEpoch,
+        bool isUnenrollment
     ) private {
         if (s.pending.exists) revert WeakeningAlreadyPending(consumer, owner, asset);
         uint64 validAfter = uint64(block.timestamp + POLICY_CONTROL_DELAY);
@@ -541,17 +579,27 @@ contract DailySpendLimitPolicy is IPolicyEngine {
             validAfter: validAfter,
             expiresAt: expiresAt,
             boundEpoch: boundEpoch,
-            exists: true
+            exists: true,
+            isUnenrollment: isUnenrollment
         });
-        emit WeakeningProposed(key, newLimit, validAfter, expiresAt);
+        if (isUnenrollment) {
+            emit UnenrollmentProposed(key, validAfter, expiresAt);
+        } else {
+            emit WeakeningProposed(key, newLimit, validAfter, expiresAt);
+        }
     }
 
-    /// @dev Shared by Path 1 ({applyWeakening}) and Path 2 ({bridgeApplyWeakening}).
-    ///      Path 1 never binds an epoch, so its caller passes no epoch check here —
-    ///      epoch staleness is enforced entirely at the BRIDGE layer for Path 2, one
-    ///      level above this function (see {PolicyControlBridge._verifyAndConsume});
-    ///      by the time this runs, a Path-2 caller has already proven current-epoch
-    ///      authority, so no separate check is needed here for either path.
+    /// @dev Shared by Path 1 ({applyWeakening}), which never binds an epoch, and Path 2
+    ///      ({bridgeApplyWeakening}, {bridgeApplyUnenrollController}). This function
+    ///      itself performs NO epoch check — but each Path-2 caller performs ONE before
+    ///      reaching here, and it is deliberately a DIFFERENT check from the bridge's
+    ///      own, not a duplicate of it: {PolicyControlBridge._verifyAndConsume} proves
+    ///      the SIGNED INTENT is fresh (rejects a stale-epoch signature); the caller
+    ///      here (one layer above this function) separately compares the STORED
+    ///      proposal's own `boundEpoch` against the epoch the bridge asserts is current
+    ///      (rejects a proposal that matured under a since-superseded epoch, even when
+    ///      applied with a brand-new, validly-signed intent — see D2, which mutation-
+    ///      tests that this second check is not redundant with the first).
     function _applyWeakening(
         SpendState storage s,
         bytes32 key,
@@ -565,8 +613,13 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         if (block.timestamp >= p.expiresAt) revert WeakeningExpired(consumer, owner, asset, p.expiresAt);
 
         delete s.pending;
-        s.limit = p.newLimit;
-        emit WeakeningApplied(key, p.newLimit);
+        if (p.isUnenrollment) {
+            s.controller = address(0);
+            emit ControllerUnenrolled(key, consumer, owner, asset);
+        } else {
+            s.limit = p.newLimit;
+            emit WeakeningApplied(key, p.newLimit);
+        }
     }
 
     /// @notice Delegates (or revokes) authority to book admission spend for ONE subject
@@ -600,7 +653,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
 
         bytes32 key = _subjectKey(consumer, msg.sender, asset);
         SpendState storage s = _state[key];
-        if (s.controllerInitialized) revert ControllerPathRequired(consumer, msg.sender, asset);
+        if (s.controller != address(0)) revert ControllerPathRequired(consumer, msg.sender, asset);
 
         bool previous = _admitter[key][caller];
         if (previous == allowed) return; // idempotent — keeps admitterCount exact
@@ -635,11 +688,13 @@ contract DailySpendLimitPolicy is IPolicyEngine {
     ///      belt-and-suspenders provenance constraint (L9, T14): the value being
     ///      installed is checked, not merely the caller installing it.
     ///
-    ///      PRECONDITION IS `controller == address(0)`, not merely "never enrolled" —
-    ///      this is what would let a FUTURE unenrolment (not yet implemented) return a
-    ///      subject to controller-active use without a fresh, separate bootstrap path.
-    ///      {controllerInitialized} is untouched by unenrolment and continues to block
-    ///      Path 1 regardless.
+    ///      PRECONDITION IS `controllerInitialized == false` (O3), NOT `controller ==
+    ///      address(0)` — the latter would let {bridgeApplyUnenrollController} reopen
+    ///      this one-time bootstrap after a deliberate unenrolment, silently inventing a
+    ///      reset-to-PRISTINE path the design doc never approved (M11's defect class,
+    ///      generalized from "gated on limit==0" to "gated on a resettable field"). A
+    ///      subject that has ever enrolled can never re-enrol on THIS policy instance —
+    ///      a fresh policy instance is the only way back into controller mode (§6.1).
     function bridgeEnrollController(
         address consumer,
         address owner,
@@ -650,7 +705,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
 
         bytes32 key = _subjectKey(consumer, owner, asset);
         SpendState storage s = _state[key];
-        if (s.controller != address(0)) revert AlreadyEnrolled(consumer, owner, asset);
+        if (s.controllerInitialized) revert AlreadyEnrolled(consumer, owner, asset);
 
         s.controller = controller;
         s.controllerInitialized = true;
@@ -671,6 +726,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         bytes32 key = _subjectKey(consumer, owner, asset);
         SpendState storage s = _state[key];
         _requireControllerActive(s, consumer, owner, asset);
+        if (newLimit == s.limit) revert NoOpTransition(consumer, owner, asset);
         if (_isWeakening(s.limit, newLimit)) revert WrongTransitionKind(consumer, owner, asset);
 
         if (newLimit != 0 && s.admitterCount == 0) revert NoAdmitterConfigured(consumer, owner, asset);
@@ -692,13 +748,15 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         _requireControllerActive(s, consumer, owner, asset);
         if (!_isWeakening(s.limit, newLimit)) revert WrongTransitionKind(consumer, owner, asset);
 
-        _proposeWeakening(s, key, consumer, owner, asset, newLimit, epoch);
+        _proposeWeakening(s, key, consumer, owner, asset, newLimit, epoch, false);
     }
 
     /// @notice Bridge-path weakening application. Requires a fresh signed intent bound
     ///         to the CURRENT epoch (design doc §5.5) — the bridge has already verified
     ///         this before calling here; this function additionally re-checks the
     ///         PROPOSAL's own `boundEpoch` against what the bridge asserts is current.
+    ///         Refuses to complete a pending UNENROLMENT (WrongTransitionKind) — a
+    ///         signed apply-weakening intent authorizes only a limit change.
     function bridgeApplyWeakening(
         address consumer,
         address owner,
@@ -708,6 +766,7 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         bytes32 key = _subjectKey(consumer, owner, asset);
         SpendState storage s = _state[key];
         _requireControllerActive(s, consumer, owner, asset);
+        if (s.pending.exists && s.pending.isUnenrollment) revert WrongTransitionKind(consumer, owner, asset);
         if (s.pending.exists && s.pending.boundEpoch != epoch) {
             revert StaleControlEpoch(consumer, owner, asset, epoch, s.pending.boundEpoch);
         }
@@ -716,6 +775,9 @@ contract DailySpendLimitPolicy is IPolicyEngine {
 
     /// @notice Bridge-path cancellation, immediate — strengthening-ward, so no epoch
     ///         check is required beyond the bridge's own current-credential proof.
+    ///         Cancels WHICHEVER kind is pending: cancelling a proposed removal keeps
+    ///         the controller active, exactly as strengthening-ward as cancelling a
+    ///         proposed limit increase, so no kind check is needed here (unlike apply).
     function bridgeCancelWeakening(address consumer, address owner, address asset) external onlyCanonicalBridge {
         bytes32 key = _subjectKey(consumer, owner, asset);
         SpendState storage s = _state[key];
@@ -723,6 +785,45 @@ contract DailySpendLimitPolicy is IPolicyEngine {
         if (!s.pending.exists) revert NoWeakeningPending(consumer, owner, asset);
         delete s.pending;
         emit WeakeningCancelled(key);
+    }
+
+    /// @notice Bridge-path controller-removal proposal (T15) — a WEAKENING: delayed,
+    ///         expiring, epoch-bound, exactly like a limit weakening (design doc §6.2).
+    ///         Shares {SpendState.pending} with limit weakenings, so a subject cannot
+    ///         hold a pending limit change and a pending unenrolment simultaneously.
+    function bridgeProposeUnenrollController(
+        address consumer,
+        address owner,
+        address asset,
+        uint64 epoch
+    ) external onlyCanonicalBridge {
+        bytes32 key = _subjectKey(consumer, owner, asset);
+        SpendState storage s = _state[key];
+        _requireControllerActive(s, consumer, owner, asset);
+        _proposeWeakening(s, key, consumer, owner, asset, 0, epoch, true);
+    }
+
+    /// @notice Bridge-path controller-removal application. Requires a fresh signed
+    ///         intent bound to the CURRENT epoch, exactly like {bridgeApplyWeakening} —
+    ///         including the same second, POLICY-level re-check of the stored
+    ///         proposal's own `boundEpoch` (§9.10: an attacker's pre-recovery proposed
+    ///         removal must not survive a recovery that happens before it matures).
+    ///         Refuses to complete a pending LIMIT weakening (WrongTransitionKind) — a
+    ///         signed apply-unenrol intent authorizes only a controller removal.
+    function bridgeApplyUnenrollController(
+        address consumer,
+        address owner,
+        address asset,
+        uint64 epoch
+    ) external onlyCanonicalBridge {
+        bytes32 key = _subjectKey(consumer, owner, asset);
+        SpendState storage s = _state[key];
+        _requireControllerActive(s, consumer, owner, asset);
+        if (s.pending.exists && !s.pending.isUnenrollment) revert WrongTransitionKind(consumer, owner, asset);
+        if (s.pending.exists && s.pending.boundEpoch != epoch) {
+            revert StaleControlEpoch(consumer, owner, asset, epoch, s.pending.boundEpoch);
+        }
+        _applyWeakening(s, key, consumer, owner, asset);
     }
 
     /// @notice Bridge-path admitter repair (L5): immediate, no delay, regardless of

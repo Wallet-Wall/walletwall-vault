@@ -200,6 +200,12 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     ///      either direction. It is a local storage write, so a broken or reverting
     ///      policy engine can never block credential rotation or account recovery —
     ///      see docs/Policy_Control_Authority_Design.md §10.3.
+    ///
+    ///      Incremented inside `unchecked` alongside `nonce` at both call sites: a
+    ///      `uint64` wraps only after 2^64 rotations/recoveries for one vaultOwner,
+    ///      astronomically beyond any real usage, so this is a bounded-in-practice
+    ///      counter, not a literally-unbounded one, despite the "monotonic" framing
+    ///      above.
     mapping(address => uint64) public policyControlEpoch;
     mapping(address => address[]) public vaultGuardians;
     mapping(address => RecoveryRequest) public recoveryRequests;

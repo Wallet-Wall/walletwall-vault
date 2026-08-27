@@ -784,7 +784,17 @@ describe("Daily-spend admission authority (regression)", function () {
     });
 
     it("G3: disarming to 0 is always permitted — the escape hatch is never blocked", async function () {
+      // Arm first — G2 already proved arming with no admitter is refused; the claim
+      // under test is that DISARMING carries no such liveness precondition.
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
+
+      // Disarming (n -> 0) is a WEAKENING under v0.13.0 — delayed, not immediate — but
+      // neither the proposal nor its eventual application is ever blocked by
+      // NoAdmitterConfigured or any other liveness guard; those gate STRENGTHENING only.
       await expect(dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, 0)).to.not.revert(ethers);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await expect(dailyPolicy.connect(owner).applyWeakening(vaultAddress, NATIVE_ASSET)).to.not.revert(ethers);
       expect(await dailyPolicy.dailyLimit(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
