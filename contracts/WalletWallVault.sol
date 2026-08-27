@@ -187,6 +187,22 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
     mapping(address => VaultOwner) public vaults;
 
+    /// @notice Monotonic counter, per vaultOwner, that any external policy-control
+    ///         authority (see the canonical `PolicyControlBridge`) binds a signed
+    ///         configuration intent to.
+    /// @dev Bumped ONLY by {rotateCredentials} and {executeRecovery} — the two events
+    ///      after which the vault's own credential authority has genuinely changed.
+    ///      Deliberately NOT bumped by {initiateRecovery} or {supportRecovery}: a
+    ///      single malicious guardian opening (or supporting) a request must not be able
+    ///      to invalidate a tenant's in-flight policy-control actions before recovery
+    ///      actually succeeds — see docs/Policy_Control_Authority_Design.md §9.3.
+    ///
+    ///      This vault makes NO call into any policy contract to bump this counter, in
+    ///      either direction. It is a local storage write, so a broken or reverting
+    ///      policy engine can never block credential rotation or account recovery —
+    ///      see docs/Policy_Control_Authority_Design.md §10.3.
+    mapping(address => uint64) public policyControlEpoch;
+
     /// @notice Guardians for each vault.
     mapping(address => address[]) public vaultGuardians;
 
@@ -490,6 +506,9 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         vault.pqPublicKey = recoveredPQPublicKey;
         unchecked {
             vault.nonce++;
+            // Credential authority has genuinely changed: any policy-control action a
+            // stale key signed or proposed must stop binding here.
+            policyControlEpoch[vaultOwner]++;
         }
 
         delete recoveryRequests[vaultOwner];
@@ -633,6 +652,9 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         vault.pqPublicKey = newPQPublicKey;
         unchecked {
             vault.nonce++;
+            // See {policyControlEpoch}: rotation is the other event that must invalidate
+            // any policy-control action the OLD credentials signed or proposed.
+            policyControlEpoch[vaultOwner]++;
         }
 
         // A rotation must invalidate every in-flight authorization. The nonce bump above
