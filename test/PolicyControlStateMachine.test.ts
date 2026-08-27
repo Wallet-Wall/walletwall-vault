@@ -127,6 +127,8 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
   let owner: HardhatEthersSigner;
   let recipient: HardhatEthersSigner;
   let pauser: HardhatEthersSigner;
+  let guardian1: HardhatEthersSigner;
+  let guardian2: HardhatEthersSigner;
   let verifier: MockMLDSAVerifier;
   let vault: WalletWallVault;
   let bridge: PolicyControlBridge;
@@ -248,8 +250,20 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
     });
   }
 
+  /** Runs a full guardian-majority recovery to `newSigner` — the OTHER epoch-bumping
+   *  event, with a distinct (threshold-based, not owner-signed) authorization model
+   *  from {rotateTo}. Requires guardians to already be set. */
+  async function recoverTo(newSigner: HardhatEthersSigner) {
+    const newPq = ethers.hexlify(ethers.randomBytes(1952));
+    await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, newPq);
+    await vault.connect(guardian1).supportRecovery(owner.address);
+    await vault.connect(guardian2).supportRecovery(owner.address);
+    await networkHelpers.time.increase(7 * 24 * 60 * 60);
+    await vault.executeRecovery(owner.address);
+  }
+
   beforeEach(async function () {
-    [admin, owner, recipient, pauser] = await ethers.getSigners();
+    [admin, owner, recipient, pauser, guardian1, guardian2] = await ethers.getSigners();
     const Verifier = await ethers.getContractFactory("MockMLDSAVerifier");
     verifier = await Verifier.deploy();
     await verifier.waitForDeployment();
@@ -892,6 +906,241 @@ describe("DailySpendLimitPolicy — policy-control state machine", function () {
       await expect(
         policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
       ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+  });
+
+  // =====================================================================
+  // H — RECOVERY/ROTATION PROVENANCE AND LIVENESS (§9.1, §9.2, §9.9, §9.11, §9.15)
+  //     Stage 3/4 only proved STALE things fail (D1, D2, G10, G11). This group
+  //     additionally proves the system stays FULLY usable afterward — a fail-safe
+  //     implementation that rejected everything post-rotation would pass every
+  //     existing test here and still be broken.
+  // =====================================================================
+  describe("H — recovery/rotation provenance and liveness", function () {
+    it("H1: a consumer with no vault for the signed owner fails closed — VaultDoesNotExist (§9.11)", async function () {
+      // `recipient` is a real signer but never called createVault on this vault.
+      const domain = await bridgeDomain();
+      const request = {
+        consumer,
+        owner: recipient.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        newLimit: LIMIT,
+        epoch: await vault.policyControlEpoch(recipient.address),
+        nonce: await bridge.controlNonce(consumer, recipient.address),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const ecdsaSignature = await recipient.signTypedData(domain, STRENGTHEN_TYPES, request);
+      const pqSignature = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+      await expect(bridge.strengthenLimit(request, ecdsaSignature, pqSignature)).to.be.revertedWithCustomError(
+        bridge,
+        "VaultDoesNotExist",
+      );
+    });
+
+    it("H2: rotation with NO pending weakening leaves policy state bit-identical (§9.1 CONTROL)", async function () {
+      await enrol();
+      const beforeLimit = await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET);
+      const beforeSpent = await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET);
+      const beforeCount = await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET);
+
+      await rotateTo(recipient);
+
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(beforeLimit);
+      expect(await policy.rollingSpent(consumer, owner.address, NATIVE_ASSET)).to.equal(beforeSpent);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(beforeCount);
+      // The controller is still active — rotation alone never touches it.
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+    });
+
+    it("H3: after rotation, a FRESH weakening proposes and applies normally — liveness survives (§9.1/§9.9)", async function () {
+      await enrol();
+      await rotateTo(recipient);
+
+      // signAndSend hardcodes `owner` as signer; after rotation `owner`'s ecdsaSigner IS
+      // `recipient` now, so the fresh intent must be built and signed manually.
+      const domain = await bridgeDomain();
+      const pq = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      const proposeRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        newLimit: LIMIT * 2n,
+        epoch: await currentEpoch(),
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const proposeSig = await recipient.signTypedData(domain, PROPOSE_WEAKENING_TYPES, proposeRequest);
+      await expect(bridge.proposeWeakening(proposeRequest, proposeSig, pq)).to.not.revert(ethers);
+
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+
+      const applyRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        epoch: await currentEpoch(),
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const applySig = await recipient.signTypedData(domain, APPLY_WEAKENING_TYPES, applyRequest);
+      await expect(bridge.applyWeakening(applyRequest, applySig, pq)).to.not.revert(ethers);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 2n);
+    });
+
+    it("H4: guardian recovery invalidates a pending weakening, and recovered credentials propose+apply their own (§9.2)", async function () {
+      await enrol();
+      await vault.connect(owner).setGuardians([guardian1.address, guardian2.address]);
+      await proposeWeakening(0n); // epoch 0, while credentials are still current
+
+      // Pre-build the (soon-to-be-stale) apply intent BEFORE recovery, exactly as a
+      // real attacker would — signed while `owner`'s key was still genuinely current.
+      const domain = await bridgeDomain();
+      const staleRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        epoch: 0,
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600 * 24 * 30,
+      };
+      const staleSig = await owner.signTypedData(domain, APPLY_WEAKENING_TYPES, staleRequest);
+      const pq = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      await recoverTo(recipient); // guardian-majority — a DIFFERENT auth model from rotation
+
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+
+      await expect(bridge.applyWeakening(staleRequest, staleSig, pq)).to.be.revertedWithCustomError(
+        bridge,
+        "StaleControlEpoch",
+      );
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+
+      // The attacker's proposal is still sitting there (untouched, merely unreachable) —
+      // the recovered owner cancels it first, exactly as they would in practice, then
+      // proposes and applies their OWN fresh weakening normally.
+      const cancelRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        epoch: await currentEpoch(),
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const cancelSig = await recipient.signTypedData(domain, CANCEL_WEAKENING_TYPES, cancelRequest);
+      await bridge.cancelWeakening(cancelRequest, cancelSig, pq);
+
+      const proposeRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        newLimit: 0n,
+        epoch: await currentEpoch(),
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const proposeSig = await recipient.signTypedData(domain, PROPOSE_WEAKENING_TYPES, proposeRequest);
+      await bridge.proposeWeakening(proposeRequest, proposeSig, pq);
+
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      const applyRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        epoch: await currentEpoch(),
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const applySig = await recipient.signTypedData(domain, APPLY_WEAKENING_TYPES, applyRequest);
+      await bridge.applyWeakening(applyRequest, applySig, pq);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+    });
+
+    it("H5: recovery while PRISTINE — recovered credentials CAN enrol; a pre-recovery signature cannot (§9.15)", async function () {
+      // No enrol() anywhere above in this test — the subject is genuinely PRISTINE.
+      await vault.connect(owner).setGuardians([guardian1.address, guardian2.address]);
+
+      const domain = await bridgeDomain();
+      const staleRequest = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        controller: await bridge.getAddress(),
+        epoch: 0,
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600 * 24 * 30,
+      };
+      const staleSig = await owner.signTypedData(domain, ENROLL_TYPES, staleRequest);
+      const pq = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      await recoverTo(recipient); // epoch -> 1
+
+      await expect(bridge.enrollController(staleRequest, staleSig, pq)).to.be.revertedWithCustomError(
+        bridge,
+        "StaleControlEpoch",
+      );
+
+      // The RECOVERED credentials CAN enrol immediately, bound to the NEW epoch.
+      const freshRequest = { ...staleRequest, epoch: await currentEpoch() };
+      const freshSig = await recipient.signTypedData(domain, ENROLL_TYPES, freshRequest);
+      await expect(bridge.enrollController(freshRequest, freshSig, pq)).to.not.revert(ethers);
+
+      // Path 1 is dead now.
+      await expect(
+        policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT / 2n),
+      ).to.be.revertedWithCustomError(policy, "ControllerPathRequired");
+
+      // One-time: a second enrolment, freshly signed by the CURRENT signer, still reverts.
+      const secondRequest = { ...freshRequest, nonce: await nextNonce() };
+      const secondSig = await recipient.signTypedData(domain, ENROLL_TYPES, secondRequest);
+      await expect(bridge.enrollController(secondRequest, secondSig, pq)).to.be.revertedWithCustomError(
+        policy,
+        "AlreadyEnrolled",
+      );
+    });
+
+    it("H6: enrolling before compromise is discovered still leaves the bridge fully usable after recovery (§9.9 full sequence)", async function () {
+      await vault.connect(owner).setGuardians([guardian1.address, guardian2.address]);
+      await enrol(); // the "attacker" enrols the canonical bridge — harmless, §6.2
+
+      await recoverTo(recipient); // epoch -> 1
+
+      const domain = await bridgeDomain();
+      const pq = ethers.hexlify(ethers.concat(["0x01", ethers.randomBytes(3308)]));
+
+      // The attacker's stale credentials can no longer do anything.
+      const staleStrengthen = {
+        consumer,
+        owner: owner.address,
+        policy: await policy.getAddress(),
+        asset: NATIVE_ASSET,
+        newLimit: LIMIT / 2n,
+        epoch: 0,
+        nonce: await nextNonce(),
+        deadline: (await networkHelpers.time.latest()) + 3600,
+      };
+      const staleSig = await owner.signTypedData(domain, STRENGTHEN_TYPES, staleStrengthen);
+      await expect(bridge.strengthenLimit(staleStrengthen, staleSig, pq)).to.be.revertedWithCustomError(
+        bridge,
+        "StaleControlEpoch",
+      );
+
+      // The recovered credentials CAN administer policy through the SAME bridge, normally.
+      const freshStrengthen = { ...staleStrengthen, epoch: await currentEpoch() };
+      const freshSig = await recipient.signTypedData(domain, STRENGTHEN_TYPES, freshStrengthen);
+      await expect(bridge.strengthenLimit(freshStrengthen, freshSig, pq)).to.not.revert(ethers);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT / 2n);
     });
   });
 });
