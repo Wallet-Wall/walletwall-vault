@@ -170,8 +170,12 @@ describe("DailySpendLimitPolicy — window and scope semantics (investigation)",
     verifier = await Verifier.deploy();
     await verifier.waitForDeployment();
 
+    const Bridge = await ethers.getContractFactory("PolicyControlBridge");
+    const bridge = await Bridge.deploy(admin.address);
+    await bridge.waitForDeployment();
+
     const Policy = await ethers.getContractFactory("DailySpendLimitPolicy");
-    policy = await Policy.deploy();
+    policy = await Policy.deploy(await bridge.getAddress());
     await policy.waitForDeployment();
   });
 

@@ -136,7 +136,10 @@ describe("Daily-spend admission authority (regression)", function () {
     vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await verifier.getAddress());
     vaultAddress = await vault.getAddress();
     composite = await (await ethers.getContractFactory("CompositePolicyEngine", admin)).deploy();
-    dailyPolicy = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
+    const bridge = await (await ethers.getContractFactory("PolicyControlBridge", admin)).deploy(admin.address);
+    dailyPolicy = await (
+      await ethers.getContractFactory("DailySpendLimitPolicy", admin)
+    ).deploy(await bridge.getAddress());
     poisoner = await (await ethers.getContractFactory("DailySpendPoisonerMock", attacker)).deploy();
 
     await vault.connect(owner).createVault(owner.address, PQ_KEY, 2);
@@ -741,7 +744,12 @@ describe("Daily-spend admission authority (regression)", function () {
     });
 
     it("F9: STANDALONE use survives — a self-delegating owner may drive check() directly", async function () {
-      const standalone = await (await ethers.getContractFactory("DailySpendLimitPolicy", admin)).deploy();
+      const standaloneBridge = await (
+        await ethers.getContractFactory("PolicyControlBridge", admin)
+      ).deploy(admin.address);
+      const standalone = await (
+        await ethers.getContractFactory("DailySpendLimitPolicy", admin)
+      ).deploy(await standaloneBridge.getAddress());
       await standalone.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
       await standalone.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
 
@@ -776,7 +784,17 @@ describe("Daily-spend admission authority (regression)", function () {
     });
 
     it("G3: disarming to 0 is always permitted — the escape hatch is never blocked", async function () {
+      // Arm first — G2 already proved arming with no admitter is refused; the claim
+      // under test is that DISARMING carries no such liveness precondition.
+      await dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, owner.address, true);
+      await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, LIMIT);
+
+      // Disarming (n -> 0) is a WEAKENING under v0.13.0 — delayed, not immediate — but
+      // neither the proposal nor its eventual application is ever blocked by
+      // NoAdmitterConfigured or any other liveness guard; those gate STRENGTHENING only.
       await expect(dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, 0)).to.not.revert(ethers);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await expect(dailyPolicy.connect(owner).applyWeakening(vaultAddress, NATIVE_ASSET)).to.not.revert(ethers);
       expect(await dailyPolicy.dailyLimit(vaultAddress, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
@@ -802,8 +820,13 @@ describe("Daily-spend admission authority (regression)", function () {
         .to.be.revertedWithCustomError(dailyPolicy, "LastAdmitterWhileArmed")
         .withArgs(vaultAddress, owner.address, NATIVE_ASSET);
 
-      // Disarm first, then revoke — the documented order.
+      // Disarm first, then revoke — the documented order. Under v0.13.0's
+      // policy-control authority, disarming (n -> 0) is a delayed WEAKENING, not an
+      // immediate change — it must mature and be separately applied before the
+      // subsequent revoke sees limit == 0.
       await dailyPolicy.connect(owner).setDailyLimit(vaultAddress, NATIVE_ASSET, 0);
+      await networkHelpers.time.increase(GOVERNANCE_DELAY);
+      await dailyPolicy.connect(owner).applyWeakening(vaultAddress, NATIVE_ASSET);
       await expect(
         dailyPolicy.connect(owner).setAdmitter(vaultAddress, NATIVE_ASSET, await vault.getAddress(), false),
       ).to.not.revert(ethers);

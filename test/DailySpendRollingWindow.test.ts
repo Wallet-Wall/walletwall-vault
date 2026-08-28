@@ -81,8 +81,12 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
     verifier = await Verifier.deploy();
     await verifier.waitForDeployment();
 
+    const Bridge = await ethers.getContractFactory("PolicyControlBridge");
+    const bridge = await Bridge.deploy(admin.address);
+    await bridge.waitForDeployment();
+
     const Policy = await ethers.getContractFactory("DailySpendLimitPolicy");
-    policy = await Policy.deploy();
+    policy = await Policy.deploy(await bridge.getAddress());
     await policy.waitForDeployment();
 
     const Vault = await ethers.getContractFactory("WalletWallVault", admin);
@@ -476,16 +480,23 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
     // test/DailySpendAdmissionAuthority.test.ts B5 pins that an owner reaching for
     // "effectively unlimited" may still set type(uint256).max.
     let consumer: string;
-    const subj = () => ({ consumer, owner: owner.address, asset: NATIVE_ASSET });
+    // A DISTINCT asset from the outer beforeEach's MAX_ASSET, so this subject is
+    // genuinely fresh (limit defaults to 0) rather than already armed at LIMIT. Under
+    // v0.13.0's policy-control authority, LIMIT -> MaxUint256 would be a RAISE — a
+    // weakening, delayed rather than immediate — which is not what this block tests;
+    // 0 -> MaxUint256 (arming from unrestricted) stays immediate, preserving this
+    // block's actual intent: that MaxUint256 is settable as a limit at all.
+    const MAX_ASSET = ethers.Wallet.createRandom().address;
+    const subj = () => ({ consumer, owner: owner.address, asset: MAX_ASSET });
 
     beforeEach(async function () {
       consumer = await vault.getAddress();
-      await policy.connect(owner).setAdmitter(consumer, NATIVE_ASSET, owner.address, true);
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, ethers.MaxUint256);
+      await policy.connect(owner).setAdmitter(consumer, MAX_ASSET, owner.address, true);
+      await policy.connect(owner).setDailyLimit(consumer, MAX_ASSET, ethers.MaxUint256);
     });
 
     it("D2a: an armed limit of type(uint256).max is still settable", async function () {
-      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(ethers.MaxUint256);
+      expect(await policy.dailyLimit(consumer, owner.address, MAX_ASSET)).to.equal(ethers.MaxUint256);
     });
 
     it("D2b: amount == type(uint256).max is DENIED with its own reason, not a panic", async function () {
@@ -499,8 +510,8 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       expect(reason).to.equal("amount exceeds bookable range");
 
       await expect(policy.connect(owner).check(subj(), recipient.address, ethers.MaxUint256, 0n)).to.not.revert(ethers);
-      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
-      expect(await rollingSpent()).to.equal(0n);
+      expect(await policy.activeEntryCount(consumer, owner.address, MAX_ASSET)).to.equal(0n);
+      expect(await policy.rollingSpent(consumer, owner.address, MAX_ASSET)).to.equal(0n);
     });
 
     it("D2c: exactly MAX_BOOKABLE_AMOUNT is admitted and booked as one entry", async function () {
@@ -511,8 +522,8 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       expect(allowed).to.equal(true);
 
       await policy.connect(owner).check(subj(), recipient.address, max, 0n);
-      expect(await rollingSpent()).to.equal(max);
-      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(1n);
+      expect(await policy.rollingSpent(consumer, owner.address, MAX_ASSET)).to.equal(max);
+      expect(await policy.activeEntryCount(consumer, owner.address, MAX_ASSET)).to.equal(1n);
     });
 
     it("D2d: a second MAX_BOOKABLE_AMOUNT in the SAME second appends rather than overflowing", async function () {
@@ -522,21 +533,21 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       const Batch = await ethers.getContractFactory("DailySpendBatchAdmitterMock");
       const batch = await Batch.deploy(await policy.getAddress());
       await batch.waitForDeployment();
-      await policy.connect(owner).setAdmitter(consumer, NATIVE_ASSET, await batch.getAddress(), true);
+      await policy.connect(owner).setAdmitter(consumer, MAX_ASSET, await batch.getAddress(), true);
 
       const max = await policy.MAX_BOOKABLE_AMOUNT();
       const at = (await networkHelpers.time.latest()) + 10;
       await networkHelpers.time.setNextBlockTimestamp(at);
-      await batch.admitBatchAs(consumer, owner.address, NATIVE_ASSET, [max, max]);
+      await batch.admitBatchAs(consumer, owner.address, MAX_ASSET, [max, max]);
 
-      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(2n);
-      expect(await rollingSpent()).to.equal(max * 2n);
+      expect(await policy.activeEntryCount(consumer, owner.address, MAX_ASSET)).to.equal(2n);
+      expect(await policy.rollingSpent(consumer, owner.address, MAX_ASSET)).to.equal(max * 2n);
 
       // They still expire as one instant, together.
       await networkHelpers.time.increaseTo(at + WINDOW - 1);
-      expect(await rollingSpent()).to.equal(max * 2n);
+      expect(await policy.rollingSpent(consumer, owner.address, MAX_ASSET)).to.equal(max * 2n);
       await networkHelpers.time.increaseTo(at + WINDOW);
-      expect(await rollingSpent()).to.equal(0n);
+      expect(await policy.rollingSpent(consumer, owner.address, MAX_ASSET)).to.equal(0n);
     });
   });
 
@@ -546,17 +557,33 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
   describe("E — raising, lowering, disarming and re-arming", function () {
     const consumerOf = async () => vault.getAddress();
 
-    it("E1: raising the limit grants headroom immediately and leaves history intact", async function () {
+    it("E1: raising the limit is a WEAKENING under v0.13.0 — delayed, not immediate — and never touches the ledger", async function () {
+      // Historical note: prior to the policy-control authority lane (PR #171/#172),
+      // setDailyLimit applied every value immediately. Raising a limit is now
+      // deliberately delayed (POLICY_CONTROL_DELAY, 2 days — longer than WINDOW, so by
+      // the time a raise matures the triggering spend has already aged out on its own
+      // clock regardless) — this is the feature the lane exists to add, not a
+      // regression. See docs/Policy_Control_Authority_Design.md §3.
+      const POLICY_CONTROL_DELAY = 2 * 24 * 60 * 60;
       const consumer = await consumerOf();
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(owner, LIMIT, 0, t0);
       expect(await allowance()).to.equal(0n);
 
       await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT * 3n);
-      expect(await allowance()).to.equal(LIMIT * 2n);
-      // The spend is still on the ledger and still expires on its ORIGINAL schedule.
+      // Not yet applied — no immediate headroom, and proposing touched no ledger state.
+      expect(await allowance()).to.equal(0n);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
       expect(await rollingSpent()).to.equal(LIMIT);
-      await networkHelpers.time.increaseTo(t0 + WINDOW);
+
+      // POLICY_CONTROL_DELAY (2 days) exceeds WINDOW (24h), so by maturity the original
+      // spend has already aged out on ITS OWN schedule — proving that fact, and that
+      // applying the raise does not additionally touch the ledger beyond ordinary expiry.
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      expect(await rollingSpent()).to.equal(0n);
+      await policy.connect(owner).applyWeakening(consumer, NATIVE_ASSET);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT * 3n);
+      expect(await allowance()).to.equal(LIMIT * 3n);
       expect(await rollingSpent()).to.equal(0n);
     });
 
@@ -584,28 +611,54 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       // event and clear the ledger with it. Then `setDailyLimit(0)` followed by
       // `setDailyLimit(L)` would be a one-transaction allowance refill, defeating the
       // cap entirely for anyone who can call the setter.
+      //
+      // Under v0.13.0 that exact one-transaction attack is structurally impossible
+      // regardless of timing: disarming is a WEAKENING, so `setDailyLimit(0)` only ever
+      // PROPOSES, and a same-transaction `setDailyLimit(LIMIT)` collides with that
+      // pending proposal (WeakeningAlreadyPending) rather than instantly re-arming. A
+      // genuine round trip can only span the full POLICY_CONTROL_DELAY (2 days), by
+      // which point WINDOW (24h) has already elapsed and the ledger has decayed on its
+      // OWN schedule regardless (E1's finding, mirrored downward) — this test proves
+      // both layers, not just the timing coincidence.
+      const POLICY_CONTROL_DELAY = 2 * 24 * 60 * 60;
       const consumer = await consumerOf();
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(owner, LIMIT, 0, t0);
       expect(await allowance()).to.equal(0n);
 
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, 0);
-      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT);
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, 0); // propose disarm only
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(LIMIT);
+      expect(await rollingSpent()).to.equal(LIMIT); // untouched by proposing
 
-      // History survived the round trip untouched.
-      expect(await rollingSpent()).to.equal(LIMIT);
-      expect(await allowance()).to.equal(0n);
-      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(1n);
-      await expect(withdrawAt(owner, 1n, 1, t0 + HOUR))
-        .to.be.revertedWithCustomError(vault, "PolicyViolation")
-        .withArgs("daily limit exceeded");
+      // The attack this test guards against cannot even be ATTEMPTED: proposing does
+      // not mutate `limit`, so a same-instant "re-arm" to LIMIT is asking for the
+      // CURRENT (still unchanged) stored value — rejected as a no-op (§3) before the
+      // pending-weakening machinery is even consulted.
+      await expect(policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT)).to.be.revertedWithCustomError(
+        policy,
+        "NoOpTransition",
+      );
 
-      // It still expires when it always would have, not a window after re-arming.
-      await networkHelpers.time.increaseTo(t0 + WINDOW);
+      // A genuine round trip spans the full delay — the ledger has already decayed on
+      // ITS OWN schedule by then, never the setter's.
+      await networkHelpers.time.increase(POLICY_CONTROL_DELAY);
+      expect(await rollingSpent()).to.equal(0n);
+      await policy.connect(owner).applyWeakening(consumer, NATIVE_ASSET);
+      expect(await policy.dailyLimit(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
+
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT); // re-arm, 0 -> LIMIT, immediate
+
+      // History survived the whole round trip untouched.
+      expect(await rollingSpent()).to.equal(0n);
       expect(await allowance()).to.equal(LIMIT);
+      expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(0n);
     });
 
     it("E4: setDailyLimit touches the ledger in no way at all", async function () {
+      // Under v0.13.0 only one weakening may be pending at a time (WeakeningAlreadyPending),
+      // so this walks STRENGTHENING values only (each applies immediately, no pending
+      // created) plus ONE weakening proposal — still enough to prove the claim: neither
+      // an immediate strengthen nor a delayed-proposal creation ever touches the ledger.
       const consumer = await consumerOf();
       const t0 = (await networkHelpers.time.latest()) + 10;
       await withdrawAt(owner, ethers.parseEther("0.4"), 0, t0);
@@ -614,10 +667,16 @@ describe("DailySpendLimitPolicy — true rolling 24h enforcement", function () {
       const beforeSpent = await rollingSpent();
       const beforeOldest = await policy.oldestActiveEntry(consumer, owner.address, NATIVE_ASSET);
 
-      for (const l of [LIMIT * 5n, 0n, LIMIT / 2n, LIMIT]) {
+      // Strengthening values (n -> smaller, all immediate — no pending collision).
+      for (const l of [LIMIT / 2n, LIMIT / 4n]) {
         await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, l);
+        expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(beforeCount);
+        expect(await rollingSpent()).to.equal(beforeSpent);
+        expect(await policy.oldestActiveEntry(consumer, owner.address, NATIVE_ASSET)).to.deep.equal(beforeOldest);
       }
 
+      // One weakening proposal (creates a PENDING record, distinct from the ledger).
+      await policy.connect(owner).setDailyLimit(consumer, NATIVE_ASSET, LIMIT);
       expect(await policy.activeEntryCount(consumer, owner.address, NATIVE_ASSET)).to.equal(beforeCount);
       expect(await rollingSpent()).to.equal(beforeSpent);
       expect(await policy.oldestActiveEntry(consumer, owner.address, NATIVE_ASSET)).to.deep.equal(beforeOldest);

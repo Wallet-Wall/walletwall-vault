@@ -582,8 +582,11 @@ describe("StablecoinVaultSimulator", function () {
       const AllowlistFactory = await ethers.getContractFactory("RecipientAllowlistPolicy");
       allowlistPolicy = await AllowlistFactory.deploy();
 
+      const BridgeFactory = await ethers.getContractFactory("PolicyControlBridge");
+      const bridge = await BridgeFactory.deploy(owner.address);
+
       const DailyFactory = await ethers.getContractFactory("DailySpendLimitPolicy");
-      dailyPolicy = await DailyFactory.deploy();
+      dailyPolicy = await DailyFactory.deploy(await bridge.getAddress());
 
       const SanctionsFactory = await ethers.getContractFactory("SanctionsListPolicy");
       sanctionsPolicy = await SanctionsFactory.deploy();

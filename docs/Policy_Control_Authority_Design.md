@@ -164,8 +164,19 @@ with `chainId` and the **bridge address** supplied by the EIP-712 domain separat
 **Proposal: one EIP-712 struct (and therefore one typehash) per action**, rather than a
 single struct with a union `value/target` field:
 
+> **Erratum (found during v0.13.0 implementation):** the `EnrollController` sketch below
+> omits `asset`, contradicting the "every authenticated configuration intent binds...
+> asset" opening line of this section and the field list every OTHER struct here
+> carries. `DailySpendLimitPolicy.SpendState` is keyed by the full `(consumer, owner,
+> asset)` subject, so an `asset`-less enrolment would be the one action in the whole
+> lane granting BROADER authority than its own subject accounting is scoped to.
+> Corrected in the shipped implementation to include `asset`, matching every other
+> struct and the opening line — this is a doc-sketch omission, not a deliberate
+> narrower scope.
+
 ```solidity
-struct EnrollController { address consumer; address owner; address policy; address controller;
+struct EnrollController { address consumer; address owner; address policy; address asset;
+                          address controller;
                           uint64 epoch; uint256 nonce; uint256 deadline; }
 struct SetLimit         { address consumer; address owner; address policy; address asset;
                           uint256 newLimit; uint64 epoch; uint256 nonce; uint256 deadline; }
@@ -573,6 +584,37 @@ THEN   IMMEDIATE — liveness repair, not weakening; withdrawals resume without 
 CONTROL  removing the last admitter while armed still reverts LastAdmitterWhileArmed
   AND    arming with zero admitters still reverts NoAdmitterConfigured
 ```
+
+> **Erratum (found during v0.13.0 implementation):** as literally written, this scenario
+> is not executable against `CompositePolicyEngine`'s actual composition semantics.
+> `CompositePolicyEngine.check()` is a `for` loop over its modules that returns `(false,
+> why)` on the FIRST denying module (§6.2's own file, `check()`) — an AND, fail-closed
+> composition. If a composite is the vault's engine, wraps `DailySpendLimitPolicy` as
+> one module, and gains an always-denying (or reverting) SIBLING module, the composite
+> itself refuses the withdrawal regardless of what `DailySpendLimitPolicy` — or its
+> admitter list — would decide; `DailySpendLimitPolicy.check()` may not even be reached.
+> Widening `DailySpendLimitPolicy`'s OWN admitter list cannot repair a denial that
+> happens one layer above it, in a DIFFERENT contract's module list. The two REAL
+> repairs for a composite-level denial — the composite owner evicting the denying
+> module via `proposeRemoveModule`/`applyRemoveModule`, or the vault owner replacing
+> the vault's engine via `proposePolicyEngine`/`applyPolicyEngine` — are BOTH
+> timelocked, not "IMMEDIATE... without DELAY" as this scenario requires.
+>
+> The strongest truthful, executable property in the same spirit (L5: admitter loss is
+> repairable, immediately, without weakening) is scoped to what
+> `setAdmitter`/`bridgeSetAdmitter` actually govern — `DailySpendLimitPolicy`'s OWN
+> admitter list — rather than to denial happening in a different contract entirely:
+> `check()` authorizes `msg.sender` (`_admitter[key][msg.sender]`), and for a real vault
+> withdrawal `msg.sender` IS the vault contract itself, since `WalletWallVault` calls
+> `policyEngine.check(...)` directly. The property this test proves is therefore: when
+> the CURRENT engine-path caller (the vault) becomes unauthorized, controller-authenticated
+> admitter repair — REAUTHORIZING THAT SAME CALLER — restores it immediately, with no
+> delay, and the CONTROL clauses (`LastAdmitterWhileArmed`, `NoAdmitterConfigured`) hold
+> exactly as written. This is deliberately narrower than "add a second, direct admitter":
+> widening the admitter list with an address that is NOT actually on the vault → engine →
+> DailySpend call path (e.g. the owner EOA, which never itself calls `check()`) proves
+> only that the new address could call `check()` if it chose to — not that withdrawals
+> through the real call path resume. See `PolicyControlStateMachine.test.ts` F4.
 
 Justification: adding an admitter does not raise the cap, and confers on an attacker no
 capability the existing admitter did not already give them. **Strength is a property of the

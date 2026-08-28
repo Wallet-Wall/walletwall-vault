@@ -57,8 +57,11 @@ describe("Policy Engine", function () {
     vault = await Vault.deploy(await verifier.getAddress());
     vaultAddress = await vault.getAddress();
 
+    const Bridge = await ethers.getContractFactory("PolicyControlBridge");
+    const bridge = await Bridge.deploy(owner.address);
+
     const DailyPolicy = await ethers.getContractFactory("DailySpendLimitPolicy");
-    dailyPolicy = await DailyPolicy.deploy();
+    dailyPolicy = await DailyPolicy.deploy(await bridge.getAddress());
 
     const AllowlistPolicy = await ethers.getContractFactory("RecipientAllowlistPolicy");
     allowlistPolicy = await AllowlistPolicy.deploy();
