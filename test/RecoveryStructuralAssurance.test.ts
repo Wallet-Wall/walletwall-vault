@@ -5,10 +5,26 @@ import { findContract, findFunctionDefinition, loadSourceAst } from "./helpers/s
 import { extractFunctionBody, readContractSource, stripComments } from "./helpers/solidityStructure";
 
 // Structural assurance pinned to FUNCTION NAMES, not line numbers — a future edit
-// that reorders or reformats the file cannot silently defeat these checks, but an
-// edit that adds a new external call, a new guardian-write path, or a new
-// rotation->recovery coupling will. See docs/Guardian_Authority_Design.md §9.1
-// L-I, §14.2 regression #2, and §10.1 item 3.
+// that reorders or reformats the file cannot silently defeat these checks. See
+// docs/Guardian_Authority_Design.md §9.1 L-I, §14.2 regression #2, and §10.1 item 3.
+//
+// EXACT SCOPE OF THE PROOF. These checks pin the external-call and
+// vaultGuardians-mutation FORMS currently used by these contracts, and the
+// mutation classes exercised below:
+//   - The external-call analyzer (astExternalCallAnalysis.ts) covers contract/
+//     interface member calls and address-typed low-level call forms (.call,
+//     .delegatecall, .staticcall, .send, .transfer).
+//   - The storage analyzer (astStorageMutationAnalysis.ts) covers direct
+//     mutations (assignment, delete, push/pop) and local storage aliases,
+//     including transitive local alias chains.
+// If future production code introduces a currently unsupported dispatch or
+// aliasing form — including a direct external library call
+// (`Library.externalFunc()` without `using X for Y`) or a storage reference
+// passed as a function PARAMETER into another internal function — the
+// analyzer must be extended and given a mutation control before that new form
+// receives proof credit. Neither form exists in either production contract
+// today; see each helper module's own doc comment for the exact disclosed
+// limitations.
 //
 // AST-backed, not regex-backed: an earlier version of this file searched function
 // bodies for a finite marker list (`"pqVerifier"`, `".call("`, ...) and matched
