@@ -345,6 +345,10 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error DuplicateGuardian(address guardian);
     error GuardianIsOwner();
     error RecoveryAlreadyExists();
+    /// @notice The existing request has already reached the guardian majority
+    ///         required to execute; only execution or owner cancellation may
+    ///         clear it, never replacement by a single guardian.
+    error RecoveryAlreadyApproved();
     error PendingWithdrawalExists();
     error NoPendingWithdrawal();
     error NotPendingWithdrawalOwner(address expectedOwner, address caller);
@@ -384,12 +388,20 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      *      rejected because the majority threshold is derived from the array length
      *      while each address can only support a recovery once; an unchecked
      *      duplicate would raise the threshold above the number of distinct
-     *      supporters and permanently brick recovery.
+     *      supporters and permanently brick recovery. If an armed
+     *      {treasuryQuorumThreshold} for this vault would exceed the NEW guardian
+     *      count, the shrink is rejected outright (see {setTreasuryQuorumThreshold})
+     *      rather than silently stranding the threshold — lower the threshold first.
      */
     function setGuardians(address[] calldata guardians) external {
         if (!vaults[msg.sender].exists) revert VaultDoesNotExist();
         if (guardians.length == 0) revert InvalidGuardianSet();
         if (guardians.length > MAX_GUARDIANS) revert TooManyGuardians(guardians.length, MAX_GUARDIANS);
+
+        uint256 armedTreasuryThreshold = treasuryQuorumThreshold[msg.sender];
+        if (armedTreasuryThreshold > guardians.length) {
+            revert TooManyGuardians(armedTreasuryThreshold, guardians.length);
+        }
 
         for (uint256 i = 0; i < guardians.length; i++) {
             address guardian = guardians[i];
@@ -423,6 +435,16 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     }
 
     /**
+     * @dev The guardian majority required to execute (or, per H4-A, to protect from
+     *      replacement) a recovery request for `vaultOwner`, derived live from the
+     *      CURRENT guardian set. Shared by {initiateRecovery} and {executeRecovery}
+     *      so the two can never disagree about what majority a request needs.
+     */
+    function _requiredRecoverySupports(address vaultOwner) internal view returns (uint256) {
+        return (vaultGuardians[vaultOwner].length / 2) + 1;
+    }
+
+    /**
      * @notice Initiates a recovery request for a vault.
      * @dev Must be called by a guardian of the vault to prevent arbitrary DOS.
      */
@@ -439,10 +461,20 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
         // A live request may not be overwritten. Once its execution window has
         // elapsed, an under-supported request is replaceable so a single guardian
-        // cannot permanently deny recovery when the owner cannot cancel it.
+        // cannot permanently deny recovery when the owner cannot cancel it — but
+        // (H4-A) once the request has already reached the guardian majority
+        // {executeRecovery} would accept, it is protected exactly like a live one:
+        // only execution or owner cancellation may clear it. Reusing the identical
+        // majority formula {executeRecovery} applies keeps "already live" and
+        // "already approved" from ever disagreeing about the same request.
         RecoveryRequest storage existingRequest = recoveryRequests[vaultOwner];
-        if (existingRequest.exists && block.timestamp < existingRequest.executeAfter) {
-            revert RecoveryAlreadyExists();
+        if (existingRequest.exists) {
+            if (block.timestamp < existingRequest.executeAfter) {
+                revert RecoveryAlreadyExists();
+            }
+            if (existingRequest.supportCount >= _requiredRecoverySupports(vaultOwner)) {
+                revert RecoveryAlreadyApproved();
+            }
         }
         _validateCredentials(vault.mode, newEcdsaSigner, newPQPublicKey);
 
@@ -504,7 +536,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         if (!request.exists) revert RecoveryDoesNotExist();
         if (block.timestamp < request.executeAfter) revert RecoveryNotReady();
 
-        uint256 required = (vaultGuardians[vaultOwner].length / 2) + 1;
+        uint256 required = _requiredRecoverySupports(vaultOwner);
         if (request.supportCount < required) revert InsufficientSupports();
 
         VaultOwner storage vault = vaults[vaultOwner];
@@ -668,10 +700,20 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         // see {policyControlEpoch}'s own doc.
         policyControlEpoch[vaultOwner]++;
 
-        // A rotation must invalidate every in-flight authorization. The nonce bump above
-        // voids signed immediate withdrawals, but a queued large withdrawal is tracked
-        // separately and finalizes without re-checking the nonce — so it is cancelled and
-        // its reservation refunded here, mirroring {executeRecovery}.
+        // A rotation must invalidate every in-flight authorization THAT THE OLD CREDENTIALS
+        // SIGNED. The nonce bump above voids signed immediate withdrawals, but a queued large
+        // withdrawal is tracked separately and finalizes without re-checking the nonce — so it
+        // is cancelled and its reservation refunded here, mirroring {executeRecovery}.
+        //
+        // Deliberately excluded: a pending guardian recovery request ({recoveryRequests}) is
+        // NOT touched here. Guardian recovery is not an authorization derived from (c)/(d)
+        // credential authority — it is the documented remedy for LOST OR COMPROMISED
+        // credentials, and a successful rotation does not prove the credentials were not
+        // compromised: key theft is copy theft, so a thief holding a copied key can rotate
+        // too. Cancelling recovery on rotation would hand that thief a standing, pre-signable,
+        // front-runnable veto over the exact mechanism this contract designates as the remedy
+        // for their own theft. See docs/Guardian_Authority_Design.md §10 for the full
+        // adversarial analysis.
         PendingWithdrawal storage pending = pendingWithdrawals[vaultOwner];
         if (pending.exists) {
             bytes32 operationId = pending.operationId;
@@ -1308,7 +1350,11 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
      *         queued by this vault can be finalized.
      * @dev A threshold of 0 disables treasury quorum for this vault (default).
      *      The threshold must not exceed the current guardian count so that quorum
-     *      is always achievable with the existing guardian set.
+     *      is always achievable with the existing guardian set. This invariant is
+     *      preserved on the other side too: {setGuardians} rejects a shrink that
+     *      would leave an already-armed threshold above the new guardian count,
+     *      rather than silently stranding it (see docs/Guardian_Authority_Design.md
+     *      §9.1 L-D).
      *      Vault-owner-controlled: each vault owner manages their own treasury security.
      */
     function setTreasuryQuorumThreshold(uint256 threshold) external {

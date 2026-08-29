@@ -103,6 +103,79 @@ describe("Treasury withdrawal quorum", function () {
   });
 
   // ---------------------------------------------------------------------------
+  // L-D — setGuardians shrink vs an armed treasury quorum threshold
+  // (docs/Guardian_Authority_Design.md §9.1 L-D / MEDIUM-1). setTreasuryQuorumThreshold
+  // already rejects a threshold above the CURRENT guardian count; setGuardians must
+  // reject the symmetric case — a shrink that would leave an ALREADY-ARMED threshold
+  // unsatisfiable — rather than silently stranding it (finalizeWithdrawal's gate 1
+  // would then be permanently unmet for that vault).
+  // ---------------------------------------------------------------------------
+
+  describe("setGuardians shrink vs armed treasury quorum threshold (L-D)", function () {
+    it("rejects a shrink that would leave an armed threshold unsatisfiable", async function () {
+      const [, , , , , , , , guardian4] = await ethers.getSigners();
+      await vault
+        .connect(owner)
+        .setGuardians([guardian1.address, guardian2.address, guardian3.address, guardian4.address]);
+      await vault.connect(owner).setTreasuryQuorumThreshold(3);
+
+      await expect(vault.connect(owner).setGuardians([guardian1.address, guardian2.address]))
+        .to.be.revertedWithCustomError(vault, "TooManyGuardians")
+        .withArgs(3, 2);
+
+      // Rejected — the threshold and the OLD guardian set are both untouched.
+      expect(await vault.treasuryQuorumThreshold(owner.address)).to.equal(3);
+      expect(await vault.vaultGuardians(owner.address, 3)).to.equal(guardian4.address);
+    });
+
+    it("allows a shrink that still satisfies the armed threshold exactly", async function () {
+      const [, , , , , , , , guardian4] = await ethers.getSigners();
+      await vault
+        .connect(owner)
+        .setGuardians([guardian1.address, guardian2.address, guardian3.address, guardian4.address]);
+      await vault.connect(owner).setTreasuryQuorumThreshold(3);
+
+      await expect(
+        vault.connect(owner).setGuardians([guardian1.address, guardian2.address, guardian3.address]),
+      ).to.emit(vault, "GuardiansSet");
+      expect(await vault.treasuryQuorumThreshold(owner.address)).to.equal(3);
+    });
+
+    it("allows an unrestricted shrink when treasury quorum is disabled (threshold=0)", async function () {
+      await vault.connect(owner).setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      // threshold left at its default 0 — disabled.
+
+      await expect(vault.connect(owner).setGuardians([guardian1.address])).to.emit(vault, "GuardiansSet");
+      expect(await vault.treasuryQuorumThreshold(owner.address)).to.equal(0);
+    });
+
+    it("allows growing the guardian set regardless of the armed threshold", async function () {
+      const [, , , , , , , , guardian4] = await ethers.getSigners();
+      await vault.connect(owner).setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(owner).setTreasuryQuorumThreshold(2);
+
+      await expect(
+        vault.connect(owner).setGuardians([guardian1.address, guardian2.address, guardian3.address, guardian4.address]),
+      ).to.emit(vault, "GuardiansSet");
+      expect(await vault.treasuryQuorumThreshold(owner.address)).to.equal(2);
+    });
+
+    it("the owner can still shrink below the armed threshold by lowering it first — no authority is lost, only the sequencing changes", async function () {
+      const [, , , , , , , , guardian4] = await ethers.getSigners();
+      await vault
+        .connect(owner)
+        .setGuardians([guardian1.address, guardian2.address, guardian3.address, guardian4.address]);
+      await vault.connect(owner).setTreasuryQuorumThreshold(3);
+
+      await vault.connect(owner).setTreasuryQuorumThreshold(2);
+      await expect(vault.connect(owner).setGuardians([guardian1.address, guardian2.address])).to.emit(
+        vault,
+        "GuardiansSet",
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------------
   // Core quorum gating on finalizeWithdrawal
   // ---------------------------------------------------------------------------
 

@@ -227,9 +227,24 @@ distinct trust boundary that vault owners must understand:
   threshold above the number of distinct supporters and permanently brick recovery.
 - **Recovery request integrity.** An active recovery request cannot be overwritten before
   its `executeAfter` timestamp, preventing a guardian from resetting accumulated supports
-  or substituting credentials. An under-supported request becomes replaceable after that
-  window so a single guardian cannot permanently deny recovery when the owner is unavailable
-  to call `cancelRecovery`.
+  or substituting credentials. Once that window elapses, a request that has NOT yet
+  reached the guardian majority becomes replaceable, so a single guardian cannot
+  permanently deny recovery when the owner is unavailable to call `cancelRecovery` — but a
+  request that HAS already reached the majority required to execute is protected exactly
+  like a live one: only execution or owner cancellation can clear it, never replacement by
+  a single guardian (`RecoveryAlreadyApproved`). This closes the gap where a lone
+  dissenting guardian could otherwise erase a fully-supported, matured recovery forever.
+- **Rotation does not cancel a pending recovery.** A successful `rotateCredentials` leaves
+  any pending guardian recovery request, and its accumulated supports, completely
+  untouched. This is intentional, not an oversight: guardian recovery exists specifically
+  to remediate LOST OR COMPROMISED credentials, and a successful rotation only proves the
+  current keys were not lost — it does not prove they were never compromised, since key
+  theft is copy theft and a thief holding a copied key can rotate too. Cancelling recovery
+  on rotation would hand such a thief a standing, pre-signable, front-runnable veto over
+  the exact mechanism this contract designates as the remedy for their own theft. The
+  residual this creates — a stale-but-quorate recovery can still overwrite a legitimate,
+  fresh rotation — is accepted and documented here rather than "fixed"; see
+  docs/Guardian_Authority_Design.md §10 for the full analysis.
 - **Credential validation.** Recovery and signed credential rotation reject a zero ECDSA
   signer when ECDSA authorization is active and reject an empty PQ public key when PQ
   authorization is active. Valid credentials for the vault's configured mode are unchanged.
