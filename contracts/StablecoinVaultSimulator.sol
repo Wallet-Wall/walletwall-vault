@@ -312,6 +312,10 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     error DuplicateGuardian(address guardian);
     error GuardianIsOwner();
     error RecoveryAlreadyExists();
+    /// @notice The existing request has already reached the guardian majority
+    ///         required to execute; only execution or owner cancellation may
+    ///         clear it, never replacement by a single guardian.
+    error RecoveryAlreadyApproved();
     error PendingWithdrawalExists();
     error NoPendingWithdrawal();
     error NotPendingWithdrawalOwner(address expectedOwner, address caller);
@@ -347,10 +351,19 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     // Recovery mechanism
     // -----------------------------------------------------------------------
 
+    /// @dev If an armed {treasuryQuorumThreshold} for this vault would exceed the
+    ///      NEW guardian count, the shrink is rejected outright (see
+    ///      {setTreasuryQuorumThreshold}) rather than silently stranding the
+    ///      threshold — lower the threshold first.
     function setGuardians(address[] calldata guardians) external {
         if (!vaults[msg.sender].exists) revert VaultDoesNotExist();
         if (guardians.length == 0) revert InvalidGuardianSet();
         if (guardians.length > MAX_GUARDIANS) revert TooManyGuardians(guardians.length, MAX_GUARDIANS);
+
+        uint256 armedTreasuryThreshold = treasuryQuorumThreshold[msg.sender];
+        if (armedTreasuryThreshold > guardians.length) {
+            revert TooManyGuardians(armedTreasuryThreshold, guardians.length);
+        }
 
         for (uint256 i = 0; i < guardians.length; i++) {
             address guardian = guardians[i];
@@ -380,6 +393,16 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         emit GuardiansSet(msg.sender, guardians);
     }
 
+    /**
+     * @dev The guardian majority required to execute (or, per H4-A, to protect from
+     *      replacement) a recovery request for `vaultOwner`, derived live from the
+     *      CURRENT guardian set. Shared by {initiateRecovery} and {executeRecovery}
+     *      so the two can never disagree about what majority a request needs.
+     */
+    function _requiredRecoverySupports(address vaultOwner) internal view returns (uint256) {
+        return (vaultGuardians[vaultOwner].length / 2) + 1;
+    }
+
     function initiateRecovery(
         address vaultOwner,
         address newEcdsaSigner,
@@ -391,9 +414,20 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         address[] storage guardians = vaultGuardians[vaultOwner];
         if (guardians.length == 0) revert InvalidGuardianSet();
 
+        // A live request may not be overwritten. Once its execution window has
+        // elapsed, an under-supported request is replaceable so a single guardian
+        // cannot permanently deny recovery when the owner cannot cancel it — but
+        // (H4-A) once the request has already reached the guardian majority
+        // {executeRecovery} would accept, it is protected exactly like a live one:
+        // only execution or owner cancellation may clear it.
         RecoveryRequest storage existingRequest = recoveryRequests[vaultOwner];
-        if (existingRequest.exists && block.timestamp < existingRequest.executeAfter) {
-            revert RecoveryAlreadyExists();
+        if (existingRequest.exists) {
+            if (block.timestamp < existingRequest.executeAfter) {
+                revert RecoveryAlreadyExists();
+            }
+            if (existingRequest.supportCount >= _requiredRecoverySupports(vaultOwner)) {
+                revert RecoveryAlreadyApproved();
+            }
         }
         _validateCredentials(vault.mode, newEcdsaSigner, newPQPublicKey);
 
@@ -447,7 +481,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (!request.exists) revert RecoveryDoesNotExist();
         if (block.timestamp < request.executeAfter) revert RecoveryNotReady();
 
-        uint256 required = (vaultGuardians[vaultOwner].length / 2) + 1;
+        uint256 required = _requiredRecoverySupports(vaultOwner);
         if (request.supportCount < required) revert InsufficientSupports();
 
         VaultOwner storage vault = vaults[vaultOwner];

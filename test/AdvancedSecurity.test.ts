@@ -216,6 +216,225 @@ describe("Advanced Security (Phase 2)", function () {
         vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, "0x"),
       ).to.be.revertedWithCustomError(vault, "EmptyPQPublicKey");
     });
+
+    // -----------------------------------------------------------------------
+    // H4-A — majority-preserving replacement (docs/Guardian_Authority_Design.md §11).
+    // Once a matured request's supportCount reaches the live guardian majority, no
+    // guardian — including a would-be replacer — may erase it via initiateRecovery.
+    // Under-supported matured requests remain replaceable: this is the liveness
+    // property HIGH-4's fix must not regress.
+    // -----------------------------------------------------------------------
+
+    it("H4-1: a quorum-approved matured request cannot be erased by a lone dissenter, and remains executable", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address); // supportCount = 2 = required(3)
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(
+        vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyApproved");
+
+      const request = await vault.recoveryRequests(owner.address);
+      expect(request.newEcdsaSigner).to.equal(newSigner.address);
+      expect(request.supportCount).to.equal(2);
+      expect(request.exists).to.be.true;
+
+      await expect(vault.executeRecovery(owner.address)).to.not.revert(ethers);
+      expect((await vault.getVault(owner.address)).ecdsaSigner).to.equal(newSigner.address);
+    });
+
+    it("H4-2/H4-13: an under-supported matured request remains replaceable, and stale support does not leak into the replacement", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address); // supportCount = 1 < required(2)
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await vault.connect(guardian2).initiateRecovery(owner.address, other.address, NEW_PQ_KEY);
+      const replaced = await vault.recoveryRequests(owner.address);
+      expect(replaced.newEcdsaSigner).to.equal(other.address);
+      expect(replaced.supportCount).to.equal(0);
+
+      // guardian1 supported R1; if that flag had leaked into R2 this would revert AlreadySupported.
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      expect((await vault.recoveryRequests(owner.address)).supportCount).to.equal(1);
+    });
+
+    it("H4-3: exact odd threshold (n=3, required=2) — support==required forbids replacement", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(
+        vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyApproved");
+    });
+
+    it("H4-4: below odd threshold (n=3, support=1) — replacement remains allowed after maturity", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY)).to.not.revert(
+        ethers,
+      );
+    });
+
+    it("H4-5: exact even threshold (n=4, required=3) — support==required forbids replacement", async function () {
+      const [, , , , , , guardian4] = await ethers.getSigners();
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address, guardian4.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+      await vault.connect(guardian3).supportRecovery(owner.address); // supportCount = 3 = required(4)
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(
+        vault.connect(guardian4).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyApproved");
+    });
+
+    it("H4-6: below even threshold (n=4, support=2) — replacement remains allowed after maturity", async function () {
+      const [, , , , , , guardian4] = await ethers.getSigners();
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address, guardian4.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address); // supportCount = 2 < required(3)
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(vault.connect(guardian4).initiateRecovery(owner.address, other.address, NEW_PQ_KEY)).to.not.revert(
+        ethers,
+      );
+    });
+
+    it("H4-7: n=1 — the sole guardian's own quorum-approved request cannot be replaced, even by themselves", async function () {
+      await vault.setGuardians([guardian1.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address); // supportCount = 1 = required(1)
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(
+        vault.connect(guardian1).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyApproved");
+    });
+
+    it("H4-8: MAX_GUARDIANS (n=32, required=17) pins majority arithmetic and replacement at max size", async function () {
+      const max = Number(await vault.MAX_GUARDIANS());
+      expect(max).to.equal(32);
+      const required = Math.floor(max / 2) + 1;
+      expect(required).to.equal(17);
+
+      // `required` guardians must actually sign transactions; the remainder only need
+      // to occupy a guardian slot, matching the existing MAX_GUARDIANS fixture pattern.
+      const signing = [];
+      for (let i = 0; i < required + 1; i++) {
+        const w = ethers.Wallet.createRandom().connect(ethers.provider);
+        await owner.sendTransaction({ to: w.address, value: ethers.parseEther("1") });
+        signing.push(w);
+      }
+      const silent = Array.from({ length: max - signing.length }, () => ethers.Wallet.createRandom().address);
+      const guardians = [...signing.map((w) => w.address), ...silent];
+
+      await vault.setGuardians(guardians);
+      await vault.connect(signing[0]).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      for (let i = 0; i < required; i++) {
+        await vault.connect(signing[i]).supportRecovery(owner.address);
+      }
+      expect((await vault.recoveryRequests(owner.address)).supportCount).to.equal(required);
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      // signing[required] is a plain, still-in-set guardian attempting to replace.
+      await expect(
+        vault.connect(signing[required]).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyApproved");
+    });
+
+    it("distinguishes revert reasons: quorum reached WHILE STILL LIVE reverts RecoveryAlreadyExists, never RecoveryAlreadyApproved", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address); // quorum reached, but NOT yet matured
+
+      await expect(
+        vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyExists");
+    });
+
+    it("H4-9: at exactly the maturity instant, a quorum-approved request cannot be replaced and remains executable", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+
+      const executeAfter = (await vault.recoveryRequests(owner.address)).executeAfter;
+      await networkHelpers.time.increaseTo(executeAfter);
+
+      await expect(
+        vault.connect(guardian3).initiateRecovery(owner.address, other.address, NEW_PQ_KEY),
+      ).to.be.revertedWithCustomError(vault, "RecoveryAlreadyApproved");
+      await expect(vault.executeRecovery(owner.address)).to.not.revert(ethers);
+    });
+
+    it("H4-10: a malicious majority remains capable of executing recovery — H4-A adds no minority veto", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, other.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await expect(vault.executeRecovery(owner.address)).to.not.revert(ethers);
+      expect((await vault.getVault(owner.address)).ecdsaSigner).to.equal(other.address);
+    });
+
+    it("H4-11: owner cancellation still erases a quorum-approved matured request", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      await vault.cancelRecovery();
+      expect((await vault.recoveryRequests(owner.address)).exists).to.be.false;
+    });
+  });
+
+  describe("Guardian-Set Mutation vs Pending Recovery (L-F′, H4-12)", function () {
+    it("a quorum-approved matured request is invalidated by setGuardians, and its support does not survive into a fresh request", async function () {
+      await vault.setGuardians([guardian1.address, guardian2.address, guardian3.address]);
+      await vault.connect(guardian1).initiateRecovery(owner.address, newSigner.address, NEW_PQ_KEY);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+
+      // A recovery authorized under one guardian constituency must not survive into a
+      // different one — even though it already reached the OLD constituency's majority.
+      await vault.setGuardians([guardian1.address, guardian2.address]);
+      expect((await vault.recoveryRequests(owner.address)).exists).to.be.false;
+
+      // A fresh recovery under the NEW constituency starts clean: no leaked support,
+      // and the new 2-of-2 majority applies, not the old 2-of-3.
+      await vault.connect(guardian1).initiateRecovery(owner.address, other.address, NEW_PQ_KEY);
+      expect((await vault.recoveryRequests(owner.address)).supportCount).to.equal(0);
+      await vault.connect(guardian1).supportRecovery(owner.address);
+      await vault.connect(guardian2).supportRecovery(owner.address);
+      await networkHelpers.time.increase(7 * 24 * 60 * 60);
+      await expect(vault.executeRecovery(owner.address)).to.not.revert(ethers);
+      expect((await vault.getVault(owner.address)).ecdsaSigner).to.equal(other.address);
+    });
   });
 
   describe("Secure Credential Rotation", function () {

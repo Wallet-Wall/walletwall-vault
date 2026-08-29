@@ -50,19 +50,26 @@ jobs:
           ignore-compile: true
           fail-on: none
           sarif: slither-results.sarif
-          # --filter-paths excludes ONLY the two adversarial test-fixture files.
-          # Both deliberately violate the shapes Slither checks for, because that
+          # --filter-paths excludes ONLY the three adversarial test-fixture files.
+          # Each deliberately violates the shapes Slither checks for, because that
           # violation IS the test: PolicyRevalidationMocks omits `is IPolicyEngine`
           # so a non-view `revalidate` override compiles at all (proving finalization
-          # cannot mutate policy state under STATICCALL), and DailySpendAdmissionMocks
-          # impersonates a vault it was never authorized as. Making either conform to
-          # the detectors would delete the coverage. Scoped per-file, NOT to
+          # cannot mutate policy state under STATICCALL), DailySpendAdmissionMocks
+          # impersonates a vault it was never authorized as, and AssuranceCallMutants
+          # (test/RecoveryStructuralAssurance.test.ts's mutation-control fixtures)
+          # reproduces arbitrary external calls, controlled-delegatecall, and
+          # unchecked/arbitrary-destination low-level calls on PURPOSE — the AST
+          # checker under test must flag every one of them, so the fixture has to
+          # contain them. Making any of these conform to the detectors would delete
+          # the coverage each exists to provide. Scoped per-file, NOT to
           # contracts/mocks/ as a whole: MockMLDSAVerifier and MockUSDC also live
           # there, are really deployed to Sepolia, carry reproducibility evidence,
-          # and must stay under analysis.
+          # and must stay under analysis. AssuranceGuardianWriteMutants.sol (the
+          # sibling guardian-write mutation fixture) is NOT excluded — Slither
+          # raises no findings on it, so it stays under analysis too.
           slither-args: >-
             --compile-force-framework hardhat --exclude-dependencies
-            --filter-paths "contracts/mocks/PolicyRevalidationMocks.sol,contracts/mocks/DailySpendAdmissionMocks.sol"
+            --filter-paths "contracts/mocks/PolicyRevalidationMocks.sol,contracts/mocks/DailySpendAdmissionMocks.sol,contracts/mocks/AssuranceCallMutants.sol"
 
       - name: Upload Slither SARIF
         if: ${{ always() && hashFiles('slither-results.sarif') != '' }}
