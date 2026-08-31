@@ -2,10 +2,30 @@
 
 > **RESEARCH PROTOTYPE. NOT AUDITED. TESTNET / LOCAL DEMO ONLY. DO NOT USE WITH REAL FUNDS.**
 
-**Status: v4 — architecture locked for a future implementation lane.** This pull request changes
-no production contract. Sections labelled **CURRENT** describe `origin/main` at the anchor below;
-sections labelled **TARGET** are proposed behavior and are not yet deployed. The executable design
-model is an assurance artifact, not evidence that the production contracts already implement v4.
+**Status: v5 — architecture retained, emergency semantics and assurance model REMEDIATED after
+independent adversarial review.** This pull request changes no production contract. Sections
+labelled **CURRENT** describe `origin/main` at the anchor below; sections labelled **TARGET** are
+proposed behavior and are not yet deployed. The executable design model is an assurance artifact,
+not evidence that the production contracts already implement v5.
+
+**What changed from v4, and why.** Independent review raised three findings. All three are
+sustained; none refutes the selected architecture, and two of them make the design materially
+stricter:
+
+1. **BLOCKER — the emergency pause broke recovery-authority symmetry.** v4 froze
+   recovery *cancellation* permanently while leaving local *execution* live, with no expiry. §7.1a
+   re-adjudicates the emergency state and makes **H2 a hard prerequisite (§11)**, reversing v4's
+   deferral.
+2. **ASSURANCE BLOCKER — the model collapsed controller authority state into vault operational
+   state**, so controller/vault divergence was undetectable. §4.8 adds
+   `I-GUARDIAN-STATE-SYNCHRONY` and the model now carries two independent states (§13).
+3. **The stable owner retained a treasury-cardinality veto** over guardian-set shrinkage. §7.4a
+   adopts **T2** and §4.1 is restated accordingly.
+
+Review also surfaced a **live, pre-existing defect in production source that v4 claimed to have
+closed**: `renounceOwnership()` is inherited unmodified, so `pause()` + `renounceOwnership()` is an
+irreversible cross-tenant freeze of all recovery. See §9a. HIGH-6 is **no longer claimed closed
+unconditionally** (§9b).
 
 **Anchor:** `aaba4d2024932ba5fdf131fd9bba5020345af5fb` (`origin/main`, tree
 `fbfcdb1638b29d4512cccf2cfdf27f82f972455b`, package `0.13.2`). This is the merge commit for
@@ -159,13 +179,51 @@ canonical controller is malicious or exploitable, the vault cannot independently
 guardian signatures and the invariant fails. We reduce that risk by giving the controller no owner,
 no upgrade key, no set-changing admin path, and only an immutable one-way pauser.
 
-### 4.2 `I-RECOVERY-NONVETO`
+### 4.2 `I-RECOVERY-NONVETO` — RESTATED IN v5
 
-> The stable owner, spending credentials, contract admin, an individual guardian, and a guardian
-> minority cannot erase a recovery request. Cancellation requires `q(G_e)` current guardians and
-> is bound to the exact current request, epoch, nonce, consumer, owner, and deadline.
+v4's wording was: *"The stable owner, spending credentials, contract admin, an individual guardian,
+and a guardian minority cannot erase a recovery request… This closes HIGH-6."* The clause naming the
+**contract admin** was false as written, and the closure claim was too broad. Restated:
 
-This closes HIGH-6 without pretending cancellation is never useful.
+> **Erasure.** The stable owner, spending credentials, an individual guardian, and a guardian
+> minority cannot erase a recovery request. Cancellation requires `q(G_e)` current guardians and is
+> bound to the exact current request, epoch, nonce, consumer, owner, and deadline.
+>
+> **Obstruction — explicitly NOT claimed.** This invariant says nothing about principals who can
+> *prevent* a recovery from executing without erasing it. Two such principals exist and are named
+> in §9a: the **contract admin** (via `pause()`, and irreversibly when combined with
+> `renounceOwnership()`), and the **emergency pauser** (over guardian administration). Neither is
+> introduced by this design; both are recorded rather than closed.
+
+The v4 sentence "This closes HIGH-6" is **struck**. See §9b for the scoped disposition.
+
+### 4.8 `I-GUARDIAN-STATE-SYNCHRONY` — NEW in v5
+
+The controller holds *authority* state; the consumer holds *operational* state. They are distinct
+objects that a PUSH transition must move together.
+
+> Outside an in-progress atomic transition, for every `(consumer, owner)` subject the controller's
+> authoritative guardian generation and set are identical to the consumer's operational guardian
+> generation and set, and no successful transition can leave them divergent.
+
+Two things this invariant deliberately does **not** claim:
+
+- It is not a claim that the **consumer verifies roster content**. The consumer verifies generation
+  **ordinality only** (§7.6). It never hashes, stores, or compares the roster itself. A defective
+  controller that advances the generation correctly while pushing a wrong roster is **not** detected
+  by the consumer, and that is inside the accepted controller-code TCB (§15.2).
+- It is not a claim that divergence is impossible under a malicious controller. It is a claim about
+  *well-formed transitions*, enforced by EVM transaction atomicity plus the controller being the
+  sole writer.
+
+### 4.9 `I-RECOVERY-TERMINATION` — NEW in v5, and a prerequisite
+
+> Every quorum-approved recovery request has a bounded lifetime. It leaves the system by execution,
+> by `q(G_e)` cancellation, or by expiry — and expiry requires no principal to act.
+
+This is the invariant that discharges the §7.1a blocker. Without it, the emergency state contains a
+request that is simultaneously unexecutable, uncancellable and undeletable. It is why **H2 is
+promoted from deferred to prerequisite** (§11).
 
 ### 4.3 `I-APPROVED-REQUEST-PRESERVATION`
 
@@ -336,6 +394,108 @@ The controller itself has no owner or upgrade surface. Its only privileged addre
 replacement, and recovery-cancellation actions. It cannot unpause, change a set, cancel a recovery,
 or affect the vault's local recovery functions.
 
+The pauser must be authenticated. v4's model let *any* caller pause; that is a defect of the model,
+not of the design, and §13 now pins the caller check.
+
+### 7.1a Emergency state — RE-ADJUDICATED (Finding 1)
+
+**The v4 defect.** v4 asserted at §9 that the pauser "cannot… stop local recovery", and presented
+that as a *safety* property. Composed with the rest of v4 it is the opposite. A quorum-approved
+request `R` blocks set replacement (§4.3); a permanently paused controller freezes cancellation;
+rotation preserves `R`; local execution stays live; and v4 deferred expiry. So `R` becomes
+**executable indefinitely and uncancellable forever**. v4's separability argument for H2 — that the
+quorum can always cancel — is simply false after retirement. No line of v4 composed these facts;
+this was an absence, not a disagreement.
+
+**Candidates considered.**
+
+| | Shape | Verdict |
+| --- | --- | --- |
+| **P1** | Pause freezes set mutation but leaves quorum cancellation live forever | **REJECT.** Closes the deadlock, but leaves a defective controller — the exact thing the pause exists to contain — with a permanent, repeatable capability to erase honest recoveries. That reproduces HIGH-6's own shape with the controller substituted for the tenant EOA. |
+| **P2** | Separate mutation-pause and cancellation-pause capabilities | **VIABLE, not selected.** Costs zero consumer bytes and buys incident-response granularity, but it is an ops/key-management refinement layered on whichever semantics win. Recorded in §15.3. |
+| **P3** | Pause everything, including local execution | **REJECT.** Restores symmetry mechanically by handing the pauser a permanent veto over honest recovery execution, and duplicates a veto the contract admin already holds. It trades the blocker for a worse one. |
+| **P4** | Temporary / recoverable pause, or guardian-quorum unpause | **REJECT.** Un-retiring must itself be authorized. Guardian-quorum unpause requires authenticating a quorum against a roster — which is the retired controller's job, or else roster state in the consumer. Circular, or expensive, and it removes the fail-closed property that motivates a one-way pause. |
+| **P5** | Keep the pause uniform over **all** controller-authorized writes, and make H2 a hard prerequisite | **SELECTED.** |
+
+**Why P5.** The pause must remove a defective controller's *cancellation* capability, or it does not
+contain the failure it exists for. That necessarily creates an uncancellable approved request — so
+the request must instead be bounded by something that requires no principal to act. That is
+`I-RECOVERY-TERMINATION` (§4.9), i.e. H2. H2 is therefore **not** separable, and v4's argument that
+it was is withdrawn.
+
+**Conditions. P5 is sound only with all of these.**
+
+- **C1 — H2 ships in this lane**, before or with the controller. On expiry the request and its
+  supports are deleted locally, with zero external calls.
+- **C2 — the expiry bound is WALL-CLOCK, and deliberately does NOT suspend during vault pause.**
+  An earlier draft of this remediation proposed suspending the clock while `executeRecovery` is
+  pause-blocked, to stop the admin running out a tenant's window. That is **withdrawn**, for two
+  reasons. First, it does not buy what it appears to: the admin can already block execution
+  indefinitely (§9a), so protecting the window from the admin protects nothing the admin cannot
+  deny by other means. Second, it is actively harmful — combined with §9a's irreversible pause it
+  converts a frozen request into a **permanently undeletable** one, removing the last exit. A
+  wall-clock bound is also strictly cheaper: no per-request accrual state.
+- **C3 — expiry binds `recoveryId` and guardian epoch**, and deletes supports with the request.
+- **C4 — expiry applies to quorum-approved requests.** An under-supported matured request already
+  has a local exit: `initiateRecovery` may replace it under the PR #176 rules.
+- **C5 — no principal may extend, renew, or reset the window** other than by a fresh
+  `initiateRecovery`, which restarts support accumulation and is therefore not a veto.
+- **C6 — `renounceOwnership()` must be disabled in both consumers.** See §9a. Without C6 the
+  blocker is **not** resolved: pause-then-renounce is an irreversible cross-tenant recovery freeze
+  that no controller-side emergency design can reach. Measured cost: **+8 bytes** (§14).
+
+**The two mandatory questions, answered.**
+
+> **Does any emergency principal gain an indefinite veto over honest recovery?**
+
+**Yes, and it must be accepted explicitly rather than passed silently.** The `EMERGENCY_PAUSER`
+permanently freezes *guardian administration*: a subject with zero guardians can never obtain a set,
+and a subject whose set is lost can never rotate it. This is a veto over the *ability to establish or
+repair recovery capability*, not over executing an existing request. It is the fail-closed price of
+a one-way pause and is booked in §15.2.
+
+The larger veto is **not** the pauser's and is **not** introduced here: the contract admin's
+(§9a). It is pre-existing and out of this lane's scope to fix, but it is now named.
+
+> **Can any approved recovery become permanently executable but permanently uncancellable?**
+
+**No — conditional on C1, C2 and C6.** With C1+C2 the request expires on a wall clock that no
+principal can suspend. Without C6, **yes**: `pause()` + `renounceOwnership()` freezes execution
+forever while the request persists, and that state is reachable in two transactions by a principal
+the vault owner did not choose.
+
+### 7.1b Controller and consumer state machine
+
+`RETIRED` is a controller state; `VAULT-PAUSED` is an orthogonal consumer state. They compose.
+
+| | NORMAL | VAULT-PAUSED | RETIRED | RETIRED + VAULT-PAUSED |
+| --- | --- | --- | --- | --- |
+| bootstrap | quorum-free, owner, zero-set only | blocked for vaults created after the pause (`createVault` is `whenNotPaused`); allowed for existing ones | **frozen forever** | frozen forever |
+| set replacement | `q(G_e)` via controller | allowed (`setGuardians` is pause-immune) | **frozen forever** | frozen forever |
+| recovery cancellation | `q(G_e)` via controller | allowed | **frozen forever** | frozen forever |
+| recovery initiation | guardian, local | blocked | allowed, local | blocked |
+| recovery support | guardian, local | allowed (pause-immune) | allowed, local | allowed |
+| recovery execution | permissionless relay, local | blocked | allowed, local | blocked |
+| **expiry (H2, C1–C5)** | wall-clock, automatic | **runs — does not suspend (C2)** | wall-clock, automatic | **runs — this is the exit that C2 preserves** |
+| guardian epoch | advances on each authorized replacement | unchanged by pause | frozen | frozen |
+| set / recovery nonces | advance on consumption | unchanged by pause | frozen | frozen |
+
+The bottom-right cell is the whole point of C2. Under the withdrawn suspend-clock variant that cell
+read "frozen", and the request was undeletable forever.
+
+### 7.1c Retirement is consumer end-of-life for new subjects
+
+`createVault` is gated only by the vault pause and never by controller state — and
+`I-RECOVERY-LOCALITY` forbids the consumer from reading controller state at all. So after
+retirement, new vaults keep being created on that consumer, each with zero guardians, each with
+bootstrap frozen forever, and therefore **each structurally incapable of ever having recovery**.
+There is no on-chain gate for this and adding one would violate `I-RECOVERY-LOCALITY`.
+
+This is stated as a locked operational consequence rather than repaired in the contract:
+**controller retirement makes that consumer deployment end-of-life for new subjects.** Existing
+subjects retain local recovery with their existing sets. New subjects must be directed to a fresh
+vNext cohort. This is consistent with "no in-place adoption" (§10) and with vNext-only deployment.
+
 ### 7.2 Controller state
 
 For each `(consumer, vaultOwner)` subject, the controller stores:
@@ -432,21 +592,104 @@ The implementation lane should keep the consumer changes equivalent to:
 
 ```text
 immutable GUARDIAN_AUTHORITY_CONTROLLER
-controllerSetGuardians(owner, newGuardians)
+mapping(address => uint64) guardianGeneration          // v5: M-SYNC-3
+controllerSetGuardians(owner, expectedCurrentGeneration, newGuardians, newTreasuryThreshold)
 controllerCancelRecovery(owner)
+renounceOwnership() -> revert                          // v5: C6
+setGuardians(newGuardians)                             // v5: bootstrap-only, zero-set only
+// v5: the owner-only cancelRecovery() selector is REMOVED
 ```
 
-Both entrypoints check `msg.sender` against the immutable controller. The vault repeats set-shape,
-treasury-threshold, support-clearing, and request-preservation checks rather than trusting the
-controller to preserve local invariants.
+Both controller entrypoints check `msg.sender` against the immutable controller. The vault repeats
+set-shape, support-clearing, and request-preservation checks rather than trusting the controller to
+preserve local invariants.
 
 `controllerSetGuardians` behavior is:
 
+- generation mismatch: revert `GuardianGenerationMismatch` **before any state write** (§7.6a);
 - no request: replace the set;
 - under-supported request: delete it and clear old supports before replacing the set;
 - quorum-approved request, whether live or matured: revert `RecoveryAlreadyApproved`;
 - pending treasury withdrawal: clear old-set approvals exactly as CURRENT behavior does;
-- armed treasury threshold above the proposed new count: revert.
+- `newTreasuryThreshold > |G'|`: revert (§7.4a).
+
+**Error precedence is normative, not incidental.** The order above is the order the consumer must
+check in, and the model pins it. v4 listed these as an unordered bullet list while the model checked
+them in a different order; for a request that is both approved and below a proposed threshold the
+two disagreed about which error surfaces.
+
+### 7.6a M-SYNC-3 — what the consumer can and cannot detect
+
+v4's consumer stored no guardian state at all, because moving "epoch, nonce and roster authority
+entirely into the controller" is what took the measured consumer cost from +890 down to +406. A
+consumer with no generation state **cannot detect a stale PUSH** — it can only check
+`msg.sender`. v4 nonetheless spoke as though the boundary was verified. That gap is Finding 2's
+M-SYNC-3.
+
+Three options were priced by compilation (§14), not estimated:
+
+| Option | Consumer detects | Δ vs the minimized surface |
+| --- | --- | --- |
+| atomic provenance only | nothing; sole-writer + EVM atomicity is the entire argument | 0 |
+| **generation ordinality (SELECTED)** | a PUSH whose `expectedCurrentGeneration` does not equal the consumer's own | **+265** |
+| generation + roster hash | additionally, roster-content divergence | +507 |
+
+**Selected: generation ordinality.** One `uint64` per subject and one calldata argument. The
+consumer verifies that the controller's view of the current generation matches its own, and
+increments. It does **not** hash or compare the roster — the design must not claim a check the
+consumer does not perform, which is exactly what §4.8 says in those words.
+
+Honest statement of what this buys: it detects **replay and ordering** faults on the PUSH channel —
+a re-sent, reordered, or stale-generation push — including a controller that advanced its own state
+without pushing, and a consumer that advanced without the controller. It does **not** defend against
+a controller that keeps generation consistent while pushing a wrong roster. That remains TCB.
+
+The roster-hash option was rejected on cost, not on soundness: at +507 it takes vault headroom to
+307 bytes, well under the repository's own 600-byte stop threshold, and it defends only against a
+defective controller that is already trusted for far more.
+
+### 7.4a Treasury-threshold authority — RE-ADJUDICATED (Finding 3)
+
+**The v4 defect.** `treasuryQuorumThreshold` is stable-owner-controlled with no timelock, no
+guardian consent and no pause gate, and `setGuardians` rejects any new set smaller than the armed
+threshold. So an owner who sets `guardians = 5, threshold = 5` **permanently prevents the guardian
+quorum from consolidating to 3**. The owner cannot choose guardian *identities* post-bootstrap, but
+retains a ratcheting veto over guardian *cardinality* — which v4's §9 row summarised as
+"HIGH-1/HIGH-6 closed post-bootstrap" without qualification.
+
+| | Shape | Verdict |
+| --- | --- | --- |
+| **T1** | Accept the residual veto, narrow the invariant | **VIABLE.** Honest, zero-cost, and same-cardinality identity replacement provably remains available. But it leaves the last owner-held indefinite veto over guardian administration in place. |
+| **T2** | The guardian-set intent carries `newTreasuryThreshold`, validated `0 ≤ t ≤ n'`, written atomically with the set | **SELECTED.** Measured **+9 bytes**. |
+| **T3** | Auto-clamp `t = min(t, n')` on shrink | **REJECT.** Silently weakens the owner's spending policy with no attestation from anyone. |
+| **T4** | Declare the freeze an intentional security property | **REJECT.** It is a relabel, not a design. It would also have to be honoured as a *guarantee*, which no one asked for. |
+
+**What T2 costs, stated plainly.** It gives the guardian quorum write access to a **spending**
+parameter, and guardian recovery is a **credential** gate. These are intentionally separate trust
+domains and T2 partially merges them. Concretely, a malicious guardian majority can zero the armed
+threshold in the same transaction as an authorized set change, removing one gate on large-withdrawal
+finalization; or raise it to `|G'|` and withhold approvals, bricking finalization until the owner
+lowers it again (one transaction, always available).
+
+This is accepted because that majority is **already** the recovery root: it can install
+attacker-controlled credentials outright after the seven-day delay, which strictly dominates
+tampering with a withdrawal gate. T2 therefore grants no capability the accepted trust root does not
+already subsume. The stable owner retains unilateral `setTreasuryQuorumThreshold` authority
+unchanged; T2 only removes its use as a *veto over guardian cardinality*.
+
+The cleanest long-term answer — giving treasury approval its own roster, fully decoupling the
+domains — is recorded as deferred (§15.3), not adopted here.
+
+### 7.4b Post-bootstrap authority matrix
+
+Stated separately because the four questions have different answers and v4 collapsed them:
+
+| Question | Authority under v5 |
+| --- | --- |
+| who selects guardian identities? | current guardian quorum `q(G_e)`, via the controller — **only** |
+| who changes guardian count? | current guardian quorum, via the same authorized intent |
+| who constrains guardian count? | **nobody** under T2. Under T1 it was the stable owner, via the armed threshold |
+| who changes the treasury threshold? | the stable owner unilaterally at any time, **and** the guardian quorum atomically as part of an authorized set change |
 
 `controllerCancelRecovery` deletes the exact current request and clears supports. Authentication
 of the signed `recoveryId` stays in the controller; the vault authenticates canonical provenance.
@@ -462,7 +705,7 @@ of the signed `recoveryId` stays in the controller; the vault authenticates cano
 | weakening vs strengthening | **Do not transfer.** Guardian sets have no safe total order; addition can dilute and removal can self-entrench. Every change needs quorum. |
 | current-credential authentication | **Do not transfer.** It violates guardian independence. |
 | `policyControlEpoch` | **Do not reuse.** Credential epoch and guardian epoch represent different principals. |
-| one-way emergency pause | **Transfer with narrow scope.** It retires controller mutations, never local recovery. |
+| one-way emergency pause | **Transfer, uniformly over controller-authorized writes (P5).** v4 said "narrow scope… retires controller mutations, never local recovery" and treated that as a safety property; §7.1a shows it is the blocker. Retirement freezes cancellation too, which is why H2 is a prerequisite. |
 | external callback from the vault | **Do not transfer.** The controller pushes; the recovery path never pulls. |
 
 ---
@@ -477,7 +720,8 @@ of the signed `recoveryId` stays in the controller; the vault authenticates cano
 | quorum-approved before maturity | set replacement blocked | guardian quorum | waits for `executeAfter` | request survives vault pause |
 | matured below quorum | guardian may replace request under PR #176 rules; guardian quorum may replace set | guardian quorum | insufficient support | initiate/execute blocked while vault paused |
 | matured and quorum-approved / awaiting execution | set replacement blocked | guardian quorum | permissionless relay | execution resumes intact after unpause |
-| controller paused | guardian set frozen | controller-mediated cancellation frozen | existing local recovery unaffected | one-way controller retirement |
+| controller paused (RETIRED) | guardian set frozen forever | **cancellation frozen forever** | existing local recovery unaffected — and, without H2, *unstoppable*; see §7.1a | one-way controller retirement |
+| RETIRED + approved request | frozen | frozen | executes on relay unless **H2 expiry** removes it first (C1–C5) | this row is the Finding-1 blocker, and H2 is what discharges it |
 
 Credential rotation does not cancel recovery, change guardian epoch, change controller nonces, or
 change the guardian set. A guardian authorization signed before credential rotation or successful
@@ -510,6 +754,70 @@ For `n=1`, the sole guardian is the quorum. It can self-replace, cancel, and rec
 controller bug; it is the explicit consequence of choosing one guardian at bootstrap. Thresholds
 remain `1→1`, `2→2`, `3→2`, `4→3`, `5→3`, and `32→17`.
 
+### 9a. LIVE DEFECT — `renounceOwnership()` makes the admin pause irreversible
+
+Found during v5 review, in **current production source**, not in the target design.
+
+`pause()` and `unpause()` are `onlyOwner` (`contracts/WalletWallVault.sol:1424`, `:1429`).
+`renounceOwnership()` is inherited from OpenZeppelin `Ownable` as `public virtual onlyOwner`;
+`Ownable2Step` overrides `transferOwnership`, `_transferOwnership`, `acceptOwnership` and
+`pendingOwner` — **but not `renounceOwnership`** — and neither vault overrides it. It is present in
+the compiled ABI of both contracts.
+
+Therefore, in two transactions by one principal:
+
+```text
+pause()                 -> initiateRecovery and executeRecovery are whenNotPaused, so both stop
+renounceOwnership()     -> owner() becomes address(0); unpause() is uncallable by anyone, forever
+```
+
+The result is a **permanent, irreversible, cross-tenant freeze of honest recovery for every subject
+of that consumer.** `supportRecovery`, `setGuardians` and `cancelRecovery` remain pause-immune and
+useless.
+
+This is **pre-existing** and is not caused by the Guardian Authority design. It is recorded here
+because it is the single strongest veto in the principal matrix and because v4 claimed to close
+HIGH-6 — a claim about vetoes over honest recovery — while this stood. Disabling it is **C6**
+(§7.1a), measured at **+8 bytes** (§14), and is a prerequisite for the emergency semantics to hold.
+
+### 9b. HIGH-1 and HIGH-6 — revised claim boundaries
+
+v4 said "HIGH-1/HIGH-6 closed post-bootstrap". Both claims are narrowed.
+
+**HIGH-1 — CLOSED as to identity, with a named residual under T1 only.**
+
+> Can a compromised stable owner **alone** install attacker guardians? **No**, once `e > 0`. The
+> core identity-takeover defect is closed: post-bootstrap the owner has no established-set selector,
+> and `q(G_e)` is required for every change.
+>
+> Can a compromised stable owner **permanently prevent** otherwise-valid guardian lifecycle
+> transitions? **Under T1, yes** — the treasury-cardinality veto (§7.4a). **Under T2, which is
+> selected, no.** T2 is what lets HIGH-1 be claimed closed without a liveness asterisk.
+
+The owner retains bootstrap authority from zero, and every other `msg.sender`-keyed role. Those are
+scope, not residue.
+
+**HIGH-6 — CLOSED AS TO THE STABLE OWNER ONLY. NOT CLOSED AS A GENERAL NON-VETO CLAIM.**
+
+> Each capability HIGH-6 names — cancellation at any support level, after maturity, while paused,
+> and repeatedly across new requests — is removed from the stable owner. The owner has no cancel
+> selector and no established-set selector. Cancellation authority moves in full to `q(G_e)`.
+
+It is **not** closed in the sense of "no principal can veto honest recovery forever", and v5 does
+not claim it is. Surviving vetoes, all named:
+
+| Principal | Veto | Status |
+| --- | --- | --- |
+| contract admin | permanent, irreversible, cross-tenant freeze of execution via `pause()` + `renounceOwnership()` | **pre-existing (§9a); C6 required** |
+| contract admin | indefinite but reversible freeze of execution via `pause()` alone | pre-existing, accepted (§15.2) |
+| emergency pauser | permanent freeze of guardian administration — bootstrap and replacement | accepted fail-closed cost of a one-way pause (§7.1a) |
+| guardian majority | cancel any request repeatedly, forever; and refuse to cancel a malicious approved request | accepted trust root; the *refusal* half was never booked before v5 |
+| malicious controller code | all three — erase, prevent execution by cancelling on sight, prevent cancellation by never pushing | accepted TCB (§15.2); this is what the one-way pause exists to contain, and why P1 was rejected |
+
+The brief's own test — *HIGH-6 is not closed if the stable-owner veto is merely replaced by an
+equally strong unrelated permanent veto without explicitly changing the threat model* — is met by
+naming every replacement above rather than by asserting closure.
+
 ---
 
 ## 10. Migration and compatibility
@@ -536,19 +844,31 @@ not remediated for existing deployed bytecode by the future implementation PR.
 
 ---
 
-## 11. H2 recovery expiry
+## 11. H2 recovery expiry — PROMOTED TO PREREQUISITE in v5
 
-H2 remains a separate lane. V4 does not add an automatic upper bound to a matured recovery and does
-not reuse `GOVERNANCE_GRACE_PERIOD`.
+**v4's separability argument is withdrawn.** It read: *"an approved request… can be cancelled by the
+same current-guardian quorum… Therefore removing the stable-owner veto does not make H2 a
+prerequisite."* That holds only while the controller is live. After retirement, quorum cancellation
+is exactly what is frozen, so the premise fails in the state that matters most.
 
-The interaction is explicit: an approved request cannot be erased by set replacement, but it can be
-cancelled by the same current-guardian quorum that approved recovery authority. Therefore removing
-the stable-owner veto does not make H2 a prerequisite for Guardian Authority implementation. H2
-still matters because an abandoned, never-cancelled approved request remains executable forever.
+H2 is now a **hard prerequisite** of the Guardian Authority implementation lane, discharging
+`I-RECOVERY-TERMINATION` (§4.9) under conditions C1–C5 (§7.1a). It is no longer listed as deferred.
 
-The future H2 design should bind expiry/renewal to `recoveryId` and guardian epoch. It must preserve
-support integrity and must not make admin pause destructively run out a tenant's recovery window.
-Nothing in the controller architecture prevents that later addition.
+Design constraints carried forward:
+
+- bind expiry to `recoveryId` and guardian epoch; delete supports with the request;
+- apply to quorum-approved requests — an under-supported matured request already has a local exit;
+- **wall-clock, not accrual (C2).** v4 said H2 "must not make admin pause destructively run out a
+  tenant's recovery window", and an earlier draft of this remediation honoured that by suspending
+  the clock during pause. Both are **withdrawn**. The admin can already deny execution indefinitely,
+  so a suspendable clock protects nothing — and combined with §9a it makes the request permanently
+  undeletable, which is strictly worse than letting the window lapse. A lapsed window is repairable
+  by a fresh `initiateRecovery`; an undeletable frozen request is not repairable at all;
+- no principal may extend or reset the window except via a fresh `initiateRecovery`;
+- do not reuse `GOVERNANCE_GRACE_PERIOD`; per [[feedback-expiry-cannot-transplant-to-destructive-restart]]
+  a re-announcement that destroys accumulated support is not a safe expiry primitive.
+
+Window **length** is a product decision, not a security one, provided it is finite and satisfies C2.
 
 ---
 
@@ -566,6 +886,32 @@ proof is the design space for that later lane.
 ---
 
 ## 13. Executable adversarial and mutation evidence
+
+### 13.0 v5 — what the model proves, and what it cannot
+
+The v4 model had three assurance defects, all now fixed:
+
+- **It collapsed the two states.** The controller had no roster of its own; it authorized against
+  `vault.guardians` and `vault.guardianQuorum()`. Controller/vault divergence was therefore
+  undetectable by construction. v5 gives the controller its own `guardianSet`, `guardianEpoch`,
+  `setChangeNonce` and `recoveryActionNonce`, and it authenticates against **its own** state.
+- **Its parity check was a tautology.** It built two instances of the *same* class and deep-equalled
+  them, which cannot detect a one-sided production/simulator divergence. v5 uses two independently
+  implemented adapters over one shared corpus, plus a deliberate simulator-only mutant.
+- **Its pause had no caller check.** Any principal could call `emergencyPause()`.
+
+**Proof boundary — ERC-1271.** The model represents approvals as digests over the exact fields a
+future EIP-712 signature must bind. It proves **authority semantics**: who may authorize what, bound
+to which subject, epoch, nonce and deadline. It proves **nothing cryptographic**, and in particular a
+TypeScript model cannot prove the behaviour of arbitrary ERC-1271 guardian contracts. The
+implementation lane must separately establish, in Solidity:
+
+- strict signer ordering and uniqueness across the approval array;
+- membership checked against the controller's authoritative set before or around verification;
+- a **reverting** ERC-1271 signer treated as an invalid signer, never as a revert of the whole call;
+- a malformed or wrong magic value treated as invalid;
+- one bad or omitted signer must not prevent a different valid quorum subset from being submitted;
+- a reentrancy guard, since verification calls guardian-controlled contracts.
 
 `test/GuardianAuthorityLifecycleDesign.test.ts` is a pure TARGET model. It covers:
 
@@ -603,9 +949,37 @@ Two deliberate mutants are embedded:
 The same invariant checks pass on the target model and fail on the corresponding mutant. This is
 discriminating evidence rather than a suite that merely restates its implementation.
 
-The focused run at the anchor passed **27/27 Mocha cases** after adding quorum cancellation. The
-implementation lane must promote these semantics into contract-level tests and retain the existing
-AST external-call mutants and simulator behavioral parity suite.
+The focused run at the anchor passes **40/40 Mocha cases** in v5 (27 in v4). The implementation lane
+must promote these semantics into contract-level tests and retain the existing AST external-call
+mutants and simulator behavioral parity suite.
+
+### 13.1 v5 mutation ledger
+
+Every load-bearing v5 discriminator carries a deliberate mutant. Mutants killed only by an unrelated
+freshness assertion are not counted.
+
+| Mutant | Violated invariant | Killed by |
+| --- | --- | --- |
+| `ownerReplacement` — owner PUSHes a set directly | `I-GUARDIAN-INDEPENDENCE`, `I-GUARDIAN-STATE-SYNCHRONY` | controller/vault divergence assertion |
+| `ownerCancellation` — owner cancels a request | `I-RECOVERY-NONVETO` | `RecoveryCancellationDisabled` |
+| `skipVaultPush` — controller advances, consumer does not (**M-SYNC-1**) | `I-GUARDIAN-STATE-SYNCHRONY` | `AuthorityStateDivergence` |
+| `skipControllerAdvance` — consumer advances, controller does not (**M-SYNC-2**) | `I-GUARDIAN-STATE-SYNCHRONY` | `AuthorityStateDivergence` |
+| `acceptMismatchedGeneration` — consumer skips the ordinality check (**M-SYNC-3**) | `I-GUARDIAN-STATE-SYNCHRONY` | divergence after a stale PUSH |
+| `noAtomicRollback` — one side mutated after a rejected transition (**M-SYNC-4**) | `I-GUARDIAN-STATE-SYNCHRONY` | divergence after consumer rejection |
+| controller authorizes against `vault.guardians` (**M-SYNC-5**) | `I-GUARDIAN-INDEPENDENCE` | structurally removed — the controller owns its roster |
+| wrong consumer / owner / action / epoch / nonce / deadline / guardian hash / recoveryId, and cross-action replay (**M-BIND-1…10**) | `I-REPLAY` | per-field typed-intent rejections |
+| T1 veto retained — armed threshold blocks a quorum shrink | §7.4a T2 | quorum-authorized shrink succeeds |
+| P1 emergency scope — cancellation live after retirement | §7.1a P5 | `GuardianMutationsRetired` on cancel |
+| unauthenticated pauser — any caller retires the controller | §7.1a | `NotEmergencyPauser` for owner/admin/guardian/relayer |
+| suspendable expiry clock (the withdrawn C2 variant) | `I-RECOVERY-TERMINATION` | expiry succeeds while the vault is paused |
+| one-sided simulator epoch-advance divergence | `I-PARITY` | independent-adapter corpus comparison |
+
+Two assertions deliberately pin **limits** rather than capabilities, so a future reader cannot
+believe the boundary is stronger than it is:
+
+- roster divergence at a correct generation is **accepted by the consumer** (§7.6a);
+- `renounceOwnership` is **still present** in both compiled ABIs (§9a). That assertion is designed
+  to FAIL when C6 lands, forcing §9a/§9b to be updated in the same change.
 
 ---
 
@@ -637,6 +1011,68 @@ The +406 result is feasibility evidence, not an implementation budget guarantee.
 lane must measure the exact final consumer diff before mirroring, preserve at least 600 bytes of vault
 headroom, and separately gate the controller's own runtime size.
 
+### 14.1 v5 RE-MEASUREMENT — the remediation moves the boundary substantially
+
+The v4 figures above are **superseded for the revised target**. Every row below was compiled in a
+disposable spike from pristine source at the anchor commit and reverted; each patched **both**
+contracts. Baseline: vault 23,231 (headroom 1,345), simulator 22,867 (headroom 1,709).
+
+| # | Target | Vault | Δ | Vault headroom | Simulator | Δ |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| G0 | controller surface, **keeping** the owner `cancelRecovery` | 24,078 | +847 | 498 | 23,690 | +823 |
+| G1 | minimized consumer, provenance only (v4's shape) | 23,762 | **+531** | 814 | 23,386 | +519 |
+| G3 | G1 + T2 treasury | 23,777 | +546 | 799 | 23,396 | +529 |
+| G5 | G1 + generation ordinality | 24,027 | +796 | 549 | 23,634 | +767 |
+| G6 | G5 + T2 | 24,036 | +805 | 540 | 23,648 | +781 |
+| **G7** | **G6 + C6 renounce block — the v5 TARGET** | **24,044** | **+813** | **532** | **23,656** | **+789** |
+| G2 | G1 + generation **and roster hash** (rejected) | 24,269 | +1,038 | 307 | 23,881 | +1,014 |
+
+Decomposition, each isolated by its own compile:
+
+| Component | Δ vault |
+| --- | ---: |
+| controller surface, add-only | +847 |
+| **removing the owner `cancelRecovery` selector** | **−316** |
+| generation ordinality (§7.6a) | +265 |
+| roster hash instead of ordinality | +507 (i.e. +242 more) |
+| T2 treasury (§7.4a) | +9 |
+| C6 `renounceOwnership` block (§9a) | +8 |
+
+Three things follow, and none of them is comfortable.
+
+**1. v4's +406 is not reproducible and is not the target.** An independent reconstruction of the
+same described surface measures **+531**. The +406 spike's source was not retained, so the 125-byte
+gap cannot be reconciled; it is not claimed to be an error in either figure. The **revised** target,
+with the remediation, is **+813** — roughly double v4's published number.
+
+**2. The revised target breaches this document's own stop threshold, standalone.** §14 requires
+"at least 600 bytes of vault headroom". G7 leaves **532**. The implementation sequence (§16 step 3)
+says to stop below 600. That stop condition is now triggered by the design itself, before PR #178
+enters the picture, and it is escalated rather than engineered around — per the review brief, security
+checks are not to be cut to reach a byte target.
+
+**3. Removing the owner cancel selector is worth 316 bytes.** It is unusual for the security change
+and the budget to point the same way; here they do. Without it the target is +847 and hopeless.
+
+### 14.2 Coexistence with PR #178 (recovery credential PoP)
+
+PR #178 measures a sound ECDSA incoming-PoP at **+464** vault bytes and this repository reserves
+**600**. The remaining budget for a Guardian Authority consumer is therefore
+`1,345 − 464 − 600 =` **281 bytes**.
+
+| | Bytes |
+| --- | ---: |
+| revised Guardian Authority target (G7) | 813 |
+| coexistence ceiling | 281 |
+| **overage** | **532** |
+| headroom if both landed | `1,345 − 813 − 464 =` **68** |
+
+> **`DOES_NOT_COEXIST_WITH_P2_UNDER_600B_RESERVE`**
+
+This holds for **every** variant measured, including the cheapest (G1, +531, which exceeds 281 by
+250) — so it is not an artifact of the remediation. Informative only: this document does not decide
+which lane owns the budget, and does not weaken any check to reach 281.
+
 ---
 
 ## 15. Locked decisions, residual risks, and deferred work
@@ -648,7 +1084,15 @@ headroom, and separately gate the controller's own runtime size.
 - controller has no owner, upgrade, arbitrary-call, or replacement capability;
 - stable owner is guardian-bootstrap-only at epoch zero;
 - current-guardian quorum authorizes every established-set change;
-- current-guardian quorum authorizes recovery cancellation at every request stage;
+- current-guardian quorum authorizes recovery cancellation at every request stage **while the
+  controller is live**; retirement freezes cancellation, which is why H2 is a prerequisite (§7.1a);
+- the controller emergency pause is **uniform** over bootstrap, replacement and cancellation (P5);
+- H2 recovery expiry is a **prerequisite**, wall-clock, and does not suspend during vault pause;
+- `renounceOwnership()` is disabled in both consumers (C6);
+- the consumer verifies guardian generation **ordinality only**, never roster content;
+- the guardian-set intent carries `newTreasuryThreshold` (T2);
+- the stable owner has **no** `cancelRecovery` selector;
+- controller retirement is consumer end-of-life for new subjects (§7.1c);
 - guardian set changes use guardian epoch + dedicated set nonce + deadline;
 - cancellation uses exact recovery ID + guardian epoch + dedicated recovery nonce + deadline;
 - EOA and ERC-1271 guardians are supported;
@@ -669,12 +1113,25 @@ headroom, and separately gate the controller's own runtime size.
 - malicious vault admin can pause local recovery execution indefinitely;
 - legacy deployments keep HIGH-1/HIGH-6 until users recreate on vNext;
 - `n=1` gives the sole guardian full quorum authority;
-- recovery expiry and incoming PQ proof of possession remain open.
+- incoming PQ proof of possession remains open (see PR #178, which accepts it as a residual);
+- **v5:** the emergency pauser permanently freezes guardian administration — a subject with zero
+  guardians can never obtain a set, and a lost set can never be rotated (§7.1a);
+- **v5:** after retirement, newly created vaults on that consumer can never have recovery at all,
+  and nothing on-chain prevents their creation (§7.1c);
+- **v5:** the guardian majority's *refusal* to cancel a malicious approved request is as
+  unappealable as its ability to cancel an honest one. v4 booked only the positive half;
+- **v5:** under T2 the guardian quorum can move a spending parameter (`treasuryQuorumThreshold`)
+  atomically with a set change (§7.4a);
+- **v5, pre-existing and NOT closed:** `pause()` + `renounceOwnership()` is an irreversible
+  cross-tenant freeze of all recovery (§9a). C6 is required.
 
 ### 15.3 Deferred
 
-- H2 automatic recovery expiry/renewal;
 - PQ recovery proof of possession;
+- **P2 emergency scoping** — splitting mutation-pause from cancellation-pause as separate one-way
+  capabilities. Zero consumer bytes; an ops/key-management refinement on top of P5 (§7.1a);
+- **a dedicated treasury-approver roster**, fully decoupling the spending and credential trust
+  domains, which is the clean long-term answer to Finding 3 (§7.4a);
 - stable vault identity / re-keying and safe migration for a lost mapping key;
 - controller implementation, formal verification, audits, deployment, and UI support;
 - any automated migration of policy/accounting state.
@@ -685,8 +1142,15 @@ headroom, and separately gate the controller's own runtime size.
 
 The next lane should be split so authority code and vault byte pressure remain reviewable:
 
+0. **v5 prerequisites, before anything else.** Land **C6** (`renounceOwnership()` reverts in both
+   consumers, §9a) and **H2** wall-clock recovery expiry (§11, C1–C5). Neither is optional: without
+   C6 the emergency semantics do not hold, and without H2 the Finding-1 blocker is unresolved.
+   Re-measure after each — the v5 target already sits at 532 bytes of headroom (§14.1), below this
+   document's own 600-byte stop threshold, so step 3's stop is expected to fire and must be resolved
+   by an explicit owner decision on budget, not by removing checks.
 1. Implement the standalone controller, typed intents, epoch/nonces, EOA/ERC-1271 verification,
-   bootstrap, replacement, cancellation, one-way pause, and controller-level adversarial tests.
+   bootstrap, replacement, cancellation, one-way pause **with an authenticated pauser**, and
+   controller-level adversarial tests.
 2. Re-run the controller tests against owner/credential/minority/replay/request-ID mutants before
    changing either consumer.
 3. Add the minimized consumer surface to `WalletWallVault`, compile immediately, and stop if vault
