@@ -36,6 +36,7 @@
  *     a document.
  */
 import { expect } from "chai";
+import { globalOptions } from "hardhat";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/types";
 import { WalletWallVault, MockMLDSAVerifier } from "../typechain-types";
@@ -468,6 +469,17 @@ describe("Recovery credential proof-of-possession — P2 design model", function
     });
 
     it("the §11.5 budget gate is computed from a LIVE measurement, not from typed-in numbers", function () {
+      if (globalOptions.coverage) {
+        // `hardhat test --coverage` recompiles with instrumentation, which disables
+        // the optimizer and injects tracking code — every contract's runtime
+        // bytecode balloons well past 24,576 and is never representative of a real
+        // deployment. Skipping matters MORE here than for a ceiling assertion: an
+        // inflated size makes `headroom` hugely negative, so the shortfall check
+        // below would pass VACUOUSLY rather than fail. A test that passes for the
+        // wrong reason is worse than one that fails. Same rationale and mechanism
+        // as test/BytecodeSizeBudget.test.ts.
+        this.skip();
+      }
       const vaultBytes = measureRuntimeBytes("WalletWallVault.sol/WalletWallVault.json", "P2 design");
       const headroom = EIP170_RUNTIME_LIMIT_BYTES - vaultBytes;
 
@@ -491,6 +503,9 @@ describe("Recovery credential proof-of-possession — P2 design model", function
     });
 
     it("no production contract in this PR exceeds the EIP-170 ceiling (P2 ships zero Solidity)", function () {
+      if (globalOptions.coverage) {
+        this.skip(); // see previous test — coverage instrumentation inflates every measured size.
+      }
       for (const { name } of CONTRACTS) {
         const bytes = measureRuntimeBytes(`${name}.sol/${name}.json`, "P2 design");
         expect(bytes, `${name} runtime bytes`).to.be.at.most(EIP170_RUNTIME_LIMIT_BYTES);
