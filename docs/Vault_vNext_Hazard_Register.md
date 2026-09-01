@@ -50,7 +50,7 @@ blast radius is system-wide is not made per-vault by asserting isolation elsewhe
 | H-13 | Emergency transition increases effective authority | PROPOSED | T1 | per-vault |
 | H-14 | Treasury-quorum stranding | OBSERVED | T2 | per-vault |
 | H-15 | Guardian-majority takeover | OBSERVED | T1 | per-vault |
-| H-16 | Reference-model (simulator) parity drift | OBSERVED | T2 | cohort |
+| H-16 | Reference-model (simulator) parity drift — PARTIAL coverage exists | OBSERVED | T2 | cohort |
 | H-17 | Operator disappearance strands recovery | PROPOSED | T1 | system-wide |
 | H-18 | Assurance plane acquires actuation authority | PROPOSED | T1 | system-wide |
 | H-19 | Guardian-plane controller indirect takeover | PROPOSED | T1 | cohort |
@@ -371,14 +371,21 @@ candidate recorded in `Guardian_Authority_Design.md` §4.2 (F-1…F-5).
 | Field | Content |
 |---|---|
 | **Hazard** | A security-relevant change lands on one implementation and not its sibling, so the deployed pair disagree about authority. |
-| **Cause** | `StablecoinVaultSimulator` is a **de-facto second implementation of the same semantics** — comment-stripped, the two contracts differ by only 22 inserted and 27 deleted code lines, with identical typehash, structs, constants and guardian/recovery surface. **Nothing in the repository enforces this parity.** There is no cross-contract parity test; a one-sided guardian change passes CI today. |
+| **Cause** | `StablecoinVaultSimulator` is a **de-facto second implementation of the same semantics** — comment-stripped, the two contracts differ by only 22 inserted and 27 deleted code lines, with identical typehash, structs, constants and guardian/recovery surface. Any property not covered by a parity assertion can diverge one-sidedly and still pass CI. |
 | **Direct authority** | Any contributor. |
 | **Authority closure** | n/a — this is an assurance-process hazard, not a principal capability. |
-| **Prevention** | A parity digest computed from both implementations and asserted equal. Modelled as `parityDigest()` vs `siblingParityDigest()`. |
-| **Containment** | None today. |
-| **Detection** | Currently **none**. This is an open hole in `main`. |
+| **Prevention** | Extend parity coverage beyond the guardian/recovery/treasury surface, and prefer a digest over *named* properties asserted equal across both implementations. Modelled as `parityDigest()` vs `siblingParityDigest()`. |
+| **Containment** | Partial, and **better than an earlier draft of this register stated** — see the correction note below. |
+| **Detection** | **PARTIAL, not absent.** `test/GuardianRecoverySimulatorParity.test.ts` (added by #176, present at `aaba4d2`) runs the same scenario against **both** contracts and asserts the same outcome across five cases: under-supported matured request remains replaceable; quorum-approved matured request is protected from replacement and remains executable; rotation does not cancel a pending recovery; guardian-set replacement invalidates a pending recovery; `setGuardians` rejects a shrink that would strand an armed treasury threshold. |
 | **Recovery** | Re-sync by hand. |
-| **Residual risk** | A digest over *named* properties cannot detect drift in properties nobody thought to name. |
+| **Residual risk** | Real but **narrower than first written**. The existing test is **behavioural parity, not source-text equality**, and its scope is guardian / recovery / treasury-quorum only. Divergence in withdrawal, policy, verifier-governance or large-tx surfaces is **not** covered, and a digest over *named* properties still cannot detect drift in properties nobody thought to name. |
+
+> **CORRECTION (recorded, not silently edited).** An earlier revision of this register asserted
+> "**nothing in the repository enforces this parity**… Detection: currently **none**." **That was
+> wrong for current `main`.** It was inherited from `Guardian_Authority_Design.md` §2.6, which was
+> accurate when written but was superseded by #176 — the very commit this lane is based on. Verified
+> firsthand: the file exists (7,704 bytes) and its own header states it closed exactly this gap.
+> The hazard survives in reduced form because the coverage is partial, not because it is absent.
 | **Proof tier** | T2. Modelled as `M16`. |
 
 ---

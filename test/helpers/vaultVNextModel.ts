@@ -1031,8 +1031,11 @@ export class VaultVNextModel {
 
   /**
    * Parity between the kernel and its sibling reference implementation.
-   * Modelled explicitly because parity is currently UNENFORCED in the observed
-   * repository: a one-sided change passes CI today (mutant M16).
+   * Modelled explicitly because parity coverage in the observed repository is
+   * PARTIAL: `test/GuardianRecoverySimulatorParity.test.ts` (added by #176) pins
+   * five guardian/recovery/treasury scenarios behaviourally across both
+   * contracts, but nothing covers the withdrawal, policy, verifier-governance or
+   * large-tx surfaces, and nothing asserts source-text equality (mutant M16).
    */
   parityDigest(): string {
     this.mark("parity/digest");
