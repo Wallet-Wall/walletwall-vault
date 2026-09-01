@@ -18,7 +18,7 @@ Five categories, never interchangeable. Any statement in this document belongs t
 
 | Status | Meaning |
 |---|---|
-| **OBSERVED** | Verified firsthand in source at `origin/main` `aaba4d2024932ba5fdf131fd9bba5020345af5fb`, tree `fbfcdb1638b29d4512cccf2cfdf27f82f972455b`, package `0.13.2`. Cited. |
+| **OBSERVED** | Verified firsthand in source at `origin/main` `15a44016844fb705dc6044020508cf68697ebb74`, tree `cf379aa5796023a463fb8fb9f489c5cf00140e3f`, package `0.13.3` — i.e. **after PR #180 merged**. Cited. |
 | **MEASURED** | Produced by running a tool this session. The command is named. |
 | **PROPOSED** | vNext design intent. Not implemented. Carries no assurance whatsoever. |
 | **PROVEN-BY-MODEL** | Holds in `test/helpers/vaultVNextModel.ts` and is killed by a discriminating mutant. Proves the *architecture is coherent*; proves **nothing** about any Solidity. |
@@ -123,6 +123,37 @@ would forfeit G4.
 Therefore: **an EIP-1167 clone bound to a fixed implementation is truthfully immutable. An ERC-1967
 proxy is not, and must never be described as such.**
 
+> **MEASURED CORRECTION — the right-hand column above is right, and the reassuring reading of it is
+> wrong.** `extcodehash(clone)` is a total function of the implementation **address**. It is *not* a
+> function of the implementation's **code**, and the two are not interchangeable, because
+> **an implementation's own runtime code hash is address-dependent.**
+>
+> Spike, MEASURED this session: two deployments of **byte-identical source** at two addresses produced
+> runtime code differing in **51 of 23,239 bytes**. Every differing byte lies inside a declared
+> immutable slot; the slot at offset **18,627** holds the contract's **own address**. The cause is
+> `WalletWallVault`'s inherited OpenZeppelin `EIP712`, whose `_cachedThis` and `_cachedDomainSeparator`
+> are `immutable` and therefore baked into runtime bytecode. The artifact reports **seven** 32-byte
+> immutable slots; five are address-independent and were byte-identical across the two deployments.
+>
+> Three consequences follow, and none of them was stated in the earlier revision:
+> 1. **There is no single publishable "audited kernel code hash" to compare against.** A verifier who
+>    knows only a hash cannot check anything. A verifier who knows the *expected address* can compute
+>    both the expected clone hash and the expected implementation hash — so the check is still
+>    available, but it is address-parameterised, not constant.
+> 2. **A correction to §3.2 R3.** That section says `WalletWallVault` "declares **no** `immutable`
+>    variables". True of the contract's own source; **materially misleading**, because it *inherits*
+>    seven, two of them address-derived. The conclusion R3 draws — that every plane pointer is storage
+>    and therefore per-clone — survives untouched. The supporting sentence does not, and is corrected
+>    in place.
+> 3. **A kernel requirement falls out of it.** The vNext kernel must **not** inherit an
+>    address-caching `EIP712`. Two independent reasons converge on one change: the cache can never hit
+>    for a clone (dissent D2), *and* the cached immutables destroy code-hash stability (this note).
+>    Removing it makes the kernel's runtime code address-independent, which restores exactly the
+>    single-constant comparison item 6 of §15 wants.
+>
+> §15 states the resulting offline verification procedure in full.
+
+A **beacon proxy** is rejected explicitly as the worst of both: it reproduces the current
 A **beacon proxy** is rejected explicitly as the worst of both: it reproduces the current
 architecture's exact system-wide geometry — one storage slot in one beacon governs the code of every
 vault simultaneously — while adding a hop and the false comfort of the word "proxy per vault".
@@ -173,12 +204,83 @@ every global plane" is **false**: `executeRecovery` is `whenNotPaused` (L534), w
 global `_paused` bit. No call is made, and recovery is still coupled to a cross-tenant object one
 principal controls. *(This correction is now encoded as `recoveryDependsOnGlobalState()` in the model.)*
 
-**Architecture B — a full contract deployed per vault via `new Vault{salt}(…)`. REJECTED, on measurement.**
-Solidity compiles `new Vault{salt}(...)` by embedding the callee's **entire creation bytecode** into
-the factory's own runtime. MEASURED this session: `WalletWallVault` creation bytecode is
-**24,574 bytes** against the EIP-170 ceiling of **24,576**. Such a factory is undeployable before a
-single byte of dispatcher, CREATE2, or argument-encoding logic is added. B is not merely expensive;
-**it is not constructible as specified.**
+**Architecture B — a full contract deployed per vault. SPLIT: B1 rejected on measurement, B2
+constructible and rejected on cost. The earlier blanket claim is withdrawn.**
+
+> **CORRECTION, recorded not silently edited.** An earlier revision of this document said
+> *"Architecture B is not constructible."* **That claim was too broad and is withdrawn.** What was
+> measured was one *construction* of B — a Solidity factory that writes `new Vault{salt}(…)`. A
+> contract-per-vault architecture does not require that construction, and the generalisation from
+> "this factory does not fit" to "contract-per-vault cannot be built" was not established. It is now
+> tested rather than assumed.
+
+Two constructions of B were built, compiled and measured this session, alongside C and a fourth
+candidate. All four are disposable spikes: applied → measured → reverted → restoration proven (§19).
+
+| | **B1** Solidity `new Vault{salt}` | **B2** generic CREATE2 deployer | **C** EIP-1167 clone | **C2** EIP-1167 + immutable args |
+|---|---|---|---|---|
+| Factory runtime, MEASURED | **24,866 — OVER EIP-170 by 290** | **657** | **1,760** | same 1,760 factory |
+| Constructible? | **No.** solc itself warns | Yes | Yes | Yes |
+| Per-vault deploy gas, MEASURED | n/a | **5,181,105** | **63,692** | **69,342** |
+| Relative to C | — | **81.3×** | 1.00× | 1.09× |
+| Vault runtime deployed per vault | 23,239 | 23,239 | **45** | **65** (45 + 20 arg bytes) |
+| Vault runtime ceiling | 24,576 | 24,576 | 24,576 (implementation) | 24,576 (implementation) |
+| Vault identity | address | address | address | address |
+| Per-vault Solidity `immutable` | yes | yes | **no** | **no — but see immutable ARGS** |
+| Per-vault immutable DATA | yes | yes | no | **yes, and code-identity-bound** |
+| Constructor runs | yes | yes | **no** | **no** |
+| Uninitialised-clone front-running | not possible | not possible | must deploy+init atomically | must deploy+init atomically |
+| CREATE2 address commits to | full initcode (24,614 B) | full initcode (24,614 B) | 45-byte template + impl | template + impl + **args** |
+| Hops in the code-identity chain | 1 | 1 | 3 | 3 |
+| Factory is a shared dependency | yes, and it names the child | **no — it names nothing** | yes | yes |
+| EIP-712 cached domain fast path | works | works | **permanently dead** | **permanently dead** |
+
+**B1 — REJECTED, and now decisively rather than marginally.** Solidity compiles `new Vault{salt}(...)`
+by embedding the callee's **entire creation bytecode** into the factory's own runtime. MEASURED: the
+factory's runtime bytecode is **24,866 bytes against the 24,576 ceiling — over by 290** — and solc
+emits its own diagnostic, *"Contract code size is 24866 bytes and exceeds 24576 bytes"*. There is no
+dispatcher, no argument encoding and no CREATE2 helper in that figure beyond what the one function
+needs. B1 is not deployable. *(At this document's previous base the child's creation bytecode was
+24,574 B and the argument was a two-byte squeeze; after #180 it is 24,582 B, which **alone** exceeds
+the runtime ceiling.)*
+
+**B2 — CONSTRUCTIBLE, and cheap to build.** A deployer that takes `bytes initcode` as **calldata** and
+CREATE2s it embeds nothing and names no child. MEASURED at **657 bytes** of runtime — *smaller than the
+clone factory*. It is also not a WalletWall dependency in any meaningful sense: a canonical public
+deterministic CREATE2 deployer already exists on most chains, and such a deployer **holds no authority
+over anything it deploys**. So the "shared factory" dissent (D4 below) does not apply to B2 at all.
+
+**B2 is rejected on measured cost, not on constructibility.** Deploying the real `WalletWallVault`
+through it costs **5,181,105 gas per vault** against **63,692** for a clone — **81.3×**. That gap is
+*intrinsic, not overhead*: a bare `CREATE` of the same vault costs 5,168,967, so the deployer adds only
+**12,138 gas**. The cost is the protocol's 200 gas per runtime byte × 23,239 bytes ≈ 4.65 M, plus
+24,614 bytes of calldata. **B2's per-vault cost scales with the kernel's size**, which is the one
+quantity §19 shows is already out of budget.
+
+**C2 — ADOPTED as a refinement of C.** OpenZeppelin 5.6.1 ships
+`Clones.cloneDeterministicWithImmutableArgs` / `fetchCloneArgs`, which append per-clone bytes **after**
+the 45-byte template. MEASURED: this costs **+5,650 gas (+8.9%)** over a plain clone and produces a
+65-byte clone for 20 bytes of argument. It matters far beyond the price, because `fetchCloneArgs` reads
+those bytes with `extcodecopy(instance, …, 0x2d, …)` — **the arguments are part of the clone's own
+runtime code**. Therefore they are committed to by `extcodehash(clone)` *and* by the CREATE2 address.
+MEASURED: two clones of the *same* implementation with *different* args have different code hashes, and
+the argument suffix reads back byte-exact.
+
+> **This partially reverses dissent D1.** A clone cannot have per-clone Solidity `immutable`s — that
+> remains true. It *can* have per-clone immutable **data**, verifiable from `eth_getCode` alone. The
+> correct rule is therefore narrower and more useful than "clones cannot hold immutable state":
+> **values that must never change belong in immutable args; values that must remain replaceable belong
+> in storage.** A verifier *implementation* must stay replaceable (agility, and hazard H-06), so it
+> belongs in storage. A vault's genesis commitments — the kernel generation it was born under, its
+> chain binding, and the **cryptographic floor it may never fall below** (§12) — must never change, so
+> they belong in args, where an offline observer can read them out of the code.
+
+**VERDICT: C, refined to C2 — confirmed, but on a corrected and much narrower basis.** C is selected
+because B2 costs **81× more per vault**, not because B is unbuildable. **The condition under which this
+verdict flips is stated so it can be tested later:** if per-vault deployment gas ceases to be a product
+constraint *and* the kernel needs per-vault immutables richer than a byte string can carry, **B2 wins**,
+and it wins with a shorter code-identity chain (§15) and no atomic-initialisation requirement. That is
+a live alternative, not a dead one.
 
 **Architecture D — three-tier decomposition split by mutability. REJECTED as a forcing argument.**
 Its distinguishing move — removing the admin plane — is **orthogonal** to the identity model, and
@@ -236,7 +338,8 @@ that gates its own replacement converts a liveness failure into a permanent one.
 | Asset execution | **KERNEL-REQUIRED** | Total loss | Assets frozen forever |
 | Nonce / replay state | **KERNEL-REQUIRED** | Replay ⇒ loss | No authorization possible |
 | Credential commitment | **KERNEL-REQUIRED** | Attacker named as owner ⇒ loss | No authorization possible |
-| Guardian membership | **KERNEL-REQUIRED** | Attacker quorum ⇒ loss (H-19) | Recovery unreachable; **and replacing the plane needs guardian authority ⇒ circular** |
+| Guardian **authority** — commitment, threshold, generation | **KERNEL-REQUIRED** | Attacker quorum ⇒ loss (H-19) | Recovery unreachable; **and replacing the plane needs guardian authority ⇒ circular** |
+| Guardian **roster bytes** — the member addresses themselves | **NOT KERNEL-RESIDENT** (§4.2b) | — (a forged roster fails the commitment check) | Roster preimage unavailable ⇒ recovery unreachable (**new hazard H-27**) |
 | Recovery request state | **KERNEL-REQUIRED** | Forged/erased requests | Recovery unreachable |
 | Recovery execution | **KERNEL-REQUIRED** | Arbitrary credential install | Recovery unreachable |
 | Recovery cancellation | **KERNEL-REQUIRED** | Unbounded veto | Hostile recovery unstoppable |
@@ -279,6 +382,74 @@ lens named.
 | Migration execution | KERNEL-REQ | KERNEL-REQ | PLANE-SAFE | **KERNEL-REQUIRED.** Migration is the universal escape from plane death; an escape that itself lives in a plane is not an escape. |
 | ERC-4337 validation | ADAPTER-SAFE | KERNEL-REQ | ADAPTER-SAFE | **ADAPTER-SAFE, conditionally** — a dead EntryPoint must never strand the account, so a direct non-4337 path must always exist. Reinforces the §5 recommendation not to adopt 4337 in generation 1. |
 
+### 4.2b The minimum guardian TCB — a narrowing of the previous verdict
+
+The previous revision classified **guardian membership** as KERNEL-REQUIRED and stopped there. The
+question it did not ask is the one that decides the size of the TCB:
+
+> **Not "can guardian logic be externalised?" but "what is the MINIMUM guardian state the kernel must
+> hold AUTHORITATIVELY to preserve recovery sovereignty and to detect a forged constituency?"**
+
+Three candidates, compared on the property that actually separates them:
+
+| | **G-A** full roster in kernel storage | **G-B** commitment + threshold + generation in kernel; roster supplied as calldata | **G-C** external controller PUSHes a roster |
+|---|---|---|---|
+| Who may cause the authoritative bytes to change | the kernel, under its own quorum | **the kernel, under its own quorum** | an external principal |
+| Whose liveness is required to change them | no one outside | **no one outside** | the controller's |
+| Forged constituency detectable | n/a (kernel holds it) | **yes — a preimage that does not hash to the commitment is rejected** | **no — the consumer verifies generation ordinality, not roster content** |
+| Kernel storage | `n` address slots | **3 words** | 2 words + trust |
+| Recovery locality | preserved | **preserved — validation is pure hashing** | **destroyed** — recovery depends on a foreign contract |
+| Circularity clause (R-KERNEL-CIRCULARITY) | not triggered | **not triggered** | **triggered** — replacing the controller needs the controller |
+
+> **G-B is NOT a disguised G-C, and this is the whole adjudication.** In G-C an external principal
+> *writes* the kernel's belief, so its honesty and its liveness are both inside the TCB. In G-B
+> **nobody pushes anything**: the kernel writes its own commitment under its own quorum rule, and the
+> roster bytes arrive as **untrusted calldata that the kernel validates against a value it wrote
+> itself**. Under the separating predicate — *who may cause the authoritative bytes to change, and
+> whose liveness is required* — **G-B is indistinguishable from G-A and categorically distinct from
+> G-C.** It therefore inherits G-A's classification and G-A's escape from the circularity clause.
+
+**Verdict: G-B is the minimum, and it is adopted.** The kernel holds, authoritatively:
+`guardianCommitment`, `threshold`, `guardianGeneration`, plus per-request support accounting **keyed
+to the generation** so support cannot be replayed across a roster change. It does **not** hold the
+member addresses. Hazard H-19's prevention is therefore restated: what must not be externalised is
+**guardian authority**, not the roster bytes — and the previous phrasing over-claimed by conflating
+them.
+
+**For realistic `n` this is smaller in BOTH dimensions, which is unusual and worth stating.** With
+`MAX_GUARDIANS = 32` (OBSERVED) but realistic sets of `n = 3…7`, G-A costs `n` address slots and needs
+in-kernel iteration, deduplication and bounds logic. G-B costs **one** slot for the commitment and,
+for small `n`, needs no Merkle verifier at all: a plain `keccak256` over the **injectively encoded**
+sorted roster supplied in calldata is cheaper in bytecode than the loop it replaces. **No byte figure
+is asserted here, because none was measured** — measuring both is part of §21 step 5, and §19's STOP
+CONDITION governs the result.
+
+Four invariants, none of them optional:
+
+> **I-GUARDIAN-AUTHORITY-CLOSURE (T0).** The kernel is the **sole writer** of the guardian commitment,
+> and writes it only under a quorum evaluated against the **immediately preceding** commitment.
+
+> **I-GUARDIAN-CONSTITUENCY-BINDING (T1).** Roster material supplied as calldata is authoritative only
+> if its **injective** encoding hashes to the current kernel-held commitment. The commitment covers,
+> at minimum: the threshold, the ordered member list, and each seat's authentication mode. *Injective
+> matters concretely — a naive packed encoding lets two different rosters collide, and a threshold
+> left outside the preimage can be supplied by the attacker.*
+
+> **I-QUORUM-DISTINCTNESS (T1).** Attesting guardians count as distinct only via **strictly ascending**
+> ordering over the committed roster. No address and no index may be counted twice.
+
+> **I-CONSTITUENCY-RECONSTRUCTIBLE (T1).** Every write of the commitment **emits the full preimage** —
+> threshold and all ordered `(address, authMode)` entries — in the same transaction.
+
+**The new hazard G-B creates, named rather than hidden (H-27).** The kernel can hold a perfectly
+intact commitment whose **preimage nobody has**. The roster is then unreconstructible and recovery is
+unreachable, with no on-chain symptom. `I-CONSTITUENCY-RECONSTRUCTIBLE` is the mitigation, and its
+**residual is real and is a G5 dependency**: reconstruction needs log history, so a user with only
+`eth_getCode` and no archive access cannot recover the roster. G-A has no such residual. **This is the
+price of the smaller TCB and it is charged honestly** — it is the one axis on which G-A beats G-B.
+
+---
+
 ### 4.3 The decomposition that matters most: FLOOR + PLANE
 
 Signature verification looks KERNEL-REQUIRED (a Byzantine verifier forges) yet must be replaceable
@@ -296,14 +467,102 @@ Consequences:
   makes the observed `policyEngine == address(0)` disable (H-07) safe under vNext and unsafe today.
 
 Two cheap floor components, both kernel-resident and neither requiring trust in any plane:
-1. **Structural length rejection.** FIPS 204 §3.6.2 states an implementation *shall* return false
-   when public-key or signature lengths differ from the standard's, because failing to check "may
-   interfere with the security properties that ML-DSA is designed to have, like strong
-   unforgeability." These are **pure integer comparisons**, so the kernel performs them itself.
+1. **Structural length rejection** of public keys and signatures. These are **pure integer
+   comparisons**, so the kernel performs them itself and needs no trust in any verifier.
+   *(An earlier revision attributed this requirement to **FIPS 204 §3.6.2**. That citation is
+   **NOT VERIFIED in this lane** and is therefore no longer load-bearing: the check earns its place
+   on its own engineering merits, and the argument below does not depend on any standard endorsing
+   it. Anyone re-adding the citation must read the clause first.)*
 2. **Kernel-recorded scheme strength** (§12), never read from the verifier.
 
 ---
 
+### 4.3a The floor as specified is NOT sufficient — a correction that changes a verdict
+
+> **`A ∧ true = A` proves that a plane's marginal contribution is non-positive. It does not prove
+> that `A` is safe.** Conjunctivity bounds what a plane can *add*. It says nothing whatsoever about
+> whether what remains — the floor — authenticates anybody.
+
+Both floor components above are **structural**. A length comparison is a statement about a byte
+string's shape. A kernel-recorded strength ordinal is a statement about a label the kernel itself
+wrote down. **Neither demonstrates possession of a private key.** So for any capability whose *only*
+positive authentication step is delegated to an external verifier, "the plane is conjunctive" reduces
+authorization to **"the caller supplied correctly-sized bytes"** — which every caller can do, because
+a public key is public.
+
+**This is not hypothetical, and the demonstration is in this repository.** OBSERVED, read firsthand at
+`15a44016` — `contracts/MockMLDSAVerifier.sol`, the concrete `IPQCVerifier` actually deployed on
+Sepolia today, returns `true` exactly when:
+
+```
+digest != bytes32(0)
+&& publicKey.length == 1952        // ML_DSA_65_PUBLIC_KEY_LENGTH
+&& signature.length == 3309        // ML_DSA_65_SIGNATURE_LENGTH
+&& the first 32 bytes of signature are not all zero
+```
+
+It relates the key to the signature **nowhere**, and its own comment says so: *"this is structural
+only and provides NO cryptographic guarantee."*
+
+> **Therefore, on the ML-DSA family, the floor this document proposed and an always-true verifier are
+> the same function.** The floor is a *strictly weaker* version of the mock — it drops even the
+> nonzero-prefix test. The claim "an always-true verifier grants nothing, so mutant M11 dies
+> structurally" was **false for `PqOnly`**, and it was refuted by an artifact already in the tree.
+
+Two invariants replace the overclaim. Both are **T0**.
+
+> **I-NO-SOLE-EXTERNAL-AUTHENTICATOR.** No external verifier may be the sole positive authenticator
+> for an asset-moving or credential-changing capability. Every such capability's authorization
+> predicate must contain at least one conjunct that is a **possession test the kernel evaluates
+> itself**, using only its own code and fixed-address consensus precompiles.
+
+> **I-FLOOR-IS-SOUND.** With **every** plane removed, the floor alone must **deny** every principal
+> that cannot present a kernel-verifiable possession witness — for every capability, in every safe
+> state. A component may be classified PLANE-SAFE only if the floor still denies without it.
+
+**The word "replaceable" is deliberately absent from the first invariant, and that is a change from
+the wording the remediation brief proposed.** Binding a verifier *immutably* removes the substitution
+hazard and creates **no possession test at all**; it additionally makes the always-*false* failure
+permanently unfixable, and under C an immutable binding is per-**generation**, not per-vault — so a
+single defective verifier becomes a correlated, unfixable, cohort-wide failure. Immutability is
+therefore not a way to satisfy this invariant.
+
+**Consequences, stated as decisions rather than as observations:**
+
+| Mode | Kernel-verifiable possession conjunct | Verdict |
+|---|---|---|
+| `EcdsaOnly` | `ecrecover` (precompile `0x01`) | **Admissible** |
+| `Hybrid` | `ecrecover`, ANDed with the PQ leg | **Admissible — the default** |
+| `PqOnly` | **none** | **REJECTED for vNext generation 1** |
+
+**`PqOnly` is rejected**, and re-admitted only by a future kernel generation that has a
+kernel-resident PQ possession test. No such primitive exists on Ethereum today (there is no
+post-quantum signature precompile), so this is a real constraint, not a deferral.
+
+**The `ecrecover` conjunct is only a possession test under three conditions**, all of which must be
+stated because a clone architecture creates the third:
+1. **malleability rejected** — `s` in the lower half order, `v ∈ {27, 28}`;
+2. **`address(0)` never treated as a match** — the raw precompile returns `address(0)` on malformed
+   input;
+3. **the stored credential is provably non-zero.** OBSERVED: the current vault satisfies (1) and (2)
+   by using OpenZeppelin's `ECDSA.recover`, which reverts rather than returning `address(0)`. (3) is
+   **new under C**: a constructor cannot be relied on, so an *uninitialised clone* holds a zero
+   credential, and a comparison against it must fail closed rather than accidentally succeed. This is
+   the same hazard as dissent D3 (initialisation front-running) reached from the other direction.
+
+**A third invariant follows, and it is what decides D4:**
+
+> **I-NO-CIRCULAR-ESCAPE.** For every replaceable component `X`, the authorization required to replace
+> `X`, disable `X`, or migrate away from `X` must be fully evaluable with `X` **unavailable** *and*
+> with `X` **Byzantine**.
+
+Under `PqOnly` the escape from a hostile verifier is authenticated *by that verifier*. Rejecting
+`PqOnly` is therefore not only a forgery fix — **it is what makes verifier escape non-circular**, and
+so it is what makes the cohort coupling in §14 an escapable default rather than a trap (§22, D4).
+
+---
+
+## 5. No generic privileged execution
 ## 5. No generic privileged execution
 
 **OBSERVED — no production contract has any generic execution surface.** Stated precisely, because
@@ -417,7 +676,7 @@ trap.
   which is bound to a specific destination — reaches RETIRED.
 - **No emergency transition silently increases authority.** Enforced as *authority monotonicity*:
   for every principal, capabilities after ⊆ capabilities before. Mutant **M6**.
-- **No reachable degraded state traps the vault.** Every state retains migration execution.
+- **No reachable degraded state traps the vault.** Every state retains migration egress (§13).
 - **No emergency principal gains a permanent recovery veto.** Containment self-expires with **no
   principal acting**, and recovery stays available throughout. Mutant **M7**.
 
@@ -428,7 +687,51 @@ trap.
 > is also strictly cheaper — no per-request accrual state. The sibling guardian lane reached this
 > conclusion independently and withdrew an earlier draft that proposed suspension.
 
----
+> **CLOCK RULE, generalised — because stating it only for containment left three other clocks
+> unspecified.** *Every* clock in this design — recovery delay, recovery expiry, migration bind delay,
+> migration deadline, withdrawal maturity, containment expiry — runs on **wall clock in every safe
+> state**, and no state transition may reset, extend, or suspend any of them. There are exactly two
+> options and the previous revision picked neither: if clocks suspend under containment, a bounded
+> containment silently extends every pending deadline; if they do not, containment cannot outlast a
+> fix window. **This design takes the second**, and pays for it by keeping the containment bound short
+> and by never letting containment gate recovery.
+
+#### A bounded timer is not a bounded authority — the rolling-freeze defect
+
+> **This was a real hole in the previous revision and it is recorded rather than quietly patched.**
+> §6 said containment is "wall-clock bounded and self-expiring", and nothing anywhere said what
+> happens when the emergency principal **triggers it again**. A hostile or captured emergency
+> principal simply re-triggers on expiry, and the vault is frozen forever using only a capability the
+> document calls bounded. **Per-episode bounds do not compose into a bound on the authority.**
+
+Two rules, both cheap, and both required:
+
+> **I-CONTAINMENT-NO-EXTENSION.** Re-entry while already contained is a **no-op**. `expiresAt` is set
+> once, at first entry, and no principal may move it.
+
+> **I-CONTAINMENT-BUDGET (T0).** Over any rolling wall-clock window of length `W`, the total time
+> spent in CONTAINED at the emergency principal's instance is at most `B`, with **`B < W`**. The
+> window origin advances **only** by elapsed wall clock and can be moved by no principal.
+
+`B < W` is the whole content: it guarantees an infinite sequence of uncontained intervals, so denial
+becomes a **duty cycle** rather than a state. The kernel cost is two words (`windowStart`,
+`usedInWindow`). Mutant **M46** breaks exactly one thing — it resets `windowStart` on each new
+trigger — and the vault becomes indefinitely freezable.
+
+**What remains live under containment**, unchanged and load-bearing: recovery initiation, support,
+cancellation and execution; migration binding and egress. **What is withdrawn**: spending, queuing,
+**inflow**, and every authority mutation.
+
+> **I-NO-INGRESS-WITHOUT-EGRESS (T1).** Any state that restricts asset egress must restrict asset
+> ingress. OBSERVED at `15a44016` and still live: `deposit()` and `depositFor()` carry no state gate
+> while every payout path carries `whenNotPaused` (hazard H-22). Under vNext this is not merely
+> untidy — §13.0 shows it is the mechanism by which an unprivileged stranger can veto a migration.
+
+> **I-VETO-BOUND (T0), the general rule the above are instances of.** **Every** veto capability in the
+> design — not merely every pause — must carry a bound that lifts **with no principal acting**.
+> Applies to: containment (wall clock + budget), recovery cancellation by the spending credential
+> (bounded count, §22 D1), a pending migration binding (deadline), and a matured recovery request
+> (expiry). A veto with no self-lifting bound is a permanent authority wearing a temporary name.
 
 ## 7. Control-plane synchrony
 
@@ -478,6 +781,7 @@ the only way to avoid trusting a roster-pushing controller is to not have one.
 | Emergency principal | ENTER_CONTAINMENT **only** |
 | Migration authority | MIGRATE — **not** SELECT_DESTINATION_KERNEL |
 | **Kernel admin** | **NONE — the principal does not exist** |
+| **Factory operator** *(added by the remediation — §22 D8)* | **NONE over any deployed vault.** Chooses the implementation of **future** vaults only, and only where the factory's pointer is mutable. Recommended fix: make it `immutable`, so the principal ceases to exist |
 | Assurance observatory | **NONE** |
 | WalletWall infrastructure | **NONE** |
 | Arbitrary external caller | May *relay* an authorized action; holds nothing |
@@ -494,6 +798,7 @@ Closure includes outcomes reachable through intermediate state changes.
 | Migration authority | — (destination is kernel-bound) | **No** |
 | Policy plane | — (subtractive only) | **No** |
 | Assurance | — (closure is **empty**) | **No** |
+| **Factory operator** | Defines the kernel of every FUTURE vault. Closure over deployed clones is **empty** — a clone's implementation is a `PUSH20` immediate in its own code | **No** (for existing vaults) |
 | Guardian **plane** *(if ever externalized)* | CHANGE_GUARDIANS → APPROVE_RECOVERY → MOVE_ASSETS | **Yes — which is why it is not externalized** |
 
 ### 8.3 Coalitions
@@ -525,13 +830,63 @@ accident rather than a mechanism.
 
 Supported by four narrower, individually testable properties:
 
-> **I-RECOVERY-LOCALITY.** Recovery initiation, support, and execution perform **zero external
-> calls** *and* depend on **no globally-mutable state**.
+> **I-RECOVERY-LOCALITY (v1 — WITHDRAWN, kept for the record).** *"Recovery initiation, support, and
+> execution perform **zero external calls** and depend on **no globally-mutable state**."*
 
-The second clause is not redundant. OBSERVED: `executeRecovery` makes no external call yet is
+The second clause was and remains right. OBSERVED: `executeRecovery` makes no external call yet is
 `whenNotPaused`, reading a single global `_paused` bit. Locality stated only over *calls* would
 certify a recovery path that one principal can freeze for everyone.
 
+**But "zero external calls" is not satisfiable under the selected deployment model, and it never
+was.** Under EIP-1167 *every* entry into a clone is a `DELEGATECALL` from the clone to a different
+account. Read literally, v1 is false at the first instruction of every function the vault has. It
+also forbids `ecrecover` — a `STATICCALL` to precompile `0x01` — which §4.3a now makes **mandatory**.
+An invariant that the architecture violates on entry and that forbids its own floor is not a
+requirement; it is a slogan.
+
+> **I-RECOVERY-LOCALITY-V2 (T1) — the replacement.** Recovery initiation, support, cancellation and
+> execution may consult **only**:
+> 1. the clone's **own immutably-bound implementation** (the `DELEGATECALL` that *is* the vault),
+> 2. **fixed-address consensus precompiles**, and
+> 3. **guardian principals named in the vault's own committed constituency** (§4.2b);
+>
+> and they may read **no state mutable by any plane, by any global admin, or by any principal outside
+> that constituency**.
+
+**This is weaker than v1 and the weakening is deliberate, so it is named.** v1's real content was
+*"no replaceable component's failure can stop recovery"*. Items 1 and 2 cannot fail without the vault
+or the chain failing. Item 3 is the genuine concession: it admits **ERC-1271 contract guardians**,
+which validate by call.
+
+**Why item 3 is safe, and what it costs.** A guardian is a **principal**, not a plane, and the quorum
+already tolerates principals that do not act — that is what `k`-of-`n` *is*. A guardian contract that
+reverts is a guardian who did not answer. Admitting them therefore adds no new class of failure,
+**provided** each consultation is isolated, which is a separate invariant rather than an assumption:
+
+> **I-GUARDIAN-FAULT-ISOLATION (T1).** For every guardian `g` and **every** behaviour of `g`'s account
+> — revert, out-of-gas, unbounded returndata, attempted reentrancy, attempted state mutation, any
+> return value — the recovery outcome computed from the remaining guardians must be **unchanged**.
+> Enforced by: `STATICCALL` (so no reentrant state change is possible), an explicit **forwarded-gas
+> cap**, a **bounded returndata copy**, and **non-bubbling** failure handling.
+
+> **I-ATTESTATION-IS-AFFIRMATIVE (T1).** An ERC-1271 attestation counts **only** when the `STATICCALL`
+> succeeds **and** `returndatasize == 32` **and** the returned word equals the ERC-1271 magic value.
+> "Did not revert", "returned something", and "returned non-zero" each count as **no attestation**.
+> A `CALL` in place of a `STATICCALL` is a defect, not a style choice.
+
+> **I-GUARDIAN-AUTH-MODE-IS-COMMITTED (T1).** Whether a seat authenticates by ECDSA or by ERC-1271 is
+> read from the **committed** constituency entry, never inferred from observable chain state —
+> not from `extcodesize`, not from a delegation indicator. Inferring it lets an address change its own
+> authentication method by acquiring or shedding code.
+
+**The honest cost.** Under v2, a vault whose guardians are *all* ERC-1271 contracts has a recovery
+path that depends on those contracts' liveness. The quorum bounds this — `n - k` may fail — but it
+does not eliminate it, and a user who chooses `k` contract guardians out of `n = k` has chosen a
+recovery path with external dependencies. **That is the user's choice to make and the vault's job to
+disclose**, not something the architecture can forbid without also forbidding a Safe as a guardian.
+The Observatory (§10) publishes each seat's auth mode for exactly this reason.
+
+> **I-RECOVERY-NONVETO.** No principal holds an unbounded veto over an otherwise-valid recovery.
 > **I-RECOVERY-NONVETO.** No principal holds an unbounded veto over an otherwise-valid recovery.
 
 > **I-RECOVERY-TERMINATION.** Every quorum-approved request leaves the system by execution,
@@ -628,16 +983,75 @@ current implementation and are adopted unchanged.)*
 as standardized → CAVP-validated implementation → CMVP-validated module, and FIPS 204 states plainly
 that "conformance to this standard does not ensure that a particular implementation is secure".
 
-### The security-transition rule
+### The security-transition rule — WITHDRAWN and replaced
 
-> **A scheme may be activated only if its kernel-recorded strength class is greater than or equal to
-> that of every currently-ACTIVE scheme. Strength is kernel-recorded at activation and is NEVER read
-> from the verifier. No cryptographic generation may become weaker merely because it has a larger
-> version number.**
+> **The rule this document previously stated was:** *"A scheme may be activated only if its
+> kernel-recorded strength class is greater than or equal to that of every currently-ACTIVE scheme."*
+> **That rule is withdrawn.** It is not a weak version of the right rule; it is unsound in the
+> dangerous direction, for two independent reasons.
 
-Statuses form a transition lattice: `ACTIVE → DEPRECATED → DISALLOWED`, one-way.
-Verifier *implementations* are replaceable **within** a scheme (agility); *schemes* are governed
-separately and monotonically (anti-downgrade). Mutants **M10** and **M18**.
+**Defect 1 — it summarises by MAX where the semantics are MIN.** `EcdsaOnly`, `PqOnly` and `Hybrid`
+are **alternatives**: a vault that accepts any of them is as strong as the *weakest* path it accepts.
+Taking the maximum over ACTIVE schemes therefore reports the strength of the best path while the
+attacker uses the worst. Activating ML-DSA-87 (class 5) alongside a still-active ECDSA-only path
+*raises* the reported number and changes nothing an attacker faces.
+
+> **The general form, worth stating separately because it recurs:** the strength of a **conjunction**
+> is its strongest necessary leg; the strength of a **disjunction** is its **weakest sufficient**
+> path. Any aggregate that does not distinguish the two is a downgrade waiting to be labelled an
+> upgrade.
+
+**Defect 2 — a scalar asserts a total order that does not exist.** Classical ECC, PQ lattice
+(ML-DSA), PQ hash-based (SLH-DSA), and hardware-rooted signers rest on **incomparable** assumptions.
+A single ordinal must either invent an ordering between them or silently collapse them.
+
+**Replacement — an explicit `SecurityProfile` and a PARTIAL transition relation.**
+
+A profile is a **disjunction of clauses**; each clause is a **conjunction of factors**. It carries:
+
+| Field | Purpose |
+|---|---|
+| `clauses` | each a set of factors that **together** authorize |
+| `factor.schemeId` | the concrete scheme (`ECDSA_SECP256K1`, `ML_DSA_65`, …) |
+| `factor.family` | the assumption family — the axis along which comparison is even meaningful |
+| `factor.paramLevel` | the **within-family** level, and only within-family |
+| `factor.rootTag` | the **independence root**. Two factors sharing a `rootTag` are ONE root, however different their algorithms |
+| `factor.verifierGeneration` | monotone, bumped only together with a change of verifier code identity |
+| `factor.anchored` | true iff this factor's possession test is kernel-evaluable (§4.3a) |
+| `status` | `ACTIVE → DEPRECATED → DISALLOWED`, one-way, `DISALLOWED` **absorbing** |
+
+`transitionAllowed(old, new)` is a **partial** relation, and every clause below is a refusal:
+
+1. **R1 — no DISALLOWED factor appears in `new`.** The lattice is absorbing; re-activation is refused.
+2. **R2 — anchoring.** Every clause of `new` contains at least one `anchored` factor (I-NO-SOLE-EXTERNAL-AUTHENTICATOR, applied clause-wise rather than profile-wise, because a *disjunct* is a complete path to authority).
+3. **R3 — clause covering, in the correct quantifier direction.** For **every** clause `n` of `new`
+   there exists a clause `o` of `old` such that `n` **dominates** `o`. *(The reverse quantifier —
+   every old clause covered by some new clause — permits adding a weak alternative and is the
+   classic error.)*
+4. **R4 — dominance is within-family only.** `n` dominates `o` iff for every factor in `o` there is a
+   factor in `n` of the **same family** with `paramLevel ≥` and `verifierGeneration ≥`. There is no
+   cross-family dominance edge, ever.
+5. **R5 — independence must not decrease.** `minRoots(new) ≥ minRoots(old)`, where `roots(clause)` is
+   the count of **distinct `rootTag`s** in that clause and `minRoots` is the **minimum over clauses**.
+   `rootTag` is fixed at registration and is never reassignable.
+6. **R6 — no self-dealing.** Profiles are indexed by action class (`SPEND`, `RECOVERY`, `MIGRATION`,
+   `PROFILE_CHANGE`). `profile(PROFILE_CHANGE)` must dominate every profile it can change, so the
+   rule protecting the crypto cannot be edited under weaker crypto than it protects.
+7. **R7 — incomparable is REFUSED, not permitted.** If neither profile dominates the other, the
+   transition is denied. Unknown ⇒ deny is the only safe closure of a partial order, and refusing is
+   recoverable (propose a comparable profile) while permitting is not.
+
+**Agility survives**, which is the point of R4: ML-DSA-65 → ML-DSA-87 is a within-family
+`paramLevel` increase and is allowed; so is any verifier-implementation replacement that raises
+`verifierGeneration` within a scheme. What is refused is *changing the shape of the argument*.
+
+**Deprecation is not covered by R1–R7 and is called out rather than glossed.** Marking a broken
+scheme `DEPRECATED` necessarily *lowers* the profile, so it can never pass a monotone rule. It is
+therefore a distinct, one-way, explicitly-authorized **break declaration**, governed by
+`profile(PROFILE_CHANGE)`, and it must reduce the **authorization** predicate — not merely a
+comparison constant — or the broken scheme keeps authorizing while being labelled broken.
+
+Mutants **M10**, **M18** and **M32–M38** (§17).
 
 ### Why `algorithmId()` cannot be the strength signal
 
@@ -661,32 +1075,130 @@ conjunctive. **Hybrid authorization** is the default posture during transition.
 
 ## 13. Migration protocol
 
-Migration is among the most powerful capabilities in the system and is specified accordingly.
+Migration is among the most powerful capabilities in the system and is specified accordingly. **This
+section was rewritten in full.** The previous version was internally contradictory and its central
+mechanism — an atomic, all-or-nothing transfer of a bound asset set — is **unimplementable and
+unsafe**, for reasons given below before the replacement.
 
-**The binding must carry all of:** source vault · destination vault · **destination kernel code
-hash** · destination generation · asset set · credential commitment · guardian commitment · policy
-commitment · expected safe state · chain id · nonce · deadline.
+### 13.0 Why the previous specification fails
 
-**The destination code hash is re-checked at EXECUTION, not only at preparation** — a destination
-that was code-bearing and correct at proposal time can change before the delay elapses. This is the
-same lesson the current `applyPQVerifierUpdate` already encodes.
+It said: *"partial migration is disallowed (the asset set is bound); tokens that fail transfer abort
+the whole migration."* Six independent failures, any one of which is disqualifying:
 
-**Migration authority is strictly stronger than ordinary spending authority**, and is therefore
-decomposed so that **no single principal holds it**: the kernel binds the destination at preparation,
-and execution requires the recovery quorum. `MIGRATION_AUTHORITY` alone holds neither
-`SELECT_DESTINATION_KERNEL` nor `MOVE_ASSETS` (asserted).
+| # | Input | What happens |
+|---|---|---|
+| 1 | **An ERC-20 that reverts on transfer** (a blacklisting stablecoin blacklisting the destination) | One token permanently aborts the entire escape. The vault is trapped. |
+| 2 | **An ERC-20 that returns `false`** | Without a `SafeERC20`-style return check the migration is marked complete having moved nothing. |
+| 3 | **A fee-on-transfer or rebasing token** | The amount that arrives is not the amount bound. A bound *amount* can never be satisfied. |
+| 4 | **An unexpected airdrop after preparation** | The bound set is stale on arrival. Anything not in it is unreachable forever. |
+| 5 | **Many assets** | An unbounded loop over the asset set is a gas-limit denial of service. |
+| 6 | **A hostile third party** | see below — the decisive one |
+
+> **The sixth failure settles it, and it composes with a defect that is live in `main` today.**
+> Under per-vault custody the vault *is* an address, so **anyone** can send it an ERC-20 with no
+> function call at all; and OBSERVED at `15a44016`, `deposit()` / `depositFor()` still carry no state
+> gate (hazard H-22). An **unprivileged third party** can therefore place a reverting or blacklisting
+> token into a vault *between binding and execution* and **veto the escape of a vault they hold no
+> authority over**. An escape hatch that any stranger can weld shut is not an escape hatch. This is
+> why H-22 is not minor hygiene, and why it is not orthogonal to this lane.
+
+### 13.1 The replacement — manifest-based, per-entry, claim/sweep, salvage-capable
+
+**Authority migration and asset egress are separated.** They fail differently, so they are different
+mechanisms.
+
+**Phase 1 — BIND.** One approval fixes: source, destination **vault address**, destination **vault**
+code hash, destination generation, credential/guardian/policy commitments, expected safe state, chain
+id, nonce, deadline. It binds a **disposition** (`FULL BALANCE`) per asset *class* — **never an
+amount**, which is what defeats fee-on-transfer and rebasing tokens (failure 3) — and it does **not**
+bind a closed asset set (failure 4).
+
+**Phase 2 — RETIRE.** Authority freezes: no credential enrolment, no guardian change, no plane
+replacement, no new binding, no ingress. The binding is now immutable.
+
+**Phase 3 — EGRESS (repeatable, permissionless, per entry).** `egress(assetSpec)` moves one asset
+class to the bound destination. The caller supplies the asset identifier — which is what makes ERC-721
+and ERC-1155 workable without on-chain enumeration — but **the caller can never supply or influence
+the recipient**. Entries are independent: a failing entry marks itself `FAILED` and **reverts nothing
+else** (failures 1 and 5).
+
+**Phase 4 — SALVAGE (open-ended).** `egress` never closes. Assets arriving later remain claimable to
+the same bound destination forever.
+
+### 13.2 The invariants this forces
+
+> **I-MIGRATION-NONTRAP (T0).** No accepted migration failure mode may convert a recoverable vault
+> into an asset state with no authorized exit.
+
+> **I-EGRESS-INDEPENDENCE (T0).** No entry's outcome may affect the outcome, availability, or gas
+> feasibility of any other entry.
+
+> **I-EGRESS-RETRY-PERPETUAL (T0).** No state — `RETIRED` included — and no entry status, `ABANDONED`
+> included, may remove the permissionless ability to retry an unresolved entry toward the bound
+> destination.
+
+> **I-EGRESS-RECIPIENT-FIXED (T0).** Every egress path reads its recipient from the binding, never
+> from the caller. This is what keeps a *permissionless* egress from being a withdrawal.
+
+> **I-NO-FALSE-SETTLEMENT (T1).** An entry is marked `MOVED` only on an **observed decrease in the
+> source's own balance or ownership** of that asset — never because an external call returned without
+> reverting. This closes failure 2 without trusting any token's return convention.
+
+> **I-MIGRATION-SUBORDINATE-TO-RECOVERY (T0).** For every coalition, the minimum time to complete a
+> migration must be **at least** the minimum time to complete a recovery, and a pending recovery
+> blocks binding.
+
+> **I-MIGRATION-CLOCK-NEUTRAL (T1).** Migration may neither shorten nor lengthen the maturity of any
+> pending obligation — queued withdrawal, containment expiry, recovery delay.
+
+**I-MIGRATION-SUBORDINATE-TO-RECOVERY is the sharpest finding in this section, and it was absent from
+the previous version.** Migration and recovery are reachable by the **same** coalition — a guardian
+quorum. If binding is faster than recovery, migration is **strictly the better attack**: identical
+prerequisites, less warning, irreversible outcome. A defence in depth that hands the attacker a faster
+door is not depth. `bindDelay >= recoveryDelay` is therefore an architectural constraint, not a tuning
+parameter.
+
+### 13.3 Resolving "RETIRED is terminal" versus "migration executes from RETIRED"
+
+The contradiction dissolves once *terminal* is defined over authority rather than over activity:
+
+> **I-TERMINALITY-IS-AUTHORITY (T1).** A state is **terminal** iff no principal may thereafter acquire
+> or exercise **discretionary** authority over the object. A non-discretionary, pre-committed function
+> whose every parameter — above all its recipient — was fixed before the state was entered **is not
+> authority**, and does not make the state non-terminal.
+
+So `RETIRED` is terminal *and* permanently egress-capable, with no contradiction: nothing in `RETIRED`
+decides anything. Egress from `RETIRED` is a pull against a commitment made while the vault still had
+authority to make it.
+
+### 13.4 The residual, stated rather than engineered away
+
+**One case survives: a token that blacklists the SOURCE.** No destination helps and no protocol change
+reaches it. That is a property of the token, not a migration failure mode, and it is recorded in §2.2
+as an accepted unrecoverable condition rather than silently absorbed here.
+
+**Abandonment is bookkeeping, never capability removal.** Marking an entry `ABANDONED` changes
+settlement accounting only; a later successful transfer still resolves it. `ABANDONED` is **not**
+absorbing (mutant M42).
+
+### 13.5 Retained from the previous version, with one correction
+
+**The destination code hash is re-checked at EXECUTION, not only at preparation** — corrected: the
+hash re-checked must be `extcodehash` of the destination **VAULT**, not of the implementation it
+delegates to. Under C those are different accounts, and hashing the implementation would accept **any**
+clone of the right kernel, including one the attacker deployed and controls.
 
 **Explicitly rejected: `migrateEverything(arbitraryAddress)`.** An escape hatch that can send all
 assets to a chosen address is indistinguishable from theft (hazard H-11).
 
-Handled: partial migration is disallowed (the asset set is bound); tokens that fail transfer abort
-the whole migration; queued withdrawals and pending recoveries must be resolved or explicitly carried;
-replay is bound by nonce, chain id, and deadline; the source retires to `RETIRED`, which remains
-migration-executable so retirement is never a trap.
+**Execution takes no outcome-changing parameter.** Destination and commitments are read from the
+approved binding only.
 
-Mutants **M8** and **M9**.
+**Migration authority is decomposed so that no single principal holds it** (§22, D2): binding requires
+guardian quorum **and** credential authority; egress is permissionless precisely because it has no
+discretion left in it.
 
----
+Mutants **M8**, **M9** and **M39–M45** (§17).
 
 ## 14. Systemic shared dependencies
 
@@ -730,12 +1242,103 @@ recover, migrate, and verify the active code.
 | 8 | Written reference recovery procedure | Human-executable | PROPOSED |
 | 9 | Migration specification | Exit a dead generation | PROPOSED |
 
-**Why item 6 is the load-bearing one, and why C makes it work.** Because an EIP-1167 clone's
-implementation address is a `PUSH20` operand inside the clone's own runtime code, a user with only
-`eth_getCode` — no archive node, no event history, no trust in the deployer — computes
-`keccak256` of the 45-byte template with the expected implementation and compares. Under an
-upgradeable proxy this check is **impossible in principle**, because the code hash is identical
-across every implementation the proxy will ever point at.
+### 15.1 Item 6, corrected — code identity is a CHAIN, not a hash
+
+The previous revision wrote item 6 as a one-step check: *"a user with only `eth_getCode` computes
+`keccak256` of the 45-byte template with the expected implementation and compares."* **That check is
+necessary and it is nowhere near sufficient.** It proves which **address** the clone delegates to. It
+proves nothing about what code that address holds, and nothing at all about the vault's configuration.
+
+The real chain has **five links**, and each is a separate fact an offline observer must obtain:
+
+```
+  extcodehash(clone)                       PROOF   — code-derived, immutable
+        │  the 20-byte PUSH20 immediate, read out of the OBSERVED clone bytes
+        ▼
+  implementation ADDRESS                   PROOF   — code-derived
+        │  a SECOND, INDEPENDENT extcodehash of a DIFFERENT account
+        ▼
+  implementation runtime code hash         PROOF   — code-derived, but see the masking rule below
+        │  reproducible-build registry, compile tuple pinned
+        ▼
+  kernel generation                        PROOF   — only as strong as the build pin
+        │  SLOAD
+        ▼
+  active configuration / plane commitments OBSERVATION — storage-derived, MUTABLE, timestamped
+```
+
+> **I-CODE-IDENTITY-LINKAGE (T1).** The implementation address whose code is hashed **must be the
+> 20-byte immediate extracted from the observed clone runtime bytes at the same block.** It may never
+> be taken from a registry, a config file, a deployment JSON, or the factory. Taking it from anywhere
+> else verifies a claim against itself.
+
+> **I-CLONE-BYTES-EXACT (T1).** A clone's runtime must be **byte-exactly** the canonical template and
+> **exactly** 45 bytes (or 45 + `len(args)` under C2, with `len(args)` itself checked). Prefix
+> matching, substring matching, and "starts with the 1167 prelude" all admit a superset proxy that
+> contains the template **and** additional dispatch that runs first.
+
+> **I-IMPL-NONVACUOUS (T1).** At the moment of any assurance claim, `extcodehash(implementation)` must
+> be neither `0` (no such account) nor the hash of the empty string (an account with no code). A clone
+> pointing at a codeless address delegates into nothing; every call returns success with empty
+> returndata, which a naive checker reads as "fine".
+
+> **I-PURE-CONSTRUCTOR (T1) — forced by measurement.** The kernel implementation's constructor must
+> feed **no chain state into any `immutable`** — not `address(this)`, not `block.chainid`. MEASURED
+> (§19): two deployments of byte-identical source differ in **51 of 23,239 bytes**, entirely inside
+> immutable slots, one of which holds the contract's own address. With address-derived immutables
+> there **is no single publishable kernel code hash**; without them there is. This is the same change
+> dissent D2 already wanted for a different reason.
+
+> **I-CODE-IMMUTABILITY-IS-FORK-CONDITIONAL (T1).** "Deployed code cannot change" holds only on chains
+> **at or after Cancun** (EIP-6780) and only for accounts not created and destroyed inside one
+> transaction. **The compiler's `evmVersion: "cancun"` setting is evidence about this repository's
+> build, not about any network.** Every deployment target's fork status must be published alongside
+> the claim, or the immutability premise is unsupported.
+
+**The offline procedure that follows, stated completely because a partial one is worse than none:**
+
+1. `eth_getCode(clone)` → assert byte-exact template, exact length, extract the implementation address
+   and (under C2) the argument suffix.
+2. `eth_getCode(implementation)` → assert non-empty and not the empty-code hash.
+3. **Mask** the bytes named by the artifact's `immutableReferences` and compare the masked code to the
+   published artifact's `deployedBytecode` — which zeroes exactly those slots and is therefore the
+   address-independent projection. *(Verified: all seven slots are zero placeholders in the artifact.)*
+4. Independently **re-derive** each masked word: the address-derived ones from the implementation
+   address, the rest from the pinned source. Masking without step 4 discards real information.
+5. Only now read storage. Everything from here is **OBSERVATION with a timestamp**, never proof.
+
+### 15.2 The Observatory publishes eight identities, never one badge
+
+> **I-IDENTITY-TYPE-SEPARATION (T1).** These are published as **separate typed fields**, each labelled
+> `PROOF` (code-derived) or `OBSERVATION` (storage-derived, with a `valid-at`):
+
+| # | Identity | Type | Changes without a transaction? |
+|---|---|---|---|
+| 1 | clone code identity | PROOF | no |
+| 2 | implementation code identity | PROOF | no |
+| 3 | kernel generation | PROOF (build-pin strength) | no |
+| 4 | active verifier generation | OBSERVATION | no |
+| 5 | active policy generation | OBSERVATION | no |
+| 6 | credential generation | OBSERVATION | no |
+| 7 | guardian generation + commitment | OBSERVATION | no |
+| 8 | safe state | OBSERVATION | **yes — containment expires on wall clock** |
+
+Identity 8 is why an aggregate is forbidden: it changes with **no transaction at all**, so any claim
+covering it needs a `valid-until`, not only a `valid-at`. **Mixing eight facts of three different
+epistemic types into one hash or one green badge destroys exactly the distinction this section
+exists to make** — and a single aggregate cannot fail *partially*, which is the failure mode that
+matters (mutant **M49**).
+
+**The discriminator the brief demanded, stated precisely:** a model in which the **clone bytes are
+correct** — canonical template, right length, right implementation address — while the
+**implementation identity evidence is wrong** must make the assurance claim **FAIL**. A checker that
+verifies clone *shape* and then reads the implementation's identity from a registry rather than
+hashing the account it was pointed at passes this scenario while proving nothing (mutant **M47**).
+
+> **Under B2 this chain is two links instead of five**, because `extcodehash(vault)` *is* the kernel
+> code identity with no delegation hop and no second account. That is a genuine assurance advantage of
+> B2 which §3.3 weighs and which the 81× deployment cost outweighs — but it is a cost of C, and it is
+> recorded as one.
 
 > **UNRESOLVED.** The attestation verifier path currently depends on a trusted off-chain attestor.
 > An attestor that disappears cannot be replaced without action by someone, and
@@ -756,6 +1359,58 @@ everywhere.
 | **T2** | `I-PLANE-CONJUNCTIVE`, `I-SYNCHRONY`, `I-PARITY` | Integration tests + mutation testing + parity checks |
 | **T3** | Ordinary functionality | Unit and integration tests |
 
+### 16.1 Where each invariant is discriminated — and where it is NOT
+
+> **This table exists because the remediation added invariants faster than it added
+> assurance, and saying so is worth more than a mutant that would be killed by setup.**
+> The reference model is pure TypeScript. It cannot represent bytecode shape, `EXTCODEHASH`,
+> gas, calldata, the EIP-150 63/64 rule, transaction ordering, or a chain's fork level.
+> An invariant that depends on any of those **cannot** be discriminated here, and claiming
+> otherwise would be exactly the over-claim this lane exists to prevent.
+
+| Venue | Meaning | Assurance carried by THIS PR |
+|---|---|---|
+| **MODEL** | Discriminated by a mutant in `test/VaultVNextArchitectureModel.test.ts` with a vacuity guard | Architectural coherence and discrimination. **Never** conformance. |
+| **IMPLEMENTATION-LANE** | Only checkable against compiled bytecode or a live deployment | **NONE.** Recorded as a requirement, not as a result. |
+| **OBSERVATORY** | Only checkable by an off-chain evidence assembler against a live chain | **NONE.** |
+
+**MODEL** — discriminated here, mutant named in §17:
+`I-NO-SOLE-EXTERNAL-AUTHENTICATOR` · `I-FLOOR-IS-SOUND` · `I-NO-CIRCULAR-ESCAPE` ·
+`I-CONTAINMENT-BUDGET` · `I-CONTAINMENT-NO-EXTENSION` · `I-NO-INGRESS-WITHOUT-EGRESS` ·
+`I-VETO-BOUND` (bounded challenge) · `I-GUARDIAN-CONSTITUENCY-BINDING` ·
+`I-QUORUM-DISTINCTNESS` · `I-GUARDIAN-FAULT-ISOLATION` · `I-ATTESTATION-IS-AFFIRMATIVE` ·
+the seven `SecurityProfile` transition rules · `I-MIGRATION-NONTRAP` ·
+`I-EGRESS-INDEPENDENCE` · `I-EGRESS-RETRY-PERPETUAL` · `I-EGRESS-RECIPIENT-FIXED` ·
+`I-NO-FALSE-SETTLEMENT` · `I-MIGRATION-SUBORDINATE-TO-RECOVERY` ·
+`I-TERMINALITY-IS-AUTHORITY` · `I-CODE-IDENTITY-LINKAGE` · `I-CLONE-BYTES-EXACT` (shape only) ·
+`I-IMPL-NONVACUOUS` · `I-IDENTITY-TYPE-SEPARATION`.
+
+**IMPLEMENTATION-LANE** — stated here, **unproven** here:
+`I-PURE-CONSTRUCTOR` (needs the artifact's `immutableReferences`) ·
+`I-DEPLOY-INIT-ATOMIC` and `I-SALT-BINDS-PRINCIPAL` (need transaction ordering) ·
+`I-DIRECT-IMPL-CALL-INERT` (needs a deployed implementation) ·
+the `ecrecover` conditions of §4.3a — malleability rejection, `address(0)` handling, and a
+provably non-zero stored credential (need real signature verification) ·
+the `STATICCALL` / gas-cap / bounded-returndata mechanics of `I-GUARDIAN-FAULT-ISOLATION`
+(the model proves the *isolation property*; only bytecode can prove the *mechanism*).
+
+**OBSERVATORY** — stated here, **unproven** here:
+`I-CODE-IMMUTABILITY-IS-FORK-CONDITIONAL` (a claim about a network, not about a build) ·
+`I-CONSTITUENCY-RECONSTRUCTIBLE` (needs log availability) ·
+the `valid-until` semantics of every OBSERVATION identity.
+
+> **A consequence that must not be lost.** `I-MIGRATION-NONTRAP` and the guardian-isolation
+> invariants are **T0**, and their *mechanisms* live in the implementation lane. So a green
+> model suite is **not** evidence that a vNext kernel is non-trapping. It is evidence that a
+> non-trapping design exists and that this document describes it.
+
+> **The whole matrix must be re-run after any change to these invariants, not only the new
+> tests.** Adding conjunctive constraints routinely converts a previously valid kill into a
+> vacuous one — a mutant starts being refused by the *new* rule before it reaches the guard it
+> breaks. That happened three times while authoring this remediation (M33, M34, M35) and was
+> caught by the vacuity guard rather than by review.
+
+
 > **Every T0/T1 load-bearing claim must have at least one deliberately broken discriminator.**
 > An invariant with no killing mutant is decoration.
 
@@ -772,9 +1427,11 @@ invariant held".
 
 ## 17. Mutation matrix
 
-Eighteen mutants, each flipping exactly **one** guard so that a kill is attributable.
-All 18 are killed, with the vacuity guard satisfied on every one.
-See `test/VaultVNextArchitectureModel.test.ts`.
+**Forty-nine mutants, each flipping exactly ONE guard so that a kill is attributable.
+All 49 are killed, and every one carries a vacuity guard requiring the mutated seam to have
+actually been evaluated.** See `test/VaultVNextArchitectureModel.test.ts`.
+
+### M1–M18 — the original matrix (unchanged)
 
 | # | Mutant | Invariant that kills it |
 |---|---|---|
@@ -791,13 +1448,72 @@ See `test/VaultVNextArchitectureModel.test.ts`.
 | M11 | Always-true verifier treated as strong evidence | I-PLANE-CONJUNCTIVE |
 | M12 | Assurance observatory actuates custody | I-ASSURANCE-NONACTUATION |
 | M13 | Policy plane transitively obtains asset authority | I-PLANE-CONJUNCTIVE |
-| M14 | Guardian controller's indirect takeover path omitted | Authority-closure completeness *(inverted polarity: the clean model must **report** the path)* |
+| M14 | Guardian controller's indirect takeover path omitted | Authority-closure completeness *(inverted polarity)* |
 | M15 | Company-hosted service required for recovery | I-RECOVERY-SOVEREIGNTY |
 | M16 | One-sided reference-model divergence | I-PARITY |
-| M17 | Unavailable control plane strands local recovery | I-RECOVERY-LOCALITY |
+| M17 | Unavailable control plane strands local recovery | I-RECOVERY-LOCALITY-V2 |
 | M18 | Old generation crosses a generational boundary | I-GENERATION-MONOTONE |
 
----
+### M19–M31 — authentication, containment, ingress, guardians (vault model)
+
+| # | Mutant | Invariant that kills it |
+|---|---|---|
+| M19 | `PqOnly` is admitted as a credential mode | I-NO-SOLE-EXTERNAL-AUTHENTICATOR |
+| M20 | A plane's answer is combined **disjunctively** with the floor | I-PLANE-CONJUNCTIVE (at the authorization level, where M11 only reached the evidence level) |
+| M21 | The floor admits on **well-formedness**, conflating shape with possession | I-FLOOR-IS-SOUND |
+| M22 | **Immutability** is treated as discharging the authenticator requirement | I-NO-SOLE-EXTERNAL-AUTHENTICATOR |
+| M23 | Escaping a hostile verifier requires that verifier | I-NO-CIRCULAR-ESCAPE |
+| M24 | The containment budget window resets on every trigger | I-CONTAINMENT-BUDGET |
+| M25 | Re-entering containment extends the expiry | I-CONTAINMENT-NO-EXTENSION |
+| M26 | Ingress stays open while egress is closed | I-NO-INGRESS-WITHOUT-EGRESS |
+| M27 | The credential's challenge right is unbounded | I-VETO-BOUND (restores the H-03 veto) |
+| M28 | Roster material is believed without checking the commitment | I-GUARDIAN-CONSTITUENCY-BINDING |
+| M29 | Quorum distinctness dropped: one seat counted repeatedly | I-QUORUM-DISTINCTNESS |
+| M30 | One hostile ERC-1271 guardian aborts the whole recovery | I-GUARDIAN-FAULT-ISOLATION |
+| M31 | "Did not revert" counts as an ERC-1271 attestation | I-ATTESTATION-IS-AFFIRMATIVE |
+
+### M32–M49 — crypto lattice, migration, code identity (sub-models)
+
+| # | Mutant | Invariant that kills it |
+|---|---|---|
+| M32 | A profile is summarised by **MAX** over clauses instead of MIN | I-DISJUNCTION-TAKES-MIN |
+| M33 | The clause-covering quantifier is flipped | R3 (covering direction) |
+| M34 | Cross-family dominance permitted | R4 (within-family only) |
+| M35 | The independent-root count may decrease | R5 (independence) |
+| M36 | A clause need not carry a kernel-evaluable possession test | R2 (anchoring) |
+| M37 | The status lattice is no longer absorbing | R1 (DISALLOWED absorbing) |
+| M38 | Incomparable transitions permitted instead of refused | R7 (partial order closes to deny) |
+| M39 | One failing entry aborts the whole migration | I-EGRESS-INDEPENDENCE |
+| M40 | The binding freezes an asset **set**, so an airdrop is unreachable | I-MIGRATION-NONTRAP |
+| M41 | The terminal state closes egress | I-EGRESS-RETRY-PERPETUAL |
+| M42 | `ABANDONED` becomes absorbing | I-EGRESS-RETRY-PERPETUAL |
+| M43 | The bind delay drops below the recovery delay | I-MIGRATION-SUBORDINATE-TO-RECOVERY |
+| M44 | The egress recipient is taken from the caller | I-EGRESS-RECIPIENT-FIXED |
+| M45 | Settlement recorded on a non-reverting call | I-NO-FALSE-SETTLEMENT |
+| M46 | The implementation address is read from a **registry** | I-CODE-IDENTITY-LINKAGE |
+| M47 | Clone identity matched by **prefix**, admitting a superset proxy | I-CLONE-BYTES-EXACT |
+| M48 | The eight identities published as **one aggregate badge** | I-IDENTITY-TYPE-SEPARATION |
+| M49 | A clone delegating into a **codeless** account passes unchecked | I-IMPL-NONVACUOUS |
+
+### Scenarios — exercised and adjudicated, deliberately NOT mutants
+
+A configuration is not a broken guard. These four are driven as scenarios because that is
+what they are, and the suite records **why each is or is not catastrophic**:
+
+| Scenario | Outcome | Why |
+|---|---|---|
+| Always-true verifier, `PqOnly` | **CATASTROPHIC — forgery** | The floor is structural only; correctly-sized bytes authorize |
+| Always-true verifier, `Hybrid` | **NOT catastrophic — silent DOWNGRADE** | The `ecrecover` conjunct still gates; effective strength falls to ECDSA alone |
+| Reverting verifier, `Hybrid` | **NOT catastrophic — DENIAL** | Reported as `UNAVAILABLE`, never as authorization |
+| External verifier omitted entirely | **NOT catastrophic** | The floor alone still denies a caller with no secret |
+
+**Three mutants were initially mis-scored while authoring this section, and the harness caught
+all three.** M33 and M34 were **masked by defence in depth** — refused by a *different* rule
+before reaching the guard they broke, which would have credited a kill to the wrong invariant;
+both are now observed on the broken guard directly. M35 tripped the **vacuity guard**: the
+mutation deletes the independence check, so the code that marks that guard never ran, and the
+mark had to be moved outside the conditional it guards. *A mutation that DELETES a rule must
+still record that the rule was reached, or "removed" is indistinguishable from "unreached".*
 
 ## 18. Relationship to the hazard register
 
@@ -812,37 +1528,100 @@ maps to at least one invariant here, and every accepted residual is named in bot
 The budget follows the architecture. The architecture is not weakened to hit a byte target, and the
 mission's arbitrary 10–15 KB figure is struck.
 
-### MEASURED this session — clean, non-instrumented compile at `aaba4d2`
+### MEASURED — clean, non-instrumented compile at `15a44016` (current `main`, post-#180)
 
 `npm run compile && npm run validate:bytecode-size` (solc 0.8.24, cancun, optimizer on, runs 200,
-viaIR not set):
+viaIR not set). The tree was cleaned and rebuilt before measuring; **coverage-instrumented bytecode
+was never used for any figure here.**
 
-| Contract | Runtime | % of 24,576 | Headroom |
-|---|---|---|---|
-| `WalletWallVault` | **23,231** | 94.5% | **1,345** |
-| `StablecoinVaultSimulator` | 22,867 | 93.0% | 1,709 |
-| *(creation bytecode, `WalletWallVault`)* | **24,574** | — | — |
+| Contract | Runtime | % of 24,576 | Headroom | Creation |
+|---|---|---|---|---|
+| `WalletWallVault` | **23,239** | 94.6% | **1,337** | **24,582** |
+| `StablecoinVaultSimulator` | 22,875 | 93.1% | 1,701 | 24,349 |
+| `WalletWallMultiSigVault` | 8,714 | 35.5% | 15,862 | 10,071 |
 
-**Disposable spike, applied → measured → reverted → identity proven restored:**
+> **Superseded figures, kept so the delta is auditable.** At the previous base `aaba4d2` these were
+> 23,231 / headroom 1,345 / creation 24,574, and 22,867 / headroom 1,709. PR #180's
+> `renounceOwnership` override added **+8 bytes** to each vault's runtime *and* creation code.
+> **Two consequences.** Headroom is now **1,337**, so §19's "at least one of the two competing fixes
+> cannot fit" is *more* true, not less. And `WalletWallVault`'s **creation** bytecode, at 24,582,
+> now **exceeds the 24,576 runtime ceiling on its own** — a fact B1 turns on (§3.3).
 
-| Spike | Runtime | Headroom |
+### Deployment-model spikes — MEASURED, applied → measured → reverted → restoration proven
+
+Four disposable contracts were compiled and, for the two viable models, actually **executed** against
+the real `WalletWallVault` on an in-process network. Nothing survives in the tree.
+
+| Spike | Factory runtime | vs EIP-170 |
 |---|---|---|
-| EIP-1167 clone factory, atomic deploy+initialize, CREATE2 | **1,238** | **23,338** |
+| **B1** — Solidity factory, `new WalletWallVault{salt}(…)` | **24,866** | **OVER by 290 — undeployable** |
+| **B2** — generic CREATE2 deployer, initcode via calldata | **657** | headroom 23,919 |
+| **C / C2** — EIP-1167 factory: `cloneDeterministic`, CWIA variant, address predictor, atomic init | **1,760** | headroom 22,816 |
 
-`contracts/` tree hash after revert: `c1ef598bfff351f4698e4972b664367100f2b483`, byte-identical to
-`origin/main:contracts`. No spike source remains.
+solc emitted its own diagnostic on B1: *"Contract code size is 24866 bytes and exceeds 24576 bytes."*
+
+**Per-vault deployment gas, MEASURED by executing each path against the real vault:**
+
+| Path | Gas | Relative |
+|---|---|---|
+| baseline — a bare `CREATE` of `WalletWallVault`, no factory | 5,168,967 | — |
+| **B2** — full contract per vault, initcode as calldata (24,614 B) | **5,181,105** | **81.3×** |
+| **C** — EIP-1167 clone, deployment only | **63,692** | 1.00× |
+| **C2** — clone + 20 bytes of immutable args | **69,342** | 1.09× |
+| *(one-time)* B2 factory deployment | 195,331 | — |
+| *(one-time)* C factory deployment | 434,867 | — |
+
+> **Read the delta, not the ratio.** The **81.3×** figure compares *deployment only*; a clone must
+> additionally run an `initialize()` performing the storage writes B2's constructor already performed,
+> and those writes cost the same on both sides. What does *not* cancel is the **delta of 5,117,413
+> gas**, of which **4,638,800 (90.7%)** is the protocol's flat 200 gas per runtime byte applied to
+> 23,239 − 45 = 23,194 bytes. Stated so it cannot be argued with: **B2 pays for the kernel's entire
+> size once per vault; C pays for it once per generation.** That is the whole of the deployment
+> argument, and it is the reason C wins.
+>
+> Observed on chain, not assumed: clone runtime **45 bytes**, implementation runtime **23,239 bytes**.
+
+**C2 — per-clone immutable arguments, MEASURED.** OpenZeppelin 5.6.1's
+`Clones.cloneDeterministicWithImmutableArgs` appends bytes after the 45-byte template;
+`fetchCloneArgs` reads them with `extcodecopy(instance, …, 0x2d, …)`. **The arguments are therefore
+part of the clone's own runtime code**, and are committed to by both `extcodehash(clone)` and the
+CREATE2 address. Measured: a 20-byte argument yields a 65-byte clone at **+5,650 gas (+8.9%)**; two
+clones of the *same* implementation with *different* arguments have different code hashes; the
+argument suffix reads back byte-exact.
+
+**Code-identity spike — a defect this document previously did not record.** Two deployments of
+**byte-identical source** produced runtime code differing in **51 of 23,239 bytes**. Every differing
+byte lies inside a declared immutable slot; the artifact declares **seven** 32-byte immutable slots,
+of which the one at offset **18,627** holds the contract's **own address**. Cause: inherited
+OpenZeppelin `EIP712`, whose `_cachedThis` and `_cachedDomainSeparator` are `immutable`. See §3.1 and
+§15 for the consequences and the offline-verification procedure that follows from them.
+
+`contracts/` tree hash after revert: **`236eadb6bb1253285e1f55b175a4c81e294cb96f`** — byte-identical
+to `origin/main:contracts`. `scripts/` restored to `f63c29caaf2c6361dcacfb2c1754a7bfb585f589`.
+`git status --porcelain` empty. **No spike source remains.**
 
 ### What the numbers establish
 
-1. **The current kernel has exhausted its evolution budget.** Two agreed security fixes are bidding
-   for the same 1,345 bytes: guardian hardening at 675–1,650 B (an unresolved 2.4× disagreement) and
-   recovery proof-of-possession needing 464 B against 339 B available. **At least one provably
-   cannot fit.** The threat model has become limited by EIP-170 rather than by engineering judgement.
-2. **Architecture B is not constructible.** A `new Vault{salt}(…)` factory must embed 24,574 bytes of
-   creation bytecode in its own runtime, exceeding the ceiling before any other logic.
-3. **Architecture C's deployment path costs 1,238 bytes** — 5% of the ceiling — for a factory that
-   deploys and initializes atomically.
+1. **The current kernel has exhausted its evolution budget**, and by 8 bytes more than before. Two
+   agreed security fixes bid for the same **1,337** bytes: guardian hardening at 675–1,650 B and
+   recovery proof-of-possession needing 464 B against 339 B available. **At least one provably cannot
+   fit.** The threat model is limited by EIP-170 rather than by engineering judgement.
+2. **B1 is not constructible — and that is a statement about B1, not about B.** The earlier
+   generalisation is withdrawn (§3.3).
+3. **B2 is constructible at 657 bytes and is rejected on measured cost**, not on feasibility.
+4. **C's deployment path costs 1,760 bytes** for a factory that deploys, initialises atomically,
+   supports immutable arguments, and predicts addresses.
 
+> **A GATE, not a conclusion — and the symmetric version of the error this lane just corrected in
+> itself.** Every figure above measures the *current* vault. **C requires the kernel to be recompiled
+> as a clone target**: its constructor becomes an external `initialize()`, and the address-caching
+> `EIP712` must go (§3.1). That changes the kernel's **runtime** size, which is the quantity C is
+> constrained by and B2 is not. **That number has not been measured, and no vNext kernel has been
+> compiled.** If recompiling as a clone target pushes the kernel's runtime past the ceiling, then *C*
+> is the model that is not constructible and B2 wins by default. Measuring it is step 3 of §21 and it
+> gates everything downstream.
+
+### Target budget for the vNext kernel
 ### Target budget for the vNext kernel
 
 | Quantity | Value | Basis |
@@ -892,10 +1671,11 @@ Ordered by dependency; each step gated on the previous.
 
 | # | Step | Gate |
 |---|---|---|
-| **0** | **Fix `renounceOwnership()` in current `main`** — override to revert. Measured at **+8 bytes**. Independent of vNext. | Hazard H-01 is the only entry in the register with **no recovery path**. It should not wait for an architecture. |
+| **0** | ~~Fix `renounceOwnership()` in current `main`~~ — **DONE.** Shipped independently as **PR #180**, merged to `main` `15a44016`. Both vaults now override it to revert with `OwnershipRenunciationDisabled()`, declared `pure` so the ABI's `stateMutability` is tamper-evident. Measured cost **+8 bytes** each, exactly as forecast. | **Closed.** Hazard H-01 is CLOSED in current `main` and its history is preserved in the register rather than deleted. |
+| **0a** | **Close hazard H-22** — gate `deposit()`/`depositFor()` with the same state check the payout paths carry. Still **live** at `15a44016`. | Promoted from hygiene to a **prerequisite**: §13.0 shows an open ingress lets an unprivileged stranger veto a migration under any asset-set-binding design. |
 | 1 | Owner decisions D1–D6 (§22) | Nothing below is safe to build first |
 | 2 | Freeze the kernel state layout and the safe-state lattice | Model conformance |
-| 3 | **Compile a skeleton kernel and MEASURE it** | Must clear the 21,900 target with ≥600 B headroom, else redesign |
+| 3 | **Compile a skeleton kernel and MEASURE it** — **as a CLONE TARGET**: constructor converted to an external `initialize()`, and the address-caching `EIP712` removed (§3.1, §15.1) | Must clear the 21,900 target with ≥600 B headroom, **else redesign**. §19 flags this as the gate that can still overturn the deployment verdict in favour of B2. |
 | 4 | Kernel: custody, execution, nonce, credential floor | T0 tests + fuzzing |
 | 5 | Kernel: guardians, recovery, safe-state lattice | T1 tests + mutants M2/M3/M4/M6/M7/M17 |
 | 6 | Kernel: migration | T1 + mutants M8/M9 |
@@ -912,19 +1692,143 @@ any vNext verdict, and it is out of scope for *this* design-only lane.
 
 ---
 
-## 22. Open owner decisions
+## 22. Owner decisions — classified, and adjudicated where they are technical
 
-| # | Decision | Why it cannot be settled here |
+> **The previous revision called all seven "risk-appetite and product calls, not technical
+> gaps, and this lane deliberately does not settle them." That framing is withdrawn.** Four of
+> them are **architecture blockers**: they determine the authority graph, not the product. An
+> architecture whose authority graph is undetermined is not an implementation contract.
+>
+> Each is now classified, and the technical part of each is adjudicated here. What remains open
+> is named precisely, so the owner is asked one question rather than seven.
+
+| # | Decision | Class | Status |
+|---|---|---|---|
+| **D1** | Guardian-majority trust | **ARCHITECTURE BLOCKER** | Technically adjudicated; **appetite call OPEN** |
+| **D2** | Migration authority | **ARCHITECTURE BLOCKER** | **RESOLVED** |
+| **D3** | ERC-4337 adoption | DEFERRED INTEROPERABILITY | Deferred; generation 1 does not adopt |
+| **D4** | Shared verifier coupling | **ARCHITECTURE BLOCKER** | **RESOLVED — forced by section 4.3a** |
+| **D5** | Containment authority | **ARCHITECTURE BLOCKER** | **Structurally RESOLVED**; constants OPEN |
+| **D6** | Policy-disable semantics | PRODUCT CHOICE | Deferrable — verified it cannot change kernel layout |
+| **D7** | PR #178's ECDSA PoP leg | DEFERRED | Blocked on D1 and the byte budget |
+| **D8** | **Factory generation-registration authority** | **ARCHITECTURE BLOCKER** | **NEW — was missing entirely** |
+
+### D1 — is guardian-majority takeover accepted? (architecture blocker; appetite OPEN)
+
+**The technical part is settled and the answer is uncomfortable.** A second *independent factor*
+for recovery is not available, because the obvious candidate is self-defeating: a factor the
+**user** must hold makes recovery unavailable in precisely the scenario recovery exists for —
+the user lost everything. A factor a **third party** holds is a new principal with its own
+closure, and section 8 would then have to report it reaching assets.
+
+**What IS available is not an authority — it is a bounded challenge.** The spending credential
+may cancel a pending recovery **at most k times per episode**:
+
+- `k = 0` leaves a guardian majority **unchallengeable** (hazard H-15);
+- unbounded `k` restores hazard **H-03** — a permanent veto held by exactly the principal whose
+  compromise recovery exists to remedy;
+- a finite, non-zero `k` costs the attacker `k x recoveryDelay` **and** requires the credential
+  holder to be absent throughout, while leaving an honest user `k x recoveryDelay` to migrate out.
+
+This is the **only** mechanism in the design that raises the cost of the **dominant** attack path
+(section 24) without creating a new principal. It is modelled, and both failure directions are
+discriminated (mutant M27). `CREDENTIAL_CHALLENGE_LIMIT = 2` in the model is an illustrative
+value, not a recommendation.
+
+> **STILL OPEN, and it is the owner's to answer:** with the bounded challenge in place, is
+> guardian-majority takeover **accepted** as an unrecoverable condition? If **YES**, section 2.2
+> keeps it and section 8's closure must go on **asserting it positively** — an authority graph
+> that omits a real path is worse than none. If **NO**, the architecture needs a factor this
+> adjudication could not find, and the recovery model is not settled. **This is a risk-appetite
+> question, and no amount of further analysis converts it into a technical one.**
+
+### D2 — migration authority (architecture blocker; RESOLVED)
+
+Three roles, deliberately not held by one principal:
+
+| Role | Who | Why |
 |---|---|---|
-| **D1** | **Is the accepted unrecoverable list (§2.2) correct?** Specifically: is guardian-majority takeover accepted, or must recovery require a second independent factor? | Pure risk appetite. It changes the guardian design, the byte budget, and the recovery UX. Every downstream verdict rests on it. |
-| **D2** | **Who authorizes migration execution** — guardian quorum, credential authority, or both? | A security/liveness trade with no technically forced answer (H-11). |
-| **D3** | **Is ERC-4337 adopted at all?** If yes, the unconditional EntryPoint trust and the [OP-011] timestamp conflict must both be accepted. | Product decision with an unavoidable, spec-mandated security cost (§5). |
-| **D4** | **Does the factory stamp a shared verifier into every clone?** This is the difference between cohort and per-vault default coupling (§14). | Operational vs isolation trade. |
-| **D5** | **What is the containment bound**, and who holds the emergency principal? | Bound must exist (§6); its value is an operational choice. |
-| **D6** | **Is the policy-engine disable a time-bounded exception or a standing configuration?** NIST E.8 Continuous Protection explicitly permits an intentional, exception-case override but not a standing disable — so the classification determines whether the current behaviour is inside or outside the principle. | Governance choice, and it changes what the mechanism must enforce. |
-| **D7** | **Does PR #178's ECDSA-local proof-of-possession leg ship**, given its budget shortfall and its liveness cost? | Blocked on D1 and on the byte budget. |
+| **BIND** (select the destination) | guardian quorum **AND** credential authority | Destination selection closes over *everything* (H-10) |
+| **RETIRE** (freeze authority) | the same conjunction, after `bindDelay` | Irreversible; needs the same bar as binding |
+| **EGRESS** (move one asset) | **anyone** | It carries **no discretion**: recipient from the binding, amount is the whole balance |
 
----
+**Can any single principal select the destination AND move assets? No** — by construction, and
+asserted in the model. The answer to *who may execute* is deliberately **anyone**, which is safe
+only because `I-EGRESS-RECIPIENT-FIXED` holds; remove that and the same design becomes a public
+withdrawal function (mutant M44).
+
+**The non-obvious constraint, and the one this adjudication would have missed without composing
+two blockers: `bindDelay >= recoveryDelay`.** Migration and recovery are reachable by the *same*
+coalition. A faster migration is a strictly better attack — same prerequisites, less warning,
+irreversible (section 13.2, mutant M43).
+
+### D4 — does the factory stamp a shared verifier into every clone? (RESOLVED, and forced)
+
+**Yes, it may — but only into STORAGE, never into immutable args.** The distinction is now
+load-bearing (section 3.3): args are unchangeable, and a verifier must remain replaceable for
+agility and for hazard H-06. What must never be stamped is anything that makes the coupling
+*inescapable*.
+
+**Cohort blast radius, quantified per behaviour and per mode:**
+
+| Verifier behaviour | `Hybrid` (admitted) | `PqOnly` (rejected) |
+|---|---|---|
+| Byzantine (always true) | **cohort-wide silent DOWNGRADE** to ECDSA-only. No loss. Detectable only by reading the verifier's code. | **cohort-wide TOTAL LOSS** |
+| Unavailable / reverting | cohort-wide **denial** of spending. Recovery unaffected (section 9). | cohort-wide denial **and** no escape |
+
+**Can each vault leave that verifier generation without depending on it?** Under `Hybrid`,
+**yes** — the replacement is authorized by the `ecrecover` conjunct, which the verifier cannot
+influence. Under `PqOnly`, **no** — the escape is authenticated by the component being escaped.
+
+> **So D4's answer is not independent: it is produced by section 4.3a.** Rejecting `PqOnly` is
+> what converts the cohort coupling from a **trap** into a **default a vault can leave using its
+> own authority**. Two blockers, one mechanism, and neither is safe without the other.
+
+### D5 — containment authority (structurally RESOLVED; constants OPEN)
+
+| Question | Answer |
+|---|---|
+| Who may trigger | The emergency principal, or a guardian quorum |
+| Maximum duration | `CONTAINMENT_MAX_DURATION`, wall clock, non-suspending |
+| **Do repeat triggers extend it?** | **No.** Re-entry while contained is a **no-op** (M25) |
+| Cooldown | A **rolling budget**: at most `B` contained time per window `W`, with **`B < W`**, the window origin advancing **only** by elapsed wall clock (M24) |
+| What remains live | **All four recovery actions**, plus migration binding and egress |
+| What exits containment | **Nobody.** Wall-clock expiry only |
+
+**`B < W` is the entire content of the rule**: it guarantees an infinite sequence of uncontained
+intervals, so denial is a **duty cycle** rather than a state. Kernel cost: two words.
+
+> **This closes a real hole rather than tightening a parameter.** The previous revision said
+> containment was "wall-clock bounded and self-expiring" and said nothing about re-triggering —
+> so a hostile emergency principal could hold an indefinite rolling freeze using a capability the
+> document itself called bounded. **Per-episode bounds do not compose into a bound on the
+> authority.** **OPEN:** the numeric values of `CONTAINMENT_MAX_DURATION`, `B` and `W`, and who
+> holds the emergency principal. Those are operational.
+
+### D6 — policy-disable semantics (product choice; deferrable, and verified so)
+
+Deferrable **because it cannot change the kernel's state layout**: the policy plane is one storage
+word under every reading, and "disabled" resolves to the kernel floor rather than to "no
+restriction" (section 4.3). It is a behavioural question about a plane, not a kernel question.
+
+### D8 — factory generation-registration authority (NEW; architecture blocker)
+
+> **This decision was absent from the previous revision, and its absence was a gap in the
+> authority graph.** Section 8 records "Kernel admin — **NONE**, the principal does not exist".
+> True *per vault*. But under C **somebody decides which implementation the factory points at**,
+> and that decides what every FUTURE vault *is*, immutably. That is a capability-**ADDING** power
+> inside a doctrine (section 4.3) that forbids them.
+
+**Recommendation: remove the principal rather than govern it.** Make the factory's implementation
+pointer `immutable` — **one factory per kernel generation**. Registering a generation then *is*
+deploying a new factory, and no principal can retarget an existing one. The measured spike already
+does this (`address public immutable implementation`).
+
+**Residual, stated:** whoever publishes a factory address still influences which generation users
+*find*. That is a **discovery** problem, not an authority one, and it is bounded by section 15's
+offline verification, which lets a user check what they got without trusting the publisher.
+**OPEN:** the owner must confirm the one-factory-per-generation constraint, because the
+alternative — a retargetable factory — puts a live admin back into the design.
 
 ## 23. Relationship to PR #177 and PR #178
 
@@ -949,3 +1853,137 @@ rather than adding a second mechanism to one of them. Its byte arithmetic change
 deeper lesson is adopted directly: **a mitigation can worsen liveness**, and **verifier quality is a
 separate axis from algorithm standardization** — which is why §12 separates scheme strength from
 verifier implementation.
+
+**PR #180 (disable unsafe ownership renunciation) — MERGED.** Sequencing step 0 of §21, shipped
+independently of any vNext verdict, exactly as this lane recommended. Both vaults now override
+`renounceOwnership()` to revert, at a measured **+8 bytes** each. **Hazard H-01 is CLOSED in current
+`main`.** The history is preserved rather than deleted (§25): a T0 hazard found by architecture
+review, fixed in its own narrow PR, and re-verified here firsthand is stronger assurance history
+than a register that never mentions it.
+
+---
+
+## 24. The authority labyrinth — minimum compromise cuts
+
+> Enumerating *controls* is not the same as enumerating *paths*, and counting **controls** is not
+> the same as counting **independent failure roots**. Two credentials derived from one seed are
+> **one** root. A system is exactly as strong as its cheapest path, not as its most elaborate one.
+
+For each catastrophic outcome: the distinct paths, and the **minimum coalition of independent
+roots** that reaches it. `n` is the guardian count and `k = floor(n/2) + 1` the quorum.
+
+### 24.1 Unauthorized asset control
+
+| Path | Requires | Independent roots |
+|---|---|---|
+| **A — front door** | The spending credential: ECDSA **and** PQ under `Hybrid` | **2** if the keys are independently rooted; **1** if both derive from one seed |
+| **B — social** | `k` guardians → recovery → new credentials → assets | **k**, and **1** if the guardians share a root (one custodian, one vendor, one family) |
+| **C — migration** | `k` guardians **and** the credential → bind → egress | **k + 1** — strictly harder than B, and never the minimum |
+| **D — verifier** | Install/operate an always-true verifier under `PqOnly` | **1** |
+| **E — global admin** | Only under `SHARED_MULTITENANT` | **1** |
+
+**Minimum cut before this remediation: 1**, by path D. A single component whose *only* job is to
+answer a question would have reached total loss, bypassing — not defeating — every quorum, delay,
+binding, code-hash re-check and safe-state transition in the document.
+
+**Minimum cut after this remediation: `min(2, k)`.** Path D is deleted by rejecting `PqOnly`
+(§4.3a); path E by architecture C. With the realistic `n = 3, k = 2`, that is **2**.
+
+> **Say the uncomfortable part plainly: path B dominates.** For `n = 3`, two guardians reach assets
+> — the same count as compromising both credential factors, but with **no cryptography to break**.
+> **Adding a third credential factor does not raise the system's minimum cut.** Every elaborate
+> front-door control is bounded above by a social path with a smaller constant. This is why D1 is an
+> architecture blocker rather than a preference, and why the **bounded challenge** matters: it is the
+> only mechanism here that raises the cost of path B — the attacker must additionally outlast the
+> credential holder for `k_challenge x recoveryDelay` — without creating a new principal.
+
+**The correlation caveat is not a footnote.** `k` counts *addresses*, and independence is an
+assumption about the world, not a property the chain enforces. Three guardians on one custodian is
+**one** root. The `rootTag` field of the `SecurityProfile` exists to make this representable for
+credentials (§12); nothing analogous exists for guardians, and that gap is recorded as **H-31**.
+
+### 24.2 Every other catastrophic outcome
+
+| Outcome | Cheapest path | Minimum cut | Note |
+|---|---|---|---|
+| **Credential replacement** | rotation, or recovery | `min(2, k)` | Identical to 24.1 minus the migration path |
+| **Guardian takeover** | `k` guardians | **k** | Accepted (§2.2), asserted positively by the model |
+| **Migration takeover** | quorum **and** credential | **k + 1** | Strictly dominated; never the system minimum |
+| **Permanent recovery veto** | — | **unreachable** | Containment self-expires under a budget; the credential's challenge is bounded; H-01 closed by #180 |
+| **Silent crypto downgrade** | — | **unreachable** | Every weakening transition is refused by the partial order (§12); an *overt* deprecation needs the `PROFILE_CHANGE` authority |
+| **Denial of spending** | one verifier or one policy plane | **1** | **Accepted.** Denial is inside the envelope; loss is not. Recovery and migration stay available |
+
+> **The one-line summary of the whole graph.** After this remediation no *loss* outcome has a
+> minimum cut below **`min(2, k)`**, and no *veto* outcome is reachable at all — but **denial**
+> still has a cut of **1**, and that is a deliberate, declared trade rather than an oversight. Every
+> plane in this design is a liveness single point of failure by construction, because "planes may
+> only SUBTRACT authority" is a statement about **safety** and says nothing about **availability**.
+> Subtracting availability *is* granting a veto over liveness, and the design accepts that in
+> exchange for failing closed on spending — which is why §9 puts recovery and §13 puts egress
+> outside every plane's reach.
+
+
+---
+
+## 25. Remediation record — what was attacked, what changed, what was refused
+
+This section exists because a document that only contains its conclusions is not reviewable, and
+because a remediation that quietly deletes its own errors destroys the evidence that it worked.
+
+### 25.1 Claims WITHDRAWN, with what replaced them
+
+| Withdrawn claim | Why it was wrong | Replacement |
+|---|---|---|
+| "Architecture B is **NOT CONSTRUCTIBLE**" | Generalised from one *construction* failing to the whole class. Only **B1** was measured. | §3.3: B1 measured at **24,866 B, over by 290**; **B2 constructible at 657 B** and rejected on a measured **81.3x** deployment cost |
+| "An always-true verifier **grants nothing**" | True of the plane's *marginal* contribution; false of the *composition*, because the floor contains no possession test. Refuted by `MockMLDSAVerifier`, already in this repo. | §4.3a: `I-NO-SOLE-EXTERNAL-AUTHENTICATOR`, `I-FLOOR-IS-SOUND`; **`PqOnly` rejected** |
+| "`extcodehash(clone)` is a total function of the implementation" | True, and it proves only which **address** is delegated to. MEASURED: an implementation's own code hash is **address-dependent**. | §3.1 and §15.1: a five-link chain, an eight-identity publication, a masking procedure |
+| "`newStrength >= oldStrength`" over a scalar | Summarises a **disjunction** by MAX; asserts a total order across incomparable families | §12: a `SecurityProfile` and a **partial** transition relation that refuses incomparables |
+| "Partial migration is disallowed; a failing token aborts the whole migration" | Unimplementable and unsafe: an **unprivileged stranger** can veto the escape | §13: manifest, per-entry egress, perpetual retry, salvage |
+| "Guardian **membership** is KERNEL-REQUIRED" | Conflated guardian **authority** with the roster **bytes** | §4.2b: **G-B** — commitment + threshold + generation in the kernel; roster as validated calldata |
+| "Recovery performs **zero external calls**" | Unsatisfiable under EIP-1167 — every clone entry is a `DELEGATECALL` — and it forbids `ecrecover`, which §4.3a makes mandatory | §9: `I-RECOVERY-LOCALITY-V2`, plus `I-GUARDIAN-FAULT-ISOLATION` |
+| "Containment is wall-clock bounded and self-expiring" | Silent on **re-triggering**. Per-episode bounds do not compose into a bound on the authority | §6 and §22 D5: `I-CONTAINMENT-NO-EXTENSION` + `I-CONTAINMENT-BUDGET`, `B < W` |
+| "H-01 is **live** in current `main`" | Fixed by **PR #180**, merged. Re-verified firsthand here | Register: **CLOSED IN CURRENT MAIN**, discovery history preserved |
+| "The seven owner decisions are risk-appetite and product calls" | Four are **architecture blockers**; a fifth (D8) was missing entirely | §22: classified and adjudicated; two remain genuinely open |
+| "`WalletWallVault` declares **no** `immutable` variables" | True of its own source; misleading — it **inherits seven**, two address-derived | §3.1, and R3's conclusion survives unchanged |
+| FIPS 204 §3.6.2 cited for structural length rejection | **NOT VERIFIED in this lane.** Four independent reviewers flagged it and none checked it | §4.3: the requirement restated on engineering merit; the citation marked UNVERIFIED and made non-load-bearing |
+
+### 25.2 Claims that SURVIVED the attack unchanged
+
+Recorded because a remediation that overturns everything is not adjudicating, it is oscillating.
+
+- **Architecture C wins** — now for a measured reason (81.3x) rather than a mistaken one.
+- **Planes may only SUBTRACT authority.** Correct, and necessary. It was never *sufficient*.
+- **No generic privileged execution**, and interoperability does not force it.
+- **Recovery must remain available in every non-terminal state.**
+- **Migration execution must remain available from a terminal state** — now with a definition of
+  *terminal* that makes the sentence coherent (§13.3).
+- **Clocks are wall-clock and must not suspend** — now generalised to *every* clock (§6).
+- **Guardian-majority takeover is asserted positively** by the authority closure.
+- **The assurance plane's closure is empty.**
+- **No candidate vNext kernel has been compiled**, so no forward byte figure is claimed.
+
+### 25.3 Proposals considered and REFUSED, with the reason
+
+Adversarial review produced roughly sixty candidate kernel requirements. Adopting all of them
+against **1,337 measured bytes of headroom** would itself have been a defect, so what was *not*
+adopted is part of the record.
+
+| Refused proposal | Reason |
+|---|---|
+| Build an on-fork differential bytecode harness in this lane | Requires production Solidity, which this lane forbids. §16.1 instead **routes** those invariants to the implementation lane and claims **no** assurance for them here |
+| A monotone strength **high-water mark** | Reintroduces the scalar the partial order replaces. Its real content — that deprecation must not silently permit re-activation — is covered by the absorbing lattice |
+| Bind the initial constituency into the CREATE2 salt | Sound, but IMPLEMENTATION-LANE: unprovable in a state model. Recorded as a requirement, not a result |
+| Prove-before-strengthen on profile activation | An implementation technique, not an architectural invariant. No discriminator that would not be vacuous here |
+| Re-derive the destination by address rather than code hash | Weaker, not stronger: an address is not evidence about code. The correction actually needed was to hash the destination **VAULT**, not its implementation (§13.5) |
+| Treat plane **unavailability** as an authority violation | It is a **liveness** fact, and conflating the two would make the subtractive doctrine unfalsifiable. Recorded instead as an explicit accepted residual with a minimum cut of **1** (§24.2) |
+
+### 25.4 What still cannot be claimed
+
+1. **No conformance claim.** Nothing here establishes that any Solidity satisfies any invariant.
+2. **No vNext kernel exists or has been compiled.** Every forward byte figure would be a lower bound
+   even if one did.
+3. **The invariant set is not proven complete**, and this revision demonstrated that concretely by
+   finding an entire missing decision (D8) and an entire missing hazard class (§13.0 case 6).
+4. **The deployment verdict is CONDITIONAL** on measuring the kernel recompiled as a clone target.
+5. **Two architecture-blocking owner decisions remain open** — D1's appetite call and D8's
+   confirmation — and by this document's own stop conditions that means **NOT IMPLEMENTATION-READY**.

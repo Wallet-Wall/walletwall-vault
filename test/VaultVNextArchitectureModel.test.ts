@@ -38,16 +38,43 @@ import { expect } from "chai";
 
 import {
   CONTAINMENT_MAX_DURATION,
+  CONTAINMENT_WINDOW,
+  CREDENTIAL_CHALLENGE_LIMIT,
   RECOVERY_DELAY,
   VaultVNextModel,
+  commitOf,
   type Capability,
   type Credential,
+  type GuardianSeat,
   type IdentityModel,
   type MigrationBinding,
   type Mutation,
   type PlaneId,
   type Principal,
 } from "./helpers/vaultVNextModel.js";
+import {
+  CORRELATED_PAIR,
+  CodeIdentityChain,
+  CryptoLattice,
+  ECDSA,
+  ECDSA_ONLY,
+  HYBRID,
+  HYBRID_87,
+  HYBRID_OR_ECDSA,
+  ML_DSA_65,
+  ML_DSA_87,
+  MigrationMachine,
+  PQ_ONLY_87,
+  RECOVERY_DELAY_DAYS,
+  cloneCode,
+  type AssetKind,
+  type Binding,
+  type ChainView,
+  type PublishedIdentity,
+  type Registry,
+  type RemediationMutation,
+  type SecurityProfile,
+} from "./helpers/vaultVNextRemediation.js";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -627,6 +654,879 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
   });
 
   // =========================================================================
+  // PR #179 REMEDIATION — the seven adversarial blockers, made executable
+  // =========================================================================
+
+  describe("T0 — no sole external authenticator (blocker 2)", function () {
+    it("a caller holding NO secret is refused under every ADMITTED credential mode, even with an always-true verifier", function () {
+      for (const mode of ["ECDSA_ONLY", "HYBRID"] as const) {
+        const m = new VaultVNextModel({
+          identityModel: "ACCOUNT_PER_VAULT",
+          credentialMode: mode,
+          verifierBehaviour: "ALWAYS_TRUE",
+        });
+        expect(m.modeIsAdmissible(mode), `${mode} must be admitted`).to.equal(true);
+        expect(m.forgeryReachable(), `${mode} must not be forgeable`).to.equal(false);
+      }
+    });
+
+    it("PqOnly IS forgeable under an always-true verifier — which is why it is not admitted", function () {
+      const m = new VaultVNextModel({
+        identityModel: "ACCOUNT_PER_VAULT",
+        credentialMode: "PQ_ONLY",
+        verifierBehaviour: "ALWAYS_TRUE",
+        mutations: ["M19_PQ_ONLY_MODE_ADMITTED"],
+      });
+      // The floor is structural only, so "correctly-sized bytes" authorizes.
+      expect(m.forgeryReachable()).to.equal(true);
+      expect(m.hasKernelPositiveAuthenticator()).to.equal(false);
+    });
+
+    it("SCENARIO — an always-true verifier under Hybrid is a DOWNGRADE, not a forgery", function () {
+      const honest = new VaultVNextModel({ identityModel: "ACCOUNT_PER_VAULT", credentialMode: "HYBRID" });
+      const lying = new VaultVNextModel({
+        identityModel: "ACCOUNT_PER_VAULT",
+        credentialMode: "HYBRID",
+        verifierBehaviour: "ALWAYS_TRUE",
+      });
+      // Not catastrophic: the ECDSA conjunct still gates.
+      expect(lying.forgeryReachable()).to.equal(false);
+      // But the PQ leg now contributes nothing, so a key-holder alone suffices —
+      // exactly the silent downgrade the SecurityProfile model must report.
+      expect(lying.authorizeAssetMove({ holdsEcdsaKey: true, pqBytesWellFormed: true }).kind).to.equal("OK");
+      expect(honest.authorizeAssetMove({ holdsEcdsaKey: true, pqBytesWellFormed: true }).kind).to.equal("DENIED");
+    });
+
+    it("SCENARIO — a reverting verifier is DENIAL under Hybrid and never loss", function () {
+      const m = new VaultVNextModel({
+        identityModel: "ACCOUNT_PER_VAULT",
+        credentialMode: "HYBRID",
+        verifierBehaviour: "REVERTS",
+      });
+      expect(m.authorizeAssetMove({ holdsEcdsaKey: true, pqBytesWellFormed: true }).kind).to.equal("UNAVAILABLE");
+      expect(m.forgeryReachable()).to.equal(false);
+    });
+
+    it("SCENARIO — with the external verifier omitted entirely, the floor alone still denies", function () {
+      const m = new VaultVNextModel({
+        identityModel: "ACCOUNT_PER_VAULT",
+        credentialMode: "HYBRID",
+        externalVerifierPresent: false,
+      });
+      expect(m.forgeryReachable()).to.equal(false);
+      expect(m.authorizeAssetMove({ holdsEcdsaKey: true, pqBytesWellFormed: true }).kind).to.equal("UNAVAILABLE");
+    });
+
+    it("I-NO-CIRCULAR-ESCAPE — a hostile verifier can be replaced without consulting it", function () {
+      const hybrid = new VaultVNextModel({ identityModel: "ACCOUNT_PER_VAULT", credentialMode: "HYBRID" });
+      expect(hybrid.verifierEscapeIsEvaluable()).to.equal(true);
+      const pqOnly = new VaultVNextModel({ identityModel: "ACCOUNT_PER_VAULT", credentialMode: "PQ_ONLY" });
+      expect(pqOnly.verifierEscapeIsEvaluable(), "PqOnly escape is authenticated BY the verifier").to.equal(false);
+    });
+
+    it("an IMMUTABLY BOUND verifier does not discharge the requirement — and cannot be escaped", function () {
+      const m = new VaultVNextModel({
+        identityModel: "ACCOUNT_PER_VAULT",
+        credentialMode: "PQ_ONLY",
+        verifierImmutablyBound: true,
+        verifierBehaviour: "ALWAYS_TRUE",
+      });
+      expect(m.hasKernelPositiveAuthenticator()).to.equal(false);
+      expect(m.verifierEscapeIsEvaluable()).to.equal(false);
+    });
+  });
+
+  describe("T0 — a bounded timer is not a bounded authority (blocker 7, D5)", function () {
+    it("re-entry while contained cannot push the expiry", function () {
+      const m = vnext();
+      expect(m.enterContainmentBudgeted("EMERGENCY").kind).to.equal("OK");
+      const firstExpiry = m.kernel.containmentExpiresAt;
+      m.warp(5);
+      expect(m.enterContainmentBudgeted("EMERGENCY").kind).to.equal("DENIED");
+      expect(m.kernel.containmentExpiresAt).to.equal(firstExpiry);
+    });
+
+    it("I-CONTAINMENT-BUDGET — a hostile emergency principal cannot hold a rolling freeze", function () {
+      expect(vnext().rollingFreezeReachable("EMERGENCY")).to.equal(false);
+    });
+
+    it("the budget yields uncontained intervals rather than merely a shorter freeze", function () {
+      const m = vnext();
+      let uncontainedDays = 0;
+      for (let day = 0; day < CONTAINMENT_WINDOW; day++) {
+        if (m.kernel.safeState !== "CONTAINED") m.enterContainmentBudgeted("EMERGENCY");
+        if (m.kernel.safeState !== "CONTAINED") uncontainedDays += 1;
+        m.warp(1);
+        m.tickContainment();
+      }
+      expect(uncontainedDays).to.be.greaterThan(0);
+    });
+
+    it("recovery stays reachable for the whole of a contained window", function () {
+      const m = vnext();
+      expect(m.enterContainmentBudgeted("EMERGENCY").kind).to.equal("OK");
+      for (let day = 0; day < CONTAINMENT_MAX_DURATION; day++) {
+        expect(m.isAvailable("RECOVERY_EXECUTION")).to.equal(true);
+        m.warp(1);
+      }
+    });
+  });
+
+  describe("T1 — ingress is gated with egress (blocker 4 composition)", function () {
+    it("a state that cannot pay out does not take in", function () {
+      const m = vnext();
+      expect(m.ingressAvailable()).to.equal(true);
+      expect(m.enterContainmentBudgeted("EMERGENCY").kind).to.equal("OK");
+      expect(m.ingressAvailable()).to.equal(false);
+    });
+  });
+
+  describe("T0 — a BOUNDED challenge is not a veto (blocker 7, D1)", function () {
+    it("the spending credential may challenge, but only a bounded number of times", function () {
+      const m = vnext();
+      expect(m.credentialHoldsUnboundedVeto()).to.equal(false);
+    });
+
+    it("the bound is greater than zero, so a guardian majority is not unchallengeable", function () {
+      expect(CREDENTIAL_CHALLENGE_LIMIT).to.be.greaterThan(0);
+      const m = vnext();
+      driveToApprovedRecovery(m);
+      expect(m.challengeRecoveryByCredential().kind).to.equal("OK");
+    });
+  });
+
+  describe("T0/T1 — the minimum guardian TCB (blocker 6)", function () {
+    const seats: readonly GuardianSeat[] = [
+      { address: "g1", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+      { address: "g2", authMode: "ERC1271", contractBehaviour: "ATTESTS" },
+      { address: "g3", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+    ];
+
+    function withSeats(mutations: readonly Mutation[] = [], overrides?: readonly GuardianSeat[]): VaultVNextModel {
+      return new VaultVNextModel({
+        identityModel: "ACCOUNT_PER_VAULT",
+        guardianSeats: overrides ?? seats,
+        mutations,
+      });
+    }
+
+    it("the kernel holds a COMMITMENT, not the roster — and a forged constituency fails to hash", function () {
+      const m = withSeats();
+      expect(m.rosterIsAuthoritative(seats, 2)).to.equal(true);
+      const forged: readonly GuardianSeat[] = [
+        { address: "attacker", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+        ...seats.slice(1),
+      ];
+      expect(m.rosterIsAuthoritative(forged, 2)).to.equal(false);
+    });
+
+    it("the THRESHOLD is inside the commitment preimage, so it cannot be supplied by the caller", function () {
+      const m = withSeats();
+      expect(m.rosterIsAuthoritative(seats, 1), "a lowered threshold must not validate").to.equal(false);
+      expect(commitOf(seats, 1)).to.not.equal(commitOf(seats, 2));
+    });
+
+    it("I-QUORUM-DISTINCTNESS — one seat presented twice is not a quorum", function () {
+      const m = withSeats();
+      expect(m.countDistinctAttestations([0, 1, 2])).to.equal(3);
+      expect(m.countDistinctAttestations([1, 1, 1])).to.equal(1);
+    });
+
+    it("I-GUARDIAN-FAULT-ISOLATION — one reverting ERC-1271 guardian does not block the rest", function () {
+      const hostile: readonly GuardianSeat[] = [
+        { address: "g1", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+        { address: "g2", authMode: "ERC1271", contractBehaviour: "REVERTS" },
+        { address: "g3", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+      ];
+      const m = withSeats([], hostile);
+      expect(m.quorumReachable(hostile, 2)).to.equal(true);
+    });
+
+    it("I-ATTESTATION-IS-AFFIRMATIVE — garbage from an ERC-1271 seat is NOT an attestation", function () {
+      const garbage: readonly GuardianSeat[] = [
+        { address: "g1", authMode: "ERC1271", contractBehaviour: "RETURNS_GARBAGE" },
+        { address: "g2", authMode: "ERC1271", contractBehaviour: "SILENT" },
+        { address: "g3", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+      ];
+      const m = withSeats([], garbage);
+      expect(m.quorumReachable(garbage, 2)).to.equal(false);
+    });
+  });
+
+  describe("T1 — SecurityProfile replaces the scalar strength ordinal (blocker 3)", function () {
+    function lattice(mutations: readonly RemediationMutation[] = []): CryptoLattice {
+      return new CryptoLattice(mutations);
+    }
+
+    it("a within-family upgrade is ALLOWED — agility survives", function () {
+      expect(lattice().transitionAllowed(HYBRID, HYBRID_87).ok).to.equal(true);
+    });
+
+    it("a higher parameter level with a WEAKER composition is REFUSED", function () {
+      // ML-DSA-87 alone scores higher on any scalar, and drops a whole factor.
+      expect(lattice().transitionAllowed(HYBRID, PQ_ONLY_87).ok).to.equal(false);
+    });
+
+    it("removing an independent factor is REFUSED", function () {
+      expect(lattice().transitionAllowed(HYBRID, ECDSA_ONLY).ok).to.equal(false);
+    });
+
+    it("a silent OR is REFUSED — adding a weak alternative is a downgrade", function () {
+      expect(lattice().transitionAllowed(HYBRID, HYBRID_OR_ECDSA).ok).to.equal(false);
+    });
+
+    it("two factors sharing ONE trust root do not count as two", function () {
+      const l = lattice();
+      expect(l.rootsOfClause([ECDSA, ML_DSA_65])).to.equal(2);
+      expect(l.rootsOfClause(CORRELATED_PAIR.clauses[0]!)).to.equal(1);
+      expect(l.transitionAllowed(HYBRID, CORRELATED_PAIR).ok).to.equal(false);
+    });
+
+    it("re-activating a DISALLOWED scheme is REFUSED", function () {
+      const l = lattice();
+      expect(l.setStatus("ML_DSA_65", "DISALLOWED").ok).to.equal(true);
+      expect(l.setStatus("ML_DSA_65", "ACTIVE").ok).to.equal(false);
+      expect(l.transitionAllowed(HYBRID, HYBRID).ok).to.equal(false);
+    });
+
+    it("INCOMPARABLE profiles are REFUSED, not permitted", function () {
+      const hashBased: SecurityProfile = {
+        clauses: [[ECDSA, { ...ML_DSA_65, schemeId: "SLH_DSA", family: "PQ_HASH", rootTag: "root/hash" }]],
+      };
+      // Neither dominates: PQ_LATTICE and PQ_HASH have no comparison edge.
+      expect(lattice().transitionAllowed(HYBRID, hashBased).ok).to.equal(false);
+      expect(lattice().transitionAllowed(hashBased, HYBRID).ok).to.equal(false);
+    });
+
+    it("every clause must carry a kernel-evaluable possession test", function () {
+      expect(lattice().everyClauseAnchored(HYBRID)).to.equal(true);
+      expect(lattice().everyClauseAnchored(PQ_ONLY_87)).to.equal(false);
+    });
+
+    it("a profile's independence is the MINIMUM over its clauses, never the maximum", function () {
+      // HYBRID_OR_ECDSA has a 2-root clause and a 1-root clause. An attacker
+      // takes the 1-root path, so the profile is worth 1.
+      expect(lattice().minRoots(HYBRID_OR_ECDSA)).to.equal(1);
+    });
+  });
+
+  describe("T0 — migration must survive real assets (blocker 4)", function () {
+    const DESTINATION: Binding = {
+      destinationVault: "vault-2",
+      destinationVaultCodeHash: "0xVAULT2",
+      destinationGeneration: 2,
+      chainId: 1,
+      nonce: 1,
+      deadline: 1000,
+      disposition: "FULL_BALANCE",
+    };
+
+    function machine(
+      mutations: readonly RemediationMutation[] = [],
+      assets: readonly (readonly [string, AssetKind])[] = [
+        ["eth", "ETH"],
+        ["usdc", "ERC20_WELL_BEHAVED"],
+        ["nft", "ERC721"],
+      ],
+    ): MigrationMachine {
+      const m = new MigrationMachine(mutations);
+      for (const [id, kind] of assets) m.addAsset(id, kind, 100n);
+      return m;
+    }
+
+    function bindAndRetire(m: MigrationMachine): void {
+      expect(m.bind(true, true, DESTINATION).ok).to.equal(true);
+      m.warp(m.bindDelay());
+      expect(m.retire().ok).to.equal(true);
+    }
+
+    it("binding requires guardian quorum AND credential authority — neither alone", function () {
+      expect(machine().bind(true, false, DESTINATION).ok).to.equal(false);
+      expect(machine().bind(false, true, DESTINATION).ok).to.equal(false);
+      expect(machine().bind(true, true, DESTINATION).ok).to.equal(true);
+    });
+
+    it("I-MIGRATION-SUBORDINATE-TO-RECOVERY — binding is never faster than recovery", function () {
+      expect(machine().bindDelay()).to.be.at.least(RECOVERY_DELAY_DAYS);
+    });
+
+    it("a pending recovery blocks binding, so migration cannot front-run the remedy", function () {
+      const m = machine();
+      m.pendingRecovery = true;
+      expect(m.bind(true, true, DESTINATION).ok).to.equal(false);
+    });
+
+    it("I-EGRESS-INDEPENDENCE — one reverting token does not abort the others", function () {
+      const m = machine(
+        [],
+        [
+          ["eth", "ETH"],
+          ["blacklisted", "ERC20_REVERTS"],
+          ["usdc", "ERC20_WELL_BEHAVED"],
+        ],
+      );
+      bindAndRetire(m);
+      expect(m.egress("eth").ok).to.equal(true);
+      expect(m.egress("blacklisted").ok).to.equal(false);
+      expect(m.egress("usdc").ok).to.equal(true);
+      expect(m.entries.get("eth")!.status).to.equal("MOVED");
+      expect(m.entries.get("usdc")!.status).to.equal("MOVED");
+      expect(m.aborted).to.equal(false);
+    });
+
+    it("I-MIGRATION-NONTRAP — a hostile token planted by a stranger cannot veto the escape", function () {
+      const m = machine();
+      bindAndRetire(m);
+      // An unprivileged third party sends a blacklisting token to the vault
+      // AFTER binding. Under a bound asset set this would veto everything.
+      m.addAsset("hostile", "ERC20_REVERTS", 1n);
+      expect(m.everyAssetHasAnExit()).to.equal(true);
+    });
+
+    it("an airdrop arriving after binding is still claimable", function () {
+      const m = machine();
+      bindAndRetire(m);
+      m.addAsset("airdrop", "ERC20_WELL_BEHAVED", 5n);
+      expect(m.egress("airdrop").ok).to.equal(true);
+    });
+
+    it("a fee-on-transfer token settles, because the binding fixes a DISPOSITION not an amount", function () {
+      const m = machine([], [["fot", "ERC20_FEE_ON_TRANSFER"]]);
+      bindAndRetire(m);
+      expect(m.egress("fot").ok).to.equal(true);
+    });
+
+    it("I-NO-FALSE-SETTLEMENT — a token returning false is NOT recorded as moved", function () {
+      const m = machine([], [["liar", "ERC20_RETURNS_FALSE"]]);
+      bindAndRetire(m);
+      expect(m.egress("liar").ok).to.equal(false);
+      expect(m.entries.get("liar")!.status).to.equal("FAILED");
+    });
+
+    it("RETIRED is terminal for AUTHORITY and permanently open for EGRESS", function () {
+      const m = machine();
+      bindAndRetire(m);
+      expect(m.state).to.equal("RETIRED");
+      expect(m.bind(true, true, DESTINATION).ok, "no new authority in a terminal state").to.equal(false);
+      expect(m.egress("eth").ok, "egress is a pull against a prior commitment").to.equal(true);
+    });
+
+    it("I-EGRESS-RECIPIENT-FIXED — a permissionless caller cannot redirect the assets", function () {
+      const m = machine();
+      bindAndRetire(m);
+      expect(m.egress("eth", "attacker").ok).to.equal(true);
+      expect(m.lastRecipient).to.equal("vault-2");
+    });
+
+    it("ABANDONED is bookkeeping — retry remains available forever", function () {
+      const m = machine();
+      bindAndRetire(m);
+      expect(m.abandon("usdc").ok).to.equal(true);
+      expect(m.egress("usdc").ok).to.equal(true);
+    });
+
+    it("forced ETH and ERC-1155 are ordinary entries under per-vault custody", function () {
+      const m = machine(
+        [],
+        [
+          ["forced", "ETH_FORCED"],
+          ["multi", "ERC1155"],
+        ],
+      );
+      bindAndRetire(m);
+      expect(m.egress("forced").ok).to.equal(true);
+      expect(m.egress("multi").ok).to.equal(true);
+    });
+  });
+
+  describe("T1 — code identity is a CHAIN, not a hash (blocker 5)", function () {
+    const IMPL = "0xIMPL_GEN1";
+    const IMPL_CODE = "kernel-gen-1-runtime";
+    const CLONE = "0xCLONE";
+
+    function view(overrides: Record<string, string> = {}): ChainView {
+      return {
+        code: new Map<string, string>(Object.entries({ [CLONE]: cloneCode(IMPL), [IMPL]: IMPL_CODE, ...overrides })),
+      };
+    }
+
+    function registry(claimed = IMPL): Registry {
+      return {
+        claimedImplementationFor: new Map([[CLONE, claimed]]),
+        generationOfImplCode: new Map([[IMPL_CODE, 1]]),
+      };
+    }
+
+    const expected = { implementation: IMPL, implementationCode: IMPL_CODE, generation: 1 };
+
+    it("the honest chain holds end to end", function () {
+      expect(new CodeIdentityChain().chainHolds(view(), registry(), CLONE, expected)).to.equal(true);
+    });
+
+    it("THE DISCRIMINATOR — clone bytes correct, implementation identity WRONG, claim must FAIL", function () {
+      const chain = new CodeIdentityChain();
+      // The clone is a canonical EIP-1167 pointing at exactly the right address.
+      expect(chain.cloneShapeIsCanonical(view(), CLONE, IMPL)).to.equal(true);
+      // But that address holds different code than the audited kernel.
+      const tampered = view({ [IMPL]: "some-other-runtime" });
+      expect(chain.chainHolds(tampered, registry(), CLONE, expected)).to.equal(false);
+    });
+
+    it("I-CODE-IDENTITY-LINKAGE — the implementation address comes from the CLONE BYTES", function () {
+      const chain = new CodeIdentityChain();
+      expect(chain.implementationOf(view(), registry("0xLIAR"), CLONE)).to.equal(IMPL);
+    });
+
+    it("I-IMPL-NONVACUOUS — a clone delegating into a codeless address fails", function () {
+      const chain = new CodeIdentityChain();
+      const codeless = view({ [IMPL]: "" });
+      expect(chain.implementationIsNonVacuous(codeless, IMPL)).to.equal(false);
+      expect(chain.chainHolds(codeless, registry(), CLONE, expected)).to.equal(false);
+    });
+
+    it("I-CLONE-BYTES-EXACT — a superset proxy containing the template is rejected", function () {
+      const chain = new CodeIdentityChain();
+      const superset = view({ [CLONE]: `${cloneCode(IMPL)}+extra-dispatch` });
+      expect(chain.cloneShapeIsCanonical(superset, CLONE, IMPL)).to.equal(false);
+    });
+
+    it("per-clone immutable ARGS change the clone's code identity", function () {
+      expect(cloneCode(IMPL, "0xVERIFIER_A")).to.not.equal(cloneCode(IMPL, "0xVERIFIER_B"));
+      expect(cloneCode(IMPL, "0xVERIFIER_A")).to.not.equal(cloneCode(IMPL));
+    });
+
+    it("I-IDENTITY-TYPE-SEPARATION — eight typed identities, never one badge", function () {
+      const chain = new CodeIdentityChain();
+      const identities: readonly PublishedIdentity[] = [
+        { name: "cloneCode", kind: "PROOF", value: cloneCode(IMPL), validUntil: null },
+        { name: "implementationCode", kind: "PROOF", value: IMPL_CODE, validUntil: null },
+        { name: "kernelGeneration", kind: "PROOF", value: "1", validUntil: null },
+        { name: "verifierGeneration", kind: "OBSERVATION", value: "1", validUntil: null },
+        { name: "policyGeneration", kind: "OBSERVATION", value: "1", validUntil: null },
+        { name: "credentialGeneration", kind: "OBSERVATION", value: "1", validUntil: null },
+        { name: "guardianGeneration", kind: "OBSERVATION", value: "1", validUntil: null },
+        // The one identity that changes with NO transaction: containment expiry.
+        { name: "safeState", kind: "OBSERVATION", value: "CONTAINED", validUntil: 30 },
+      ];
+      const published = chain.publish(identities);
+      expect(published).to.have.length(8);
+      expect(chain.publicationIsWellTyped(published)).to.equal(true);
+    });
+
+    it("a safe-state identity published without a valid-until is malformed", function () {
+      const chain = new CodeIdentityChain();
+      const bad: readonly PublishedIdentity[] = [
+        { name: "safeState", kind: "OBSERVATION", value: "CONTAINED", validUntil: null },
+      ];
+      expect(chain.publicationIsWellTyped(chain.publish(bad))).to.equal(false);
+    });
+  });
+
+  describe("mutation matrix — remediation mutants M19..M31 (vault model)", function () {
+    /**
+     * Same contract as `assertMutantKilled`, but the model is built from an
+     * arbitrary option set so a mutant can be exercised in the scenario it
+     * actually breaks. The vacuity guard is unchanged and non-negotiable.
+     */
+    function assertKilledInScenario(
+      mutation: Mutation,
+      guard: string,
+      options: Omit<ConstructorParameters<typeof VaultVNextModel>[0], "mutations">,
+      invariant: (m: VaultVNextModel) => boolean,
+    ): void {
+      const clean = new VaultVNextModel({ ...options });
+      const mutant = new VaultVNextModel({ ...options, mutations: [mutation] });
+      expect(invariant(clean), `${mutation}: the invariant must HOLD on the unmutated model`).to.equal(true);
+      expect(invariant(mutant), `${mutation}: the invariant must FAIL on the mutant`).to.equal(false);
+      expect(
+        mutant.exercised.has(guard),
+        `${mutation}: guard "${guard}" was never evaluated — this mutation test is VACUOUS`,
+      ).to.equal(true);
+    }
+
+    it("M19 — PqOnly is admitted, and an always-true verifier then forges", function () {
+      assertKilledInScenario(
+        "M19_PQ_ONLY_MODE_ADMITTED",
+        "auth/mode-admission",
+        { identityModel: "ACCOUNT_PER_VAULT", credentialMode: "PQ_ONLY", verifierBehaviour: "ALWAYS_TRUE" },
+        (m) => !m.forgeryReachable(),
+      );
+    });
+
+    it("M20 — a plane's answer is combined disjunctively with the floor", function () {
+      assertKilledInScenario(
+        "M20_PLANE_ANSWER_IS_DISJUNCTIVE",
+        "auth/conjunctive-composition",
+        { identityModel: "ACCOUNT_PER_VAULT", credentialMode: "HYBRID", verifierBehaviour: "ALWAYS_TRUE" },
+        (m) => !m.forgeryReachable(),
+      );
+    });
+
+    it("M21 — the floor admits on well-formedness, conflating shape with possession", function () {
+      assertKilledInScenario(
+        "M21_FLOOR_ADMITS_ON_WELL_FORMEDNESS",
+        "auth/floor",
+        // The scenario matters: with an HONEST verifier the conjunction denies
+        // anyway, so the broken floor is unobservable and the "kill" would be
+        // vacuous. The mutant is only visible where the PLANE also says true.
+        { identityModel: "ACCOUNT_PER_VAULT", credentialMode: "HYBRID", verifierBehaviour: "ALWAYS_TRUE" },
+        (m) => !m.forgeryReachable(),
+      );
+    });
+
+    it("M22 — immutability is treated as discharging the authenticator requirement", function () {
+      assertKilledInScenario(
+        "M22_IMMUTABILITY_DISCHARGES_AUTHENTICATOR_REQUIREMENT",
+        "auth/kernel-positive-authenticator",
+        { identityModel: "ACCOUNT_PER_VAULT", credentialMode: "PQ_ONLY", verifierImmutablyBound: true },
+        (m) => !m.hasKernelPositiveAuthenticator(),
+      );
+    });
+
+    it("M23 — escaping a hostile verifier requires that verifier", function () {
+      assertMutantKilled("M23_VERIFIER_ESCAPE_IS_CIRCULAR", "auth/escape-circularity", (m) =>
+        m.verifierEscapeIsEvaluable(),
+      );
+    });
+
+    it("M24 — the containment budget window resets on every trigger", function () {
+      assertMutantKilled(
+        "M24_CONTAINMENT_BUDGET_WINDOW_RESETS",
+        "emergency/budget-window",
+        (m) => m.rollingFreezeReachable("EMERGENCY") === false,
+      );
+    });
+
+    it("M25 — re-entering containment extends the expiry", function () {
+      assertMutantKilled("M25_CONTAINMENT_REENTRY_EXTENDS", "emergency/reentry-is-noop", (m) => {
+        m.enterContainmentBudgeted("EMERGENCY");
+        const first = m.kernel.containmentExpiresAt;
+        m.warp(5);
+        m.enterContainmentBudgeted("EMERGENCY");
+        return m.kernel.containmentExpiresAt === first;
+      });
+    });
+
+    it("M26 — ingress stays open while egress is closed", function () {
+      assertMutantKilled("M26_INGRESS_OPEN_WHILE_EGRESS_CLOSED", "state/ingress", (m) => {
+        m.enterContainmentBudgeted("EMERGENCY");
+        return m.ingressAvailable() === false;
+      });
+    });
+
+    it("M27 — the credential's challenge right is unbounded, restoring the H-03 veto", function () {
+      assertMutantKilled(
+        "M27_CREDENTIAL_CHALLENGE_UNBOUNDED",
+        "recovery/veto-boundedness",
+        (m) => m.credentialHoldsUnboundedVeto() === false,
+      );
+    });
+
+    it("M28 — roster material is believed without checking it against the commitment", function () {
+      assertMutantKilled(
+        "M28_GUARDIAN_ROSTER_NOT_COMMITMENT_BOUND",
+        "guardian/constituency-binding",
+        (m) =>
+          m.rosterIsAuthoritative([{ address: "attacker", authMode: "ECDSA", contractBehaviour: "ATTESTS" }], 1) ===
+          false,
+      );
+    });
+
+    it("M29 — quorum distinctness is dropped, so one seat is counted repeatedly", function () {
+      assertMutantKilled(
+        "M29_QUORUM_DISTINCTNESS_DROPPED",
+        "guardian/quorum-distinctness",
+        (m) => m.countDistinctAttestations([1, 1, 1]) === 1,
+      );
+    });
+
+    it("M30 — one hostile ERC-1271 guardian aborts the whole recovery", function () {
+      const seats: readonly GuardianSeat[] = [
+        { address: "g1", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+        { address: "g2", authMode: "ERC1271", contractBehaviour: "REVERTS" },
+        { address: "g3", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+      ];
+      assertKilledInScenario(
+        "M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY",
+        "guardian/fault-isolation",
+        { identityModel: "ACCOUNT_PER_VAULT", guardianSeats: seats },
+        (m) => m.quorumReachable(seats, 2),
+      );
+    });
+
+    it("M31 — 'did not revert' is counted as an ERC-1271 attestation", function () {
+      const seats: readonly GuardianSeat[] = [
+        { address: "g1", authMode: "ERC1271", contractBehaviour: "RETURNS_GARBAGE" },
+        { address: "g2", authMode: "ERC1271", contractBehaviour: "SILENT" },
+        { address: "g3", authMode: "ECDSA", contractBehaviour: "ATTESTS" },
+      ];
+      assertKilledInScenario(
+        "M31_ATTESTATION_COUNTED_ON_NON_REVERT",
+        "guardian/attestation-affirmative",
+        { identityModel: "ACCOUNT_PER_VAULT", guardianSeats: seats },
+        (m) => m.quorumReachable(seats, 2) === false,
+      );
+    });
+  });
+
+  describe("mutation matrix — remediation mutants M32..M49 (sub-models)", function () {
+    /** Same three-part contract: holds clean, fails mutated, guard exercised. */
+    function assertSubModelKilled<T extends { exercised: Set<string> }>(
+      mutation: RemediationMutation,
+      guard: string,
+      build: (mutations: readonly RemediationMutation[]) => T,
+      invariant: (subject: T) => boolean,
+    ): void {
+      const clean = build([]);
+      const mutant = build([mutation]);
+      expect(invariant(clean), `${mutation}: the invariant must HOLD on the unmutated model`).to.equal(true);
+      expect(invariant(mutant), `${mutation}: the invariant must FAIL on the mutant`).to.equal(false);
+      expect(
+        mutant.exercised.has(guard),
+        `${mutation}: guard "${guard}" was never evaluated — this mutation test is VACUOUS`,
+      ).to.equal(true);
+    }
+
+    const lat = (ms: readonly RemediationMutation[]) => new CryptoLattice(ms);
+
+    it("M32 — a profile is summarised by MAX over clauses instead of MIN", function () {
+      assertSubModelKilled(
+        "M32_PROFILE_SUMMARY_IS_MAX_OVER_CLAUSES",
+        "lattice/profile-aggregate",
+        lat,
+        (l) => l.minRoots(HYBRID_OR_ECDSA) === 1,
+      );
+    });
+
+    it("M33 — the clause-covering quantifier is flipped, admitting a weak alternative", function () {
+      assertSubModelKilled(
+        "M33_CLAUSE_COVERING_QUANTIFIER_FLIPPED",
+        "lattice/covering",
+        lat,
+        // Observed on covers() directly. Through transitionAllowed the mutant is
+        // MASKED by the independence rule, and a kill credited there would be
+        // attributed to a guard this mutation did not break.
+        (l) => l.covers(HYBRID, HYBRID_OR_ECDSA) === false,
+      );
+    });
+
+    it("M34 — cross-family dominance is permitted", function () {
+      assertSubModelKilled(
+        "M34_CROSS_FAMILY_DOMINANCE_PERMITTED",
+        "lattice/factor-dominance",
+        lat,
+        // Observed on clauseDominates directly: through transitionAllowed the
+        // anchoring rule refuses first and would mask this mutation.
+        (l) => l.clauseDominates([ML_DSA_87], [ECDSA]) === false,
+      );
+    });
+
+    it("M35 — the independent-root count is allowed to decrease", function () {
+      assertSubModelKilled(
+        "M35_INDEPENDENCE_ROOTS_MAY_DECREASE",
+        "lattice/independence",
+        lat,
+        (l) => l.transitionAllowed(HYBRID, CORRELATED_PAIR).ok === false,
+      );
+    });
+
+    it("M36 — a clause need not carry a kernel-evaluable possession test", function () {
+      assertSubModelKilled(
+        "M36_ANCHORED_FACTOR_NOT_REQUIRED",
+        "lattice/anchored-factor",
+        lat,
+        (l) => l.everyClauseAnchored(PQ_ONLY_87) === false,
+      );
+    });
+
+    it("M37 — the status lattice is no longer absorbing", function () {
+      assertSubModelKilled("M37_DISALLOWED_MAY_BE_REACTIVATED", "lattice/status-transition", lat, (l) => {
+        l.setStatus("ML_DSA_65", "DISALLOWED");
+        return l.setStatus("ML_DSA_65", "ACTIVE").ok === false;
+      });
+    });
+
+    it("M38 — incomparable transitions are permitted instead of refused", function () {
+      assertSubModelKilled(
+        "M38_INCOMPARABLE_TRANSITIONS_PERMITTED",
+        "lattice/transition",
+        lat,
+        (l) => l.transitionAllowed(HYBRID, ECDSA_ONLY).ok === false,
+      );
+    });
+
+    const DEST: Binding = {
+      destinationVault: "vault-2",
+      destinationVaultCodeHash: "0xVAULT2",
+      destinationGeneration: 2,
+      chainId: 1,
+      nonce: 1,
+      deadline: 1000,
+      disposition: "FULL_BALANCE",
+    };
+
+    function mig(
+      ms: readonly RemediationMutation[],
+      assets: readonly (readonly [string, AssetKind])[],
+    ): MigrationMachine {
+      const m = new MigrationMachine(ms);
+      for (const [id, kind] of assets) m.addAsset(id, kind, 100n);
+      m.bind(true, true, DEST);
+      m.warp(m.bindDelay());
+      m.retire();
+      return m;
+    }
+
+    it("M39 — one failing entry aborts the whole migration", function () {
+      const assets = [
+        ["eth", "ETH"],
+        ["blacklisted", "ERC20_REVERTS"],
+      ] as const;
+      assertSubModelKilled(
+        "M39_ENTRY_FAILURE_ABORTS_EVERYTHING",
+        "migration/entry-isolation",
+        (ms) => mig(ms, assets),
+        (m) => {
+          m.egress("eth");
+          m.egress("blacklisted");
+          return m.entries.get("eth")!.status === "MOVED";
+        },
+      );
+    });
+
+    it("M40 — the binding freezes an asset SET, so an airdrop is unreachable", function () {
+      assertSubModelKilled(
+        "M40_BINDING_FIXES_AMOUNTS_NOT_DISPOSITION",
+        "migration/egress",
+        (ms) => mig(ms, [["eth", "ETH"]]),
+        (m) => {
+          m.addAsset("airdrop", "ERC20_WELL_BEHAVED", 5n);
+          return m.egress("airdrop").ok;
+        },
+      );
+    });
+
+    it("M41 — the terminal state closes egress, making retirement a trap", function () {
+      assertSubModelKilled(
+        "M41_RETIRED_CLOSES_EGRESS",
+        "migration/egress-in-terminal-state",
+        (ms) => mig(ms, [["eth", "ETH"]]),
+        (m) => m.egress("eth").ok,
+      );
+    });
+
+    it("M42 — ABANDONED becomes absorbing, so a later transfer cannot resolve it", function () {
+      assertSubModelKilled(
+        "M42_ABANDONED_IS_ABSORBING",
+        "migration/retry-from-abandoned",
+        (ms) => mig(ms, [["usdc", "ERC20_WELL_BEHAVED"]]),
+        (m) => {
+          m.abandon("usdc");
+          return m.egress("usdc").ok;
+        },
+      );
+    });
+
+    it("M43 — the bind delay drops below the recovery delay", function () {
+      assertSubModelKilled(
+        "M43_BIND_DELAY_BELOW_RECOVERY_DELAY",
+        "migration/bind-delay",
+        (ms) => new MigrationMachine(ms),
+        (m) => m.bindDelay() >= RECOVERY_DELAY_DAYS,
+      );
+    });
+
+    it("M44 — the egress recipient is taken from the caller", function () {
+      assertSubModelKilled(
+        "M44_EGRESS_RECIPIENT_FROM_CALLER",
+        "migration/recipient-source",
+        (ms) => mig(ms, [["eth", "ETH"]]),
+        (m) => {
+          m.egress("eth", "attacker");
+          return m.lastRecipient === "vault-2";
+        },
+      );
+    });
+
+    it("M45 — settlement is recorded on a non-reverting call, not an observed decrease", function () {
+      assertSubModelKilled(
+        "M45_SETTLEMENT_ON_NON_REVERT",
+        "migration/settlement-evidence",
+        (ms) => mig(ms, [["liar", "ERC20_RETURNS_FALSE"]]),
+        (m) => {
+          m.egress("liar");
+          return m.entries.get("liar")!.status !== "MOVED";
+        },
+      );
+    });
+
+    const IMPL = "0xIMPL_GEN1";
+    const IMPL_CODE = "kernel-gen-1-runtime";
+    const CLONE = "0xCLONE";
+    const REGISTRY: Registry = {
+      claimedImplementationFor: new Map([[CLONE, "0xLIAR"]]),
+      generationOfImplCode: new Map([[IMPL_CODE, 1]]),
+    };
+    const VIEW: ChainView = {
+      code: new Map([
+        [CLONE, cloneCode(IMPL)],
+        [IMPL, IMPL_CODE],
+      ]),
+    };
+
+    const chainOf = (ms: readonly RemediationMutation[]) => new CodeIdentityChain(ms);
+
+    it("M46 — the implementation address is read from a registry, not from the clone bytes", function () {
+      assertSubModelKilled(
+        "M46_IMPL_ADDRESS_FROM_REGISTRY",
+        "identity/linkage",
+        chainOf,
+        (c) => c.implementationOf(VIEW, REGISTRY, CLONE) === IMPL,
+      );
+    });
+
+    it("M47 — clone identity is matched by prefix, admitting a superset proxy", function () {
+      const superset: ChainView = {
+        code: new Map([
+          [CLONE, `${cloneCode(IMPL)}+extra-dispatch`],
+          [IMPL, IMPL_CODE],
+        ]),
+      };
+      assertSubModelKilled(
+        "M47_CLONE_MATCHED_BY_PREFIX",
+        "identity/clone-exactness",
+        chainOf,
+        (c) => c.cloneShapeIsCanonical(superset, CLONE, IMPL) === false,
+      );
+    });
+
+    it("M48 — the eight identities are published as one aggregate badge", function () {
+      const identities: readonly PublishedIdentity[] = [
+        { name: "cloneCode", kind: "PROOF", value: cloneCode(IMPL), validUntil: null },
+        { name: "safeState", kind: "OBSERVATION", value: "CONTAINED", validUntil: 30 },
+      ];
+      assertSubModelKilled("M48_IDENTITIES_PUBLISHED_AS_ONE_AGGREGATE", "identity/publication-shape", chainOf, (c) =>
+        c.publicationIsWellTyped(c.publish(identities)),
+      );
+    });
+
+    it("M49 — a clone delegating into a codeless account passes unchecked", function () {
+      const codeless: ChainView = {
+        code: new Map([
+          [CLONE, cloneCode(IMPL)],
+          [IMPL, ""],
+        ]),
+      };
+      assertSubModelKilled(
+        "M49_IMPL_VACUITY_UNCHECKED",
+        "identity/impl-nonvacuity",
+        chainOf,
+        (c) => c.implementationIsNonVacuous(codeless, IMPL) === false,
+      );
+    });
+  });
+
+  // =========================================================================
   describe("mutation matrix integrity", function () {
     it("covers every declared mutation exactly once", function () {
       const declared: readonly Mutation[] = [
@@ -648,9 +1548,54 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         "M16_ONE_SIDED_REFERENCE_MODEL_DIVERGENCE",
         "M17_UNAVAILABLE_PLANE_STRANDS_LOCAL_RECOVERY",
         "M18_OLD_GENERATION_CROSSES_BOUNDARY",
+        "M19_PQ_ONLY_MODE_ADMITTED",
+        "M20_PLANE_ANSWER_IS_DISJUNCTIVE",
+        "M21_FLOOR_ADMITS_ON_WELL_FORMEDNESS",
+        "M22_IMMUTABILITY_DISCHARGES_AUTHENTICATOR_REQUIREMENT",
+        "M23_VERIFIER_ESCAPE_IS_CIRCULAR",
+        "M24_CONTAINMENT_BUDGET_WINDOW_RESETS",
+        "M25_CONTAINMENT_REENTRY_EXTENDS",
+        "M26_INGRESS_OPEN_WHILE_EGRESS_CLOSED",
+        "M27_CREDENTIAL_CHALLENGE_UNBOUNDED",
+        "M28_GUARDIAN_ROSTER_NOT_COMMITMENT_BOUND",
+        "M29_QUORUM_DISTINCTNESS_DROPPED",
+        "M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY",
+        "M31_ATTESTATION_COUNTED_ON_NON_REVERT",
       ];
       expect(new Set(declared).size, "duplicate mutation identifier").to.equal(declared.length);
-      expect(declared).to.have.length(18);
+      expect(declared).to.have.length(31);
+
+      const declaredRemediation: readonly RemediationMutation[] = [
+        "M32_PROFILE_SUMMARY_IS_MAX_OVER_CLAUSES",
+        "M33_CLAUSE_COVERING_QUANTIFIER_FLIPPED",
+        "M34_CROSS_FAMILY_DOMINANCE_PERMITTED",
+        "M35_INDEPENDENCE_ROOTS_MAY_DECREASE",
+        "M36_ANCHORED_FACTOR_NOT_REQUIRED",
+        "M37_DISALLOWED_MAY_BE_REACTIVATED",
+        "M38_INCOMPARABLE_TRANSITIONS_PERMITTED",
+        "M39_ENTRY_FAILURE_ABORTS_EVERYTHING",
+        "M40_BINDING_FIXES_AMOUNTS_NOT_DISPOSITION",
+        "M41_RETIRED_CLOSES_EGRESS",
+        "M42_ABANDONED_IS_ABSORBING",
+        "M43_BIND_DELAY_BELOW_RECOVERY_DELAY",
+        "M44_EGRESS_RECIPIENT_FROM_CALLER",
+        "M45_SETTLEMENT_ON_NON_REVERT",
+        "M46_IMPL_ADDRESS_FROM_REGISTRY",
+        "M47_CLONE_MATCHED_BY_PREFIX",
+        "M48_IDENTITIES_PUBLISHED_AS_ONE_AGGREGATE",
+        "M49_IMPL_VACUITY_UNCHECKED",
+      ];
+      expect(new Set(declaredRemediation).size, "duplicate remediation identifier").to.equal(
+        declaredRemediation.length,
+      );
+      expect(declaredRemediation).to.have.length(18);
+
+      // The two unions are disjoint and contiguous M1..M49. A gap or an overlap
+      // means a mutant was renumbered without its matrix entry following it.
+      const numbers = [...declared, ...declaredRemediation]
+        .map((id) => Number(/^M(\d+)_/.exec(id)?.[1]))
+        .sort((a, b) => a - b);
+      expect(numbers).to.deep.equal(Array.from({ length: 49 }, (_, i) => i + 1));
     });
 
     it("an unmutated model satisfies every mutation-matrix invariant simultaneously", function () {

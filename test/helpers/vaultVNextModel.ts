@@ -253,7 +253,66 @@ export type Mutation =
   | "M15_HOSTED_SERVICE_REQUIRED_FOR_RECOVERY"
   | "M16_ONE_SIDED_REFERENCE_MODEL_DIVERGENCE"
   | "M17_UNAVAILABLE_PLANE_STRANDS_LOCAL_RECOVERY"
-  | "M18_OLD_GENERATION_CROSSES_BOUNDARY";
+  | "M18_OLD_GENERATION_CROSSES_BOUNDARY"
+  // --- Added by the PR #179 remediation. Each still flips exactly ONE guard. ---
+  | "M19_PQ_ONLY_MODE_ADMITTED"
+  | "M20_PLANE_ANSWER_IS_DISJUNCTIVE"
+  | "M21_FLOOR_ADMITS_ON_WELL_FORMEDNESS"
+  | "M22_IMMUTABILITY_DISCHARGES_AUTHENTICATOR_REQUIREMENT"
+  | "M23_VERIFIER_ESCAPE_IS_CIRCULAR"
+  | "M24_CONTAINMENT_BUDGET_WINDOW_RESETS"
+  | "M25_CONTAINMENT_REENTRY_EXTENDS"
+  | "M26_INGRESS_OPEN_WHILE_EGRESS_CLOSED"
+  | "M27_CREDENTIAL_CHALLENGE_UNBOUNDED"
+  | "M28_GUARDIAN_ROSTER_NOT_COMMITMENT_BOUND"
+  | "M29_QUORUM_DISTINCTNESS_DROPPED"
+  | "M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY"
+  | "M31_ATTESTATION_COUNTED_ON_NON_REVERT";
+
+// ---------------------------------------------------------------------------
+// Authentication — added by the remediation
+// ---------------------------------------------------------------------------
+
+/**
+ * The three credential modes the production contract already has, carried into
+ * the model because the sole-external-authenticator question is ONLY decidable
+ * per mode. `PqOnly` is modelled precisely so the suite can show it is unsafe,
+ * not because vNext admits it.
+ */
+export type CredentialMode = "ECDSA_ONLY" | "PQ_ONLY" | "HYBRID";
+
+/**
+ * How the external verifier behaves. `ALWAYS_TRUE` and `HONEST` are separated
+ * from PlaneHealth because a verifier that lies is AVAILABLE — collapsing the
+ * two would make the central hazard of this remediation unrepresentable.
+ */
+export type VerifierBehaviour = "HONEST" | "ALWAYS_TRUE" | "ALWAYS_FALSE" | "REVERTS" | "SELECTIVE";
+
+/** How a guardian seat authenticates. Read from the COMMITMENT, never inferred. */
+export type GuardianAuthMode = "ECDSA" | "ERC1271";
+
+export interface GuardianSeat {
+  readonly address: string;
+  readonly authMode: GuardianAuthMode;
+  /**
+   * For ERC1271 seats: how that guardian's own contract behaves. A guardian is a
+   * PRINCIPAL, not a plane, so its failure must be tolerated by the threshold —
+   * which only holds if the consultation is isolated.
+   */
+  readonly contractBehaviour: "ATTESTS" | "REVERTS" | "RETURNS_GARBAGE" | "SILENT";
+}
+
+/** Wall-clock budget on containment: at most B contained days per rolling W. */
+export const CONTAINMENT_WINDOW = 100;
+export const CONTAINMENT_BUDGET = 30;
+
+/**
+ * How many times the spending credential may cancel a recovery within one
+ * episode. Chosen as a BOUND rather than a switch: 0 leaves a guardian majority
+ * unchallengeable, and unbounded restores the H-03 veto held by exactly the
+ * principal whose compromise recovery exists to remedy.
+ */
+export const CREDENTIAL_CHALLENGE_LIMIT = 2;
 
 // ---------------------------------------------------------------------------
 // Outcomes
@@ -310,6 +369,28 @@ export interface KernelState {
   containmentEnteredAt: number | null;
   /** Wall-clock bound on containment. null means unbounded — a hazard. */
   containmentExpiresAt: number | null;
+  // --- Added by the remediation -------------------------------------------
+  /** Origin of the rolling containment-budget window. Advances only by wall clock. */
+  containmentWindowStart: number;
+  /** Contained days already consumed inside the current window. */
+  containmentUsedInWindow: number;
+  /** Which credential mode authorizes asset movement and credential change. */
+  credentialMode: CredentialMode;
+  /** How the external PQ verifier behaves. Independent of its PlaneHealth. */
+  verifierBehaviour: VerifierBehaviour;
+  /** True if the verifier address is code-bound and cannot be replaced at all. */
+  verifierImmutablyBound: boolean;
+  /** True if the design consults an external verifier at all. */
+  externalVerifierPresent: boolean;
+  /**
+   * The kernel's AUTHORITATIVE guardian state under G-B: a commitment, a
+   * threshold and a generation. The seats themselves are NOT kernel state; they
+   * arrive as untrusted calldata and are validated against this commitment.
+   */
+  guardianCommitment: string;
+  guardianThreshold: number;
+  /** How many times the spending credential has cancelled within this episode. */
+  credentialChallengesUsed: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -321,6 +402,24 @@ export interface ModelOptions {
   readonly mutations?: readonly Mutation[];
   readonly guardians?: readonly string[];
   readonly custody?: bigint;
+  // --- Added by the remediation ---
+  readonly credentialMode?: CredentialMode;
+  readonly verifierBehaviour?: VerifierBehaviour;
+  readonly guardianSeats?: readonly GuardianSeat[];
+  /** Scenario knob: is the verifier address code-bound and unreplaceable? */
+  readonly verifierImmutablyBound?: boolean;
+  /** Scenario knob: is an external verifier consulted at all? */
+  readonly externalVerifierPresent?: boolean;
+}
+
+/**
+ * The kernel's guardian commitment. INJECTIVE by construction: the threshold is
+ * inside the preimage and every field is length-delimited, so two different
+ * constituencies cannot collide. A packed encoding that omitted either property
+ * would let an attacker present a roster the kernel accepts but did not commit.
+ */
+export function commitOf(seats: readonly GuardianSeat[], threshold: number): string {
+  return `t=${threshold}|n=${seats.length}|${seats.map((s) => `${s.address}:${s.authMode}`).join(",")}`;
 }
 
 /** Recovery delay and expiry, in abstract time units (days). */
@@ -346,6 +445,13 @@ export class VaultVNextModel {
    */
   readonly exercised = new Set<string>();
 
+  /**
+   * The guardian seats. NOT kernel state under G-B — this stands in for the
+   * roster material a caller supplies as calldata, which the kernel validates
+   * against `kernel.guardianCommitment` before believing any of it.
+   */
+  private seats: readonly GuardianSeat[] = [];
+
   constructor(opts: ModelOptions) {
     this.mutations = new Set(opts.mutations ?? []);
     const schemes = new Map<string, SchemeRecord>();
@@ -363,6 +469,20 @@ export class VaultVNextModel {
       verifierGeneration: 1,
       verifierHealth: "AVAILABLE",
     });
+
+    // G-B: the kernel's AUTHORITATIVE guardian state is a commitment, a
+    // threshold and a generation. The seats live outside it and are supplied per
+    // action as untrusted calldata, validated against the commitment the kernel
+    // wrote itself. `seats` is held here only to stand in for that calldata.
+    const seats: readonly GuardianSeat[] =
+      opts.guardianSeats ??
+      (opts.guardians ?? (opts.identityModel === "ACCOUNT_PER_VAULT" ? ["g1", "g2", "g3"] : [])).map((a) => ({
+        address: a,
+        authMode: "ECDSA" as const,
+        contractBehaviour: "ATTESTS" as const,
+      }));
+    this.seats = seats;
+    const threshold = Math.floor(seats.length / 2) + 1;
 
     this.kernel = {
       identityModel: opts.identityModel,
@@ -399,6 +519,17 @@ export class VaultVNextModel {
       genericExecutionEnabled: this.has("M1_GENERIC_MODULE_EXECUTION"),
       containmentEnteredAt: null,
       containmentExpiresAt: null,
+      containmentWindowStart: 0,
+      containmentUsedInWindow: 0,
+      // HYBRID is the vNext default because it is the weakest mode that still
+      // carries a kernel-evaluable possession test (see authorizeAssetMove).
+      credentialMode: opts.credentialMode ?? "HYBRID",
+      verifierBehaviour: opts.verifierBehaviour ?? "HONEST",
+      verifierImmutablyBound: opts.verifierImmutablyBound ?? false,
+      externalVerifierPresent: opts.externalVerifierPresent ?? true,
+      guardianCommitment: commitOf(seats, threshold),
+      guardianThreshold: threshold,
+      credentialChallengesUsed: 0,
     };
 
     this.planes = new Map<PlaneId, PlaneState>(
@@ -1060,5 +1191,349 @@ export class VaultVNextModel {
       `quorum=${this.requiredSupports()}`,
       `generic=${this.kernel.genericExecutionEnabled}`,
     ].join("|");
+  }
+
+  // -------------------------------------------------------------------------
+  // Authentication — FLOOR + PLANE, and why conjunctivity alone is not enough
+  // -------------------------------------------------------------------------
+
+  /**
+   * What a caller presents. `holdsEcdsaKey` is the only field that represents
+   * an actual SECRET; everything else is a public byte string an attacker can
+   * copy, which is the entire point of this section.
+   */
+  private static readonly PUBLIC_INPUTS_ONLY = { holdsEcdsaKey: false, pqBytesWellFormed: true } as const;
+
+  /**
+   * Whether vNext admits a credential mode at all. `PqOnly` has no
+   * kernel-evaluable possession test, so admitting it is the defect.
+   */
+  modeIsAdmissible(mode: CredentialMode): boolean {
+    this.mark("auth/mode-admission");
+    if (this.has("M19_PQ_ONLY_MODE_ADMITTED")) return true;
+    return mode !== "PQ_ONLY";
+  }
+
+  /**
+   * The FLOOR: what the kernel computes with NO plane at all.
+   *
+   * For the classical leg this is `ecrecover`, a genuine possession test. For the
+   * PQ leg it is structural well-formedness ONLY — a statement about a byte
+   * string's shape, which every caller can satisfy. The mutant treats
+   * well-formedness as sufficient, which is exactly the conflation this
+   * remediation exists to correct.
+   */
+  floorAdmits(presented: { holdsEcdsaKey: boolean; pqBytesWellFormed: boolean }): boolean {
+    this.mark("auth/floor");
+    if (this.has("M21_FLOOR_ADMITS_ON_WELL_FORMEDNESS")) return presented.pqBytesWellFormed;
+    switch (this.kernel.credentialMode) {
+      case "ECDSA_ONLY":
+      case "HYBRID":
+        return presented.holdsEcdsaKey;
+      case "PQ_ONLY":
+        // No kernel-resident PQ possession test exists on this chain. The floor
+        // can therefore only check shape, and shape is not possession.
+        return presented.pqBytesWellFormed;
+    }
+  }
+
+  /** The plane's answer. A liar is AVAILABLE, which is why this is not health. */
+  private verifierSays(presented: { pqBytesWellFormed: boolean }): boolean | "UNAVAILABLE" {
+    this.mark("auth/plane-answer");
+    if (!this.kernel.externalVerifierPresent) return "UNAVAILABLE";
+    switch (this.kernel.verifierBehaviour) {
+      case "HONEST":
+        return false; // an attacker without the PQ secret cannot get an honest true
+      case "ALWAYS_TRUE":
+      case "SELECTIVE":
+        return true;
+      case "ALWAYS_FALSE":
+        return false;
+      case "REVERTS":
+        return "UNAVAILABLE";
+    }
+  }
+
+  /**
+   * The full authorization decision for an asset-moving capability.
+   *
+   * The plane is CONJUNCTIVE: it may only subtract. The mutant makes it
+   * disjunctive, so a plane's `true` alone authorizes — the failure mode the
+   * FLOOR + PLANE doctrine exists to forbid, tested at the AUTHORIZATION level
+   * rather than only at the evidence level (M11).
+   */
+  authorizeAssetMove(presented: { holdsEcdsaKey: boolean; pqBytesWellFormed: boolean }): Outcome {
+    this.mark("auth/authorize");
+    if (!this.modeIsAdmissible(this.kernel.credentialMode)) return denied("credential mode not admitted");
+    const floor = this.floorAdmits(presented);
+    const needsPlane = this.kernel.credentialMode !== "ECDSA_ONLY";
+    if (!needsPlane) return floor ? ok() : denied("floor denied");
+
+    const plane = this.verifierSays(presented);
+    if (this.has("M20_PLANE_ANSWER_IS_DISJUNCTIVE")) {
+      this.mark("auth/conjunctive-composition");
+      if (plane === true) return ok();
+      return floor ? ok() : denied("floor denied");
+    }
+    this.mark("auth/conjunctive-composition");
+    if (plane === "UNAVAILABLE") return unavailable("VERIFIER");
+    return floor && plane ? ok() : denied("floor or plane denied");
+  }
+
+  /**
+   * THE forgery predicate: can a caller holding NO secret whatsoever obtain
+   * asset authority? This is the question "is an always-true verifier harmless"
+   * actually reduces to, and it is answered per credential mode.
+   */
+  forgeryReachable(): boolean {
+    this.mark("auth/forgery");
+    return this.authorizeAssetMove({ ...VaultVNextModel.PUBLIC_INPUTS_ONLY }).kind === "OK";
+  }
+
+  /**
+   * I-NO-SOLE-EXTERNAL-AUTHENTICATOR. Immutability is NOT a way to satisfy it:
+   * binding a verifier in code removes the substitution hazard and creates no
+   * possession test, so the mutant that treats it as discharging the requirement
+   * is asserting something the model can show is false.
+   */
+  hasKernelPositiveAuthenticator(): boolean {
+    this.mark("auth/kernel-positive-authenticator");
+    if (this.has("M22_IMMUTABILITY_DISCHARGES_AUTHENTICATOR_REQUIREMENT") && this.kernel.verifierImmutablyBound) {
+      return true;
+    }
+    return this.kernel.credentialMode !== "PQ_ONLY";
+  }
+
+  /**
+   * I-NO-CIRCULAR-ESCAPE. Replacing a component must be authorizable with that
+   * component both UNAVAILABLE and BYZANTINE. Under PqOnly the authorization to
+   * replace a lying verifier is validated BY that verifier.
+   */
+  verifierEscapeIsEvaluable(): boolean {
+    this.mark("auth/escape-circularity");
+    if (this.has("M23_VERIFIER_ESCAPE_IS_CIRCULAR")) return false;
+    if (this.kernel.verifierImmutablyBound) return false;
+    // Escape is evaluable iff the floor alone can authorize the replacement.
+    return this.floorAdmits({ holdsEcdsaKey: true, pqBytesWellFormed: false });
+  }
+
+  // -------------------------------------------------------------------------
+  // Containment as a BOUNDED AUTHORITY, not merely a bounded episode
+  // -------------------------------------------------------------------------
+
+  /**
+   * Enter containment under a rolling wall-clock budget.
+   *
+   * A per-episode bound does NOT compose into a bound on the authority: a hostile
+   * emergency principal simply re-triggers on expiry. Two rules close it, and each
+   * has its own mutant so a kill is attributable to one of them:
+   *   - re-entry while contained is a NO-OP (M25), so the expiry cannot be pushed;
+   *   - at most CONTAINMENT_BUDGET contained days per rolling CONTAINMENT_WINDOW,
+   *     with the window origin advancing ONLY by elapsed wall clock (M24).
+   * Because the budget is strictly less than the window, uncontained intervals
+   * recur forever: denial becomes a duty cycle rather than a state.
+   */
+  enterContainmentBudgeted(by: Principal): Outcome {
+    this.mark("emergency/budgeted-entry");
+    if (by !== "EMERGENCY" && by !== "GUARDIAN_QUORUM") {
+      return denied("only the emergency principal or a guardian quorum may contain");
+    }
+    if (this.kernel.safeState === "RETIRED") return denied("terminal state");
+
+    if (this.kernel.safeState === "CONTAINED") {
+      this.mark("emergency/reentry-is-noop");
+      if (this.has("M25_CONTAINMENT_REENTRY_EXTENDS")) {
+        this.kernel.containmentExpiresAt = this.clock + CONTAINMENT_MAX_DURATION;
+        return ok();
+      }
+      return denied("already contained; re-entry may not extend the bound");
+    }
+    this.mark("emergency/reentry-is-noop");
+
+    this.mark("emergency/budget-window");
+    if (this.has("M24_CONTAINMENT_BUDGET_WINDOW_RESETS")) {
+      // Mutant: a new trigger resets the window origin, so the budget never binds.
+      this.kernel.containmentWindowStart = this.clock;
+      this.kernel.containmentUsedInWindow = 0;
+    } else if (this.clock >= this.kernel.containmentWindowStart + CONTAINMENT_WINDOW) {
+      // The origin advances only by elapsed wall clock, never by anyone's action.
+      const windows = Math.floor((this.clock - this.kernel.containmentWindowStart) / CONTAINMENT_WINDOW);
+      this.kernel.containmentWindowStart += windows * CONTAINMENT_WINDOW;
+      this.kernel.containmentUsedInWindow = 0;
+    }
+
+    const remaining = CONTAINMENT_BUDGET - this.kernel.containmentUsedInWindow;
+    if (remaining <= 0) return denied("containment budget exhausted for this window");
+
+    const duration = Math.min(CONTAINMENT_MAX_DURATION, remaining);
+    this.kernel.safeState = "CONTAINED";
+    this.kernel.containmentEnteredAt = this.clock;
+    this.kernel.containmentExpiresAt = this.clock + duration;
+    this.kernel.containmentUsedInWindow += duration;
+    return ok();
+  }
+
+  /**
+   * The rolling-freeze predicate: can this principal keep the vault contained
+   * across an entire window with no gap? Answering `true` means a nominally
+   * bounded capability is an unbounded authority.
+   */
+  rollingFreezeReachable(by: Principal): boolean {
+    this.mark("emergency/rolling-freeze");
+    const startedAt = this.clock;
+    let containedDays = 0;
+    while (this.clock < startedAt + CONTAINMENT_WINDOW) {
+      if (this.kernel.safeState !== "CONTAINED") this.enterContainmentBudgeted(by);
+      if (this.kernel.safeState === "CONTAINED") containedDays += 1;
+      this.warp(1);
+      this.tickContainment();
+    }
+    return containedDays >= CONTAINMENT_WINDOW;
+  }
+
+  // -------------------------------------------------------------------------
+  // Ingress must be gated with egress
+  // -------------------------------------------------------------------------
+
+  /**
+   * Whether the vault accepts inflow in its current state. A state that cannot
+   * pay out must not take in — and under per-vault custody this is not hygiene:
+   * an open ingress lets an unprivileged stranger place a hostile asset into a
+   * vault whose migration binds an asset set, vetoing an escape they hold no
+   * authority over.
+   */
+  ingressAvailable(): boolean {
+    this.mark("state/ingress");
+    if (this.has("M26_INGRESS_OPEN_WHILE_EGRESS_CLOSED")) return true;
+    return this.isAvailable("ORDINARY_SPEND");
+  }
+
+  // -------------------------------------------------------------------------
+  // A BOUNDED challenge is not a veto
+  // -------------------------------------------------------------------------
+
+  /**
+   * The spending credential may cancel a recovery a BOUNDED number of times per
+   * episode. An unbounded cancel hands the compromised principal a permanent veto
+   * over its own remedy (hazard H-03); zero cancels hands a guardian majority an
+   * unchallenged takeover (H-15). The bound is the middle, and it is the only
+   * mechanism here that raises the cost of the DOMINANT attack path without
+   * creating a new authority.
+   */
+  challengeRecoveryByCredential(): Outcome {
+    this.mark("recovery/bounded-challenge");
+    if (this.kernel.recovery === null) return denied("no recovery pending");
+    if (!this.has("M27_CREDENTIAL_CHALLENGE_UNBOUNDED")) {
+      if (this.kernel.credentialChallengesUsed >= CREDENTIAL_CHALLENGE_LIMIT) {
+        return denied("challenge budget exhausted for this episode");
+      }
+    }
+    this.kernel.credentialChallengesUsed += 1;
+    this.kernel.recovery = null;
+    return ok();
+  }
+
+  /** True iff the credential holds an UNBOUNDED veto over recovery. */
+  credentialHoldsUnboundedVeto(): boolean {
+    this.mark("recovery/veto-boundedness");
+    for (let attempt = 0; attempt <= CREDENTIAL_CHALLENGE_LIMIT + 1; attempt++) {
+      this.kernel.recovery = {
+        id: `challenge-probe-${attempt}`,
+        incoming: this.kernel.credential,
+        boundGuardianGeneration: this.kernel.guardians.generation,
+        supports: [],
+        openedAt: this.clock,
+        executableAt: this.clock + RECOVERY_DELAY,
+        expiresAt: this.clock + RECOVERY_DELAY + RECOVERY_EXPIRY_AFTER_EXECUTABLE,
+      };
+      if (this.challengeRecoveryByCredential().kind !== "OK") return false;
+    }
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // Guardian constituency — G-B: the kernel holds a COMMITMENT, not a roster
+  // -------------------------------------------------------------------------
+
+  /**
+   * Validate roster material supplied as untrusted calldata against the
+   * commitment the KERNEL itself wrote. This is the property that separates G-B
+   * from G-C: nobody pushes anything, and a forged constituency simply fails to
+   * hash. The mutant accepts the caller's roster without checking it, which is
+   * G-C wearing G-B's name.
+   */
+  rosterIsAuthoritative(supplied: readonly GuardianSeat[], suppliedThreshold: number): boolean {
+    this.mark("guardian/constituency-binding");
+    if (this.has("M28_GUARDIAN_ROSTER_NOT_COMMITMENT_BOUND")) return true;
+    return commitOf(supplied, suppliedThreshold) === this.kernel.guardianCommitment;
+  }
+
+  /**
+   * Count distinct attesting guardians. Distinctness is established by STRICTLY
+   * ASCENDING index over the committed roster; a non-strict comparison lets one
+   * seat be presented twice and manufactures a quorum from a single guardian.
+   */
+  countDistinctAttestations(indices: readonly number[]): number {
+    this.mark("guardian/quorum-distinctness");
+    let counted = 0;
+    let previous = -1;
+    for (const index of indices) {
+      const strictlyAscending = this.has("M29_QUORUM_DISTINCTNESS_DROPPED") ? index >= previous : index > previous;
+      if (!strictlyAscending) continue;
+      previous = index;
+      counted += 1;
+    }
+    return counted;
+  }
+
+  /**
+   * Consult ONE guardian seat. A guardian is a PRINCIPAL, not a plane: a seat
+   * that reverts is a guardian who did not answer, and the threshold already
+   * tolerates that. Isolation is what makes it true rather than hopeful, so the
+   * failure of one seat must never propagate.
+   */
+  private seatAttests(seat: GuardianSeat): boolean {
+    this.mark("guardian/seat-attestation");
+    if (seat.authMode === "ECDSA") return seat.contractBehaviour === "ATTESTS";
+
+    // ERC-1271: an attestation counts ONLY on an affirmative, exactly-shaped
+    // answer. "Did not revert" and "returned something" are NOT attestations.
+    if (this.has("M31_ATTESTATION_COUNTED_ON_NON_REVERT")) {
+      this.mark("guardian/attestation-affirmative");
+      return seat.contractBehaviour !== "REVERTS";
+    }
+    this.mark("guardian/attestation-affirmative");
+    return seat.contractBehaviour === "ATTESTS";
+  }
+
+  /**
+   * Collect attestations across the committed constituency under fault isolation.
+   * The mutant lets one seat's failure abort the whole collection, which is how a
+   * single hostile ERC-1271 guardian would acquire a recovery veto it must not
+   * have — and it is the concrete risk of admitting contract guardians at all.
+   */
+  collectAttestations(seats: readonly GuardianSeat[]): number | "ABORTED" {
+    this.mark("guardian/fault-isolation");
+    let count = 0;
+    for (const seat of seats) {
+      const hostile = seat.contractBehaviour === "REVERTS" || seat.contractBehaviour === "RETURNS_GARBAGE";
+      if (hostile && this.has("M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY")) return "ABORTED";
+      if (this.seatAttests(seat)) count += 1;
+    }
+    return count;
+  }
+
+  /** Whether a quorum is reachable from the committed constituency as supplied. */
+  quorumReachable(supplied: readonly GuardianSeat[], suppliedThreshold: number): boolean {
+    this.mark("guardian/quorum");
+    if (!this.rosterIsAuthoritative(supplied, suppliedThreshold)) return false;
+    const attested = this.collectAttestations(supplied);
+    if (attested === "ABORTED") return false;
+    return attested >= this.kernel.guardianThreshold;
+  }
+
+  /** The constituency the kernel committed to, for suite fixtures only. */
+  committedSeats(): readonly GuardianSeat[] {
+    return this.seats;
   }
 }

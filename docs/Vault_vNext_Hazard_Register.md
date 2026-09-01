@@ -16,7 +16,7 @@ Every entry is tagged with its evidentiary status. These are not interchangeable
 
 | Tag | Meaning |
 |---|---|
-| **OBSERVED** | Verified firsthand in `contracts/**` at `origin/main` `aaba4d2`. A citation is given. |
+| **OBSERVED** | Verified firsthand in `contracts/**` at `origin/main` `15a44016` (post-#180). A citation is given. |
 | **PROPOSED** | A vNext design intent. Not implemented anywhere. Carries no assurance. |
 | **PROVEN-BY-MODEL** | Killed by a discriminating mutant in `test/VaultVNextArchitectureModel.test.ts`. Proves the *architecture* is coherent, **never** that any Solidity conforms to it. |
 | **RESIDUAL** | Accepted. Stated deliberately rather than mitigated. |
@@ -35,7 +35,7 @@ blast radius is system-wide is not made per-vault by asserting isolation elsewhe
 
 | # | Hazard | Status | Tier | Blast radius |
 |---|---|---|---|---|
-| H-01 | Irreversible admin pause via `renounceOwnership()` | OBSERVED | T0 | system-wide |
+| H-01 | Irreversible admin pause via `renounceOwnership()` | **CLOSED IN CURRENT MAIN** (#180) | T0 | system-wide |
 | H-02 | Unrotatable tenant identity key | OBSERVED | T1 | per-vault |
 | H-03 | Credential-keyed veto over honest recovery | OBSERVED | T1 | per-vault |
 | H-04 | Recovery installs credentials with no proof of possession | OBSERVED | T1 | per-vault |
@@ -61,30 +61,46 @@ blast radius is system-wide is not made per-vault by asserting isolation elsewhe
 | H-24 | Attestor rotation outside the verifier timelock | OBSERVED | T1 | system-wide |
 | H-25 | Pooled custody carries no solvency invariant | OBSERVED | T0 | system-wide |
 | H-26 | Cross-tenant replay separation rests on a signed field, not the domain | OBSERVED | T1 | system-wide |
+| H-27 | Guardian-set commitment intact, preimage unrecoverable | PROPOSED | T1 | per-vault |
+| H-28 | A third party vetoes migration by planting a hostile asset | OBSERVED (mechanism) | T0 | per-vault |
+| H-29 | An implementation's runtime code hash is address-dependent | **MEASURED** | T1 | cohort |
+| H-30 | A bounded emergency authority holds an indefinite rolling freeze | PROPOSED | T0 | per-vault |
+| H-31 | Guardian independence is assumed, never represented | OBSERVED (gap) | T1 | per-vault |
+| H-32 | The factory's generation-registration authority is unclassified | PROPOSED | T1 | cohort (future) |
 
 ---
 
 ## H-01 — Irreversible admin pause via `renounceOwnership()`
 
-**Status: OBSERVED · Tier T0 · Blast radius: system-wide**
+**Status: CLOSED IN CURRENT MAIN by PR #180 · Tier T0 · Blast radius: system-wide**
+
+> **This entry is kept, not deleted, and its history is the point.** The hazard was discovered by
+> this architecture review, surfaced independently by the PR #177 lane, shipped as its own narrow
+> remediation in **PR #180**, and its closure is re-verified firsthand here. A register that
+> silently drops a closed T0 finding loses the only evidence that the process worked.
 
 | Field | Content |
 |---|---|
 | **Hazard** | Every tenant's assets become permanently immovable and permanently unrecoverable, while the contract continues to accept deposits. |
-| **Cause** | `pause()`/`unpause()` are `onlyOwner` (`contracts/WalletWallVault.sol:1424`, `:1429`). `renounceOwnership()` is inherited from OpenZeppelin `Ownable` as `public virtual onlyOwner`; `Ownable2Step` (OZ 5.6.1) overrides `pendingOwner`, `transferOwnership`, `_transferOwnership` and `acceptOwnership` but **not** `renounceOwnership`, and neither vault overrides it. Confirmed present in the compiled ABI. |
-| **Direct authority** | (a) contract admin, alone. |
-| **Authority closure** | `{ENTER_CONTAINMENT}` closes over `{permanent denial of MOVE_ASSETS, CHANGE_CREDENTIALS, APPROVE_RECOVERY for every tenant}`. Two transactions, no delay, no quorum, no expiry. |
-| **Prevention** | vNext: no per-vault admin principal exists at all, and no principal may hold an unbounded containment capability (§10 of the architecture). For **current main**: override `renounceOwnership()` to revert — independently measured at **+8 bytes** by the PR #177 lane (§14). |
-| **Containment** | None available today. Once renounced the state is absorbing. |
-| **Detection** | `OwnershipTransferred(previousOwner, address(0))` is emitted and is externally observable, but detection after the fact changes nothing. |
-| **Recovery** | **NONE.** This is the only entry in this register with no recovery path whatsoever. |
-| **Residual risk** | Eliminated in vNext by construction. In current main it is live and unmitigated. |
-| **Proof tier** | T0. Modelled as `M7`; containment self-expiry and the authority-monotonicity check both kill it. |
+| **Cause** | `pause()`/`unpause()` are `onlyOwner`. `renounceOwnership()` is inherited from OpenZeppelin `Ownable` as `public virtual onlyOwner`; `Ownable2Step` (OZ 5.6.1) overrides `pendingOwner`, `transferOwnership`, `_transferOwnership` and `acceptOwnership` but **not** `renounceOwnership`. Neither vault overrode it, so it was present and callable in both compiled ABIs. |
+| **Direct authority** | (a) contract admin, alone. Two transactions, no delay, no quorum, no expiry. |
+| **Authority closure** | `{ENTER_CONTAINMENT}` closed over `{permanent denial of MOVE_ASSETS, CHANGE_CREDENTIALS, APPROVE_RECOVERY for every tenant}`. |
+| **Prevention — SHIPPED** | **PR #180, merged to `main` `15a44016`.** Both vaults now declare `function renounceOwnership() public pure override { revert OwnershipRenunciationDisabled(); }`. **Verified firsthand at `15a44016`**: `WalletWallVault.sol:1475` and `StablecoinVaultSimulator.sol:1215`. `pure` was chosen deliberately so the ABI's `stateMutability` is tamper-evident — the inherited implementation is `nonpayable`, so an ABI reporting `nonpayable` for this selector proves the override has been removed. |
+| **Cost, MEASURED** | **+8 bytes** on each vault's runtime, exactly as the #177 lane forecast. `WalletWallVault` 23,231 → **23,239**; `StablecoinVaultSimulator` 22,867 → **22,875**. Re-measured independently here from a clean, non-instrumented compile. |
+| **Containment** | n/a — the capability is withdrawn from the contract, not withheld from a caller. |
+| **Detection** | Was `OwnershipTransferred(previousOwner, address(0))`. No longer reachable. |
+| **Recovery** | Was **NONE** — the only entry in this register with no recovery path. |
+| **Residual risk** | **Eliminated in current `main`.** Not merely mitigated: the selector reverts unconditionally for every caller. vNext removes the principal entirely, so the hazard has no host in the target architecture either. |
+| **Proof tier** | T0. Closed by production code and its own 21-case suite in `test/OwnershipRenunciationDisabled.test.ts`, not by this model. |
 
-> This is the single most severe finding in the adjudication. It was surfaced independently by the
-> PR #177 v5 lane (§9a) and re-verified here against the OpenZeppelin source and the compiled ABI.
+> **What did NOT change, and is still live.** `WalletWallVault` accepts deposits while paused
+> (hazard H-22) — recorded in #180 as evidence and deliberately left out of a security remediation
+> that otherwise carried no behavioural change. §13.0 of the architecture document now shows this is
+> **not** minor: under per-vault custody it is the mechanism by which an unprivileged stranger can
+> veto another vault's migration. See **H-28**.
 
 ---
+
 
 ## H-02 — Unrotatable tenant identity key
 
@@ -454,14 +470,14 @@ candidate recorded in `Guardian_Authority_Design.md` §4.2 (F-1…F-5).
 | Field | Content |
 |---|---|
 | **Hazard** | The threat model becomes limited by EIP-170 rather than by engineering judgement: a known, agreed security fix cannot be deployed because it does not fit. |
-| **Cause** | Measured this session from a clean non-instrumented compile at `aaba4d2` (solc 0.8.24, cancun, optimizer on, runs 200, no viaIR): `WalletWallVault` runtime **23,231 / 24,576 bytes (94.5%)**, headroom **1,345**. `StablecoinVaultSimulator` 22,867, headroom 1,709. |
+| **Cause** | Re-measured from a clean non-instrumented compile at `15a44016` (solc 0.8.24, cancun, optimizer on, runs 200, no viaIR): `WalletWallVault` runtime **23,239 / 24,576 bytes (94.6%)**, headroom **1,337**; creation bytecode **24,582**, which now exceeds the 24,576 RUNTIME ceiling on its own. `StablecoinVaultSimulator` 22,875, headroom 1,701. Superseded figures at `aaba4d2`: 23,231 / headroom 1,345 and 22,867 / headroom 1,709 — PR #180 added the +8 bytes. |
 | **Direct authority** | n/a — structural. |
 | **Authority closure** | n/a. |
 | **Prevention** | vNext: the kernel carries **one** vault's semantics, not `N` tenants' — no owner-keyed mapping indirection, no per-tenant loops. Capability planes hold what the kernel need not. |
 | **Containment** | The size gate (`scripts/validate-bytecode-size.ts`) compares `deployedBytecode` only and must be run from a **clean non-instrumented compile**; coverage instrumentation inflates measured sizes. |
 | **Detection** | `npm run validate:bytecode-size`. |
 | **Recovery** | Externalisation or redesign. |
-| **Residual risk** | **Two agreed security fixes are competing for the same 1,345 bytes and at least one provably cannot fit**: guardian hardening prices at 675–1,650 B (an unresolved 2.4× disagreement), and recovery PoP needs 464 B against 339 B available. Separately, ~29.8% of the vault's runtime is utility-Yul and unmapped buckets not emitted as `generatedSources`, so **every forward byte estimate is a lower bound**. |
+| **Residual risk** | **Two agreed security fixes are competing for the same 1,337 bytes and at least one provably cannot fit**: guardian hardening prices at 675–1,650 B (an unresolved 2.4× disagreement), and recovery PoP needs 464 B against 339 B available. Separately, ~29.8% of the vault's runtime is utility-Yul and unmapped buckets not emitted as `generatedSources`, so **every forward byte estimate is a lower bound**. |
 | **Proof tier** | T0. Measured, not modelled. |
 
 ---
@@ -499,7 +515,7 @@ candidate recorded in `Guardian_Authority_Design.md` §4.2 (F-1…F-5).
 | **Containment** | None today. |
 | **Detection** | `Deposited` events during a paused period are trivially detectable off-chain. |
 | **Recovery** | Unpause — subject to H-01. |
-| **Residual risk** | Low severity alone; **compounds H-01 and H-12 materially**, which is why it is registered separately rather than folded into them. |
+| **Residual risk** | **ELEVATED by this remediation, and no longer low severity.** It was registered as compounding H-01 and H-12. Architecture §13.0 now shows a third and worse composition: under per-vault custody an open ingress lets an **unprivileged stranger** place a hostile asset into a vault between migration binding and execution, vetoing an escape they hold no authority over — see **H-28**. #180 recorded this divergence as evidence and deliberately left it unchanged, which was right for a narrow security PR; it is now a **prerequisite**, sequencing step 0a. **Still live at `15a44016`**: verified firsthand that `deposit()` and `depositFor()` carry no state gate while `withdraw`, `queueWithdrawal`, `finalizeWithdrawal` and `executeRecovery` all carry `whenNotPaused`. |
 | **Proof tier** | T2. |
 
 ---
@@ -580,17 +596,138 @@ candidate recorded in `Guardian_Authority_Design.md` §4.2 (F-1…F-5).
 
 ---
 
+## H-27 — Guardian-set commitment intact, preimage unrecoverable
+
+**Status: PROPOSED · Tier T1 · Blast radius: per-vault**
+
+| Field | Content |
+|---|---|
+| **Hazard** | The kernel holds a perfectly valid guardian commitment whose **preimage nobody has**. No roster can be presented that hashes to it, so recovery is unreachable — with no on-chain symptom whatsoever. |
+| **Cause** | **Introduced by the G-B minimisation itself** (architecture §4.2b). Storing a commitment instead of the roster moves the member addresses outside kernel state; if the roster is not retained off-chain, the commitment becomes a lock with no key. |
+| **Direct authority** | None — this is an availability property, not a capability. |
+| **Authority closure** | n/a. |
+| **Prevention** | `I-CONSTITUENCY-RECONSTRUCTIBLE`: every write of the commitment **emits the full preimage** — threshold and all ordered `(address, authMode)` entries — in the same transaction, so the roster is reconstructible from chain history alone. |
+| **Containment** | Publishing the roster in the company-disappearance artifact set (§15) is a second, independent copy. |
+| **Detection** | Not detectable on-chain: an unrecoverable commitment is indistinguishable from an unused one. |
+| **Recovery** | None once the preimage is lost. This is why the mitigation is a **write-time** requirement rather than an operational recommendation. |
+| **Residual risk** | **Real, and it is the one axis on which G-A beats G-B.** Reconstruction depends on **log availability**, so a user holding only `eth_getCode` and no archive access cannot rebuild the roster. G-A has no such dependency. The smaller TCB is paid for here, and the charge is recorded rather than absorbed. |
+| **Proof tier** | T1. `I-GUARDIAN-CONSTITUENCY-BINDING` is discriminated (M28); `I-CONSTITUENCY-RECONSTRUCTIBLE` is **OBSERVATORY** and carries no assurance from this PR (§16.1). |
+
+---
+
+## H-28 — A third party vetoes migration by planting a hostile asset
+
+**Status: OBSERVED (mechanism) · Tier T0 · Blast radius: per-vault**
+
+| Field | Content |
+|---|---|
+| **Hazard** | An **unprivileged stranger**, holding no authority over the vault at all, permanently prevents it from escaping a dead or hostile kernel generation. |
+| **Cause** | Three facts compose. (i) Under per-vault custody a vault **is** an address, so anyone may send it an ERC-20 with no function call. (ii) OBSERVED at `15a44016`: `deposit()` and `depositFor()` carry **no state gate**, while every payout path carries `whenNotPaused` (H-22). (iii) The previous migration design bound a closed **asset set** and aborted the whole migration if any transfer failed. An attacker sends one blacklisting or reverting token **between binding and execution** and the escape is welded shut. |
+| **Direct authority** | **None.** That is precisely what makes it severe. |
+| **Authority closure** | `{send a token}` closes over `{permanent denial of MIGRATION}` under an asset-set-binding design. |
+| **Prevention** | Two changes, both required. (1) Architecture §13: **no bound asset set and no bound amounts** — a per-entry manifest with independent egress, so a failing entry marks only itself. (2) Architecture §6: `I-NO-INGRESS-WITHOUT-EGRESS`, closing H-22, so a vault that cannot pay out cannot be topped up. |
+| **Containment** | `I-EGRESS-RETRY-PERPETUAL`: a failed entry may always be retried, so even a temporary refusal is not terminal. |
+| **Detection** | The incoming transfer is public, but detection does not help if the design is already committed to atomicity. |
+| **Recovery** | Under the replacement design the remaining assets leave normally; only the hostile token stays. |
+| **Residual risk** | A token that blacklists the **SOURCE** is unreachable by any destination and by any protocol change. That is a property of the token, recorded in architecture §13.4 and §2.2 as an accepted unrecoverable condition rather than absorbed silently here. |
+| **Proof tier** | T0. Modelled as `M39`, `M40`, `M41`, `M42`; `I-NO-INGRESS-WITHOUT-EGRESS` as `M26`. |
+
+---
+
+## H-29 — An implementation's runtime code hash is address-dependent
+
+**Status: MEASURED · Tier T1 · Blast radius: cohort**
+
+| Field | Content |
+|---|---|
+| **Hazard** | An offline observer cannot verify "this vault runs the audited kernel" by comparing against a **published constant**, because no such constant exists. A verifier who believes one does will either accept a wrong implementation or reject a correct one. |
+| **Cause** | **MEASURED this session.** Two deployments of **byte-identical source** produced runtime code differing in **51 of 23,239 bytes**. Every differing byte lies inside a declared immutable slot; the artifact declares **seven** 32-byte immutable slots, and the one at offset **18,627** holds the contract's **own address**. Cause: inherited OpenZeppelin `EIP712`, whose `_cachedThis` and `_cachedDomainSeparator` are `immutable` and therefore baked into runtime bytecode. |
+| **Direct authority** | None — structural. |
+| **Authority closure** | n/a, but it **weakens every claim built on code identity**, including the migration destination check. |
+| **Prevention** | `I-PURE-CONSTRUCTOR`: the vNext kernel must feed **no chain state into any `immutable`**. Two independent reasons converge on that one change — the EIP-712 cache can never hit for a clone anyway (dissent D2), and the cached immutables destroy hash stability. |
+| **Containment** | Until then, the five-step masking procedure in architecture §15.1: mask the ranges named by the artifact's `immutableReferences`, compare to the artifact's `deployedBytecode` (**verified**: all seven slots are zero placeholders there), then re-derive the address-dependent words independently. Masking **without** the re-derivation step discards real information. |
+| **Detection** | Trivially detectable once looked for, and invisible until then. |
+| **Recovery** | n/a — a verification-procedure defect, not a state. |
+| **Residual risk** | The masking procedure is **OBSERVATORY** and carries no assurance from this PR. A verifier that skips step 4 accepts any implementation whose non-immutable bytes match. |
+| **Proof tier** | T1. Measured, not modelled. The model discriminates the **chain shape** (`M46`, `M47`, `M49`), never the bytes. |
+
+---
+
+
+## H-30 — A bounded emergency authority holds an indefinite rolling freeze
+
+**Status: PROPOSED · Tier T0 · Blast radius: per-vault**
+
+| Field | Content |
+|---|---|
+| **Hazard** | A capability the design calls "bounded" produces an **unbounded** denial: the vault is frozen forever, one nominally-expiring episode at a time. |
+| **Cause** | **A gap in the previous revision of the architecture, not in the code.** §6 specified that containment is wall-clock bounded and self-expiring, and said **nothing** about what happens when the emergency principal triggers it **again**. A hostile or captured principal simply re-triggers on expiry. **Per-episode bounds do not compose into a bound on the authority.** |
+| **Direct authority** | Emergency principal, alone. |
+| **Authority closure** | `{ENTER_CONTAINMENT}` closes over `{indefinite denial of spending and of every authority mutation}` — recovery excepted, because §6 keeps it live throughout, which is what stops this becoming loss rather than denial. |
+| **Prevention** | Two rules, each with its own discriminator. `I-CONTAINMENT-NO-EXTENSION`: re-entry while contained is a **no-op**, so the expiry cannot be pushed (M25). `I-CONTAINMENT-BUDGET`: at most `B` contained time per rolling window `W` with **`B < W`**, the window origin advancing **only** by elapsed wall clock (M24). `B < W` is the whole content — it guarantees an infinite sequence of uncontained intervals. |
+| **Containment** | Recovery and migration egress stay available *during* containment, so even a maximal freeze never reaches loss. |
+| **Detection** | Entry and expiry are both observable. |
+| **Recovery** | Wall-clock expiry, requiring **no principal to act** — the property `I-VETO-BOUND` generalises to every veto in the design. |
+| **Residual risk** | The vault is still deniable for up to `B` in every window. That is an accepted duty-cycle cost of having an emergency brake at all. **OPEN:** the numeric values of `B` and `W` (owner decision D5). |
+| **Proof tier** | T0. Modelled as `M24` and `M25`, with `rollingFreezeReachable()` as the discriminating predicate. |
+
+---
+
+## H-31 — Guardian independence is assumed, never represented
+
+**Status: OBSERVED (gap) · Tier T1 · Blast radius: per-vault**
+
+| Field | Content |
+|---|---|
+| **Hazard** | A `k`-of-`n` guardian set whose members share one operator, one custodian, one wallet vendor, or one household is **one** failure root wearing `n` addresses. The authority graph reports a minimum cut of `k`; the real cut is 1. |
+| **Cause** | `k` counts **addresses**. Address distinctness is enforced by the chain; **independence is an assumption about the world** and nothing represents it. Architecture §24.1 shows the guardian path already **dominates** every credential control, so an over-stated `k` over-states the security of the whole system. |
+| **Direct authority** | Whoever controls the correlated seats. |
+| **Authority closure** | `{correlated guardian majority}` closes over `{CHANGE_CREDENTIALS, MOVE_ASSETS}` — the H-15 closure, reached at a fraction of the advertised cost. |
+| **Prevention** | **Not prevented, and this is a genuine asymmetry worth naming.** The `SecurityProfile` introduces `rootTag` so that correlated *credential* factors cannot be counted twice (§12, mutant M35). **Nothing analogous exists for guardians.** The same defect is closed on one axis and open on the other. |
+| **Containment** | Operational only: guardian selection is the user's, and the vault can *disclose* seat metadata (§10) without being able to verify it. |
+| **Detection** | Not detectable on-chain. Correlation is off-chain by definition. |
+| **Recovery** | Replace the guardian set — which requires a quorum of the set being replaced. |
+| **Residual risk** | **UNRESOLVED and newly recorded.** Extending `rootTag` to guardian seats is representable but would place an unverifiable off-chain assumption inside kernel state, which is its own hazard. This register states the gap rather than closing it badly. |
+| **Proof tier** | T1 for the credential axis (modelled); **no proof** for the guardian axis. |
+
+---
+
+## H-32 — The factory's generation-registration authority is unclassified
+
+**Status: PROPOSED · Tier T1 · Blast radius: cohort (future vaults only)**
+
+| Field | Content |
+|---|---|
+| **Hazard** | Under architecture C, whoever decides which implementation the factory points at decides what every **future** vault immutably **is**. That is a capability-**ADDING** power inside a doctrine that forbids them, and the previous revision's authority table did not contain it. |
+| **Cause** | §8 recorded "Kernel admin — **NONE**, the principal does not exist". True *per vault*, and it made a real principal invisible: the factory operator sits on **no vault's** code-identity chain, so no amount of §15 verification reveals them. |
+| **Direct authority** | Factory operator, where the implementation pointer is mutable. |
+| **Authority closure** | `{retarget the factory}` closes over `{define the kernel of every future vault}`. It closes over **nothing** for vaults already deployed — a clone's implementation is a `PUSH20` immediate in its own code, so the factory holds no authority over its own output. |
+| **Prevention** | **Remove the principal rather than govern it** (owner decision D8): make the factory's implementation pointer `immutable`, so registering a generation **is** deploying a new factory and no principal can retarget an existing one. The measured spike already does this. |
+| **Containment** | Blast radius is bounded to future vaults by construction, and §15's offline verification lets a user check what they actually got without trusting whoever published the address. |
+| **Detection** | A retarget is observable; a user who never looks is unaffected until their next deployment. |
+| **Recovery** | Deploy from a correct factory. Already-deployed vaults need no remedy. |
+| **Residual risk** | **Discovery, not authority.** Whoever publishes a factory address influences which generation users find. That is bounded by verification, not eliminated by it. **OPEN pending D8.** |
+| **Proof tier** | T1. Not modelled — the factory is outside the vault state machine, and claiming model coverage for it would be exactly the over-claim §16.1 exists to prevent. |
+
+---
+
 ## Hazards deliberately NOT claimed as closed
 
 Honesty requires naming what this register does **not** resolve.
 
 1. **No conformance claim.** Nothing here establishes that any Solidity implementation satisfies any
    invariant. The model proves architectural coherence and mutant discrimination only.
-2. **H-04's PQ leg, H-11's authority split, H-17's attestor dependency, and H-23's ERC-4337 decision
-   are UNRESOLVED** and require owner decisions.
-3. **The invariant set is not proven complete.** Absence of a hazard from this register is not
-   evidence that none exists.
-4. **Per-tenant instancing does not by itself remove a global admin.** NIST SP 800-160 v1r1 E.10/E.16
+2. **UNRESOLVED, each requiring an owner decision:** H-04's PQ leg · H-11's authority split
+   (now narrowed by architecture §22 D2) · H-17's attestor dependency · H-23's ERC-4337 decision ·
+   **H-31's guardian-independence gap** · **H-32's factory authority (D8)** · and the appetite call
+   behind **H-15** (D1), which architecture §24 shows is the **dominant** path to asset control.
+3. **H-22 is live and is now a prerequisite**, not hygiene — see H-28.
+4. **The invariant set is not proven complete**, and this revision demonstrated that concretely:
+   remediation added six hazards (H-27..H-32), two of which — H-27 and H-30 — are defects of the
+   **previous revision of the architecture itself** rather than of any code. Absence of a hazard from
+   this register is not evidence that none exists.
+5. **Per-tenant instancing does not by itself remove a global admin.** NIST SP 800-160 v1r1 E.10/E.16
    bear on the admin directly, and the tenancy model does not settle it — the admin must be designed
    out explicitly, which §8 of the architecture document does and which this register tracks under
-   H-01, H-05, H-07 and H-12.
+   H-01, H-05, H-07 and H-12. **Architecture §22 D8 adds the principal §8 had missed** — the
+   factory operator (H-32).
