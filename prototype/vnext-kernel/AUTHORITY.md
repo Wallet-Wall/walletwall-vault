@@ -174,8 +174,15 @@ with `BadNonce` while the outer spend completes.
    DISTINCT addresses — the canonical-roster rule guarantees that much — but
    three distinct addresses behind one custodian is still **one** root, and no
    on-chain mechanism detects it. Distinctness is necessary, not sufficient.
-5. **Slither and CodeQL have NEVER run against this code.** Neither is available
-   in this environment and neither fires on a PR based on a design branch. That
-   is recorded as absent evidence, not as a pass.
+5. **Slither now runs against this code** (`vNext Kernel / Slither` CI job,
+   path-scoped and branch-unrestricted); every finding is triaged firsthand in
+   `slither-triage.json` and summarised in `SCANNER_EVIDENCE.json`. No
+   sustained security defect was found; every finding is FALSE_POSITIVE,
+   ACCEPTED_DESIGN_TRADEOFF, NON_SECURITY_STYLE or OUT_OF_SCOPE_DEPENDENCY.
+   **CodeQL has no Solidity extractor** — the `vNext Kernel / CodeQL` job
+   covers only this prototype's own JavaScript/TypeScript tooling, never the
+   contracts. Neither scanner changes anything below: they are additional
+   independent analysis, not a replacement for the authority-closure argument
+   this file makes, or a proof that this argument is complete.
 6. **A dead PQ verifier now denies spending until a guardian quorum acts.** The
    price of closing A2, stated in section 3.

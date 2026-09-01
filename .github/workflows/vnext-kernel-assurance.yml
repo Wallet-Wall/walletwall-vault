@@ -1,0 +1,170 @@
+name: vNext Kernel
+
+# Independent scanner coverage for the vNext minimal trust kernel PROTOTYPE
+# (prototype/vnext-kernel/**), which sits OUTSIDE the production Hardhat
+# compilation unit (see prototype/vnext-kernel/README.md "Compilation
+# boundary"). It was never in scope for CI.yml / slither.yml / codeql.yml:
+# those workflows target `contracts/` (a different Hardhat project) and,
+# before this workflow existed, none of them ran on a PR whose base branch
+# isn't `main` -- which every PR in this design/prototype/security stack is.
+# Path-scoped, branch-unrestricted triggers close both gaps at once without
+# touching the production-scoped workflows.
+#
+# These checks are named "vNext Kernel / <job>" specifically so they cannot
+# be mistaken for repository-wide security coverage.
+
+on:
+  push:
+    paths:
+      - "prototype/vnext-kernel/**"
+      - ".github/workflows/vnext-kernel-assurance.yml"
+      - ".github/codeql/vnext-kernel-codeql-config.yml"
+  pull_request:
+    paths:
+      - "prototype/vnext-kernel/**"
+      - ".github/workflows/vnext-kernel-assurance.yml"
+      - ".github/codeql/vnext-kernel-codeql-config.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prototype-tests:
+    name: Prototype Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # Hardhat 3 requires Node >= 22.10.0.
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      - name: Run prototype tests
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+
+      - name: Lint prototype contracts (solhint)
+        run: npx solhint "prototype/vnext-kernel/contracts/**/*.sol"
+
+      - name: Measure prototype bytecode
+        run: npx tsx prototype/vnext-kernel/measure.ts
+
+      - name: Verify prototype reproducibility (independent solc rebuild)
+        run: npx tsx prototype/vnext-kernel/reproduce.ts
+
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Slither
+        id: slither
+        # Same pinned action commit and same pinned Slither commit as the
+        # production-scoped slither.yml (crytic-compile >=0.4.1, needed for
+        # Hardhat 3 support -- see that workflow's own comment).
+        uses: crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f
+        with:
+          slither-version: ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad
+          # Pinned to the prototype's own committed build settings (README.md
+          # "Build settings, pinned"), so every finding is against the exact
+          # code this PR's byte and authority-closure claims describe.
+          solc-version: "0.8.24"
+          # `target` is the prototype's OWN contracts, never `contracts/`.
+          target: prototype/vnext-kernel/contracts
+          # WHY --compile-force-framework solc, not hardhat: crytic-compile
+          # 0.4.2's Hardhat-v3 filename recovery only reverses the DEFAULT
+          # `contracts/` sources path (crytic_compile/utils/naming.py
+          # process_hardhat_v3_filename, case 2, hardcodes the literal regex
+          # `project/contracts/(.+)`). This prototype's isolated Hardhat
+          # config compiles `prototype/vnext-kernel/contracts` instead, so
+          # every project-owned source stays keyed
+          # "project/prototype/vnext-kernel/contracts/X.sol" in Hardhat 3's
+          # build-info -- a path that exists nowhere on disk -- and
+          # crytic-compile aborts with "Unknown file" before Slither ever
+          # sees the code. Verified locally (Docker + the pinned Slither
+          # commit) against both routes before choosing this one. The plain
+          # `solc` platform sidesteps Hardhat's build-info naming entirely:
+          # it needs the OpenZeppelin remap and the pinned evmVersion/
+          # optimizer settings spelled out explicitly, which is what the
+          # three extra flags below are for.
+          slither-args: >-
+            --compile-force-framework solc
+            --solc-remaps "@openzeppelin/=node_modules/@openzeppelin/"
+            --solc-args "--evm-version cancun --optimize --optimize-runs 200"
+            --exclude-dependencies
+          # `fail-on: none` matches production's slither.yml, and for the
+          # same underlying reason: this kernel's actual security argument is
+          # the authority-closure/minimum-cut analysis in AUTHORITY.md and
+          # the adversarial tests it cites (M-K28..M-K37), not any scanner's
+          # confidence-weighted heuristics. Every current finding is triaged
+          # firsthand in the PR description; hard-gating CI on Slither's
+          # detector severity here would manufacture exactly the
+          # "scanner-green implies safe" signal this whole lane exists to
+          # avoid. SARIF is still uploaded in full, so nothing is hidden.
+          fail-on: none
+          sarif: slither-vnext-kernel-results.sarif
+
+      - name: Upload Slither SARIF
+        if: ${{ always() && hashFiles('slither-vnext-kernel-results.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slither-vnext-kernel-results.sarif
+          category: slither-vnext-kernel
+
+  codeql:
+    name: CodeQL
+    # Same repo-wide kill switch as codeql.yml, so a single toggle disables
+    # every CodeQL job in the repository together.
+    if: ${{ vars.CODEQL_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          # GitHub CodeQL has no Solidity extractor: this analyzes the
+          # prototype's JavaScript/TypeScript TOOLING (measure.ts,
+          # reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts,
+          # test/*.ts) -- never the contracts. Do not read this job's name as
+          # Solidity security analysis; see the PR description for the exact
+          # scanner coverage matrix.
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./.github/codeql/vnext-kernel-codeql-config.yml
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:javascript-typescript/vnext-kernel"
