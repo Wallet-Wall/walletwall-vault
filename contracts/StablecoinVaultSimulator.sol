@@ -333,6 +333,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error TreasuryQuorumNotMet(uint256 required, uint256 current);
     error TreasuryAlreadyApproved();
+    error OwnershipRenunciationDisabled();
 
     /**
      * @param _token     Address of the ERC-20 test token (e.g. MockUSDC).
@@ -1196,6 +1197,23 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
 
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Ownership renunciation is permanently disabled. Always reverts.
+     * @dev Mirrors {WalletWallVault.renounceOwnership} — see that function for the
+     *      full rationale. In short: {Ownable2Step} does not override
+     *      {Ownable.renounceOwnership}, so without this it is reachable and zeroes
+     *      `owner()`; because {pause}/{unpause} are `onlyOwner` while withdrawal
+     *      and {executeRecovery} are `whenNotPaused`, a zero owner makes {unpause}
+     *      uncallable forever and the freeze permanent.
+     *
+     *      This contract is a sibling implementation of the same guardian,
+     *      recovery and treasury semantics, so the override is mirrored here to
+     *      keep the pair from diverging one-sidedly.
+     */
+    function renounceOwnership() public pure override {
+        revert OwnershipRenunciationDisabled();
     }
 
     // -----------------------------------------------------------------------

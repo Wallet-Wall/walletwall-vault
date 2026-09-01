@@ -10,7 +10,7 @@
   "reportedSourceCommitInPublicHistory": true,
   "observedRuntimeBytes": 21807,
   "reportedCommitRuntimeBytes": 21807,
-  "publicHeadRuntimeBytes": 22867,
+  "publicHeadRuntimeBytes": 22875,
   "publicHeadCommit": "c5af32de8338afd5e90bd3d0ef5f7736dcdc6263",
   "reproducibilityStatus": "reproducible",
   "lastChecked": "2026-08-27",
