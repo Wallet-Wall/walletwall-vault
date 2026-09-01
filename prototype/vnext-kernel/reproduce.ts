@@ -27,9 +27,57 @@ const SETTINGS = {
 const ROOT = path.join("prototype", "vnext-kernel");
 const SRC = path.join(ROOT, "contracts");
 
+/**
+ * Hardhat's own compiler-cache platform directory name (mirrors
+ * CompilerPlatform in hardhat/src/internal/builtin-plugins/solidity/
+ * build-system/compiler/downloader.ts, which this script deliberately does
+ * not import -- it drives solc independently of Hardhat's build system, see
+ * this file's header comment). Only the OS/arch combinations Hardhat itself
+ * resolves to a native (non-WASM) binary are handled; anything else throws
+ * rather than guessing a cache layout this script has not verified.
+ */
+function compilerCachePlatform(): string {
+  switch (os.platform()) {
+    case "win32":
+      return "windows-amd64";
+    case "linux":
+      return os.arch() === "arm64" ? "linux-arm64" : "linux-amd64";
+    case "darwin":
+      return "macosx-amd64";
+    default:
+      throw new Error(`no native solc cache layout known for platform ${os.platform()}/${os.arch()}`);
+  }
+}
+
+/**
+ * Hardhat's global cache root, "<name>-nodejs" under the OS cache
+ * convention (mirrors the `env-paths` package's `cache` entry for
+ * name="hardhat", the same package @nomicfoundation/hardhat-utils'
+ * getCacheDir() resolves through -- reimplemented here, synchronously and
+ * without a new dependency, rather than importing that async helper from a
+ * package this project does not itself depend on directly).
+ */
+function hardhatCacheRoot(): string {
+  const home = os.homedir();
+  switch (os.platform()) {
+    case "win32":
+      return path.join(process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "hardhat-nodejs", "Cache");
+    case "darwin":
+      return path.join(home, "Library", "Caches", "hardhat-nodejs");
+    case "linux":
+      return path.join(process.env.XDG_CACHE_HOME ?? path.join(home, ".cache"), "hardhat-nodejs");
+    default:
+      throw new Error(`no known hardhat cache directory convention for platform ${os.platform()}`);
+  }
+}
+
 function solcPath(): string {
-  const base = path.join(os.homedir(), "AppData", "Local", "hardhat-nodejs", "Cache", "compilers-v3", "windows-amd64");
-  const hit = fs.readdirSync(base).find((f) => f.includes(SOLC_VERSION) && f.endsWith(".exe"));
+  const base = path.join(hardhatCacheRoot(), "compilers-v3", compilerCachePlatform());
+  // The cached binary has no extension on Linux/macOS and a .exe extension
+  // on Windows; list.json (the only other file in this directory) never
+  // contains the version string, so matching on SOLC_VERSION alone is
+  // sufficient without also requiring a specific extension.
+  const hit = fs.readdirSync(base).find((f) => f.includes(SOLC_VERSION));
   if (hit === undefined) throw new Error(`pinned solc ${SOLC_VERSION} not found in ${base}`);
   return path.join(base, hit);
 }
