@@ -366,6 +366,7 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     error PolicyEngineUpdateNotReady(uint256 validAfter, uint256 currentTimestamp);
     error TreasuryQuorumNotMet(uint256 required, uint256 current);
     error TreasuryAlreadyApproved();
+    error OwnershipRenunciationDisabled();
 
     /**
      * @param _pqVerifier Address of the {IPQCVerifier} implementation. On a
@@ -1428,6 +1429,51 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
     /// @notice Unpauses the vault. Admin-only.
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Ownership renunciation is permanently disabled. Always reverts.
+     * @dev {Ownable.renounceOwnership} is `public virtual onlyOwner` and
+     *      {Ownable2Step} overrides `pendingOwner`, `transferOwnership`,
+     *      `_transferOwnership` and `acceptOwnership` but NOT this function, so
+     *      without this override it is reachable in the compiled ABI and sets
+     *      `owner()` to `address(0)`.
+     *
+     *      That is unsafe here in a way it is not for an ordinary `Ownable`
+     *      contract, because {pause} and {unpause} are both `onlyOwner` while
+     *      {withdraw}, {queueWithdrawal}, {finalizeWithdrawal},
+     *      {rotateCredentials}, {initiateRecovery} and {executeRecovery} are all
+     *      `whenNotPaused`. A zero owner therefore makes {unpause} uncallable by
+     *      anyone, forever, converting a suspensive brake into a PERMANENT,
+     *      cross-tenant freeze of withdrawal AND of recovery execution — the one
+     *      failure in this contract with no recovery path of any kind.
+     *
+     *      Reverting unconditionally rather than under `onlyOwner`: the two are
+     *      equally safe (both revert for every caller), but the unconditional
+     *      form is smaller and says the honest thing — the capability is
+     *      withdrawn from the contract, not withheld from the caller. Declared
+     *      `pure` because it reads no state; the base is `nonpayable` and
+     *      Solidity permits an override to restrict mutability.
+     *
+     *      `pure` has TWO consequences worth stating explicitly, because both
+     *      are visible to integrators. (1) The ABI's `stateMutability` for this
+     *      selector changes from `nonpayable` to `pure`, so clients generated
+     *      from the ABI treat it as a call rather than a transaction. The
+     *      outcome is identical — it reverts either way, and nothing can change
+     *      state in a `pure` function. (2) That marker is itself tamper-evident:
+     *      the inherited implementation is `nonpayable`, so an ABI reporting
+     *      `nonpayable` for `renounceOwnership` proves this override has been
+     *      removed. `test/OwnershipRenunciationDisabled.test.ts` asserts exactly
+     *      that, which is why `pure` was preferred to leaving the mutability
+     *      unchanged.
+     *
+     *      Ownership still MOVES through the intended two-step path
+     *      ({transferOwnership} then {acceptOwnership}). This override removes
+     *      exactly one transition: the one that leaves the contract ownerless.
+     *      Mirrored in {StablecoinVaultSimulator} to preserve parity.
+     */
+    function renounceOwnership() public pure override {
+        revert OwnershipRenunciationDisabled();
     }
 
     // ---------------------------------------------------------------------
