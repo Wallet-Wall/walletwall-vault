@@ -1,0 +1,19 @@
+name: WalletWall Vault vNext Kernel CodeQL configuration
+
+# Scoped to the vNext minimal trust kernel prototype ONLY. This analyzes the
+# prototype's own JavaScript/TypeScript tooling (measure.ts, reproduce.ts,
+# decompose.ts, deltas.ts, hardhat.config.ts, test/*.ts) -- GitHub CodeQL has
+# no Solidity extractor, so this config makes no claim about the prototype's
+# contracts/. See the vNext Kernel workflow and PR description for what this
+# job does and does not prove.
+
+paths:
+  - prototype/vnext-kernel
+
+paths-ignore:
+  - prototype/vnext-kernel/artifacts/**
+  - prototype/vnext-kernel/cache/**
+  - prototype/vnext-kernel/typechain-types/**
+
+queries:
+  - uses: security-extended

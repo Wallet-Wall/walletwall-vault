@@ -185,16 +185,20 @@ K6  + rotation, governance, no-downgrade  [FULL]   14,339   +1,741
 | declared storage slots                                       | 11 (+3 recovery, +3 migration)         |
 | selectors                                                    | 40 — **13 state-changing**             |
 
-## Static analysis coverage — recorded as ABSENCE, never as a pass
+## Static analysis coverage
 
-| Scanner     | Status                                                                                                                                                                           |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **solhint** | **RUN** — 32 warnings, 0 errors                                                                                                                                                  |
-| **Slither** | **NOT RUN.** No local Python and no `slither` binary; the Docker daemon is not running. `slither.yml` is filtered to `branches: [main]`, so it never fires on a design-branch PR |
-| **CodeQL**  | **NOT RUN** — same branch filter                                                                                                                                                 |
+| Scanner     | Status                                                                                                                                                                                                       |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **solhint** | **RUN in CI** (`vNext Kernel / Prototype Tests`) — 32 warnings, 0 errors                                                                                                                                     |
+| **Slither** | **RUN in CI** (`vNext Kernel / Slither`, path-scoped, branch-unrestricted) — every finding triaged firsthand in `slither-triage.json`; see `SCANNER_EVIDENCE.json` for the receipt                          |
+| **CodeQL**  | **RUN in CI** (`vNext Kernel / CodeQL`) for the prototype's own JavaScript/TypeScript tooling ONLY — GitHub CodeQL has **no Solidity extractor**, so this is not, and cannot be, Solidity security analysis |
 
-**This code has never been seen by a security scanner.** That is a real gap in
-the evidence for this lane, and it is stated rather than papered over.
+**No claim of Solidity semantic scanner coverage is made.** Slither's own
+coverage is bounded by what its detectors can express — see `AUTHORITY.md`
+section 7 for what this analysis does not establish, independent of any
+scanner. The real security argument for this kernel remains the
+authority-closure analysis in `AUTHORITY.md` and the adversarial tests it
+cites, not scanner cleanliness.
 
 ## Non-goals
 
