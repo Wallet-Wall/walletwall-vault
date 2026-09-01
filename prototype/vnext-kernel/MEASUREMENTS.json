@@ -1,0 +1,113 @@
+{
+  "_WARNING": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. DO NOT MERGE INTO MAIN.",
+  "architectureAuthority": {
+    "pr": 179,
+    "branch": "design/vault-vnext-trust-architecture",
+    "head": "71aee6f3062c3c9784020caf2e3db52f9b700c3f"
+  },
+  "build": {
+    "solc": "0.8.24+commit.e11b9ed9",
+    "evmVersion": "cancun",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "viaIR": false
+  },
+  "limits": {
+    "NETWORK_RUNTIME_LIMIT": 24576,
+    "NETWORK_INITCODE_LIMIT": 49152,
+    "WALLETWALL_PORTABILITY_BUDGET": 24576,
+    "WALLETWALL_INTERNAL_RESERVE": 2600,
+    "TARGET_KERNEL_CEILING": 21976
+  },
+  "kernel": {
+    "runtimeBytes": 14339,
+    "initcodeBytes": 14380,
+    "immutableSlots": 0,
+    "runtimeSha256": "4be8b6a788d70cbc0a4a22aab525a3464061fc96f619d67f8ce1244e889358d4",
+    "selectors": 40,
+    "declaredStorageSlots": 11,
+    "headroomVsPortabilityBudget": 10237,
+    "headroomVsTargetCeiling": 7637,
+    "verdict": "TARGET PASS"
+  },
+  "factory": {
+    "runtimeBytes": 1642,
+    "initcodeBytes": 1894,
+    "immutableSlots": 2,
+    "runtimeSha256": "358e9318293736f55184a73029d13a44fc0ddcf64c0c66475adb64681d8e8448",
+    "selectors": 4
+  },
+  "comparison": {
+    "currentMonolithRuntime": 23239,
+    "mechanicalCloneTargetRuntime": 23249,
+    "minimalKernelRuntime": 14339,
+    "reductionVsMonolithBytes": 8900,
+    "reductionVsMonolithPercent": 38.3
+  },
+  "authoritySurface": {
+    "monolithStateChangingFunctions": 28,
+    "prototypeStateChangingFunctions": 13,
+    "monolithGlobalAdmin": ["pause", "unpause", "transferOwnership", "acceptOwnership"],
+    "prototypeGlobalAdmin": []
+  },
+  "decomposition": [
+    {
+      "level": "K0",
+      "runtime": 2998
+    },
+    {
+      "level": "K1",
+      "runtime": 5404,
+      "delta": 2406
+    },
+    {
+      "level": "K2",
+      "runtime": 7580,
+      "delta": 2176
+    },
+    {
+      "level": "K3",
+      "runtime": 9552,
+      "delta": 1972
+    },
+    {
+      "level": "K4",
+      "runtime": 10300,
+      "delta": 748
+    },
+    {
+      "level": "K5",
+      "runtime": 12598,
+      "delta": 2298
+    },
+    {
+      "level": "K6",
+      "runtime": 14339,
+      "delta": 1741
+    }
+  ],
+  "sourceDigests": {
+    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "38aad65aeeb092c4e4ef9e9e110f76dc8db2065610fa4a6ab0355c9cd53e2121",
+    "npm/@openzeppelin/contracts@5.6.1/proxy/Clones.sol": "06c768a2b794ea59dd6d6c1bfe33cf5098a4a8921aec14cf066576a2bffafce6",
+    "npm/@openzeppelin/contracts@5.6.1/utils/Create2.sol": "9623aa59745a23a72f313adc5adbf583968bf366a7cbf3fc43c1148d7d2c3c86",
+    "npm/@openzeppelin/contracts@5.6.1/utils/Errors.sol": "0704b9d6c032cca8512a3bc3f30f49f86f1f03102d2896a3d23e794b82efea66",
+    "npm/@openzeppelin/contracts@5.6.1/utils/LowLevelCall.sol": "e128cbe9c6c406d5a42c26e4079c0a95b369ce552f2d0c3dfd2fcb836c5708f2",
+    "npm/@openzeppelin/contracts@5.6.1/utils/cryptography/ECDSA.sol": "ba7c2d314fcd61c9783e0b3f0c664d004b76b408fda6a84edc8267d17c5012d6",
+    "npm/@openzeppelin/contracts@5.6.1/utils/cryptography/MessageHashUtils.sol": "538a0d7c4f0ec5a8562f58561890f7b49d14580674ecf58bc5f505b45c73df65",
+    "npm/@openzeppelin/contracts@5.6.1/utils/Strings.sol": "e318709bbe73a7831d64c1351e8bdc43780b245f25191234e361e6ab9b98c67b",
+    "npm/@openzeppelin/contracts@5.6.1/utils/math/Math.sol": "bdfdbe133991c0c78042957ff5cd97167926fcaf6d15664f3835a076cb066457",
+    "npm/@openzeppelin/contracts@5.6.1/utils/Panic.sol": "270fc8401c1a13fae6a7a4a2dd6e381b95d658896701e51f0d3e2688acab3dec",
+    "npm/@openzeppelin/contracts@5.6.1/utils/math/SafeCast.sol": "5779bc848bde39f1ad7bc02b4f708a0040888e0083b1a33f119cd94639350134",
+    "npm/@openzeppelin/contracts@5.6.1/utils/math/SignedMath.sol": "1ed50b1056af886752f0fb48a0165d381e69bb4a4b18b893b066dc144a7e08d7",
+    "npm/@openzeppelin/contracts@5.6.1/utils/Bytes.sol": "3ce9120a27934c75a074cb785d3a88868069ef6529dbe4dc6b845af0836f3c70",
+    "project/prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol": "12e9f58161639366f647850e2928d98b082adb1ce0a8cd672ab485b58b5e6266",
+    "project/prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol": "298aecf3c68eb5c3a3f8f9c5f6a965a7ce4296cfcbb997460b097801d92ff37f"
+  },
+  "validation": {
+    "prototypeTests": "55 passing, 0 failing",
+    "productionNormal": "1643 passing, 0 failing, 11 pending",
+    "productionCoverage": "1640 passing, 0 failing, 14 pending"
+  }
+}
