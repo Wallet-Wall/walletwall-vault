@@ -119,6 +119,8 @@ contract VaultKernelPrototype {
     struct RecoveryRequest {
         address proposedSigner;
         bytes32 proposedPqKeyHash;
+        /// @dev The replacement verifier this recovery installs (finding A).
+        address proposedVerifier;
         uint64 executableAt;
         uint64 expiresAt;
         uint64 boundGuardianGeneration;
@@ -159,6 +161,34 @@ contract VaultKernelPrototype {
         address vault;
         bytes32 codeHash;
         uint64 generation;
+    }
+
+    /**
+     * @dev An incoming credential and its POSSESSION PROOFS (finding D). The
+     *      preimage `newPqKey` travels with the change because the kernel must
+     *      verify possession against the INCOMING key, not the outgoing one.
+     */
+    struct CredentialChange {
+        address newSigner;
+        bytes32 newPqKeyHash;
+        bytes newPqKey;
+        bytes newEcdsaPop;
+        bytes newPqPop;
+    }
+
+    /**
+     * @dev The complete genesis authority of a vault. Every field here defines
+     *      WHO controls the vault, so every field is bound into the CREATE2 salt
+     *      (finding C) and validated by the kernel (genesis validation).
+     */
+    struct GenesisConfig {
+        address signer;
+        bytes32 pqKeyHash;
+        address verifier;
+        uint64 threshold;
+        address[] guardians;
+        bool[] guardianIsContract;
+        SecurityFloor floor;
     }
 
     // =====================================================================
@@ -238,33 +268,79 @@ contract VaultKernelPrototype {
      *         same transaction as the clone deployment, so an uninitialised
      *         clone never exists between transactions and cannot be claimed.
      */
-    function initialize(
-        address signer,
-        bytes32 pqKeyHash,
-        address verifier,
-        bytes32 guardianCommitment_,
-        uint64 threshold,
-        SecurityFloor calldata floor
-    ) external {
+    function initialize(GenesisConfig calldata g) external {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
-        securityFloor = floor;
+
+        // ---- GENESIS VALIDATION -----------------------------------------
+        // The kernel validates its OWN genesis. It does not trust the factory
+        // to have done so: the factory is a convenience, never an authority.
 
         // (3) of section 4.3a: the stored credential must be provably non-zero,
         // or a comparison against an uninitialised clone accidentally succeeds.
-        if (signer == address(0) || verifier == address(0)) revert ZeroAddress();
-        if (threshold == 0 || guardianCommitment_ == bytes32(0)) revert BadRoster();
+        if (g.signer == address(0) || g.verifier == address(0)) revert ZeroAddress();
+        // A verifier with no code would STATICCALL into nothing.
+        if (g.verifier.code.length == 0) revert ZeroAddress();
+        // I-QUORUM-PRINCIPAL-DISTINCTNESS at admission: a vault can never be
+        // created with a roster that could not reach an honest quorum.
+        _requireCanonicalRoster(g.threshold, g.guardians, g.guardianIsContract);
+        _requireSaneFloor(g.floor);
+        // A mandatory PQ conjunct with no committed key is unsatisfiable, and
+        // would brick spending from birth.
+        if (g.floor.requirePq && g.pqKeyHash == bytes32(0)) revert BadSignature();
 
-        ecdsaSigner = signer;
-        pqPublicKeyHash = pqKeyHash;
-        pqVerifier = verifier;
-        guardianCommitment = guardianCommitment_;
-        guardianThreshold = threshold;
+        securityFloor = g.floor;
+        ecdsaSigner = g.signer;
+        pqPublicKeyHash = g.pqKeyHash;
+        pqVerifier = g.verifier;
+        bytes32 commitment = rosterCommitment(g.threshold, g.guardians, g.guardianIsContract);
+        guardianCommitment = commitment;
+        guardianThreshold = g.threshold;
         guardianGeneration = 1;
         credentialGeneration = 1;
         safeState = SafeState.NORMAL;
 
-        emit Initialized(signer, pqKeyHash, guardianCommitment_, threshold);
+        emit Initialized(g.signer, g.pqKeyHash, commitment, g.threshold);
+        // I-CONSTITUENCY-RECONSTRUCTIBLE from the very first block.
+        emit GuardianCommitmentSet(
+            commitment,
+            1,
+            g.threshold,
+            abi.encode(g.threshold, g.guardians, g.guardianIsContract)
+        );
+    }
+
+    /// @dev A floor that demands a PQ conjunct must declare satisfiable shapes.
+    function _requireSaneFloor(SecurityFloor calldata floor) internal pure {
+        if (!floor.requirePq) return;
+        if (floor.pqPublicKeyLength == 0 || floor.pqSignatureLength == 0) revert BadSignature();
+    }
+
+    /**
+     * @notice The CREATE2 salt this vault's identity is derived from.
+     *
+     * @dev `I-COUNTERFACTUAL-IDENTITY-BINDING` — the fix for finding C. The salt
+     *      binds the COMPLETE genesis authority, so an actor lacking the
+     *      intended configuration cannot instantiate the predicted identity: a
+     *      different signer, guardian set, threshold, verifier or floor yields a
+     *      DIFFERENT address. A front-runner submitting the IDENTICAL authorised
+     *      configuration lands on the same address and produces the same state —
+     *      harmless permissionless execution, not a takeover.
+     */
+    function genesisSalt(bytes32 userSalt, GenesisConfig calldata g) public pure returns (bytes32) {
+        return
+            keccak256(
+                abi.encode(
+                    userSalt,
+                    g.signer,
+                    g.pqKeyHash,
+                    g.verifier,
+                    g.threshold,
+                    g.guardians,
+                    g.guardianIsContract,
+                    g.floor
+                )
+            );
     }
 
     /// @notice The per-clone immutable arguments, read out of THIS CLONE'S OWN
@@ -327,6 +403,7 @@ contract VaultKernelPrototype {
         return uint64(bytes8(args));
     }
 
+    bytes32 private constant POP_TAG = keccak256("INCOMING_CREDENTIAL_POSSESSION");
     bytes32 private constant ACTION_SPEND = keccak256("SPEND");
     bytes32 private constant ACTION_ROTATE = keccak256("ROTATE_CREDENTIAL");
     bytes32 private constant ACTION_SET_VERIFIER = keccak256("SET_VERIFIER");
@@ -400,6 +477,73 @@ contract VaultKernelPrototype {
         if (next.pqParamLevel < current.pqParamLevel) revert Downgrade();
     }
 
+    /**
+     * @dev `I-INCOMING-CREDENTIAL-POSSESSION`. Proves the party proposing a new
+     *      credential actually holds it, BEFORE the kernel commits to it.
+     *
+     *      The digest binds the vault, the chain, the kernel generation and the
+     *      exact incoming credential — and DELIBERATELY NOTHING THE OUTGOING
+     *      CREDENTIAL CAN MOVE. Binding it to a spend nonce would hand the
+     *      compromised credential a repeatable veto over recovery: every spend
+     *      would invalidate a guardian's pre-signed possession proof. That is
+     *      the lesson PR #178 paid for, and it is preserved here.
+     */
+    function credentialPossessionDigest(address newSigner, bytes32 newPqKeyHash) public view returns (bytes32) {
+        return
+            keccak256(abi.encode(POP_TAG, block.chainid, address(this), kernelGeneration(), newSigner, newPqKeyHash));
+    }
+
+    /**
+     * @dev The recovery variant. Binds the ACTIVE REQUEST — which the outgoing
+     *      credential can only cancel (a bounded act already counted), never
+     *      silently move.
+     */
+    function recoveryPossessionDigest() public view returns (bytes32) {
+        RecoveryRequest memory r = recovery;
+        return
+            keccak256(
+                abi.encode(
+                    POP_TAG,
+                    block.chainid,
+                    address(this),
+                    kernelGeneration(),
+                    r.proposedSigner,
+                    r.proposedPqKeyHash,
+                    r.proposedVerifier,
+                    r.boundGuardianGeneration,
+                    r.executableAt
+                )
+            );
+    }
+
+    /**
+     * @dev Verify possession of BOTH incoming factors against `verifierToUse`.
+     *      For a rotation that is the current verifier; for a recovery it is the
+     *      INCOMING one, so a vault escaping a dead verifier proves possession
+     *      against the replacement rather than against the corpse.
+     */
+    function _requireIncomingPossession(
+        bytes32 popDigest,
+        address expectedSigner,
+        bytes32 expectedPqKeyHash,
+        address verifierToUse,
+        CredentialChange calldata c
+    ) internal view {
+        // Cross-check: the supplied change must be the one the kernel expects.
+        // For a rotation this is trivially true; for a recovery it binds the
+        // caller-supplied material to the guardian-approved request.
+        if (c.newSigner != expectedSigner || c.newPqKeyHash != expectedPqKeyHash) revert BadSignature();
+        if (popDigest.recover(c.newEcdsaPop) != expectedSigner) revert BadSignature();
+
+        SecurityFloor memory floor = securityFloor;
+        if (!floor.requirePq) return;
+        if (c.newPqKey.length != floor.pqPublicKeyLength || c.newPqPop.length != floor.pqSignatureLength) {
+            revert BadSignature();
+        }
+        if (keccak256(c.newPqKey) != expectedPqKeyHash) revert BadSignature();
+        if (!IKernelPQVerifier(verifierToUse).verify(popDigest, c.newPqKey, c.newPqPop)) revert BadSignature();
+    }
+
     function _consume(uint8 domain, uint256 nonce, uint64 deadline) internal {
         if (nonces[domain] != nonce) revert BadNonce();
         if (block.timestamp > deadline) revert Expired();
@@ -412,6 +556,19 @@ contract VaultKernelPrototype {
     // K-10 — the action matrix. Every gate is one of these two helpers, so the
     // matrix is auditable in one place rather than scattered across modifiers.
     // =====================================================================
+
+    /**
+     * @notice The state the kernel ACTUALLY enforces right now.
+     *
+     * @dev `safeState` is the STORED enum and goes stale: containment expires on
+     *      wall clock with no transaction, so a vault can read CONTAINED while
+     *      the kernel is already treating it as NORMAL. An observatory that
+     *      published the stored value would be publishing a claim the kernel
+     *      does not hold. This derived getter costs no storage write.
+     */
+    function effectiveSafeState() external view returns (SafeState) {
+        return _effectiveState();
+    }
 
     function _effectiveState() internal view returns (SafeState) {
         // Containment self-expires on WALL CLOCK with NO principal acting.
@@ -458,9 +615,19 @@ contract VaultKernelPrototype {
 
         // PLANE, SUBTRACTIVE. address(0) falls back to the kernel FLOOR, never
         // to "no restriction" (section 4.3).
+        // PLANE, SUBTRACTIVE, and now a NON-VIEW ADMISSION call (finding F). A
+        // `view` boundary reaches the plane by STATICCALL, so a plane can never
+        // persist consumption and a cumulative rule (daily spend, velocity) is
+        // unrepresentable — two individually-valid spends both pass. Admission
+        // lets the plane record what it admitted.
+        //
+        // REENTRANCY: the nonce is consumed BEFORE this call, so a reentrant
+        // plane calling back into `execute` needs a signature for nonce+1 that
+        // only the credential holder can produce. LIVENESS: a reverting plane
+        // denies, which is the already-accepted denial cut of 1.
         address plane = policyEngine;
         if (plane != address(0)) {
-            if (!IKernelPolicy(plane).check(address(this), recipient, amount)) revert PolicyDenied();
+            if (!IKernelPolicy(plane).admit(address(this), recipient, amount)) revert PolicyDenied();
         }
 
         emit Executed(recipient, amount, nonce);
@@ -474,26 +641,47 @@ contract VaultKernelPrototype {
     // component being escaped (I-NO-CIRCULAR-ESCAPE).
     // =====================================================================
 
+    /**
+     * @notice Rotate the spending credential.
+     *
+     * @dev **HYBRID-AUTHORISED, and that is the fix for finding A1.** An earlier
+     *      draft gated this on `_floorAuthorises` — the ECDSA conjunct ALONE —
+     *      so a single compromised root could rewrite BOTH factors and then
+     *      spend. The published `min(2, k)` claim was false: the real cut was 1.
+     *      Rotation now requires the full outgoing authorization.
+     *
+     *      It additionally requires POSSESSION of both INCOMING factors
+     *      (finding D), so an approved-but-unheld credential can never be
+     *      installed and strand the vault.
+     */
     function rotateCredential(
-        address newSigner,
-        bytes32 newPqKeyHash,
+        CredentialChange calldata c,
         uint256 nonce,
         uint64 deadline,
-        bytes calldata ecdsaSig
+        bytes calldata ecdsaSig,
+        bytes calldata pqSig,
+        bytes calldata pqKey
     ) external {
         _requireNormal();
-        if (newSigner == address(0)) revert ZeroAddress();
+        if (c.newSigner == address(0)) revert ZeroAddress();
         bytes32 digest = _digest(
             ACTION_ROTATE,
             credentialGeneration,
-            keccak256(abi.encode(newSigner, newPqKeyHash)),
+            keccak256(abi.encode(c.newSigner, c.newPqKeyHash)),
             DOMAIN_CREDENTIAL,
             nonce,
             deadline
         );
-        if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();
+        _authorise(digest, ecdsaSig, pqSig, pqKey);
+        _requireIncomingPossession(
+            credentialPossessionDigest(c.newSigner, c.newPqKeyHash),
+            c.newSigner,
+            c.newPqKeyHash,
+            pqVerifier,
+            c
+        );
         _consume(DOMAIN_CREDENTIAL, nonce, deadline);
-        _installCredential(newSigner, newPqKeyHash);
+        _installCredential(c.newSigner, c.newPqKeyHash);
     }
 
     /**
@@ -501,16 +689,33 @@ contract VaultKernelPrototype {
      *         new verifier is trusted for. The two are inseparable: a verifier
      *         swap that left the recorded strength behind would be a downgrade
      *         with no transition to refuse.
+     *
+     * @dev **HYBRID-AUTHORISED, and that is the fix for finding A2.** An earlier
+     *      draft gated this on the ECDSA conjunct alone, reasoning that
+     *      `I-NO-CIRCULAR-ESCAPE` demanded an escape that does not require the
+     *      verifier to answer. That reasoning was right about the requirement
+     *      and wrong about the remedy: a unilateral ECDSA verifier swap lets one
+     *      root install an always-true verifier — keeping the recorded floor
+     *      untouched, so no downgrade rule fires — and then spend using the
+     *      PUBLIC PQ public key with a forged signature. Cut 1, again.
+     *
+     *      **The escape from a dead verifier is GUARDIAN RECOVERY, which carries
+     *      a replacement verifier (see `initiateRecovery`).** That satisfies
+     *      `I-NO-CIRCULAR-ESCAPE` without handing the surviving factor
+     *      unilateral authority over the other factor's oracle.
      */
     function setVerifier(
         address verifier,
         SecurityFloor calldata floor,
         uint256 nonce,
         uint64 deadline,
-        bytes calldata ecdsaSig
+        bytes calldata ecdsaSig,
+        bytes calldata pqSig,
+        bytes calldata pqKey
     ) external {
         _requireNormal();
         if (verifier == address(0)) revert ZeroAddress();
+        if (verifier.code.length == 0) revert ZeroAddress();
         bytes32 digest = _digest(
             ACTION_SET_VERIFIER,
             credentialGeneration,
@@ -519,10 +724,9 @@ contract VaultKernelPrototype {
             nonce,
             deadline
         );
-        // ECDSA ONLY, deliberately: replacing a dead or hostile verifier must
-        // not require that verifier to answer (I-NO-CIRCULAR-ESCAPE).
-        if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();
+        _authorise(digest, ecdsaSig, pqSig, pqKey);
         _requireNoDowngrade(floor);
+        _requireSaneFloor(floor);
         _consume(DOMAIN_CREDENTIAL, nonce, deadline);
         pqVerifier = verifier;
         securityFloor = floor;
@@ -530,7 +734,16 @@ contract VaultKernelPrototype {
         emit SecurityFloorChanged(floor.requirePq, floor.pqParamLevel);
     }
 
-    function setPolicy(address policy, uint256 nonce, uint64 deadline, bytes calldata ecdsaSig) external {
+    /// @dev HYBRID-authorised for the same reason as the other two: a plane
+    ///      pointer is governance, and governance is not a one-factor act.
+    function setPolicy(
+        address policy,
+        uint256 nonce,
+        uint64 deadline,
+        bytes calldata ecdsaSig,
+        bytes calldata pqSig,
+        bytes calldata pqKey
+    ) external {
         _requireNormal();
         bytes32 digest = _digest(
             ACTION_SET_POLICY,
@@ -540,7 +753,7 @@ contract VaultKernelPrototype {
             nonce,
             deadline
         );
-        if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();
+        _authorise(digest, ecdsaSig, pqSig, pqKey);
         _consume(DOMAIN_CREDENTIAL, nonce, deadline);
         policyEngine = policy;
         emit PolicyChanged(policy);
@@ -569,6 +782,42 @@ contract VaultKernelPrototype {
      *      I-GUARDIAN-AUTH-MODE-IS-COMMITTED: `isContract` is part of the
      *      commitment, never inferred from `extcodesize`.
      */
+    /**
+     * @dev `I-QUORUM-PRINCIPAL-DISTINCTNESS` — the fix for finding B.
+     *
+     *      **Every counted quorum unit must map to a DISTINCT committed guardian
+     *      PRINCIPAL; distinct array indices alone are insufficient.** The
+     *      earlier kernel enforced strictly-ascending INDICES, which proves the
+     *      same slot is not counted twice and proves nothing about addresses. A
+     *      roster `[A, A, B]` with threshold 2 reached quorum on ONE principal
+     *      signing twice, so the guardian cut was 1 rather than `k`.
+     *
+     *      Enforced by requiring the committed roster to be in STRICTLY
+     *      ASCENDING ADDRESS ORDER. That makes duplicates unrepresentable rather
+     *      than merely detected, costs one comparison per member, and — because
+     *      the ordering is part of what the commitment covers — every later
+     *      quorum evaluation inherits it for free.
+     *
+     *      **A principal is an ADDRESS, not an (address, mode) pair.** The same
+     *      address committed once as an EOA seat and once as an ERC-1271 seat
+     *      would be one principal wearing two hats; ascending order over
+     *      addresses alone rejects it.
+     */
+    function _requireCanonicalRoster(
+        uint64 threshold,
+        address[] calldata members,
+        bool[] calldata isContract
+    ) internal pure {
+        if (members.length != isContract.length) revert BadRoster();
+        if (threshold == 0 || members.length < threshold) revert BadRoster();
+        address previous = address(0);
+        for (uint256 i; i < members.length; ++i) {
+            // Strictly ascending: rejects duplicates AND the zero address.
+            if (members[i] <= previous) revert NotOrdered();
+            previous = members[i];
+        }
+    }
+
     function rosterCommitment(
         uint64 threshold,
         address[] calldata members,
@@ -591,7 +840,7 @@ contract VaultKernelPrototype {
         uint64 deadline
     ) external {
         _requireNormal();
-        if (newThreshold == 0 || newMembers.length < newThreshold) revert BadRoster();
+        _requireCanonicalRoster(newThreshold, newMembers, newIsContract);
 
         bytes32 newCommitment = rosterCommitment(newThreshold, newMembers, newIsContract);
         bytes32 digest = _digest(
@@ -626,6 +875,10 @@ contract VaultKernelPrototype {
      *      (I-QUORUM-DISTINCTNESS). Reverts unless the threshold is met.
      */
     function _requireQuorum(bytes32 digest, QuorumProof calldata p) internal view {
+        // I-QUORUM-PRINCIPAL-DISTINCTNESS, checked on the SUPPLIED preimage. A
+        // vault whose genesis roster was not canonical can never reach quorum,
+        // which is why the factory refuses to create one (see GenesisConfig).
+        _requireCanonicalRoster(guardianThreshold, p.members, p.isContract);
         if (rosterCommitment(guardianThreshold, p.members, p.isContract) != guardianCommitment) revert BadRoster();
         if (p.attestingIndices.length != p.attestations.length) revert BadRoster();
 
@@ -697,17 +950,19 @@ contract VaultKernelPrototype {
     function initiateRecovery(
         address proposedSigner,
         bytes32 proposedPqKeyHash,
+        address proposedVerifier,
         QuorumProof calldata proof,
         uint256 nonce,
         uint64 deadline
     ) external {
         _requireRecoveryOpen();
-        if (proposedSigner == address(0)) revert ZeroAddress();
+        if (proposedSigner == address(0) || proposedVerifier == address(0)) revert ZeroAddress();
+        if (proposedVerifier.code.length == 0) revert ZeroAddress();
 
         bytes32 digest = _digest(
             ACTION_RECOVER,
             guardianGeneration,
-            keccak256(abi.encode(proposedSigner, proposedPqKeyHash)),
+            keccak256(abi.encode(proposedSigner, proposedPqKeyHash, proposedVerifier)),
             DOMAIN_GUARDIAN,
             nonce,
             deadline
@@ -718,6 +973,12 @@ contract VaultKernelPrototype {
         recovery = RecoveryRequest({
             proposedSigner: proposedSigner,
             proposedPqKeyHash: proposedPqKeyHash,
+            // THE VERIFIER ESCAPE. Recovery carries a REPLACEMENT verifier, so a
+            // permanently dead or Byzantine verifier is escapable by the
+            // guardian quorum without ever granting the surviving ECDSA factor
+            // unilateral authority over the other factor oracle. This is what
+            // satisfies I-NO-CIRCULAR-ESCAPE now that setVerifier is HYBRID.
+            proposedVerifier: proposedVerifier,
             executableAt: uint64(block.timestamp) + RECOVERY_DELAY,
             expiresAt: uint64(block.timestamp) + RECOVERY_DELAY + RECOVERY_EXPIRY,
             // Support is keyed to the generation, so a roster change cannot be
@@ -759,7 +1020,17 @@ contract VaultKernelPrototype {
     }
 
     /// @notice Permissionless once matured — it carries no discretion.
-    function executeRecovery() external {
+    /**
+     * @notice Permissionless once matured, but only on PROOF OF POSSESSION of
+     *         both incoming factors (finding D). Without it a guardian quorum
+     *         could install a credential nobody holds and strand the vault
+     *         behind a second recovery.
+     *
+     * @dev Possession is proven against the INCOMING verifier, so a vault
+     *      escaping a dead verifier proves against the replacement rather than
+     *      against the corpse.
+     */
+    function executeRecovery(CredentialChange calldata c) external {
         _requireRecoveryOpen();
         RecoveryRequest memory r = recovery;
         if (!r.active) revert NoRecovery();
@@ -768,8 +1039,18 @@ contract VaultKernelPrototype {
         // A roster change since the request invalidates it.
         if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();
 
+        _requireIncomingPossession(
+            recoveryPossessionDigest(),
+            r.proposedSigner,
+            r.proposedPqKeyHash,
+            r.proposedVerifier,
+            c
+        );
+
         delete recovery;
+        pqVerifier = r.proposedVerifier;
         _installCredential(r.proposedSigner, r.proposedPqKeyHash);
+        emit VerifierChanged(r.proposedVerifier);
         emit RecoveryExecuted(r.proposedSigner, credentialGeneration);
     }
 

@@ -19,18 +19,30 @@
 
 ## The answer
 
-**Yes on size, and yes on authority — but only after the authority pass found a
-defect the tests did not.**
+**Yes on size. On authority — only after TWO rounds of correction, the second
+prompted by an independent review that reproduced four one-root paths to total
+loss against this exact kernel.**
 
-|                                                   | runtime    | vs budget 24,576          | vs target ceiling 21,976        |
-| ------------------------------------------------- | ---------- | ------------------------- | ------------------------------- |
-| `WalletWallVault` (current monolith)              | 23,239     | pass, headroom 1,337      | **FAIL by 1,263**               |
-| Mechanically clone-targeted monolith (#179 §19.1) | 23,249     | pass, headroom 1,327      | **FAIL by 1,273**               |
-| **`VaultKernelPrototype` (this lane)**            | **14,339** | **pass, headroom 10,237** | **TARGET PASS, headroom 7,637** |
+> ### The first verdict on this prototype was WRONG
+>
+> Head `79e05a34` published `KERNEL_PROTOTYPE_PASSES_ARCHITECTURE` on a
+> minimum-cut table that did not survive review. Findings A1, A2, B and C were
+> each REPRODUCED against the compiled kernel, carried through to a drained
+> vault or a stolen identity, and only then fixed. The verdict was **withdrawn**
+> and re-earned. `AUTHORITY.md` §0 keeps the failed claims rather than deleting
+> them.
 
-**38.3% smaller than the monolith** — 8,900 bytes — and the first of the three to
-clear the internal target at all. The factory adds **1,642** bytes, once per
-generation.
+|                                                   | runtime    | vs budget 24,576         | vs target ceiling 21,976        |
+| ------------------------------------------------- | ---------- | ------------------------ | ------------------------------- |
+| `WalletWallVault` (current monolith)              | 23,239     | pass, headroom 1,337     | **FAIL by 1,263**               |
+| Mechanically clone-targeted monolith (#179 §19.1) | 23,249     | pass, headroom 1,327     | **FAIL by 1,273**               |
+| `VaultKernelPrototype` at `79e05a34` (WITHDRAWN)  | 14,339     | pass                     | pass — but the cuts were wrong  |
+| **`VaultKernelPrototype` (remediated)**           | **17,407** | **pass, headroom 7,169** | **TARGET PASS, headroom 4,569** |
+
+**25.1% smaller than the monolith** — 5,832 bytes — and still the only one of the
+three to clear the internal target. The factory adds **2,226** bytes, once per
+generation. The remediation cost **+3,068** bytes; per-fix attribution is in
+`AUTHORITY.md` §4 and reproducible with `deltas.ts`.
 
 **Authority surface**, which is the part that actually matters:
 
@@ -55,22 +67,37 @@ Not compression. Fourteen responsibilities were admitted by rule
 | OZ `EIP712` (ShortStrings, 7 immutables)            | replaced by a constant-based, immutable-free domain                       |
 | `ReentrancyGuard`                                   | replaced by an argument (`AUTHORITY.md` §6), not by omission              |
 
-## The finding
+## The findings — two rounds, and what each cost
 
-**The authority-closure pass found a live downgrade path that every test missed.**
+**Round 1 (authored here).** `_authorise` engaged the PQ conjunct only when the
+CALLER supplied a non-empty signature — a downgrade through the argument list.
+Closed by admitting **K-15**, the kernel-recorded cryptographic floor. **+1,199 B.**
 
-The first `_authorise` engaged the PQ conjunct only when the _caller_ supplied a
-non-empty signature. Anyone holding the ECDSA key alone could pass an empty blob
-and be authorized under a vault whose declared posture was HYBRID — a silent
-downgrade reached through the **argument list**, so §12's partial order had no
-transition to refuse. The suite was green throughout: every test supplied a PQ
-signature, so none exercised the path where an attacker declines to.
+**Round 2 (independent review).** Every claim below was REPRODUCED against the
+compiled kernel, carried through to a drained vault or a stolen identity, and
+only then fixed:
 
-Fixed by admitting **K-15**, the kernel-recorded cryptographic floor (#179 §4.3
-component 2), which #179 classifies kernel-resident and the first draft of the
-manifest omitted. `requirePq` is now the kernel's decision; `_requireNoDowngrade`
-refuses every weakening transition. Cost **+1,199 bytes**. Discriminated by
-**M-K26** and **M-K27**. Full write-up in `AUTHORITY.md` §4.
+| #      | The attack, carried through to the end state                                                                                                 | Fix                                                                                                               |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **A1** | ECDSA-only attacker rotates **both** factors, then drains 10 ETH                                                                             | rotation is HYBRID-authorised — **−75 B**, the fix was _free_                                                     |
+| **A2** | ECDSA-only attacker installs an ALWAYS-TRUE verifier with the floor untouched, then spends with the **public** PQ key and a forged signature | `setVerifier` is HYBRID; the escape from a dead verifier moves to the **guardian quorum**, which recovery carries |
+| **B**  | roster `[A, A, B]`, threshold 2 — ONE principal signs at indices 0 and 1, reaches quorum, recovers, drains                                   | canonical roster: strictly ascending by address — **+186 B**                                                      |
+| **C**  | attacker occupies the user's `predictVault` address with their own signer and guardian set                                                   | the CREATE2 salt binds the complete genesis authority — in the factory                                            |
+| **D**  | rotation installs a credential nobody holds; the vault is stranded                                                                           | incoming possession proven for both factors — **+725 B**                                                          |
+| **E**  | 1 ETH sent to the implementation, accepted                                                                                                   | the CLAIM was corrected, not the code                                                                             |
+| **F**  | two 1 ETH spends both pass a 1.5 ETH cumulative cap                                                                                          | the policy boundary becomes a non-`view` **admission** call                                                       |
+
+> **Why 55 green tests missed all of it.** Every existing test exercised a path
+> where the attacker COOPERATES — supplying a PQ signature, using distinct
+> guardians, deploying at a fresh salt. None asked what an attacker _declines_ to
+> do, and none followed a governance transition through to the asset movement it
+> enables. **A dangerous setter returning success is not a finding; the drained
+> vault is.** Every discriminator added in round 2 ends at a balance check.
+
+> **And K-15 shows why the closure pass was necessary at all.** Round 1 made the
+> PQ conjunct mandatory _where `_authorise` was called_ — and the three
+> governance paths were not calling it. **Closing a hole in a helper does not
+> close the paths that bypass the helper.**
 
 ## Layout
 
@@ -83,6 +110,7 @@ prototype/vnext-kernel/
   measure.ts              size verdicts from compiled artifacts
   reproduce.ts            independent solc rebuild + storage layout + selectors
   decompose.ts            K0..K6 byte attribution (diagnostic only)
+  deltas.ts               per-FIX byte attribution for the closure remediation
   contracts/
     VaultKernelPrototype.sol         the kernel
     VaultKernelFactoryPrototype.sol  one immutable factory per generation (D8)
@@ -90,7 +118,8 @@ prototype/vnext-kernel/
     interfaces/IKernelPlanes.sol     the two plane boundaries
   test/
     connection.ts
-    KernelPrototype.test.ts          55 tests, M-K01..M-K27
+    KernelPrototype.test.ts          M-K01..M-K27 (migrated to the remediated API)
+    KernelAuthorityClosure.test.ts   M-K28..M-K37 — the independent closure review
 ```
 
 ## Running it
@@ -155,6 +184,17 @@ K6  + rotation, governance, no-downgrade  [FULL]   14,339   +1,741
 | CREATE2 prediction `==` deployed address                     | **yes**                                |
 | declared storage slots                                       | 11 (+3 recovery, +3 migration)         |
 | selectors                                                    | 40 — **13 state-changing**             |
+
+## Static analysis coverage — recorded as ABSENCE, never as a pass
+
+| Scanner     | Status                                                                                                                                                                           |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **solhint** | **RUN** — 32 warnings, 0 errors                                                                                                                                                  |
+| **Slither** | **NOT RUN.** No local Python and no `slither` binary; the Docker daemon is not running. `slither.yml` is filtered to `branches: [main]`, so it never fires on a design-branch PR |
+| **CodeQL**  | **NOT RUN** — same branch filter                                                                                                                                                 |
+
+**This code has never been seen by a security scanner.** That is a real gap in
+the evidence for this lane, and it is stated rather than papered over.
 
 ## Non-goals
 

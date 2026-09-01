@@ -92,6 +92,34 @@ function digestOf(p: DigestParts): string {
 
 const signDigest = (key: ethers.SigningKey, digest: string) => ethers.Signature.from(key.sign(digest)).serialized;
 
+/**
+ * Sort a roster into the STRICTLY ASCENDING address order the kernel demands
+ * (I-QUORUM-PRINCIPAL-DISTINCTNESS), keeping each seat with its auth mode.
+ */
+/**
+ * Attestations aligned to the SORTED seat order. Hard-coded indices break the
+ * moment a roster is canonicalised, and a silently mis-aligned attestation
+ * looks like a quorum failure rather than a test bug.
+ */
+function attestBy(
+  members: string[],
+  digest: string,
+  byAddress: Map<string, ethers.SigningKey>,
+): { attestingIndices: number[]; attestations: string[] } {
+  return {
+    attestingIndices: members.map((_, i) => i),
+    attestations: members.map((m) => {
+      const k = byAddress.get(m.toLowerCase());
+      return k === undefined ? "0x" : signDigest(k, digest);
+    }),
+  };
+}
+
+function sortRoster(members: string[], isContract: boolean[]): { members: string[]; isContract: boolean[] } {
+  const pairs = members.map((m, i) => ({ m, c: isContract[i] })).sort((a, b) => (BigInt(a.m) < BigInt(b.m) ? -1 : 1));
+  return { members: pairs.map((x) => x.m), isContract: pairs.map((x) => x.c) };
+}
+
 function rosterCommitment(threshold: bigint, members: string[], isContract: boolean[]): string {
   return ethers.keccak256(abi.encode(["uint64", "address[]", "bool[]"], [threshold, members, isContract]));
 }
@@ -144,6 +172,17 @@ const HYBRID_FLOOR = {
 };
 const ECDSA_ONLY_FLOOR = { requirePq: false, pqParamLevel: 0, pqPublicKeyLength: 0, pqSignatureLength: 0 };
 
+/** A second PQ factor, for rotation/recovery targets that must be POSSESSED. */
+// SAME LENGTH as PQ_KEY: the kernel structural check compares against the
+// declared floor length, so a second factor of a different size is refused
+// before the verifier is ever consulted.
+const PQ_KEY_2_LABEL = "pqkey2";
+const PQ_KEY_2 = ethers.hexlify(ethers.toUtf8Bytes(PQ_KEY_2_LABEL));
+const PQ_HASH_2 = ethers.id(PQ_KEY_2_LABEL);
+/** A rotation/recovery target whose ECDSA key this suite actually holds. */
+const ROTATE_KEY = new ethers.SigningKey(ethers.id("rotate-target-key"));
+const ROTATE_TARGET = ethers.computeAddress(ROTATE_KEY.publicKey);
+
 describe("vNext minimal trust kernel — prototype v0", function () {
   // ---------------------------------------------------------------------
   // Fixture
@@ -156,7 +195,14 @@ describe("vNext minimal trust kernel — prototype v0", function () {
 
     const ownerKey = new ethers.SigningKey(ethers.id("owner-key"));
     const owner = ethers.computeAddress(ownerKey.publicKey);
-    const gKeys = [1, 2, 3].map((i) => new ethers.SigningKey(ethers.id(`guardian-${i}`)));
+    // Rosters are STRICTLY ASCENDING by address — that ordering IS the
+    // principal-distinctness rule (I-QUORUM-PRINCIPAL-DISTINCTNESS), so the
+    // fixture sorts rather than relying on key-derivation order.
+    const gKeys = [1, 2, 3]
+      .map((i) => new ethers.SigningKey(ethers.id(`guardian-${i}`)))
+      .sort((a, b) =>
+        BigInt(ethers.computeAddress(a.publicKey)) < BigInt(ethers.computeAddress(b.publicKey)) ? -1 : 1,
+      );
     const guardians = gKeys.map((k) => ethers.computeAddress(k.publicKey));
 
     const Verifier = await ethers.getContractFactory("ConfigurableVerifier", deployer);
@@ -175,19 +221,17 @@ describe("vNext minimal trust kernel — prototype v0", function () {
     const isContract = [false, false, false];
     const commitment = rosterCommitment(threshold, guardians, isContract);
     const salt = ethers.id("vault-1");
-    const predicted = await factory.predictVault(salt);
-
-    await (
-      await factory.deployVault(
-        salt,
-        owner,
-        ethers.id(PQ_KEY_LABEL),
-        await verifier.getAddress(),
-        commitment,
-        threshold,
-        HYBRID_FLOOR,
-      )
-    ).wait();
+    const genesis = {
+      signer: owner,
+      pqKeyHash: ethers.id(PQ_KEY_LABEL),
+      verifier: await verifier.getAddress(),
+      threshold: Number(threshold),
+      guardians,
+      guardianIsContract: isContract,
+      floor: HYBRID_FLOOR,
+    };
+    const predicted = await factory.predictVault(salt, genesis);
+    await (await factory.deployVault(salt, genesis)).wait();
 
     const vault = await ethers.getContractAt("VaultKernelPrototype", predicted, deployer);
     await deployer.sendTransaction({ to: predicted, value: ethers.parseEther("10") });
@@ -197,6 +241,8 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       attacker,
       recipient,
       chainId,
+      genesis,
+      verifierAddress: await verifier.getAddress(),
       ownerKey,
       owner,
       gKeys,
@@ -231,6 +277,35 @@ describe("vNext minimal trust kernel — prototype v0", function () {
 
   const spendParams = (to: string, amount: bigint) =>
     ethers.keccak256(abi.encode(["address", "uint256"], [to, amount]));
+
+  /**
+   * The incoming credential a recovery installs, with both POSSESSION proofs
+   * (I-INCOMING-CREDENTIAL-POSSESSION). The fixture's verifier is ALWAYS_TRUE,
+   * so the PQ proof passes on shape alone — the ECDSA proof is the real one,
+   * and it is signed by a key this suite actually holds.
+   */
+  async function recoveryChange(f: Fixture) {
+    const pop = await f.vault.recoveryPossessionDigest();
+    return {
+      newSigner: ROTATE_TARGET,
+      newPqKeyHash: PQ_HASH_2,
+      newPqKey: PQ_KEY_2,
+      newEcdsaPop: signDigest(ROTATE_KEY, pop),
+      newPqPop: PQ_SIG,
+    };
+  }
+
+  /** The same shape for an ordinary rotation. */
+  async function rotationChange(f: Fixture, signer = ROTATE_TARGET, key = ROTATE_KEY) {
+    const pop = await f.vault.credentialPossessionDigest(signer, PQ_HASH_2);
+    return {
+      newSigner: signer,
+      newPqKeyHash: PQ_HASH_2,
+      newPqKey: PQ_KEY_2,
+      newEcdsaPop: signDigest(key, pop),
+      newPqPop: PQ_SIG,
+    };
+  }
 
   /** A `k`-of-`n` quorum proof over the fixture roster, for a given digest. */
   function quorum(f: Fixture, digest: string, indices = [0, 1]) {
@@ -282,16 +357,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       // a bare clone IS claimable by anyone.
       await (await raw.cloneOnly(await f.impl.getAddress(), ethers.id("bare"))).wait();
       const bare = await ethers.getContractAt("VaultKernelPrototype", await raw.lastClone(), f.attacker);
-      await (
-        await bare.initialize(
-          f.attacker.address,
-          ethers.ZeroHash,
-          await f.verifier.getAddress(),
-          f.commitment,
-          1,
-          HYBRID_FLOOR,
-        )
-      ).wait();
+      await (await bare.initialize({ ...f.genesis, signer: f.attacker.address })).wait();
       expect(await bare.ecdsaSigner()).to.equal(f.attacker.address);
 
       // THE INVARIANT: the factory path never exposes that window. Deployment
@@ -302,32 +368,17 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       void rcpt;
       // And a second initialization of the factory-made vault is refused.
       await expect(
-        f.vault
-          .connect(f.attacker)
-          .initialize(
-            f.attacker.address,
-            ethers.ZeroHash,
-            await f.verifier.getAddress(),
-            f.commitment,
-            1,
-            HYBRID_FLOOR,
-          ),
+        f.vault.connect(f.attacker).initialize({ ...f.genesis, signer: f.attacker.address }),
       ).to.be.revertedWithCustomError(f.vault, "AlreadyInitialized");
     });
 
     it("M-K02 — initialize twice is refused", async function () {
       const f = await deploy();
       expect(await f.vault.ecdsaSigner()).to.equal(f.owner); // control: it IS initialized
-      await expect(
-        f.vault.initialize(
-          f.attacker.address,
-          ethers.ZeroHash,
-          await f.verifier.getAddress(),
-          f.commitment,
-          1,
-          HYBRID_FLOOR,
-        ),
-      ).to.be.revertedWithCustomError(f.vault, "AlreadyInitialized");
+      await expect(f.vault.initialize({ ...f.genesis, signer: f.attacker.address })).to.be.revertedWithCustomError(
+        f.vault,
+        "AlreadyInitialized",
+      );
     });
 
     it("M-K03 — the implementation itself can never be initialized or used as a vault", async function () {
@@ -335,16 +386,10 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const implAsVault = await ethers.getContractAt("VaultKernelPrototype", await f.impl.getAddress(), f.attacker);
       // Control: the same call succeeds on a fresh bare clone (M-K01), so the
       // call shape is right and the refusal below is the constructor guard.
-      await expect(
-        implAsVault.initialize(
-          f.attacker.address,
-          ethers.ZeroHash,
-          await f.verifier.getAddress(),
-          f.commitment,
-          1,
-          HYBRID_FLOOR,
-        ),
-      ).to.be.revertedWithCustomError(implAsVault, "AlreadyInitialized");
+      await expect(implAsVault.initialize({ ...f.genesis, signer: f.attacker.address })).to.be.revertedWithCustomError(
+        implAsVault,
+        "AlreadyInitialized",
+      );
       expect(await implAsVault.ecdsaSigner()).to.equal(ZERO);
       expect(await ethers.provider.getBalance(await f.impl.getAddress())).to.equal(0n);
     });
@@ -358,8 +403,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const digest = digestOf(parts(f, { actionType: ACTION.RECOVER, domain: DOMAIN.GUARDIAN }));
       await expect(
         f.vault.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: wrong,
             isContract: f.isContract,
@@ -369,7 +415,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           0,
           BigInt(2 ** 40),
         ),
-      ).to.be.revertedWithCustomError(f.vault, "BadRoster");
+      ).to.be.revertedWithCustomError(f.vault, "NotOrdered");
     });
 
     it("M-K05 — immutable args live in clone CODE and cannot be forged by storage", async function () {
@@ -398,12 +444,12 @@ describe("vNext minimal trust kernel — prototype v0", function () {
 
     it("M-K06 — the CREATE2 prediction equals the deployed vault identity", async function () {
       const f = await deploy();
-      const predicted = await f.factory.predictVault(f.salt);
+      const predicted = await f.factory.predictVault(f.salt, f.genesis);
       expect(predicted).to.equal(f.vaultAddress);
       expect(await ethers.provider.getCode(predicted)).to.not.equal("0x");
       // A different salt predicts a different address — the prediction is a
       // function of the salt, not a constant that happens to match.
-      expect(await f.factory.predictVault(ethers.id("other"))).to.not.equal(predicted);
+      expect(await f.factory.predictVault(ethers.id("other"), f.genesis)).to.not.equal(predicted);
     });
   });
 
@@ -465,18 +511,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         // signature: an otherwise identical vault under an ECDSA-only floor —
         // no PQ conjunct to fail — authorises the very same spend.
         const salt = ethers.id(`ecdsa-only-${mode}`);
-        const addr = await f.factory.predictVault(salt);
-        await (
-          await f.factory.deployVault(
-            salt,
-            f.owner,
-            ethers.ZeroHash,
-            await f.verifier.getAddress(),
-            f.commitment,
-            f.threshold,
-            ECDSA_ONLY_FLOOR,
-          )
-        ).wait();
+        const ecdsaOnlyGenesis = { ...f.genesis, pqKeyHash: ethers.ZeroHash, floor: ECDSA_ONLY_FLOOR };
+        const addr = await f.factory.predictVault(salt, ecdsaOnlyGenesis);
+        await (await f.factory.deployVault(salt, ecdsaOnlyGenesis)).wait();
         await f.deployer.sendTransaction({ to: addr, value: ethers.parseEther("2") });
         const plain = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
         const pd = digestOf(parts(f, { vault: addr, params: spendParams(to, amount) }));
@@ -505,7 +542,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           domain: DOMAIN.CREDENTIAL,
         }),
       );
-      await (await f.vault.setPolicy(await deny.getAddress(), 0, BigInt(2 ** 40), signDigest(f.ownerKey, sp))).wait();
+      await (
+        await f.vault.setPolicy(await deny.getAddress(), 0, BigInt(2 ** 40), signDigest(f.ownerKey, sp), PQ_SIG, PQ_KEY)
+      ).wait();
 
       const to = f.recipient.address;
       const amount = ethers.parseEther("1");
@@ -526,7 +565,16 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           nonce: 1n,
         }),
       );
-      await (await f.vault.setPolicy(await allow.getAddress(), 1, BigInt(2 ** 40), signDigest(f.ownerKey, sp2))).wait();
+      await (
+        await f.vault.setPolicy(
+          await allow.getAddress(),
+          1,
+          BigInt(2 ** 40),
+          signDigest(f.ownerKey, sp2),
+          PQ_SIG,
+          PQ_KEY,
+        )
+      ).wait();
       const attackerKey = new ethers.SigningKey(ethers.id("attacker-key"));
       await expect(
         f.vault.execute(to, amount, 0, BigInt(2 ** 40), signDigest(attackerKey, d), PQ_SIG, PQ_KEY),
@@ -574,7 +622,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         }),
       );
       await expect(
-        f.vault.setVerifier(addr, ECDSA_ONLY_FLOOR, 0, BigInt(2 ** 40), signDigest(f.ownerKey, offD)),
+        f.vault.setVerifier(addr, ECDSA_ONLY_FLOOR, 0, BigInt(2 ** 40), signDigest(f.ownerKey, offD), PQ_SIG, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "Downgrade");
 
       // Lowering the parameter level is refused too.
@@ -587,7 +635,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         }),
       );
       await expect(
-        f.vault.setVerifier(addr, weaker, 0, BigInt(2 ** 40), signDigest(f.ownerKey, weakD)),
+        f.vault.setVerifier(addr, weaker, 0, BigInt(2 ** 40), signDigest(f.ownerKey, weakD), PQ_SIG, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "Downgrade");
 
       // CONTROL: a STRENGTHENING transition is permitted, proving the refusals
@@ -600,12 +648,31 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           domain: DOMAIN.CREDENTIAL,
         }),
       );
-      await (await f.vault.setVerifier(addr, stronger, 0, BigInt(2 ** 40), signDigest(f.ownerKey, strongD))).wait();
+      await (
+        await f.vault.setVerifier(addr, stronger, 0, BigInt(2 ** 40), signDigest(f.ownerKey, strongD), PQ_SIG, PQ_KEY)
+      ).wait();
       expect((await f.vault.securityFloor()).pqParamLevel).to.equal(5);
     });
 
-    it("I-NO-CIRCULAR-ESCAPE — a dead verifier can be replaced without the verifier answering", async function () {
-      const f = await deploy(2); // REVERTS
+    /**
+     * REWRITTEN — a RECORD OF A DESIGN CHANGE, not a test repair.
+     *
+     * This previously asserted that a dead verifier "can be replaced WITHOUT the
+     * verifier answering" — i.e. that `setVerifier` was authorised by the ECDSA
+     * conjunct ALONE. An independent review showed that property is a ONE-ROOT
+     * path to total loss (finding A2, mutant M-K29): the same unilateral
+     * authority lets a compromised ECDSA key install an ALWAYS-TRUE verifier,
+     * keep the recorded floor untouched so no downgrade rule fires, and then
+     * spend using the PUBLIC PQ public key with a forged signature.
+     *
+     * `I-NO-CIRCULAR-ESCAPE` is still required — it just cannot be satisfied by
+     * that mechanism. The escape now lives with the GUARDIAN QUORUM: recovery
+     * carries a replacement verifier. The liveness half is proven in
+     * `KernelAuthorityClosure.test.ts` ("VERIFIER LIVENESS"). What is asserted
+     * here is the half that belongs in this file — the one-factor escape is GONE.
+     */
+    it("I-NO-CIRCULAR-ESCAPE — the escape is NOT unilateral to one factor", async function () {
+      const f = await deploy(2); // REVERTS forever
       const Verifier = await ethers.getContractFactory("ConfigurableVerifier", f.deployer);
       const good = await Verifier.deploy(0);
       await good.waitForDeployment();
@@ -616,10 +683,27 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           domain: DOMAIN.CREDENTIAL,
         }),
       );
-      await (
-        await f.vault.setVerifier(await good.getAddress(), HYBRID_FLOOR, 0, BigInt(2 ** 40), signDigest(f.ownerKey, d))
-      ).wait();
-      expect(await f.vault.pqVerifier()).to.equal(await good.getAddress());
+      // The ECDSA factor alone cannot swap the verifier, even to a GOOD one and
+      // even while the incumbent is dead. That is the price of closing A2, and
+      // it is paid deliberately: the guardians hold the escape instead.
+      let refused = false;
+      try {
+        await (
+          await f.vault.setVerifier(
+            await good.getAddress(),
+            HYBRID_FLOOR,
+            0,
+            BigInt(2 ** 40),
+            signDigest(f.ownerKey, d),
+            PQ_SIG,
+            PQ_KEY,
+          )
+        ).wait();
+      } catch {
+        refused = true;
+      }
+      expect(refused).to.equal(true);
+      expect(await f.vault.pqVerifier()).to.not.equal(await good.getAddress());
     });
   });
 
@@ -676,22 +760,33 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const rot = digestOf(
         parts(f, {
           actionType: ACTION.ROTATE,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [newSigner, pqHash])),
+          params: ethers.keccak256(abi.encode(["address", "bytes32"], [newSigner, PQ_HASH_2])),
           domain: DOMAIN.CREDENTIAL,
         }),
       );
-      await (await f.vault.rotateCredential(newSigner, pqHash, 0, BigInt(2 ** 40), signDigest(f.ownerKey, rot))).wait();
+      await (
+        await f.vault.rotateCredential(
+          await rotationChange(f, newSigner, newKey),
+          0,
+          BigInt(2 ** 40),
+          signDigest(f.ownerKey, rot),
+          PQ_SIG,
+          PQ_KEY,
+        )
+      ).wait();
       expect(await f.vault.credentialGeneration()).to.equal(2n);
 
       const to = f.recipient.address;
       const amount = ethers.parseEther("1");
       // Signed under the OLD generation by the NEW key: correct key, stale gen.
+      // After the rotation the committed PQ key is PQ_KEY_2, so post-rotation
+      // spends must present its preimage.
       const stale = digestOf(parts(f, { params: spendParams(to, amount), authorityGeneration: 1n }));
       await expect(
-        f.vault.execute(to, amount, 0, BigInt(2 ** 40), signDigest(newKey, stale), PQ_SIG, PQ_KEY),
+        f.vault.execute(to, amount, 0, BigInt(2 ** 40), signDigest(newKey, stale), PQ_SIG, PQ_KEY_2),
       ).to.be.revertedWithCustomError(f.vault, "BadSignature");
       const fresh = digestOf(parts(f, { params: spendParams(to, amount), authorityGeneration: 2n }));
-      await (await f.vault.execute(to, amount, 0, BigInt(2 ** 40), signDigest(newKey, fresh), PQ_SIG, PQ_KEY)).wait();
+      await (await f.vault.execute(to, amount, 0, BigInt(2 ** 40), signDigest(newKey, fresh), PQ_SIG, PQ_KEY_2)).wait();
     });
 
     it("M-K12 — a spend signature cannot be replayed into another ACTION DOMAIN", async function () {
@@ -700,34 +795,36 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       // matching nonce values, because the domain byte and action type differ.
       const rotateAsSpend = digestOf(
         parts(f, {
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.attacker.address, ethers.ZeroHash])),
+          params: ethers.keccak256(abi.encode(["address", "bytes32"], [ROTATE_TARGET, PQ_HASH_2])),
           domain: DOMAIN.SPEND,
           actionType: ACTION.SPEND,
         }),
       );
       await expect(
         f.vault.rotateCredential(
-          f.attacker.address,
-          ethers.ZeroHash,
+          await rotationChange(f),
           0,
           BigInt(2 ** 40),
           signDigest(f.ownerKey, rotateAsSpend),
+          PQ_SIG,
+          PQ_KEY,
         ),
       ).to.be.revertedWithCustomError(f.vault, "BadSignature");
       const proper = digestOf(
         parts(f, {
           actionType: ACTION.ROTATE,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.attacker.address, ethers.ZeroHash])),
+          params: ethers.keccak256(abi.encode(["address", "bytes32"], [ROTATE_TARGET, PQ_HASH_2])),
           domain: DOMAIN.CREDENTIAL,
         }),
       );
       await (
         await f.vault.rotateCredential(
-          f.attacker.address,
-          ethers.ZeroHash,
+          await rotationChange(f),
           0,
           BigInt(2 ** 40),
           signDigest(f.ownerKey, proper),
+          PQ_SIG,
+          PQ_KEY,
         )
       ).wait();
     });
@@ -735,18 +832,8 @@ describe("vNext minimal trust kernel — prototype v0", function () {
     it("M-K13 — a signature for vault X is structurally invalid at vault Y", async function () {
       const f = await deploy(0);
       const salt2 = ethers.id("vault-2");
-      const second = await f.factory.predictVault(salt2);
-      await (
-        await f.factory.deployVault(
-          salt2,
-          f.owner,
-          ethers.id(PQ_KEY_LABEL),
-          await f.verifier.getAddress(),
-          f.commitment,
-          f.threshold,
-          HYBRID_FLOOR,
-        )
-      ).wait();
+      const second = await f.factory.predictVault(salt2, f.genesis);
+      await (await f.factory.deployVault(salt2, f.genesis)).wait();
       await f.deployer.sendTransaction({ to: second, value: ethers.parseEther("5") });
       const vault2 = await ethers.getContractAt("VaultKernelPrototype", second, f.deployer);
 
@@ -782,17 +869,18 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const rot = digestOf(
         parts(f, {
           actionType: ACTION.ROTATE,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.attacker.address, ethers.ZeroHash])),
+          params: ethers.keccak256(abi.encode(["address", "bytes32"], [ROTATE_TARGET, PQ_HASH_2])),
           domain: DOMAIN.CREDENTIAL,
         }),
       );
       await (
         await f.vault.rotateCredential(
-          f.attacker.address,
-          ethers.ZeroHash,
+          await rotationChange(f),
           0,
           BigInt(2 ** 40),
           signDigest(f.ownerKey, rot),
+          PQ_SIG,
+          PQ_KEY,
         )
       ).wait();
       expect(await f.vault.nonces(DOMAIN.CREDENTIAL)).to.equal(1n);
@@ -820,7 +908,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         parts(f, {
           actionType: ACTION.RECOVER,
           authorityGeneration: gen,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [proposed, ethers.ZeroHash])),
+          params: ethers.keccak256(
+            abi.encode(["address", "bytes32", "address"], [ROTATE_TARGET, PQ_HASH_2, f.verifierAddress]),
+          ),
           domain: DOMAIN.GUARDIAN,
           nonce,
         }),
@@ -829,21 +919,24 @@ describe("vNext minimal trust kernel — prototype v0", function () {
 
     it("POSITIVE CONTROL — a k-of-n quorum initiates recovery", async function () {
       const f = await deploy(0);
-      const proposed = f.attacker.address;
+      const proposed = ROTATE_TARGET;
       const d = recoveryDigest(f, proposed);
-      await (await f.vault.initiateRecovery(proposed, ethers.ZeroHash, quorum(f, d), 0, BigInt(2 ** 40))).wait();
+      await (
+        await f.vault.initiateRecovery(proposed, PQ_HASH_2, f.verifierAddress, quorum(f, d), 0, BigInt(2 ** 40))
+      ).wait();
       expect((await f.vault.recovery()).active).to.equal(true);
     });
 
     it("M-K15 — a roster preimage that does not hash to the commitment is rejected", async function () {
       const f = await deploy(0);
-      const proposed = f.attacker.address;
+      const proposed = ROTATE_TARGET;
       const d = recoveryDigest(f, proposed);
       const forged = [f.attacker.address, f.guardians[1], f.guardians[2]];
       await expect(
         f.vault.initiateRecovery(
           proposed,
-          ethers.ZeroHash,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: forged,
             isContract: f.isContract,
@@ -853,10 +946,10 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           0,
           BigInt(2 ** 40),
         ),
-      ).to.be.revertedWithCustomError(f.vault, "BadRoster");
+      ).to.be.revertedWithCustomError(f.vault, "NotOrdered");
       // Control: the true roster with the same attesters succeeds.
       await (
-        await f.vault.initiateRecovery(proposed, ethers.ZeroHash, quorum(f, d, [1, 2]), 0, BigInt(2 ** 40))
+        await f.vault.initiateRecovery(proposed, PQ_HASH_2, f.verifierAddress, quorum(f, d, [1, 2]), 0, BigInt(2 ** 40))
       ).wait();
     });
 
@@ -868,8 +961,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       expect(rosterCommitment(1n, f.guardians, f.isContract)).to.not.equal(f.commitment);
       await expect(
         f.vault.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: f.guardians,
             isContract: [true, true, true],
@@ -901,8 +995,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const stale = recoveryDigest(f, f.attacker.address, 1n, 1n);
       await expect(
         f.vault.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: newGuardians,
             isContract: f.isContract,
@@ -917,8 +1012,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const fresh = recoveryDigest(f, f.attacker.address, 1n, 2n);
       await (
         await f.vault.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: newGuardians,
             isContract: f.isContract,
@@ -936,8 +1032,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const d = recoveryDigest(f, f.attacker.address);
       await expect(
         f.vault.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: f.guardians,
             isContract: f.isContract,
@@ -951,8 +1048,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       // Descending order is refused too — the rule is STRICTLY ASCENDING.
       await expect(
         f.vault.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members: f.guardians,
             isContract: f.isContract,
@@ -965,7 +1063,14 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       ).to.be.revertedWithCustomError(f.vault, "NotOrdered");
       // Control: two DISTINCT ascending indices succeed.
       await (
-        await f.vault.initiateRecovery(f.attacker.address, ethers.ZeroHash, quorum(f, d, [0, 1]), 0, BigInt(2 ** 40))
+        await f.vault.initiateRecovery(
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
+          quorum(f, d, [0, 1]),
+          0,
+          BigInt(2 ** 40),
+        )
       ).wait();
     });
 
@@ -973,26 +1078,35 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const f = await deploy(0);
       const d = recoveryDigest(f, f.attacker.address);
       await expect(
-        f.vault.initiateRecovery(f.attacker.address, ethers.ZeroHash, quorum(f, d, [0]), 0, BigInt(2 ** 40)),
+        f.vault.initiateRecovery(ROTATE_TARGET, PQ_HASH_2, f.verifierAddress, quorum(f, d, [0]), 0, BigInt(2 ** 40)),
       ).to.be.revertedWithCustomError(f.vault, "QuorumNotMet");
       await (
-        await f.vault.initiateRecovery(f.attacker.address, ethers.ZeroHash, quorum(f, d, [0, 1]), 0, BigInt(2 ** 40))
+        await f.vault.initiateRecovery(
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
+          quorum(f, d, [0, 1]),
+          0,
+          BigInt(2 ** 40),
+        )
       ).wait();
     });
 
     it("M-K19 — a minority cannot replace the guardian commitment", async function () {
       const f = await deploy(0);
-      const hostile = [f.attacker.address, f.attacker.address, f.attacker.address];
-      const newCommitment = rosterCommitment(1n, hostile, f.isContract);
+      // Canonical (sorted, distinct) so this test still probes the THRESHOLD;
+      // duplicate rosters are refused earlier and are covered by M-K30.
+      const hostile = sortRoster([f.attacker.address, f.deployer.address], [false, false]).members;
+      const newCommitment = rosterCommitment(1n, hostile, [false, false]);
       const sg = digestOf(
         parts(f, { actionType: ACTION.SET_GUARDIANS, params: newCommitment, domain: DOMAIN.GUARDIAN }),
       );
       await expect(
-        f.vault.setGuardians(1, hostile, f.isContract, quorum(f, sg, [0]), 0, BigInt(2 ** 40)),
+        f.vault.setGuardians(1, hostile, [false, false], quorum(f, sg, [0]), 0, BigInt(2 ** 40)),
       ).to.be.revertedWithCustomError(f.vault, "QuorumNotMet");
       expect(await f.vault.guardianCommitment()).to.equal(f.commitment);
       // Control: the full quorum can.
-      await (await f.vault.setGuardians(1, hostile, f.isContract, quorum(f, sg, [0, 1]), 0, BigInt(2 ** 40))).wait();
+      await (await f.vault.setGuardians(1, hostile, [false, false], quorum(f, sg, [0, 1]), 0, BigInt(2 ** 40))).wait();
       expect(await f.vault.guardianCommitment()).to.equal(newCommitment);
     });
 
@@ -1025,21 +1139,22 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         const bad = await F.deploy();
         await bad.waitForDeployment();
 
-        const members = [await good.getAddress(), await bad.getAddress(), f.guardians[0]];
-        const isC = [true, true, false];
+        const sorted = sortRoster(
+          [await good.getAddress(), await bad.getAddress(), f.guardians[0]],
+          [true, true, false],
+        );
+        const members = sorted.members;
+        const isC = sorted.isContract;
         const commitment = rosterCommitment(2n, members, isC);
         const salt = ethers.id("iso-" + name);
-        const addr = await f.factory.predictVault(salt);
+        const addr = await f.factory.predictVault(salt, {
+          ...f.genesis,
+          guardians: members,
+          guardianIsContract: isC,
+          threshold: 2,
+        });
         await (
-          await f.factory.deployVault(
-            salt,
-            f.owner,
-            ethers.id("pq"),
-            await f.verifier.getAddress(),
-            commitment,
-            2,
-            HYBRID_FLOOR,
-          )
+          await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 2 })
         ).wait();
         const v = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
 
@@ -1047,7 +1162,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           parts(f, {
             vault: addr,
             actionType: ACTION.RECOVER,
-            params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.attacker.address, ethers.ZeroHash])),
+            params: ethers.keccak256(
+              abi.encode(["address", "bytes32", "address"], [ROTATE_TARGET, PQ_HASH_2, f.verifierAddress]),
+            ),
             domain: DOMAIN.GUARDIAN,
           }),
         );
@@ -1055,13 +1172,16 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         // hostile one is consulted in between and changes NOTHING.
         await (
           await v.initiateRecovery(
-            f.attacker.address,
-            ethers.ZeroHash,
+            ROTATE_TARGET,
+            PQ_HASH_2,
+            f.verifierAddress,
             {
               members,
               isContract: isC,
-              attestingIndices: [0, 1, 2],
-              attestations: ["0x", "0x", signDigest(f.gKeys[0], d)],
+              // Index-aware: only the EOA seat carries a signature, wherever
+              // canonical ordering happens to place it. The two contract seats
+              // answer through their own code.
+              ...attestBy(members, d, new Map([[f.guardians[0].toLowerCase(), f.gKeys[0]]])),
             },
             0,
             BigInt(2 ** 40),
@@ -1081,29 +1201,28 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const good = await Good.deploy();
       await good.waitForDeployment();
 
-      const members = [await wrong.getAddress(), await good.getAddress()];
-      const isC = [true, true];
+      const sorted = sortRoster([await wrong.getAddress(), await good.getAddress()], [true, true]);
+      const members = sorted.members;
+      const isC = sorted.isContract;
       const commitment = rosterCommitment(2n, members, isC);
       const salt = ethers.id("affirm");
-      const addr = await f.factory.predictVault(salt);
+      const addr = await f.factory.predictVault(salt, {
+        ...f.genesis,
+        guardians: members,
+        guardianIsContract: isC,
+        threshold: 2,
+      });
       await (
-        await f.factory.deployVault(
-          salt,
-          f.owner,
-          ethers.id("pq"),
-          await f.verifier.getAddress(),
-          commitment,
-          2,
-          HYBRID_FLOOR,
-        )
+        await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 2 })
       ).wait();
       const v = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
 
       // Only ONE of the two answers affirmatively, so a threshold of 2 fails.
       await expect(
         v.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           { members, isContract: isC, attestingIndices: [0, 1], attestations: ["0x", "0x"] },
           0,
           BigInt(2 ** 40),
@@ -1119,35 +1238,36 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       // The seat is committed as an EOA. Even though the address HAS code, the
       // kernel uses the committed mode and demands an ECDSA signature it cannot
       // produce, so the seat does not attest.
-      const members = [await good.getAddress(), f.guardians[0], f.guardians[1]];
-      const isC = [false, false, false];
+      const sorted = sortRoster([await good.getAddress(), f.guardians[0], f.guardians[1]], [false, false, false]);
+      const members = sorted.members;
+      const isC = sorted.isContract;
       const commitment = rosterCommitment(3n, members, isC);
       const salt = ethers.id("mode");
-      const addr = await f.factory.predictVault(salt);
+      const addr = await f.factory.predictVault(salt, {
+        ...f.genesis,
+        guardians: members,
+        guardianIsContract: isC,
+        threshold: 3,
+      });
       await (
-        await f.factory.deployVault(
-          salt,
-          f.owner,
-          ethers.id("pq"),
-          await f.verifier.getAddress(),
-          commitment,
-          3,
-          HYBRID_FLOOR,
-        )
+        await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 3 })
       ).wait();
       const v = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
       const d = digestOf(
         parts(f, {
           vault: addr,
           actionType: ACTION.RECOVER,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.attacker.address, ethers.ZeroHash])),
+          params: ethers.keccak256(
+            abi.encode(["address", "bytes32", "address"], [ROTATE_TARGET, PQ_HASH_2, f.verifierAddress]),
+          ),
           domain: DOMAIN.GUARDIAN,
         }),
       );
       await expect(
         v.initiateRecovery(
-          f.attacker.address,
-          ethers.ZeroHash,
+          ROTATE_TARGET,
+          PQ_HASH_2,
+          f.verifierAddress,
           {
             members,
             isContract: isC,
@@ -1164,32 +1284,46 @@ describe("vNext minimal trust kernel — prototype v0", function () {
   // =====================================================================
   describe("recovery — sovereignty and the bounded challenge", function () {
     async function pending(f: Fixture, nonce = 0n) {
-      const proposed = f.deployer.address;
+      const proposed = ROTATE_TARGET;
       const d = digestOf(
         parts(f, {
           actionType: ACTION.RECOVER,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [proposed, ethers.ZeroHash])),
+          params: ethers.keccak256(
+            abi.encode(["address", "bytes32", "address"], [ROTATE_TARGET, PQ_HASH_2, f.verifierAddress]),
+          ),
           domain: DOMAIN.GUARDIAN,
           nonce,
         }),
       );
-      await (await f.vault.initiateRecovery(proposed, ethers.ZeroHash, quorum(f, d), nonce, BigInt(2 ** 40))).wait();
+      await (
+        await f.vault.initiateRecovery(proposed, PQ_HASH_2, f.verifierAddress, quorum(f, d), nonce, BigInt(2 ** 40))
+      ).wait();
       return proposed;
     }
 
     it("recovery matures and installs the proposed credential", async function () {
       const f = await deploy(0);
       const proposed = await pending(f);
-      await expect(f.vault.executeRecovery()).to.be.revertedWithCustomError(f.vault, "TooEarly");
+      await expect(f.vault.executeRecovery(await recoveryChange(f))).to.be.revertedWithCustomError(f.vault, "TooEarly");
       await ethers.provider.send("evm_increaseTime", [8 * DAY]);
       await ethers.provider.send("evm_mine", []);
-      await (await f.vault.executeRecovery()).wait();
+      await (await f.vault.executeRecovery(await recoveryChange(f))).wait();
       expect(await f.vault.ecdsaSigner()).to.equal(proposed);
       expect(await f.vault.credentialGeneration()).to.equal(2n);
     });
 
-    it("recovery consults NO plane — it works with the verifier and policy dead", async function () {
-      const f = await deploy(2); // REVERTING verifier
+    /**
+     * NARROWED — the old title claimed more than the kernel now delivers, and
+     * the difference is worth stating rather than papering over.
+     *
+     * Recovery consults NO PLANE IT IS ESCAPING FROM: not the policy engine, and
+     * not the OUTGOING verifier. It DOES consult the INCOMING verifier, because
+     * incoming possession must be proven against the replacement rather than
+     * against the corpse (finding D). That is a dependency on a component the
+     * guardians chose in the same act, not on the one that failed.
+     */
+    it("recovery consults no plane it is ESCAPING FROM — policy dead, outgoing verifier dead", async function () {
+      const f = await deploy(0);
       const Policy = await ethers.getContractFactory("ConfigurablePolicy", f.deployer);
       const deny = await Policy.deploy(false);
       await deny.waitForDeployment();
@@ -1200,12 +1334,38 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           domain: DOMAIN.CREDENTIAL,
         }),
       );
-      await (await f.vault.setPolicy(await deny.getAddress(), 0, BigInt(2 ** 40), signDigest(f.ownerKey, sp))).wait();
+      await (
+        await f.vault.setPolicy(await deny.getAddress(), 0, BigInt(2 ** 40), signDigest(f.ownerKey, sp), PQ_SIG, PQ_KEY)
+      ).wait();
+
+      // Now kill the OUTGOING verifier, through the legitimate HYBRID path.
+      const Dead = await ethers.getContractFactory("ConfigurableVerifier", f.deployer);
+      const dead = await Dead.deploy(2);
+      await dead.waitForDeployment();
+      const dv = digestOf(
+        parts(f, {
+          actionType: ACTION.SET_VERIFIER,
+          params: setVerifierParams(await dead.getAddress(), HYBRID_FLOOR),
+          domain: DOMAIN.CREDENTIAL,
+          nonce: 1n,
+        }),
+      );
+      await (
+        await f.vault.setVerifier(
+          await dead.getAddress(),
+          HYBRID_FLOOR,
+          1,
+          BigInt(2 ** 40),
+          signDigest(f.ownerKey, dv),
+          PQ_SIG,
+          PQ_KEY,
+        )
+      ).wait();
 
       const proposed = await pending(f);
       await ethers.provider.send("evm_increaseTime", [8 * DAY]);
       await ethers.provider.send("evm_mine", []);
-      await (await f.vault.executeRecovery()).wait();
+      await (await f.vault.executeRecovery(await recoveryChange(f))).wait();
       expect(await f.vault.ecdsaSigner()).to.equal(proposed);
     });
 
@@ -1235,7 +1395,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       ).to.be.revertedWithCustomError(f.vault, "ChallengeExhausted");
       await ethers.provider.send("evm_increaseTime", [8 * DAY]);
       await ethers.provider.send("evm_mine", []);
-      await (await f.vault.executeRecovery()).wait();
+      await (await f.vault.executeRecovery(await recoveryChange(f))).wait();
     });
   });
 
@@ -1265,13 +1425,15 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const rd = digestOf(
         parts(f, {
           actionType: ACTION.RECOVER,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.deployer.address, ethers.ZeroHash])),
+          params: ethers.keccak256(
+            abi.encode(["address", "bytes32", "address"], [ROTATE_TARGET, PQ_HASH_2, f.verifierAddress]),
+          ),
           domain: DOMAIN.GUARDIAN,
           nonce: 1n,
         }),
       );
       await (
-        await f.vault.initiateRecovery(f.deployer.address, ethers.ZeroHash, quorum(f, rd), 1, BigInt(2 ** 40))
+        await f.vault.initiateRecovery(ROTATE_TARGET, PQ_HASH_2, f.verifierAddress, quorum(f, rd), 1, BigInt(2 ** 40))
       ).wait();
       expect((await f.vault.recovery()).active).to.equal(true);
     });
@@ -1460,12 +1622,19 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const rot = digestOf(
         parts(f, {
           actionType: ACTION.ROTATE,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.attacker.address, ethers.ZeroHash])),
+          params: ethers.keccak256(abi.encode(["address", "bytes32"], [ROTATE_TARGET, PQ_HASH_2])),
           domain: DOMAIN.CREDENTIAL,
         }),
       );
       await expect(
-        f.vault.rotateCredential(f.attacker.address, ethers.ZeroHash, 0, BigInt(2 ** 40), signDigest(f.ownerKey, rot)),
+        f.vault.rotateCredential(
+          await rotationChange(f),
+          0,
+          BigInt(2 ** 40),
+          signDigest(f.ownerKey, rot),
+          PQ_SIG,
+          PQ_KEY,
+        ),
       ).to.be.revertedWithCustomError(f.vault, "BadState");
 
       // But egress is PRE-COMMITTED, not discretionary, so it survives — and
@@ -1481,12 +1650,14 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const rd = digestOf(
         parts(f, {
           actionType: ACTION.RECOVER,
-          params: ethers.keccak256(abi.encode(["address", "bytes32"], [f.deployer.address, ethers.ZeroHash])),
+          params: ethers.keccak256(
+            abi.encode(["address", "bytes32", "address"], [ROTATE_TARGET, PQ_HASH_2, f.verifierAddress]),
+          ),
           domain: DOMAIN.GUARDIAN,
         }),
       );
       await (
-        await f.vault.initiateRecovery(f.deployer.address, ethers.ZeroHash, quorum(f, rd), 0, BigInt(2 ** 40))
+        await f.vault.initiateRecovery(ROTATE_TARGET, PQ_HASH_2, f.verifierAddress, quorum(f, rd), 0, BigInt(2 ** 40))
       ).wait();
       const dest = await destination(f);
       await expect(bind(f, dest)).to.be.revertedWithCustomError(f.vault, "NoRecovery");

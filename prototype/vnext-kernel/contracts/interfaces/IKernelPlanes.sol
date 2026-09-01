@@ -14,10 +14,22 @@ interface IKernelPQVerifier {
     function verify(bytes32 digest, bytes calldata publicKey, bytes calldata signature) external view returns (bool);
 }
 
-/// @notice Policy plane. PLANE-SAFE and SUBTRACTIVE: it may only refuse.
+/**
+ * @notice Policy plane. PLANE-SAFE and SUBTRACTIVE: it may only refuse.
+ *
+ * @dev NON-VIEW BY DESIGN (finding F). A `view` boundary is reached by
+ *      STATICCALL, so the plane can never persist what it admitted and a
+ *      CUMULATIVE rule — daily spend, velocity, rolling window — is
+ *      unrepresentable: two individually-valid spends both pass. Admission is
+ *      the minimum boundary that lets the ledger stay OUTSIDE the kernel while
+ *      still being enforceable.
+ *
+ *      The kernel calls this AFTER consuming the nonce and BEFORE moving value,
+ *      so a reentrant plane gains nothing it did not already have.
+ */
 interface IKernelPolicy {
     /// @return allowed false denies. A true answer grants NOTHING on its own.
-    function check(address vault, address recipient, uint256 amount) external view returns (bool allowed);
+    function admit(address vault, address recipient, uint256 amount) external returns (bool allowed);
 }
 
 /// @notice ERC-1271, for guardian seats that authenticate by contract (section 9).
