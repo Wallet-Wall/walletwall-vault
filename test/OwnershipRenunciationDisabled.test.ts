@@ -47,6 +47,32 @@ import type { MockMLDSAVerifier, MockUSDC, StablecoinVaultSimulator, WalletWallV
 
 const ZERO = "0x0000000000000000000000000000000000000000";
 
+interface AstStatement {
+  nodeType?: string;
+  expression?: {
+    nodeType?: string;
+    expression?: { nodeType?: string; memberName?: string; expression?: { name?: string } };
+  };
+}
+
+/**
+ * Whether an AST statement is a coverage probe injected by `solidity-coverage`
+ * rather than something an author wrote.
+ *
+ * The instrumenter rewrites the source to prefix each statement with
+ * `__NomicFoundationCoverage.sendHit(0x...)`. Matching on the member name AND the
+ * base identifier keeps this from silently discounting a real call that merely
+ * happens to be named `sendHit`.
+ */
+function isCoverageHit(statement: AstStatement): boolean {
+  if (statement.nodeType !== "ExpressionStatement") return false;
+  const call = statement.expression;
+  if (call?.nodeType !== "FunctionCall") return false;
+  const callee = call.expression;
+  if (callee?.nodeType !== "MemberAccess" || callee.memberName !== "sendHit") return false;
+  return (callee.expression?.name ?? "").includes("Coverage");
+}
+
 /**
  * Send a transaction and report ONLY whether it reverted, without asserting how.
  * Used where the test must stay agnostic about which error surfaces — the safety
@@ -362,9 +388,28 @@ describe("ownership renunciation is disabled (T0)", function () {
         expect(fn.overrides, "must carry an `override` specifier").to.not.equal(undefined);
         expect(fn.stateMutability).to.equal("pure");
 
-        const statements = (fn.body?.statements ?? []) as { nodeType?: string }[];
-        expect(statements, "the body must contain exactly one statement").to.have.length(1);
-        expect(statements[0]?.nodeType, "that statement must be a revert").to.equal("RevertStatement");
+        // COVERAGE-AWARE, and this is not optional. `solidity-coverage` REWRITES the
+        // source before compiling, injecting a `__NomicFoundationCoverage.sendHit(...)`
+        // call ahead of each statement. A naive "the body has exactly one statement"
+        // assertion therefore passes on a normal build and fails under coverage —
+        // which is exactly what happened on the first CI run of this branch.
+        //
+        // The repository's convention for byte claims is to measure from a clean
+        // non-instrumented build. The AST analogue is NOT to skip the check under
+        // instrumentation — that would make it vacuously green in one of the two modes
+        // — but to discount the injected statements and apply the SAME strict assertion
+        // to what genuinely remains. The check stays discriminating in both modes.
+        const statements = (fn.body?.statements ?? []) as AstStatement[];
+        const authored = statements.filter((s) => !isCoverageHit(s));
+
+        expect(authored, "the authored body must contain exactly one statement").to.have.length(1);
+        expect(authored[0]?.nodeType, "that statement must be a revert").to.equal("RevertStatement");
+
+        // And nothing in the body may return normally, instrumented or not.
+        expect(
+          statements.some((s) => s.nodeType === "Return"),
+          "a return statement would give the function a non-reverting path",
+        ).to.equal(false);
       });
     }
   });
