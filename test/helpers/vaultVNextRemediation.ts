@@ -60,7 +60,16 @@ export type RemediationMutation =
   | "M46_IMPL_ADDRESS_FROM_REGISTRY"
   | "M47_CLONE_MATCHED_BY_PREFIX"
   | "M48_IDENTITIES_PUBLISHED_AS_ONE_AGGREGATE"
-  | "M49_IMPL_VACUITY_UNCHECKED";
+  | "M49_IMPL_VACUITY_UNCHECKED"
+  // --- added by the final architecture-correction pass ---
+  | "M50_INITCODE_JUDGED_AGAINST_RUNTIME_LIMIT"
+  | "M51_PORTABILITY_BUDGET_TRACKS_THE_NETWORK"
+  | "M52_UNSOLICITED_ASSET_VETOES_MANIFESTED_EGRESS"
+  | "M53_RETIREMENT_REQUIRES_GLOBAL_ZERO_BALANCE"
+  | "M54_BUILD_IDENTITY_USED_AS_DEPLOYMENT_IDENTITY"
+  | "M55_MASK_WITHOUT_REDERIVATION"
+  | "M56_FACTORY_IMPLEMENTATION_RETARGETABLE"
+  | "M57_BOUNDED_CHALLENGE_COUNTED_AS_A_CUT";
 
 // ===========================================================================
 // 1. SecurityProfile — a PARTIAL order over heterogeneous crypto assumptions
@@ -303,9 +312,20 @@ export interface Binding {
   readonly disposition: "FULL_BALANCE";
 }
 
+/**
+ * How an asset came to be in the vault. This is BOOKKEEPING, never an
+ * authorization input: `I-MIGRATION-NONTRAP` clause (b) requires an UNSOLICITED
+ * asset to be egressable on exactly the same terms as a MANIFESTED one. The
+ * dimension exists so the model can express the thing architecture section 13.0a
+ * proves cannot be prevented — an asset arriving with no function call, or after
+ * the manifest was bound — and so a mutant can try to let it veto the others.
+ */
+export type EntryOrigin = "MANIFESTED" | "UNSOLICITED";
+
 export interface Entry {
   readonly assetId: string;
   readonly kind: AssetKind;
+  readonly origin: EntryOrigin;
   status: EntryStatus;
   /** Present so settlement can be judged on an OBSERVED balance change. */
   sourceBalance: bigint;
@@ -341,8 +361,17 @@ export class MigrationMachine {
     this.clock += days;
   }
 
-  addAsset(assetId: string, kind: AssetKind, balance: bigint): void {
-    this.entries.set(assetId, { assetId, kind, status: "PENDING", sourceBalance: balance });
+  addAsset(assetId: string, kind: AssetKind, balance: bigint, origin: EntryOrigin = "MANIFESTED"): void {
+    this.entries.set(assetId, { assetId, kind, origin, status: "PENDING", sourceBalance: balance });
+  }
+
+  /**
+   * An asset nobody asked for: a direct ERC-20 transfer, forced ETH, an airdrop,
+   * a rebase, or anything that arrived AFTER binding. It needs no call into the
+   * vault, so no ingress gate can refuse it (architecture section 13.0a).
+   */
+  receiveUnsolicited(assetId: string, kind: AssetKind, balance: bigint): void {
+    this.addAsset(assetId, kind, balance, "UNSOLICITED");
   }
 
   /** The bind delay must never be shorter than the recovery delay. */
@@ -378,6 +407,19 @@ export class MigrationMachine {
     this.mark("migration/retire");
     if (this.state !== "BOUND") return refuse("nothing bound");
     if (this.boundAt === null || this.clock < this.boundAt + this.bindDelay()) return refuse("bind delay not elapsed");
+
+    // I-MIGRATION-NONTRAP clause (c): retirement is conditioned on AUTHORITY, never
+    // on global asset exhaustion. "Balance is zero across every possible token" is
+    // not a decidable predicate — the set of contracts that may name this address
+    // is unbounded, and a rebasing token can reintroduce a balance with no
+    // transaction at all. A design that waits for the last token waits forever.
+    this.mark("migration/retirement-condition");
+    if (this.has("M53_RETIREMENT_REQUIRES_GLOBAL_ZERO_BALANCE")) {
+      for (const e of this.entries.values()) {
+        if (e.sourceBalance > 0n) return refuse("a token still holds a non-zero balance");
+      }
+    }
+
     this.state = "RETIRED";
     return allow();
   }
@@ -412,6 +454,20 @@ export class MigrationMachine {
 
     const entry = this.entries.get(assetId);
     if (entry === undefined) return refuse("unknown asset");
+
+    // I-MIGRATION-NONTRAP clause (a): an asset the vault never agreed to hold is
+    // INSIDE the vault but is a gate on NOTHING. Whatever it does — revert,
+    // rebase, blacklist the source — every other entry still reaches the bound
+    // destination on its own.
+    this.mark("migration/unsolicited-nonveto");
+    if (this.has("M52_UNSOLICITED_ASSET_VETOES_MANIFESTED_EGRESS")) {
+      for (const other of this.entries.values()) {
+        if (other.assetId === assetId) continue;
+        if (other.origin === "UNSOLICITED" && other.status !== "MOVED") {
+          return refuse("an unsolicited asset is unresolved");
+        }
+      }
+    }
 
     if (this.frozenAssetIds !== null && !this.frozenAssetIds.has(assetId)) {
       // Mutant M40: an asset that arrived after binding is not in the bound set.
@@ -493,6 +549,233 @@ export class MigrationMachine {
       if (!assetRefusedItself) return false;
     }
     return true;
+  }
+
+  /**
+   * `I-MIGRATION-NONTRAP` clause (a), stated as its own predicate because the
+   * general non-trap check above cannot distinguish "this asset refused" from
+   * "another asset's presence refused on its behalf" — and that distinction is
+   * the entire content of architecture section 13.0a.
+   *
+   * True iff every MANIFESTED entry that is independently recoverable does in
+   * fact leave, in the presence of whatever unsolicited assets the vault holds.
+   */
+  manifestedEntriesExitIndependently(): boolean {
+    this.mark("migration/manifested-independence");
+    for (const entry of this.entries.values()) {
+      if (entry.origin !== "MANIFESTED") continue;
+      if (entry.status === "MOVED") continue;
+      // An asset that refuses on its OWN behalf is an accepted residual
+      // (section 13.4); anything else refusing for it is a trap.
+      if (this.transferReverts(entry.kind)) continue;
+      if (!this.egress(entry.assetId).ok) return false;
+    }
+    return true;
+  }
+}
+
+// ===========================================================================
+// 2a. Deployment size — FOUR quantities, never conflated (architecture 19.0)
+// ===========================================================================
+
+/**
+ * A concrete deployment environment. `runtimeLimit` and `initcodeLimit` are
+ * SEPARATE and are set by the NETWORK, per fork — which is why they are fields
+ * on a target rather than module constants. A model with one global "EIP-170"
+ * constant cannot express a portfolio of chains at different forks, and cannot
+ * detect the category error this sub-model exists to discriminate.
+ */
+export interface DeploymentTarget {
+  readonly chain: string;
+  readonly fork: string;
+  readonly runtimeLimit: number;
+  readonly initcodeLimit: number;
+}
+
+/** What a compiler produces: two independent sizes governed by two different rules. */
+export interface CompiledArtifact {
+  readonly runtime: number;
+  readonly initcode: number;
+}
+
+export class SizeModel {
+  private readonly mutations: ReadonlySet<RemediationMutation>;
+  readonly exercised = new Set<string>();
+
+  constructor(mutations: readonly RemediationMutation[] = []) {
+    this.mutations = new Set(mutations);
+  }
+
+  private has(m: RemediationMutation): boolean {
+    return this.mutations.has(m);
+  }
+
+  private mark(guard: string): void {
+    this.exercised.add(guard);
+  }
+
+  /**
+   * Can this artifact be deployed on this target?
+   *
+   * The rule that matters, and the one the architecture document got wrong:
+   * initcode is judged against `initcodeLimit` and NEVER against `runtimeLimit`.
+   * `initcode > runtimeLimit` is not a deployment event of any kind.
+   */
+  deployable(target: DeploymentTarget, artifact: CompiledArtifact): SubOutcome {
+    this.mark("size/runtime-bound");
+    if (artifact.runtime > target.runtimeLimit) {
+      return refuse(`runtime ${artifact.runtime} exceeds ${target.chain} runtime limit ${target.runtimeLimit}`);
+    }
+
+    this.mark("size/initcode-bound");
+    const initcodeBound = this.has("M50_INITCODE_JUDGED_AGAINST_RUNTIME_LIMIT")
+      ? target.runtimeLimit
+      : target.initcodeLimit;
+    if (artifact.initcode > initcodeBound) {
+      return refuse(`initcode ${artifact.initcode} exceeds bound ${initcodeBound}`);
+    }
+    return allow();
+  }
+
+  /**
+   * The WalletWall portability budget is bounded by the SMALLEST runtime limit
+   * across declared targets. A budget that tracks the LARGEST is not a budget:
+   * it certifies a kernel as portable on the strength of the one chain that
+   * raised its limit, while the chain that did not raise it still refuses it.
+   */
+  portabilityBudget(targets: readonly DeploymentTarget[]): number {
+    this.mark("size/budget-aggregate");
+    const limits = targets.map((t) => t.runtimeLimit);
+    return this.has("M51_PORTABILITY_BUDGET_TRACKS_THE_NETWORK") ? Math.max(...limits) : Math.min(...limits);
+  }
+
+  /** A WalletWall POLICY check, deliberately distinct from `deployable`. */
+  withinPortabilityBudget(targets: readonly DeploymentTarget[], artifact: CompiledArtifact): SubOutcome {
+    this.mark("size/portability");
+    const budget = this.portabilityBudget(targets);
+    return artifact.runtime > budget
+      ? refuse(`runtime ${artifact.runtime} exceeds portability budget ${budget}`)
+      : allow();
+  }
+
+  /** Headroom the project withholds from itself. Never a protocol quantity. */
+  targetCeiling(targets: readonly DeploymentTarget[], internalReserve: number): number {
+    this.mark("size/internal-reserve");
+    return this.portabilityBudget(targets) - internalReserve;
+  }
+}
+
+// ===========================================================================
+// 2b. Factory generation authority — owner decision D8
+// ===========================================================================
+
+/**
+ * ONE IMMUTABLE FACTORY PER KERNEL GENERATION. The implementation choice is
+ * consumed at construction; thereafter no principal — including the deployer —
+ * can retarget it. The model exists so the ABSENCE of the authority is asserted
+ * positively rather than left as a gap in the graph.
+ */
+export class FactoryGenerationModel {
+  private readonly mutations: ReadonlySet<RemediationMutation>;
+  readonly exercised = new Set<string>();
+
+  private implementation: string;
+  readonly generation: number;
+
+  constructor(implementation: string, generation: number, mutations: readonly RemediationMutation[] = []) {
+    this.implementation = implementation;
+    this.generation = generation;
+    this.mutations = new Set(mutations);
+  }
+
+  private has(m: RemediationMutation): boolean {
+    return this.mutations.has(m);
+  }
+
+  private mark(guard: string): void {
+    this.exercised.add(guard);
+  }
+
+  implementationTarget(): string {
+    return this.implementation;
+  }
+
+  /**
+   * The rejected alternative, present ONLY so a mutant can enable it. Every
+   * spelling of it — `setImplementation`, `upgradeFactory`, `registerNewKernel`
+   * on an existing generation, a beacon, a mutable registry — is the same
+   * capability, and the clean model refuses all of them identically.
+   */
+  setImplementation(next: string): SubOutcome {
+    this.mark("factory/retarget");
+    if (this.has("M56_FACTORY_IMPLEMENTATION_RETARGETABLE")) {
+      this.implementation = next;
+      return allow();
+    }
+    return refuse("the implementation target is immutable: deploy a new factory generation");
+  }
+
+  /**
+   * A new generation is a DEPLOYMENT, not a permission: it produces a second,
+   * independent factory and leaves this one untouched.
+   */
+  nextGeneration(nextImplementation: string): FactoryGenerationModel {
+    this.mark("factory/generation-is-a-deployment");
+    return new FactoryGenerationModel(nextImplementation, this.generation + 1, [...this.mutations]);
+  }
+
+  /** The property D8 buys: an attempted retarget changes nothing. */
+  implementationIsImmutable(): boolean {
+    const before = this.implementation;
+    const attempt = this.setImplementation(before + "-ATTACKER");
+    this.mark("factory/immutability");
+    return !attempt.ok && this.implementation === before;
+  }
+}
+
+// ===========================================================================
+// 2c. Authority cuts — a delay is not a principal (owner decision D1)
+// ===========================================================================
+
+/**
+ * A path to a catastrophic outcome. The ONLY input to a compromise cut is how
+ * many INDEPENDENT principals are MANDATORY on the path. Delays, challenges and
+ * timelocks are recorded separately precisely so they cannot be quietly summed
+ * into the cut.
+ */
+export interface AttackPath {
+  readonly name: string;
+  readonly mandatoryIndependentPrincipals: number;
+  /** Bounded challenges the attacker must outlast. Costs TIME, never a root. */
+  readonly boundedChallenges: number;
+}
+
+export class AuthorityCutModel {
+  private readonly mutations: ReadonlySet<RemediationMutation>;
+  readonly exercised = new Set<string>();
+
+  constructor(mutations: readonly RemediationMutation[] = []) {
+    this.mutations = new Set(mutations);
+  }
+
+  private has(m: RemediationMutation): boolean {
+    return this.mutations.has(m);
+  }
+
+  private mark(guard: string): void {
+    this.exercised.add(guard);
+  }
+
+  cut(path: AttackPath): number {
+    this.mark("cuts/delay-is-not-a-principal");
+    const delayBonus = this.has("M57_BOUNDED_CHALLENGE_COUNTED_AS_A_CUT") && path.boundedChallenges > 0 ? 1 : 0;
+    return path.mandatoryIndependentPrincipals + delayBonus;
+  }
+
+  /** The minimum over paths — a system is as strong as its cheapest path. */
+  systemCut(paths: readonly AttackPath[]): number {
+    this.mark("cuts/minimum-over-paths");
+    return Math.min(...paths.map((p) => this.cut(p)));
   }
 }
 
@@ -637,4 +920,100 @@ export class CodeIdentityChain {
     if (published.length === 1 && published[0]?.name === "aggregate") return false;
     return published.every((i) => (i.name === "safeState" ? i.kind === "OBSERVATION" && i.validUntil !== null : true));
   }
+
+  // -------------------------------------------------------------------------
+  // The THREE identities (architecture 15.1a). This NARROWS the earlier claim
+  // that "there is no publishable kernel code hash" — it does NOT weaken the
+  // five-link chain above, which is untouched.
+  // -------------------------------------------------------------------------
+
+  /**
+   * A deployed implementation. `runtime` is what `eth_getCode` actually returns
+   * at `address`, immutables and all — an AUTHORITATIVE fact about THIS account.
+   */
+  deploymentIdentity(address: string, runtime: string): DeploymentIdentity {
+    this.mark("identity/deployment-identity");
+    return { address, runtime };
+  }
+
+  /**
+   * Compare a DEPLOYMENT identity to a BUILD identity.
+   *
+   * With NO declared immutable ranges the two coincide and this is a plain hash
+   * comparison — which is the state `I-PURE-CONSTRUCTOR` exists to reach.
+   *
+   * With ranges declared it is a TWO-step check and both steps are load-bearing:
+   *   (1) MASK the declared ranges and compare the remainder to the build's
+   *       normalized runtime;
+   *   (2) independently RE-DERIVE each masked word from the deployment address.
+   * Step (1) alone discards exactly the bytes an attacker would choose.
+   */
+  matchesBuild(build: BuildIdentity, deployment: DeploymentIdentity): boolean {
+    this.mark("identity/build-vs-deployment");
+
+    if (this.has("M54_BUILD_IDENTITY_USED_AS_DEPLOYMENT_IDENTITY")) {
+      // Mutant: assume ONE universal source-level runtime hash is valid at every
+      // address. Rejects a CORRECT implementation whenever immutables are baked.
+      return deployment.runtime === build.normalizedRuntime;
+    }
+
+    if (build.immutableRanges.length === 0) {
+      return deployment.runtime === build.normalizedRuntime;
+    }
+
+    const masked = maskImmutablePayload(deployment.runtime);
+    if (masked !== build.normalizedRuntime) return false;
+
+    this.mark("identity/rederivation");
+    if (this.has("M55_MASK_WITHOUT_REDERIVATION")) {
+      // Mutant: mask and stop. A forged immutable payload now passes, because the
+      // only bytes that could have revealed it were the ones just discarded.
+      return true;
+    }
+    return immutablePayloadOf(deployment.runtime) === expectedPayloadFor(deployment.address);
+  }
+}
+
+/**
+ * SOURCE / BUILD identity: source + compiler + settings, plus the immutable
+ * ranges that build DECLARES. Constant across every deployment of that build.
+ */
+export interface BuildIdentity {
+  readonly buildTuple: string;
+  readonly immutableRanges: readonly (readonly [number, number])[];
+  /** The artifact's runtime with every declared immutable range zeroed. */
+  readonly normalizedRuntime: string;
+}
+
+/** DEPLOYMENT identity: one address, and the runtime code actually at it. */
+export interface DeploymentIdentity {
+  readonly address: string;
+  readonly runtime: string;
+}
+
+/**
+ * Runtime code is modelled as `<body>|imm:<payload>` — SHAPE, never bytes. The
+ * module header's scope note applies: this represents which facts must be
+ * obtained and in what order, and represents no bytecode.
+ */
+export const IMMUTABLE_PAYLOAD_SEPARATOR = "|imm:";
+export const ZERO_PAYLOAD = "0";
+
+export function runtimeWithImmutables(body: string, payload: string): string {
+  return `${body}${IMMUTABLE_PAYLOAD_SEPARATOR}${payload}`;
+}
+
+export function immutablePayloadOf(runtime: string): string {
+  const i = runtime.indexOf(IMMUTABLE_PAYLOAD_SEPARATOR);
+  return i === -1 ? ZERO_PAYLOAD : runtime.slice(i + IMMUTABLE_PAYLOAD_SEPARATOR.length);
+}
+
+export function maskImmutablePayload(runtime: string): string {
+  const i = runtime.indexOf(IMMUTABLE_PAYLOAD_SEPARATOR);
+  return i === -1 ? runtime : runtimeWithImmutables(runtime.slice(0, i), ZERO_PAYLOAD);
+}
+
+/** The re-derivation step: an address-derived immutable is a function of the address. */
+export function expectedPayloadFor(address: string): string {
+  return `derived(${address})`;
 }

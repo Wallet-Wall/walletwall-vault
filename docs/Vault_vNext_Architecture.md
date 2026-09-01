@@ -10,6 +10,24 @@
 > No production Solidity was written. `VaultKernel.sol` does not exist and must not be created on
 > the strength of this document alone.
 
+> ## DISPOSITION — **ARCHITECTURE READY FOR MINIMAL-KERNEL PROTOTYPE**
+>
+> **What this authorises:** compiling the **first disposable / minimal kernel candidate**, so its
+> size and its `immutableReferences` can be measured against §19's stop condition.
+>
+> **What this does NOT authorise, and the distinction is the whole point:** production
+> implementation, deployment, or the creation of a production `VaultKernel.sol`. "Ready for
+> prototype" means the architecture is **coherent enough to compile against** — that its authority
+> graph is determined, its size model is sound, and its remaining unknowns are things to *measure*
+> rather than things to *decide*. It is not a statement that the design is correct.
+>
+> **What changed to earn it.** Every previously-standing blocker is closed: the clone-target runtime
+> is **MEASURED** (§19.1), **D1** and **D8** are **DECIDED** (§22), and the **H-22 prerequisite is
+> WITHDRAWN** as unsound (§13.0a). Two further defects were found and corrected in this document's
+> own reasoning — an **EIP-170/initcode category error** (§19.0) and an over-broad **code-identity**
+> claim (§15.1a). Six blockers remain (§25.5); **all six are engineering work or declared residuals,
+> none is an open adjudication.**
+
 ---
 
 ## 0. Status legend, and why it is enforced pedantically
@@ -136,10 +154,15 @@ proxy is not, and must never be described as such.**
 > immutable slots; five are address-independent and were byte-identical across the two deployments.
 >
 > Three consequences follow, and none of them was stated in the earlier revision:
-> 1. **There is no single publishable "audited kernel code hash" to compare against.** A verifier who
->    knows only a hash cannot check anything. A verifier who knows the *expected address* can compute
->    both the expected clone hash and the expected implementation hash — so the check is still
->    available, but it is address-parameterised, not constant.
+> 1. **NARROWED — the previous wording overclaimed and is corrected here.** It said there is
+>    *"no single publishable 'audited kernel code hash'"*. **Too broad.** What does not necessarily
+>    exist is **one universal source-level runtime hash valid for every deployment address**. What
+>    always exists is an **authoritative runtime code hash for a PARTICULAR deployed
+>    implementation** — `extcodehash(impl)` is a fact about that account, and nothing about
+>    immutables makes it unavailable. A verifier who knows only a *constant* cannot check anything
+>    when immutables are address-derived; a verifier who knows the *expected address* can compute
+>    both the expected clone hash and the expected implementation hash. The check is
+>    **address-parameterised, not absent**. §15.1a states the three identities this splits into.
 > 2. **A correction to §3.2 R3.** That section says `WalletWallVault` "declares **no** `immutable`
 >    variables". True of the contract's own source; **materially misleading**, because it *inherits*
 >    seven, two of them address-derived. The conclusion R3 draws — that every plane pointer is storage
@@ -153,7 +176,6 @@ proxy is not, and must never be described as such.**
 >
 > §15 states the resulting offline verification procedure in full.
 
-A **beacon proxy** is rejected explicitly as the worst of both: it reproduces the current
 A **beacon proxy** is rejected explicitly as the worst of both: it reproduces the current
 architecture's exact system-wide geometry — one storage slot in one beacon governs the code of every
 vault simultaneously — while adding a hop and the false comfort of the word "proxy per vault".
@@ -224,7 +246,8 @@ candidate. All four are disposable spikes: applied → measured → reverted →
 | Per-vault deploy gas, MEASURED | n/a | **5,181,105** | **63,692** | **69,342** |
 | Relative to C | — | **81.3×** | 1.00× | 1.09× |
 | Vault runtime deployed per vault | 23,239 | 23,239 | **45** | **65** (45 + 20 arg bytes) |
-| Vault runtime ceiling | 24,576 | 24,576 | 24,576 (implementation) | 24,576 (implementation) |
+| Bound on that runtime | `NETWORK_RUNTIME_LIMIT` | `NETWORK_RUNTIME_LIMIT` | `NETWORK_RUNTIME_LIMIT` (borne by the **implementation**, not the clone) | same |
+| Vault **initcode** per vault, and its bound | 24,582 vs `NETWORK_INITCODE_LIMIT` **49,152** | same | n/a — a clone runs no initcode of its own | n/a |
 | Vault identity | address | address | address | address |
 | Per-vault Solidity `immutable` | yes | yes | **no** | **no — but see immutable ARGS** |
 | Per-vault immutable DATA | yes | yes | no | **yes, and code-identity-bound** |
@@ -240,9 +263,23 @@ by embedding the callee's **entire creation bytecode** into the factory's own ru
 factory's runtime bytecode is **24,866 bytes against the 24,576 ceiling — over by 290** — and solc
 emits its own diagnostic, *"Contract code size is 24866 bytes and exceeds 24576 bytes"*. There is no
 dispatcher, no argument encoding and no CREATE2 helper in that figure beyond what the one function
-needs. B1 is not deployable. *(At this document's previous base the child's creation bytecode was
-24,574 B and the argument was a two-byte squeeze; after #180 it is 24,582 B, which **alone** exceeds
-the runtime ceiling.)*
+needs. B1 is not deployable.
+
+> **B1's rejection is a RUNTIME failure of the FACTORY, and nothing else — a parenthetical claiming
+> otherwise is STRUCK.** The previous revision added: *"after #180 the child's creation bytecode is
+> 24,582 B, which **alone** exceeds the runtime ceiling."* **A child's initcode is not governed by
+> the runtime limit** (§19.0), and 24,582 is comfortably inside
+> `NETWORK_INITCODE_LIMIT(ethereum, current) = 49,152`. The load-bearing arithmetic is entirely on
+> the factory side and is unaffected:
+>
+> ```text
+> factory runtime  24,866  =  embedded child initcode 24,582  +  284 B of dispatch/CREATE2
+>                  24,866  >  NETWORK_RUNTIME_LIMIT = 24,576   =>  B1 REJECTED, by 290 bytes
+> ```
+>
+> The child's initcode still matters — but only because Solidity **embeds it into the factory's
+> runtime** (`feedback_solidity_new_embeds_full_creation_bytecode_in_the_factory`), so it is
+> weighed as a *component of a runtime figure*, never compared to a runtime limit on its own.
 
 **B2 — CONSTRUCTIBLE, and cheap to build.** A deployer that takes `bytes initcode` as **calldata** and
 CREATE2s it embeds nothing and names no child. MEASURED at **657 bytes** of runtime — *smaller than the
@@ -251,11 +288,17 @@ deterministic CREATE2 deployer already exists on most chains, and such a deploye
 over anything it deploys**. So the "shared factory" dissent (D4 below) does not apply to B2 at all.
 
 **B2 is rejected on measured cost, not on constructibility.** Deploying the real `WalletWallVault`
-through it costs **5,181,105 gas per vault** against **63,692** for a clone — **81.3×**. That gap is
-*intrinsic, not overhead*: a bare `CREATE` of the same vault costs 5,168,967, so the deployer adds only
-**12,138 gas**. The cost is the protocol's 200 gas per runtime byte × 23,239 bytes ≈ 4.65 M, plus
-24,614 bytes of calldata. **B2's per-vault cost scales with the kernel's size**, which is the one
-quantity §19 shows is already out of budget.
+through it costs **5,181,105 gas per vault** against **63,692** for a clone — a **marginal** ratio of
+**81.3×**. That gap is *intrinsic, not overhead*: a bare `CREATE` of the same vault costs 5,168,967,
+so the deployer adds only **12,138 gas**. The cost is the protocol's 200 gas per runtime byte ×
+23,239 bytes ≈ 4.65 M, plus 24,614 bytes of calldata. **B2's per-vault cost scales with the kernel's
+size**, which is the one quantity §19 shows is already out of budget.
+
+> **A MARGINAL ratio is not a cost comparison, and §19.2 replaces it with one.** 81.3× compares
+> per-vault deployment while silently pricing C's one-time implementation at zero. On **total**
+> generation economics the measured break-even is **N = 2**; at `N = 1` **B2 is actually cheaper**,
+> and the realised advantage reaches **34.65×** at `N = 1,000` — never 81×, at any fleet size. The
+> verdict is unchanged and the *reason* is now stated correctly.
 
 **C2 — ADOPTED as a refinement of C.** OpenZeppelin 5.6.1 ships
 `Clones.cloneDeterministicWithImmutableArgs` / `fetchCloneArgs`, which append per-clone bytes **after**
@@ -276,7 +319,8 @@ the argument suffix reads back byte-exact.
 > they belong in args, where an offline observer can read them out of the code.
 
 **VERDICT: C, refined to C2 — confirmed, but on a corrected and much narrower basis.** C is selected
-because B2 costs **81× more per vault**, not because B is unbuildable. **The condition under which this
+because it wins on **total generation cost from a fleet of two vaults upward** (§19.2), not because B
+is unbuildable and not on the marginal 81× ratio alone. **The condition under which this
 verdict flips is stated so it can be tested later:** if per-vault deployment gas ceases to be a product
 constraint *and* the kernel needs per-vault immutables richer than a byte string can carry, **B2 wins**,
 and it wins with a shorter code-identity chain (§15) and no atomic-initialisation requirement. That is
@@ -563,7 +607,6 @@ so it is what makes the cohort coupling in §14 an escapable default rather than
 ---
 
 ## 5. No generic privileged execution
-## 5. No generic privileged execution
 
 **OBSERVED — no production contract has any generic execution surface.** Stated precisely, because
 an overstated grep is worthless as evidence:
@@ -653,9 +696,12 @@ Two rows carry the design.
 **Recovery stays available in every non-terminal state.** This is what denies an emergency principal
 a veto. Containment withdraws *spending*, never *recovery*.
 
-**Deposit is gated with withdrawal.** OBSERVED defect corrected: today `deposit`/`depositFor` carry
-no pause modifier while every payout path does, so a frozen deployment keeps accepting funds it
-cannot pay out (hazard H-22). A state that cannot pay out must not take in.
+**Accounted deposit is gated with withdrawal.** OBSERVED defect corrected: today `deposit`/`depositFor`
+carry no pause modifier while every payout path does, so a frozen deployment keeps **crediting** funds
+it cannot pay out (hazard H-22). A state that cannot pay out must not **book** an inflow as though it
+could. **The row gates the accounted path only** — unsolicited arrivals (direct transfers, forced ETH,
+airdrops, rebases) are outside every lattice state's reach by construction, and §13.0a explains why
+pretending otherwise weakened the migration argument rather than strengthening it.
 
 **Migration execution is available even in RETIRED**, which is what stops retirement being an asset
 trap.
@@ -722,10 +768,19 @@ trigger — and the vault becomes indefinitely freezable.
 cancellation and execution; migration binding and egress. **What is withdrawn**: spending, queuing,
 **inflow**, and every authority mutation.
 
-> **I-NO-INGRESS-WITHOUT-EGRESS (T1).** Any state that restricts asset egress must restrict asset
-> ingress. OBSERVED at `15a44016` and still live: `deposit()` and `depositFor()` carry no state gate
-> while every payout path carries `whenNotPaused` (hazard H-22). Under vNext this is not merely
-> untidy — §13.0 shows it is the mechanism by which an unprivileged stranger can veto a migration.
+> **I-NO-INGRESS-WITHOUT-EGRESS (T1) — SCOPE CORRECTED.** Any state that restricts asset egress must
+> restrict every **ACCOUNTED** ingress path — the paths the kernel itself credits. OBSERVED at
+> `15a44016` and still live: `deposit()` and `depositFor()` carry no state gate while every payout
+> path carries `whenNotPaused` (hazard H-22).
+>
+> **The invariant is about paths the kernel controls, and it must never be read as "no assets can
+> arrive".** It cannot restrain a direct ERC-20 `transfer`, forced ETH, an airdrop, or a rebase,
+> because none of those calls a WalletWall function. **The previous revision's gloss — that this is
+> "the mechanism by which an unprivileged stranger can veto a migration" — is WITHDRAWN (§13.0a).**
+> The stranger's asset arrives without touching any gated path; the migration is protected by
+> `I-MIGRATION-NONTRAP`'s unsolicited-asset clause instead, which is where the load belongs.
+> This invariant earns its place on **accounting coherence** — a balance the kernel credits while
+> refusing to honour it is a promise the kernel knows it is breaking — not on migration safety.
 
 > **I-VETO-BOUND (T0), the general rule the above are instances of.** **Every** veto capability in the
 > design — not merely every pause — must carry a bound that lifts **with no principal acting**.
@@ -781,7 +836,7 @@ the only way to avoid trusting a roster-pushing controller is to not have one.
 | Emergency principal | ENTER_CONTAINMENT **only** |
 | Migration authority | MIGRATE — **not** SELECT_DESTINATION_KERNEL |
 | **Kernel admin** | **NONE — the principal does not exist** |
-| **Factory operator** *(added by the remediation — §22 D8)* | **NONE over any deployed vault.** Chooses the implementation of **future** vaults only, and only where the factory's pointer is mutable. Recommended fix: make it `immutable`, so the principal ceases to exist |
+| ~~**Factory operator**~~ **— the principal DOES NOT EXIST (§22 D8, LOCKED)** | **NONE, over any vault, deployed or future.** One immutable factory per kernel generation: the implementation choice is consumed at the factory's own construction and is thereafter unreachable by every principal including the deployer. What remains is a **generation publisher**, whose only power is which factory address is *advertised* — a discovery influence, not an authority (H-32) |
 | Assurance observatory | **NONE** |
 | WalletWall infrastructure | **NONE** |
 | Arbitrary external caller | May *relay* an authorized action; holds nothing |
@@ -798,7 +853,8 @@ Closure includes outcomes reachable through intermediate state changes.
 | Migration authority | — (destination is kernel-bound) | **No** |
 | Policy plane | — (subtractive only) | **No** |
 | Assurance | — (closure is **empty**) | **No** |
-| **Factory operator** | Defines the kernel of every FUTURE vault. Closure over deployed clones is **empty** — a clone's implementation is a `PUSH20` immediate in its own code | **No** (for existing vaults) |
+| **Factory deployer** (immutable factory, ADOPTED) | **Closure EMPTY.** The implementation choice is spent at construction; over deployed clones it was always empty — a clone's implementation is a `PUSH20` immediate in its own code | **No** |
+| **Generation publisher** | Advertises a factory address. Closure adds **discovery influence over FUTURE vaults only**; bounded by §15 offline verification | **No** |
 | Guardian **plane** *(if ever externalized)* | CHANGE_GUARDIANS → APPROVE_RECOVERY → MOVE_ASSETS | **Yes — which is why it is not externalized** |
 
 ### 8.3 Coalitions
@@ -1094,13 +1150,78 @@ the whole migration."* Six independent failures, any one of which is disqualifyi
 | 5 | **Many assets** | An unbounded loop over the asset set is a gas-limit denial of service. |
 | 6 | **A hostile third party** | see below — the decisive one |
 
-> **The sixth failure settles it, and it composes with a defect that is live in `main` today.**
-> Under per-vault custody the vault *is* an address, so **anyone** can send it an ERC-20 with no
-> function call at all; and OBSERVED at `15a44016`, `deposit()` / `depositFor()` still carry no state
-> gate (hazard H-22). An **unprivileged third party** can therefore place a reverting or blacklisting
-> token into a vault *between binding and execution* and **veto the escape of a vault they hold no
-> authority over**. An escape hatch that any stranger can weld shut is not an escape hatch. This is
-> why H-22 is not minor hygiene, and why it is not orthogonal to this lane.
+> **The sixth failure settles it.** Under per-vault custody the vault *is* an address, so **anyone**
+> can send it an ERC-20 with no function call at all. An **unprivileged third party** can place a
+> reverting or blacklisting token into a vault *between binding and execution* and **veto the escape
+> of a vault they hold no authority over**. An escape hatch that any stranger can weld shut is not an
+> escape hatch.
+
+> **THE H-22 LINKAGE IS WITHDRAWN — re-derived firsthand, and the previous revision's conclusion was
+> not merely overstated, it was backwards.** That revision continued: *"and OBSERVED at `15a44016`,
+> `deposit()`/`depositFor()` still carry no state gate (hazard H-22) … this is why H-22 is not minor
+> hygiene, and why it is not orthogonal to this lane"* — and §21 promoted H-22 to a **migration
+> prerequisite** on that basis. **Closing `deposit()`/`depositFor()` cannot prevent failure 6, so no
+> migration invariant may depend on it.** The full adjudication is §13.0a. The mechanism above stands
+> on its own and needs no help from H-22.
+
+### 13.0a H-22, re-derived — four questions that were being answered as one
+
+**The shape of the finding, OBSERVED firsthand at `15a44016`:**
+
+| Contract | explicit deposit path | gated? | unmediated ingress reachable? |
+|---|---|---|---|
+| `WalletWallVault` | `deposit()` / `depositFor()`, ETH | **NO gate** | **YES** — `selfdestruct` beneficiary, block-reward coinbase |
+| `StablecoinVaultSimulator` | `deposit(uint256)` / `depositFor(address,uint256)`, ERC-20 | `whenNotPaused` | **YES** — a direct `IERC20.transfer` to the contract |
+
+**Three further facts, each verified in this tree rather than assumed:**
+
+1. **`WalletWallVault` declares no `receive()` and no `fallback()`**, and holds **no ERC-20** — the
+   only occurrence of "ERC-20" in the file is a comment about address collision. It is ETH-only.
+2. **Neither contract's accounting reads its own holdings.** `address(this).balance` appears
+   **nowhere** in `contracts/`, and there is no `balanceOf(address(this))` in the simulator. Both
+   credit a per-owner `vault.balance` mapping. The simulator's own NatSpec says it outright:
+   *"Direct ERC-20 transfers to this contract are NOT credited."*
+3. **Forced ETH already reaches the live vault, and the repository already tests it.**
+   `contracts/mocks/ForceSend.sol` exists for exactly this, and `test/WalletWallVault.test.ts`
+   asserts that after a forced 5 ETH the raw balance grows while the accounted balance does not.
+
+**The four questions, answered separately:**
+
+| # | Question | Verdict |
+|---|---|---|
+| 1 | Is H-22 a **CURRENT-PRODUCT defect**? | **YES.** A paused vault refuses every payout and still accepts accounted deposits. Closing it is *effective* here, because in an ETH-only contract with no `receive`/`fallback` the explicit deposit path is the only ingress that **credits a balance**. |
+| 2 | Is H-22 a **PARITY defect**? | **YES.** Two sibling contracts answer the same question differently, and divergence without a recorded reason is a defect regardless of which answer is right. |
+| 3 | Is H-22 a **CONTAINMENT-POLICY choice**? | **YES**, and that is the honest frame for vNext. `I-NO-INGRESS-WITHOUT-EGRESS` is a *policy* — "a state that cannot pay out must not take in" — not a mechanism that can be made total. |
+| 4 | Is H-22 a **vNext ARCHITECTURE PREREQUISITE**? | **NO. Withdrawn.** |
+
+**Why 4 is NO, stated as the argument rather than as an assertion.** Gating every explicit deposit
+entry point cannot prevent any of:
+
+```text
+direct ERC-20 transfers to the vault address
+forced ETH (selfdestruct beneficiary; block-reward coinbase)
+airdrops and unsolicited ERC-721 / ERC-1155
+rebasing balances that grow with no transaction at all
+any asset that arrives AFTER the manifest was bound
+```
+
+None of these calls a WalletWall function, so none can be refused by a WalletWall modifier. The
+attacker in failure 6 does not need `depositFor` and would not use it: they use `transfer`. **A gate
+that the attack does not pass through cannot be a prerequisite for defeating the attack.** The
+parity target does not help either — the simulator *is* `whenNotPaused` on deposit and is *still*
+fully exposed to a direct `transfer`, which is why its own documentation says so.
+
+> **The rule this yields, and it is the one that actually protects migration:**
+> **migration MUST be safe under unsolicited assets even if every explicit deposit entry point is
+> closed.** That safety is delivered entirely by §13.1's per-entry manifest with independent egress
+> — change (1) of H-28's prevention. **Change (2) — "close H-22" — was listed as co-required and is
+> now recorded as NOT required for this invariant.** It is retained as product hygiene, at its own
+> priority, on the strength of questions 1–3.
+
+> **What this costs, said plainly rather than buried.** Under the previous framing, a closed ingress
+> was doing invisible work in the argument — it made "no hostile asset can arrive" feel achievable.
+> It never was. Removing the crutch means `I-MIGRATION-NONTRAP` must carry the whole load on its own,
+> which is why it is **strengthened** in §13.2 rather than merely restated.
 
 ### 13.1 The replacement — manifest-based, per-entry, claim/sweep, salvage-capable
 
@@ -1127,11 +1248,37 @@ the same bound destination forever.
 
 ### 13.2 The invariants this forces
 
-> **I-MIGRATION-NONTRAP (T0).** No accepted migration failure mode may convert a recoverable vault
-> into an asset state with no authorized exit.
+> **I-MIGRATION-NONTRAP (T0) — STRENGTHENED by §13.0a.** No accepted migration failure mode may
+> convert a recoverable vault into an asset state with no authorized exit. **And, now that the
+> closed-ingress crutch is withdrawn, the invariant must hold in the presence of assets the vault
+> never agreed to hold:**
+>
+> **(a) An UNSOLICITED or UNMANIFESTED asset may never veto the movement of an independently
+> recoverable manifested asset.** An asset that arrived with no function call, or after the manifest
+> was bound, is *inside the vault* but is **not a gate on anything**. Whatever it does — revert,
+> return false, rebase, blacklist the source — the manifested entries must still each reach the bound
+> destination on their own.
+>
+> **(b) Entry origin is never an authorization input.** "Manifested" and "unsolicited" classify how an
+> asset is *tracked*, never whether it may leave. An unsolicited asset is egressable on exactly the
+> same permissionless terms as a manifested one — the alternative would build the trap this invariant
+> forbids, one category later.
+>
+> **(c) NON-ENUMERABILITY, and the retirement condition this forbids.** *"The vault's balance is zero
+> across every possible token"* is **not a decidable predicate** — the set of ERC-20 contracts that
+> may name this address is unbounded and unenumerable on chain, and a rebasing token can reintroduce
+> a non-zero balance with no transaction at all. **Retirement must therefore never be conditioned on
+> global asset exhaustion**, and no state transition anywhere in this protocol may be. Retirement is
+> conditioned on **authority** (`I-TERMINALITY-IS-AUTHORITY`, §13.3), and egress stays open
+> afterwards (`I-EGRESS-RETRY-PERPETUAL`). A design that waits for the last token is a design that
+> waits forever, and the waiting is itself the trap.
+>
+> *(Discriminated in the model: mutants **M52** and **M53**, §17.)*
 
 > **I-EGRESS-INDEPENDENCE (T0).** No entry's outcome may affect the outcome, availability, or gas
-> feasibility of any other entry.
+> feasibility of any other entry. **This now covers the cross-class case explicitly**: an
+> unmanifested entry's failure is not merely isolated from other entries, it is not a precondition
+> of any other entry's success.
 
 > **I-EGRESS-RETRY-PERPETUAL (T0).** No state — `RETIRED` included — and no entry status, `ABANDONED`
 > included, may remove the permissionless ability to retry an unresolved entry toward the bound
@@ -1307,6 +1454,41 @@ The real chain has **five links**, and each is a separate fact an offline observ
    address, the rest from the pinned source. Masking without step 4 discards real information.
 5. Only now read storage. Everything from here is **OBSERVATION with a timestamp**, never proof.
 
+### 15.1a Three identities, kept separate — the narrowing of "there is no kernel code hash"
+
+> **The previous revision's claim was directionally right and categorically too strong**, and a
+> too-strong claim here is expensive: it invites a reader to conclude that code identity is simply
+> unavailable under C, which would justify skipping the chain. **The five-link chain of §15.1 is NOT
+> weakened by this narrowing. It is unchanged.** What changes is which link the word "hash" refers to.
+
+| Identity | What it is | Constant across deployments? |
+|---|---|---|
+| **SOURCE / BUILD IDENTITY** | implementation **source** + compiler version + settings tuple (`0.8.24`, cancun, optimizer on, runs 200, viaIR off) | **YES** — it names a build, not an account |
+| **DEPLOYMENT IDENTITY** | a specific implementation **address** + its actual runtime `extcodehash` | **NO** — one per deployment, and **authoritative for that deployment** |
+| **NORMALIZED REPRODUCIBILITY** | the compiled runtime with **declared immutable ranges handled explicitly** — masked *and* independently re-derived | **YES when the ranges are handled**; a hash alone is not this |
+
+**MEASURED, both sides of the distinction, in the §19.1 spike:**
+
+| | current monolith | clone target (§19.1) |
+|---|---|---|
+| declared immutable slots | **7** | **0** |
+| two deployments of identical source differ by | **51 bytes** | **0 bytes** |
+| artifact `deployedBytecode` hash `==` on-chain `extcodehash` | **NO** — 136 differing bytes | **YES** |
+| a single universal runtime hash exists | **NO** | **YES** — `0x6b25f582…` |
+
+> **Read the right lesson from the right-hand column.** It does **not** say "the problem is solved".
+> It says the problem is a **consequence of a design choice** — inheriting an address-caching
+> `EIP712` — and that removing that choice removes it, which is precisely what `I-PURE-CONSTRUCTOR`
+> requires and what §19.1 demonstrates is achievable. Under `I-PURE-CONSTRUCTOR` the three identities
+> above **collapse into agreement**, and normalized reproducibility becomes a plain hash comparison
+> with an empty immutable range. **Without it, all three still exist and all three are still
+> checkable** — via §15.1's mask-and-re-derive procedure — they simply stop being the same number.
+>
+> **Two failure modes remain live and both are discriminated (mutants M54, M55).** Treating a
+> **build** identity as if it were a **deployment** identity accepts a wrong implementation whenever
+> immutables are non-empty. Masking the immutable ranges **without step 4's independent
+> re-derivation** discards exactly the bytes an attacker would choose to control.
+
 ### 15.2 The Observatory publishes eight identities, never one badge
 
 > **I-IDENTITY-TYPE-SEPARATION (T1).** These are published as **separate typed fields**, each labelled
@@ -1383,10 +1565,28 @@ the seven `SecurityProfile` transition rules · `I-MIGRATION-NONTRAP` ·
 `I-EGRESS-INDEPENDENCE` · `I-EGRESS-RETRY-PERPETUAL` · `I-EGRESS-RECIPIENT-FIXED` ·
 `I-NO-FALSE-SETTLEMENT` · `I-MIGRATION-SUBORDINATE-TO-RECOVERY` ·
 `I-TERMINALITY-IS-AUTHORITY` · `I-CODE-IDENTITY-LINKAGE` · `I-CLONE-BYTES-EXACT` (shape only) ·
-`I-IMPL-NONVACUOUS` · `I-IDENTITY-TYPE-SEPARATION`.
+`I-IMPL-NONVACUOUS` · `I-IDENTITY-TYPE-SEPARATION` ·
+**added by the correction pass:** the §19.0 size **truth table** and the MIN-aggregation of
+`WALLETWALL_PORTABILITY_BUDGET` (M50, M51) · `I-MIGRATION-NONTRAP` clauses **(a)** and **(c)** —
+unsolicited non-veto and the forbidden zero-balance retirement condition (M52, M53) · the §15.1a
+**build vs deployment** identity split and the mask-**and**-re-derive rule (M54, M55) · **D8's**
+one-immutable-factory-per-generation rule (M56) · **D1's** rule that a bounded challenge does not
+move a compromise cut (M57).
+
+> **The size sub-model is a MODEL claim about a RULE, and that distinction is load-bearing.** It
+> discriminates *"initcode is judged against the initcode limit"* — a rule, expressible in
+> arithmetic over declared parameters. It discriminates **nothing** about any actual contract's
+> size, because a TypeScript model has no bytecode. `deployable(target, artifact)` proves the
+> comparison is right; only a compiler proves the operands are.
 
 **IMPLEMENTATION-LANE** — stated here, **unproven** here:
-`I-PURE-CONSTRUCTOR` (needs the artifact's `immutableReferences`) ·
+**every figure in §19.1 and §19.2** — the clone target's 23,249-byte runtime, its zero immutable
+slots, byte-identical redeployment, and every gas number including the break-even `N = 2`. These are
+**MEASURED EVIDENCE from a reverted spike**, not model results: they are reproducible from the
+procedure §19.1 states, and **no mutant asserts any of them** (§17). They carry the assurance of a
+measurement, which is real and is a different kind from a discriminator ·
+`I-PURE-CONSTRUCTOR` (needs the artifact's `immutableReferences` — **now DEMONSTRATED achievable**
+by the §19.1 spike on a transformed monolith, still **unproven for the vNext kernel**) ·
 `I-DEPLOY-INIT-ATOMIC` and `I-SALT-BINDS-PRINCIPAL` (need transaction ordering) ·
 `I-DIRECT-IMPL-CALL-INERT` (needs a deployed implementation) ·
 the `ecrecover` conditions of §4.3a — malleability rejection, `address(0)` handling, and a
@@ -1427,8 +1627,8 @@ invariant held".
 
 ## 17. Mutation matrix
 
-**Forty-nine mutants, each flipping exactly ONE guard so that a kill is attributable.
-All 49 are killed, and every one carries a vacuity guard requiring the mutated seam to have
+**Fifty-seven mutants, each flipping exactly ONE guard so that a kill is attributable.
+All 57 are killed, and every one carries a vacuity guard requiring the mutated seam to have
 actually been evaluated.** See `test/VaultVNextArchitectureModel.test.ts`.
 
 ### M1–M18 — the original matrix (unchanged)
@@ -1495,6 +1695,36 @@ actually been evaluated.** See `test/VaultVNextArchitectureModel.test.ts`.
 | M48 | The eight identities published as **one aggregate badge** | I-IDENTITY-TYPE-SEPARATION |
 | M49 | A clone delegating into a **codeless** account passes unchecked | I-IMPL-NONVACUOUS |
 
+### M50–M57 — the final architecture-correction pass
+
+| # | Mutant | Invariant that kills it | Correction it protects |
+|---|---|---|---|
+| M50 | A child's **initcode** is judged against the **runtime** limit | the §19.0 truth table | **A** — EIP-170 vs initcode |
+| M51 | The portability budget tracks the **largest** network limit, not the smallest | `WALLETWALL_PORTABILITY_BUDGET <= min(...)` | **B** — chain/fork dependence |
+| M52 | An **unsolicited** asset vetoes the egress of a **manifested** one | I-MIGRATION-NONTRAP (a) | **C** — H-22 demotion |
+| M53 | Retirement waits for a **zero balance across every token** | I-MIGRATION-NONTRAP (c) | **C** — non-enumerability |
+| M54 | One **universal source-level hash** is assumed valid at every address | the §15.1a three-identity split | code identity |
+| M55 | Immutable ranges are **masked but never re-derived** | §15.1 procedure, step 4 | code identity |
+| M56 | The factory's implementation target is **retargetable** after deployment | D8 — one immutable factory per generation | **D8** |
+| M57 | A **bounded challenge** is counted as an increase in the compromise cut | D1 — a delay is not a principal | **D1** |
+
+> **Four REGRESSION assertions accompany them, and they are deliberately not mutants**, because what
+> they pin is a truth table rather than a guard: `EIP-170 REGRESSION` (all four rules of §19.0,
+> including the case that must be a **non**-event), `PORTABILITY REGRESSION` (the budget aggregates by
+> MIN, and a policy failure is distinct from a protocol failure), `D1 REGRESSION`
+> (`guardian cut = k` with and without the challenge; the migration path is strictly dominated), and
+> `D8 REGRESSION` (a new generation is a deployment, and it leaves the previous factory untouched).
+> **A mutant proves a guard is load-bearing; these prove the RULE is the one intended.** The EIP-170
+> error would have survived every mutant in this matrix, because no guard was broken — a *comparison*
+> was wrong.
+
+> **What was deliberately NOT modelled, and why.** No mutant asserts the §19.1 measurements
+> (23,249 bytes, 0 immutable slots, 5,153,134 gas, break-even `N = 2`). A pure TypeScript model
+> cannot represent bytecode, gas or compiler output, and a mutant over numbers this document simply
+> *states* would discriminate the constant, not the architecture — the definition of decoration.
+> Those figures are **IMPLEMENTATION-LANE evidence**, carried by the reverted spike and reproducible
+> from the procedure in §19.1, and they are labelled as such in §16.1.
+
 ### Scenarios — exercised and adjudicated, deliberately NOT mutants
 
 A configuration is not a broken guard. These four are driven as scenarios because that is
@@ -1528,6 +1758,94 @@ maps to at least one invariant here, and every accepted residual is named in bot
 The budget follows the architecture. The architecture is not weakened to hit a byte target, and the
 mission's arbitrary 10–15 KB figure is struck.
 
+### 19.0 The size model — four quantities that must never be conflated
+
+> **A CATEGORY ERROR THIS DOCUMENT COMMITTED, corrected in place rather than silently edited.**
+> The previous revision wrote that `WalletWallVault`'s **creation** bytecode, at 24,582 bytes,
+> "**exceeds the 24,576 runtime ceiling on its own**", and called that "a fact B1 turns on".
+> **That comparison is not meaningful and the sentence is STRUCK.** EIP-170 constrains the
+> **deployed runtime code returned by initialisation**. It says nothing whatever about the size of
+> the initcode that returns it. Initcode is constrained by a *different* rule (EIP-3860) at a
+> *different* limit. Comparing a child's initcode against the runtime limit compares a quantity
+> against a bound that does not govern it.
+>
+> **What survives, and why B1's verdict is unchanged**, is stated in §3.3: B1 fails because the
+> **factory's own deployed runtime** is 24,866 bytes. That *is* a runtime figure measured against
+> the runtime limit, and solc emits its own diagnostic on it. B1 never needed the initcode
+> comparison, and it does not get it.
+>
+> **This repository's own gate was already right, and says so out loud.** MEASURED — the verbatim
+> output of `npm run validate:bytecode-size` on a clean non-instrumented build at `15a44016`:
+>
+> ```text
+> WARN  WalletWallVault
+>       runtime bytecode:  23239 bytes (94.6% of 24576)
+>       creation bytecode: 24582 bytes (not gated; informational only)
+>       headroom:          1337 bytes
+> ```
+>
+> **"not gated; informational only"** — the tool has always labelled the 24,582 figure as
+> non-binding, and `test/BytecodeSizeBudget.test.ts` asserts in terms that the gate "reads ONLY
+> `deployedBytecode` … proving creation bytecode can never leak into the pass/fail decision".
+> The tooling lane had the distinction; the prose lost it, and read the tool's *informational* line
+> as a *finding*.
+
+Four quantities. The rest of this document keeps them separate.
+
+| Symbol | What it constrains | Who sets it |
+|---|---|---|
+| `NETWORK_RUNTIME_LIMIT(chain, fork)` | the **deployed runtime code** an account may hold | the **network**, per fork |
+| `NETWORK_INITCODE_LIMIT(chain, fork)` | the **initcode** a creation transaction or `CREATE`/`CREATE2` may execute | the **network**, per fork |
+| `WALLETWALL_PORTABILITY_BUDGET` | the runtime size WalletWall will not exceed on **any** declared target | **WalletWall** — a policy, not a protocol fact |
+| `WALLETWALL_INTERNAL_RESERVE` | headroom WalletWall withholds from itself for future change | **WalletWall** |
+
+**The decision rules, written out so the error cannot recur:**
+
+```text
+runtime  > NETWORK_RUNTIME_LIMIT(chain, fork)    =>  deployment FAILS on that chain
+initcode > NETWORK_INITCODE_LIMIT(chain, fork)   =>  creation FAILS on that chain
+initcode > NETWORK_RUNTIME_LIMIT(chain, fork)    =>  NOTHING FOLLOWS. Not an EIP-170 event.
+runtime  > WALLETWALL_PORTABILITY_BUDGET         =>  a WalletWall POLICY failure, never a protocol one
+```
+
+**Values, each labelled with its provenance rather than presented as one undifferentiated fact:**
+
+| Quantity | Value | Status |
+|---|---|---|
+| `NETWORK_RUNTIME_LIMIT(ethereum, current)` | **24,576** | **ACTIVE.** EIP-170 |
+| `NETWORK_INITCODE_LIMIT(ethereum, current)` | **49,152** | **ACTIVE.** EIP-3860, `= 2 x 24,576` |
+| `WALLETWALL_PORTABILITY_BUDGET` | **24,576** | **INTERNAL CHOICE.** Retained at the Ethereum figure because it is the *smallest* limit across the declared targets, not because it is eternal |
+| `WALLETWALL_INTERNAL_RESERVE` | **2,600** | **INTERNAL CHOICE.** 2,000 future-change reserve + 600 stop-condition margin |
+
+> **The portability budget is a WalletWall constraint, and labelling it correctly changes what a
+> breach means.** A kernel over 24,576 is not "illegal"; it is **non-portable to the smallest
+> declared target**. That is a deployment-scope decision the owner may take, and it is why the
+> budget is named separately instead of being spelled `EIP-170` everywhere.
+
+> **A SCHEDULED CHANGE, recorded as an INPUT and explicitly NOT as authority.** For this pass the
+> owner supplied that Ethereum's planned **Glamsterdam** upgrade includes **EIP-7954**, currently
+> scheduled to raise the runtime limit `24,576 -> 65,536` and the initcode limit
+> `49,152 -> 131,072`. **This lane did not verify that independently, and does not design against
+> it.** It is recorded for exactly one purpose: it demonstrates that `NETWORK_RUNTIME_LIMIT` is
+> **parameterised by fork**, which is why the parameterisation above exists. Nothing in this
+> document may cite it as permission to exceed the portability budget, and **no figure anywhere in
+> this document assumes it**. If it lands, the correct response is an owner decision to widen
+> `WALLETWALL_PORTABILITY_BUDGET` for a **named subset of targets** — never a silent re-baselining
+> of a budget whose whole purpose is to hold across chains that did not change.
+
+**The architecture must remain valid under all three of these simultaneously**, and the
+parameterisation is what makes that checkable rather than hoped for:
+
+```text
+Ethereum raises its limit          => NETWORK_RUNTIME_LIMIT(ethereum, next) > 24,576
+another EVM chain keeps 24 KiB     => NETWORK_RUNTIME_LIMIT(thatChain, *)  = 24,576
+another target has a third limit   => NETWORK_RUNTIME_LIMIT(other, *)      = something else
+
+WALLETWALL_PORTABILITY_BUDGET  <=  min over declared targets of NETWORK_RUNTIME_LIMIT
+```
+
+*(Discriminated in the model: mutants **M50** and **M51**, §17.)*
+
 ### MEASURED — clean, non-instrumented compile at `15a44016` (current `main`, post-#180)
 
 `npm run compile && npm run validate:bytecode-size` (solc 0.8.24, cancun, optimizer on, runs 200,
@@ -1543,20 +1861,31 @@ was never used for any figure here.**
 > **Superseded figures, kept so the delta is auditable.** At the previous base `aaba4d2` these were
 > 23,231 / headroom 1,345 / creation 24,574, and 22,867 / headroom 1,709. PR #180's
 > `renounceOwnership` override added **+8 bytes** to each vault's runtime *and* creation code.
-> **Two consequences.** Headroom is now **1,337**, so §19's "at least one of the two competing fixes
-> cannot fit" is *more* true, not less. And `WalletWallVault`'s **creation** bytecode, at 24,582,
-> now **exceeds the 24,576 runtime ceiling on its own** — a fact B1 turns on (§3.3).
+> **The consequence that holds:** headroom is now **1,337**, so §19's "at least one of the two
+> competing fixes cannot fit" is *more* true, not less.
+>
+> **The second consequence claimed here is STRUCK (§19.0).** The previous revision added that
+> `WalletWallVault`'s creation bytecode, at 24,582, "now exceeds the 24,576 runtime ceiling on its
+> own — a fact B1 turns on". **It exceeds nothing.** 24,582 is initcode; the bound that governs
+> initcode is `NETWORK_INITCODE_LIMIT(ethereum, current) = 49,152`, against which it sits at
+> **50.0%** with **24,570 bytes** of headroom. `WalletWallVault` deploys today, which is the
+> observable proof that no limit was breached. B1's rejection rests on the **factory's own runtime**
+> and is untouched (§3.3).
 
 ### Deployment-model spikes — MEASURED, applied → measured → reverted → restoration proven
 
 Four disposable contracts were compiled and, for the two viable models, actually **executed** against
 the real `WalletWallVault` on an in-process network. Nothing survives in the tree.
 
-| Spike | Factory runtime | vs EIP-170 |
+| Spike | **Factory's OWN deployed runtime** | vs `NETWORK_RUNTIME_LIMIT(ethereum, current)` = 24,576 |
 |---|---|---|
-| **B1** — Solidity factory, `new WalletWallVault{salt}(…)` | **24,866** | **OVER by 290 — undeployable** |
+| **B1** — Solidity factory, `new WalletWallVault{salt}(…)` | **24,866** | **OVER by 290 — the FACTORY is undeployable** |
 | **B2** — generic CREATE2 deployer, initcode via calldata | **657** | headroom 23,919 |
 | **C / C2** — EIP-1167 factory: `cloneDeterministic`, CWIA variant, address predictor, atomic init | **1,760** | headroom 22,816 |
+
+> **Read the column header literally.** Every figure in it is the **factory's own deployed runtime
+> code**, compared against the limit that actually governs deployed runtime code. No child's
+> initcode appears in this table, and none may be compared against this limit (§19.0).
 
 solc emitted its own diagnostic on B1: *"Contract code size is 24866 bytes and exceeds 24576 bytes."*
 
@@ -1571,7 +1900,8 @@ solc emitted its own diagnostic on B1: *"Contract code size is 24866 bytes and e
 | *(one-time)* B2 factory deployment | 195,331 | — |
 | *(one-time)* C factory deployment | 434,867 | — |
 
-> **Read the delta, not the ratio.** The **81.3×** figure compares *deployment only*; a clone must
+> **Read the delta, not the ratio — and then read §19.2, which replaces the ratio entirely.** The
+> **81.3×** figure compares *deployment only*; a clone must
 > additionally run an `initialize()` performing the storage writes B2's constructor already performed,
 > and those writes cost the same on both sides. What does *not* cancel is the **delta of 5,117,413
 > gas**, of which **4,638,800 (90.7%)** is the protocol's flat 200 gas per runtime byte applied to
@@ -1605,31 +1935,159 @@ to `origin/main:contracts`. `scripts/` restored to `f63c29caaf2c6361dcacfb2c1754
 1. **The current kernel has exhausted its evolution budget**, and by 8 bytes more than before. Two
    agreed security fixes bid for the same **1,337** bytes: guardian hardening at 675–1,650 B and
    recovery proof-of-possession needing 464 B against 339 B available. **At least one provably cannot
-   fit.** The threat model is limited by EIP-170 rather than by engineering judgement.
-2. **B1 is not constructible — and that is a statement about B1, not about B.** The earlier
-   generalisation is withdrawn (§3.3).
+   fit.** The threat model is limited by `WALLETWALL_PORTABILITY_BUDGET` — a *runtime* bound
+   (§19.0) — rather than by engineering judgement.
+2. **B1's FACTORY is not deployable — a statement about B1's factory runtime, not about B, and not
+   about any child's initcode.** Both earlier generalisations are withdrawn (§3.3, §19.0).
 3. **B2 is constructible at 657 bytes and is rejected on measured cost**, not on feasibility.
 4. **C's deployment path costs 1,760 bytes** for a factory that deploys, initialises atomically,
    supports immutable arguments, and predicts addresses.
+5. **Clone-targeting does not relieve the kernel budget** (dissent D5), and §19.1 now measures the
+   size of that non-relief: **23,249 bytes**, ten *more* than the monolith. C buys a deployment
+   budget. It buys no bytes.
 
-> **A GATE, not a conclusion — and the symmetric version of the error this lane just corrected in
-> itself.** Every figure above measures the *current* vault. **C requires the kernel to be recompiled
-> as a clone target**: its constructor becomes an external `initialize()`, and the address-caching
-> `EIP712` must go (§3.1). That changes the kernel's **runtime** size, which is the quantity C is
-> constrained by and B2 is not. **That number has not been measured, and no vNext kernel has been
-> compiled.** If recompiling as a clone target pushes the kernel's runtime past the ceiling, then *C*
-> is the model that is not constructible and B2 wins by default. Measuring it is step 3 of §21 and it
-> gates everything downstream.
+### 19.1 The clone-target spike — MEASURED, and what it does NOT settle
 
-### Target budget for the vNext kernel
+The previous revision left this as an open gate: *"C requires the kernel to be recompiled as a clone
+target … that number has not been measured."* **It has now been measured.** A second disposable
+spike was applied → measured → reverted → restoration proven, exactly as §19's first spike was.
+
+**Mechanical scope of the transform**, stated completely because the result means nothing without it.
+`WalletWallVault.sol` was copied and changed in **four** ways and no others — every edit was applied
+by a script that asserts on its own anchor text, so a silently-missed edit fails loudly:
+
+1. `constructor(address) Ownable(msg.sender) EIP712(...)` → an external `initialize(address,address)`;
+   the retained constructor sets the replay guard so the **implementation itself is permanently
+   initialised** and can never be initialised by a caller.
+2. Inherited OpenZeppelin `EIP712` → a `CloneSafeEIP712` with **no `immutable` state**, rebuilding the
+   domain separator from `block.chainid` and `address(this)` on every call.
+3. A one-slot **initialization replay guard**.
+4. Per-clone **immutable arguments**, read back through `Clones.fetchCloneArgs(address(this))` — i.e.
+   out of the clone's own runtime code, never from storage and never from the factory.
+
+**MEASURED — sizes** (clean, non-instrumented compile; solc 0.8.24, cancun, optimizer 200):
+
+| Contract | Runtime | Initcode | Declared immutable slots |
+|---|---|---|---|
+| `WalletWallVault` (current monolith) | 23,239 | 24,582 | **7** |
+| **`WalletWallVaultCloneTarget`** | **23,249** | **23,509** | **0** |
+| Clone factory (immutable impl + CWIA + plain clone + predictor) | 2,036 | 2,250 | 2 |
+| Generic CREATE2 deployer (B2 construction) | 369 | 398 | 0 |
+
+| Quantity | Value |
+|---|---|
+| runtime vs `NETWORK_RUNTIME_LIMIT` 24,576 | **PASSES**, headroom **1,327** |
+| runtime vs `WALLETWALL_PORTABILITY_BUDGET` 24,576 | **PASSES**, headroom **1,327** |
+| runtime vs the **target kernel ceiling** 21,900 | **FAILS by 1,349** |
+| initcode vs `NETWORK_INITCODE_LIMIT` 49,152 | PASSES, headroom 25,643 |
+
+**MEASURED — gas.** Every repeated-path figure was taken **three times with distinct salts**, and
+runs 2 and 3 were asserted equal, so each number is a steady-state cost rather than a first-write
+artefact. *(This mattered: the first `cloneOnly` reading was 85,744 gas, of which ~17,100 was the
+harness's own cold `SSTORE`. The steady-state figure is 68,644.)*
+
+| Path | Gas |
+|---|---|
+| implementation deployment (**once per generation**) | **5,153,134** |
+| factory deployment (once per generation) | **495,374** |
+| C — clone deploy **only** | 68,644 |
+| C2 — clone deploy **only**, 20 bytes of args | 74,280 (**+5,636**) |
+| initializer, as its own transaction (incl. 21,000 intrinsic) | 93,498 |
+| **C — deploy + initialize atomically, per vault** | **138,372** |
+| **C2 — deploy + initialize atomically, per vault** | **144,374** (+4.3%) |
+| **B2 — full monolith per vault** (initcode 24,614 B as calldata) | **5,181,028** |
+| baseline — bare `CREATE` of the monolith, no factory | 5,168,967 |
+
+**MEASURED — behaviour, OBSERVED on chain rather than argued:**
+
+| Property | Result |
+|---|---|
+| implementation `initialize()` reverts (`I-DIRECT-IMPL-CALL-INERT`) | **YES** |
+| clone `initialize()` replay reverts | **YES** |
+| 20-byte immutable args read back byte-exact from clone code | **YES** |
+| clone runtime length / with args | **45** / **65** |
+| CREATE2 address predicted before deployment matches | **YES** |
+| EIP-712 domain is per-clone (different `verifyingContract`) | **YES** |
+| **two deployments of identical source are byte-identical** | **YES — 0 differing bytes** (monolith: **51**) |
+| **artifact `deployedBytecode` hash == on-chain `extcodehash`** | **YES** (monolith: **NO**, 136 differing bytes) |
+
+> **CLASSIFICATION: PROTOTYPE FEASIBILITY EVIDENCE. This does NOT settle Architecture C, and the
+> temptation to read it as a verdict is exactly the error §19.0 just corrected in the other
+> direction.** What was compiled is a **mechanically transformed current monolith**, not the vNext
+> kernel. The architecture requirement is and remains:
+>
+> ```text
+> the FINAL selected vNext kernel must fit every declared target deployment environment
+> ```
+>
+> Only a candidate implementing the **actually selected minimal-kernel semantics** can settle that.
+> The correct reading of the numbers is narrower and is stated as three separate findings:
+>
+> 1. **C is not EXCLUDED by size.** The transform lands at 23,249 — inside the portability budget
+>    with 1,327 bytes to spare. The previously-stated failure mode ("if the transform pushes the
+>    kernel past the ceiling, C is not constructible and B2 wins by default") **did not occur.**
+> 2. **C is not VINDICATED either.** 23,249 is **1,349 bytes over the target kernel ceiling**, so
+>    the transformed monolith has the same problem the monolith already had: it deploys, and it has
+>    no evolution budget. A clone target that cannot absorb the next security fix is not a solution
+>    to the byte problem; it is the byte problem in a different shape.
+> 3. **A forecast in this document was WRONG, and correcting it is worth more than the byte count.**
+>    §3.1 and §15.1 argued that removing the address-caching `EIP712` would restore hash stability
+>    *and* implied a leaner kernel. Hash stability was delivered **completely** (7 immutable slots →
+>    0; 51 differing bytes → 0). The size went the **other way**: **+10 bytes net**. Removing
+>    OpenZeppelin's `ShortStrings` and seven immutables very nearly cancelled against adding
+>    `initialize`, the replay guard and `fetchCloneArgs`. **Estimate nothing here; measure it.**
+
+`contracts/` tree hash after the second revert: **`236eadb6bb1253285e1f55b175a4c81e294cb96f`** —
+byte-identical to `origin/main:contracts`. `scripts/` unchanged at
+`f63c29caaf2c6361dcacfb2c1754a7bfb585f589`. `git status --porcelain` empty.
+**No spike source remains in the tree.**
+
+### 19.2 Deployment economics — TOTAL generation cost, not marginal cost
+
+> **The previous revision compared B2 and C on per-vault cost alone and reported an 81.3x ratio.
+> A marginal-cost comparison is not a cost comparison**: it silently assigns C's one-time
+> implementation deployment a cost of zero, which is exactly the term that decides whether C is
+> worth doing at all for a small fleet. Total generation economics, from the figures above:
+
+```text
+B2_TOTAL(N)  =  N x 5,181,028
+
+C2_TOTAL(N)  =  5,153,134  +  N x 144,374            (implementation + per-vault, per the brief)
+C2_TOTAL*(N) =  5,648,508  +  N x 144,374            (+ the 495,374 factory, which D8 makes mandatory)
+```
+
+**Measured break-even.** `N* = 5,153,134 / (5,181,028 − 144,374) = 5,153,134 / 5,036,654 =`
+**1.0231**, so the first integer fleet size at which C2 is cheaper in total is **N = 2**.
+Including the factory: `N* = 1.1215`, and the answer is still **N = 2**.
+
+| N | `B2_TOTAL` | `C2_TOTAL` | `C2_TOTAL*` (with factory) | B2 / C2 |
+|---|---|---|---|---|
+| **1** | **5,181,028** | 5,297,508 | 5,792,882 | **0.98x — B2 is CHEAPER** |
+| **2** | 10,362,056 | 5,441,882 | 5,937,256 | 1.90x |
+| **10** | 51,810,280 | 6,596,874 | 7,092,248 | **7.85x** |
+| **100** | 518,102,800 | 19,590,534 | 20,085,908 | **26.45x** |
+| **1,000** | 5,181,028,000 | 149,527,134 | 150,022,508 | **34.65x** |
+
+> **Three things this table says that the 81.3x figure did not.**
+> **(i)** At `N = 1` **B2 wins outright**. A single-vault deployment pays C2 an implementation it
+> never amortises. The 81.3x ratio was never available at any fleet size — it is a *limit*, and even
+> at `N = 1,000` the realised total-cost advantage is **34.65x**, not 81x.
+> **(ii)** Break-even at **N = 2** is nonetheless decisive: the crossover is immediate, and the
+> economic case for C does not depend on optimistic adoption forecasts.
+> **(iii)** **Gas is not a security argument, and it is not used as one here.** It is one
+> architecture input among several, and §3.3 already records the assurance cost C pays for it — a
+> five-link code-identity chain where B2 has two. If per-vault deployment cost ever ceases to be a
+> product constraint, that trade is re-openable, and B2 is a live alternative rather than a dead one.
+
 ### Target budget for the vNext kernel
 
 | Quantity | Value | Basis |
 |---|---|---|
-| EIP-170 ceiling | 24,576 | Protocol |
+| `WALLETWALL_PORTABILITY_BUDGET` | 24,576 | **WalletWall policy** — the minimum `NETWORK_RUNTIME_LIMIT` across declared targets (§19.0) |
 | Safety margin (redesign trigger) | **600** | Adopted from the sibling lane's stop condition |
 | Future-change reserve | **2,000** | ≥ the largest single unresolved fix (1,650 B) plus margin |
-| **Target kernel ceiling** | **≈ 21,900** | 24,576 − 600 − 2,000, rounded down |
+| `WALLETWALL_INTERNAL_RESERVE` | **2,600** | 600 + 2,000 |
+| **Target kernel ceiling** | **≈ 21,900** | `WALLETWALL_PORTABILITY_BUDGET − WALLETWALL_INTERNAL_RESERVE`, rounded down |
 
 > **Every forward byte figure is a LOWER BOUND.** ~29.8% of the current vault's runtime is
 > utility-Yul and unmapped buckets not emitted as `generatedSources`. Two further hard constraints
@@ -1642,10 +2100,15 @@ to `origin/main:contracts`. `scripts/` restored to `f63c29caaf2c6361dcacfb2c1754
 > a production-byte claim. If the kernel lands below **600 bytes** of headroom: redesign or
 > externalize. Do not weaken the gate.
 
-**UNRESOLVED, and stated rather than guessed: no candidate vNext kernel has been compiled.** Removing
-the tenant dimension deletes seven per-tenant mappings and their keying, but the logic remains, and
-the sibling lane's own experience is that independent estimates of the same change disagreed by 2.4×.
-**No number for the vNext kernel's size appears in this document, because none has been measured.**
+**UNRESOLVED, and stated rather than guessed: no candidate vNext KERNEL has been compiled.** §19.1
+compiled a **mechanically transformed current monolith** as a clone target, which is a different
+object: it still carries the multi-tenant `vaults[]` dimension the vNext kernel deletes. Removing the
+tenant dimension deletes seven per-tenant mappings and their keying, but the logic remains, and the
+sibling lane's own experience is that independent estimates of the same change disagreed by 2.4×.
+**No number for the vNext kernel's size appears in this document, because none has been measured** —
+23,249 is the transformed monolith's number and may not be substituted for it in either direction.
+It is an **upper bound on nothing**: the vNext kernel deletes tenancy but adds guardian commitments,
+the migration manifest, the crypto lattice and the safe-state machine.
 
 ---
 
@@ -1672,10 +2135,10 @@ Ordered by dependency; each step gated on the previous.
 | # | Step | Gate |
 |---|---|---|
 | **0** | ~~Fix `renounceOwnership()` in current `main`~~ — **DONE.** Shipped independently as **PR #180**, merged to `main` `15a44016`. Both vaults now override it to revert with `OwnershipRenunciationDisabled()`, declared `pure` so the ABI's `stateMutability` is tamper-evident. Measured cost **+8 bytes** each, exactly as forecast. | **Closed.** Hazard H-01 is CLOSED in current `main` and its history is preserved in the register rather than deleted. |
-| **0a** | **Close hazard H-22** — gate `deposit()`/`depositFor()` with the same state check the payout paths carry. Still **live** at `15a44016`. | Promoted from hygiene to a **prerequisite**: §13.0 shows an open ingress lets an unprivileged stranger veto a migration under any asset-set-binding design. |
+| **0a** | **Close hazard H-22** — gate `deposit()`/`depositFor()` with the same state check the payout paths carry. Still **live** at `15a44016`. | **DEMOTED back to product hygiene, and NOT a vNext prerequisite (§13.0a).** The previous revision promoted it on the ground that an open ingress lets a stranger veto a migration; that ground is withdrawn, because the stranger's asset never traverses a gated path. It remains a real current-product defect and a real parity defect, so it keeps a place in the sequence — but **nothing below it is gated on it**, and it may be done at any time, including after step 3. |
 | 1 | Owner decisions D1–D6 (§22) | Nothing below is safe to build first |
 | 2 | Freeze the kernel state layout and the safe-state lattice | Model conformance |
-| 3 | **Compile a skeleton kernel and MEASURE it** — **as a CLONE TARGET**: constructor converted to an external `initialize()`, and the address-caching `EIP712` removed (§3.1, §15.1) | Must clear the 21,900 target with ≥600 B headroom, **else redesign**. §19 flags this as the gate that can still overturn the deployment verdict in favour of B2. |
+| 3 | **Compile the MINIMAL KERNEL candidate and MEASURE it** — as a CLONE TARGET: constructor converted to an external `initialize()`, and the address-caching `EIP712` removed (§3.1, §15.1). **The mechanical transform of the current monolith is now measured (§19.1) — that step is done and it did NOT overturn the verdict. What remains is the kernel itself.** | Must clear the 21,900 target ceiling with ≥600 B headroom against `WALLETWALL_PORTABILITY_BUDGET`, **else redesign**. The transformed monolith lands at **23,249** — inside the 24,576 budget, **1,349 over** the target ceiling — so this gate is still open, but it is now open on the *kernel's* content rather than on whether clone-targeting is possible at all. |
 | 4 | Kernel: custody, execution, nonce, credential floor | T0 tests + fuzzing |
 | 5 | Kernel: guardians, recovery, safe-state lattice | T1 tests + mutants M2/M3/M4/M6/M7/M17 |
 | 6 | Kernel: migration | T1 + mutants M8/M9 |
@@ -1704,16 +2167,53 @@ any vNext verdict, and it is out of scope for *this* design-only lane.
 
 | # | Decision | Class | Status |
 |---|---|---|---|
-| **D1** | Guardian-majority trust | **ARCHITECTURE BLOCKER** | Technically adjudicated; **appetite call OPEN** |
+| **D1** | Guardian-majority trust | ~~ARCHITECTURE BLOCKER~~ | **LOCKED by owner decision.** Quorum of `k` is an accepted recovery trust root; **`guardian compromise cut = k`** |
 | **D2** | Migration authority | **ARCHITECTURE BLOCKER** | **RESOLVED** |
 | **D3** | ERC-4337 adoption | DEFERRED INTEROPERABILITY | Deferred; generation 1 does not adopt |
 | **D4** | Shared verifier coupling | **ARCHITECTURE BLOCKER** | **RESOLVED — forced by section 4.3a** |
 | **D5** | Containment authority | **ARCHITECTURE BLOCKER** | **Structurally RESOLVED**; constants OPEN |
 | **D6** | Policy-disable semantics | PRODUCT CHOICE | Deferrable — verified it cannot change kernel layout |
 | **D7** | PR #178's ECDSA PoP leg | DEFERRED | Blocked on D1 and the byte budget |
-| **D8** | **Factory generation-registration authority** | **ARCHITECTURE BLOCKER** | **NEW — was missing entirely** |
+| **D8** | Factory generation-registration authority | ~~ARCHITECTURE BLOCKER~~ | **LOCKED by owner decision.** One immutable factory per kernel generation; the principal is **deleted**, not governed |
 
-### D1 — is guardian-majority takeover accepted? (architecture blocker; appetite OPEN)
+### D1 — guardian trust model — **LOCKED by owner decision**
+
+> **DECIDED. The appetite question is CLOSED, and the adopted position is stated as an assumption
+> rather than as a mitigation:**
+>
+> ```text
+> A quorum of >= k valid current-generation guardians
+> IS AN ACCEPTED RECOVERY TRUST ROOT.
+>
+> guardian compromise cut = k
+> ```
+>
+> A malicious quorum is therefore an **explicitly accepted catastrophic compromise condition**, in
+> §2.2, asserted positively by the model rather than omitted from it.
+
+**The claim this decision forbids, permanently.** WalletWall may **not** claim it cryptographically
+protects against a malicious guardian quorum while simultaneously allowing that same quorum to
+recover credentials. Those are the same capability described twice. Any sentence of the form
+*"even a malicious majority of guardians cannot …"* is false by construction under this decision and
+must be struck wherever it appears.
+
+> **THE AUTHORITY-CUT RULE, which is where the previous revision overreached.** It wrote that the
+> bounded challenge *"is the only mechanism here that raises the cost of path B"*, and §24 then let
+> that stand next to the cut arithmetic in a way that reads as though the cut improves. **It does
+> not.**
+>
+> ```text
+> a challenge / delay increases:   TIME, VISIBILITY, operational attack COST
+> a challenge / delay does NOT increase:   the PRINCIPAL COMPROMISE CUT
+>
+> the cut rises ONLY IF another INDEPENDENT PRINCIPAL is MANDATORY on the path
+> ```
+>
+> The bounded challenge adds no principal — the challenger is the spending credential, a principal
+> already counted, and the challenge is finite by design (`I-VETO-BOUND`). An attacker who holds `k`
+> guardians and waits out `k_challenge x recoveryDelay` reaches assets having compromised **`k`
+> roots, not `k + 1`**. The challenge is a **cost and detection** control. It is worth having. It is
+> not a cut. *(Discriminated in the model: mutant **M57**, §17.)*
 
 **The technical part is settled and the answer is uncomfortable.** A second *independent factor*
 for recovery is not available, because the obvious candidate is self-defeating: a factor the
@@ -1735,12 +2235,11 @@ This is the **only** mechanism in the design that raises the cost of the **domin
 discriminated (mutant M27). `CREDENTIAL_CHALLENGE_LIMIT = 2` in the model is an illustrative
 value, not a recommendation.
 
-> **STILL OPEN, and it is the owner's to answer:** with the bounded challenge in place, is
-> guardian-majority takeover **accepted** as an unrecoverable condition? If **YES**, section 2.2
-> keeps it and section 8's closure must go on **asserting it positively** — an authority graph
-> that omits a real path is worse than none. If **NO**, the architecture needs a factor this
-> adjudication could not find, and the recovery model is not settled. **This is a risk-appetite
-> question, and no amount of further analysis converts it into a technical one.**
+> **ANSWERED — YES.** Guardian-majority takeover is **accepted** as an unrecoverable condition.
+> §2.2 keeps it, and §8's closure goes on **asserting it positively**: an authority graph that
+> omits a real path is worse than none. The alternative branch — "the architecture needs a factor
+> this adjudication could not find" — is closed, not deferred. **This was a risk-appetite question,
+> the owner has answered it, and D1 is no longer an architecture blocker.**
 
 ### D2 — migration authority (architecture blocker; RESOLVED)
 
@@ -1819,16 +2318,65 @@ restriction" (section 4.3). It is a behavioural question about a plane, not a ke
 > and that decides what every FUTURE vault *is*, immutably. That is a capability-**ADDING** power
 > inside a doctrine (section 4.3) that forbids them.
 
-**Recommendation: remove the principal rather than govern it.** Make the factory's implementation
-pointer `immutable` — **one factory per kernel generation**. Registering a generation then *is*
-deploying a new factory, and no principal can retarget an existing one. The measured spike already
-does this (`address public immutable implementation`).
+> **DECIDED. The recommendation is ADOPTED as a rule, and D8 is no longer an architecture blocker.**
+>
+> ```text
+> ONE IMMUTABLE FACTORY PER KERNEL GENERATION.
+> The factory's implementation target is immutable after deployment.
+> ```
 
-**Residual, stated:** whoever publishes a factory address still influences which generation users
-*find*. That is a **discovery** problem, not an authority one, and it is bounded by section 15's
-offline verification, which lets a user check what they got without trusting the publisher.
-**OPEN:** the owner must confirm the one-factory-per-generation constraint, because the
-alternative — a retargetable factory — puts a live admin back into the design.
+**Forbidden outright, by name, so that a future PR must argue against a written rule rather than
+into a gap:**
+
+```text
+setImplementation
+upgradeFactory
+registerNewKernel on an EXISTING generation
+beacon
+any mutable implementation registry that controls an existing generation's identity
+```
+
+**A new kernel generation is a four-step act, and none of the steps is a permission:**
+
+```text
+1. deploy K(n+1)                                    a new implementation
+2. deploy F(n+1), immutably bound to K(n+1)         a new factory
+3. publish assurance evidence for the pair          the five-link chain, section 15
+4. explicit per-user / per-vault migration          section 13, never automatic
+```
+
+**What the factory may and may not expose.** It may expose **deterministic deployment mechanics** —
+`CREATE2` salts, an address predictor, atomic deploy-and-initialize, immutable-argument append. It
+may **not** expose **discretionary generation-selection authority**: no call may cause a *different*
+implementation to be used than the one baked into the factory at its own deployment.
+
+**MEASURED — the rule is constructible, not merely stated.** The §19.1 spike factory implements it
+exactly (`address public immutable implementation`, plus an `immutable generation`), at **2,036 bytes**
+of runtime and **495,374 gas** to deploy — a per-generation cost, carried once, already included in
+§19.2's `C2_TOTAL*`.
+
+#### D8 authority graph, RECOMPUTED under the rule
+
+| Principal | Direct authority | Closure | Reaches assets? |
+|---|---|---|---|
+| **Factory operator, retargetable factory** *(the rejected alternative)* | `setImplementation` | defines the kernel of every future vault **at will, repeatedly** | No for deployed vaults — but a **standing live admin**, which §4.3's doctrine forbids |
+| **Factory deployer, immutable factory** *(ADOPTED)* | **NONE.** The capability is consumed at construction | **EMPTY** | **No** |
+| **Generation publisher** | Chooses which factory address is *advertised* | **DISCOVERY only** | **No** |
+
+> **The rule does not merely bound the principal — it deletes it.** Under a retargetable factory the
+> operator is a *standing* authority: it can act again tomorrow, and every future vault is hostage to
+> its continued good behaviour. Under an immutable factory the choice is made **once, at
+> construction, by the deployer, and is then unreachable by anyone including the deployer**. There is
+> no principal left to govern, no key to rotate, and no timelock to design. That is a strictly
+> stronger outcome than governing the same power well, and it is the same move §22 D4 makes with
+> immutable args and §3.1 makes by rejecting the beacon.
+
+**Residual, stated rather than dissolved:** whoever publishes a factory address still influences
+which generation users *find*. **That residual is now the ONLY thing left of D8**, it is a
+**discovery** problem rather than an authority one, and it is bounded by §15's offline verification,
+which lets a user check what they actually got without trusting the publisher. It is recorded as a
+**cohort** hazard (H-32), not a system one: a mis-advertised factory can mislead future vaults and
+can never touch an existing one. *(Discriminated in the model: mutant **M56**, §17.)*
 
 ## 23. Relationship to PR #177 and PR #178
 
@@ -1892,10 +2440,26 @@ binding, code-hash re-check and safe-state transition in the document.
 > **Say the uncomfortable part plainly: path B dominates.** For `n = 3`, two guardians reach assets
 > — the same count as compromising both credential factors, but with **no cryptography to break**.
 > **Adding a third credential factor does not raise the system's minimum cut.** Every elaborate
-> front-door control is bounded above by a social path with a smaller constant. This is why D1 is an
-> architecture blocker rather than a preference, and why the **bounded challenge** matters: it is the
-> only mechanism here that raises the cost of path B — the attacker must additionally outlast the
-> credential holder for `k_challenge x recoveryDelay` — without creating a new principal.
+> front-door control is bounded above by a social path with a smaller constant.
+
+> **REVISED under the D1 lock — and the revision is a subtraction, not an addition.** D1 is now
+> decided: **a quorum of `k` guardians IS an accepted trust root, and `guardian compromise cut = k`.**
+> Path B is therefore not a *finding* about the design; it is the design's **declared assumption**,
+> and §2.2 carries it as an accepted unrecoverable condition.
+>
+> **The bounded challenge is re-scored accordingly.** The previous revision's phrasing — that it
+> "raises the cost of path B … without creating a new principal" — is true and was being read as
+> though it improved the cut. **It does not, and the corrected rule is now explicit (§22 D1):**
+>
+> ```text
+> guardian path cut  =  k        with the bounded challenge
+> guardian path cut  =  k        without it
+> ```
+>
+> A delay buys **time, visibility and operational cost**. The cut moves **only** when an independent
+> principal becomes **mandatory** on the path, and the challenger — the spending credential — is a
+> principal the graph already counts. Every claim in this document that reads as though a delay
+> hardens the trust root is corrected to say what it actually does. *(Mutant **M57**.)*
 
 **The correlation caveat is not a footnote.** `k` counts *addresses*, and independence is an
 assumption about the world, not a property the chain enforces. Three guardians on one custodian is
@@ -1907,7 +2471,8 @@ credentials (§12); nothing analogous exists for guardians, and that gap is reco
 | Outcome | Cheapest path | Minimum cut | Note |
 |---|---|---|---|
 | **Credential replacement** | rotation, or recovery | `min(2, k)` | Identical to 24.1 minus the migration path |
-| **Guardian takeover** | `k` guardians | **k** | Accepted (§2.2), asserted positively by the model |
+| **Guardian takeover** | `k` guardians | **k** | **DECLARED TRUST ROOT (D1, LOCKED).** Accepted (§2.2), asserted positively by the model. Unchanged by any delay or challenge |
+| **Factory / generation takeover** | — | **unreachable** | **D8 LOCKED:** the factory's implementation is `immutable`, so no principal can retarget a generation. Previously this row did not exist |
 | **Migration takeover** | quorum **and** credential | **k + 1** | Strictly dominated; never the system minimum |
 | **Permanent recovery veto** | — | **unreachable** | Containment self-expires under a budget; the credential's challenge is bounded; H-01 closed by #180 |
 | **Silent crypto downgrade** | — | **unreachable** | Every weakening transition is refused by the partial order (§12); an *overt* deprecation needs the `PROFILE_CHANGE` authority |
@@ -1943,15 +2508,28 @@ because a remediation that quietly deletes its own errors destroys the evidence 
 | "Recovery performs **zero external calls**" | Unsatisfiable under EIP-1167 — every clone entry is a `DELEGATECALL` — and it forbids `ecrecover`, which §4.3a makes mandatory | §9: `I-RECOVERY-LOCALITY-V2`, plus `I-GUARDIAN-FAULT-ISOLATION` |
 | "Containment is wall-clock bounded and self-expiring" | Silent on **re-triggering**. Per-episode bounds do not compose into a bound on the authority | §6 and §22 D5: `I-CONTAINMENT-NO-EXTENSION` + `I-CONTAINMENT-BUDGET`, `B < W` |
 | "H-01 is **live** in current `main`" | Fixed by **PR #180**, merged. Re-verified firsthand here | Register: **CLOSED IN CURRENT MAIN**, discovery history preserved |
-| "The seven owner decisions are risk-appetite and product calls" | Four are **architecture blockers**; a fifth (D8) was missing entirely | §22: classified and adjudicated; two remain genuinely open |
+| "The seven owner decisions are risk-appetite and product calls" | Four are **architecture blockers**; a fifth (D8) was missing entirely | §22: classified and adjudicated. **D1 and D8 are now DECIDED**, so no architecture-blocking decision remains open |
 | "`WalletWallVault` declares **no** `immutable` variables" | True of its own source; misleading — it **inherits seven**, two address-derived | §3.1, and R3's conclusion survives unchanged |
 | FIPS 204 §3.6.2 cited for structural length rejection | **NOT VERIFIED in this lane.** Four independent reviewers flagged it and none checked it | §4.3: the requirement restated on engineering merit; the citation marked UNVERIFIED and made non-load-bearing |
+
+**Added by the final architecture-correction pass — six of this document's OWN claims:**
+
+| Withdrawn claim | Why it was wrong | Replacement |
+|---|---|---|
+| "`WalletWallVault`'s **creation** bytecode, at 24,582, exceeds the 24,576 runtime ceiling on its own — a fact B1 turns on" | **Category error.** EIP-170 governs deployed **runtime**; initcode is governed by EIP-3860 at **49,152**. The comparison was against a bound that does not apply, and B1 never needed it | §19.0: four separate quantities and an explicit truth table; B1's rejection restated on the **factory's own runtime** (24,866). Regression-asserted, and mutant **M50** |
+| "EIP-170 ceiling — 24,576 — **Protocol**" as a single eternal constant | Conflates a **network** limit with a **WalletWall policy**, and hides that the limit is per-chain and per-fork | §19.0: `NETWORK_RUNTIME_LIMIT(chain, fork)`, `NETWORK_INITCODE_LIMIT(chain, fork)`, `WALLETWALL_PORTABILITY_BUDGET`, `WALLETWALL_INTERNAL_RESERVE`. Mutant **M51** |
+| "H-22 … is now a **prerequisite**, not hygiene" and "it is the mechanism by which an unprivileged stranger can veto a migration" | **False.** The attacker uses `transfer` / `selfdestruct` / an airdrop / a rebase and traverses no gated path, so the gate cannot prevent the attack. OBSERVED: forced ETH already reaches the live vault and the repo already tests it | §13.0a: four questions answered separately — current-product **YES**, parity **YES**, containment policy **YES**, architecture prerequisite **NO**. `I-MIGRATION-NONTRAP` strengthened instead. Mutants **M52**, **M53** |
+| "There is **no single publishable 'audited kernel code hash'**" | Too broad. What may not exist is *one universal source-level hash valid at every address*; an authoritative hash for a **particular deployment** always exists | §15.1a: SOURCE/BUILD vs DEPLOYMENT vs NORMALIZED REPRODUCIBILITY, measured on both sides. The five-link chain is **unchanged**. Mutants **M54**, **M55** |
+| "That number has not been measured, and no vNext kernel has been compiled" *(as a standing gate on C)* | The gate was real and is now discharged — for the transformed monolith. **MEASURED** | §19.1: 23,249 B runtime, **0** immutable slots, byte-identical redeployment. Classified **PROTOTYPE FEASIBILITY EVIDENCE**, not a verdict |
+| "**81.3x**" as the B2-versus-C cost comparison | A **marginal**-cost ratio presented as a cost comparison; it assigns C's one-time implementation a cost of zero and is unavailable at any fleet size | §19.2: `B2_TOTAL(N)` vs `C2_TOTAL(N)`, measured break-even at **N = 2**, realised advantage **0.98x** at N=1 and **34.65x** at N=1,000 |
 
 ### 25.2 Claims that SURVIVED the attack unchanged
 
 Recorded because a remediation that overturns everything is not adjudicating, it is oscillating.
 
-- **Architecture C wins** — now for a measured reason (81.3x) rather than a mistaken one.
+- **Architecture C wins** — for a measured reason rather than a mistaken one, and the reason is now
+  stated as **total** generation economics (break-even **N = 2**, §19.2) rather than as the marginal
+  81.3x ratio. The verdict survived; its justification was corrected twice.
 - **Planes may only SUBTRACT authority.** Correct, and necessary. It was never *sufficient*.
 - **No generic privileged execution**, and interoperability does not force it.
 - **Recovery must remain available in every non-terminal state.**
@@ -1960,7 +2538,8 @@ Recorded because a remediation that overturns everything is not adjudicating, it
 - **Clocks are wall-clock and must not suspend** — now generalised to *every* clock (§6).
 - **Guardian-majority takeover is asserted positively** by the authority closure.
 - **The assurance plane's closure is empty.**
-- **No candidate vNext kernel has been compiled**, so no forward byte figure is claimed.
+- **No candidate vNext KERNEL has been compiled**, so no forward byte figure is claimed for it.
+  §19.1's 23,249 is a **transformed monolith**, and is never substituted for the kernel's size.
 
 ### 25.3 Proposals considered and REFUSED, with the reason
 
@@ -1980,10 +2559,51 @@ adopted is part of the record.
 ### 25.4 What still cannot be claimed
 
 1. **No conformance claim.** Nothing here establishes that any Solidity satisfies any invariant.
-2. **No vNext kernel exists or has been compiled.** Every forward byte figure would be a lower bound
-   even if one did.
-3. **The invariant set is not proven complete**, and this revision demonstrated that concretely by
-   finding an entire missing decision (D8) and an entire missing hazard class (§13.0 case 6).
-4. **The deployment verdict is CONDITIONAL** on measuring the kernel recompiled as a clone target.
-5. **Two architecture-blocking owner decisions remain open** — D1's appetite call and D8's
-   confirmation — and by this document's own stop conditions that means **NOT IMPLEMENTATION-READY**.
+2. **No vNext KERNEL exists or has been compiled.** §19.1 compiled a *transformed monolith*, which is
+   a different object; its 23,249 bytes may not be substituted for the kernel's size in either
+   direction.
+3. **The invariant set is not proven complete.** Two consecutive revisions demonstrated this
+   concretely: the previous one found an entire missing decision (D8) and an entire missing hazard
+   class (§13.0 case 6); **this one found that two of its own load-bearing claims were wrong** — an
+   initcode/runtime category error (§19.0) and an H-22 prerequisite that could not do the work
+   assigned to it (§13.0a).
+4. **The deployment verdict's CONDITION is discharged, and the verdict is still not a licence.**
+   §19.1 measured the clone target: C is **not excluded** by size. It is also **not vindicated** —
+   23,249 sits 1,349 bytes **over** the target kernel ceiling.
+5. **D1 and D8 are DECIDED, so they are no longer blockers.** What that buys is stated exactly:
+   the architecture's authority graph is now determined. It does **not** make the architecture
+   implementation-ready, and §25.5 lists what still stands.
+
+### 25.5 Blockers after this pass — re-adjudicated from scratch, not carried forward
+
+> **The previous list is NOT inherited.** Each entry below was re-derived against the corrected
+> document; entries that no longer hold are recorded as closed rather than quietly dropped.
+
+**CLOSED by this pass:**
+
+| Was | Why it is closed |
+|---|---|
+| Clone-target kernel runtime **UNMEASURED** | **MEASURED** (§19.1): 23,249 B, 0 immutable slots, inside the portability budget with 1,327 B headroom. The failure mode it guarded against did not occur |
+| **D1** appetite call OPEN | **DECIDED** (§22 D1): quorum of `k` is an accepted recovery trust root; `guardian compromise cut = k` |
+| **D8** confirmation OPEN | **DECIDED** (§22 D8): one immutable factory per kernel generation; the principal is deleted |
+| **H-22 is a prerequisite** | **WITHDRAWN** (§13.0a): the claim was false — the attack traverses no gated path. H-22 stays open as product hygiene and a parity defect, gating nothing |
+| *(newly found and closed in the same pass)* the EIP-170/initcode comparison | **CORRECTED** (§19.0), with a regression assertion so it cannot return |
+| *(newly found and closed in the same pass)* "no publishable kernel code hash" | **NARROWED** (§15.1a) into three identities, and measured on both sides |
+
+**STILL OPEN — and each is an engineering task, not an adjudication:**
+
+| # | Blocker | Why it still stands |
+|---|---|---|
+| **B-1** | **No minimal-kernel candidate has been compiled.** | The whole size question is now about the kernel's *content*. The transformed monolith is inside the portability budget and **1,349 B over the target ceiling**, so a kernel that merely inherits the monolith's bulk fails the stop condition even though it deploys |
+| **B-2** | **`I-PURE-CONSTRUCTOR` is demonstrated, not delivered.** | Shown achievable on a transformed monolith (7 immutable slots → 0). The vNext kernel must reproduce it, and only its own artifact can show that |
+| **B-3** | **D5's constants remain unset** — `CONTAINMENT_MAX_DURATION`, `B`, `W`, and who holds the emergency principal. | Structurally resolved; the numbers are operational and unchosen. **Not an architecture blocker** |
+| **B-4** | **H-31: guardian independence is unrepresentable.** | `k` counts addresses; `rootTag` exists for credentials and has no guardian analogue. An accepted, *declared* limit on §24's arithmetic — it bounds what the cut numbers mean |
+| **B-5** | **H-17: the attestation verifier still depends on a trusted off-chain attestor**, and `updateAttestor` is immediate rather than timelocked. | G5 is not met on that path. Untouched by this pass |
+| **B-6** | **Every IMPLEMENTATION-LANE and OBSERVATORY invariant in §16.1 carries no assurance from this PR.** | Structural and permanent for a design-only lane. Named so it is never mistaken for coverage |
+
+> **What "ready for a minimal-kernel prototype" means, and what it does not.** Every open item above
+> is a thing to *build and measure*, not a question to *settle* — that is the difference this pass
+> made. **B-1 and B-2 are discharged by compiling the first candidate**, which is precisely the
+> activity being authorised. **B-3 through B-6 are accepted residuals** carried into that activity
+> with their eyes open. **None of this authorises production implementation**, and §21's stop
+> condition — redesign below 600 bytes of headroom — is unchanged and binding.

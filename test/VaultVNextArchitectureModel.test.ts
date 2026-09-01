@@ -53,11 +53,14 @@ import {
   type Principal,
 } from "./helpers/vaultVNextModel.js";
 import {
+  AuthorityCutModel,
+  BIND_DELAY_DAYS,
   CORRELATED_PAIR,
   CodeIdentityChain,
   CryptoLattice,
   ECDSA,
   ECDSA_ONLY,
+  FactoryGenerationModel,
   HYBRID,
   HYBRID_87,
   HYBRID_OR_ECDSA,
@@ -66,10 +69,18 @@ import {
   MigrationMachine,
   PQ_ONLY_87,
   RECOVERY_DELAY_DAYS,
+  SizeModel,
+  ZERO_PAYLOAD,
   cloneCode,
+  expectedPayloadFor,
+  runtimeWithImmutables,
   type AssetKind,
+  type AttackPath,
   type Binding,
+  type BuildIdentity,
   type ChainView,
+  type CompiledArtifact,
+  type DeploymentTarget,
   type PublishedIdentity,
   type Registry,
   type RemediationMutation,
@@ -1269,7 +1280,7 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
     });
   });
 
-  describe("mutation matrix — remediation mutants M32..M49 (sub-models)", function () {
+  describe("mutation matrix — remediation mutants M32..M57 (sub-models)", function () {
     /** Same three-part contract: holds clean, fails mutated, guard exercised. */
     function assertSubModelKilled<T extends { exercised: Set<string> }>(
       mutation: RemediationMutation,
@@ -1524,6 +1535,164 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         (c) => c.implementationIsNonVacuous(codeless, IMPL) === false,
       );
     });
+
+    // -----------------------------------------------------------------------
+    // M50..M57 — the final architecture-correction pass
+    // -----------------------------------------------------------------------
+
+    /**
+     * Two DECLARED targets. Nothing here asserts anything about any real
+     * network: the point of the sub-model is that a limit is a per-target,
+     * per-fork PARAMETER, so the test supplies parameters. `RAISED_LIMIT_CHAIN`
+     * is a hypothetical used to prove the budget aggregates by MIN — it is not
+     * a claim that any chain has these values.
+     */
+    const NARROW_TARGET: DeploymentTarget = {
+      chain: "narrow-chain",
+      fork: "current",
+      runtimeLimit: 24_576,
+      initcodeLimit: 49_152,
+    };
+    const RAISED_LIMIT_CHAIN: DeploymentTarget = {
+      chain: "hypothetical-raised-limit-chain",
+      fork: "hypothetical",
+      runtimeLimit: 65_536,
+      initcodeLimit: 131_072,
+    };
+    /** The shape of the real monolith: runtime UNDER the limit, initcode OVER it. */
+    const MONOLITH: CompiledArtifact = { runtime: 23_239, initcode: 24_582 };
+
+    const sizeOf = (ms: readonly RemediationMutation[]) => new SizeModel(ms);
+
+    it("M50 — a child's INITCODE is judged against the RUNTIME limit", function () {
+      // 23,239 <= 24,576 so it deploys; 24,582 > 24,576 but that comparison is
+      // meaningless, and 24,582 <= 49,152 so nothing is breached. A model that
+      // conflates the two bounds refuses a contract that deploys in reality.
+      assertSubModelKilled(
+        "M50_INITCODE_JUDGED_AGAINST_RUNTIME_LIMIT",
+        "size/initcode-bound",
+        sizeOf,
+        (s) => s.deployable(NARROW_TARGET, MONOLITH).ok,
+      );
+    });
+
+    it("M51 — the portability budget tracks the LARGEST network limit, not the smallest", function () {
+      // A kernel of 30,000 fits the raised-limit chain and does NOT fit the
+      // narrow one. Portability is the MIN, so it must be refused.
+      const oversized: CompiledArtifact = { runtime: 30_000, initcode: 31_000 };
+      assertSubModelKilled(
+        "M51_PORTABILITY_BUDGET_TRACKS_THE_NETWORK",
+        "size/budget-aggregate",
+        sizeOf,
+        (s) => s.withinPortabilityBudget([NARROW_TARGET, RAISED_LIMIT_CHAIN], oversized).ok === false,
+      );
+    });
+
+    /** A vault holding one manifested token and one hostile UNSOLICITED token. */
+    const migrationWithUnsolicited = (ms: readonly RemediationMutation[]) => {
+      const m = new MigrationMachine(ms);
+      m.addAsset("USDC", "ERC20_WELL_BEHAVED", 1_000n);
+      m.receiveUnsolicited("HOSTILE", "ERC20_REVERTS", 1n);
+      m.bind(true, true, {
+        destinationVault: "0xDEST",
+        destinationVaultCodeHash: "0xHASH",
+        destinationGeneration: 2,
+        chainId: 1,
+        nonce: 1,
+        deadline: 100,
+        disposition: "FULL_BALANCE",
+      });
+      return m;
+    };
+
+    it("M52 — an unsolicited asset vetoes the egress of a manifested one", function () {
+      assertSubModelKilled(
+        "M52_UNSOLICITED_ASSET_VETOES_MANIFESTED_EGRESS",
+        "migration/unsolicited-nonveto",
+        migrationWithUnsolicited,
+        (m) => m.manifestedEntriesExitIndependently(),
+      );
+    });
+
+    it("M53 — retirement waits for a zero balance across every token", function () {
+      assertSubModelKilled(
+        "M53_RETIREMENT_REQUIRES_GLOBAL_ZERO_BALANCE",
+        "migration/retirement-condition",
+        (ms) => {
+          const m = migrationWithUnsolicited(ms);
+          // The manifested asset leaves; the hostile one cannot, and never will.
+          m.egress("USDC");
+          m.warp(BIND_DELAY_DAYS);
+          return m;
+        },
+        (m) => m.retire().ok,
+      );
+    });
+
+    const BUILD_WITH_IMMUTABLES: BuildIdentity = {
+      buildTuple: "solc-0.8.24|cancun|opt-200",
+      immutableRanges: [[18_627, 18_659]],
+      normalizedRuntime: runtimeWithImmutables("kernel-gen-1-runtime", ZERO_PAYLOAD),
+    };
+    const ADDR = "0xIMPL_A";
+
+    it("M54 — one universal source-level hash is assumed valid at every address", function () {
+      // A CORRECT deployment: its immutable payload is genuinely derived from
+      // its own address. A checker that compares straight to the build's
+      // normalized runtime REJECTS it — the failure the narrowing names.
+      const correct = {
+        address: ADDR,
+        runtime: runtimeWithImmutables("kernel-gen-1-runtime", expectedPayloadFor(ADDR)),
+      };
+      assertSubModelKilled(
+        "M54_BUILD_IDENTITY_USED_AS_DEPLOYMENT_IDENTITY",
+        "identity/build-vs-deployment",
+        chainOf,
+        (c) => c.matchesBuild(BUILD_WITH_IMMUTABLES, correct),
+      );
+    });
+
+    it("M55 — the immutable ranges are masked but never independently re-derived", function () {
+      // A FORGED deployment: correct everywhere except inside the masked range.
+      const forged = { address: ADDR, runtime: runtimeWithImmutables("kernel-gen-1-runtime", "derived(0xATTACKER)") };
+      assertSubModelKilled(
+        "M55_MASK_WITHOUT_REDERIVATION",
+        "identity/rederivation",
+        chainOf,
+        (c) => c.matchesBuild(BUILD_WITH_IMMUTABLES, forged) === false,
+      );
+    });
+
+    it("M56 — the factory's implementation target can be retargeted after deployment", function () {
+      assertSubModelKilled(
+        "M56_FACTORY_IMPLEMENTATION_RETARGETABLE",
+        "factory/retarget",
+        (ms) => new FactoryGenerationModel("0xKERNEL_GEN1", 1, ms),
+        (f) => f.implementationIsImmutable(),
+      );
+    });
+
+    it("M57 — a bounded challenge is counted as an increase in the compromise cut", function () {
+      // The SAME guardian path, with and without the bounded challenge. A delay
+      // buys time, visibility and cost; it adds no mandatory principal, so the
+      // two cuts must be equal.
+      const withChallenge: AttackPath = {
+        name: "guardian quorum, challengeable",
+        mandatoryIndependentPrincipals: 2,
+        boundedChallenges: 2,
+      };
+      const withoutChallenge: AttackPath = {
+        name: "guardian quorum, unchallengeable",
+        mandatoryIndependentPrincipals: 2,
+        boundedChallenges: 0,
+      };
+      assertSubModelKilled(
+        "M57_BOUNDED_CHALLENGE_COUNTED_AS_A_CUT",
+        "cuts/delay-is-not-a-principal",
+        (ms) => new AuthorityCutModel(ms),
+        (c) => c.cut(withChallenge) === c.cut(withoutChallenge),
+      );
+    });
   });
 
   // =========================================================================
@@ -1584,18 +1753,128 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         "M47_CLONE_MATCHED_BY_PREFIX",
         "M48_IDENTITIES_PUBLISHED_AS_ONE_AGGREGATE",
         "M49_IMPL_VACUITY_UNCHECKED",
+        "M50_INITCODE_JUDGED_AGAINST_RUNTIME_LIMIT",
+        "M51_PORTABILITY_BUDGET_TRACKS_THE_NETWORK",
+        "M52_UNSOLICITED_ASSET_VETOES_MANIFESTED_EGRESS",
+        "M53_RETIREMENT_REQUIRES_GLOBAL_ZERO_BALANCE",
+        "M54_BUILD_IDENTITY_USED_AS_DEPLOYMENT_IDENTITY",
+        "M55_MASK_WITHOUT_REDERIVATION",
+        "M56_FACTORY_IMPLEMENTATION_RETARGETABLE",
+        "M57_BOUNDED_CHALLENGE_COUNTED_AS_A_CUT",
       ];
       expect(new Set(declaredRemediation).size, "duplicate remediation identifier").to.equal(
         declaredRemediation.length,
       );
-      expect(declaredRemediation).to.have.length(18);
+      expect(declaredRemediation).to.have.length(26);
 
-      // The two unions are disjoint and contiguous M1..M49. A gap or an overlap
+      // The two unions are disjoint and contiguous M1..M57. A gap or an overlap
       // means a mutant was renumbered without its matrix entry following it.
       const numbers = [...declared, ...declaredRemediation]
         .map((id) => Number(/^M(\d+)_/.exec(id)?.[1]))
         .sort((a, b) => a - b);
-      expect(numbers).to.deep.equal(Array.from({ length: 49 }, (_, i) => i + 1));
+      expect(numbers).to.deep.equal(Array.from({ length: 57 }, (_, i) => i + 1));
+    });
+
+    /**
+     * A REGRESSION assertion, not a mutant. It pins the four-way truth table of
+     * architecture 19.0 directly, so the category error that revision corrected
+     * — comparing a child's INITCODE against the RUNTIME limit — fails this
+     * suite if it is ever reintroduced, including by a change that leaves every
+     * mutant alive.
+     */
+    it("EIP-170 REGRESSION — initcode is never judged against the runtime limit", function () {
+      const s = new SizeModel();
+      const target: DeploymentTarget = {
+        chain: "narrow-chain",
+        fork: "current",
+        runtimeLimit: 24_576,
+        initcodeLimit: 49_152,
+      };
+
+      // 1. runtime over the runtime limit => deployment FAILS.
+      expect(
+        s.deployable(target, { runtime: 24_866, initcode: 25_000 }).ok,
+        "runtime over the limit must fail",
+      ).to.equal(false);
+
+      // 2. initcode over the RUNTIME limit but under the INITCODE limit =>
+      //    NOTHING FOLLOWS. This is the exact shape of the real monolith
+      //    (runtime 23,239 / initcode 24,582) and it deploys today.
+      expect(
+        s.deployable(target, { runtime: 23_239, initcode: 24_582 }).ok,
+        "initcode above the RUNTIME limit is not a deployment failure",
+      ).to.equal(true);
+
+      // 3. initcode over the INITCODE limit => creation FAILS.
+      expect(
+        s.deployable(target, { runtime: 1_000, initcode: 49_153 }).ok,
+        "initcode over its own limit must fail",
+      ).to.equal(false);
+
+      // 4. The two bounds are DIFFERENT numbers. A model in which they coincide
+      //    cannot discriminate cases 2 and 3 at all.
+      expect(target.initcodeLimit).to.not.equal(target.runtimeLimit);
+      expect(target.initcodeLimit).to.equal(2 * target.runtimeLimit);
+    });
+
+    it("PORTABILITY REGRESSION — the budget is the MIN over declared targets", function () {
+      const s = new SizeModel();
+      const narrow: DeploymentTarget = { chain: "a", fork: "f", runtimeLimit: 24_576, initcodeLimit: 49_152 };
+      const wide: DeploymentTarget = { chain: "b", fork: "g", runtimeLimit: 65_536, initcodeLimit: 131_072 };
+
+      expect(s.portabilityBudget([narrow, wide])).to.equal(24_576);
+      expect(s.portabilityBudget([wide])).to.equal(65_536);
+
+      // The internal reserve is a WalletWall quantity subtracted from a
+      // WalletWall budget — never from a protocol limit.
+      expect(s.targetCeiling([narrow, wide], 2_600)).to.equal(21_976);
+
+      // A kernel one byte over the budget is a POLICY failure on the narrow
+      // target while remaining perfectly deployable on the wide one.
+      const oversized: CompiledArtifact = { runtime: 24_577, initcode: 25_000 };
+      expect(s.withinPortabilityBudget([narrow, wide], oversized).ok).to.equal(false);
+      expect(s.deployable(wide, oversized).ok).to.equal(true);
+      expect(s.deployable(narrow, oversized).ok).to.equal(false);
+    });
+
+    it("D1 REGRESSION — a bounded challenge never moves a compromise cut", function () {
+      const c = new AuthorityCutModel();
+      const guardianPath: AttackPath = {
+        name: "guardian quorum",
+        mandatoryIndependentPrincipals: 2,
+        boundedChallenges: 2,
+      };
+      const frontDoor: AttackPath = {
+        name: "both credential factors",
+        mandatoryIndependentPrincipals: 2,
+        boundedChallenges: 0,
+      };
+      const migration: AttackPath = {
+        name: "quorum AND credential",
+        mandatoryIndependentPrincipals: 3,
+        boundedChallenges: 0,
+      };
+
+      // guardian compromise cut = k, with or without the challenge
+      expect(c.cut(guardianPath)).to.equal(2);
+      expect(c.cut({ ...guardianPath, boundedChallenges: 0 })).to.equal(2);
+      // the migration path is strictly dominated and never the system minimum
+      expect(c.cut(migration)).to.be.greaterThan(c.cut(guardianPath));
+      expect(c.systemCut([guardianPath, frontDoor, migration])).to.equal(2);
+    });
+
+    it("D8 REGRESSION — a new generation is a deployment, never a permission", function () {
+      const gen1 = new FactoryGenerationModel("0xKERNEL_GEN1", 1);
+      expect(gen1.implementationIsImmutable()).to.equal(true);
+      expect(gen1.setImplementation("0xKERNEL_GEN2").ok).to.equal(false);
+      expect(gen1.implementationTarget()).to.equal("0xKERNEL_GEN1");
+
+      const gen2 = gen1.nextGeneration("0xKERNEL_GEN2");
+      expect(gen2.generation).to.equal(2);
+      expect(gen2.implementationTarget()).to.equal("0xKERNEL_GEN2");
+      // The new generation leaves the old factory completely untouched.
+      expect(gen1.implementationTarget()).to.equal("0xKERNEL_GEN1");
+      expect(gen1.generation).to.equal(1);
     });
 
     it("an unmutated model satisfies every mutation-matrix invariant simultaneously", function () {
