@@ -367,6 +367,68 @@ export const MUTATIONS: readonly Mutation[] = [
         "",
       ),
   },
+  {
+    id: "M17-floor-shape-mutable-again",
+    profiles: ["ecdsa-only-attacker", "recovery-composition", "recovery-maturation", "mixed-roots-attacker"],
+    expectedProperty: "G-FLOOR-NO-DOWNGRADE",
+    rationale:
+      "SD-1, REINTRODUCED. Deletes `I-FLOOR-SHAPE-IMMUTABLE` from `_requireNoDowngrade`, restoring the exact defect the remediation closed: `setVerifier` may move the two STRUCTURAL floor fields again, and `_requireIncomingPossession` measures an already-quorum-approved recovery against them LIVE. Since no guardian path writes `securityFloor`, one such move is an UNCOUNTED veto over guardian recovery — `challengesUsed` never advances. It is killed by the transition-level property, not by a downstream revert, so the kill is attributed to the clause that was removed.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireNoDowngrade",
+        `if (
+            current.requirePq &&
+            (next.pqPublicKeyLength != current.pqPublicKeyLength ||
+                next.pqSignatureLength != current.pqSignatureLength)
+        ) revert Downgrade();`,
+        "",
+      ),
+  },
+  {
+    id: "M18-floor-shape-freeze-is-one-sided",
+    profiles: ["ecdsa-only-attacker", "recovery-composition", "recovery-maturation", "mixed-roots-attacker"],
+    expectedProperty: "G-FLOOR-NO-DOWNGRADE",
+    rationale:
+      "SD-1, REINTRODUCED IN ONE DIRECTION ONLY — the subtler half, and the one a shrink-only campaign cannot see. `I-FLOOR-SHAPE-IMMUTABLE` is an INEQUALITY because `_requireIncomingPossession` compares the shape for EXACT EQUALITY: growing 1312 -> 2000 denies a quorum-approved recovery exactly as shrinking 1312 -> 1 does. Weakening the clause to `<` reads like a downgrade check and passes any campaign that only ever shrinks. It is killed only because `actions.ts` directs the poisoning attempt UPWARD wherever the clause is armed — a choice that costs no prng draw and moves no reachable state, since on the correct kernel a grow and a shrink revert `Downgrade` identically. That is the entire reason the direction is chosen rather than fixed.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireNoDowngrade",
+        `(next.pqPublicKeyLength != current.pqPublicKeyLength ||
+                next.pqSignatureLength != current.pqSignatureLength)`,
+        `(next.pqPublicKeyLength < current.pqPublicKeyLength ||
+                next.pqSignatureLength < current.pqSignatureLength)`,
+      ),
+  },
+];
+
+/**
+ * A CLAUSE THIS CATALOGUE DELIBERATELY DOES NOT COVER, named rather than hidden.
+ *
+ * The SD-1 remediation's companion clause — the `MAX_PQ_LENGTH` magnitude bound
+ * in `_requireSaneFloor` — has no mutant here, and the reason is a real trade
+ * rather than an oversight. Reaching that seam requires the generator to emit an
+ * oversized shape, which needs one more `prng` draw in `genParams`; every
+ * campaign is a pure function of (profile, seed, depth), so a single extra draw
+ * re-seeds every history and moves which seed catches which mutant. It was tried
+ * firsthand and it turned M9 and M11 into survivors. Buying one new seam at the
+ * price of two established ones is a worse catalogue, not a better one.
+ *
+ * The clause is instead covered deterministically, with both directions
+ * asserted, by the BOUNDARY case in test/Sd1RecoveryFloorBinding.test.ts: a
+ * shape above the bound is REFUSED, and a 49,856-byte SPHINCS+-256f signature
+ * shape is ACCEPTED. Deleting the clause turns that test red, which is the same
+ * evidence a mutant would have produced.
+ */
+export const UNMUTATED_CLAUSES: readonly { clause: string; coveredBy: string; whyNotMutated: string }[] = [
+  {
+    clause: "_requireSaneFloor's MAX_PQ_LENGTH magnitude bound",
+    coveredBy:
+      "test/Sd1RecoveryFloorBinding.test.ts — BOUNDARY (exactly MAX_PQ_LENGTH admitted, MAX_PQ_LENGTH + 1 refused, pinned against the contract's own getter) and GENESIS, both with positive controls",
+    whyNotMutated:
+      "Reaching the seam needs an extra prng draw in genParams, which re-seeds every campaign history; adding one was measured to turn M9-duplicate-guardian-principal and M11-plane-denial-ignored into survivors. The complete value space for floor lengths across the whole stateful model is {0, 1, 32, 65} plus the armed grow direction, so no campaign proposes an oversized shape and a mutant here would report SURVIVED for want of a generator rather than for want of a property.",
+  },
 ];
 
 /** Builds the mutated deployable kernel for one mutation. Throws if the edit did not apply. */

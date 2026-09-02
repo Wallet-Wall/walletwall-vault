@@ -240,6 +240,16 @@ export interface WorldOptions {
   /** Born under ECDSA_ONLY_FLOOR rather than HONEST_FLOOR. See that constant. */
   ecdsaOnlyFloor: boolean;
   /**
+   * With `ecdsaOnlyFloor`, commit a PQ key ANYWAY. `initialize` refuses only
+   * `requirePq` WITH a zero commitment, so a floor that mandates nothing while a
+   * key is ALREADY COMMITTED is a legal genesis nothing else in this repository
+   * could build. It is the only configuration in which the `requirePq`
+   * false -> true edge is reachable WITHOUT also being SD-3, which is what makes
+   * the SD-1 remediation's declared residual testable in isolation. Defaults to
+   * false, so no existing world changes shape.
+   */
+  commitPqKeyOnEcdsaOnlyFloor?: boolean;
+  /**
    * A MUTATED kernel implementation, compiled in memory, to deploy instead of
    * the real artifact. Used ONLY by the mutation-adequacy suite: it is what lets
    * the SAME campaign machinery be pointed at a deliberately weakened kernel, so
@@ -372,7 +382,7 @@ export async function deployWorld(partial: Partial<WorldOptions> = {}): Promise<
     // A vault with no mandatory PQ conjunct commits to no PQ key either; that is
     // the configuration initialize accepts (it refuses only requirePq WITH a
     // zero commitment), and it is what makes requirePq false -> true reachable.
-    pqKeyHash: opts.ecdsaOnlyFloor ? ethers.ZeroHash : pqHash(pqKey),
+    pqKeyHash: opts.ecdsaOnlyFloor && opts.commitPqKeyOnEcdsaOnlyFloor !== true ? ethers.ZeroHash : pqHash(pqKey),
     verifier: verifiers[opts.verifier],
     threshold: opts.threshold,
     guardians,
