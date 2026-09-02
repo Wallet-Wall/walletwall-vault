@@ -1,0 +1,609 @@
+{
+  "schema": "vnext-kernel-stateful-authority-evidence.v1",
+  "head": "a7840aad3e4df90826266bcbfe1976b8068d938d",
+  "tree": "1d8d7d58146ee72f95f4d85d65909ec40085ed9c",
+  "lane": {
+    "question": "Can individually-valid, individually-correctly-gated transitions be COMPOSED OVER TIME into an outcome below its declared authority cut?",
+    "distinctFrom": {
+      "vNext Kernel / Slither": "asks whether the IMPLEMENTATION PATTERNS look unsafe. Static. Says nothing about histories.",
+      "vNext Kernel / Authority Completeness": "asks whether every privileged external path is CLASSIFIED and routed to its intended authority mechanism. Per-function. Says nothing about sequences."
+    },
+    "reasoningModel": "STATE + ACTION + AUTHORITY -> NEXT STATE (not FUNCTION -> EXPECTED GATE)"
+  },
+  "framework": {
+    "engine": "purpose-built deterministic command-sequence generator (prototype/vnext-kernel/stateful/)",
+    "prng": "mulberry32, seeded; no Math.random, no clock, no environment input anywhere in the lane",
+    "whyNotFastCheck": "fast-check is not a repository dependency, and adding it would make an assurance-only lane a production package.json / package-lock.json change and drag it through the dependency-freeze and lockfile guard chain. The generator needed here is ~100 lines and shrinking is a list-level delta-debug over recorded actions.",
+    "shrinking": "truncate-at-first-violation, then single-action delta-debug from a restored EVM snapshot",
+    "determinism": "a campaign is a pure function of (profile, seed, depth); every failure replays from its seed"
+  },
+  "compiler": {
+    "solcVersion": "0.8.24",
+    "evmVersion": "cancun",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    }
+  },
+  "actorModel": {
+    "roots": [
+      "CRED_ECDSA",
+      "CRED_PQ",
+      "GUARDIAN_0",
+      "GUARDIAN_1",
+      "GUARDIAN_2"
+    ],
+    "principalRule": "A guardian principal is an ADDRESS. Roots are counted by DISTINCT ADDRESS, never by roster seat, so the oracle does not inherit the kernel's ascending-roster assumption.",
+    "secondFactor": "EcdsaBackedVerifier — an INDEPENDENT ECDSA keypair standing in for a PQ scheme. 'The attacker does not hold the second root' is therefore a real cryptographic fact in this harness, and says nothing about ML-DSA.",
+    "byzantineDegradation": "An ALWAYS-TRUE verifier authenticates nobody, so the model stops counting the PQ factor as a root while one is installed — the same statement AUTHORITY.md makes.",
+    "outOfScope": "H-31: several distinct addresses behind ONE off-chain custodian. This lane counts on-chain principals and invents no identity system to pretend otherwise."
+  },
+  "declaredCuts": {
+    "ASSET_MOVEMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "CREDENTIAL_REPLACEMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "VERIFIER_REPLACEMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "POLICY_CHANGE": {
+      "cut": 2,
+      "source": "DERIVED-FROM-SOURCE"
+    },
+    "GUARDIAN_TRANSITION": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "MIGRATION_BINDING": {
+      "cut": 3,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "CONTAINMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    }
+  },
+  "campaigns": {
+    "profiles": [
+      {
+        "name": "ecdsa-only-attacker",
+        "description": "One root compromised: the ECDSA credential. The published min(2,k) claim says every protected outcome must stay out of reach. Findings A1 and A2 were both reproduced under exactly this model.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "one-guardian-attacker",
+        "description": "One guardian principal compromised — below k = 2. Targets I-E (guardian cut) and the quorum-shape attacks.",
+        "actors": [
+          "honest",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "mixed-roots-attacker",
+        "description": "One guardian AND the ECDSA credential: two roots from different families. Below k for guardian outcomes and below k+1 for migration, so it tests whether roots that should not combine are being added together.",
+        "actors": [
+          "honest",
+          "attacker-guardian-plus-credential",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "recovery-composition",
+        "description": "Recovery lifecycle under an ECDSA-only adversary: stale, cancelled, superseded, finalised and replayed recoveries (R1-R7).",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "recovery-maturation",
+        "description": "The one profile that reliably drives a recovery THROUGH to execution. The broad mix generates roster changes and cancellations so often that a pending request almost never survives to maturity, so executeRecovery never succeeded across 145 campaigns and R2-R7 were never exercised end-to-end — a hole the anti-vacuity assertion caught. Here SET_GUARDIANS is off (its generation binding voids pending requests by design) and ADVANCE_TIME is biased into the executable window. Adversarial interference with recovery is still covered by recovery-composition, which keeps both.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "replay-composition",
+        "description": "Cross-operation, cross-state and cross-generation replay after arbitrary intervening transitions (PHASE 9).",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "containment-composition",
+        "description": "Stored-vs-effective safe state, containment budget across window boundaries, and migration/retire/egress interaction (PHASE 8).",
+        "actors": [
+          "honest",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "dead-verifier-escape",
+        "description": "The vault is BORN under a permanently reverting verifier. Spending is denied — a DECLARED, ACCEPTED liveness cut of 1 — and the property under test is that the guardian recovery ESCAPE remains usable after arbitrary prior transitions, not that spending works.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "verifierAtGenesis": "reverting",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "byzantine-verifier",
+        "description": "The vault is born under an ALWAYS-TRUE verifier: the PQ conjunct is structurally satisfied by anyone. HYBRID must then collapse to ECDSA security — never to unauthenticated authorization — so guardian-gated outcomes must still require k.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "alwaysTrue",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "ecdsa-only-floor",
+        "description": "A vault born with an ECDSA-ONLY floor — a configuration initialize permits. It is the ONLY way to reach a requirePq false -> true transition, because _requireNoDowngrade makes the reverse unrepresentable, and it is therefore the only profile that can exercise setVerifier's floor-satisfiability seam at all. Its credential is ONE root, so the declared cuts differ here and the model counts them accordingly.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": true
+      },
+      {
+        "name": "quorum-without-credential",
+        "description": "An adversary holding TWO guardian principals — AT the guardian cut — but NO credential. It is the only model that can distinguish migration's declared k+1 from k, and the only one that can reach a quorum-gated outcome without the credential leg. Guardian-shape attacks (duplicate rosters, repeated seats, sentinel indices) are weighted heavily here.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "policy-plane-denial",
+        "description": "Heavy on SET_POLICY and SPEND. The policy plane is declared SUBTRACTIVE — it may refuse and can never grant — so a vault carrying the DENYING plane must not move value. This is the only profile that reliably installs that plane and then attempts to spend through it.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "containment-duty-cycle",
+        "description": "ENTER_CONTAINMENT repeated with CONTAINMENT_MAX-sized time steps, so several containments land inside ONE budget window. I-CONTAINMENT-BUDGET says denial is a bounded duty cycle rather than a state; this profile is what puts that bound under pressure.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "recovery-vs-roster",
+        "description": "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to exercise R1's generation binding end-to-end.",
+        "actors": [
+          "honest",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "stranger-only",
+        "description": "An adversary holding NOTHING. Every permissionless path and every replay, with no authority at all.",
+        "actors": [
+          "honest",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      }
+    ],
+    "fixedSeeds": {
+      "shallow": [
+        1,
+        2,
+        3,
+        5,
+        8,
+        13,
+        21,
+        34
+      ],
+      "medium": [
+        101,
+        211,
+        331,
+        457
+      ],
+      "deep": [
+        90210,
+        133742
+      ]
+    },
+    "depths": {
+      "shallow": 25,
+      "medium": 65,
+      "deep": 150
+    },
+    "plannedCampaigns": 210,
+    "plannedTransitions": 11400,
+    "randomnessInRequiredCI": "NONE — the required check runs exactly the fixed seeds above"
+  },
+  "properties": {
+    "authorityCut": {
+      "id": "P-CUT/<OUTCOME>",
+      "statement": "If a protected OUTCOME occurred, the roots that AUTHORISED it must satisfy at least one declared authority path IN FULL. Outcomes are detected by STATE DIFF, never by which function was called.",
+      "attribution": "Permissionless finalisers (executeRecovery, egress, retire) and replays of calls that never consumed their authorization are charged to the roots that authorised the pre-committed decision, not to whoever paid the gas."
+    },
+    "recoveryEvidence": {
+      "id": "P-MODEL",
+      "statement": "R1/R2/R3 — the harness records for itself whether a recovery it created was CANCELLED, SUPERSEDED or CONSUMED, and whether the approving constituency has since changed. A success against such evidence is a violation regardless of what the kernel believes."
+    },
+    "incomingPossession": {
+      "id": "P-INCOMING-POSSESSION",
+      "statement": "R4 — a call that deliberately proved possession of the OUTGOING factors instead of the incoming ones must never succeed."
+    },
+    "planeSubtractive": {
+      "id": "P-PLANE-SUBTRACTIVE",
+      "statement": "A policy plane may only REFUSE. With the denying plane installed, no spend may move value."
+    },
+    "atomicity": {
+      "id": "P-ATOMICITY",
+      "statement": "A REVERTED action must leave kernel state byte-identical. Reverts are total."
+    },
+    "vacuity": {
+      "id": "P-VACUITY",
+      "statement": "Every campaign additionally runs fully-honest, fully-authorised actions on a restored fixture and requires them to succeed. Without this, a campaign in which everything reverted would pass every safety property while proving nothing."
+    },
+    "globalInvariants": [
+      {
+        "name": "G-SIGNER-NONZERO",
+        "source": "initialize reverts ZeroAddress on g.signer == 0; rotateCredential reverts ZeroAddress on c.newSigner == 0; initiateRecovery reverts ZeroAddress on proposedSigner == 0, and executeRecovery installs only that value"
+      },
+      {
+        "name": "G-THRESHOLD-SANE",
+        "source": "_requireCanonicalRoster reverts BadRoster when threshold == 0 or members.length < threshold"
+      },
+      {
+        "name": "G-COMMITMENT-NONZERO",
+        "source": "initialize and setGuardians both write rosterCommitment(...) of a canonical roster"
+      },
+      {
+        "name": "G-CRED-GENERATION-MONOTONIC",
+        "source": "credentialGeneration is written ONLY by _installCredential, as `credentialGeneration += 1`"
+      },
+      {
+        "name": "G-GUARDIAN-GENERATION-MONOTONIC",
+        "source": "guardianGeneration is written ONLY by initialize (= 1) and setGuardians, as `guardianGeneration += 1`"
+      },
+      {
+        "name": "G-NONCES-MONOTONIC",
+        "source": "_consume is the only writer of nonces[domain] and sets it to nonce + 1 after requiring equality"
+      },
+      {
+        "name": "G-FLOOR-SANE",
+        "source": "_requireSaneFloor: requirePq implies pqPublicKeyLength != 0 and pqSignatureLength != 0, on both initialize and setVerifier"
+      },
+      {
+        "name": "G-FLOOR-NO-DOWNGRADE",
+        "source": "_requireNoDowngrade: requirePq may not go true -> false, and pqParamLevel may not decrease"
+      },
+      {
+        "name": "G-VERIFIER-HAS-CODE",
+        "source": "initialize and setVerifier both reject verifier.code.length == 0; initiateRecovery rejects proposedVerifier.code.length == 0 at INITIATE time"
+      },
+      {
+        "name": "G-MIGRATION-BINDING-WELLFORMED",
+        "source": "bindMigration reverts DestinationMismatch when destination.vault == 0 or destination.codeHash == 0"
+      },
+      {
+        "name": "G-MIGRATION-BINDING-IMMUTABLE",
+        "source": "bindMigration reverts AlreadyBound once migration.bound; nothing anywhere clears it"
+      },
+      {
+        "name": "G-STATE-REACHABILITY",
+        "source": "safeState is assigned in exactly four places: initialize (NORMAL), enterContainment (CONTAINED), bindMigration (MIGRATION_ONLY), retire (RETIRED). RECOVERY_ONLY is declared by the enum and never assigned"
+      },
+      {
+        "name": "G-RETIRED-IS-TERMINAL",
+        "source": "retire sets RETIRED; no assignment anywhere moves safeState out of RETIRED"
+      },
+      {
+        "name": "G-EFFECTIVE-STATE-DERIVATION",
+        "source": "_effectiveState returns NORMAL when safeState == CONTAINED and block.timestamp >= containedUntil, and the stored value otherwise"
+      },
+      {
+        "name": "G-CONTAINMENT-BUDGET-BOUNDED",
+        "source": "enterContainment reverts ContainmentBudget unless containmentUsedInWindow + CONTAINMENT_MAX <= CONTAINMENT_BUDGET (3d and 6d)"
+      },
+      {
+        "name": "G-RECOVERY-ACTIVE-WELLFORMED",
+        "source": "initiateRecovery is the only writer of recovery.active = true, and it rejects a zero proposedSigner/proposedVerifier"
+      },
+      {
+        "name": "G-CHALLENGE-CAP",
+        "source": "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1"
+      },
+      {
+        "name": "G-PQ-COMMITMENT-SATISFIABLE",
+        "source": "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, because a mandatory PQ conjunct with no committed key is unsatisfiable and bricks spending"
+      }
+    ],
+    "rejectedInvariants": [
+      {
+        "name": "policyEngine always has code",
+        "whyRejected": "NOT SOURCE-BOUND. Unlike setVerifier, setPolicy performs NO code-length check, and address(0) is a legal value meaning 'no plane'. Asserting this would assert a rule the kernel does not have. The reachable configuration is exercised by an ACTION instead (setPolicy to a codeless non-zero address) and its consequence is reported, not assumed."
+      },
+      {
+        "name": "vault native balance never decreases without an Executed or Egressed event",
+        "whyRejected": "NOT SOURCE-BOUND as a global: gas is paid by callers, not the vault, but a plain `receive()` means the balance can also RISE from any account at any time. The asset property that IS source-bound is asserted per-action instead (P-ASSET-CUT), against the specific transfer the action attempted."
+      },
+      {
+        "name": "recovery fields are zeroed whenever active is false",
+        "whyRejected": "NOT SOURCE-BOUND. cancelRecovery sets active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour. Asserting the stronger form would fail on correct code."
+      },
+      {
+        "name": "guardianThreshold <= roster size",
+        "whyRejected": "NOT CHECKABLE FROM STORAGE. The kernel stores a COMMITMENT, never the roster, so the harness cannot read the roster size back on chain. _requireCanonicalRoster enforces it on every supplied preimage; there is no post-state to assert it against."
+      }
+    ]
+  },
+  "mutationAdequacy": {
+    "seeds": [
+      11,
+      29,
+      47,
+      83,
+      131,
+      197,
+      251,
+      307
+    ],
+    "depth": 90,
+    "mechanism": "Each mutation compiles a real, deliberately weakened kernel IN MEMORY with the pinned solc and deploys it, then points the SAME campaign machinery at it. Nothing is written to contracts/ or to the real artifacts.",
+    "vacuityGuard": "A mutant that never completes a successful transition is reported INCONCLUSIVE, never KILLED — a mutant that dies while doing nothing proves nothing.",
+    "mutations": [
+      {
+        "id": "M1-asset-path-one-root",
+        "expectedProperty": "P-CUT/ASSET_MOVEMENT",
+        "profiles": [
+          "ecdsa-only-attacker"
+        ],
+        "rationale": "HISTORICAL. Weakens execute() to the ECDSA conjunct ALONE, dropping the PQ leg. This is the shape of findings A1/A2: the published min(2,k) claim becomes false and the real asset cut becomes 1."
+      },
+      {
+        "id": "M2-rotate-floor-only",
+        "expectedProperty": "P-CUT/CREDENTIAL_REPLACEMENT",
+        "profiles": [
+          "ecdsa-only-attacker",
+          "recovery-maturation"
+        ],
+        "rationale": "HISTORICAL — finding A1 exactly. rotateCredential gated on the ECDSA conjunct alone lets a single compromised root rewrite BOTH factors and then spend."
+      },
+      {
+        "id": "M3-setverifier-floor-only",
+        "expectedProperty": "P-CUT/VERIFIER_REPLACEMENT",
+        "profiles": [
+          "ecdsa-only-attacker"
+        ],
+        "rationale": "HISTORICAL — finding A2 exactly. A unilateral ECDSA verifier swap lets one root install an always-true verifier with the recorded floor untouched, so no downgrade rule fires, and then spend with the PUBLIC PQ key."
+      },
+      {
+        "id": "M4-setpolicy-floor-only",
+        "expectedProperty": "P-CUT/POLICY_CHANGE",
+        "profiles": [
+          "ecdsa-only-attacker",
+          "containment-composition"
+        ],
+        "rationale": "The POLICY_CHANGE cut has NO standalone row in AUTHORITY.md section 3 and is derived from source. This mutation is what makes that derived cut testable rather than assumed."
+      },
+      {
+        "id": "M5-recovery-replay-enabled",
+        "expectedProperty": "P-MODEL",
+        "profiles": [
+          "recovery-composition"
+        ],
+        "rationale": "R3. Removing `delete recovery` leaves the consumed request active, so the SAME recovery evidence can complete a second credential replacement. The model catches it because IT recorded the episode as CONSUMED, whatever the kernel now believes."
+      },
+      {
+        "id": "M6-cancel-does-not-invalidate",
+        "expectedProperty": "P-MODEL",
+        "profiles": [
+          "recovery-maturation",
+          "recovery-composition"
+        ],
+        "rationale": "R2. cancelRecovery stops clearing `active`, so a CANCELLED recovery stays finalizable — a cancellation that cancels nothing. Detected by the model's own CANCELLED record, not by re-reading recovery.active."
+      },
+      {
+        "id": "M7-pop-checks-outgoing-key",
+        "expectedProperty": "P-CUT/CREDENTIAL_REPLACEMENT",
+        "profiles": [
+          "recovery-maturation",
+          "recovery-composition"
+        ],
+        "rationale": "R4 / HISTORICAL finding D inverted. Possession is proven against the OUTGOING signer instead of the incoming one, so an approved-but-unheld credential installs — and, worse, the outgoing holder satisfies the incoming proof."
+      },
+      {
+        "id": "M8-recovery-commitment-drops-verifier",
+        "expectedProperty": "P-CUT/VERIFIER_REPLACEMENT",
+        "profiles": [
+          "recovery-maturation",
+          "recovery-composition"
+        ],
+        "rationale": "R1. The recovery possession digest stops binding `proposedVerifier`, so a possession proof made for one proposed configuration is valid for a DIFFERENT one — a stale authorization silently retargeting."
+      },
+      {
+        "id": "M9-duplicate-guardian-principal",
+        "expectedProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "profiles": [
+          "quorum-without-credential",
+          "one-guardian-attacker"
+        ],
+        "rationale": "HISTORICAL — finding B exactly. Relaxing the roster from STRICTLY ascending to non-decreasing makes a roster like [A, A, B] representable again, so ONE principal signing at two seats reaches a threshold of two and the guardian cut collapses to 1."
+      },
+      {
+        "id": "M10-nonce-not-consumed",
+        "expectedProperty": "P-CUT/ASSET_MOVEMENT",
+        "profiles": [
+          "replay-composition"
+        ],
+        "rationale": "PHASE 9. `_consume` stops advancing the counter, so every signed action becomes infinitely replayable. A single captured spend signature drains the vault, and the replay campaign is what surfaces it."
+      },
+      {
+        "id": "M11-plane-denial-ignored",
+        "expectedProperty": "P-PLANE-SUBTRACTIVE",
+        "profiles": [
+          "policy-plane-denial"
+        ],
+        "rationale": "PHASE 10, finding F's neighbour. execute() consults the policy plane and then IGNORES its answer, so a plane that DENIES no longer denies and value moves without admission. This replaces an earlier mutation that moved a state write in front of the authority check: that one is UNSOUND, because a reverting authorization rolls the whole transaction back, so the 'persisted' effect never persists and no property could ever observe it. A mutation that cannot fail is not a test of anything. The gate-after-effect class needs a NON-REVERTING failure to be observable at all, and an ignored plane answer is exactly that."
+      },
+      {
+        "id": "M12-migration-quorum-only",
+        "expectedProperty": "P-CUT/MIGRATION_BINDING",
+        "profiles": [
+          "quorum-without-credential"
+        ],
+        "rationale": "I-F. bindMigration stops requiring the CREDENTIAL leg, dropping the declared k+1 cut to k. The `+1` in the published table is exactly this second principal, so this mutation is what proves the +1 is real and not decorative."
+      },
+      {
+        "id": "M13-quorum-counts-indices-not-principals",
+        "expectedProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "profiles": [
+          "quorum-without-credential",
+          "one-guardian-attacker"
+        ],
+        "rationale": "I-E. The ascending-INDEX check is removed from _requireQuorum, so one seat can be attested repeatedly. Distinct from M9: M9 attacks the committed ROSTER, this attacks the COUNTING. Both must be caught, because closing one never closed the other."
+      },
+      {
+        "id": "M14-containment-budget-removed",
+        "expectedProperty": "G-CONTAINMENT-BUDGET-BOUNDED",
+        "profiles": [
+          "containment-duty-cycle",
+          "containment-composition"
+        ],
+        "rationale": "PHASE 8. Removing the rolling budget check turns containment from a bounded DUTY CYCLE into an unbounded denial state, which is the permanent-recovery-veto shape AUTHORITY.md declares unreachable."
+      },
+      {
+        "id": "M15-effective-state-ignores-expiry",
+        "expectedProperty": "G-EFFECTIVE-STATE-DERIVATION",
+        "profiles": [
+          "containment-composition"
+        ],
+        "rationale": "PHASE 8. `_effectiveState` stops honouring wall-clock expiry, so the STORED value and the ENFORCED value diverge: observation and enforcement contradict each other, which is the stale-state hazard this getter exists to prevent."
+      },
+      {
+        "id": "M16-recovery-ignores-roster-generation",
+        "expectedProperty": "P-CUT/CREDENTIAL_REPLACEMENT",
+        "profiles": [
+          "recovery-vs-roster",
+          "recovery-composition"
+        ],
+        "rationale": "R1. executeRecovery stops rejecting a roster change since initiation, so a recovery approved by the OLD constituency executes against a NEW one — a stale authorization surviving the transition that should have killed it."
+      }
+    ],
+    "historicalRegressionClasses": [
+      "A1 — rotateCredential gated on the ECDSA conjunct alone (M2)",
+      "A2 — setVerifier gated on the ECDSA conjunct alone (M3)",
+      "B  — a roster in which one PRINCIPAL holds two seats (M9), and quorum counting by index rather than principal (M13)",
+      "D  — possession proven against the OUTGOING credential (M7)",
+      "F  — a policy plane whose refusal is not honoured (M11)"
+    ]
+  },
+  "sustainedDefects": [
+    {
+      "id": "SD-1-floor-length-poisoning",
+      "title": "setVerifier may change pqPublicKeyLength / pqSignatureLength freely, and _requireIncomingPossession reads that floor LIVE — so the credential principal holds an unbounded, uncounted veto over guardian recovery",
+      "classification": "LIVENESS_DENIAL",
+      "rootsRequired": "2 — both credential factors (ECDSA + PQ). Exactly the declared min(2,k) asset-control cut; no guardian is compromised.",
+      "contradicts": "AUTHORITY.md section 3, row 'Permanent recovery veto | unreachable | Enforced by: containment budgeted B < W; challenge capped; no pause exists'. None of the three named mechanisms bounds this channel: challengesUsed stays at 0 throughout.",
+      "rootCause": "VaultKernelPrototype.sol `_requireNoDowngrade` compares ONLY `requirePq` and `pqParamLevel`; the two LENGTH fields of SecurityFloor are unconstrained. `setVerifier` then writes the whole struct. `_requireIncomingPossession` reads `securityFloor` at EXECUTION time and rejects `c.newPqPop.length != floor.pqSignatureLength`, so an already-quorum-approved recovery can be invalidated after the fact. `executeRecovery` writes `pqVerifier` but never `securityFloor`, so no guardian quorum can repair the floor — only `setVerifier` writes it, and that is credential-gated.",
+      "notAnEscalationBecause": "It requires BOTH credential factors, which is already the declared cut for moving assets — an attacker holding them can spend directly and gains no new reach. What it falsifies is the separate 'permanent recovery veto is unreachable' row, i.e. the REMEDY is deniable, not that the attacker's authority grew.",
+      "minimalFixSketch": "Extend _requireNoDowngrade to refuse a change to pqPublicKeyLength/pqSignatureLength unless it accompanies a pqParamLevel INCREASE, or snapshot the floor shape into RecoveryRequest at initiation and evaluate incoming possession against the SNAPSHOT rather than the live floor. Either is a few bytes; neither is attempted here.",
+      "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
+    },
+    {
+      "id": "SD-2-containment-window-is-tumbling",
+      "title": "The containment budget window is TUMBLING, not rolling: containments straddling a rollover yield 9 CONTIGUOUS contained days against a declared 6-day budget",
+      "classification": "LIVENESS_DENIAL",
+      "rootsRequired": "k = 2 distinct guardian principals — exactly the declared guardian cut, and an accepted trust root (D1).",
+      "contradicts": "VaultKernelPrototype.sol's own comment 'Rolling containment budget window origin' and enterContainment's 'total contained time in any rolling window is capped at CONTAINMENT_BUDGET (I-CONTAINMENT-BUDGET), so denial is a duty cycle, not a state'. Measured worst case is 9.00 days inside a 30-day rolling window against a declared 6.00.",
+      "rootCause": "`if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` resets the origin to NOW rather than sliding it, so the accounting is per-epoch. Containments at W+27d and W+30d land in different epochs while being contiguous in wall-clock time. Each epoch's own accounting stays within budget; the ROLLING guarantee does not hold.",
+      "notAnEscalationBecause": "Containment withdraws SPENDING and never recovery — `_requireRecoveryOpen` admits CONTAINED — so the remedy path stays open throughout, and the overshoot is 1.5x a declared bound rather than an unbounded state. It reduces no cut: k guardians already hold this capability by design.",
+      "minimalFixSketch": "Either implement a true rolling window (a small ring of (start,duration) entries, as the production vault's rolling spend ledger already does), or restate I-CONTAINMENT-BUDGET as a TUMBLING-epoch bound and publish the real worst case as 2 x CONTAINMENT_MAX contiguous plus one epoch boundary. The second is a documentation change and costs zero bytes.",
+      "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
+    },
+    {
+      "id": "SD-3-setverifier-skips-genesis-satisfiability",
+      "title": "setVerifier may raise requirePq to true while pqPublicKeyHash is zero — the exact configuration initialize refuses as unsatisfiable — permanently bricking spending at cut 1 on an ECDSA-only vault",
+      "classification": "STATE_INCOHERENCE",
+      "rootsRequired": "1 — the sole ECDSA credential root of a vault born with an ECDSA-only floor, where `_authorise` IS the ECDSA conjunct alone. No guardian, no PQ material.",
+      "contradicts": "AUTHORITY.md section 3, row 'Credential stranding | unreachable | Enforced by: I-INCOMING-CREDENTIAL-POSSESSION on both rotation and recovery'. Stranding here is reached through the FLOOR, not through a credential install, so that mechanism never engages.",
+      "rootCause": "`initialize` contains `if (g.floor.requirePq && g.pqKeyHash == bytes32(0)) revert BadSignature();` with the comment 'A mandatory PQ conjunct with no committed key is unsatisfiable, and would brick spending from birth.' `setVerifier` writes the same struct through `_requireSaneFloor`, which checks only that the two LENGTHS are non-zero — it never re-checks the key commitment. `_authorise` then requires `keccak256(pqKey) == pqPublicKeyHash == 0`, which no preimage satisfies.",
+      "notAnEscalationBecause": "The single root that can do this is the same root that can already move every asset on an ECDSA-only vault, so it buys an attacker nothing; and a guardian quorum can still recover, because executeRecovery installs a fresh pqKeyHash of the guardians' choosing. It is an unguarded transition into a state genesis validation explicitly forbids, escapable at k.",
+      "minimalFixSketch": "Add the genesis check to the transition: in setVerifier, after _requireSaneFloor, `if (floor.requirePq && pqPublicKeyHash == bytes32(0)) revert BadSignature();`. One comparison. Not applied here.",
+      "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
+    }
+  ],
+  "solidityChanged": {
+    "bytes": 0,
+    "note": "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change.",
+    "kernelRuntimeBytes": null,
+    "kernelRuntimeHash": null
+  },
+  "whatThisDoesNotProve": [
+    "NOT EXHAUSTIVE. A bounded, seeded campaign over a bounded action vocabulary. Any sequence outside the generated distribution is untested.",
+    "NOT FORMAL VERIFICATION. Deterministic seeded campaigns are still testing. No state space is proven covered, and 'no violation found' is not 'no violation exists'.",
+    "NOT AN AUDIT. No third party has reviewed this code.",
+    "NO CRYPTOGRAPHIC CLAIM. The second factor is an independent ECDSA keypair standing in for a PQ scheme. Nothing here says anything about ML-DSA.",
+    "DOES NOT PROVE GUARDIAN INDEPENDENCE (H-31). Distinct on-chain addresses may still be one off-chain custodian.",
+    "DOES NOT SUPERSEDE the Slither lane or the authority-completeness lane. It answers a different question and is evidence for neither.",
+    "MUTATION SCORE IS ADEQUACY, NOT COVERAGE. Killing every mutation in a hand-written catalogue shows the properties detect THOSE classes; it does not enumerate the classes that are missing.",
+    "THE GENERATOR'S DISTRIBUTION IS TUNED. Several profiles deliberately bias timing and parameter choices so a seam is reachable at all. Biasing a distribution is not filtering a sequence, but it does mean coverage is uneven by construction."
+  ],
+  "knownGaps": [
+    "Cross-chain and cross-vault replay is covered only by the domain separator's construction, not by a second deployed chain.",
+    "A verifier that loses its code between recovery initiation and execution is not reachable in this harness: post-Cancun SELFDESTRUCT only clears code in the same transaction as creation, so G-VERIFIER-HAS-CODE is asserted rather than adversarially exercised.",
+    "The ERC-1271 guardian mocks (reverting, gas-burning, huge-returndata, wrong-answer) are exercised by the existing prototype suite, not by this campaign: the generated rosters are EOA seats only.",
+    "guardianThreshold is a free parameter a k-quorum may lower to 1, permanently moving the guardian cut. The campaign models this faithfully (cuts are computed from the LIVE threshold) and does not treat it as a defect, because AUTHORITY.md assigns setGuardians to the guardian quorum. It is recorded here as an OBSERVATION worth an explicit row in the published table."
+  ]
+}

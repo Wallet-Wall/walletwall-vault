@@ -1,0 +1,166 @@
+/**
+ * EXPERIMENTAL PROTOTYPE — MUTATION ADEQUACY FOR THE STATEFUL CAMPAIGN.
+ *
+ * PROVES THE PROPERTIES HAVE TEETH.
+ *
+ * "The campaign found nothing" is worth exactly nothing until you know the
+ * campaign COULD have found something. Each mutation below compiles a real,
+ * deliberately WEAKENED kernel in memory, deploys it, and points the SAME
+ * campaign machinery at it. A mutation the campaign does not kill is a hole in
+ * the properties and is reported as a SURVIVOR — never quietly dropped.
+ *
+ * Nine of the sixteen reintroduce a defect that was ACTUALLY REPRODUCED against
+ * an earlier revision of this kernel (AUTHORITY.md section 0: A1, A2, B, D, F),
+ * so the score is not synthetic. It is a regression proof that the historical
+ * bypass classes are still caught — now by COMPOSITION over arbitrary histories
+ * rather than by a hand-written attack aimed at the known spot.
+ *
+ * NOTHING HERE WRITES TO contracts/. Mutants exist only in memory, compiled by
+ * the same PINNED solc the reproducibility check uses, and the real
+ * prototype/vnext-kernel/artifacts/ and cache are never touched.
+ */
+import { expect } from "chai";
+import { MUTATIONS, buildMutant, type DeployableMutant } from "../stateful/mutants.js";
+import { runCampaign } from "../stateful/campaign.js";
+
+/** Seeds tried per mutation, in order, until one catches it. Fixed — never random. */
+const MUTATION_SEEDS = [11, 29, 47, 83, 131, 197, 251, 307] as const;
+const MUTATION_DEPTH = 90;
+
+export type MutationVerdict = "KILLED" | "SURVIVED" | "INCONCLUSIVE";
+
+export interface MutationOutcome {
+  id: string;
+  verdict: MutationVerdict;
+  expectedProperty: string;
+  killedBy: { profile: string; seed: number; property: string; step: number } | null;
+  minimalSequence: string[] | null;
+  successfulTransitions: number;
+  note: string;
+}
+
+const RESULTS: MutationOutcome[] = [];
+
+describe("vNext kernel — STATEFUL MUTATION ADEQUACY", function () {
+  this.timeout(1_800_000);
+
+  /**
+   * Every mutant is compiled UP FRONT, before any network interaction.
+   * `execFileSync` blocks the event loop, and doing that while an in-process EVM
+   * request is in flight is how a harness deadlocks; compiling first keeps the
+   * two phases disjoint.
+   */
+  const compiled = new Map<string, DeployableMutant>();
+  const compileFailures: { id: string; errors: string[] }[] = [];
+
+  before(function () {
+    for (const m of MUTATIONS) {
+      let built;
+      try {
+        built = buildMutant(m);
+      } catch (e) {
+        // replaceWithinFunction throws when the target snippet is not found
+        // EXACTLY once. That is deliberate: a mutation that silently became a
+        // no-op would score as a survivor and be read as a gap in the campaign,
+        // when the real fault is a stale snippet in this catalogue.
+        compileFailures.push({ id: m.id, errors: [e instanceof Error ? e.message : String(e)] });
+        continue;
+      }
+      if (built.ok) compiled.set(m.id, built.kernel);
+      else compileFailures.push({ id: m.id, errors: built.errors });
+    }
+  });
+
+  it("every mutation in the catalogue applies and compiles", function () {
+    expect(
+      compileFailures,
+      "a mutation failed to apply or compile — its snippet is stale against the current kernel, " +
+        "so it would have been scored as a SURVIVOR while testing nothing:\n" +
+        JSON.stringify(compileFailures, null, 2),
+    ).to.deep.equal([]);
+    expect(compiled.size).to.equal(MUTATIONS.length);
+  });
+
+  for (const m of MUTATIONS) {
+    it("kills " + m.id, async function () {
+      const kernel = compiled.get(m.id);
+      expect(kernel, "mutant " + m.id + " did not compile").to.not.equal(undefined);
+
+      let killedBy: MutationOutcome["killedBy"] = null;
+      let minimal: string[] | null = null;
+      let bestSuccessful = 0;
+
+      outer: for (const profile of m.profiles) {
+        for (const seed of MUTATION_SEEDS) {
+          const r = await runCampaign(profile, seed, MUTATION_DEPTH, "mut-" + m.id + "-" + profile + "-" + seed, {
+            implOverride: kernel,
+          });
+          bestSuccessful = Math.max(bestSuccessful, r.successfulTransitions);
+          const hit = r.violations.find((v) => v.property === m.expectedProperty) ?? r.violations[0];
+          if (hit) {
+            killedBy = { profile, seed, property: hit.property, step: hit.step };
+            minimal = (r.minimalSequence ?? []).map(
+              (a) => a.kind + " by " + a.actorName + " " + JSON.stringify(a.params),
+            );
+            break outer;
+          }
+        }
+      }
+
+      // THE VACUITY GUARD. A mutant that cannot even transact would "die" for
+      // the wrong reason, and a mutant that dies while doing nothing proves
+      // nothing about the properties.
+      const reachedKernel = bestSuccessful > 0;
+      const verdict: MutationVerdict = killedBy ? "KILLED" : reachedKernel ? "SURVIVED" : "INCONCLUSIVE";
+
+      RESULTS.push({
+        id: m.id,
+        verdict,
+        expectedProperty: m.expectedProperty,
+        killedBy,
+        minimalSequence: minimal,
+        successfulTransitions: bestSuccessful,
+        note: m.rationale,
+      });
+
+      expect(
+        reachedKernel,
+        "INCONCLUSIVE: mutant " + m.id + " never completed a single successful transition, so its " +
+          "campaign proves nothing — the mutant is broken, not caught.",
+      ).to.equal(true);
+
+      expect(
+        verdict,
+        "SURVIVOR: " + m.id + " was NOT detected by any stateful property across profiles [" +
+          m.profiles.join(", ") + "] and seeds [" + MUTATION_SEEDS.join(", ") + "].\n" +
+          "  expected property : " + m.expectedProperty + "\n" +
+          "  why it matters    : " + m.rationale + "\n" +
+          "  An unexplained survivor is a STOP condition: the campaign does not cover this class.",
+      ).to.equal("KILLED");
+    });
+  }
+
+  it("prints the mutation kill matrix", function () {
+    const rows = RESULTS.map(
+      (r) =>
+        "  " +
+        r.verdict.padEnd(13) +
+        r.id.padEnd(42) +
+        (r.killedBy
+          ? "by " + r.killedBy.property + " (" + r.killedBy.profile + " seed " + r.killedBy.seed + ", step " + r.killedBy.step + ")"
+          : "NOT CAUGHT"),
+    );
+    console.log(
+      "\n  STATEFUL MUTATION KILL MATRIX (" +
+        RESULTS.filter((r) => r.verdict === "KILLED").length +
+        "/" +
+        RESULTS.length +
+        " killed)\n" +
+        rows.join("\n"),
+    );
+    const survivors = RESULTS.filter((r) => r.verdict !== "KILLED");
+    expect(survivors, "unexplained survivors: " + JSON.stringify(survivors, null, 2)).to.deep.equal([]);
+  });
+});
+
+export { RESULTS as MUTATION_RESULTS };
