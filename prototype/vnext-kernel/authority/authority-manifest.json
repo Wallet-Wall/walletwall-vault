@@ -1,0 +1,142 @@
+{
+  "$schema": "vnext-kernel-authority-manifest.v1",
+  "description": "Declared authority model for every externally reachable state-changing function in VaultKernelPrototype and VaultKernelFactoryPrototype, keyed by \"<Contract>:<selector-or-kind>\" so overloads (none exist today, but a future one must not collide) are always distinguished. Every entry here is compared against check.ts's AST-DERIVED census and gate trace: an entry with no matching discovered function is stale and fails the check; a discovered state-changing function with no entry here is UNCLASSIFIED_EXTERNAL_STATE_CHANGE and fails the check. See authority/README.md for the outcome taxonomy and mechanism vocabulary this file uses.",
+  "entries": {
+    "VaultKernelPrototype:constructor": {
+      "signature": "constructor()",
+      "outcomes": ["GENESIS_AUTHORITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- runs exactly once, at the IMPLEMENTATION's own deployment, and is never externally callable again",
+      "orderingExceptionReason": null,
+      "justification": "Sets _initialized = true so the implementation permanently cannot be claimed/initialized and can never hold custody as a usable vault. AUTHORITY.md section 1: 'KERNEL ADMIN DOES NOT EXIST'."
+    },
+    "VaultKernelPrototype:09bbae89": {
+      "signature": "initialize(GenesisConfig)",
+      "outcomes": ["GENESIS_AUTHORITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
+      "orderingExceptionReason": null,
+      "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C)."
+    },
+    "VaultKernelPrototype:receive": {
+      "signature": "receive()",
+      "outcomes": [],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- unconditional value ingress, no logic at all",
+      "orderingExceptionReason": null,
+      "justification": "K-1 custody: unsolicited value is ACCEPTED, never refused (AUTHORITY.md section 5 intro; README.md K-1). Not a privileged outcome by itself."
+    },
+    "VaultKernelPrototype:6bc44090": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["ASSET_MOVEMENT"],
+      "expectedMechanisms": ["HYBRID"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": "The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore.",
+      "justification": "AUTHORITY.md section 3 'Unauthorized asset control': execute and rotateCredential/setVerifier/setPolicy all call _authorise -- the ECDSA conjunct AND the PQ conjunct."
+    },
+    "VaultKernelPrototype:b809c196": {
+      "signature": "rotateCredential(CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["CREDENTIAL_REPLACEMENT"],
+      "expectedMechanisms": ["HYBRID", "POSSESSION_PROOF"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 3 'Credential replacement': HYBRID-authorised (fix for finding A1) and additionally requires possession of both INCOMING factors (fix for finding D) so an approved-but-unheld credential can never strand the vault."
+    },
+    "VaultKernelPrototype:35fae3fb": {
+      "signature": "setVerifier(address,SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["VERIFIER_REPLACEMENT"],
+      "expectedMechanisms": ["HYBRID"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 3 'Silent crypto downgrade' / section 1: HYBRID-authorised (fix for finding A2). The escape from a genuinely dead verifier is guardian recovery (initiateRecovery/executeRecovery), never a unilateral ECDSA-only swap."
+    },
+    "VaultKernelPrototype:5b704804": {
+      "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["POLICY_CHANGE"],
+      "expectedMechanisms": ["HYBRID"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": null,
+      "justification": "Same HYBRID gate as credential/verifier governance, same reasoning ('a plane pointer is governance, and governance is not a one-factor act', VaultKernelPrototype.sol doc comment on setPolicy). NOTE (finding of this PR): AUTHORITY.md section 3's cut table does not list a 'Policy change' row alongside credential/verifier/guardian/migration -- this entry re-derives the cut from the implementation's actual gate rather than from an explicit table row; see the PR description's Findings section."
+    },
+    "VaultKernelPrototype:b19138b8": {
+      "signature": "setGuardians(uint64,address[],bool[],QuorumProof,uint256,uint64)",
+      "outcomes": ["GUARDIAN_CHANGE"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 3 'Guardian takeover': quorum evaluated against the IMMEDIATELY PRECEDING commitment (I-GUARDIAN-AUTHORITY-CLOSURE), counting DISTINCT principals via the canonical strictly-ascending roster (I-QUORUM-PRINCIPAL-DISTINCTNESS, fix for finding B)."
+    },
+    "VaultKernelPrototype:2eeceb79": {
+      "signature": "initiateRecovery(address,bytes32,address,QuorumProof,uint256,uint64)",
+      "outcomes": ["RECOVERY_START"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 1/2: guardian quorum is the ACCEPTED TRUST ROOT (D1) for recovery. Establishes the pending RecoveryRequest a later executeRecovery merely finishes."
+    },
+    "VaultKernelPrototype:1271666a": {
+      "signature": "cancelRecovery(uint256,uint64,bytes)",
+      "outcomes": ["RECOVERY_CANCEL"],
+      "expectedMechanisms": ["FLOOR_ONLY"],
+      "expectedCut": "1, DELIBERATELY BOUNDED to CHALLENGE_LIMIT=2 per recovery episode (I-VETO-BOUND) -- not a K-cut, a declared, tested exception",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 1: the credential 'may cancel a pending recovery a BOUNDED number of times per episode... unbounded would restore H-03, a permanent veto held by exactly the principal whose compromise recovery exists to remedy' (VaultKernelPrototype.sol doc comment on cancelRecovery). This is the ONE place a single ECDSA-only factor is an intentionally accepted gate outside _authorise -- it can only CANCEL, never grant anything."
+    },
+    "VaultKernelPrototype:bfd6b85c": {
+      "signature": "executeRecovery(CredentialChange)",
+      "outcomes": ["CREDENTIAL_REPLACEMENT", "VERIFIER_REPLACEMENT", "RECOVERY_COMPLETION"],
+      "expectedMechanisms": ["POSSESSION_PROOF"],
+      "expectedCut": "k (the guardian quorum authority was already established and bound at initiateRecovery; this step is PERMISSIONLESS once matured, gated only by possession proof of the incoming credential, per finding D)",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 1 'Anyone: executeRecovery (after maturity) -- No discretion: recipient and effect are pre-committed'. Also installs the recovery's replacement pqVerifier -- the guardian-quorum escape from a dead verifier (I-NO-CIRCULAR-ESCAPE, fix for finding A2's remedy)."
+    },
+    "VaultKernelPrototype:5aabecec": {
+      "signature": "enterContainment(QuorumProof,uint256,uint64)",
+      "outcomes": ["CONTAINMENT_OR_SAFE_STATE_CHANGE"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": "The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check.",
+      "justification": "AUTHORITY.md section 1/11: guardian quorum triggers emergency containment; budgeted B < W so denial is a bounded duty cycle, not a permanent state."
+    },
+    "VaultKernelPrototype:bb0cea8a": {
+      "signature": "bindMigration(Destination,QuorumProof,uint256,uint64,bytes)",
+      "outcomes": ["MIGRATION"],
+      "expectedMechanisms": ["QUORUM", "FLOOR_ONLY"],
+      "expectedCut": "k+1",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 3 'Migration takeover': BOTH principals required -- guardian quorum AND credential (architecture section 22 D2). Unchanged by the round-2 remediation; the only function requiring two DISTINCT mechanisms simultaneously rather than either-or."
+    },
+    "VaultKernelPrototype:a4874d77": {
+      "signature": "retire()",
+      "outcomes": ["CONTAINMENT_OR_SAFE_STATE_CHANGE"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- PERMISSIONLESS, no discretion; the authority decision (k+1) was already made at bindMigration, retire only waits out BIND_DELAY",
+      "orderingExceptionReason": null,
+      "justification": "AUTHORITY.md section 1: 'Anyone: retire (after delay) -- No discretion'. I-TERMINALITY-IS-AUTHORITY: terminal by authority, never by activity; egress stays open forever regardless."
+    },
+    "VaultKernelPrototype:3eabc4e4": {
+      "signature": "egress(address)",
+      "outcomes": ["ASSET_MOVEMENT"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- PERMISSIONLESS, no discretion; the authority decision (k+1) was already made at bindMigration, and the destination is re-validated by codehash at execution rather than re-authorised",
+      "orderingExceptionReason": "egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization.",
+      "justification": "AUTHORITY.md section 1: 'Anyone: egress -- No discretion: recipient and effect are pre-committed'. Destination re-checked by codehash AT EXECUTION (DestinationMismatch), not merely at binding time."
+    },
+    "VaultKernelFactoryPrototype:constructor": {
+      "signature": "constructor(address,uint64)",
+      "outcomes": ["GENESIS_AUTHORITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- runs once at factory deployment; the implementation target and generation become immutable and unreachable by every principal thereafter, including the deployer",
+      "orderingExceptionReason": null,
+      "justification": "VaultKernelFactoryPrototype.sol header: 'the choice is consumed at this factory's own construction and is thereafter unreachable by EVERY principal... this factory holds NO authority over any clone it has already produced'."
+    },
+    "VaultKernelFactoryPrototype:f1cfaa80": {
+      "signature": "deployVault(bytes32,GenesisConfig)",
+      "outcomes": ["COUNTERFACTUAL_IDENTITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- PERMISSIONLESS; the CREATE2 salt binds the COMPLETE genesis authority (signer, PQ key hash, verifier, threshold, guardians, floor), so a caller can only ever create THEIR OWN vault at an address bound to THEIR OWN configuration -- a different authority yields a different address, and identical authority submitted twice yields the same harmless outcome",
+      "orderingExceptionReason": null,
+      "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING, the fix for finding C (VaultKernelFactoryPrototype.sol doc comment on deployVault). 'Atomicity and identity binding solve DIFFERENT problems' -- this entry is about identity binding; atomicity is initialize's replay guard."
+    }
+  }
+}
