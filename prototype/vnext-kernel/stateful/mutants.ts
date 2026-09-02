@@ -1,0 +1,376 @@
+/**
+ * EXPERIMENTAL PROTOTYPE ASSURANCE TOOLING — NOT PRODUCTION.
+ *
+ * MUTATION ADEQUACY — attacking the fuzzer itself.
+ *
+ * A campaign that finds nothing is worthless until you know it COULD have found
+ * something. Every mutation below is a deliberately WEAKENED kernel, compiled in
+ * memory and deployed, and the SAME campaign machinery is then pointed at it.
+ * A mutation the campaign fails to kill is a hole in the properties, reported as
+ * a SURVIVOR rather than quietly dropped.
+ *
+ * Nine of these reintroduce a defect that was ACTUALLY REPRODUCED against an
+ * earlier revision of this kernel (AUTHORITY.md section 0, findings A1, A2, B,
+ * D and F), so this is not a synthetic mutation score: it is a regression proof
+ * that the historical bypass classes are still detected — now by COMPOSITION
+ * over arbitrary histories rather than by a hand-written attack.
+ *
+ * THE VACUITY GUARD, WHICH IS NOT OPTIONAL
+ * ----------------------------------------
+ * A mutant that does not compile, does not deploy, or bricks the vault outright
+ * would "die" for the wrong reason and would score as a kill while proving
+ * nothing. Every mutant is therefore additionally required to REACH a working
+ * kernel: it must deploy, and its campaign must complete at least one
+ * SUCCESSFUL transition. A mutant that cannot clear that bar is reported as
+ * INCONCLUSIVE, never as KILLED.
+ *
+ * Compilation drives the same PINNED solc binary reproduce.ts uses, via
+ * --standard-json, and NEVER writes to prototype/vnext-kernel/contracts/ or to
+ * its artifacts/cache. The mechanism mirrors authority/mutation-harness.ts; it
+ * asks for BYTECODE rather than only an AST, because this lane must RUN the
+ * mutant, not merely parse it.
+ */
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { replaceWithinFunction } from "../authority/mutation-harness.js";
+
+const SOLC_VERSION = "0.8.24";
+const ROOT = path.join("prototype", "vnext-kernel");
+const SRC = path.join(ROOT, "contracts");
+const KERNEL_FILES = [
+  "VaultKernelPrototype.sol",
+  "VaultKernelFactoryPrototype.sol",
+  "PrototypeMocks.sol",
+  "interfaces/IKernelPlanes.sol",
+];
+
+// Duplicated from reproduce.ts / mutation-harness.ts deliberately, for the same
+// reason those two duplicate each other: this module must stay runnable
+// standalone without importing a CLI-oriented main().
+function compilerCachePlatform(): string {
+  switch (os.platform()) {
+    case "win32":
+      return "windows-amd64";
+    case "linux":
+      return os.arch() === "arm64" ? "linux-arm64" : "linux-amd64";
+    case "darwin":
+      return "macosx-amd64";
+    default:
+      throw new Error("no native solc cache layout known for platform " + os.platform() + "/" + os.arch());
+  }
+}
+
+function hardhatCacheRoot(): string {
+  const home = os.homedir();
+  switch (os.platform()) {
+    case "win32":
+      return path.join(process.env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "hardhat-nodejs", "Cache");
+    case "darwin":
+      return path.join(home, "Library", "Caches", "hardhat-nodejs");
+    case "linux":
+      return path.join(process.env.XDG_CACHE_HOME ?? path.join(home, ".cache"), "hardhat-nodejs");
+    default:
+      throw new Error("no known hardhat cache directory convention for platform " + os.platform());
+  }
+}
+
+function solcPath(): string {
+  const base = path.join(hardhatCacheRoot(), "compilers-v3", compilerCachePlatform());
+  const hit = fs.readdirSync(base).find((f) => f.includes(SOLC_VERSION));
+  if (hit === undefined) throw new Error("pinned solc " + SOLC_VERSION + " not found in " + base);
+  return path.join(base, hit);
+}
+
+export interface DeployableMutant {
+  abi: unknown[];
+  bytecode: string;
+}
+
+/** Compiles the kernel with `overrides` applied, returning DEPLOYABLE artifacts. */
+export function compileDeployable(
+  overrides: Readonly<Record<string, string>>,
+): { ok: true; kernel: DeployableMutant } | { ok: false; errors: string[] } {
+  const solc = solcPath();
+  const sources: Record<string, { content: string }> = {};
+  for (const relFile of KERNEL_FILES) {
+    const key = path.posix.join("contracts", relFile.split(path.sep).join("/"));
+    sources[key] = {
+      content: overrides[relFile] ?? fs.readFileSync(path.join(SRC, relFile), "utf8"),
+    };
+  }
+
+  const input = {
+    language: "Solidity",
+    sources,
+    settings: {
+      evmVersion: "cancun",
+      optimizer: { enabled: true, runs: 200 },
+      remappings: ["@openzeppelin/=node_modules/@openzeppelin/"],
+      outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } },
+    },
+  };
+
+  const raw = execFileSync(solc, ["--standard-json", "--base-path", ".", "--include-path", "node_modules"], {
+    input: JSON.stringify(input),
+    maxBuffer: 256 * 1024 * 1024,
+  }).toString();
+  const parsed = JSON.parse(raw) as {
+    errors?: { severity: string; formattedMessage: string }[];
+    contracts?: Record<string, Record<string, { abi: unknown[]; evm: { bytecode: { object: string } } }>>;
+  };
+  const fatal = (parsed.errors ?? [])
+    .filter((e) => e.severity === "error")
+    .map((e) => e.formattedMessage);
+  if (fatal.length > 0) return { ok: false, errors: fatal };
+
+  const unit = parsed.contracts?.["contracts/VaultKernelPrototype.sol"]?.VaultKernelPrototype;
+  if (!unit) return { ok: false, errors: ["VaultKernelPrototype missing from compiler output"] };
+  return { ok: true, kernel: { abi: unit.abi, bytecode: "0x" + unit.evm.bytecode.object } };
+}
+
+const kernelSource = (): string => fs.readFileSync(path.join(SRC, "VaultKernelPrototype.sol"), "utf8");
+
+export interface Mutation {
+  id: string;
+  /** The property this mutation is expected to violate. */
+  expectedProperty: string;
+  /** Why this mutation matters — historical finding, or the compositional class it models. */
+  rationale: string;
+  /**
+   * Campaign profiles most likely to reach this mutation's seam. A mutation is
+   * only reported KILLED if a listed profile actually catches it; listing the
+   * wrong profile shows up as a SURVIVOR, not as a silent pass.
+   */
+  profiles: string[];
+  /** Produces the mutated VaultKernelPrototype.sol source. */
+  apply: (source: string) => string;
+}
+
+/**
+ * THE MUTATION CATALOGUE.
+ *
+ * `replaceWithinFunction` (reused from authority/mutation-harness.ts) scopes each
+ * edit to ONE function body by brace matching, so a mutation aimed at
+ * `rotateCredential` cannot silently also mutate `execute`, `setVerifier` and
+ * `setPolicy` — which share several byte-identical call sites. It throws when the
+ * snippet is not found exactly once, so a mutation that silently became a no-op
+ * fails loudly instead of scoring as a survivor.
+ */
+export const MUTATIONS: readonly Mutation[] = [
+  {
+    id: "M1-asset-path-one-root",
+    profiles: ["ecdsa-only-attacker"],
+    expectedProperty: "P-CUT/ASSET_MOVEMENT",
+    rationale:
+      "HISTORICAL. Weakens execute() to the ECDSA conjunct ALONE, dropping the PQ leg. This is the shape of findings A1/A2: the published min(2,k) claim becomes false and the real asset cut becomes 1.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "execute",
+        "_authorise(digest, ecdsaSig, pqSig, pqKey);",
+        "if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();",
+      ),
+  },
+  {
+    id: "M2-rotate-floor-only",
+    profiles: ["ecdsa-only-attacker","recovery-maturation"],
+    expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT",
+    rationale:
+      "HISTORICAL — finding A1 exactly. rotateCredential gated on the ECDSA conjunct alone lets a single compromised root rewrite BOTH factors and then spend.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "rotateCredential",
+        "_authorise(digest, ecdsaSig, pqSig, pqKey);",
+        "if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();",
+      ),
+  },
+  {
+    id: "M3-setverifier-floor-only",
+    profiles: ["ecdsa-only-attacker"],
+    expectedProperty: "P-CUT/VERIFIER_REPLACEMENT",
+    rationale:
+      "HISTORICAL — finding A2 exactly. A unilateral ECDSA verifier swap lets one root install an always-true verifier with the recorded floor untouched, so no downgrade rule fires, and then spend with the PUBLIC PQ key.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "setVerifier",
+        "_authorise(digest, ecdsaSig, pqSig, pqKey);",
+        "if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();",
+      ),
+  },
+  {
+    id: "M4-setpolicy-floor-only",
+    profiles: ["ecdsa-only-attacker","containment-composition"],
+    expectedProperty: "P-CUT/POLICY_CHANGE",
+    rationale:
+      "The POLICY_CHANGE cut has NO standalone row in AUTHORITY.md section 3 and is derived from source. This mutation is what makes that derived cut testable rather than assumed.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "setPolicy",
+        "_authorise(digest, ecdsaSig, pqSig, pqKey);",
+        "if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();",
+      ),
+  },
+  {
+    id: "M5-recovery-replay-enabled",
+    profiles: ["recovery-composition"],
+    expectedProperty: "P-MODEL",
+    rationale:
+      "R3. Removing `delete recovery` leaves the consumed request active, so the SAME recovery evidence can complete a second credential replacement. The model catches it because IT recorded the episode as CONSUMED, whatever the kernel now believes.",
+    apply: (s) => replaceWithinFunction(s, "executeRecovery", "delete recovery;", "recovery.challengesUsed = 0;"),
+  },
+  {
+    id: "M6-cancel-does-not-invalidate",
+    profiles: ["recovery-maturation","recovery-composition"],
+    expectedProperty: "P-MODEL",
+    rationale:
+      "R2. cancelRecovery stops clearing `active`, so a CANCELLED recovery stays finalizable — a cancellation that cancels nothing. Detected by the model's own CANCELLED record, not by re-reading recovery.active.",
+    apply: (s) => replaceWithinFunction(s, "cancelRecovery", "recovery.active = false;", "recovery.active = true;"),
+  },
+  {
+    id: "M7-pop-checks-outgoing-key",
+    profiles: ["recovery-maturation","recovery-composition"],
+    expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT",
+    rationale:
+      "R4 / HISTORICAL finding D inverted. Possession is proven against the OUTGOING signer instead of the incoming one, so an approved-but-unheld credential installs — and, worse, the outgoing holder satisfies the incoming proof.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireIncomingPossession",
+        "if (popDigest.recover(c.newEcdsaPop) != expectedSigner) revert BadSignature();",
+        "if (popDigest.recover(c.newEcdsaPop) != ecdsaSigner) revert BadSignature();",
+      ),
+  },
+  {
+    id: "M8-recovery-commitment-drops-verifier",
+    profiles: ["recovery-maturation","recovery-composition"],
+    expectedProperty: "P-CUT/VERIFIER_REPLACEMENT",
+    rationale:
+      "R1. The recovery possession digest stops binding `proposedVerifier`, so a possession proof made for one proposed configuration is valid for a DIFFERENT one — a stale authorization silently retargeting.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "recoveryPossessionDigest",
+        "r.proposedVerifier,\n                    r.boundGuardianGeneration,",
+        "r.boundGuardianGeneration,",
+      ),
+  },
+  {
+    id: "M9-duplicate-guardian-principal",
+    profiles: ["quorum-without-credential","one-guardian-attacker"],
+    expectedProperty: "P-CUT/GUARDIAN_TRANSITION",
+    rationale:
+      "HISTORICAL — finding B exactly. Relaxing the roster from STRICTLY ascending to non-decreasing makes a roster like [A, A, B] representable again, so ONE principal signing at two seats reaches a threshold of two and the guardian cut collapses to 1.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireCanonicalRoster",
+        "if (members[i] <= previous) revert NotOrdered();",
+        "if (members[i] < previous) revert NotOrdered();",
+      ),
+  },
+  {
+    id: "M10-nonce-not-consumed",
+    profiles: ["replay-composition"],
+    expectedProperty: "P-CUT/ASSET_MOVEMENT",
+    rationale:
+      "PHASE 9. `_consume` stops advancing the counter, so every signed action becomes infinitely replayable. A single captured spend signature drains the vault, and the replay campaign is what surfaces it.",
+    apply: (s) => replaceWithinFunction(s, "_consume", "nonces[domain] = nonce + 1;", "nonces[domain] = nonce;"),
+  },
+  {
+    id: "M11-plane-denial-ignored",
+    profiles: ["policy-plane-denial"],
+    expectedProperty: "P-PLANE-SUBTRACTIVE",
+    rationale:
+      "PHASE 10, finding F's neighbour. execute() consults the policy plane and then IGNORES its answer, so a plane that DENIES no longer denies and value moves without admission. " +
+      "This replaces an earlier mutation that moved a state write in front of the authority check: that one is UNSOUND, because a reverting authorization rolls the whole transaction back, so the 'persisted' effect never persists and no property could ever observe it. " +
+      "A mutation that cannot fail is not a test of anything. The gate-after-effect class needs a NON-REVERTING failure to be observable at all, and an ignored plane answer is exactly that.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "execute",
+        "if (!IKernelPolicy(plane).admit(address(this), recipient, amount)) revert PolicyDenied();",
+        "IKernelPolicy(plane).admit(address(this), recipient, amount);",
+      ),
+  },
+  {
+    id: "M12-migration-quorum-only",
+    profiles: ["quorum-without-credential"],
+    expectedProperty: "P-CUT/MIGRATION_BINDING",
+    rationale:
+      "I-F. bindMigration stops requiring the CREDENTIAL leg, dropping the declared k+1 cut to k. The `+1` in the published table is exactly this second principal, so this mutation is what proves the +1 is real and not decorative.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "bindMigration",
+        "if (!_floorAuthorises(digest, ecdsaSig)) revert BadSignature();",
+        "",
+      ),
+  },
+  {
+    id: "M13-quorum-counts-indices-not-principals",
+    profiles: ["quorum-without-credential","one-guardian-attacker"],
+    expectedProperty: "P-CUT/GUARDIAN_TRANSITION",
+    rationale:
+      "I-E. The ascending-INDEX check is removed from _requireQuorum, so one seat can be attested repeatedly. Distinct from M9: M9 attacks the committed ROSTER, this attacks the COUNTING. Both must be caught, because closing one never closed the other.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireQuorum",
+        "if (previous != type(uint256).max && idx <= previous) revert NotOrdered();",
+        "",
+      ),
+  },
+  {
+    id: "M14-containment-budget-removed",
+    profiles: ["containment-duty-cycle","containment-composition"],
+    expectedProperty: "G-CONTAINMENT-BUDGET-BOUNDED",
+    rationale:
+      "PHASE 8. Removing the rolling budget check turns containment from a bounded DUTY CYCLE into an unbounded denial state, which is the permanent-recovery-veto shape AUTHORITY.md declares unreachable.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "enterContainment",
+        "if (containmentUsedInWindow + CONTAINMENT_MAX > CONTAINMENT_BUDGET) revert ContainmentBudget();",
+        "",
+      ),
+  },
+  {
+    id: "M15-effective-state-ignores-expiry",
+    profiles: ["containment-composition"],
+    expectedProperty: "G-EFFECTIVE-STATE-DERIVATION",
+    rationale:
+      "PHASE 8. `_effectiveState` stops honouring wall-clock expiry, so the STORED value and the ENFORCED value diverge: observation and enforcement contradict each other, which is the stale-state hazard this getter exists to prevent.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_effectiveState",
+        "if (safeState == SafeState.CONTAINED && block.timestamp >= containedUntil) return SafeState.NORMAL;",
+        "",
+      ),
+  },
+  {
+    id: "M16-recovery-ignores-roster-generation",
+    profiles: ["recovery-vs-roster","recovery-composition"],
+    expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT",
+    rationale:
+      "R1. executeRecovery stops rejecting a roster change since initiation, so a recovery approved by the OLD constituency executes against a NEW one — a stale authorization surviving the transition that should have killed it.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "executeRecovery",
+        "if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();",
+        "",
+      ),
+  },
+];
+
+/** Builds the mutated deployable kernel for one mutation. Throws if the edit did not apply. */
+export function buildMutant(m: Mutation): { ok: true; kernel: DeployableMutant } | { ok: false; errors: string[] } {
+  const mutated = m.apply(kernelSource());
+  return compileDeployable({ "VaultKernelPrototype.sol": mutated });
+}
