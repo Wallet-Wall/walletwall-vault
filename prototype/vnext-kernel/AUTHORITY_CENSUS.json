@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "ec5adce91bf6956a655a637513102bd6613c04f8",
-  "tree": "64b5bc7fdcae9d8351412edea47aeb8acb984bd2",
+  "head": "527b2f85f829550b583b461a0e2445a45825e60a",
+  "tree": "85c0c7e25a5754543e59054e3f927bc5a25db2b0",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
