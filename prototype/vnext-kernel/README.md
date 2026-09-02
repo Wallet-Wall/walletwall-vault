@@ -37,12 +37,15 @@ loss against this exact kernel.**
 | `WalletWallVault` (current monolith)              | 23,239     | pass, headroom 1,337     | **FAIL by 1,263**               |
 | Mechanically clone-targeted monolith (#179 §19.1) | 23,249     | pass, headroom 1,327     | **FAIL by 1,273**               |
 | `VaultKernelPrototype` at `79e05a34` (WITHDRAWN)  | 14,339     | pass                     | pass — but the cuts were wrong  |
-| **`VaultKernelPrototype` (remediated)**           | **17,407** | **pass, headroom 7,169** | **TARGET PASS, headroom 4,569** |
+| `VaultKernelPrototype` (findings A-E remediated)  | 17,407     | pass, headroom 7,169     | TARGET PASS, headroom 4,569     |
+| **`VaultKernelPrototype` (SD-1 remediated)**      | **17,622** | **pass, headroom 6,954** | **TARGET PASS, headroom 4,354** |
 
-**25.1% smaller than the monolith** — 5,832 bytes — and still the only one of the
+**24.2% smaller than the monolith** — 5,617 bytes — and still the only one of the
 three to clear the internal target. The factory adds **2,226** bytes, once per
-generation. The remediation cost **+3,068** bytes; per-fix attribution is in
-`AUTHORITY.md` §4 and reproducible with `deltas.ts`.
+generation. Remediating findings A-E cost **+3,068** bytes; per-fix attribution is
+in `AUTHORITY.md` §4 and reproducible with `deltas.ts`. Remediating **SD-1** with
+`I-FLOOR-SHAPE-IMMUTABLE` cost a further **+215**, with the storage layout
+byte-identical and the ABI change additive only.
 
 **Authority surface**, which is the part that actually matters:
 

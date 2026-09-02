@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-stateful-authority-evidence.v1",
-  "head": "a7840aad3e4df90826266bcbfe1976b8068d938d",
-  "tree": "1d8d7d58146ee72f95f4d85d65909ec40085ed9c",
+  "head": "527b2f85f829550b583b461a0e2445a45825e60a",
+  "tree": "85c0c7e25a5754543e59054e3f927bc5a25db2b0",
   "lane": {
     "question": "Can individually-valid, individually-correctly-gated transitions be COMPOSED OVER TIME into an outcome below its declared authority cut?",
     "distinctFrom": {
@@ -322,11 +322,11 @@
       },
       {
         "name": "G-FLOOR-SANE",
-        "source": "_requireSaneFloor: requirePq implies pqPublicKeyLength != 0 and pqSignatureLength != 0, on both initialize and setVerifier"
+        "source": "_requireSaneFloor: requirePq implies 0 < pqPublicKeyLength <= MAX_PQ_LENGTH and 0 < pqSignatureLength <= MAX_PQ_LENGTH, on both initialize and setVerifier"
       },
       {
         "name": "G-FLOOR-NO-DOWNGRADE",
-        "source": "_requireNoDowngrade: requirePq may not go true -> false, and pqParamLevel may not decrease"
+        "source": "_requireNoDowngrade: requirePq may not go true -> false, pqParamLevel may not decrease, and neither structural length may change while requirePq already holds (I-FLOOR-SHAPE-IMMUTABLE)"
       },
       {
         "name": "G-VERIFIER-HAS-CODE",
@@ -539,6 +539,28 @@
           "recovery-composition"
         ],
         "rationale": "R1. executeRecovery stops rejecting a roster change since initiation, so a recovery approved by the OLD constituency executes against a NEW one — a stale authorization surviving the transition that should have killed it."
+      },
+      {
+        "id": "M17-floor-shape-mutable-again",
+        "expectedProperty": "G-FLOOR-NO-DOWNGRADE",
+        "profiles": [
+          "ecdsa-only-attacker",
+          "recovery-composition",
+          "recovery-maturation",
+          "mixed-roots-attacker"
+        ],
+        "rationale": "SD-1, REINTRODUCED. Deletes `I-FLOOR-SHAPE-IMMUTABLE` from `_requireNoDowngrade`, restoring the exact defect the remediation closed: `setVerifier` may move the two STRUCTURAL floor fields again, and `_requireIncomingPossession` measures an already-quorum-approved recovery against them LIVE. Since no guardian path writes `securityFloor`, one such move is an UNCOUNTED veto over guardian recovery — `challengesUsed` never advances. It is killed by the transition-level property, not by a downstream revert, so the kill is attributed to the clause that was removed."
+      },
+      {
+        "id": "M18-floor-shape-freeze-is-one-sided",
+        "expectedProperty": "G-FLOOR-NO-DOWNGRADE",
+        "profiles": [
+          "ecdsa-only-attacker",
+          "recovery-composition",
+          "recovery-maturation",
+          "mixed-roots-attacker"
+        ],
+        "rationale": "SD-1, REINTRODUCED IN ONE DIRECTION ONLY — the subtler half, and the one a shrink-only campaign cannot see. `I-FLOOR-SHAPE-IMMUTABLE` is an INEQUALITY because `_requireIncomingPossession` compares the shape for EXACT EQUALITY: growing 1312 -> 2000 denies a quorum-approved recovery exactly as shrinking 1312 -> 1 does. Weakening the clause to `<` reads like a downgrade check and passes any campaign that only ever shrinks. It is killed only because `actions.ts` directs the poisoning attempt UPWARD wherever the clause is armed — a choice that costs no prng draw and moves no reachable state, since on the correct kernel a grow and a shrink revert `Downgrade` identically. That is the entire reason the direction is chosen rather than fixed."
       }
     ],
     "historicalRegressionClasses": [
@@ -547,20 +569,16 @@
       "B  — a roster in which one PRINCIPAL holds two seats (M9), and quorum counting by index rather than principal (M13)",
       "D  — possession proven against the OUTGOING credential (M7)",
       "F  — a policy plane whose refusal is not honoured (M11)"
+    ],
+    "unmutatedClauses": [
+      {
+        "clause": "_requireSaneFloor's MAX_PQ_LENGTH magnitude bound",
+        "coveredBy": "test/Sd1RecoveryFloorBinding.test.ts — BOUNDARY (exactly MAX_PQ_LENGTH admitted, MAX_PQ_LENGTH + 1 refused, pinned against the contract's own getter) and GENESIS, both with positive controls",
+        "whyNotMutated": "Reaching the seam needs an extra prng draw in genParams, which re-seeds every campaign history; adding one was measured to turn M9-duplicate-guardian-principal and M11-plane-denial-ignored into survivors. The complete value space for floor lengths across the whole stateful model is {0, 1, 32, 65} plus the armed grow direction, so no campaign proposes an oversized shape and a mutant here would report SURVIVED for want of a generator rather than for want of a property."
+      }
     ]
   },
   "sustainedDefects": [
-    {
-      "id": "SD-1-floor-length-poisoning",
-      "title": "setVerifier may change pqPublicKeyLength / pqSignatureLength freely, and _requireIncomingPossession reads that floor LIVE — so the credential principal holds an unbounded, uncounted veto over guardian recovery",
-      "classification": "LIVENESS_DENIAL",
-      "rootsRequired": "2 — both credential factors (ECDSA + PQ). Exactly the declared min(2,k) asset-control cut; no guardian is compromised.",
-      "contradicts": "AUTHORITY.md section 3, row 'Permanent recovery veto | unreachable | Enforced by: containment budgeted B < W; challenge capped; no pause exists'. None of the three named mechanisms bounds this channel: challengesUsed stays at 0 throughout.",
-      "rootCause": "VaultKernelPrototype.sol `_requireNoDowngrade` compares ONLY `requirePq` and `pqParamLevel`; the two LENGTH fields of SecurityFloor are unconstrained. `setVerifier` then writes the whole struct. `_requireIncomingPossession` reads `securityFloor` at EXECUTION time and rejects `c.newPqPop.length != floor.pqSignatureLength`, so an already-quorum-approved recovery can be invalidated after the fact. `executeRecovery` writes `pqVerifier` but never `securityFloor`, so no guardian quorum can repair the floor — only `setVerifier` writes it, and that is credential-gated.",
-      "notAnEscalationBecause": "It requires BOTH credential factors, which is already the declared cut for moving assets — an attacker holding them can spend directly and gains no new reach. What it falsifies is the separate 'permanent recovery veto is unreachable' row, i.e. the REMEDY is deniable, not that the attacker's authority grew.",
-      "minimalFixSketch": "Extend _requireNoDowngrade to refuse a change to pqPublicKeyLength/pqSignatureLength unless it accompanies a pqParamLevel INCREASE, or snapshot the floor shape into RecoveryRequest at initiation and evaluate incoming possession against the SNAPSHOT rather than the live floor. Either is a few bytes; neither is attempted here.",
-      "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
-    },
     {
       "id": "SD-2-containment-window-is-tumbling",
       "title": "The containment budget window is TUMBLING, not rolling: containments straddling a rollover yield 9 CONTIGUOUS contained days against a declared 6-day budget",
@@ -582,14 +600,39 @@
       "notAnEscalationBecause": "The single root that can do this is the same root that can already move every asset on an ECDSA-only vault, so it buys an attacker nothing; and a guardian quorum can still recover, because executeRecovery installs a fresh pqKeyHash of the guardians' choosing. It is an unguarded transition into a state genesis validation explicitly forbids, escapable at k.",
       "minimalFixSketch": "Add the genesis check to the transition: in setVerifier, after _requireSaneFloor, `if (floor.requirePq && pqPublicKeyHash == bytes32(0)) revert BadSignature();`. One comparison. Not applied here.",
       "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
+    },
+    {
+      "id": "SD-4-ecdsa-only-shape-declaration-is-uncounted",
+      "title": "On a vault born ECDSA-ONLY, the requirePq false -> true edge DECLARES the structural shape for the first time, and a shape that does not match a pending recovery's proposed key invalidates that already-quorum-approved request without consuming a challenge",
+      "classification": "LIVENESS_DENIAL",
+      "rootsRequired": "1 — the sole ECDSA credential root of an ECDSA-only vault, where `_authorise` degenerates to the ECDSA conjunct alone. Strictly cheaper than SD-1 was, and reachable on a strictly narrower set of vaults.",
+      "contradicts": "AUTHORITY.md section 3, row 'Permanent recovery veto | unreachable'. That row is now enforced by I-FLOOR-SHAPE-IMMUTABLE for every vault whose floor already mandates PQ, and this is the declared exception to it: on an ECDSA-only genesis the shape has not been declared yet, so there is nothing for the freeze to hold.",
+      "rootCause": "`_requireNoDowngrade`'s I-FLOOR-SHAPE-IMMUTABLE clause is guarded on `current.requirePq`, because a vault born ECDSA-only must be able to declare a shape at all — freezing 0/0 forever would make the floor permanently unraisable. On that one edge `setVerifier` therefore still chooses both length fields freely, and `_requireIncomingPossession` measures a pending recovery against them. The guard cannot be moved to `next.requirePq` without also forbidding the legitimate declaration.",
+      "notAnEscalationBecause": "It is ONE-SHOT and self-healing, which is what separates it from the SD-1 veto it is the residue of. `requirePq` is monotone, so the edge exists at most once per vault; the shape is FROZEN immediately afterwards; and `MAX_PQ_LENGTH` bounds it to a shape a block can actually carry, so the quorum simply re-initiates against the now-immovable shape and completes at k. Cost to the defender is one re-initiation (RECOVERY_DELAY), never the remedy. Reproduced end to end, including the escape, in test/Sd1RecoveryFloorBinding.test.ts.",
+      "minimalFixSketch": "Require the caller to EXHIBIT the committed key on the false -> true edge: in _requireNoDowngrade's caller, `if (!current.requirePq && next.requirePq) { if (pqKey.length != next.pqPublicKeyLength || keccak256(pqKey) != pqPublicKeyHash) revert BadSignature(); }`. NOT APPLIED, and the reason is a scope boundary rather than an oversight: that check necessarily also closes SD-3 (a zero pqPublicKeyHash has no exhibitable preimage), so SD-1 and SD-3 are NOT separable at this edge. It also pins the shape to the length of the preimage of the VAULT's incumbent key, which is a different variable from the quorum's r.proposedPqKeyHash, so it narrows the residual without provably eliminating it. Both belong to whichever lane takes SD-3.",
+      "reproducedBy": "prototype/vnext-kernel/test/Sd1RecoveryFloorBinding.test.ts"
     }
   ],
   "solidityChanged": {
-    "bytes": 0,
-    "note": "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change.",
-    "kernelRuntimeBytes": null,
-    "kernelRuntimeHash": null
+    "bytes": 215,
+    "note": "SD-1 was REMEDIATED by I-FLOOR-SHAPE-IMMUTABLE. The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. SD-2, SD-3 and SD-4 remain SUSTAINED and change zero bytes.",
+    "beforeRuntimeBytes": 17407,
+    "kernelRuntimeBytes": 17622,
+    "kernelRuntimeHash": "398426298034b5229a5f48e81bbf7efbd7f88b94ed994721bdaf6d92cc2aa50d"
   },
+  "remediated": [
+    {
+      "id": "SD-1-floor-length-poisoning",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "ec5adce91bf6956a655a637513102bd6613c04f8",
+      "remediatedOn": "security/vnext-sd1-recovery-floor-binding",
+      "invariant": "I-FLOOR-SHAPE-IMMUTABLE — for every accepted setVerifier transition s -> s', s.securityFloor.requirePq implies s'.pqPublicKeyLength == s.pqPublicKeyLength and s'.pqSignatureLength == s.pqSignatureLength. Since initialize and setVerifier are the only writers of securityFloor, the two structural fields are CONSTANTS for the life of any vault whose floor mandates PQ, and no credential-writable state remains in the recovery satisfiability condition.",
+      "sourceDelta": "Two clauses, both inside existing internal helpers, no new state and no changed signature. (1) _requireNoDowngrade gains the shape-freeze comparison, guarded on current.requirePq. (2) _requireSaneFloor gains a MAX_PQ_LENGTH magnitude bound, because I-FLOOR-SHAPE-IMMUTABLE would otherwise make an unsatisfiable uint32 shape PERMANENT.",
+      "rejectedAlternatives": "METERING the veto through challengesUsed was rejected: that counter bounds cancelRecovery only because a cancellation is REVERSIBLE by the defender, and a floor write is not — no guardian path writes securityFloor and executeRecovery never touches it — so a counter bounds only how many times an attacker re-chooses which permanent state to inflict. SNAPSHOTTING the floor into RecoveryRequest was rejected: _authorise reads the same live slot, so a floor poisoned BEFORE the quorum proposes is copied faithfully into the snapshot, and a recovery that did complete would install a credential the live floor could never use. The ledger's own earlier sketch — permitting a length change alongside a pqParamLevel INCREASE — was rejected because pqParamLevel is a bare uint16 with no ceiling, so it converts an unbounded veto into a 65,535-deep one, which over a 21-day episode is not a bound at all.",
+      "invertedReproduction": "test/StatefulSustainedDefects.test.ts still runs the exact SD-1 sequence, now asserting that the poisoning transition is REFUSED and the vetoed recovery EXECUTES. test/Sd1RecoveryFloorBinding.test.ts carries the full R1-R9 regression plus the adversarial permutations.",
+      "residual": "SD-4-ecdsa-only-shape-declaration-is-uncounted"
+    }
+  ],
   "whatThisDoesNotProve": [
     "NOT EXHAUSTIVE. A bounded, seeded campaign over a bounded action vocabulary. Any sequence outside the generated distribution is untested.",
     "NOT FORMAL VERIFICATION. Deterministic seeded campaigns are still testing. No state space is proven covered, and 'no violation found' is not 'no violation exists'.",

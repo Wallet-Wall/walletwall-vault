@@ -565,14 +565,40 @@ export async function executeAction(
         const credGen = (await vault.credentialGeneration()) as bigint;
         // The floor moves WITH the verifier. `bumpLevel` strengthens (allowed);
         // `shrinkLengths` keeps requirePq and pqParamLevel intact while changing
-        // the two LENGTHS, which `_requireNoDowngrade` does not compare — the
-        // exact seam PHASE 7 asks about.
+        // the two LENGTHS — the SD-1 seam, now refused by
+        // `I-FLOOR-SHAPE-IMMUTABLE` whenever requirePq already holds.
+        //
+        // THE DIRECTION MATTERS, and it costs no prng draw to choose it. The
+        // freeze is an INEQUALITY (`!=`) because `_requireIncomingPossession`
+        // compares the shape for EXACT EQUALITY, so growing denies a
+        // quorum-approved recovery exactly as shrinking does. A campaign that
+        // only ever SHRINKS therefore cannot tell a correct `!=` from a
+        // one-sided `<`, and such a weakening would survive every profile.
+        //
+        // So: where the clause is ARMED (`floor.requirePq`), the poisoning
+        // attempt GROWS; where it is not, it shrinks to 1 exactly as before. On
+        // the correct kernel both directions revert `Downgrade` identically, so
+        // no reachable state moves and no history shifts — this buys mutant M18
+        // for free. M17, which deletes the clause outright, dies on either.
         requirePqAfter = floor.requirePq || Boolean(p.raisePq);
+        const growShape = floor.requirePq;
         const next: Floor = {
           requirePq: requirePqAfter,
           pqParamLevel: floor.pqParamLevel + (p.bumpLevel ? 1 : 0),
-          pqPublicKeyLength: p.shrinkLengths ? 1 : requirePqAfter && floor.pqPublicKeyLength === 0 ? 32 : floor.pqPublicKeyLength,
-          pqSignatureLength: p.shrinkLengths ? 1 : requirePqAfter && floor.pqSignatureLength === 0 ? 65 : floor.pqSignatureLength,
+          pqPublicKeyLength: p.shrinkLengths
+            ? growShape
+              ? floor.pqPublicKeyLength + 1
+              : 1
+            : requirePqAfter && floor.pqPublicKeyLength === 0
+              ? 32
+              : floor.pqPublicKeyLength,
+          pqSignatureLength: p.shrinkLengths
+            ? growShape
+              ? floor.pqSignatureLength + 1
+              : 1
+            : requirePqAfter && floor.pqSignatureLength === 0
+              ? 65
+              : floor.pqSignatureLength,
         };
         const digest = digestOf({
           chainId: w.chainId,

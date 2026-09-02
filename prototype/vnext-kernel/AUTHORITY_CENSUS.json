@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "1ad4406fc5e618e2e8adf9bbf207d11f36e21e95",
-  "tree": "06f416256dae2020c6b0733a6c1b817930007244",
+  "head": "527b2f85f829550b583b461a0e2445a45825e60a",
+  "tree": "85c0c7e25a5754543e59054e3f927bc5a25db2b0",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
@@ -31,7 +31,7 @@
       "visibility": "public",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8296,
+      "astId": 8300,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -57,7 +57,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8450,
+      "astId": 8454,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -83,7 +83,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 8509,
+      "astId": 8526,
       "reasons": []
     },
     {
@@ -94,7 +94,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8524,
+      "astId": 8541,
       "reasons": []
     },
     {
@@ -105,7 +105,7 @@
       "visibility": "external",
       "stateMutability": "payable",
       "isStateChanging": true,
-      "astId": 8528,
+      "astId": 8545,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -129,7 +129,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8564,
+      "astId": 8581,
       "reasons": []
     },
     {
@@ -140,7 +140,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8634,
+      "astId": 8651,
       "reasons": []
     },
     {
@@ -151,7 +151,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8822,
+      "astId": 8858,
       "reasons": []
     },
     {
@@ -162,7 +162,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8859,
+      "astId": 8895,
       "reasons": []
     },
     {
@@ -173,7 +173,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8999,
+      "astId": 9035,
       "reasons": []
     },
     {
@@ -184,7 +184,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9167,
+      "astId": 9203,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore."
       ],
@@ -218,7 +218,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9253,
+      "astId": 9289,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID",
@@ -250,7 +250,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9352,
+      "astId": 9388,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -280,7 +280,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9409,
+      "astId": 9445,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -310,7 +310,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 9526,
+      "astId": 9562,
       "reasons": []
     },
     {
@@ -321,7 +321,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9610,
+      "astId": 9646,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -351,7 +351,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9930,
+      "astId": 9966,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -381,7 +381,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10005,
+      "astId": 10041,
       "reasons": [],
       "observedMechanisms": [
         "FLOOR_ONLY"
@@ -411,7 +411,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10092,
+      "astId": 10128,
       "reasons": [],
       "observedMechanisms": [
         "POSSESSION_PROOF"
@@ -443,7 +443,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10196,
+      "astId": 10232,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
       ],
@@ -477,7 +477,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10331,
+      "astId": 10367,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM",
@@ -509,7 +509,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10373,
+      "astId": 10409,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -535,7 +535,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10502,
+      "astId": 10538,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
       ],

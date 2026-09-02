@@ -23,6 +23,25 @@ corrects itself destroys the evidence that the correction happened.
 | **E**   | "the implementation can never hold custody" | 1 ETH sent to the implementation, accepted                                                                                                    | n/a — claim error       |
 | **F**   | _(unstated)_                                | two 1 ETH spends both passed a 1.5 ETH cumulative cap                                                                                         | n/a — plane boundary    |
 
+**A FIFTH CLAIM WAS FALSIFIED LATER, BY THE STATEFUL LANE, AND IS RECORDED THE
+SAME WAY.** The stateful adversarial campaign at head `ec5adce9` sustained
+**SD-1**: `setVerifier` could move `SecurityFloor.pqPublicKeyLength` /
+`pqSignatureLength` freely while `_requireIncomingPossession` measured an
+already-quorum-approved recovery against those fields LIVE, so the credential
+principal held a veto over guardian recovery that `CHALLENGE_LIMIT` never saw.
+
+| Finding  | Claim it falsified                      | Reproduced end state                                                                                                                                       | Real cut was                        |
+| -------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------- |
+| **SD-1** | `permanent recovery veto = unreachable` | an honest `k = 2` quorum approved a recovery; the credential changed ONE floor length; the matured recovery became unexecutable with `challengesUsed == 0` | **2** — no cut moved; a DENIAL only |
+
+**SD-1 is now REMEDIATED on `security/vnext-sd1-recovery-floor-binding` by
+`I-FLOOR-SHAPE-IMMUTABLE`** — see the "Permanent recovery veto" row in section 3.
+The reproduction was INVERTED IN PLACE rather than deleted
+(`test/StatefulSustainedDefects.test.ts`); its ledger entry moved to
+`REMEDIATED_DEFECTS` in `stateful/defects.ts`, carrying the head it was sustained
+at; and the residual it leaves is carried as **SD-4** in the sustained ledger.
+**SD-2 and SD-3 remain SUSTAINED and unfixed.**
+
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,
 using distinct guardians, deploying at a fresh salt. None asked what an attacker
@@ -77,8 +96,8 @@ re-derived from the compiled kernel, NOT carried forward from #179 §24.
 | Credential replacement     | `min(2, k)`      | **1** (A1)               | **`min(2, k)`** | rotation is HYBRID-authorised and additionally requires possession of both INCOMING factors. M-K28, M-K34                                           |
 | Guardian takeover          | `k`              | **1** (B)                | **`k`**         | `I-QUORUM-PRINCIPAL-DISTINCTNESS`: the committed roster must be strictly ascending by address, so `k` seats are `k` PRINCIPALS. M-K30, M-K31, M-K32 |
 | Migration takeover         | `k + 1`          | `k + 1`                  | **`k + 1`**     | `bindMigration` requires quorum **AND** credential. Unchanged                                                                                       |
-| Permanent recovery veto    | unreachable      | unreachable              | **unreachable** | containment budgeted `B < W`; challenge capped; no pause exists                                                                                     |
-| Silent crypto downgrade    | unreachable      | **1** (A2)               | **unreachable** | `setVerifier` is HYBRID; the floor may only strengthen; the escape from a dead verifier is the GUARDIAN quorum, not one factor                      |
+| Permanent recovery veto    | unreachable      | **2** (SD-1)             | **unreachable, on any vault whose floor already mandates PQ** | containment budgeted `B < W`; challenge capped; no pause exists; **`I-FLOOR-SHAPE-IMMUTABLE`** freezes the two STRUCTURAL floor fields once `requirePq` holds, so no credential-writable state remains in the recovery satisfiability condition. **Scope, stated rather than buried:** on a vault born ECDSA-only the `requirePq` false -> true edge declares the shape for the first time and retains ONE uncounted, one-shot, self-healing move — carried as **SD-4** |
+| Silent crypto downgrade    | unreachable      | **1** (A2)               | **unreachable** | `setVerifier` is HYBRID; the floor may only strengthen — **true of all four fields since `I-FLOOR-SHAPE-IMMUTABLE`; it was previously false for the two length fields, which any credential could move at will**; the escape from a dead verifier is the GUARDIAN quorum, not one factor |
 | Vault identity takeover    | _(not modelled)_ | **1** (C)                | **unreachable** | `I-COUNTERFACTUAL-IDENTITY-BINDING`: the CREATE2 salt binds the complete genesis authority. M-K33                                                   |
 | Credential stranding       | _(not modelled)_ | **1** (D)                | **unreachable** | `I-INCOMING-CREDENTIAL-POSSESSION` on both rotation and recovery. M-K34, M-K35                                                                      |
 | Denial of spending         | **1**            | **1**                    | **1**           | one verifier or one policy plane. **Accepted and declared**                                                                                         |
@@ -105,6 +124,7 @@ path dominates at `k`, exactly as §24 says.
 | **C** counterfactual identity binding                                | _(in the FACTORY)_            | factory 1,642 -> 2,226 B, once per generation                                                                                                                        |
 | residual                                                             | +1,880                        | `GenesisConfig` / `CredentialChange` calldata plumbing that findings C and D require structurally, plus optimizer interaction between overlapping ablations          |
 | **TOTAL**                                                            | **14,339 -> 17,407 (+3,068)** | TARGET PASS, 4,569 B under the 21,976 ceiling                                                                                                                        |
+| **SD-1** `I-FLOOR-SHAPE-IMMUTABLE` (+ the `MAX_PQ_LENGTH` bound)     | **+215**                      | **17,407 -> 17,622.** TARGET PASS, 4,354 B under the ceiling. Storage layout byte-identical; ABI additive only (selectors 44 -> 45, the new `MAX_PQ_LENGTH()` getter) |
 
 **No T0/T1 invariant was deleted to recover bytes.** The ablated variants that
 produce these deltas are diagnostic only, and every one of them reintroduces a

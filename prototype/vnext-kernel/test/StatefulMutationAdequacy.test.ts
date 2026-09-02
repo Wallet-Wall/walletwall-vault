@@ -161,6 +161,34 @@ describe("vNext kernel — STATEFUL MUTATION ADEQUACY", function () {
     const survivors = RESULTS.filter((r) => r.verdict !== "KILLED");
     expect(survivors, "unexplained survivors: " + JSON.stringify(survivors, null, 2)).to.deep.equal([]);
   });
+
+  /**
+   * KILL ATTRIBUTION, asserted rather than merely printed — for the SD-1 mutant.
+   *
+   * The harness PREFERS a violation matching `expectedProperty` but falls back to
+   * `violations[0]`, so "KILLED" alone does not say a mutant died for the reason
+   * its author claimed. That is tolerable for a catalogue of historical
+   * regressions, and M13 already dies by `P-CUT/CONTAINMENT` rather than its
+   * declared `P-CUT/GUARDIAN_TRANSITION` — a PRE-EXISTING mismatch this lane
+   * deliberately does not touch.
+   *
+   * It is NOT tolerable for the mutant that is this change's own adequacy
+   * evidence. M17 reintroduces SD-1; if it died by some unrelated property, the
+   * claim "the assurance machinery detects a reintroduced SD-1" would be false
+   * while the suite stayed green. So this one is pinned.
+   */
+  it("the SD-1 mutant is killed BY THE PROPERTY THAT COVERS IT, not by an unrelated violation", function () {
+    const m17 = RESULTS.find((r) => r.id === "M17-floor-shape-mutable-again");
+    expect(m17, "M17 must be in the catalogue — it is this change's adequacy evidence").to.not.equal(undefined);
+    expect(m17!.verdict).to.equal("KILLED");
+    expect(
+      m17!.killedBy?.property,
+      "M17 must die by G-FLOOR-NO-DOWNGRADE. A kill by any other property would mean the campaign " +
+        "noticed something else about the weakened kernel, and would say nothing about whether the " +
+        "reintroduced SD-1 defect itself is detected.",
+    ).to.equal("G-FLOOR-NO-DOWNGRADE");
+    expect(m17!.killedBy?.property).to.equal(m17!.expectedProperty);
+  });
 });
 
 export { RESULTS as MUTATION_RESULTS };

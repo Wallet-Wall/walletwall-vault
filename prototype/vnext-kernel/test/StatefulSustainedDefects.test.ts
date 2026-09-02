@@ -1,25 +1,31 @@
 /**
- * EXPERIMENTAL PROTOTYPE — SUSTAINED COMPOSITION DEFECTS, REPRODUCED.
+ * EXPERIMENTAL PROTOTYPE — THE COMPOSITION DEFECT LEDGER, EXECUTED.
  *
- * Three defects found by the stateful campaign and then reproduced FIRSTHAND
- * against the compiled kernel. This PR changes ZERO bytes of Solidity, so each
- * one is recorded here as a deterministic, permanently-executed reproduction
- * rather than fixed in passing. `stateful/defects.ts` carries the full analysis,
- * the contradicted published claim, the root cause, and a minimal fix sketch.
+ * Defects found by the stateful campaign and reproduced FIRSTHAND against the
+ * compiled kernel. `stateful/defects.ts` carries the full analysis, the
+ * contradicted published claim, the root cause, and a minimal fix sketch.
  *
  * THESE TESTS ASSERT THE DEFECTIVE BEHAVIOUR ON PURPOSE.
  * ------------------------------------------------------
- * That is the point. Each one is written so that IF A FIX LANDS IT FAILS, which
- * is what forces the fixer to update this file, `stateful/defects.ts` and
+ * That is the point. Each is written so that IF A FIX LANDS IT FAILS, which is
+ * what forces the fixer to update this file, `stateful/defects.ts` and
  * AUTHORITY.md together. A defect that can be quietly fixed while a security
  * table still says it is unreachable is how a stale table is born; a defect that
  * is quietly SUPPRESSED is worse. Neither happens here.
  *
- * NONE OF THE THREE IS AN UNAUTHORIZED ASSET OR CONTROL ESCALATION. All three
- * are DENIAL / LIVENESS or state-incoherence outcomes. No declared cut for
- * asset control, credential replacement, verifier replacement, guardian
- * transition or migration is reduced by any of them. That bound is asserted
- * below, not merely asserted in prose.
+ * THE MECHANISM HAS NOW FIRED ONCE, WHICH IS WHY SD-1 READS DIFFERENTLY.
+ * ---------------------------------------------------------------------
+ * SD-1 was remediated by `I-FLOOR-SHAPE-IMMUTABLE`, its reproduction went red
+ * exactly as designed, and it is INVERTED IN PLACE rather than deleted: the same
+ * sequence, step for step, with the verdict moved. Deleting it would have
+ * erased the evidence that the interlock worked. Its ledger entry moved to
+ * `REMEDIATED_DEFECTS`, which records the head it was SUSTAINED at, and the
+ * residual it left is carried as SD-4 in its own right.
+ *
+ * NONE OF THESE IS AN UNAUTHORIZED ASSET OR CONTROL ESCALATION. All are DENIAL /
+ * LIVENESS or state-incoherence outcomes. No declared cut for asset control,
+ * credential replacement, verifier replacement, guardian transition or migration
+ * is reduced by any of them. That bound is asserted below, not merely in prose.
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
@@ -40,7 +46,7 @@ import {
   type Floor,
   type World,
 } from "../stateful/world.js";
-import { SUSTAINED_DEFECTS } from "../stateful/defects.js";
+import { REMEDIATED_DEFECTS, SUSTAINED_DEFECTS } from "../stateful/defects.js";
 
 const DAY = 24 * 60 * 60;
 
@@ -80,7 +86,15 @@ async function setVerifierAs(
   ).wait();
 }
 
-describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed here)", function () {
+/**
+ * SD-4 is SUSTAINED but is NOT reproduced in this file, and that is deliberate
+ * rather than an omission: it is the declared residual of the SD-1 remediation,
+ * it needs a genesis shape `deployWorld` could not previously build, and it is
+ * only meaningful beside the fix that produced it. Its reproduction — including
+ * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
+ * what its ledger entry's `reproducedBy` names and what the receipt publishes.
+ */
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 remediated; SD-2 and SD-3 reproduced here, SD-4 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
@@ -91,10 +105,48 @@ describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed 
       expect(d.rootCause.length, d.id + " must name the source construct").to.be.greaterThan(40);
       expect(d.minimalFixSketch.length, d.id + " must carry a minimal fix sketch").to.be.greaterThan(30);
     }
+    // SD-1 is no longer here; it is in REMEDIATED_DEFECTS. A fix that merely
+    // DELETED its ledger entry would leave a repository in which the inverted
+    // reproduction below has no explanation, so the entry moved rather than
+    // vanished, and it still names the head it was sustained at.
+    expect(SUSTAINED_DEFECTS.map((d) => d.id), "SD-1 must not be listed as sustained any more").to.not.include(
+      "SD-1-floor-length-poisoning",
+    );
+    expect(REMEDIATED_DEFECTS.length).to.equal(1);
+    for (const r of REMEDIATED_DEFECTS) {
+      expect(r.sustainedAt, r.id + " must name the head it was sustained at").to.match(/^[0-9a-f]{40}$/);
+      expect(r.invariant.length, r.id + " must state the invariant that closed it").to.be.greaterThan(60);
+      expect(
+        r.rejectedAlternatives.length,
+        r.id + " must record the designs rejected — a fix with no rejected alternatives was not chosen",
+      ).to.be.greaterThan(60);
+    }
+    // The residual is a first-class sustained defect, not a footnote.
+    const residuals = REMEDIATED_DEFECTS.map((r) => r.residual).filter((x): x is string => x !== null);
+    for (const id of residuals) {
+      expect(SUSTAINED_DEFECTS.map((d) => d.id), "a declared residual must be carried as a sustained defect").to.include(
+        id,
+      );
+    }
   });
 
   // =====================================================================
-  it("SD-1 — floor-length poisoning gives the credential an UNCOUNTED, repeatable veto over guardian recovery", async function () {
+  /**
+   * REMEDIATED — and kept here, running, rather than deleted.
+   *
+   * This is the SAME sequence that sustained SD-1 at ec5adce9, step for step:
+   * the same honest quorum, the same approved recovery, the same single-field
+   * length change. Only the VERDICT has moved. Steps 1 and 2 still assert what
+   * they always did; step 3 now asserts that the poisoning transition is
+   * REFUSED, and step 4 — which is the point — asserts that the recovery the
+   * attack existed to veto actually EXECUTES.
+   *
+   * Asserting the execution, not merely the absence of a revert, is deliberate:
+   * `_requireIncomingPossession` reverts `BadSignature` from three different
+   * branches, so a revert-selector assertion could not distinguish a fixed
+   * kernel from a broken one.
+   */
+  it("SD-1 — REMEDIATED: the floor-length poisoning that vetoed recovery is now refused, and the recovery executes", async function () {
     const w = await deployWorld({ label: "sd1", verifier: "honest" });
 
     // 1. An HONEST guardian quorum (k = 2 distinct principals) approves a recovery.
@@ -118,40 +170,47 @@ describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed 
     expect(Number((await w.vault.recovery())[6]), "challenge budget untouched").to.equal(0);
 
     // 2. The COMPROMISED credential (2 roots — the declared asset cut, so it has
-    //    gained nothing it did not already have) changes ONLY the signature LENGTH.
-    //    requirePq stays true and pqParamLevel does not decrease, so
-    //    _requireNoDowngrade — which compares only those two fields — permits it.
+    //    gained nothing it did not already have) attempts to change ONLY the
+    //    signature LENGTH. requirePq stays true and pqParamLevel does not
+    //    decrease, so the two ORIGINAL clauses of _requireNoDowngrade permit it.
+    //    I-FLOOR-SHAPE-IMMUTABLE is the third clause, and it does not.
     const before = await w.vault.securityFloor();
-    await setVerifierAs(
-      w, w.verifiers.honest,
-      { requirePq: true, pqParamLevel: Number(before[1]), pqPublicKeyLength: 32, pqSignatureLength: 64 },
-      w.credKey, w.pqKey,
-    );
-    const after = await w.vault.securityFloor();
     expect(Number(before[3]), "the honest floor declares a 65-byte signature").to.equal(65);
-    expect(Number(after[3]), "SUSTAINED: the length was changed with no downgrade check").to.equal(64);
+    await expect(
+      setVerifierAs(
+        w, w.verifiers.honest,
+        { requirePq: true, pqParamLevel: Number(before[1]), pqPublicKeyLength: 32, pqSignatureLength: 64 },
+        w.credKey, w.pqKey,
+      ),
+      "REMEDIATED: the poisoning transition is refused at the write",
+    ).to.be.revertedWithCustomError(w.vault, "Downgrade");
+    const after = await w.vault.securityFloor();
+    expect(Number(after[3]), "REMEDIATED: the recorded shape did not move").to.equal(65);
+    expect(Number(after[2]), "REMEDIATED: neither did the key shape").to.equal(Number(before[2]));
 
-    // 3. THE VETO. Both branches of the incoming-possession check are now closed.
+    // 3. AND THE POINT. The recovery this attack existed to veto now completes.
+    //    Asserted as an OBSERVED INSTALL, because _requireIncomingPossession
+    //    reverts BadSignature from three branches and the absence of one
+    //    particular revert would prove nothing.
     await networkHelpers.time.increase(7 * DAY + 1);
     const pop = (await w.vault.recoveryPossessionDigest()) as string;
-    const change = (pqPop: string): Record<string, string> => ({
-      newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
-      newEcdsaPop: sign(newCred, pop), newPqPop: pqPop,
-    });
-    // A REAL 65-byte proof now fails the LENGTH check against the poisoned floor.
-    await expect(w.vault.executeRecovery(change(sign(newPq, pop))))
-      .to.be.revertedWithCustomError(w.vault, "BadSignature");
-    // A 64-byte proof passes the length check and fails the VERIFIER, which is
-    // length-bound like every real PQ scheme at a fixed parameter level.
-    await expect(w.vault.executeRecovery(change(ethers.hexlify(new Uint8Array(64)))))
-      .to.be.revertedWithCustomError(w.vault, "BadSignature");
+    await (
+      await w.vault.executeRecovery({
+        newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
+        newEcdsaPop: sign(newCred, pop), newPqPop: sign(newPq, pop),
+      })
+    ).wait();
+    expect(await w.vault.ecdsaSigner(), "REMEDIATED: the guardian-approved credential is installed")
+      .to.equal(addrOf(newCred));
+    expect(await w.vault.pqPublicKeyHash(), "REMEDIATED: and so is its PQ commitment").to.equal(pqHash(newPq));
 
-    // 4. THE POINT: the challenge budget — the ONLY mechanism AUTHORITY.md cites
-    //    for "permanent recovery veto: unreachable" — was never touched, so the
-    //    veto is repeatable without limit.
+    // 4. The challenge budget was never needed, because there was never a veto.
+    //    At ec5adce9 this same assertion read "challengesUsed is STILL 0" and was
+    //    the PROOF OF THE DEFECT: the counter never engaged while the veto ran
+    //    unbounded. Here it means the opposite — nothing was ever vetoed.
     const rec = await w.vault.recovery();
-    expect(rec[7], "the request is still active and still unexecutable").to.equal(true);
-    expect(Number(rec[6]), "SUSTAINED: challengesUsed is STILL 0 — CHALLENGE_LIMIT never engages").to.equal(0);
+    expect(rec[7], "the request is consumed, not stranded").to.equal(false);
+    expect(Number(rec[6]), "no challenge was consumed").to.equal(0);
 
     // 5. AND THE BOUND ON THE CLAIM: no guardian was compromised, and the
     //    guardian roster is untouched, so no authority CUT moved.
@@ -340,7 +399,15 @@ describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed 
 
   // =====================================================================
   it("prints the sustained-defect ledger", function () {
-    console.log("\n  SUSTAINED COMPOSITION DEFECTS (zero Solidity changed in this PR)");
+    console.log("\n  REMEDIATED COMPOSITION DEFECTS");
+    for (const r of REMEDIATED_DEFECTS) {
+      console.log("\n  " + r.id);
+      console.log("    DEFECT_SUSTAINED_AT   " + r.sustainedAt);
+      console.log("    DEFECT_REMEDIATED_ON  " + r.remediatedOn);
+      console.log("    invariant   : " + r.invariant.slice(0, 150) + "...");
+      console.log("    residual    : " + (r.residual ?? "none"));
+    }
+    console.log("\n  SUSTAINED COMPOSITION DEFECTS (still open)");
     for (const d of SUSTAINED_DEFECTS) {
       console.log("\n  " + d.id + "  [" + d.classification + "]  roots: " + d.rootsRequired.split("—")[0]!.trim());
       console.log("    " + d.title);

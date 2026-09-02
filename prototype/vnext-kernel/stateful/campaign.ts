@@ -157,11 +157,20 @@ function genParams(
   const timeBias = profile.timeBias ?? "default";
   /**
    * A profile that must DRIVE RECOVERY THROUGH TO EXECUTION cannot also spend
-   * its budget proposing verifiers that refuse the incoming possession proof, or
-   * poisoning the floor lengths the same proof is measured against. Those are
-   * real, deliberately-generated adversarial behaviours — they stay ON in every
-   * other profile — but a profile whose job is to reach the seam must be able to
-   * reach it. Distribution, not filtering.
+   * its budget proposing verifiers that refuse the incoming possession proof.
+   * That is a real, deliberately-generated adversarial behaviour — it stays ON
+   * in every other profile — but a profile whose job is to reach the seam must
+   * be able to reach it. Distribution, not filtering.
+   *
+   * IT NO LONGER SUPPRESSES FLOOR POISONING, and that change is deliberate.
+   * `shrinkLengths` used to be disarmed here for the same reason, which meant
+   * the CAUSE (poisoning) and the VICTIM (a recovery driven to execution) lived
+   * in disjoint profiles by construction — so the campaign never had power over
+   * SD-1 at all, and that defect was found by narrative reasoning rather than by
+   * an oracle (`defects.ts` records it with `property: null`). Now that
+   * `I-FLOOR-SHAPE-IMMUTABLE` makes poisoning a refused no-op, the two can and
+   * must coexist: these profiles ATTEMPT the poisoning and complete recoveries
+   * anyway, which is positive evidence rather than the absence of it.
    */
   const cleanRecovery = profile.honestRecoveryBias === true;
   switch (kind) {
@@ -181,11 +190,30 @@ function genParams(
       return {
         verifier: prng.pick(["honest", "alwaysTrue", "alwaysFalse", "reverting"]),
         bumpLevel: prng.chance(0.3),
-        // `shrinkLengths` changes the two floor LENGTHS, which _requireNoDowngrade
-        // does not compare; `raisePq` turns the conjunct ON, which initialize
-        // guards against a zero key commitment and setVerifier does not. Both are
-        // reachable transitions and both are generated deliberately.
-        shrinkLengths: !cleanRecovery && prng.chance(0.25),
+        // `shrinkLengths` changes the two floor LENGTHS — the SD-1 seam, now
+        // frozen by `I-FLOOR-SHAPE-IMMUTABLE` once requirePq holds; `raisePq`
+        // turns the conjunct ON, which initialize guards against a zero key
+        // commitment and setVerifier still does not (SD-3). Both are reachable
+        // transitions and both are generated deliberately, in EVERY profile.
+        //
+        // PRNG-STREAM ACCOUNTING, stated exactly, because it is easy to get wrong.
+        // Every campaign is a pure function of (profile, seed, depth), so a `prng`
+        // call added or removed re-seeds every history from that point on and
+        // silently moves which seed catches which mutant.
+        //
+        //   - Dropping the `!cleanRecovery &&` short-circuit DOES add one draw,
+        //     but ONLY in the two `honestRecoveryBias` profiles, which previously
+        //     skipped it. Their mutants — M7, M8 and M16 — were re-verified after
+        //     the change and are still killed. Every other profile's stream is
+        //     byte-identical, and M1-M6 and M9-M16 still die at the same seed and
+        //     step as before.
+        //   - A separate `oversizeShape` draw, which would have run in EVERY
+        //     profile, was written and then REVERTED: it turned M9 and M11 into
+        //     survivors. The `MAX_PQ_LENGTH` bound is covered by a deterministic
+        //     boundary test with a positive control instead
+        //     (test/Sd1RecoveryFloorBinding.test.ts), and that trade is recorded
+        //     in stateful/mutants.ts's UNMUTATED_CLAUSES.
+        shrinkLengths: prng.chance(0.25),
         raisePq: prng.chance(0.35),
       };
     case "SET_POLICY":

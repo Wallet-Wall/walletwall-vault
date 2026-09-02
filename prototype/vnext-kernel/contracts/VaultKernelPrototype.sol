@@ -202,6 +202,22 @@ contract VaultKernelPrototype {
     uint64 public constant CONTAINMENT_WINDOW = 30 days;
     uint64 public constant CONTAINMENT_BUDGET = 6 days; // B < W
     uint32 public constant CHALLENGE_LIMIT = 2;
+    /**
+     * @dev The largest PQ key or signature shape a floor may declare.
+     *
+     *      WHY A BOUND MUST EXIST. The two length fields are `uint32`, so an
+     *      unbounded floor may demand a 4,294,967,295-byte proof — calldata no
+     *      block could ever carry, and therefore a floor no possession proof can
+     *      ever satisfy. `I-FLOOR-SHAPE-IMMUTABLE` would then make that
+     *      unsatisfiability PERMANENT, which is the whole reason this bound is
+     *      part of the same change rather than a separate tidy-up.
+     *
+     *      WHERE THE BOUND SITS is a different question, answered on different
+     *      grounds: 65,535 admits every standardised PQ shape, SPHINCS+-256f's
+     *      49,856-byte signature included. It is NOT a claim that 65,536 bytes
+     *      is unmineable — it plainly is not — only that no real scheme needs it.
+     */
+    uint32 public constant MAX_PQ_LENGTH = 65_535;
 
     bytes4 private constant ERC1271_MAGIC = 0x1626ba7e;
     uint256 private constant GUARDIAN_CALL_GAS = 30_000;
@@ -310,10 +326,14 @@ contract VaultKernelPrototype {
         );
     }
 
-    /// @dev A floor that demands a PQ conjunct must declare satisfiable shapes.
+    /// @dev A floor that demands a PQ conjunct must declare satisfiable shapes —
+    ///      satisfiable at BOTH ends. Zero is unsatisfiable because no preimage
+    ///      of a committed key has it; an unbounded `uint32` is unsatisfiable
+    ///      because the calldata carrying it would not fit in a block.
     function _requireSaneFloor(SecurityFloor calldata floor) internal pure {
         if (!floor.requirePq) return;
         if (floor.pqPublicKeyLength == 0 || floor.pqSignatureLength == 0) revert BadSignature();
+        if (floor.pqPublicKeyLength > MAX_PQ_LENGTH || floor.pqSignatureLength > MAX_PQ_LENGTH) revert BadSignature();
     }
 
     /**
@@ -469,12 +489,46 @@ contract VaultKernelPrototype {
      *      strengthening. Turning `requirePq` off, or lowering the parameter
      *      level, is REFUSED outright rather than gated on a higher authority:
      *      there is no principal in this design entitled to weaken the floor.
-     *      Length changes accompany a parameter change and move with it.
+     *
+     *      `I-FLOOR-SHAPE-IMMUTABLE` — the third clause, and the fix for SD-1.
+     *      The two STRUCTURAL fields are FROZEN once a PQ conjunct is mandatory.
+     *      They were previously unconstrained, and `_requireIncomingPossession`
+     *      measures an ALREADY-QUORUM-APPROVED recovery against them LIVE, so the
+     *      credential principal held a veto over guardian recovery that
+     *      `CHALLENGE_LIMIT` never saw. The remedy is to REMOVE that state from
+     *      the satisfiability condition — not to count the veto, and not to
+     *      snapshot the floor into the request:
+     *
+     *        - counting fails because `challengesUsed` bounds `cancelRecovery`
+     *          only by virtue of a cancellation being REVERSIBLE (the quorum
+     *          re-initiates and the state returns). No guardian path writes
+     *          `securityFloor` and `executeRecovery` never touches it, so a floor
+     *          write is irreversible, and a counter bounds only how many times an
+     *          attacker re-chooses which permanent state to inflict;
+     *        - snapshotting fails because `_authorise` reads the SAME slot, so a
+     *          floor poisoned BEFORE the quorum proposes is copied faithfully into
+     *          the snapshot, and a recovery that did complete would install a
+     *          credential the live floor could never use.
+     *
+     *      `pqParamLevel` is deliberately NOT frozen: it is recorded strength,
+     *      neither `_authorise` nor `_requireIncomingPossession` reads it, and it
+     *      therefore cannot unsettle a pending recovery. The ratchet stays free.
+     *
+     *      The guard reads `current.requirePq`, so a vault born ECDSA-only may
+     *      still declare its shape once, on the `false -> true` edge. That edge
+     *      retains ONE uncounted arming move against a pending recovery; it is
+     *      RECORDED in `stateful/defects.ts` rather than silently absorbed, and
+     *      `MAX_PQ_LENGTH` is what keeps it one-shot rather than permanent.
      */
     function _requireNoDowngrade(SecurityFloor memory next) internal view {
         SecurityFloor memory current = securityFloor;
         if (current.requirePq && !next.requirePq) revert Downgrade();
         if (next.pqParamLevel < current.pqParamLevel) revert Downgrade();
+        if (
+            current.requirePq &&
+            (next.pqPublicKeyLength != current.pqPublicKeyLength ||
+                next.pqSignatureLength != current.pqSignatureLength)
+        ) revert Downgrade();
     }
 
     /**

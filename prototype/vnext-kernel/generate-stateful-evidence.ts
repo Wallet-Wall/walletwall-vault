@@ -20,8 +20,8 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 
 import { PROFILES } from "./stateful/profiles.js";
-import { MUTATIONS } from "./stateful/mutants.js";
-import { SUSTAINED_DEFECTS } from "./stateful/defects.js";
+import { MUTATIONS, UNMUTATED_CLAUSES } from "./stateful/mutants.js";
+import { REMEDIATED_DEFECTS, SUSTAINED_DEFECTS } from "./stateful/defects.js";
 import { GLOBAL_INVARIANTS, REJECTED_INVARIANTS } from "./stateful/invariants.js";
 import { DECLARED_CUTS, DOCUMENTED } from "./stateful/model.js";
 
@@ -57,10 +57,21 @@ function main(): void {
       CI_SEEDS.medium.length * DEPTHS.medium +
       CI_SEEDS.deep.length * DEPTHS.deep);
 
+  /**
+   * MEASUREMENTS.json exposes TOP-LEVEL `kernel` / `factory` objects. An earlier
+   * revision of this generator read `measurements.contracts[]` — the shape
+   * `measure.ts` PRINTS, not the shape the committed file has — so
+   * `kernelRuntimeBytes` and `kernelRuntimeHash` were permanently null and the
+   * receipt silently published "unknown" as if it were a measurement. It was
+   * harmless while this lane changed zero bytes of Solidity; it stopped being
+   * harmless the moment one did.
+   */
   const measurements = JSON.parse(fs.readFileSync(path.join(ROOT, "MEASUREMENTS.json"), "utf8")) as {
-    contracts?: { name: string; runtime: number; runtimeKeccakOfArtifact: string }[];
+    kernel?: { runtimeBytes: number; runtimeSha256: string };
+    sd1Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
-  const kernel = (measurements.contracts ?? []).find((c) => c.name === "VaultKernelPrototype");
+  const kernel = measurements.kernel;
+  const sd1 = measurements.sd1Remediation;
 
   const receipt = {
     schema: "vnext-kernel-stateful-authority-evidence.v1",
@@ -176,6 +187,12 @@ function main(): void {
         "D  — possession proven against the OUTGOING credential (M7)",
         "F  — a policy plane whose refusal is not honoured (M11)",
       ],
+      /**
+       * Clauses of the kernel that this catalogue does NOT cover, published so a
+       * reader cannot mistake the kill matrix for total coverage. A disclosure
+       * that lives only in a source comment is not a disclosure.
+       */
+      unmutatedClauses: UNMUTATED_CLAUSES,
     },
 
     sustainedDefects: SUSTAINED_DEFECTS.map((d) => ({
@@ -187,15 +204,30 @@ function main(): void {
       rootCause: d.rootCause,
       notAnEscalationBecause: d.notAnEscalationBecause,
       minimalFixSketch: d.minimalFixSketch,
-      reproducedBy: "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts",
+      reproducedBy: d.reproducedBy ?? "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts",
     })),
 
     solidityChanged: {
-      bytes: 0,
-      note: "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change.",
-      kernelRuntimeBytes: kernel?.runtime ?? null,
-      kernelRuntimeHash: kernel?.runtimeKeccakOfArtifact ?? null,
+      bytes: sd1?.totalDelta ?? 0,
+      note:
+        sd1 === undefined
+          ? "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change."
+          : "SD-1 was REMEDIATED by I-FLOOR-SHAPE-IMMUTABLE. The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. SD-2, SD-3 and SD-4 remain SUSTAINED and change zero bytes.",
+      beforeRuntimeBytes: sd1?.beforeRuntime ?? null,
+      kernelRuntimeBytes: kernel?.runtimeBytes ?? null,
+      kernelRuntimeHash: kernel?.runtimeSha256 ?? null,
     },
+    remediated: REMEDIATED_DEFECTS.map((r) => ({
+      id: r.id,
+      verdict: "DEFECT_REMEDIATED",
+      sustainedAt: r.sustainedAt,
+      remediatedOn: r.remediatedOn,
+      invariant: r.invariant,
+      sourceDelta: r.sourceDelta,
+      rejectedAlternatives: r.rejectedAlternatives,
+      invertedReproduction: r.invertedReproduction,
+      residual: r.residual,
+    })),
 
     whatThisDoesNotProve: [
       "NOT EXHAUSTIVE. A bounded, seeded campaign over a bounded action vocabulary. Any sequence outside the generated distribution is untested.",
@@ -223,7 +255,8 @@ function main(): void {
   console.log("  planned         " + plannedCampaigns + " campaigns / " + plannedTransitions + " transitions");
   console.log("  invariants      " + GLOBAL_INVARIANTS.length + " global (+ " + REJECTED_INVARIANTS.length + " rejected, recorded)");
   console.log("  mutations       " + MUTATIONS.length);
-  console.log("  sustained       " + SUSTAINED_DEFECTS.length + " defects, 0 Solidity bytes changed");
+  console.log("  sustained       " + SUSTAINED_DEFECTS.length + " defects still open");
+  console.log("  remediated      " + REMEDIATED_DEFECTS.length + " defect(s), " + (sd1?.totalDelta ?? 0) + " Solidity bytes changed");
   console.log("  digest          " + sha256OfFile(OUT));
 }
 

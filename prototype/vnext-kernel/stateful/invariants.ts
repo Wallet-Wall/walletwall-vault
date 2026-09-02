@@ -248,20 +248,76 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
     },
   },
   {
+    /**
+     * A mandatory PQ conjunct must declare a shape that is satisfiable at BOTH
+     * ends. Zero is unsatisfiable because no preimage of a committed key has it;
+     * an unbounded `uint32` is unsatisfiable because no block could carry the
+     * calldata. The upper half is a REQUIREMENT-side property, not a restatement
+     * of the implementation: a kernel that bounded the shape more tightly still
+     * passes it.
+     */
     name: "G-FLOOR-SANE",
-    source: "_requireSaneFloor: requirePq implies pqPublicKeyLength != 0 and pqSignatureLength != 0, on both initialize and setVerifier",
-    check: (s) =>
-      s.floor.requirePq && (s.floor.pqPublicKeyLength === 0n || s.floor.pqSignatureLength === 0n)
-        ? "requirePq is set with a zero-length key or signature shape"
-        : null,
+    source:
+      "_requireSaneFloor: requirePq implies 0 < pqPublicKeyLength <= MAX_PQ_LENGTH and 0 < pqSignatureLength <= MAX_PQ_LENGTH, on both initialize and setVerifier",
+    check: (s) => {
+      if (!s.floor.requirePq) return null;
+      if (s.floor.pqPublicKeyLength === 0n || s.floor.pqSignatureLength === 0n) {
+        return "requirePq is set with a zero-length key or signature shape";
+      }
+      // The literal mirrors VaultKernelPrototype.MAX_PQ_LENGTH. It is written out
+      // rather than read from the kernel deliberately: this file is the ORACLE,
+      // and an oracle that sources its threshold from the implementation cannot
+      // detect the implementation moving it. Mutant M18's sibling reasoning
+      // applies — the number is pinned in test/Sd1RecoveryFloorBinding.test.ts
+      // against the contract's own getter, so drift is caught there.
+      if (s.floor.pqPublicKeyLength > 65535n || s.floor.pqSignatureLength > 65535n) {
+        return (
+          "requirePq is set with a shape beyond any standardised PQ scheme (" +
+          s.floor.pqPublicKeyLength +
+          "/" +
+          s.floor.pqSignatureLength +
+          "), which the freeze would make a permanently unsatisfiable floor"
+        );
+      }
+      return null;
+    },
   },
   {
+    /**
+     * `I-FLOOR-SHAPE-IMMUTABLE` is the SD-1 remediation, and this is its
+     * REQUIREMENT-side statement rather than a mirror of the new comparisons.
+     * The requirement is that no principal may move state the recovery
+     * satisfiability condition reads — `_requireIncomingPossession` measures an
+     * already-quorum-approved recovery against the two STRUCTURAL fields LIVE,
+     * and no guardian path can repair them, so a kernel that lets them move
+     * while a PQ conjunct is mandatory hands the credential an uncounted veto. A
+     * kernel that froze them even harder still passes this.
+     */
     name: "G-FLOOR-NO-DOWNGRADE",
-    source: "_requireNoDowngrade: requirePq may not go true -> false, and pqParamLevel may not decrease",
+    source:
+      "_requireNoDowngrade: requirePq may not go true -> false, pqParamLevel may not decrease, and neither structural length may change while requirePq already holds (I-FLOOR-SHAPE-IMMUTABLE)",
     check: (s, p) => {
       if (!p) return null;
       if (p.floor.requirePq && !s.floor.requirePq) return "requirePq was downgraded from true to false";
       if (s.floor.pqParamLevel < p.floor.pqParamLevel) return "pqParamLevel decreased";
+      if (p.floor.requirePq && s.floor.pqPublicKeyLength !== p.floor.pqPublicKeyLength) {
+        return (
+          "pqPublicKeyLength moved (" +
+          p.floor.pqPublicKeyLength +
+          " -> " +
+          s.floor.pqPublicKeyLength +
+          ") while a PQ conjunct was already mandatory"
+        );
+      }
+      if (p.floor.requirePq && s.floor.pqSignatureLength !== p.floor.pqSignatureLength) {
+        return (
+          "pqSignatureLength moved (" +
+          p.floor.pqSignatureLength +
+          " -> " +
+          s.floor.pqSignatureLength +
+          ") while a PQ conjunct was already mandatory"
+        );
+      }
       return null;
     },
   },
