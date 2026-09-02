@@ -1,0 +1,636 @@
+{
+  "schema": "vnext-kernel-authority-census.v1",
+  "head": "1ad4406fc5e618e2e8adf9bbf207d11f36e21e95",
+  "tree": "06f416256dae2020c6b0733a6c1b817930007244",
+  "compiler": {
+    "solcVersion": "0.8.24",
+    "evmVersion": "cancun"
+  },
+  "derivation": {
+    "externalSurface": "independently derived from compiled AST (solc standard-json), not from the manifest or from remembered names",
+    "gateOrderingTrace": "independently derived from the same AST -- gate primitive identification is by resolved declaration id, not name string; statement order is source order",
+    "outcomeTaxonomy": "declared -- see authority-manifest.json",
+    "expectedMechanismAndCut": "declared -- architecture citation + implementation cross-check, see authority-manifest.json's justification field per entry"
+  },
+  "gatePrimitives": [
+    "_authorise",
+    "_floorAuthorises",
+    "_requireQuorum",
+    "_requireIncomingPossession"
+  ],
+  "contracts": [
+    "VaultKernelPrototype",
+    "VaultKernelFactoryPrototype"
+  ],
+  "rows": [
+    {
+      "key": "VaultKernelPrototype:constructor",
+      "contract": "VaultKernelPrototype",
+      "signature": "constructor()",
+      "kind": "constructor",
+      "visibility": "public",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 8296,
+      "reasons": [],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "constructor()",
+        "outcomes": [
+          "GENESIS_AUTHORITY_CREATION"
+        ],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- runs exactly once, at the IMPLEMENTATION's own deployment, and is never externally callable again",
+        "orderingExceptionReason": null,
+        "justification": "Sets _initialized = true so the implementation permanently cannot be claimed/initialized and can never hold custody as a usable vault. AUTHORITY.md section 1: 'KERNEL ADMIN DOES NOT EXIST'."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:09bbae89",
+      "contract": "VaultKernelPrototype",
+      "signature": "initialize(struct VaultKernelPrototype.GenesisConfig)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 8450,
+      "reasons": [],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "initialize(GenesisConfig)",
+        "outcomes": [
+          "GENESIS_AUTHORITY_CREATION"
+        ],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
+        "orderingExceptionReason": null,
+        "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C)."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:acdde790",
+      "contract": "VaultKernelPrototype",
+      "signature": "genesisSalt(bytes32,struct VaultKernelPrototype.GenesisConfig)",
+      "kind": "function",
+      "visibility": "public",
+      "stateMutability": "pure",
+      "isStateChanging": false,
+      "astId": 8509,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:db011790",
+      "contract": "VaultKernelPrototype",
+      "signature": "genesisCommitments()",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 8524,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:receive",
+      "contract": "VaultKernelPrototype",
+      "signature": "receive()",
+      "kind": "receive",
+      "visibility": "external",
+      "stateMutability": "payable",
+      "isStateChanging": true,
+      "astId": 8528,
+      "reasons": [],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "receive()",
+        "outcomes": [],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- unconditional value ingress, no logic at all",
+        "orderingExceptionReason": null,
+        "justification": "K-1 custody: unsolicited value is ACCEPTED, never refused (AUTHORITY.md section 5 intro; README.md K-1). Not a privileged outcome by itself."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:f698da25",
+      "contract": "VaultKernelPrototype",
+      "signature": "domainSeparator()",
+      "kind": "function",
+      "visibility": "public",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 8564,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:0d8a76d4",
+      "contract": "VaultKernelPrototype",
+      "signature": "kernelGeneration()",
+      "kind": "function",
+      "visibility": "public",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 8634,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:46f12805",
+      "contract": "VaultKernelPrototype",
+      "signature": "credentialPossessionDigest(address,bytes32)",
+      "kind": "function",
+      "visibility": "public",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 8822,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:29e5e797",
+      "contract": "VaultKernelPrototype",
+      "signature": "recoveryPossessionDigest()",
+      "kind": "function",
+      "visibility": "public",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 8859,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:87586df1",
+      "contract": "VaultKernelPrototype",
+      "signature": "effectiveSafeState()",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 8999,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:6bc44090",
+      "contract": "VaultKernelPrototype",
+      "signature": "execute(address payable,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 9167,
+      "reasons": [
+        "unresolved statement(s) present, covered by declared exception: The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore."
+      ],
+      "observedMechanisms": [
+        "HYBRID"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": true,
+      "observedUnresolvedReasons": [
+        "IfStatement is not the recognised single-revert guard idiom (has an else, or a non-revert-only true body)"
+      ],
+      "manifest": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "outcomes": [
+          "ASSET_MOVEMENT"
+        ],
+        "expectedMechanisms": [
+          "HYBRID"
+        ],
+        "expectedCut": "min(2,k)",
+        "orderingExceptionReason": "The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore.",
+        "justification": "AUTHORITY.md section 3 'Unauthorized asset control': execute and rotateCredential/setVerifier/setPolicy all call _authorise -- the ECDSA conjunct AND the PQ conjunct."
+      },
+      "verdict": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "key": "VaultKernelPrototype:b809c196",
+      "contract": "VaultKernelPrototype",
+      "signature": "rotateCredential(struct VaultKernelPrototype.CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 9253,
+      "reasons": [],
+      "observedMechanisms": [
+        "HYBRID",
+        "POSSESSION_PROOF"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "rotateCredential(CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+        "outcomes": [
+          "CREDENTIAL_REPLACEMENT"
+        ],
+        "expectedMechanisms": [
+          "HYBRID",
+          "POSSESSION_PROOF"
+        ],
+        "expectedCut": "min(2,k)",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 3 'Credential replacement': HYBRID-authorised (fix for finding A1) and additionally requires possession of both INCOMING factors (fix for finding D) so an approved-but-unheld credential can never strand the vault."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:35fae3fb",
+      "contract": "VaultKernelPrototype",
+      "signature": "setVerifier(address,struct VaultKernelPrototype.SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 9352,
+      "reasons": [],
+      "observedMechanisms": [
+        "HYBRID"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "setVerifier(address,SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+        "outcomes": [
+          "VERIFIER_REPLACEMENT"
+        ],
+        "expectedMechanisms": [
+          "HYBRID"
+        ],
+        "expectedCut": "min(2,k)",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 3 'Silent crypto downgrade' / section 1: HYBRID-authorised (fix for finding A2). The escape from a genuinely dead verifier is guardian recovery (initiateRecovery/executeRecovery), never a unilateral ECDSA-only swap."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:5b704804",
+      "contract": "VaultKernelPrototype",
+      "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 9409,
+      "reasons": [],
+      "observedMechanisms": [
+        "HYBRID"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+        "outcomes": [
+          "POLICY_CHANGE"
+        ],
+        "expectedMechanisms": [
+          "HYBRID"
+        ],
+        "expectedCut": "min(2,k)",
+        "orderingExceptionReason": null,
+        "justification": "Same HYBRID gate as credential/verifier governance, same reasoning ('a plane pointer is governance, and governance is not a one-factor act', VaultKernelPrototype.sol doc comment on setPolicy). NOTE (finding of this PR): AUTHORITY.md section 3's cut table does not list a 'Policy change' row alongside credential/verifier/guardian/migration -- this entry re-derives the cut from the implementation's actual gate rather than from an explicit table row; see the PR description's Findings section."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:38b4d427",
+      "contract": "VaultKernelPrototype",
+      "signature": "rosterCommitment(uint64,address[],bool[])",
+      "kind": "function",
+      "visibility": "public",
+      "stateMutability": "pure",
+      "isStateChanging": false,
+      "astId": 9526,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:b19138b8",
+      "contract": "VaultKernelPrototype",
+      "signature": "setGuardians(uint64,address[],bool[],struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 9610,
+      "reasons": [],
+      "observedMechanisms": [
+        "QUORUM"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "setGuardians(uint64,address[],bool[],QuorumProof,uint256,uint64)",
+        "outcomes": [
+          "GUARDIAN_CHANGE"
+        ],
+        "expectedMechanisms": [
+          "QUORUM"
+        ],
+        "expectedCut": "k",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 3 'Guardian takeover': quorum evaluated against the IMMEDIATELY PRECEDING commitment (I-GUARDIAN-AUTHORITY-CLOSURE), counting DISTINCT principals via the canonical strictly-ascending roster (I-QUORUM-PRINCIPAL-DISTINCTNESS, fix for finding B)."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:2eeceb79",
+      "contract": "VaultKernelPrototype",
+      "signature": "initiateRecovery(address,bytes32,address,struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 9930,
+      "reasons": [],
+      "observedMechanisms": [
+        "QUORUM"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "initiateRecovery(address,bytes32,address,QuorumProof,uint256,uint64)",
+        "outcomes": [
+          "RECOVERY_START"
+        ],
+        "expectedMechanisms": [
+          "QUORUM"
+        ],
+        "expectedCut": "k",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 1/2: guardian quorum is the ACCEPTED TRUST ROOT (D1) for recovery. Establishes the pending RecoveryRequest a later executeRecovery merely finishes."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:1271666a",
+      "contract": "VaultKernelPrototype",
+      "signature": "cancelRecovery(uint256,uint64,bytes)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10005,
+      "reasons": [],
+      "observedMechanisms": [
+        "FLOOR_ONLY"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "cancelRecovery(uint256,uint64,bytes)",
+        "outcomes": [
+          "RECOVERY_CANCEL"
+        ],
+        "expectedMechanisms": [
+          "FLOOR_ONLY"
+        ],
+        "expectedCut": "1, DELIBERATELY BOUNDED to CHALLENGE_LIMIT=2 per recovery episode (I-VETO-BOUND) -- not a K-cut, a declared, tested exception",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 1: the credential 'may cancel a pending recovery a BOUNDED number of times per episode... unbounded would restore H-03, a permanent veto held by exactly the principal whose compromise recovery exists to remedy' (VaultKernelPrototype.sol doc comment on cancelRecovery). This is the ONE place a single ECDSA-only factor is an intentionally accepted gate outside _authorise -- it can only CANCEL, never grant anything."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:bfd6b85c",
+      "contract": "VaultKernelPrototype",
+      "signature": "executeRecovery(struct VaultKernelPrototype.CredentialChange)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10092,
+      "reasons": [],
+      "observedMechanisms": [
+        "POSSESSION_PROOF"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "executeRecovery(CredentialChange)",
+        "outcomes": [
+          "CREDENTIAL_REPLACEMENT",
+          "VERIFIER_REPLACEMENT",
+          "RECOVERY_COMPLETION"
+        ],
+        "expectedMechanisms": [
+          "POSSESSION_PROOF"
+        ],
+        "expectedCut": "k (the guardian quorum authority was already established and bound at initiateRecovery; this step is PERMISSIONLESS once matured, gated only by possession proof of the incoming credential, per finding D)",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 1 'Anyone: executeRecovery (after maturity) -- No discretion: recipient and effect are pre-committed'. Also installs the recovery's replacement pqVerifier -- the guardian-quorum escape from a dead verifier (I-NO-CIRCULAR-ESCAPE, fix for finding A2's remedy)."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:5aabecec",
+      "contract": "VaultKernelPrototype",
+      "signature": "enterContainment(struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10196,
+      "reasons": [
+        "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
+      ],
+      "observedMechanisms": [
+        "QUORUM"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": true,
+      "observedUnresolvedReasons": [
+        "IfStatement is not the recognised single-revert guard idiom (has an else, or a non-revert-only true body)"
+      ],
+      "manifest": {
+        "signature": "enterContainment(QuorumProof,uint256,uint64)",
+        "outcomes": [
+          "CONTAINMENT_OR_SAFE_STATE_CHANGE"
+        ],
+        "expectedMechanisms": [
+          "QUORUM"
+        ],
+        "expectedCut": "k",
+        "orderingExceptionReason": "The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check.",
+        "justification": "AUTHORITY.md section 1/11: guardian quorum triggers emergency containment; budgeted B < W so denial is a bounded duty cycle, not a permanent state."
+      },
+      "verdict": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "key": "VaultKernelPrototype:bb0cea8a",
+      "contract": "VaultKernelPrototype",
+      "signature": "bindMigration(struct VaultKernelPrototype.Destination,struct VaultKernelPrototype.QuorumProof,uint256,uint64,bytes)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10331,
+      "reasons": [],
+      "observedMechanisms": [
+        "QUORUM",
+        "FLOOR_ONLY"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "bindMigration(Destination,QuorumProof,uint256,uint64,bytes)",
+        "outcomes": [
+          "MIGRATION"
+        ],
+        "expectedMechanisms": [
+          "QUORUM",
+          "FLOOR_ONLY"
+        ],
+        "expectedCut": "k+1",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 3 'Migration takeover': BOTH principals required -- guardian quorum AND credential (architecture section 22 D2). Unchanged by the round-2 remediation; the only function requiring two DISTINCT mechanisms simultaneously rather than either-or."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:a4874d77",
+      "contract": "VaultKernelPrototype",
+      "signature": "retire()",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10373,
+      "reasons": [],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "retire()",
+        "outcomes": [
+          "CONTAINMENT_OR_SAFE_STATE_CHANGE"
+        ],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- PERMISSIONLESS, no discretion; the authority decision (k+1) was already made at bindMigration, retire only waits out BIND_DELAY",
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 1: 'Anyone: retire (after delay) -- No discretion'. I-TERMINALITY-IS-AUTHORITY: terminal by authority, never by activity; egress stays open forever regardless."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:3eabc4e4",
+      "contract": "VaultKernelPrototype",
+      "signature": "egress(address)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10502,
+      "reasons": [
+        "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
+      ],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": true,
+      "observedUnresolvedReasons": [
+        "IfStatement is not the recognised single-revert guard idiom (has an else, or a non-revert-only true body)"
+      ],
+      "manifest": {
+        "signature": "egress(address)",
+        "outcomes": [
+          "ASSET_MOVEMENT"
+        ],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- PERMISSIONLESS, no discretion; the authority decision (k+1) was already made at bindMigration, and the destination is re-validated by codehash at execution rather than re-authorised",
+        "orderingExceptionReason": "egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization.",
+        "justification": "AUTHORITY.md section 1: 'Anyone: egress -- No discretion: recipient and effect are pre-committed'. Destination re-checked by codehash AT EXECUTION (DestinationMismatch), not merely at binding time."
+      },
+      "verdict": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "key": "VaultKernelFactoryPrototype:constructor",
+      "contract": "VaultKernelFactoryPrototype",
+      "signature": "constructor()",
+      "kind": "constructor",
+      "visibility": "public",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 7853,
+      "reasons": [],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "constructor(address,uint64)",
+        "outcomes": [
+          "GENESIS_AUTHORITY_CREATION"
+        ],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- runs once at factory deployment; the implementation target and generation become immutable and unreachable by every principal thereafter, including the deployer",
+        "orderingExceptionReason": null,
+        "justification": "VaultKernelFactoryPrototype.sol header: 'the choice is consumed at this factory's own construction and is thereafter unreachable by EVERY principal... this factory holds NO authority over any clone it has already produced'."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelFactoryPrototype:f1cfaa80",
+      "contract": "VaultKernelFactoryPrototype",
+      "signature": "deployVault(bytes32,struct VaultKernelPrototype.GenesisConfig)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 7904,
+      "reasons": [],
+      "observedMechanisms": [],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "deployVault(bytes32,GenesisConfig)",
+        "outcomes": [
+          "COUNTERFACTUAL_IDENTITY_CREATION"
+        ],
+        "expectedMechanisms": [],
+        "expectedCut": "n/a -- PERMISSIONLESS; the CREATE2 salt binds the COMPLETE genesis authority (signer, PQ key hash, verifier, threshold, guardians, floor), so a caller can only ever create THEIR OWN vault at an address bound to THEIR OWN configuration -- a different authority yields a different address, and identical authority submitted twice yields the same harmless outcome",
+        "orderingExceptionReason": null,
+        "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING, the fix for finding C (VaultKernelFactoryPrototype.sol doc comment on deployVault). 'Atomicity and identity binding solve DIFFERENT problems' -- this entry is about identity binding; atomicity is initialize's replay guard."
+      },
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelFactoryPrototype:ff286a91",
+      "contract": "VaultKernelFactoryPrototype",
+      "signature": "predictVault(bytes32,struct VaultKernelPrototype.GenesisConfig)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 7941,
+      "reasons": []
+    }
+  ],
+  "summary": {
+    "total": 17,
+    "pass": 14,
+    "passWithDeclaredException": 3,
+    "failed": 0,
+    "byVerdict": {
+      "PASS": 14,
+      "PASS_WITH_DECLARED_EXCEPTION": 3
+    }
+  },
+  "manifestHash": "a27a6ac19386a4ef336bfe00a74912c1267d67485cb1d5c91ba57d66d4baa5e4",
+  "checkerHash": "79e45cb870db91d527c4e8f55692046ad72420870298a6f7acd2e0b48e875b7f"
+}
