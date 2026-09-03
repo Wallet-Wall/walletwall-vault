@@ -67,8 +67,18 @@ closing SD-4 "necessarily intersects" SD-3 is **refuted**: the exhibit binds
 `pqPublicKeyHash` while SD-4 is about `recovery.proposedPqKeyHash`, and in the
 reproduced counterexample the declared key length matches the incumbent EXACTLY,
 so the exhibit passes on both conjuncts and the approved recovery still dies.
-**SD-4 remains SUSTAINED, deliberately** — its analysis and the only sound design
-are in `stateful/defects.ts`.
+**SD-4 remains SUSTAINED, deliberately** — its analysis is in `stateful/defects.ts`.
+An earlier version of that entry named "the only sound design" as recording the
+proposed key and signature lengths in `RecoveryRequest` and measuring the
+recovery against the request rather than the live floor. **That design was built,
+compiled and executed, and it is REJECTED**: it closes SD-4 and bricks the vault,
+because the floor shape is not unrelated mutable state but the vault's permanent
+global policy, frozen by `I-FLOOR-SHAPE-IMMUTABLE` the instant `requirePq` holds.
+The only family that genuinely preserves the quorum's proposal — letting a
+completed recovery re-declare the shape — moves the "Silent crypto downgrade" row
+below from `unreachable` to `k`. Both are executed in
+`test/Sd4SnapshotAdjudication.test.ts`. **SD-4's liveness cost is INHERENT**, and
+its real residue is state incoherence: the request is left `active` while dead.
 
 **SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
 by a single invariant over the whole commitment ingress surface.**
