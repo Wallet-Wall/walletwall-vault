@@ -76,6 +76,18 @@ export interface CampaignProfile {
    * one `G-PQ-COMMITMENT-SATISFIABLE` exists to police — would be unreachable.
    */
   commitPqKeyOnEcdsaOnlyFloor?: boolean;
+  /**
+   * Makes `ROTATE_CREDENTIAL` FABRICATE its incoming commitment on a
+   * deterministic subset of steps — a hash nothing in the campaign holds a
+   * preimage for, supplied with an empty exhibit. This is the SD-6 attack,
+   * generated rather than argued, and it is what gives `G-COMMITMENT-ATTESTED`
+   * teeth: a property whose violating transition no profile ever attempts is
+   * green for the worst possible reason.
+   *
+   * The subset is derived from the EXISTING `target` draw, so no `prng` call is
+   * added anywhere, and only the appended `commitment-forgery` profile sets it.
+   */
+  fabricateCommitments?: boolean;
   /** Shifts the ADVANCE_TIME distribution into a pending recovery executable window. */
   timeBias?: "default" | "maturation" | "duty-cycle";
   /** Proposes a LIVE verifier and rarely a stale PoP, so the recovery seam is reachable. */
@@ -358,5 +370,34 @@ export const PROFILES: readonly CampaignProfile[] = [
     },
     ecdsaOnlyFloor: true,
     commitPqKeyOnEcdsaOnlyFloor: true,
+  },
+  {
+    /**
+     * APPENDED, never substituted. Every profile above keeps its exact action
+     * stream, kill seeds and step indices, because this one adds no `prng` draw
+     * and changes no existing profile's flags.
+     */
+    name: "commitment-forgery",
+    description:
+      "An ECDSA-only vault whose credential principal repeatedly attempts to install a PQ commitment it holds no preimage for — the SD-6 attack, generated. This is the ONLY profile on which G-COMMITMENT-ATTESTED's violating transition is ever ATTEMPTED, which is what separates 'the kernel refuses it' from 'no campaign ever tried'. A green campaign without this profile would be absent evidence.",
+    actors: [ALL_MATERIAL_ACTOR, ECDSA_ONLY_ATTACKER, ONE_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [5, 4, 2, 1],
+    weights: {
+      ...BROAD,
+      ROTATE_CREDENTIAL: 26,
+      SET_VERIFIER: 8,
+      INITIATE_RECOVERY: 8,
+      EXECUTE_RECOVERY: 5,
+      CANCEL_RECOVERY: 2,
+      SET_GUARDIANS: 2,
+      BIND_MIGRATION: 0,
+      RETIRE: 0,
+      FACTORY_DEPLOY_TWIN: 0,
+      ADVANCE_TIME: 8,
+      SPEND: 4,
+    },
+    ecdsaOnlyFloor: true,
+    commitPqKeyOnEcdsaOnlyFloor: true,
+    fabricateCommitments: true,
   },
 ];

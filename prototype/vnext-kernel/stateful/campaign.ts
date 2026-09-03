@@ -290,7 +290,7 @@ function seatLabels(world: World): string[] {
   });
 }
 
-function freshCtx(world: World): Ctx {
+function freshCtx(world: World, fabricateCommitments: boolean): Ctx {
   return {
     world,
     abstract: freshAbstractState(world.opts.label + "-cred"),
@@ -305,6 +305,7 @@ function freshCtx(world: World): Ctx {
     verifierKind: world.opts.verifier,
     requirePqNow: !world.opts.ecdsaOnlyFloor,
     policyKind: "none",
+    fabricateCommitments,
     history: [],
     step: 0,
   };
@@ -321,7 +322,7 @@ async function runPlan(
   // choices made during execution (which seat a duplicate-index proof reuses)
   // do not perturb the plan itself. Both are seeded, so both replay.
   const prng = makePrng(seed ^ 0x5f3759df);
-  const ctx = freshCtx(world);
+  const ctx = freshCtx(world, profile.fabricateCommitments === true);
 
   // ROLES -> the concrete key labels of THIS world. Skipping this is what made
   // every attacker inert; see the note on materialiseActor.

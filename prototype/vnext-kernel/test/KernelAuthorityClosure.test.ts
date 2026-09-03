@@ -138,7 +138,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
 
     const salt = ethers.id("closure-vault");
     const predicted = await factory.predictVault(salt, genesis);
-    await (await factory.deployVault(salt, genesis)).wait();
+    await (await factory.deployVault(salt, genesis, pqKeyBytes(pqKey))).wait();
     const vault = await ethers.getContractAt("VaultKernelPrototype", predicted, deployer);
     await deployer.sendTransaction({ to: predicted, value: ethers.parseEther("10") });
 
@@ -439,14 +439,14 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
       };
       // THE FIX IS AT ADMISSION: a duplicate roster is not representable, so a
       // vault whose quorum one principal could meet cannot be created at all.
-      await expect(r.factory.deployVault(ethers.id("dupe"), g)).to.be.revertedWithCustomError(r.impl, "NotOrdered");
+      await expect(r.factory.deployVault(ethers.id("dupe"), g, pqKeyBytes(keyOf("dupe-pq")))).to.be.revertedWithCustomError(r.impl, "NotOrdered");
 
       // CONTROL: the same principals, DISTINCT and ascending, deploy fine.
       await (
         await r.factory.deployVault(ethers.id("dupe"), {
           ...g,
           guardians: ascending([addrOf(A), addrOf(B), r.deployer.address]),
-        })
+        }, pqKeyBytes(keyOf("dupe-pq")))
       ).wait();
     });
 
@@ -464,7 +464,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
         guardianIsContract: [true, true, false],
         floor: FLOOR,
       };
-      await expect(r.factory.deployVault(ethers.id("d1271"), g)).to.be.revertedWithCustomError(r.impl, "NotOrdered");
+      await expect(r.factory.deployVault(ethers.id("d1271"), g, pqKeyBytes(keyOf("d1271-pq")))).to.be.revertedWithCustomError(r.impl, "NotOrdered");
     });
 
     it("M-K32 — the SAME address cannot hold two seats under different auth modes", async function () {
@@ -483,7 +483,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
         guardianIsContract: [false, true, false],
         floor: FLOOR,
       };
-      await expect(r.factory.deployVault(ethers.id("dual"), g)).to.be.revertedWithCustomError(r.impl, "NotOrdered");
+      await expect(r.factory.deployVault(ethers.id("dual"), g, pqKeyBytes(keyOf("dual-pq")))).to.be.revertedWithCustomError(r.impl, "NotOrdered");
     });
 
     it("a guardian TRANSITION to a duplicate roster is refused too", async function () {
@@ -553,13 +553,21 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
         threshold: 1,
       };
       expect(await r.factory.predictVault(salt, attackerGenesis)).to.not.equal(predicted);
-      await (await r.factory.connect(r.attacker).deployVault(salt, attackerGenesis)).wait();
+      // `attackerGenesis` spreads the user's config, so it carries the USER's
+      // commitment — and the attacker CAN exhibit it, because a PQ public key is
+      // public. That is exactly right: `I-COMMITMENT-EXHIBITED-AT-ADMISSION` is
+      // a satisfiability witness, not an authority gate, and must not be
+      // mistaken for one. What defeats the squat is
+      // `I-COUNTERFACTUAL-IDENTITY-BINDING`, which is unchanged.
+      await (
+        await r.factory.connect(r.attacker).deployVault(salt, attackerGenesis, pqKeyBytes(keyOf("victim-pq")))
+      ).wait();
 
       // I-COUNTERFACTUAL-IDENTITY-BINDING: the user's address is untouched.
       expect(await ethers.provider.getCode(predicted)).to.equal("0x");
 
       // And the user can still instantiate their intended configuration there.
-      await (await r.factory.deployVault(salt, userGenesis)).wait();
+      await (await r.factory.deployVault(salt, userGenesis, pqKeyBytes(keyOf("victim-pq")))).wait();
       const got = await ethers.getContractAt("VaultKernelPrototype", predicted, r.deployer);
       expect(await got.ecdsaSigner()).to.equal(addrOf(userEcdsa));
       expect(await got.guardianThreshold()).to.equal(2n);
@@ -583,7 +591,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
       // Permissionless execution of an ALREADY-AUTHORISED intent is not a
       // takeover: the result is the state the user asked for, at the address the
       // user predicted. Distinguishing the two is the point of the finding.
-      await (await r.factory.connect(r.attacker).deployVault(salt, genesis)).wait();
+      await (await r.factory.connect(r.attacker).deployVault(salt, genesis, pqKeyBytes(keyOf("harmless-pq")))).wait();
       const got = await ethers.getContractAt("VaultKernelPrototype", predicted, r.deployer);
       expect(await got.ecdsaSigner()).to.equal(addrOf(ownerKey));
       expect(await got.guardianThreshold()).to.equal(2n);
@@ -777,7 +785,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
       // can never be initialised into holding any.
       const inst = await ethers.getContractAt("VaultKernelPrototype", implAddr, f.attacker);
       expect(await inst.ecdsaSigner()).to.equal(ZERO);
-      await expect(inst.initialize(f.genesis)).to.be.revertedWithCustomError(inst, "AlreadyInitialized");
+      await expect(inst.initialize(f.genesis, pqKeyBytes(f.pqKey))).to.be.revertedWithCustomError(inst, "AlreadyInitialized");
 
       // No spend is authorisable, and the reason is condition (3) of #179
       // §4.3a: the stored credential is address(0), while `ECDSA.recover`
@@ -846,7 +854,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
         floor: FLOOR,
       };
       // CONTROL: the base configuration deploys.
-      await (await r.factory.deployVault(ethers.id("gv-ok"), base)).wait();
+      await (await r.factory.deployVault(ethers.id("gv-ok"), base, pqKeyBytes(keyOf("gv-pq")))).wait();
 
       const cases: [string, Genesis, string][] = [
         ["zero signer", { ...base, signer: ZERO }, "ZeroAddress"],
@@ -867,7 +875,7 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
         ],
       ];
       for (const [name, g, err] of cases) {
-        await expect(r.factory.deployVault(ethers.id("gv-" + name), g), name).to.be.revertedWithCustomError(
+        await expect(r.factory.deployVault(ethers.id("gv-" + name), g, pqKeyBytes(keyOf("gv-pq"))), name).to.be.revertedWithCustomError(
           r.impl,
           err,
         );

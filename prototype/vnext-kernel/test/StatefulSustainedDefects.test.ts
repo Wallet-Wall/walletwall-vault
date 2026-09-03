@@ -94,11 +94,11 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 and SD-3 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-6 / SD-7 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
-    expect(SUSTAINED_DEFECTS.length).to.equal(5);
+    expect(SUSTAINED_DEFECTS.length).to.equal(4);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -118,13 +118,15 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 and SD-3 remediated; 
     for (const closed of [
       "SD-1-floor-length-poisoning",
       "SD-3-setverifier-skips-genesis-satisfiability",
+      "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
+      "SD-7-genesis-admits-an-unsatisfiable-floor",
     ]) {
       expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
         closed,
       );
       expect(REMEDIATED_DEFECTS.map((d) => d.id), closed + " must be recorded as remediated").to.include(closed);
     }
-    expect(REMEDIATED_DEFECTS.length).to.equal(2);
+    expect(REMEDIATED_DEFECTS.length).to.equal(4);
     for (const r of REMEDIATED_DEFECTS) {
       expect(r.sustainedAt, r.id + " must name the head it was sustained at").to.match(/^[0-9a-f]{40}$/);
       expect(r.invariant.length, r.id + " must state the invariant that closed it").to.be.greaterThan(60);
@@ -346,7 +348,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 and SD-3 remediated; 
         signer: addrOf(w.credKey), pqKeyHash: ethers.ZeroHash, verifier: w.verifiers.honest,
         threshold: 2, guardians: w.guardians, guardianIsContract: w.guardianIsContract,
         floor: { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 },
-      }),
+      }, "0x"),
       "initialize must refuse requirePq with a zero key commitment",
     ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 

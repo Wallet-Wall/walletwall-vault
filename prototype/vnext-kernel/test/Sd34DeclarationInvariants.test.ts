@@ -127,7 +127,7 @@ async function initiate(w: World, i: number, verifier: string, pqKeyHash: string
 }
 
 /** Rotates the credential, which on an ECDSA-only vault also installs any PQ commitment. */
-async function rotateTo(w: World, cred: ethers.SigningKey, pqKeyHash: string): Promise<void> {
+async function rotateTo(w: World, cred: ethers.SigningKey, pqKeyHash: string, pqKey: string): Promise<void> {
   const nonce = (await w.vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
   const gen = (await w.vault.credentialGeneration()) as bigint;
   const d = digestOf({
@@ -141,7 +141,7 @@ async function rotateTo(w: World, cred: ethers.SigningKey, pqKeyHash: string): P
   const pop = (await w.vault.credentialPossessionDigest(addrOf(cred), pqKeyHash)) as string;
   await (
     await w.vault.rotateCredential(
-      { newSigner: addrOf(cred), newPqKeyHash: pqKeyHash, newPqKey: "0x", newEcdsaPop: sign(cred, pop), newPqPop: "0x" },
+      { newSigner: addrOf(cred), newPqKeyHash: pqKeyHash, newPqKey: pqKey, newEcdsaPop: sign(cred, pop), newPqPop: "0x" },
       nonce, FAR_DEADLINE, sign(w.credKey, d), "0x", "0x",
     )
   ).wait();
@@ -246,7 +246,7 @@ describe("vNext kernel — SD-3 REMEDIATION: I-DECLARATION-EXHIBITED", function 
       );
       const nCred = w.spareCred[0]!;
       const nPq = w.sparePq[0]!;
-      await rotateTo(w, nCred, pqHash(nPq));
+      await rotateTo(w, nCred, pqHash(nPq), pqKeyBytes(nPq));
       const nonce = (await w.vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
       const gen = (await w.vault.credentialGeneration()) as bigint;
       const d = digestOf({

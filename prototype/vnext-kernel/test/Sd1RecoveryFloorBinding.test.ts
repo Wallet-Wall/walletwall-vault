@@ -55,6 +55,23 @@ import {
 
 const KERNEL_GEN = 1n;
 
+/**
+ * A byte string of exactly `n` bytes. Needed since
+ * `I-COMMITMENT-EXHIBITED-AT-ADMISSION` requires genesis to exhibit a preimage
+ * AT THE DECLARED LENGTH: the accepting half of a magnitude-bound test must now
+ * commit a key of the shape it declares, which is what the bound is about.
+ */
+const bytesOfLength = (n: number, tag: string): string => {
+  if (n === 0) return "0x";
+  let out = "";
+  let i = 0;
+  while (out.length < n * 2) {
+    out += ethers.id(`${tag}-${i}`).slice(2);
+    i += 1;
+  }
+  return "0x" + out.slice(0, n * 2);
+};
+
 /** The floor as the kernel currently holds it. */
 async function liveFloor(w: World): Promise<Floor> {
   const f = await w.vault.securityFloor();
@@ -764,7 +781,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
       await (
         await factory.deployVault(ethers.id("sd1-advD-sphincs"), {
           signer: addrOf(w.credKey),
-          pqKeyHash: pqHash(w.pqKey),
+          pqKeyHash: ethers.keccak256(bytesOfLength(64, "sd1-advD-sphincs-key")),
           verifier: w.verifiers.honest,
           threshold: w.threshold,
           guardians: w.guardians,
@@ -775,7 +792,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
             pqPublicKeyLength: 64,
             pqSignatureLength: 49_856,
           }),
-        })
+        }, bytesOfLength(64, "sd1-advD-sphincs-key"))
       ).wait();
     });
 
@@ -799,7 +816,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
       // MAX_PQ_LENGTH must be ADMITTED.
       const maxVault = await factory.deployVault(ethers.id("sd1-advD2a-max"), {
         signer: addrOf(accept.credKey),
-        pqKeyHash: pqHash(accept.pqKey),
+        pqKeyHash: ethers.keccak256(bytesOfLength(65_535, "sd1-advD2a-max-key")),
         verifier: accept.verifiers.honest,
         threshold: accept.threshold,
         guardians: accept.guardians,
@@ -810,7 +827,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
           pqPublicKeyLength: max,
           pqSignatureLength: max,
         }),
-      });
+      }, bytesOfLength(65_535, "sd1-advD2a-max-key"));
       expect((await maxVault.wait())?.status, "exactly MAX_PQ_LENGTH must be ADMITTED").to.equal(1);
 
       const refuse = await deployWorld({
@@ -875,7 +892,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
       const factory = await ethers.getContractAt("VaultKernelFactoryPrototype", w.factoryAddress, w.deployer);
       const genesis = (floor: Floor): Record<string, unknown> => ({
         signer: addrOf(w.credKey),
-        pqKeyHash: pqHash(w.pqKey),
+        pqKeyHash: ethers.keccak256(bytesOfLength(floor.pqPublicKeyLength, "sd1-advG-key")),
         verifier: w.verifiers.honest,
         threshold: w.threshold,
         guardians: w.guardians,
@@ -888,7 +905,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
           pqParamLevel: 1,
           pqPublicKeyLength: 65_536,
           pqSignatureLength: 65,
-        })),
+        }), bytesOfLength(65_536, "sd1-advG-key")),
         "genesis must refuse a shape beyond MAX_PQ_LENGTH",
       ).to.revert(ethers);
       // POSITIVE CONTROL — the same genesis at the bound is admitted, so the
@@ -899,7 +916,7 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
           pqParamLevel: 1,
           pqPublicKeyLength: 65_535,
           pqSignatureLength: 65,
-        }))
+        }), bytesOfLength(65_535, "sd1-advG-key"))
       ).wait();
     });
 

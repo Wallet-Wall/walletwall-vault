@@ -17,6 +17,7 @@
  * considered and why it is absent.
  */
 import { ethers } from "../test/connection.js";
+import { pqHash } from "./world.js";
 import type { World } from "./world.js";
 
 /** A snapshot of every security-relevant storage slot the kernel exposes. */
@@ -28,6 +29,22 @@ export interface KernelSnapshot {
   containmentUsedInWindow: bigint;
   ecdsaSigner: string;
   pqPublicKeyHash: string;
+  /**
+   * Whether the stored commitment is one this campaign HOLDS A PREIMAGE FOR.
+   *
+   * A preimage is not decidable from storage, so this is the one snapshot field
+   * derived from the harness's own key material rather than read from the chain.
+   * The campaign generates every PQ key from a label, so the set of commitments
+   * it can ever exhibit is enumerable, and a stored value outside that set is
+   * one that nothing on chain ever witnessed. Zero counts as attestable because
+   * it is the kernel's representation of "no PQ credential", not a commitment.
+   *
+   * Without this field `G-COMMITMENT-ATTESTED` would be undecidable, and
+   * `G-PQ-COMMITMENT-SATISFIABLE`'s zero-only check would remain the whole of
+   * the oracle's vision — which is exactly how SD-6 and SD-7 stayed invisible to
+   * 224 green campaigns.
+   */
+  commitmentAttestable: boolean;
   credentialGeneration: bigint;
   floor: { requirePq: boolean; pqParamLevel: bigint; pqPublicKeyLength: bigint; pqSignatureLength: bigint };
   pqVerifier: string;
@@ -69,6 +86,23 @@ const ZERO_HASH = "0x" + "0".repeat(64);
  */
 let cachedToken: ethers.Contract | null = null;
 let cachedTokenAddress = "";
+
+/** Cached per world label — the key set is fixed once the world is built. */
+const attestableCache = new Map<string, ReadonlySet<string>>();
+
+/**
+ * Every commitment this campaign can exhibit a preimage for: the vault's own PQ
+ * key, every spare the action layer may rotate or recover to, and zero. Any
+ * other value in `pqPublicKeyHash` was admitted without a witness.
+ */
+function attestableCommitments(world: World): ReadonlySet<string> {
+  const hit = attestableCache.get(world.opts.label);
+  if (hit !== undefined) return hit;
+  const set = new Set<string>([ZERO_HASH]);
+  for (const k of [world.pqKey, ...world.sparePq]) set.add(pqHash(k).toLowerCase());
+  attestableCache.set(world.opts.label, set);
+  return set;
+}
 
 export async function snapshot(world: World): Promise<KernelSnapshot> {
   const v = world.vault;
@@ -138,6 +172,7 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     containmentUsedInWindow,
     ecdsaSigner,
     pqPublicKeyHash,
+    commitmentAttestable: attestableCommitments(world).has(String(pqPublicKeyHash).toLowerCase()),
     credentialGeneration,
     floor: {
       requirePq: floorRaw[0] as boolean,
@@ -403,6 +438,45 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
     source: "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1",
     check: (s) =>
       s.recovery.challengesUsed > 2n ? "challengesUsed " + s.recovery.challengesUsed + " exceeds CHALLENGE_LIMIT" : null,
+  },
+  {
+    /**
+     * `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, over the WHOLE ingress surface
+     * rather than over any one function. `pqPublicKeyHash` has exactly two write
+     * sites — `initialize` and `_installCredential` — and `_installCredential`
+     * has exactly two callers, so this STATE-shaped property covers all three
+     * admitting transitions (genesis, rotation, recovery) at once. A
+     * transition-shaped version would cover only the two that occur mid-campaign
+     * and would miss genesis entirely, which is where SD-7 lived.
+     *
+     * THE FOUR STATES THIS ORACLE DISTINGUISHES, because collapsing them is how
+     * the previous oracle missed both defects:
+     *   ADMITTED   — a value is in `pqPublicKeyHash`. Visible to every property.
+     *   EXHIBITED  — a preimage was shown to the kernel when it was admitted.
+     *                Visible ONLY through `commitmentAttestable`.
+     *   ACTIVATED  — `floor.requirePq` holds, so a SHAPE now governs the
+     *                commitment. `G-FLOOR-SANE` and `G-FLOOR-NO-DOWNGRADE`.
+     *   REQUIRED   — `_authorise` consults it, which is implied by ACTIVATED.
+     * This property is exactly the ADMITTED-implies-EXHIBITED edge, and it is
+     * deliberately INDEPENDENT of activation: a dormant commitment is still a
+     * credential, and SD-6's whole harm was that nothing checked it while it
+     * was dormant.
+     *
+     * WHAT IT DOES NOT SEE, stated so the greenness is not over-read: an
+     * exhibited preimage need not be a WELL-FORMED KEY of any scheme. No oracle
+     * over storage can see that, and no admission check can either — the only
+     * party who could judge it is a verifier the admitting principal chooses.
+     * That residue is carried as SD-8.
+     */
+    name: "G-COMMITMENT-ATTESTED",
+    source:
+      "every accepted transition that writes a non-zero pqPublicKeyHash must exhibit a preimage of the value being written, so every reachable state holds either bytes32(0) or a commitment some principal demonstrated a preimage for — initialize (base case), rotateCredential and executeRecovery (inductive step, via _requireIncomingPossession)",
+    check: (s) =>
+      s.commitmentAttestable
+        ? null
+        : "pqPublicKeyHash " +
+          s.pqPublicKeyHash +
+          " is in storage but no principal ever exhibited a preimage for it — an unattested commitment was admitted",
   },
   {
     /**

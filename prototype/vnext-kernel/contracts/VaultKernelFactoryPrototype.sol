@@ -68,13 +68,25 @@ contract VaultKernelFactoryPrototype {
      *      It never stopped an attacker creating the counterfactual address
      *      first. The earlier PR body conflated the two; this one does not.
      */
+    /**
+     * @param pqKey Forwarded verbatim to `initialize` as the genesis witness
+     *        for `g.pqKeyHash` (`I-COMMITMENT-EXHIBITED-AT-ADMISSION`). It is
+     *        NOT an input to `genesisSalt`, so `predictVault` keeps its exact
+     *        signature and the configuration -> salt map is unchanged. Addresses
+     *        themselves still move, because the clone initcode embeds the
+     *        implementation address and the implementation changed. A relayer
+     *        rewriting these bytes can only make the deployment REVERT — it can
+     *        never install a commitment the user did not choose, because the
+     *        commitment itself is inside the salted configuration.
+     */
     function deployVault(
         bytes32 userSalt,
-        VaultKernelPrototype.GenesisConfig calldata g
+        VaultKernelPrototype.GenesisConfig calldata g,
+        bytes calldata pqKey
     ) external returns (address vault) {
         bytes32 salt = VaultKernelPrototype(payable(implementation)).genesisSalt(userSalt, g);
         vault = Clones.cloneDeterministicWithImmutableArgs(implementation, _args(), salt);
-        VaultKernelPrototype(payable(vault)).initialize(g);
+        VaultKernelPrototype(payable(vault)).initialize(g, pqKey);
         emit VaultDeployed(vault, salt, generation);
     }
 
