@@ -69,9 +69,13 @@ function main(): void {
   const measurements = JSON.parse(fs.readFileSync(path.join(ROOT, "MEASUREMENTS.json"), "utf8")) as {
     kernel?: { runtimeBytes: number; runtimeSha256: string };
     sd1Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd3Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
   const kernel = measurements.kernel;
-  const sd1 = measurements.sd1Remediation;
+  // The LATEST remediation is what this receipt describes; earlier ones are
+  // history and are recorded in their own MEASUREMENTS.json blocks.
+  const sd1 = measurements.sd67Remediation ?? measurements.sd3Remediation ?? measurements.sd1Remediation;
 
   const receipt = {
     schema: "vnext-kernel-stateful-authority-evidence.v1",
@@ -212,7 +216,7 @@ function main(): void {
       note:
         sd1 === undefined
           ? "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change."
-          : "SD-1 was REMEDIATED by I-FLOOR-SHAPE-IMMUTABLE. The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. SD-2, SD-3 and SD-4 remain SUSTAINED and change zero bytes.",
+          : "The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. Which defects are closed and which stand is carried by the `remediated` and `sustainedDefects` arrays in this same receipt, not by prose here.",
       beforeRuntimeBytes: sd1?.beforeRuntime ?? null,
       kernelRuntimeBytes: kernel?.runtimeBytes ?? null,
       kernelRuntimeHash: kernel?.runtimeSha256 ?? null,

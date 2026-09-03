@@ -392,7 +392,13 @@ export async function deployWorld(partial: Partial<WorldOptions> = {}): Promise<
 
   const salt = ethers.id(opts.label + "-vault");
   const vaultAddress: string = await factory.predictVault(salt, genesis);
-  await (await factory.deployVault(salt, genesis)).wait();
+  // The genesis witness for `I-COMMITMENT-EXHIBITED-AT-ADMISSION`. Every world
+  // this factory builds commits either nothing or `pqHash(pqKey)`, so the
+  // exhibit is always available and no world changes shape. `predictVault` is
+  // called with the UNCHANGED argument list on purpose: the witness is not part
+  // of the salt, and this line is where that would break if it ever became so.
+  const genesisWitness = genesis.pqKeyHash === ethers.ZeroHash ? "0x" : pqKeyBytes(pqKey);
+  await (await factory.deployVault(salt, genesis, genesisWitness)).wait();
   const vault = await ethers.getContractAt("VaultKernelPrototype", vaultAddress, deployer);
   if (opts.funding > 0n) await deployer.sendTransaction({ to: vaultAddress, value: opts.funding });
   await (await token.mint(vaultAddress, ethers.parseEther("5"))).wait();

@@ -17,6 +17,7 @@
  * considered and why it is absent.
  */
 import { ethers } from "../test/connection.js";
+import { pqHash } from "./world.js";
 import type { World } from "./world.js";
 
 /** A snapshot of every security-relevant storage slot the kernel exposes. */
@@ -28,6 +29,22 @@ export interface KernelSnapshot {
   containmentUsedInWindow: bigint;
   ecdsaSigner: string;
   pqPublicKeyHash: string;
+  /**
+   * Whether the stored commitment is one this campaign HOLDS A PREIMAGE FOR.
+   *
+   * A preimage is not decidable from storage, so this is the one snapshot field
+   * derived from the harness's own key material rather than read from the chain.
+   * The campaign generates every PQ key from a label, so the set of commitments
+   * it can ever exhibit is enumerable, and a stored value outside that set is
+   * one that nothing on chain ever witnessed. Zero counts as attestable because
+   * it is the kernel's representation of "no PQ credential", not a commitment.
+   *
+   * Without this field `G-COMMITMENT-ATTESTED` would be undecidable, and
+   * `G-PQ-COMMITMENT-SATISFIABLE`'s zero-only check would remain the whole of
+   * the oracle's vision — which is exactly how SD-6 and SD-7 stayed invisible to
+   * 224 green campaigns.
+   */
+  commitmentAttestable: boolean;
   credentialGeneration: bigint;
   floor: { requirePq: boolean; pqParamLevel: bigint; pqPublicKeyLength: bigint; pqSignatureLength: bigint };
   pqVerifier: string;
@@ -69,6 +86,23 @@ const ZERO_HASH = "0x" + "0".repeat(64);
  */
 let cachedToken: ethers.Contract | null = null;
 let cachedTokenAddress = "";
+
+/** Cached per world label — the key set is fixed once the world is built. */
+const attestableCache = new Map<string, ReadonlySet<string>>();
+
+/**
+ * Every commitment this campaign can exhibit a preimage for: the vault's own PQ
+ * key, every spare the action layer may rotate or recover to, and zero. Any
+ * other value in `pqPublicKeyHash` was admitted without a witness.
+ */
+function attestableCommitments(world: World): ReadonlySet<string> {
+  const hit = attestableCache.get(world.opts.label);
+  if (hit !== undefined) return hit;
+  const set = new Set<string>([ZERO_HASH]);
+  for (const k of [world.pqKey, ...world.sparePq]) set.add(pqHash(k).toLowerCase());
+  attestableCache.set(world.opts.label, set);
+  return set;
+}
 
 export async function snapshot(world: World): Promise<KernelSnapshot> {
   const v = world.vault;
@@ -138,6 +172,7 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     containmentUsedInWindow,
     ecdsaSigner,
     pqPublicKeyHash,
+    commitmentAttestable: attestableCommitments(world).has(String(pqPublicKeyHash).toLowerCase()),
     credentialGeneration,
     floor: {
       requirePq: floorRaw[0] as boolean,
@@ -405,13 +440,107 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
       s.recovery.challengesUsed > 2n ? "challengesUsed " + s.recovery.challengesUsed + " exceeds CHALLENGE_LIMIT" : null,
   },
   {
+    /**
+     * `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, over the WHOLE ingress surface
+     * rather than over any one function. `pqPublicKeyHash` has exactly two write
+     * sites — `initialize` and `_installCredential` — and `_installCredential`
+     * has exactly two callers, so this STATE-shaped property covers all three
+     * admitting transitions (genesis, rotation, recovery) at once. A
+     * transition-shaped version would cover only the two that occur mid-campaign
+     * and would miss genesis entirely, which is where SD-7 lived.
+     *
+     * THE FOUR STATES THIS ORACLE DISTINGUISHES, because collapsing them is how
+     * the previous oracle missed both defects:
+     *   ADMITTED   — a value is in `pqPublicKeyHash`. Visible to every property.
+     *   EXHIBITED  — a preimage was shown to the kernel when it was admitted.
+     *                Visible ONLY through `commitmentAttestable`.
+     *   ACTIVATED  — `floor.requirePq` holds, so a SHAPE now governs the
+     *                commitment. `G-FLOOR-SANE` and `G-FLOOR-NO-DOWNGRADE`.
+     *   REQUIRED   — `_authorise` consults it, which is implied by ACTIVATED.
+     * This property is exactly the ADMITTED-implies-EXHIBITED edge, and it is
+     * deliberately INDEPENDENT of activation: a dormant commitment is still a
+     * credential, and SD-6's whole harm was that nothing checked it while it
+     * was dormant.
+     *
+     * WHAT IT DOES NOT SEE, stated so the greenness is not over-read: an
+     * exhibited preimage need not be a WELL-FORMED KEY of any scheme. No oracle
+     * over storage can see that, and no admission check can either — the only
+     * party who could judge it is a verifier the admitting principal chooses.
+     * That residue is carried as SD-8.
+     */
+    name: "G-COMMITMENT-ATTESTED",
+    source:
+      "every accepted transition that writes a non-zero pqPublicKeyHash must exhibit a preimage of the value being written, so every reachable state holds either bytes32(0) or a commitment some principal demonstrated a preimage for — initialize (base case), rotateCredential and executeRecovery (inductive step, via _requireIncomingPossession)",
+    check: (s) =>
+      s.commitmentAttestable
+        ? null
+        : "pqPublicKeyHash " +
+          s.pqPublicKeyHash +
+          " is in storage but no principal ever exhibited a preimage for it — an unattested commitment was admitted",
+  },
+  {
+    /**
+     * The OBSERVABLE half of "a transition affecting authentication requirements
+     * must leave the vault in a satisfiable authentication state". The oracle
+     * cannot know the preimage LENGTH of a commitment — that is exactly what
+     * `I-DECLARATION-EXHIBITED` makes the kernel prove on chain — but it can see
+     * the degenerate case, where no preimage exists at all. Together with
+     * `G-FLOOR-SANE`, which bounds the declared shape at both ends, this is
+     * everything about post-transition satisfiability that is decidable from
+     * storage alone.
+     *
+     * It was SD-3's property, and while SD-3 stood it sat in
+     * `KNOWN_DEFECT_PROPERTIES`, so campaign violations were moved out of
+     * `violations` and merely counted. With SD-3 remediated it leaves that set
+     * automatically, and this becomes a HARD invariant with the whole campaign
+     * behind it.
+     */
     name: "G-PQ-COMMITMENT-SATISFIABLE",
     source:
-      "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, because a mandatory PQ conjunct with no committed key is unsatisfiable and bricks spending",
+      "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, and setVerifier's I-DECLARATION-EXHIBITED refuses the requirePq false -> true edge unless a preimage of the committed hash is exhibited at the newly declared length — a mandatory PQ conjunct with no satisfiable committed key is unsatisfiable and bricks spending",
     check: (s) =>
       s.floor.requirePq && s.pqPublicKeyHash === ZERO_HASH
         ? "requirePq is set while pqPublicKeyHash is zero — the conjunct keccak256(pqKey) == pqPublicKeyHash is unsatisfiable, so no spend can ever authorise"
         : null,
+  },
+  {
+    /**
+     * `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY`, stated on the REQUIREMENT
+     * side: an accepted configuration transition may not silently reduce the
+     * satisfiability of a recovery the guardians have ALREADY approved.
+     *
+     * TRANSITION-SHAPED, not state-shaped, and deliberately so: the harm is the
+     * MOMENT the requirements move under a live request, not the resulting
+     * state. A state-shaped version would re-fire on every later step and inflate
+     * the violation count by the campaign's tail length.
+     *
+     * The "live" test is the exact request set `executeRecovery` would still
+     * admit — active, unexpired, generation-current — so a request nothing could
+     * have executed anyway is correctly not counted as harmed. A kernel that
+     * refused MORE transitions than this still passes, which is what makes this
+     * a requirement and not a mirror of the implementation.
+     */
+    name: "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
+    source:
+      "setVerifier's I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY refuses the requirePq false -> true edge while a recovery request is still one executeRecovery would admit, because that edge adds a whole conjunct to an already-quorum-approved request which _requireIncomingPossession measures LIVE",
+    check: (s, p) => {
+      if (!p) return null;
+      const wasLive =
+        p.recovery.active &&
+        s.blockTimestamp <= p.recovery.expiresAt &&
+        p.recovery.boundGuardianGeneration === p.guardianGeneration;
+      if (!wasLive) return null;
+      if (!p.floor.requirePq && s.floor.requirePq) {
+        return (
+          "the PQ conjunct was armed while a quorum-approved recovery was still executable (proposed " +
+          p.recovery.proposedSigner +
+          ", expires " +
+          p.recovery.expiresAt +
+          ") — that request is now measured against authentication requirements which did not exist when it was approved"
+        );
+      }
+      return null;
+    },
   },
 ];
 

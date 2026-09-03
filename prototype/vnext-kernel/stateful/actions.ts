@@ -84,6 +84,19 @@ export interface Ctx {
   requirePqNow: boolean;
   /** Which policy plane the harness installed. "deny" must make every spend fail. */
   policyKind: string;
+  /**
+   * When set, `ROTATE_CREDENTIAL` FABRICATES its incoming commitment on a
+   * deterministic subset of steps: a hash whose preimage nothing in this
+   * campaign holds, with an empty exhibit. This is the SD-6 attack, generated.
+   *
+   * It exists because `G-COMMITMENT-ATTESTED` would otherwise be green for the
+   * worst possible reason — the bad transition being unreachable in every
+   * profile rather than refused by the kernel. The subset is chosen from the
+   * EXISTING `target` draw and never calls `prng` again, and the flag is set on
+   * ONE APPENDED profile, so every historical campaign's action stream, kill
+   * seed and step index are byte-identical.
+   */
+  fabricateCommitments: boolean;
   /** Raw calldata of every attempt, so REPLAY can resubmit one verbatim later. */
   history: Recorded[];
   step: number;
@@ -489,6 +502,14 @@ export async function executeAction(
       const targetIdx = Number(p.target ?? 0) % w.spareCred.length;
       const newCred = w.spareCred[targetIdx]!;
       const newPq = w.sparePq[targetIdx]!;
+      // THE SD-6 ATTACK, GENERATED. Derived from the EXISTING `target` draw, so
+      // no `prng` call is added and every historical stream is unchanged; gated
+      // on a flag only the appended `commitment-forgery` profile sets, so no
+      // historical profile changes shape either.
+      const fabricate = ctx.fabricateCommitments && targetIdx === 0;
+      const installedHash = fabricate
+        ? ethers.keccak256(ethers.toUtf8Bytes(w.opts.label + "-fabricated-" + ctx.step))
+        : pqHash(newPq);
       const newCredLabel = w.opts.label + "-spare-cred-" + targetIdx;
       const newPqLabel = w.opts.label + "-spare-pq-" + targetIdx;
       // Captured BEFORE attempt(), whose onSuccess reassigns ctx.credKey.
@@ -503,7 +524,7 @@ export async function executeAction(
           const popStale = Boolean(p.popStale);
           const popKeyEc = popStale ? ctx.credKey : newCred;
           const popKeyPq = popStale ? ctx.pqKey : newPq;
-          const pop = (await vault.credentialPossessionDigest(addrOf(newCred), pqHash(newPq))) as string;
+          const pop = (await vault.credentialPossessionDigest(addrOf(newCred), installedHash)) as string;
           const digest = digestOf({
             chainId: w.chainId,
             vault: w.vaultAddress,
@@ -513,7 +534,7 @@ export async function executeAction(
             params: ethers.keccak256(
               ethers.AbiCoder.defaultAbiCoder().encode(
                 ["address", "bytes32"],
-                [addrOf(newCred), pqHash(newPq)],
+                [addrOf(newCred), installedHash],
               ),
             ),
             domain: DOMAIN.CREDENTIAL,
@@ -522,10 +543,17 @@ export async function executeAction(
           });
           const change = {
             newSigner: addrOf(newCred),
-            newPqKeyHash: pqHash(newPq),
-            newPqKey: pqKeyBytes(newPq),
+            newPqKeyHash: installedHash,
+            // THE FABRICATED CASE EXHIBITS THE VAULT'S CURRENT KEY — public data
+            // the attacker always has — while installing a DIFFERENT hash beside
+            // it. An empty exhibit was tried first and was too weak: it dies on
+            // any keccak comparison, so it could not distinguish a clause bound
+            // to the INCOMING commitment from one bound to the OUTGOING one.
+            // Mutation adequacy caught that (M22 survived), which is the whole
+            // reason the mutant exists.
+            newPqKey: fabricate ? pqKeyBytes(ctx.pqKey) : pqKeyBytes(newPq),
             newEcdsaPop: sign(popKeyEc, pop),
-            newPqPop: sign(popKeyPq, pop),
+            newPqPop: fabricate ? "0x" : sign(popKeyPq, pop),
           };
           return {
             data: vault.interface.encodeFunctionData("rotateCredential", [
@@ -541,8 +569,14 @@ export async function executeAction(
         () => {
           ctx.credKey = newCred;
           ctx.credLabel = newCredLabel;
-          ctx.pqKey = newPq;
-          ctx.pqLabel = newPqLabel;
+          // On a fabricated rotation the harness deliberately does NOT adopt a
+          // PQ belief: it holds no preimage for what was written. Leaving the
+          // stale belief in place is what makes a weakened kernel's acceptance
+          // visible to G-COMMITMENT-ATTESTED instead of being papered over.
+          if (!fabricate) {
+            ctx.pqKey = newPq;
+            ctx.pqLabel = newPqLabel;
+          }
           ctx.abstract.credentialReplacements += 1;
         },
       ).then((r) => ({
@@ -619,7 +653,27 @@ export async function executeAction(
             FAR_DEADLINE,
             sign(credSigningKey(actor, ctx), digest),
             floor.requirePq ? sign(pqSigningKey(actor, ctx), digest) : "0x",
-            floor.requirePq ? pqKeyBytes(pqSigningKey(actor, ctx)) : "0x",
+            // The `pqKey` slot serves TWO different roles depending on the edge,
+            // and conflating them would silently hand an attacker a factor.
+            //
+            //   current requirePq TRUE — `_authorise` measures this against the
+            //     vault's commitment, so it must stay the ACTOR's own key: an
+            //     actor that does not hold the PQ root has to keep failing.
+            //   current FALSE, next TRUE — the DECLARING edge. `_authorise`
+            //     returns before reading it, and the kernel instead demands
+            //     `I-DECLARATION-EXHIBITED`'s satisfiability witness for the
+            //     shape being declared. That witness is the vault's committed
+            //     PUBLIC key, so supplying it grants authority to nobody — every
+            //     actor, attacker included, can read it off chain. On a vault
+            //     with NO commitment it correctly fails to satisfy the witness,
+            //     which is the SD-3 refusal the campaign should now see.
+            //
+            // No `prng` call is added, so no campaign history re-seeds.
+            floor.requirePq
+              ? pqKeyBytes(pqSigningKey(actor, ctx))
+              : requirePqAfter
+                ? pqKeyBytes(w.pqKey)
+                : "0x",
           ]),
         };
       }, () => {
@@ -1058,7 +1112,14 @@ export async function executeAction(
               "I-COUNTERFACTUAL-IDENTITY-BINDING — a DIFFERENT genesis authority predicts the victim vault's address",
           };
         }
-        await (await factory.deployVault(salt, hostileGenesis)).wait();
+        // The genesis witness for `I-COMMITMENT-EXHIBITED-AT-ADMISSION`. The
+        // attacker supplies a CORRECT one on purpose: a PQ public key is public,
+        // so the exhibit is not an obstacle to them and must not be mistaken for
+        // one. This action tests IDENTITY BINDING, and weakening it to an
+        // admission failure would silently delete that coverage.
+        await (
+          await factory.deployVault(salt, hostileGenesis, pqKeyBytes(keyOf(actor.name + "-hostile-pq")))
+        ).wait();
         return { ok: true, revert: null, attributedRoots: new Set<Root>(), modelViolation: null };
       } catch (e) {
         return { ok: false, revert: errName(e), attributedRoots: new Set<Root>(), modelViolation: null };

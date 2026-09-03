@@ -189,6 +189,37 @@ describe("vNext kernel — STATEFUL MUTATION ADEQUACY", function () {
     ).to.equal("G-FLOOR-NO-DOWNGRADE");
     expect(m17!.killedBy?.property).to.equal(m17!.expectedProperty);
   });
+
+  /**
+   * The same pin for the SD-3 / SD-4 mutants, for the same reason: they are this
+   * change's adequacy evidence, so "KILLED" alone is not enough — each must die
+   * by the property that encodes the invariant it removes.
+   *
+   * M19/M20 dying by `G-PQ-COMMITMENT-SATISFIABLE` is ALSO the proof that
+   * de-listing SD-3 from `KNOWN_DEFECT_PROPERTIES` mattered. While the defect
+   * stood, that property's violations were filtered out of `violations` and
+   * merely counted, so both mutants reported SURVIVED for a bookkeeping reason
+   * rather than a coverage one. That was observed firsthand before the ledger
+   * moved, and it is why the ledger update is part of the fix rather than
+   * paperwork that follows it.
+   */
+  it("the SD-3 mutants are each killed BY THE PROPERTY THAT ENCODES THEIR INVARIANT", function () {
+    const expected: Record<string, string> = {
+      "M19-declaration-not-exhibited": "G-PQ-COMMITMENT-SATISFIABLE",
+      "M20-declaration-unbound-from-the-commitment": "G-PQ-COMMITMENT-SATISFIABLE",
+    };
+    for (const [id, property] of Object.entries(expected)) {
+      const r = RESULTS.find((x) => x.id === id);
+      expect(r, id + " must be in the catalogue").to.not.equal(undefined);
+      expect(r!.verdict, id + " must be killed").to.equal("KILLED");
+      expect(
+        r!.killedBy?.property,
+        id + " must die by " + property + ". A kill by any other property would mean the campaign " +
+          "noticed something else about the weakened kernel and says nothing about the invariant removed.",
+      ).to.equal(property);
+      expect(r!.killedBy?.property).to.equal(r!.expectedProperty);
+    }
+  });
 });
 
 export { RESULTS as MUTATION_RESULTS };

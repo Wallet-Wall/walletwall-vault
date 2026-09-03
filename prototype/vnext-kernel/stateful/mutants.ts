@@ -401,6 +401,71 @@ export const MUTATIONS: readonly Mutation[] = [
                 next.pqSignatureLength < current.pqSignatureLength)`,
       ),
   },
+  {
+    id: "M19-declaration-not-exhibited",
+    profiles: ["ecdsa-only-floor", "ecdsa-only-committed"],
+    expectedProperty: "G-PQ-COMMITMENT-SATISFIABLE",
+    rationale:
+      "SD-3, REINTRODUCED. Deletes `I-DECLARATION-EXHIBITED`'s two comparisons, so `setVerifier` may again arm the PQ conjunct against a commitment no code has ever measured — including the zero commitment `initialize` explicitly refuses. The killing property is the one SD-3 was filed under, and it only became ENFORCEABLE when SD-3 left KNOWN_DEFECT_PROPERTIES: while the defect stood, this very violation was counted and discarded rather than failing the run.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "setVerifier",
+        `if (!securityFloor.requirePq && floor.requirePq && pqKey.length != floor.pqPublicKeyLength) {
+            revert BadSignature();
+        }
+        if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+            revert BadSignature();
+        }`,
+        "",
+      ),
+  },
+  {
+    id: "M20-declaration-unbound-from-the-commitment",
+    profiles: ["ecdsa-only-floor", "ecdsa-only-committed"],
+    expectedProperty: "G-PQ-COMMITMENT-SATISFIABLE",
+    rationale:
+      "REMOVE THE BINDING TO THE COMMITTED MATERIAL while keeping the shape check — the half of `I-DECLARATION-EXHIBITED` that carries all of its meaning. The declaration still looks witnessed, because a byte string of the declared length is still demanded, but that string no longer has to be the vault's key: any blob of the right size passes, so a ZERO-commitment vault arms again and the exact SD-3 dead state returns. It is distinct from M19, which deletes the clause outright, and it is the mutant that proves the shape leg alone is worthless.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "setVerifier",
+        `if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+            revert BadSignature();
+        }`,
+        "",
+      ),
+  },
+  {
+    id: "M21-admission-not-exhibited",
+    profiles: ["commitment-forgery"],
+    expectedProperty: "G-COMMITMENT-ATTESTED",
+    rationale:
+      "SD-6, REINTRODUCED. Deletes `I-COMMITMENT-EXHIBITED-AT-ADMISSION`'s dormant clause, so `_requireIncomingPossession` again returns before every PQ check while `requirePq` is false, and BOTH of its callers — `rotateCredential` and `executeRecovery` — write a commitment attested by nothing. Killed by the property that watches the whole ingress surface rather than any one function.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireIncomingPossession",
+        `if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {
+            revert BadSignature();
+        }`,
+        "",
+      ),
+  },
+  {
+    id: "M22-admission-bound-to-the-OUTGOING-commitment",
+    profiles: ["commitment-forgery"],
+    expectedProperty: "G-COMMITMENT-ATTESTED",
+    rationale:
+      "BIND THE WRONG VARIABLE. The clause still runs, still demands a preimage and still reverts on a mismatch — but it measures the exhibit against the commitment ALREADY IN STORAGE instead of the one being installed. An attacker exhibits the vault's current key, which is public data, and writes any hash it likes beside it. This is the old/new commitment confusion, and it proves the clause's value lies in WHICH value it binds rather than in the mere presence of a keccak comparison.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireIncomingPossession",
+        `if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {`,
+        `if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != pqPublicKeyHash) {`,
+      ),
+  },
 ];
 
 /**
@@ -428,6 +493,21 @@ export const UNMUTATED_CLAUSES: readonly { clause: string; coveredBy: string; wh
       "test/Sd1RecoveryFloorBinding.test.ts — BOUNDARY (exactly MAX_PQ_LENGTH admitted, MAX_PQ_LENGTH + 1 refused, pinned against the contract's own getter) and GENESIS, both with positive controls",
     whyNotMutated:
       "Reaching the seam needs an extra prng draw in genParams, which re-seeds every campaign history; adding one was measured to turn M9-duplicate-guardian-principal and M11-plane-denial-ignored into survivors. The complete value space for floor lengths across the whole stateful model is {0, 1, 32, 65} plus the armed grow direction, so no campaign proposes an oversized shape and a mutant here would report SURVIVED for want of a generator rather than for want of a property.",
+  },
+  {
+    clause: "I-DECLARATION-EXHIBITED's LENGTH leg (`pqKey.length != floor.pqPublicKeyLength`)",
+    coveredBy:
+      "test/Sd34DeclarationInvariants.test.ts — 'SD-3 FORM 2' (a shape the committed key cannot meet is refused in BOTH directions) and 'the ZERO-LENGTH trap stays closed', each with a positive control",
+    whyNotMutated:
+      "The oracle cannot see it. Deleting the length leg produces a state whose commitment is NON-ZERO and whose shape is merely wrong for that commitment, and no property computable from storage alone can detect that — knowing it requires the preimage LENGTH of a hash, which is exactly the fact `I-DECLARATION-EXHIBITED` makes the KERNEL establish on chain precisely because an observer cannot. A mutant here would report SURVIVED for want of an oracle rather than for want of coverage, so it is disclosed instead of faked. The HASH leg, which carries the clause's meaning, IS mutated — see M20.",
+  },
+  {
+    clause:
+      "I-COMMITMENT-EXHIBITED-AT-ADMISSION's two GENESIS legs in `initialize` (the preimage check on a non-zero `g.pqKeyHash`, and the length check under `g.floor.requirePq`)",
+    coveredBy:
+      "test/Sd67AdmissionInvariants.test.ts — four executed refusals (no preimage, wrong-length preimage, zero commitment under requirePq, unattested dormant commitment) against four positive controls (a legitimate PQ genesis that then SPENDS, the cold-ceremony zero-commitment deploy, the MAX_PQ_LENGTH shape with a genuine 65,535-byte key, and the pinned `genesisSalt` identity constant). test/Sd34AuthenticationSatisfiability.test.ts additionally runs the original 48-against-32 reproduction with its verdict moved.",
+    whyNotMutated:
+      "The campaign structurally cannot reach the seam. Every world is built by `deployWorld`, which constructs a genesis committing either `bytes32(0)` or `pqHash(world.pqKey)` — both attestable, both consistent with the declared shape — so no profile deploys a hostile genesis and no mutation of the genesis legs would change any campaign outcome. Making one reachable means letting the generator author arbitrary genesis configurations, which is a different harness (a deployment fuzzer, not a transition fuzzer) and would re-seed every existing history. A mutant here would report SURVIVED for want of a generator rather than for want of a property, so the coverage is carried by direct regression instead and disclosed here rather than faked. The INDUCTIVE half of the same invariant — the dormant clause in `_requireIncomingPossession`, which both mid-campaign writers route through — IS mutated twice, by M21 and M22.",
   },
 ];
 
