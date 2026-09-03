@@ -29,23 +29,23 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 17806,
-    "initcodeBytes": 17847,
+    "runtimeBytes": 18105,
+    "initcodeBytes": 18146,
     "immutableSlots": 0,
-    "runtimeSha256": "11476c140f33faa8200355ad0f411249827a2abaca18b5123bf2bfe062cb98ff",
+    "runtimeSha256": "73be083f7747c7905a0794ff1a04e845e62748ac11b33bd05e0a613abf49f02d",
     "selectors": 45,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6770,
-    "headroomVsTargetCeiling": 4170,
+    "headroomVsPortabilityBudget": 6471,
+    "headroomVsTargetCeiling": 3871,
     "verdict": "TARGET PASS"
   },
   "factory": {
-    "runtimeBytes": 2226,
-    "initcodeBytes": 2575,
+    "runtimeBytes": 2445,
+    "initcodeBytes": 2794,
     "immutableSlots": 2,
-    "runtimeSha256": "632259899bb49c8b37478d21e563b8df930783fe4c1c08e7eb05661f9f61c33a",
+    "runtimeSha256": "5d774dcb725ed3c44c3f9b5f3c43be8efada5035677ad6349d28d466b2f1078e",
     "selectors": 4,
-    "_note": "The LENGTH is unchanged and the EXECUTABLE PREFIX is byte-identical — 2,173 bytes before and after, verified by splitting the trailing CBOR. Only the 53-byte metadata block moved, because solc hashes every source in the compilation unit into it and the kernel source changed. No factory logic was touched."
+    "_note": "The factory gained +219 bytes of REAL LOGIC this time, unlike previous lanes where only the metadata block moved: deployVault now carries a third parameter and forwards it to initialize. predictVault and genesisSalt are untouched."
   },
   "sd1Remediation": {
     "invariant": "I-FLOOR-SHAPE-IMMUTABLE",
@@ -118,5 +118,24 @@
     "storageLayoutChanged": false,
     "abiChange": "NONE. Selectors unchanged at 45 and the ABI is byte-identical: the change is two comparisons reusing the existing pqKey parameter, which _authorise provably ignores on the declaring edge.",
     "note": "SD-3 only. SD-4 is NOT closed: an interlock refusing the declaration while a live approved recovery exists was built, measured at +141 B and REMOVED, because refusing a ONE-SHOT transition hands the guardian quorum a renewable veto over a capability no guardian path can itself exercise. See SD-4 in stateful/defects.ts."
+  },
+  "sd67Remediation": {
+    "invariant": "I-COMMITMENT-EXHIBITED-AT-ADMISSION",
+    "vulnerableHead": "a70de68db2e3c9d832ef9f4087238c3c6e9826ca",
+    "closes": "SD-6 (unattested commitment install on rotation and recovery) and SD-7 (genesis admits a commitment its own declared floor cannot satisfy)",
+    "beforeRuntime": 17806,
+    "afterRuntime": 18105,
+    "totalDelta": 299,
+    "beforeRuntimeSha256": "11476c140f33faa8200355ad0f411249827a2abaca18b5123bf2bfe062cb98ff",
+    "afterRuntimeSha256": "73be083f7747c7905a0794ff1a04e845e62748ac11b33bd05e0a613abf49f02d",
+    "factoryBeforeRuntime": 2226,
+    "factoryAfterRuntime": 2445,
+    "factoryDelta": 219,
+    "factoryAfterRuntimeSha256": "5d774dcb725ed3c44c3f9b5f3c43be8efada5035677ad6349d28d466b2f1078e",
+    "storageLayoutChanged": false,
+    "abiChange": "TWO ENTRIES, both intended, nothing else. initialize(GenesisConfig) -> initialize(GenesisConfig,bytes) and deployVault(bytes32,GenesisConfig) -> deployVault(bytes32,GenesisConfig,bytes). Selector counts unchanged at 45 and 4. genesisSalt and predictVault are UNTOUCHED, so the CONFIGURATION -> SALT function is unchanged; Sd67AdmissionInvariants.test.ts pins genesisSalt for a canonical configuration against a constant captured from the parent build. THAT PINS THE SALT, NOT AN ADDRESS: a clone's address is CREATE2(factory, salt, keccak256(initcode)) and the ERC-1167 initcode embeds the IMPLEMENTATION address, so every deployed address moves whenever the kernel bytecode moves — true of every remediation in this stack, and not something any change to this kernel could avoid.",
+    "whyTheWitnessIsNotInGenesisConfig": "genesisSalt binds the genesis AUTHORITY and a preimage proof confers none. Putting the witness inside the struct would additionally change predictVault's ABI and would invite a later editor to add it to the salt enumeration, which WOULD change the configuration -> salt map. The ledger's recorded reason for deferring this fix — that a new struct member changes every vault address BECAUSE the struct is hashed into the salt — is false in its MECHANISM: genesisSalt hashes an enumerated field list, not the struct as a unit, so a new member alone moves no salt. Addresses do move, but for a reason that applies to every change in this stack (the clone initcode embeds the implementation address), so it never distinguished this fix from any other.",
+    "note": "The dormant clause deliberately omits any LENGTH comparison. While requirePq is false the floor lengths are unvalidated (_requireSaneFloor returns early) and unfrozen (_requireNoDowngrade is guarded on the current floor), so reading them at install time would let one cut-1 setVerifier make executeRecovery undeliverable forever. Residual SD-8: an exhibit proves a preimage, never that the preimage is a well-formed key of any scheme, and no admission check can establish that without a verifier the admitting principal chooses.",
+    "_hashNote": "Both sha256 values were re-measured from a CLEAN rebuild AFTER the final comment and NatSpec edits. solc hashes every source in the compilation unit into the metadata CBOR, so a comment-only edit moves the hash while leaving the byte COUNT identical — 18,105 and 2,445 both before and after those edits."
   }
 }

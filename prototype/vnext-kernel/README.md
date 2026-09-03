@@ -39,15 +39,22 @@ loss against this exact kernel.**
 | `VaultKernelPrototype` at `79e05a34` (WITHDRAWN)  | 14,339     | pass                     | pass — but the cuts were wrong  |
 | `VaultKernelPrototype` (findings A-E remediated)  | 17,407     | pass, headroom 7,169     | TARGET PASS, headroom 4,569     |
 | `VaultKernelPrototype` (SD-1 remediated)          | 17,622     | pass, headroom 6,954     | TARGET PASS, headroom 4,354     |
-| **`VaultKernelPrototype` (SD-3 remediated)**      | **17,806** | **pass, headroom 6,770** | **TARGET PASS, headroom 4,170** |
+| `VaultKernelPrototype` (SD-3 remediated)          | 17,806     | pass, headroom 6,770     | TARGET PASS, headroom 4,170     |
+| **`VaultKernelPrototype` (SD-6 + SD-7 remediated)** | **18,105** | **pass, headroom 6,471** | **TARGET PASS, headroom 3,871** |
 
-**23.4% smaller than the monolith** — 5,433 bytes — and still the only one of the
-three to clear the internal target. The factory adds **2,226** bytes, once per
+**22.1% smaller than the monolith** — 5,144 bytes — and still the only one of the
+three to clear the internal target. The factory adds **2,445** bytes, once per
 generation. Remediating findings A-E cost **+3,068** bytes; per-fix attribution is
 in `AUTHORITY.md` §4 and reproducible with `deltas.ts`. Remediating **SD-1** with
-`I-FLOOR-SHAPE-IMMUTABLE` cost a further **+215**, and closing **SD-3** with `I-DECLARATION-EXHIBITED`
-another **+184** — every one with the storage layout byte-identical and the ABI
-change additive only.
+`I-FLOOR-SHAPE-IMMUTABLE` cost a further **+215**, closing **SD-3** with
+`I-DECLARATION-EXHIBITED` another **+184**, and closing **SD-6 and SD-7** together
+with `I-COMMITMENT-EXHIBITED-AT-ADMISSION` another **+299**. Every one leaves the
+storage layout byte-identical. The first two left the ABI byte-identical or
+additive; the third moves exactly two entries — `initialize` and `deployVault`
+each take a trailing `bytes` witness — while leaving `genesisSalt` and
+`predictVault` untouched, so the configuration -> salt map is unchanged. Addresses
+themselves move, as they do for any bytecode change: a clone's address embeds the
+implementation address, which moved by +299 bytes.
 
 **Authority surface**, which is the part that actually matters:
 

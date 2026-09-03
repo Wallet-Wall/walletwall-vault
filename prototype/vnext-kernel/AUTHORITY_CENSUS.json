@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "3dbdc80ab1fca1a468747adc731c529ba1c653f9",
-  "tree": "ff264755ffe86041a38ee1a3b3ad5a1bf44c9ba3",
+  "head": "a70de68db2e3c9d832ef9f4087238c3c6e9826ca",
+  "tree": "7fa719fffd9c66af9ae1cb87447287c2bd7356b2",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
@@ -31,7 +31,7 @@
       "visibility": "public",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8300,
+      "astId": 8303,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -50,28 +50,28 @@
       "verdict": "PASS"
     },
     {
-      "key": "VaultKernelPrototype:09bbae89",
+      "key": "VaultKernelPrototype:9d288286",
       "contract": "VaultKernelPrototype",
-      "signature": "initialize(struct VaultKernelPrototype.GenesisConfig)",
+      "signature": "initialize(struct VaultKernelPrototype.GenesisConfig,bytes)",
       "kind": "function",
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8454,
+      "astId": 8491,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
       "observedUnresolved": false,
       "observedUnresolvedReasons": [],
       "manifest": {
-        "signature": "initialize(GenesisConfig)",
+        "signature": "initialize(GenesisConfig,bytes)",
         "outcomes": [
           "GENESIS_AUTHORITY_CREATION"
         ],
         "expectedMechanisms": [],
         "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
         "orderingExceptionReason": null,
-        "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C)."
+        "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C). SELECTOR MOVED 09bbae89 -> 9d288286 by the SD-7 remediation, which added a `bytes pqKey` WITNESS parameter for I-COMMITMENT-EXHIBITED-AT-ADMISSION. The witness is a parameter and NOT a GenesisConfig member, so genesisSalt's enumerated field list is untouched and the configuration -> salt map is bit-identical to the parent build (asserted against a pinned constant in Sd67AdmissionInvariants.test.ts). That pins the SALT, not an address: clone addresses embed the implementation address and move with any bytecode change. The genesis exhibit consults NO verifier: the deployer chooses g.verifier in this same transaction, so a verifier leg would be self-certification -- the same reason I-DECLARATION-EXHIBITED has no signature leg."
       },
       "verdict": "PASS"
     },
@@ -83,7 +83,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 8526,
+      "astId": 8563,
       "reasons": []
     },
     {
@@ -94,7 +94,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8541,
+      "astId": 8578,
       "reasons": []
     },
     {
@@ -105,7 +105,7 @@
       "visibility": "external",
       "stateMutability": "payable",
       "isStateChanging": true,
-      "astId": 8545,
+      "astId": 8582,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -129,7 +129,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8581,
+      "astId": 8618,
       "reasons": []
     },
     {
@@ -140,7 +140,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8651,
+      "astId": 8688,
       "reasons": []
     },
     {
@@ -151,7 +151,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8858,
+      "astId": 8895,
       "reasons": []
     },
     {
@@ -162,7 +162,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8895,
+      "astId": 8932,
       "reasons": []
     },
     {
@@ -173,7 +173,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 9035,
+      "astId": 9094,
       "reasons": []
     },
     {
@@ -184,7 +184,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9203,
+      "astId": 9262,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore."
       ],
@@ -218,7 +218,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9289,
+      "astId": 9348,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID",
@@ -250,7 +250,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9422,
+      "astId": 9481,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -280,7 +280,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9479,
+      "astId": 9538,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -310,7 +310,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 9596,
+      "astId": 9655,
       "reasons": []
     },
     {
@@ -321,7 +321,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9680,
+      "astId": 9739,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -351,7 +351,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10000,
+      "astId": 10059,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -381,7 +381,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10075,
+      "astId": 10134,
       "reasons": [],
       "observedMechanisms": [
         "FLOOR_ONLY"
@@ -411,7 +411,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10162,
+      "astId": 10221,
       "reasons": [],
       "observedMechanisms": [
         "POSSESSION_PROOF"
@@ -443,7 +443,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10266,
+      "astId": 10325,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
       ],
@@ -477,7 +477,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10401,
+      "astId": 10460,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM",
@@ -509,7 +509,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10443,
+      "astId": 10502,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -535,7 +535,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10572,
+      "astId": 10631,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
       ],
@@ -584,28 +584,28 @@
       "verdict": "PASS"
     },
     {
-      "key": "VaultKernelFactoryPrototype:f1cfaa80",
+      "key": "VaultKernelFactoryPrototype:1d0c155d",
       "contract": "VaultKernelFactoryPrototype",
-      "signature": "deployVault(bytes32,struct VaultKernelPrototype.GenesisConfig)",
+      "signature": "deployVault(bytes32,struct VaultKernelPrototype.GenesisConfig,bytes)",
       "kind": "function",
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 7904,
+      "astId": 7907,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
       "observedUnresolved": false,
       "observedUnresolvedReasons": [],
       "manifest": {
-        "signature": "deployVault(bytes32,GenesisConfig)",
+        "signature": "deployVault(bytes32,GenesisConfig,bytes)",
         "outcomes": [
           "COUNTERFACTUAL_IDENTITY_CREATION"
         ],
         "expectedMechanisms": [],
         "expectedCut": "n/a -- PERMISSIONLESS; the CREATE2 salt binds the COMPLETE genesis authority (signer, PQ key hash, verifier, threshold, guardians, floor), so a caller can only ever create THEIR OWN vault at an address bound to THEIR OWN configuration -- a different authority yields a different address, and identical authority submitted twice yields the same harmless outcome",
         "orderingExceptionReason": null,
-        "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING, the fix for finding C (VaultKernelFactoryPrototype.sol doc comment on deployVault). 'Atomicity and identity binding solve DIFFERENT problems' -- this entry is about identity binding; atomicity is initialize's replay guard."
+        "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING, the fix for finding C (VaultKernelFactoryPrototype.sol doc comment on deployVault). 'Atomicity and identity binding solve DIFFERENT problems' -- this entry is about identity binding; atomicity is initialize's replay guard. SELECTOR MOVED f1cfaa80 -> 1d0c155d by the SD-7 remediation: the trailing `bytes pqKey` is forwarded verbatim to initialize as the genesis witness. It is NOT an input to genesisSalt, so predictVault keeps its exact signature and the configuration -> salt map is unchanged (addresses themselves move with the implementation, as for any bytecode change). A relayer rewriting the witness can only make the deployment REVERT, never install a commitment the user did not choose, because the commitment itself sits inside the salted configuration."
       },
       "verdict": "PASS"
     },
@@ -617,7 +617,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 7941,
+      "astId": 7944,
       "reasons": []
     }
   ],
@@ -631,6 +631,6 @@
       "PASS_WITH_DECLARED_EXCEPTION": 3
     }
   },
-  "manifestHash": "a27a6ac19386a4ef336bfe00a74912c1267d67485cb1d5c91ba57d66d4baa5e4",
+  "manifestHash": "05927d99eca546e690ee885c38de7132062bc41a5e71286405e211b9352826f5",
   "checkerHash": "79e45cb870db91d527c4e8f55692046ad72420870298a6f7acd2e0b48e875b7f"
 }

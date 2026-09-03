@@ -231,7 +231,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       floor: HYBRID_FLOOR,
     };
     const predicted = await factory.predictVault(salt, genesis);
-    await (await factory.deployVault(salt, genesis)).wait();
+    await (await factory.deployVault(salt, genesis, PQ_KEY)).wait();
 
     const vault = await ethers.getContractAt("VaultKernelPrototype", predicted, deployer);
     await deployer.sendTransaction({ to: predicted, value: ethers.parseEther("10") });
@@ -357,7 +357,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       // a bare clone IS claimable by anyone.
       await (await raw.cloneOnly(await f.impl.getAddress(), ethers.id("bare"))).wait();
       const bare = await ethers.getContractAt("VaultKernelPrototype", await raw.lastClone(), f.attacker);
-      await (await bare.initialize({ ...f.genesis, signer: f.attacker.address })).wait();
+      await (await bare.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).wait();
       expect(await bare.ecdsaSigner()).to.equal(f.attacker.address);
 
       // THE INVARIANT: the factory path never exposes that window. Deployment
@@ -368,14 +368,14 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       void rcpt;
       // And a second initialization of the factory-made vault is refused.
       await expect(
-        f.vault.connect(f.attacker).initialize({ ...f.genesis, signer: f.attacker.address }),
+        f.vault.connect(f.attacker).initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "AlreadyInitialized");
     });
 
     it("M-K02 — initialize twice is refused", async function () {
       const f = await deploy();
       expect(await f.vault.ecdsaSigner()).to.equal(f.owner); // control: it IS initialized
-      await expect(f.vault.initialize({ ...f.genesis, signer: f.attacker.address })).to.be.revertedWithCustomError(
+      await expect(f.vault.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).to.be.revertedWithCustomError(
         f.vault,
         "AlreadyInitialized",
       );
@@ -386,7 +386,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const implAsVault = await ethers.getContractAt("VaultKernelPrototype", await f.impl.getAddress(), f.attacker);
       // Control: the same call succeeds on a fresh bare clone (M-K01), so the
       // call shape is right and the refusal below is the constructor guard.
-      await expect(implAsVault.initialize({ ...f.genesis, signer: f.attacker.address })).to.be.revertedWithCustomError(
+      await expect(implAsVault.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).to.be.revertedWithCustomError(
         implAsVault,
         "AlreadyInitialized",
       );
@@ -513,7 +513,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         const salt = ethers.id(`ecdsa-only-${mode}`);
         const ecdsaOnlyGenesis = { ...f.genesis, pqKeyHash: ethers.ZeroHash, floor: ECDSA_ONLY_FLOOR };
         const addr = await f.factory.predictVault(salt, ecdsaOnlyGenesis);
-        await (await f.factory.deployVault(salt, ecdsaOnlyGenesis)).wait();
+        await (await f.factory.deployVault(salt, ecdsaOnlyGenesis, "0x")).wait();
         await f.deployer.sendTransaction({ to: addr, value: ethers.parseEther("2") });
         const plain = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
         const pd = digestOf(parts(f, { vault: addr, params: spendParams(to, amount) }));
@@ -833,7 +833,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const f = await deploy(0);
       const salt2 = ethers.id("vault-2");
       const second = await f.factory.predictVault(salt2, f.genesis);
-      await (await f.factory.deployVault(salt2, f.genesis)).wait();
+      await (await f.factory.deployVault(salt2, f.genesis, PQ_KEY)).wait();
       await f.deployer.sendTransaction({ to: second, value: ethers.parseEther("5") });
       const vault2 = await ethers.getContractAt("VaultKernelPrototype", second, f.deployer);
 
@@ -1154,7 +1154,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           threshold: 2,
         });
         await (
-          await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 2 })
+          await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 2 }, PQ_KEY)
         ).wait();
         const v = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
 
@@ -1213,7 +1213,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         threshold: 2,
       });
       await (
-        await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 2 })
+        await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 2 }, PQ_KEY)
       ).wait();
       const v = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
 
@@ -1250,7 +1250,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         threshold: 3,
       });
       await (
-        await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 3 })
+        await f.factory.deployVault(salt, { ...f.genesis, guardians: members, guardianIsContract: isC, threshold: 3 }, PQ_KEY)
       ).wait();
       const v = await ethers.getContractAt("VaultKernelPrototype", addr, f.deployer);
       const d = digestOf(

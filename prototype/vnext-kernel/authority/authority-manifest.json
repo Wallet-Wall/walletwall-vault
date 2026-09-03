@@ -10,13 +10,13 @@
       "orderingExceptionReason": null,
       "justification": "Sets _initialized = true so the implementation permanently cannot be claimed/initialized and can never hold custody as a usable vault. AUTHORITY.md section 1: 'KERNEL ADMIN DOES NOT EXIST'."
     },
-    "VaultKernelPrototype:09bbae89": {
-      "signature": "initialize(GenesisConfig)",
+    "VaultKernelPrototype:9d288286": {
+      "signature": "initialize(GenesisConfig,bytes)",
       "outcomes": ["GENESIS_AUTHORITY_CREATION"],
       "expectedMechanisms": [],
       "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
       "orderingExceptionReason": null,
-      "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C)."
+      "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C). SELECTOR MOVED 09bbae89 -> 9d288286 by the SD-7 remediation, which added a `bytes pqKey` WITNESS parameter for I-COMMITMENT-EXHIBITED-AT-ADMISSION. The witness is a parameter and NOT a GenesisConfig member, so genesisSalt's enumerated field list is untouched and the configuration -> salt map is bit-identical to the parent build (asserted against a pinned constant in Sd67AdmissionInvariants.test.ts). That pins the SALT, not an address: clone addresses embed the implementation address and move with any bytecode change. The genesis exhibit consults NO verifier: the deployer chooses g.verifier in this same transaction, so a verifier leg would be self-certification -- the same reason I-DECLARATION-EXHIBITED has no signature leg."
     },
     "VaultKernelPrototype:receive": {
       "signature": "receive()",
@@ -130,13 +130,13 @@
       "orderingExceptionReason": null,
       "justification": "VaultKernelFactoryPrototype.sol header: 'the choice is consumed at this factory's own construction and is thereafter unreachable by EVERY principal... this factory holds NO authority over any clone it has already produced'."
     },
-    "VaultKernelFactoryPrototype:f1cfaa80": {
-      "signature": "deployVault(bytes32,GenesisConfig)",
+    "VaultKernelFactoryPrototype:1d0c155d": {
+      "signature": "deployVault(bytes32,GenesisConfig,bytes)",
       "outcomes": ["COUNTERFACTUAL_IDENTITY_CREATION"],
       "expectedMechanisms": [],
       "expectedCut": "n/a -- PERMISSIONLESS; the CREATE2 salt binds the COMPLETE genesis authority (signer, PQ key hash, verifier, threshold, guardians, floor), so a caller can only ever create THEIR OWN vault at an address bound to THEIR OWN configuration -- a different authority yields a different address, and identical authority submitted twice yields the same harmless outcome",
       "orderingExceptionReason": null,
-      "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING, the fix for finding C (VaultKernelFactoryPrototype.sol doc comment on deployVault). 'Atomicity and identity binding solve DIFFERENT problems' -- this entry is about identity binding; atomicity is initialize's replay guard."
+      "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING, the fix for finding C (VaultKernelFactoryPrototype.sol doc comment on deployVault). 'Atomicity and identity binding solve DIFFERENT problems' -- this entry is about identity binding; atomicity is initialize's replay guard. SELECTOR MOVED f1cfaa80 -> 1d0c155d by the SD-7 remediation: the trailing `bytes pqKey` is forwarded verbatim to initialize as the genesis witness. It is NOT an input to genesisSalt, so predictVault keeps its exact signature and the configuration -> salt map is unchanged (addresses themselves move with the implementation, as for any bytecode change). A relayer rewriting the witness can only make the deployment REVERT, never install a commitment the user did not choose, because the commitment itself sits inside the salted configuration."
     }
   }
 }

@@ -42,20 +42,82 @@ The reproduction was INVERTED IN PLACE rather than deleted
 at; and the residual it leaves is carried as **SD-4** in the sustained ledger.
 **SD-2 and SD-3 remain SUSTAINED and unfixed.**
 
-**SD-3 AND SD-4 ARE NOW REMEDIATED TOO, on `security/vnext-sd3-sd4-authentication-satisfiability`, and re-deriving them corrected the record in three places.**
+**SD-3 IS NOW REMEDIATED TOO, on `security/vnext-sd3-sd4-authentication-satisfiability`, and re-deriving it corrected the record in three places. SD-4 IS NOT.**
+
+> **CORRECTION, `security/vnext-sd6-sd7-commitment-admission`.** This block
+> previously read "SD-3 AND SD-4 ARE NOW REMEDIATED TOO", tabulated SD-4 as
+> closed, and named **`I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY`** as one of
+> "two INDEPENDENT clauses on that one edge". **That invariant does not exist in
+> any Solidity file.** The interlock that would have carried it was built,
+> measured at +141 B and REMOVED, because refusing a ONE-SHOT transition hands
+> the guardian quorum a renewable veto over a capability no guardian path can
+> itself exercise. SD-4 has been in `SUSTAINED_DEFECTS` throughout, the kernel
+> comment at `setVerifier` says so, and
+> `test/Sd34AuthenticationSatisfiability.test.ts` asserts the declaration
+> SUCCEEDS and the approved recovery then dies. The stale text contradicted the
+> code, the ledger and the tests, and the "Permanent recovery veto" row in
+> section 3 below — which correctly carried SD-4 as open — contradicted it too.
 
 | Finding  | Claim it falsified                                   | Reproduced end state                                                                                                                                     | Real cut was |
 | -------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
 | **SD-3** | `credential stranding = unreachable` (via the FLOOR) | one root armed `requirePq` against material that cannot satisfy it, and every credential path then died on a conjunct with no preimage                    | **1**        |
-| **SD-4** | `permanent recovery veto = unreachable`              | the same edge added a whole authentication conjunct to an ALREADY-approved recovery, destroying it with `challengesUsed == 0` and the request left active | **1**        |
 
-Both are closed by two INDEPENDENT clauses on that one edge —
-**`I-DECLARATION-EXHIBITED`** and **`I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY`**.
-The prior lane's hypothesis that closing SD-4 "necessarily intersects" SD-3 is
-**refuted**: the exhibit binds `pqPublicKeyHash` while SD-4 is about
-`recovery.proposedPqKeyHash`, and in the reproduced counterexample the declared
-key length matches the incumbent EXACTLY, so the exhibit passes on both conjuncts
-and only the interlock refuses.
+SD-3 is closed by **`I-DECLARATION-EXHIBITED`**. The prior lane's hypothesis that
+closing SD-4 "necessarily intersects" SD-3 is **refuted**: the exhibit binds
+`pqPublicKeyHash` while SD-4 is about `recovery.proposedPqKeyHash`, and in the
+reproduced counterexample the declared key length matches the incumbent EXACTLY,
+so the exhibit passes on both conjuncts and the approved recovery still dies.
+**SD-4 remains SUSTAINED, deliberately** — its analysis and the only sound design
+are in `stateful/defects.ts`.
+
+**SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
+by a single invariant over the whole commitment ingress surface.**
+
+| Finding  | Claim it falsified                                 | Reproduced end state                                                                                                                        | Real cut was |
+| -------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **SD-6** | `credential stranding = unreachable` (via ROTATION) | while `requirePq` was false, rotation and recovery both wrote a `pqPublicKeyHash` attested by nothing                                        | **1**        |
+| **SD-7** | `initialize` validates its own genesis              | a vault BORN committing a 48-byte key under a declared 32-byte shape — unable to authorise from block one, with the shape already frozen     | **0**        |
+
+**`I-COMMITMENT-EXHIBITED-AT-ADMISSION`** — every accepted transition that writes
+a NON-ZERO `pqPublicKeyHash` must exhibit a preimage of the value being written;
+where the governing floor already mandates PQ, that preimage must also carry the
+declared key length. `pqPublicKeyHash` has exactly two write sites (`initialize`,
+`_installCredential`) and `_installCredential` exactly two callers, so one rule
+covers all three admitting transitions. It is what gives
+`I-DECLARATION-EXHIBITED` an **authenticated base case**: before it, the value a
+declaration was measured against was settable by the same cut-1 principal one
+transaction earlier, so the exhibit proved only that the declarer knew a preimage
+of a hash the declarer chose.
+
+**Zero is not a commitment.** `bytes32(0)` remains admissible wherever the floor
+does not mandate PQ — that is what preserves the ECDSA-only rotation and the
+cold-ceremony deployment (deploy with no commitment, run the ceremony, rotate the
+real one in). **The dormant clause deliberately compares NO length**: while
+`requirePq` is false the floor lengths are unvalidated and unfrozen, so reading
+them at install time would let one `false -> false` `setVerifier` at cut 1 make
+every later credential install — `executeRecovery` included — undeliverable
+forever. That is the SD-4 interlock's failure in a worse form, and it was
+rejected for the same reason.
+
+A fourth recorded claim was wrong. SD-7's `minimalFixSketch` deferred the only
+fix that closes it because "`GenesisConfig` is hashed into `genesisSalt`, so
+adding a member changes EVERY vault address the factory can produce".
+**`genesisSalt` hashes an ENUMERATED FIELD LIST, not the struct as a unit**, so
+that is false. The witness is nonetheless kept OUT of `GenesisConfig` and passed
+as a parameter, on the correct and narrower ground that the salt binds genesis
+AUTHORITY and a preimage proof confers none.
+
+**What that preserves is the SALT, not addresses, and the distinction is not
+pedantic.** `genesisSalt(userSalt, g)` is unchanged as a function — the same
+configuration yields the same salt, pinned in
+`test/Sd67AdmissionInvariants.test.ts` against a constant captured from the
+parent build. A deployed clone's address, however, is
+`CREATE2(factory, salt, keccak256(initcode))`, and the ERC-1167 initcode embeds
+the IMPLEMENTATION address; the implementation moved by +299 bytes and the
+factory by +219, so both must be redeployed and every clone address moves. That
+is true of every remediation in this stack and no change to this kernel could
+avoid it. An earlier draft of this section claimed "every vault address is
+unchanged" — the pinned constant asserts the salt and cannot assert an address.
 
 Three recorded claims were wrong, and are corrected here rather than quietly
 dropped. SD-3's title said "permanently bricking" while its own
@@ -66,9 +128,16 @@ left the defect open. And the asset-control, crypto-downgrade and
 credential-stranding rows in section 3 all lacked the ECDSA-only scope caveat
 they needed.
 
-**SD-2 remains SUSTAINED, and the remediation's own residuals are recorded as
-SD-5 (permanent shape capture on the declaring edge) and SD-6 (unattested
-commitment install while `requirePq` is false).**
+**Still SUSTAINED after all of the above: SD-2** (tumbling containment window),
+**SD-4** (the declaring edge destroys an approved recovery, uncounted), **SD-5**
+(permanent shape capture — an exhibit proves possession of a preimage, not that
+the preimage is a usable key, and `pqSignatureLength` is bound by no commitment
+at all, so a one-byte shape is still reachable and still permanent), and the new
+**SD-8** — the declared residual of SD-7's fix: an exhibit can never establish
+that key bytes are WELL-FORMED for a scheme, because the only party who could
+judge that is a verifier the admitting principal chooses in the same transaction.
+A deployer determined to build a dead vault still can; what is closed is the
+self-contradictory genesis a well-intentioned one reaches by accident.
 
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,
@@ -127,7 +196,7 @@ re-derived from the compiled kernel, NOT carried forward from #179 §24.
 | Permanent recovery veto    | unreachable      | **2** (SD-1)             | **unreachable, on any vault whose floor already mandates PQ** | containment budgeted `B < W`; challenge capped; no pause exists; **`I-FLOOR-SHAPE-IMMUTABLE`** freezes the two STRUCTURAL floor fields once `requirePq` holds, so no credential-writable state remains in the recovery satisfiability condition. **Scope, stated rather than buried:** on a vault born ECDSA-only the `requirePq` false -> true edge declares the shape for the first time and retains ONE uncounted, one-shot, self-healing move — carried as **SD-4** |
 | Silent crypto downgrade    | unreachable      | **1** (A2)               | **unreachable** | `setVerifier` is HYBRID; the floor may only strengthen — true of all four fields **once `requirePq` already holds**, which is what `I-FLOOR-SHAPE-IMMUTABLE` establishes. **SCOPE, corrected:** on the one-shot `requirePq` false -> true DECLARING edge two of the four are still free, and `I-DECLARATION-EXHIBITED` binds only the key shape to the committed material, never the signature shape. The residue is **SD-5**, and it is permanent. The escape from a dead verifier is the GUARDIAN quorum, not one factor |
 | Vault identity takeover    | _(not modelled)_ | **1** (C)                | **unreachable** | `I-COUNTERFACTUAL-IDENTITY-BINDING`: the CREATE2 salt binds the complete genesis authority. M-K33                                                   |
-| Credential stranding       | _(not modelled)_ | **1** (D)                | **unreachable while `requirePq` holds** | `I-INCOMING-CREDENTIAL-POSSESSION` on both rotation and recovery. M-K34, M-K35. **SCOPE, previously missing:** `_requireIncomingPossession` returns before every PQ check while `requirePq` is false, so on an ECDSA-only floor BOTH paths install a PQ commitment attested by nothing — recorded as **SD-6** |
+| Credential stranding       | _(not modelled)_ | **1** (D)                | **unreachable by ACCIDENT; still reachable DELIBERATELY at 1** | `I-INCOMING-CREDENTIAL-POSSESSION` on both rotation and recovery. M-K34, M-K35. **SCOPE, narrowed rather than removed.** The earlier caveat read "unreachable while `requirePq` holds", because `_requireIncomingPossession` returned before every PQ check while it did not, so on an ECDSA-only floor BOTH paths installed a commitment attested by nothing (**SD-6**); `initialize` was never a call site of that helper at all (**SD-7**). `I-COMMITMENT-EXHIBITED-AT-ADMISSION` closes both. **It does NOT make stranding unreachable, and saying so unqualified would repeat the over-claim this table has already made twice.** An exhibit proves knowledge of a PREIMAGE of PUBLIC bytes — never possession of a signing capability — so a cut-1 principal may still install a correctly-shaped key it does not hold and then arm it, reproducing finding D end state. What is closed is the UNATTESTED install and the self-contradictory genesis: the forms a well-intentioned operator reaches by ACCIDENT. M21, M22. **Residuals: SD-5** (the shape is still free) and **SD-8** (a preimage is not a proof of well-formedness) |
 | Denial of spending         | **1**            | **1**                    | **1**           | one verifier or one policy plane. **Accepted and declared**                                                                                         |
 
 **No cut is now lower than #179 §24, and two outcomes §24 never modelled are
@@ -154,6 +223,7 @@ path dominates at `k`, exactly as §24 says.
 | **TOTAL**                                                            | **14,339 -> 17,407 (+3,068)** | TARGET PASS, 4,569 B under the 21,976 ceiling                                                                                                                        |
 | **SD-1** `I-FLOOR-SHAPE-IMMUTABLE` (+ the `MAX_PQ_LENGTH` bound)     | **+215**                      | **17,407 -> 17,622.** TARGET PASS, 4,354 B under the ceiling. Storage layout byte-identical; ABI additive only (selectors 44 -> 45, the new `MAX_PQ_LENGTH()` getter) |
 | **SD-3** `I-DECLARATION-EXHIBITED`                                   | **+184**                      | **17,622 -> 17,806.** TARGET PASS, 4,170 B under the ceiling. Storage layout AND ABI byte-identical — two comparisons reusing an existing parameter, on the `requirePq` false -> true edge only. SD-4 is NOT closed; see its ledger entry |
+| **SD-6 + SD-7** `I-COMMITMENT-EXHIBITED-AT-ADMISSION`               | **+299**                      | **17,806 -> 18,105.** TARGET PASS, 3,871 B under the ceiling. Storage layout byte-identical. **ABI: exactly two entries move** — `initialize` and `deployVault` each gain a trailing `bytes` WITNESS; selector COUNTS unchanged at 45 and 4, and `genesisSalt`/`predictVault` are untouched, so the configuration -> salt map is unchanged (addresses still move, as they do for every bytecode change — the clone initcode embeds the implementation address). The factory carries **+219** of its own to forward the witness |
 
 **No T0/T1 invariant was deleted to recover bytes.** The ablated variants that
 produce these deltas are diagnostic only, and every one of them reintroduces a

@@ -134,7 +134,7 @@ async function initiate(w: World, i: number, verifier: string, pqKeyHash: string
 const keyOfLength = (n: number, fill: number): string => ethers.hexlify(new Uint8Array(n).fill(fill));
 const RECOVERY = { CHALLENGES: 6, ACTIVE: 7 } as const;
 
-describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD-4 / SD-5 / SD-6 / SD-7 sustained)", function () {
+describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 remediated; SD-4 / SD-5 sustained)", function () {
   this.timeout(600_000);
 
   // =====================================================================
@@ -196,10 +196,12 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD
   });
 
   // =====================================================================
-  // SD-4 — REMEDIATED
+  // SD-4 — SUSTAINED. (This banner previously read "REMEDIATED", contradicting
+  // the describe below it, the kernel, and stateful/defects.ts. The interlock
+  // that would have closed SD-4 was built, measured and REMOVED.)
   // =====================================================================
   describe("SD-4 — SUSTAINED: the declaration still front-runs an approved remedy", function () {
-    it("SD-4 — the sustained sequence, verdict moved: the declaration is REFUSED and the recovery then executes", async function () {
+    it("SD-4 — the sustained sequence: the declaration SUCCEEDS and the approved recovery then dies, uncounted", async function () {
       const w = await deployWorld({
         label: "sd4-cut", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
       });
@@ -258,7 +260,7 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD
   });
 
   // =====================================================================
-  // SD-5 / SD-6 — SUSTAINED, and reproduced here rather than argued
+  // SD-5 — SUSTAINED; SD-6 — REMEDIATED. Both reproduced here rather than argued.
   // =====================================================================
   describe("SD-5 — SUSTAINED: the declaration is one-shot and IRREVERSIBLE", function () {
     it("a vacuous shape, once declared, can never be changed by any principal — a quorum included", async function () {
@@ -329,12 +331,19 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD
     });
   });
 
-  describe("SD-7 — SUSTAINED: the GENESIS twin, which neither clause reaches", function () {
-    it("a vault can still be BORN with a floor its own committed key cannot satisfy, and the shape is permanent", async function () {
-      // `initialize`'s only material check is a ZERO-ness test, and
-      // `_requireIncomingPossession` has exactly two call sites — neither of them
-      // `initialize` — so there is no genesis possession proof of any kind. Both
-      // new clauses live in `setVerifier` and never run here.
+  describe("SD-7 — REMEDIATED: the GENESIS twin is now reached by the admission invariant", function () {
+    it("VERDICT MOVED — a genesis whose committed key cannot satisfy its own floor is now REFUSED", async function () {
+      // SUSTAINING CLAIM (parent): `initialize`'s only material check was a
+      // ZERO-ness test, and `_requireIncomingPossession` has exactly two call
+      // sites — neither of them `initialize` — so there was no genesis
+      // possession proof of any kind, and both SD-3/SD-4 clauses live in
+      // `setVerifier` and never run here.
+      //
+      // VERDICT MOVED by `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, which adds the
+      // base case directly to `initialize`: a non-zero commitment must exhibit
+      // its preimage, and where `requirePq` holds that preimage must carry the
+      // declared key length. The 48-against-32 genesis below is exactly that
+      // contradiction and is now refused at birth.
       const w = await deployWorld({ label: "sd7-genesis", verifier: "honest" });
       const factory = await ethers.getContractAt("VaultKernelPrototype", w.vaultAddress, w.deployer);
       const fac = await ethers.getContractAt("VaultKernelFactoryPrototype", w.factoryAddress, w.deployer);
@@ -349,38 +358,41 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD
         guardianIsContract: w.guardianIsContract,
         floor: floorTuple({ requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 }),
       };
-      const predicted: string = await fac.predictVault(salt, genesis);
-      await (await fac.deployVault(salt, genesis)).wait();
-      const twin = await ethers.getContractAt("VaultKernelPrototype", predicted, w.deployer);
-
-      // SUSTAINED (SD-7): born unspendable. `_authorise` demands a 32-byte key
-      // hashing to a 48-byte key's commitment — a second-preimage problem.
-      const nonce = (await twin.nonces(DOMAIN.SPEND)) as bigint;
-      const gen = (await twin.credentialGeneration()) as bigint;
-      const sd = digestOf({
-        chainId: w.chainId, vault: predicted, kernelGeneration: KERNEL_GEN,
-        actionType: ACTION.SPEND, authorityGeneration: gen,
-        params: spendParams(w.recipient, ethers.parseEther("1")),
-        domain: DOMAIN.SPEND, nonce, deadline: FAR_DEADLINE,
-      });
+      // REMEDIATED: the deployment itself now reverts, so the unspendable twin
+      // is never born. The exhibit is the 48-byte key the commitment is of, and
+      // it contradicts the 32-byte shape the same genesis declares.
       await expect(
-        twin.execute(w.recipient, ethers.parseEther("1"), nonce, FAR_DEADLINE,
-          sign(w.credKey, sd), sign(w.pqKey, sd), keyOfLength(32, 0x5a)),
-        "SUSTAINED (SD-7): the vault is born unable to authorise",
+        fac.deployVault(salt, genesis, keyOfLength(48, 0x5a)),
+        "REMEDIATED (SD-7): a genesis that contradicts itself is refused at birth",
       ).to.be.revertedWithCustomError(factory, "BadSignature");
 
-      // And the shape is already frozen, because `requirePq` holds from birth.
+      // POSITIVE CONTROL — the SAME genesis with a consistent 32-byte shape and
+      // a 32-byte exhibit deploys, so the refusal above is the contradiction and
+      // not a blanket refusal to deploy a PQ vault.
+      const consistent = {
+        ...genesis,
+        pqKeyHash: ethers.keccak256(keyOfLength(32, 0x5a)),
+      };
+      const okAddr: string = await fac.predictVault(salt, consistent);
+      await (await fac.deployVault(salt, consistent, keyOfLength(32, 0x5a))).wait();
+      const twin = await ethers.getContractAt("VaultKernelPrototype", okAddr, w.deployer);
       expect(Number((await twin.securityFloor())[2])).to.equal(32);
     });
   });
 
-  describe("SD-6 — SUSTAINED: an unattested commitment install while requirePq is false", function () {
-    it("rotateCredential installs an arbitrary pqPublicKeyHash with NO possession proof of any kind", async function () {
-      // `_requireIncomingPossession` returns at `if (!floor.requirePq) return;`
-      // BEFORE the keccak cross-check, so the incoming commitment is accepted
-      // unattested. It is dormant while requirePq is false — and the declaring
-      // edge is what makes it live, which is why the exhibit's strength against a
-      // determined adversary is bounded by this defect and not by its own logic.
+  describe("SD-6 — REMEDIATED: an unattested commitment install is now refused", function () {
+    it("VERDICT MOVED — rotateCredential REFUSES a pqPublicKeyHash with no exhibited preimage", async function () {
+      // SUSTAINING CLAIM (parent): `_requireIncomingPossession` returned at
+      // `if (!floor.requirePq) return;` BEFORE the keccak cross-check, so the
+      // incoming commitment was accepted unattested — and the declaring edge is
+      // what makes it live, so the exhibit's strength against a determined
+      // adversary was bounded by THIS defect rather than by its own logic.
+      //
+      // VERDICT MOVED by `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, dormant half:
+      // a non-zero incoming commitment must exhibit its preimage even while
+      // nothing reads it. Deliberately NO length comparison on this path — see
+      // the kernel comment for why reading the unvalidated dormant lengths here
+      // would hand the credential a permanent veto over guardian recovery.
       const w = await deployWorld({
         label: "sd6-unattested", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
       });
@@ -397,17 +409,32 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD
         domain: DOMAIN.CREDENTIAL, nonce, deadline: FAR_DEADLINE,
       });
       const pop = (await w.vault.credentialPossessionDigest(addrOf(nCred), fabricated)) as string;
-      await (
-        await w.vault.rotateCredential(
+      const before = await w.vault.pqPublicKeyHash();
+      await expect(
+        w.vault.rotateCredential(
           {
             newSigner: addrOf(nCred), newPqKeyHash: fabricated,
             newPqKey: "0x", newEcdsaPop: sign(nCred, pop), newPqPop: "0x",
           },
           nonce, FAR_DEADLINE, sign(w.credKey, d), "0x", "0x",
+        ),
+        "REMEDIATED (SD-6): an unattested commitment is refused",
+      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+      expect(await w.vault.pqPublicKeyHash(), "storage untouched").to.equal(before);
+
+      // POSITIVE CONTROL — exhibiting the 7-byte preimage installs it. The
+      // invariant is about ATTESTATION, not about shape: a 7-byte "key" is still
+      // admissible while dormant, which is why SD-5 is untouched by this lane.
+      await (
+        await w.vault.rotateCredential(
+          {
+            newSigner: addrOf(nCred), newPqKeyHash: fabricated,
+            newPqKey: keyOfLength(7, 0x77), newEcdsaPop: sign(nCred, pop), newPqPop: "0x",
+          },
+          nonce, FAR_DEADLINE, sign(w.credKey, d), "0x", "0x",
         )
       ).wait();
-      expect(await w.vault.pqPublicKeyHash(), "SUSTAINED (SD-6): an unattested commitment is installed")
-        .to.equal(fabricated);
+      expect(await w.vault.pqPublicKeyHash()).to.equal(fabricated);
     });
   });
 
@@ -471,7 +498,7 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3 remediated; SD
           guardians: w.guardians,
           guardianIsContract: w.guardianIsContract,
           floor: floorTuple({ requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 }),
-        }),
+        }, "0x"),
       ).to.revert(ethers);
     });
   });

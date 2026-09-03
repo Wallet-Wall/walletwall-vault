@@ -70,11 +70,12 @@ function main(): void {
     kernel?: { runtimeBytes: number; runtimeSha256: string };
     sd1Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd3Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
   const kernel = measurements.kernel;
   // The LATEST remediation is what this receipt describes; earlier ones are
   // history and are recorded in their own MEASUREMENTS.json blocks.
-  const sd1 = measurements.sd3Remediation ?? measurements.sd1Remediation;
+  const sd1 = measurements.sd67Remediation ?? measurements.sd3Remediation ?? measurements.sd1Remediation;
 
   const receipt = {
     schema: "vnext-kernel-stateful-authority-evidence.v1",

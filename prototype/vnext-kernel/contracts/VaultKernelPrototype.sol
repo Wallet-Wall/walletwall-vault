@@ -284,7 +284,27 @@ contract VaultKernelPrototype {
      *         same transaction as the clone deployment, so an uninitialised
      *         clone never exists between transactions and cannot be claimed.
      */
-    function initialize(GenesisConfig calldata g) external {
+    /**
+     * @param pqKey The PQ public key witnessing `g.pqKeyHash`, required by
+     *        `I-COMMITMENT-EXHIBITED-AT-ADMISSION` whenever that commitment is
+     *        non-zero. It is a PARAMETER and deliberately NOT a member of
+     *        `GenesisConfig`, because `genesisSalt` binds the genesis
+     *        AUTHORITY and a preimage proof confers none: a witness inside the
+     *        identity struct would change `predictVault`'s ABI and invite a
+     *        later editor to add it to the salt's enumerated field list. Kept
+     *        outside, the CONFIGURATION -> SALT function is unchanged: the same
+     *        `GenesisConfig` yields the same salt as the parent build, pinned
+     *        against a captured constant in `Sd67AdmissionInvariants.test.ts`.
+     *
+     *        THAT IS A CLAIM ABOUT THE SALT, NOT ABOUT ADDRESSES. A clone's
+     *        address is `CREATE2(factory, salt, keccak256(initcode))` and the
+     *        ERC-1167 initcode embeds the IMPLEMENTATION address, so every
+     *        deployed address moves whenever the kernel's bytecode moves — as
+     *        it does in every remediation in this stack, this one included. No
+     *        change to this contract could have preserved addresses, and none
+     *        is claimed.
+     */
+    function initialize(GenesisConfig calldata g, bytes calldata pqKey) external {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
 
@@ -304,6 +324,25 @@ contract VaultKernelPrototype {
         // A mandatory PQ conjunct with no committed key is unsatisfiable, and
         // would brick spending from birth.
         if (g.floor.requirePq && g.pqKeyHash == bytes32(0)) revert BadSignature();
+
+        // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, the BASE CASE — the fix for
+        // SD-7. The line above tests only ZERO-ness, so it catches the
+        // degenerate unsatisfiable genesis and admits every other one. These two
+        // give the induction an authenticated base: a stored commitment always
+        // had a preimage exhibited to the kernel, and where a shape is declared
+        // that preimage carries it.
+        //
+        // NO VERIFIER IS CONSULTED HERE, for the same reason `setVerifier` does
+        // not consult one on the declaring edge: the deployer CHOOSES
+        // `g.verifier` in this same transaction, so anything that verifier
+        // certified would be self-certification. The consequence is stated
+        // rather than buried — an exhibit proves knowledge of a preimage, NOT
+        // that the bytes are a well-formed key of any scheme, so a deployer
+        // determined to build a dead vault still can. What is closed is the
+        // structurally CONTRADICTORY genesis a well-intentioned deployer
+        // reaches by accident.
+        if (g.pqKeyHash != bytes32(0) && keccak256(pqKey) != g.pqKeyHash) revert BadSignature();
+        if (g.floor.requirePq && pqKey.length != g.floor.pqPublicKeyLength) revert BadSignature();
 
         securityFloor = g.floor;
         ecdsaSigner = g.signer;
@@ -590,6 +629,29 @@ contract VaultKernelPrototype {
         if (popDigest.recover(c.newEcdsaPop) != expectedSigner) revert BadSignature();
 
         SecurityFloor memory floor = securityFloor;
+
+        // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, dormant half — the fix for
+        // SD-6. A NON-ZERO commitment is a CREDENTIAL and must be attested even
+        // while nothing reads it; `bytes32(0)` is this kernel's representation
+        // of "no PQ credential" and stays admissible, which is what preserves
+        // the ECDSA-only rotation and the clear-then-rotate escape.
+        //
+        // THE ABSENCE OF A LENGTH COMPARISON HERE IS THE DESIGN, NOT AN
+        // OVERSIGHT. While `requirePq` is false, `_requireSaneFloor` returns
+        // before every bound, so BOTH dormant length fields are unvalidated and
+        // may hold any `uint32` — `MAX_PQ_LENGTH` is not applied on that path,
+        // and `_requireNoDowngrade`'s freeze is guarded on the CURRENT floor.
+        // Reading them here would let one `false -> false` `setVerifier` at cut
+        // 1 write `pqPublicKeyLength = type(uint32).max` and make every later
+        // credential install — `executeRecovery` INCLUDED — undeliverable
+        // forever, with no writer of `securityFloor` reachable by any guardian
+        // path to undo it. That is a permanent, uncounted, cut-1 veto over the
+        // remedy: a strictly worse form of the harm the SD-4 interlock was
+        // rejected for. The shape is bound where it EXISTS — at the declaring
+        // edge, by `I-DECLARATION-EXHIBITED`.
+        if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {
+            revert BadSignature();
+        }
         if (!floor.requirePq) return;
         if (c.newPqKey.length != floor.pqPublicKeyLength || c.newPqPop.length != floor.pqSignatureLength) {
             revert BadSignature();
@@ -786,11 +848,25 @@ contract VaultKernelPrototype {
         // arms the PQ conjunct and chooses BOTH structural lengths freely: the
         // freeze in `_requireNoDowngrade` is guarded on the CURRENT floor, and
         // `requirePq` is monotone, so it happens at most once and is
-        // irreversible. Two independent things must hold at that moment, and
-        // NEITHER IMPLIES THE OTHER: the first binds `pqPublicKeyHash`, the
-        // second protects `recovery.proposedPqKeyHash` — different variables,
-        // chosen by different principals, only the first of them exhibitable by
-        // the principal making the transition.
+        // irreversible. ONE clause holds at that moment, in two conjuncts, and
+        // both bind `pqPublicKeyHash`: a length and a preimage.
+        //
+        // CORRECTED. An earlier revision of this comment said a second clause
+        // "protects `recovery.proposedPqKeyHash`". No such clause exists — the
+        // interlock was written, measured and REMOVED for the reason recorded
+        // forty lines below, and SD-4 remains SUSTAINED. The text was residue
+        // from the removed code and contradicted both the block below it and
+        // `stateful/defects.ts`.
+        //
+        // The two conjuncts here are NOT redundant with
+        // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`. That invariant proves a
+        // preimage existed when the commitment was INSTALLED, under whatever
+        // shape was then in force — possibly none. This one proves the
+        // DECLARER, who may be a different principal, holds a preimage at the
+        // length being declared NOW, which did not exist at install time.
+        // Neither implies the other, and the mutation catalogue proves both
+        // directions: M19 and M20 kill a kernel missing THIS clause, while M21
+        // and M22 kill one missing the admission clause.
         //
         // EACH CLAUSE IS A FLAT `if (cond) revert X();` that repeats the edge
         // test rather than nesting inside it, and that is not a style choice:
