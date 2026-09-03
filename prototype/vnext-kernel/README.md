@@ -38,14 +38,16 @@ loss against this exact kernel.**
 | Mechanically clone-targeted monolith (#179 §19.1) | 23,249     | pass, headroom 1,327     | **FAIL by 1,273**               |
 | `VaultKernelPrototype` at `79e05a34` (WITHDRAWN)  | 14,339     | pass                     | pass — but the cuts were wrong  |
 | `VaultKernelPrototype` (findings A-E remediated)  | 17,407     | pass, headroom 7,169     | TARGET PASS, headroom 4,569     |
-| **`VaultKernelPrototype` (SD-1 remediated)**      | **17,622** | **pass, headroom 6,954** | **TARGET PASS, headroom 4,354** |
+| `VaultKernelPrototype` (SD-1 remediated)          | 17,622     | pass, headroom 6,954     | TARGET PASS, headroom 4,354     |
+| **`VaultKernelPrototype` (SD-3 remediated)**      | **17,806** | **pass, headroom 6,770** | **TARGET PASS, headroom 4,170** |
 
-**24.2% smaller than the monolith** — 5,617 bytes — and still the only one of the
+**23.4% smaller than the monolith** — 5,433 bytes — and still the only one of the
 three to clear the internal target. The factory adds **2,226** bytes, once per
 generation. Remediating findings A-E cost **+3,068** bytes; per-fix attribution is
 in `AUTHORITY.md` §4 and reproducible with `deltas.ts`. Remediating **SD-1** with
-`I-FLOOR-SHAPE-IMMUTABLE` cost a further **+215**, with the storage layout
-byte-identical and the ABI change additive only.
+`I-FLOOR-SHAPE-IMMUTABLE` cost a further **+215**, and closing **SD-3** with `I-DECLARATION-EXHIBITED`
+another **+184** — every one with the storage layout byte-identical and the ABI
+change additive only.
 
 **Authority surface**, which is the part that actually matters:
 

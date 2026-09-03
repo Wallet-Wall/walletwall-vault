@@ -94,25 +94,37 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 remediated; SD-2 and SD-3 reproduced here, SD-4 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 and SD-3 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-6 / SD-7 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
-    expect(SUSTAINED_DEFECTS.length).to.equal(3);
+    expect(SUSTAINED_DEFECTS.length).to.equal(5);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
       expect(d.rootCause.length, d.id + " must name the source construct").to.be.greaterThan(40);
       expect(d.minimalFixSketch.length, d.id + " must carry a minimal fix sketch").to.be.greaterThan(30);
     }
-    // SD-1 is no longer here; it is in REMEDIATED_DEFECTS. A fix that merely
-    // DELETED its ledger entry would leave a repository in which the inverted
-    // reproduction below has no explanation, so the entry moved rather than
-    // vanished, and it still names the head it was sustained at.
-    expect(SUSTAINED_DEFECTS.map((d) => d.id), "SD-1 must not be listed as sustained any more").to.not.include(
+    // SD-1 and SD-3 are no longer here; they are in REMEDIATED_DEFECTS. A fix
+    // that merely DELETED a ledger entry would leave a repository in which the
+    // inverted reproduction has no explanation, so each entry MOVED rather than
+    // vanished, and each still names the head it was sustained at.
+    //
+    // SD-4 is deliberately NOT in that list. A fix for it was built, measured
+    // and then removed — refusing a ONE-SHOT transition hands the opposing
+    // principal a veto over a capability it cannot itself exercise — so it stays
+    // SUSTAINED, and it now carries a CAMPAIGN PROPERTY it never had, which means
+    // the "still reproducing" assertion covers it for the first time.
+    for (const closed of [
       "SD-1-floor-length-poisoning",
-    );
-    expect(REMEDIATED_DEFECTS.length).to.equal(1);
+      "SD-3-setverifier-skips-genesis-satisfiability",
+    ]) {
+      expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
+        closed,
+      );
+      expect(REMEDIATED_DEFECTS.map((d) => d.id), closed + " must be recorded as remediated").to.include(closed);
+    }
+    expect(REMEDIATED_DEFECTS.length).to.equal(2);
     for (const r of REMEDIATED_DEFECTS) {
       expect(r.sustainedAt, r.id + " must name the head it was sustained at").to.match(/^[0-9a-f]{40}$/);
       expect(r.invariant.length, r.id + " must state the invariant that closed it").to.be.greaterThan(60);
@@ -308,15 +320,26 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 remediated; SD-2 and 
   });
 
   // =====================================================================
-  it("SD-3 — setVerifier raises requirePq against a ZERO key commitment, the exact state initialize refuses", async function () {
-    // A vault BORN with an ECDSA-only floor — a configuration initialize permits,
-    // and the only one from which requirePq can legally go false -> true.
+  /**
+   * REMEDIATED, and inverted in place rather than deleted.
+   *
+   * This is the SAME sequence that sustained SD-3 at ec5adce9 — an ECDSA-only
+   * genesis, one root, the same arming call — with only the VERDICT moved. The
+   * genesis positive control is kept because it is what made the defect legible:
+   * `initialize` always refused this state, and the transition simply did not.
+   * `I-DECLARATION-EXHIBITED` is what closed the gap between them.
+   *
+   * The full remediation evidence, including the NON-ZERO form the ledger's own
+   * fix sketch would have missed, lives in Sd34AuthenticationSatisfiability and
+   * Sd34DeclarationInvariants.
+   */
+  it("SD-3 — REMEDIATED: the transition now refuses exactly what genesis always refused", async function () {
     const w = await deployWorld({ label: "sd3", verifier: "honest", ecdsaOnlyFloor: true });
     expect(await w.vault.pqPublicKeyHash(), "no PQ key is committed").to.equal(ethers.ZeroHash);
     expect((await w.vault.securityFloor())[0], "and no PQ conjunct is demanded").to.equal(false);
 
-    // GENESIS REFUSES THIS EXACT COMBINATION — the positive control that proves
-    // the kernel knows the state is invalid.
+    // GENESIS REFUSES THIS EXACT COMBINATION — unchanged, and still the control
+    // that proves the kernel knows the state is invalid.
     const factory = await ethers.getContractAt("VaultKernelFactoryPrototype", w.factoryAddress, w.deployer);
     await expect(
       factory.deployVault(ethers.id("sd3-genesis-control"), {
@@ -327,17 +350,22 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 remediated; SD-2 and 
       "initialize must refuse requirePq with a zero key commitment",
     ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 
-    // THE TRANSITION DOES NOT. One root — the sole ECDSA credential of an
-    // ECDSA-only vault, where _authorise IS the ECDSA conjunct alone.
-    await setVerifierAs(
-      w, w.verifiers.honest,
-      { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 },
-      w.credKey, null,
-    );
-    expect((await w.vault.securityFloor())[0], "SUSTAINED: the conjunct is now mandatory").to.equal(true);
-    expect(await w.vault.pqPublicKeyHash(), "against a commitment no preimage can satisfy").to.equal(ethers.ZeroHash);
+    // AND NOW SO DOES THE TRANSITION. At ec5adce9 this SUCCEEDED at one root and
+    // left every credential path dead on a conjunct with no preimage.
+    await expect(
+      setVerifierAs(
+        w, w.verifiers.honest,
+        { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 },
+        w.credKey, null,
+      ),
+      "REMEDIATED: nothing hashes to a zero commitment, so the declaration cannot be witnessed",
+    ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 
-    // AND SPENDING IS NOW UNSATISFIABLE: _authorise requires keccak256(pqKey) == 0.
+    expect((await w.vault.securityFloor())[0], "the conjunct was never armed").to.equal(false);
+    expect(await w.vault.pqPublicKeyHash(), "and the commitment is untouched").to.equal(ethers.ZeroHash);
+
+    // POSITIVE CONTROL — the vault is not merely refusing everything: it still
+    // spends under its ECDSA-only floor, exactly as before.
     const sNonce = (await w.vault.nonces(DOMAIN.SPEND)) as bigint;
     const credGen = (await w.vault.credentialGeneration()) as bigint;
     const amount = ethers.parseEther("1");
@@ -347,54 +375,11 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1 remediated; SD-2 and 
       params: spendParams(w.recipient, amount),
       domain: DOMAIN.SPEND, nonce: sNonce, deadline: FAR_DEADLINE,
     });
-    await expect(
-      w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE, sign(w.credKey, sd),
-        ethers.hexlify(new Uint8Array(65)), ethers.hexlify(new Uint8Array(32))),
-      "SUSTAINED: the vault is now permanently unspendable by its own credential",
-    ).to.be.revertedWithCustomError(w.vault, "BadSignature");
-
-    // THE BOUND ON THE CLAIM: guardian recovery still escapes it, because
-    // executeRecovery installs a FRESH key commitment of the guardians' choosing.
-    const gGen = (await w.vault.guardianGeneration()) as bigint;
-    const gNonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
-    const newCred = w.spareCred[0]!;
-    const newPq = w.sparePq[0]!;
-    const rd = digestOf({
-      chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: 1n,
-      actionType: ACTION.RECOVER, authorityGeneration: gGen,
-      params: recoverParams(addrOf(newCred), pqHash(newPq), w.verifiers.honest),
-      domain: DOMAIN.GUARDIAN, nonce: gNonce, deadline: FAR_DEADLINE,
-    });
+    const balBefore = await ethers.provider.getBalance(w.recipient);
     await (
-      await w.vault.initiateRecovery(addrOf(newCred), pqHash(newPq), w.verifiers.honest, {
-        members: w.guardians, isContract: w.guardianIsContract,
-        attestingIndices: [0, 1], attestations: [sign(w.gKeys[0]!, rd), sign(w.gKeys[1]!, rd)],
-      }, gNonce, FAR_DEADLINE)
+      await w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE, sign(w.credKey, sd), "0x", "0x")
     ).wait();
-    await networkHelpers.time.increase(7 * DAY + 1);
-    const pop = (await w.vault.recoveryPossessionDigest()) as string;
-    await (
-      await w.vault.executeRecovery({
-        newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
-        newEcdsaPop: sign(newCred, pop), newPqPop: sign(newPq, pop),
-      })
-    ).wait();
-    expect(await w.vault.pqPublicKeyHash(), "the guardian quorum repaired the commitment").to.equal(pqHash(newPq));
-
-    // END-TO-END (R6): the recovered authority is USABLE, proven by a real balance change.
-    const balBefore = await ethers.provider.getBalance(w.vaultAddress);
-    const n2 = (await w.vault.nonces(DOMAIN.SPEND)) as bigint;
-    const cg2 = (await w.vault.credentialGeneration()) as bigint;
-    const sd2 = digestOf({
-      chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: 1n,
-      actionType: ACTION.SPEND, authorityGeneration: cg2,
-      params: spendParams(w.recipient, amount), domain: DOMAIN.SPEND, nonce: n2, deadline: FAR_DEADLINE,
-    });
-    await (
-      await w.vault.execute(w.recipient, amount, n2, FAR_DEADLINE,
-        sign(newCred, sd2), sign(newPq, sd2), pqKeyBytes(newPq))
-    ).wait();
-    expect(await ethers.provider.getBalance(w.vaultAddress)).to.equal(balBefore - amount);
+    expect(await ethers.provider.getBalance(w.recipient), "the vault still works").to.equal(balBefore + amount);
   });
 
   // =====================================================================

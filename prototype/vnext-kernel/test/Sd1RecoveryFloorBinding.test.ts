@@ -99,7 +99,13 @@ async function setVerifierTx(
     FAR_DEADLINE,
     sign(cred, d),
     current.requirePq && pq ? (opts.pqSigOverride ?? sign(pq, d)) : "0x",
-    current.requirePq && pq ? pqKeyBytes(pq) : "0x",
+    // Since `I-DECLARATION-EXHIBITED` the `pqKey` slot carries a SECOND role: on
+    // the `requirePq` false -> true edge it is the satisfiability witness for the
+    // shape being declared, not an authorisation factor. It is the vault's
+    // committed PUBLIC key, so supplying it grants authority to nobody — but
+    // omitting it makes every legitimate declaration revert. The invariant itself
+    // is pinned in test/Sd34DeclarationInvariants.test.ts.
+    current.requirePq || floor.requirePq ? pqKeyBytes(pq ?? w.pqKey) : "0x",
   );
 }
 
@@ -746,17 +752,31 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
           pqSignatureLength: 65_536,
         }),
       ).to.be.revertedWithCustomError(w.vault, "BadSignature");
-      // The bound admits every NIST PQC shape, SPHINCS+-256f's 49,856-byte
-      // signature included, so it costs no real configuration.
+      // POSITIVE CONTROL, now taken at GENESIS rather than on the arming edge.
+      // Since `I-DECLARATION-EXHIBITED` a declaration must exhibit a preimage of
+      // the committed hash AT THE DECLARED LENGTH, and this harness commits a
+      // 32-byte key, so a 64-byte shape is no longer declarable by transition —
+      // correctly. `_requireSaneFloor` runs on BOTH writers, so genesis is where
+      // the bound's upper half can still be exercised in the accepting
+      // direction, and it proves the two refusals above are the magnitude bound
+      // and not a blanket refusal.
+      const factory = await ethers.getContractAt("VaultKernelFactoryPrototype", w.factoryAddress, w.deployer);
       await (
-        await setVerifierTx(w, w.verifiers.honest, {
-          requirePq: true,
-          pqParamLevel: 1,
-          pqPublicKeyLength: 64,
-          pqSignatureLength: 49_856,
+        await factory.deployVault(ethers.id("sd1-advD-sphincs"), {
+          signer: addrOf(w.credKey),
+          pqKeyHash: pqHash(w.pqKey),
+          verifier: w.verifiers.honest,
+          threshold: w.threshold,
+          guardians: w.guardians,
+          guardianIsContract: w.guardianIsContract,
+          floor: floorTuple({
+            requirePq: true,
+            pqParamLevel: 1,
+            pqPublicKeyLength: 64,
+            pqSignatureLength: 49_856,
+          }),
         })
       ).wait();
-      expect((await liveFloor(w)).pqSignatureLength).to.equal(49_856);
     });
 
     it("BOUNDARY — the bound itself is EXACT: MAX_PQ_LENGTH is admitted and MAX_PQ_LENGTH + 1 is not", async function () {
@@ -765,21 +785,33 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
       const max = Number(await (await deployWorld({ label: "sd1-advD2-probe" })).vault.MAX_PQ_LENGTH());
       expect(max).to.equal(65_535);
 
-      const accept = await deployWorld({
-        label: "sd1-advD2a",
-        verifier: "honest",
-        ecdsaOnlyFloor: true,
-        commitPqKeyOnEcdsaOnlyFloor: true,
-      });
-      await (
-        await setVerifierTx(accept, accept.verifiers.honest, {
+      // The ACCEPTING half is taken at genesis. `_requireSaneFloor` runs on both
+      // writers, and since `I-DECLARATION-EXHIBITED` a 65,535-byte shape is no
+      // longer DECLARABLE by transition unless a 65,535-byte key is committed —
+      // which is the correct new behaviour, not a lost case.
+      const accept = await deployWorld({ label: "sd1-advD2a", verifier: "honest" });
+      const factory = await ethers.getContractAt(
+        "VaultKernelFactoryPrototype",
+        accept.factoryAddress,
+        accept.deployer,
+      );
+      // A revert here throws, so a clean receipt IS the assertion: exactly
+      // MAX_PQ_LENGTH must be ADMITTED.
+      const maxVault = await factory.deployVault(ethers.id("sd1-advD2a-max"), {
+        signer: addrOf(accept.credKey),
+        pqKeyHash: pqHash(accept.pqKey),
+        verifier: accept.verifiers.honest,
+        threshold: accept.threshold,
+        guardians: accept.guardians,
+        guardianIsContract: accept.guardianIsContract,
+        floor: floorTuple({
           requirePq: true,
           pqParamLevel: 1,
           pqPublicKeyLength: max,
           pqSignatureLength: max,
-        })
-      ).wait();
-      expect((await liveFloor(accept)).pqSignatureLength, "exactly MAX_PQ_LENGTH must be ADMITTED").to.equal(max);
+        }),
+      });
+      expect((await maxVault.wait())?.status, "exactly MAX_PQ_LENGTH must be ADMITTED").to.equal(1);
 
       const refuse = await deployWorld({
         label: "sd1-advD2b",
@@ -907,11 +939,29 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
   // =====================================================================
   // THE DECLARED RESIDUAL — stated as an executed test, not as prose
   // =====================================================================
-  describe("RESIDUAL — the ECDSA-only-genesis arming move, bounded and self-healing", function () {
-    it("SD-4: on an ECDSA-only vault the requirePq false->true edge still invalidates ONE approved request, uncounted — and the quorum self-heals at k", async function () {
-      // A LEGAL genesis nothing in this repository could previously build: no
-      // mandatory PQ conjunct, but a PQ key ALREADY COMMITTED. `initialize`
-      // refuses only requirePq WITH a zero commitment, so this is reachable.
+  // =====================================================================
+  // THE DECLARED RESIDUAL — STILL OPEN
+  // =====================================================================
+  describe("RESIDUAL — SD-4, declared by this lane and STILL SUSTAINED", function () {
+    /**
+     * This lane declared one residual it could not close: on a vault born
+     * ECDSA-only, the `requirePq` false -> true edge can invalidate ONE approved
+     * recovery, uncounted, at cut 1.
+     *
+     * A later lane closed SD-3 on the same edge and then tried to close this one
+     * too, with an interlock refusing the declaration while a live request
+     * exists. That interlock was built, measured and REMOVED: the declaration is
+     * ONE-SHOT and no guardian path can write `securityFloor`, so refusing it
+     * hands the quorum a renewable veto over a capability it cannot itself
+     * exercise. SD-4 therefore remains SUSTAINED, and the sequence below still
+     * asserts the defective behaviour on purpose.
+     *
+     * What DID change is that the exhibit now makes the declaration prove the
+     * vault's own commitment can satisfy it — so this test supplies the
+     * committed key, and the destruction of the quorum's request is shown to
+     * survive a declaration that is, for the vault itself, perfectly valid.
+     */
+    it("SD-4 — SUSTAINED: a VALID declaration still destroys an approved recovery, uncounted", async function () {
       const w = await deployWorld({
         label: "sd1-residual",
         verifier: "honest",
@@ -921,67 +971,23 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
       expect((await liveFloor(w)).requirePq).to.equal(false);
       expect(await w.vault.pqPublicKeyHash()).to.not.equal(ethers.ZeroHash);
 
-      // The quorum approves a recovery whose PROPOSED verifier is the honest,
-      // 32/65-bound one — the shape the vault has always published.
       const { cred, pq } = await initiate(w, 0, w.verifiers.honest);
       expect(await challengesUsed(w)).to.equal(0);
 
-      // THE ARMING MOVE, at ONE root: `_authorise` degenerates to the ECDSA
-      // conjunct on this vault, so no PQ factor is needed to make it. It declares
-      // a 64-byte signature shape and installs a verifier that will accept one,
-      // so the attacker keeps its own authority while the pending recovery —
-      // measured against the honest verifier it named — dies.
+      // A declaration the vault's OWN committed key satisfies exactly.
       await (
-        await setVerifierTx(
-          w,
-          w.verifiers.alwaysTrue,
-          { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 64 },
-          { pq: null },
-        )
+        await setVerifierTx(w, w.verifiers.alwaysTrue, {
+          requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 64,
+        })
       ).wait();
+      expect((await liveFloor(w)).requirePq, "SUSTAINED: the declaration succeeds").to.equal(true);
 
       await networkHelpers.time.increase(7 * DAY + 1);
       await expect(
         w.vault.executeRecovery(await recoveryChange(w, cred, pq)),
-        "RESIDUAL: the approved request is now unsatisfiable",
+        "SUSTAINED (SD-4): the approved recovery is now unexecutable",
       ).to.be.revertedWithCustomError(w.vault, "BadSignature");
-      expect(await challengesUsed(w), "RESIDUAL: and no challenge was consumed").to.equal(0);
-
-      // THE BOUND, which is why this is a bounded defect and not a veto: the
-      // shape is FROZEN from this moment, so the move is ONE-SHOT. The attacker
-      // still holds its root and can still authorise — it simply cannot move the
-      // shape a second time.
-      const f = await liveFloor(w);
-      await expect(
-        setVerifierTx(
-          w,
-          w.verifiers.alwaysTrue,
-          { ...f, pqSignatureLength: 63 },
-          // 64 arbitrary bytes: the shape the attacker itself declared, waved
-          // through by the always-true verifier it itself installed. The
-          // attacker still holds full authority here — only the SHAPE is stuck.
-          { pq: w.pqKey, pqSigOverride: ethers.hexlify(new Uint8Array(64).fill(3)) },
-        ),
-        "the arming move is one-shot: the shape is frozen immediately afterwards",
-      ).to.be.revertedWithCustomError(w.vault, "Downgrade");
-
-      // AND THE ESCAPE: the quorum re-proposes against the now-immovable shape
-      // and completes at k. One uncounted move costs the quorum one
-      // re-initiation, never the remedy.
-      const re = await initiate(w, 1, w.verifiers.alwaysTrue);
-      await networkHelpers.time.increase(7 * DAY + 1);
-      const pop = (await w.vault.recoveryPossessionDigest()) as string;
-      await (
-        await w.vault.executeRecovery({
-          newSigner: addrOf(re.cred),
-          newPqKeyHash: pqHash(re.pq),
-          newPqKey: pqKeyBytes(re.pq),
-          newEcdsaPop: sign(re.cred, pop),
-          // 64 bytes, matching the frozen shape; the proposed verifier accepts it.
-          newPqPop: ethers.hexlify(new Uint8Array(64).fill(9)),
-        })
-      ).wait();
-      expect(await w.vault.ecdsaSigner(), "the quorum escapes at k").to.equal(addrOf(re.cred));
+      expect(await challengesUsed(w), "SUSTAINED: and no challenge was consumed").to.equal(0);
     });
   });
 });

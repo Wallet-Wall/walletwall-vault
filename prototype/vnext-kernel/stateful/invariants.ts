@@ -405,13 +405,68 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
       s.recovery.challengesUsed > 2n ? "challengesUsed " + s.recovery.challengesUsed + " exceeds CHALLENGE_LIMIT" : null,
   },
   {
+    /**
+     * The OBSERVABLE half of "a transition affecting authentication requirements
+     * must leave the vault in a satisfiable authentication state". The oracle
+     * cannot know the preimage LENGTH of a commitment — that is exactly what
+     * `I-DECLARATION-EXHIBITED` makes the kernel prove on chain — but it can see
+     * the degenerate case, where no preimage exists at all. Together with
+     * `G-FLOOR-SANE`, which bounds the declared shape at both ends, this is
+     * everything about post-transition satisfiability that is decidable from
+     * storage alone.
+     *
+     * It was SD-3's property, and while SD-3 stood it sat in
+     * `KNOWN_DEFECT_PROPERTIES`, so campaign violations were moved out of
+     * `violations` and merely counted. With SD-3 remediated it leaves that set
+     * automatically, and this becomes a HARD invariant with the whole campaign
+     * behind it.
+     */
     name: "G-PQ-COMMITMENT-SATISFIABLE",
     source:
-      "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, because a mandatory PQ conjunct with no committed key is unsatisfiable and bricks spending",
+      "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, and setVerifier's I-DECLARATION-EXHIBITED refuses the requirePq false -> true edge unless a preimage of the committed hash is exhibited at the newly declared length — a mandatory PQ conjunct with no satisfiable committed key is unsatisfiable and bricks spending",
     check: (s) =>
       s.floor.requirePq && s.pqPublicKeyHash === ZERO_HASH
         ? "requirePq is set while pqPublicKeyHash is zero — the conjunct keccak256(pqKey) == pqPublicKeyHash is unsatisfiable, so no spend can ever authorise"
         : null,
+  },
+  {
+    /**
+     * `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY`, stated on the REQUIREMENT
+     * side: an accepted configuration transition may not silently reduce the
+     * satisfiability of a recovery the guardians have ALREADY approved.
+     *
+     * TRANSITION-SHAPED, not state-shaped, and deliberately so: the harm is the
+     * MOMENT the requirements move under a live request, not the resulting
+     * state. A state-shaped version would re-fire on every later step and inflate
+     * the violation count by the campaign's tail length.
+     *
+     * The "live" test is the exact request set `executeRecovery` would still
+     * admit — active, unexpired, generation-current — so a request nothing could
+     * have executed anyway is correctly not counted as harmed. A kernel that
+     * refused MORE transitions than this still passes, which is what makes this
+     * a requirement and not a mirror of the implementation.
+     */
+    name: "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
+    source:
+      "setVerifier's I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY refuses the requirePq false -> true edge while a recovery request is still one executeRecovery would admit, because that edge adds a whole conjunct to an already-quorum-approved request which _requireIncomingPossession measures LIVE",
+    check: (s, p) => {
+      if (!p) return null;
+      const wasLive =
+        p.recovery.active &&
+        s.blockTimestamp <= p.recovery.expiresAt &&
+        p.recovery.boundGuardianGeneration === p.guardianGeneration;
+      if (!wasLive) return null;
+      if (!p.floor.requirePq && s.floor.requirePq) {
+        return (
+          "the PQ conjunct was armed while a quorum-approved recovery was still executable (proposed " +
+          p.recovery.proposedSigner +
+          ", expires " +
+          p.recovery.expiresAt +
+          ") — that request is now measured against authentication requirements which did not exist when it was approved"
+        );
+      }
+      return null;
+    },
   },
 ];
 

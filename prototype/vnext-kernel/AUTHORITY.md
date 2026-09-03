@@ -42,6 +42,34 @@ The reproduction was INVERTED IN PLACE rather than deleted
 at; and the residual it leaves is carried as **SD-4** in the sustained ledger.
 **SD-2 and SD-3 remain SUSTAINED and unfixed.**
 
+**SD-3 AND SD-4 ARE NOW REMEDIATED TOO, on `security/vnext-sd3-sd4-authentication-satisfiability`, and re-deriving them corrected the record in three places.**
+
+| Finding  | Claim it falsified                                   | Reproduced end state                                                                                                                                     | Real cut was |
+| -------- | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------ |
+| **SD-3** | `credential stranding = unreachable` (via the FLOOR) | one root armed `requirePq` against material that cannot satisfy it, and every credential path then died on a conjunct with no preimage                    | **1**        |
+| **SD-4** | `permanent recovery veto = unreachable`              | the same edge added a whole authentication conjunct to an ALREADY-approved recovery, destroying it with `challengesUsed == 0` and the request left active | **1**        |
+
+Both are closed by two INDEPENDENT clauses on that one edge —
+**`I-DECLARATION-EXHIBITED`** and **`I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY`**.
+The prior lane's hypothesis that closing SD-4 "necessarily intersects" SD-3 is
+**refuted**: the exhibit binds `pqPublicKeyHash` while SD-4 is about
+`recovery.proposedPqKeyHash`, and in the reproduced counterexample the declared
+key length matches the incumbent EXACTLY, so the exhibit passes on both conjuncts
+and only the interlock refuses.
+
+Three recorded claims were wrong, and are corrected here rather than quietly
+dropped. SD-3's title said "permanently bricking" while its own
+`notAnEscalationBecause` said "escapable at k" — the field was right. SD-3's
+`minimalFixSketch` proposed a zero-hash check that a NON-ZERO commitment defeats
+unchanged, so implementing the ledger's own sketch would have shipped a fix that
+left the defect open. And the asset-control, crypto-downgrade and
+credential-stranding rows in section 3 all lacked the ECDSA-only scope caveat
+they needed.
+
+**SD-2 remains SUSTAINED, and the remediation's own residuals are recorded as
+SD-5 (permanent shape capture on the declaring edge) and SD-6 (unattested
+commitment install while `requirePq` is false).**
+
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,
 using distinct guardians, deploying at a fresh salt. None asked what an attacker
@@ -92,14 +120,14 @@ re-derived from the compiled kernel, NOT carried forward from #179 §24.
 
 | Outcome                    | #179 §24         | at `79e05a34` (measured) | NOW             | Enforced by                                                                                                                                         |
 | -------------------------- | ---------------- | ------------------------ | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Unauthorized asset control | `min(2, k)`      | **1** (A1, A2)           | **`min(2, k)`** | `execute`, `rotateCredential`, `setVerifier` and `setPolicy` all call `_authorise` — the ECDSA conjunct **AND** the PQ conjunct. M-K28, M-K29       |
+| Unauthorized asset control | `min(2, k)`      | **1** (A1, A2)           | **`min(2, k)` on a vault whose floor mandates PQ; `1` on one born ECDSA-only** | `execute`, `rotateCredential`, `setVerifier` and `setPolicy` all call `_authorise` — the ECDSA conjunct **AND** the PQ conjunct. M-K28, M-K29. **SCOPE, previously missing:** `_authorise` returns at `if (!floor.requirePq) return;` before the PQ leg, so on an ECDSA-only-floor vault the conjunction this row cites does not exist and the real cut is 1. Measured in `test/Sd34AuthenticationSatisfiability.test.ts` |
 | Credential replacement     | `min(2, k)`      | **1** (A1)               | **`min(2, k)`** | rotation is HYBRID-authorised and additionally requires possession of both INCOMING factors. M-K28, M-K34                                           |
 | Guardian takeover          | `k`              | **1** (B)                | **`k`**         | `I-QUORUM-PRINCIPAL-DISTINCTNESS`: the committed roster must be strictly ascending by address, so `k` seats are `k` PRINCIPALS. M-K30, M-K31, M-K32 |
 | Migration takeover         | `k + 1`          | `k + 1`                  | **`k + 1`**     | `bindMigration` requires quorum **AND** credential. Unchanged                                                                                       |
 | Permanent recovery veto    | unreachable      | **2** (SD-1)             | **unreachable, on any vault whose floor already mandates PQ** | containment budgeted `B < W`; challenge capped; no pause exists; **`I-FLOOR-SHAPE-IMMUTABLE`** freezes the two STRUCTURAL floor fields once `requirePq` holds, so no credential-writable state remains in the recovery satisfiability condition. **Scope, stated rather than buried:** on a vault born ECDSA-only the `requirePq` false -> true edge declares the shape for the first time and retains ONE uncounted, one-shot, self-healing move — carried as **SD-4** |
-| Silent crypto downgrade    | unreachable      | **1** (A2)               | **unreachable** | `setVerifier` is HYBRID; the floor may only strengthen — **true of all four fields since `I-FLOOR-SHAPE-IMMUTABLE`; it was previously false for the two length fields, which any credential could move at will**; the escape from a dead verifier is the GUARDIAN quorum, not one factor |
+| Silent crypto downgrade    | unreachable      | **1** (A2)               | **unreachable** | `setVerifier` is HYBRID; the floor may only strengthen — true of all four fields **once `requirePq` already holds**, which is what `I-FLOOR-SHAPE-IMMUTABLE` establishes. **SCOPE, corrected:** on the one-shot `requirePq` false -> true DECLARING edge two of the four are still free, and `I-DECLARATION-EXHIBITED` binds only the key shape to the committed material, never the signature shape. The residue is **SD-5**, and it is permanent. The escape from a dead verifier is the GUARDIAN quorum, not one factor |
 | Vault identity takeover    | _(not modelled)_ | **1** (C)                | **unreachable** | `I-COUNTERFACTUAL-IDENTITY-BINDING`: the CREATE2 salt binds the complete genesis authority. M-K33                                                   |
-| Credential stranding       | _(not modelled)_ | **1** (D)                | **unreachable** | `I-INCOMING-CREDENTIAL-POSSESSION` on both rotation and recovery. M-K34, M-K35                                                                      |
+| Credential stranding       | _(not modelled)_ | **1** (D)                | **unreachable while `requirePq` holds** | `I-INCOMING-CREDENTIAL-POSSESSION` on both rotation and recovery. M-K34, M-K35. **SCOPE, previously missing:** `_requireIncomingPossession` returns before every PQ check while `requirePq` is false, so on an ECDSA-only floor BOTH paths install a PQ commitment attested by nothing — recorded as **SD-6** |
 | Denial of spending         | **1**            | **1**                    | **1**           | one verifier or one policy plane. **Accepted and declared**                                                                                         |
 
 **No cut is now lower than #179 §24, and two outcomes §24 never modelled are
@@ -125,6 +153,7 @@ path dominates at `k`, exactly as §24 says.
 | residual                                                             | +1,880                        | `GenesisConfig` / `CredentialChange` calldata plumbing that findings C and D require structurally, plus optimizer interaction between overlapping ablations          |
 | **TOTAL**                                                            | **14,339 -> 17,407 (+3,068)** | TARGET PASS, 4,569 B under the 21,976 ceiling                                                                                                                        |
 | **SD-1** `I-FLOOR-SHAPE-IMMUTABLE` (+ the `MAX_PQ_LENGTH` bound)     | **+215**                      | **17,407 -> 17,622.** TARGET PASS, 4,354 B under the ceiling. Storage layout byte-identical; ABI additive only (selectors 44 -> 45, the new `MAX_PQ_LENGTH()` getter) |
+| **SD-3** `I-DECLARATION-EXHIBITED`                                   | **+184**                      | **17,622 -> 17,806.** TARGET PASS, 4,170 B under the ceiling. Storage layout AND ABI byte-identical — two comparisons reusing an existing parameter, on the `requirePq` false -> true edge only. SD-4 is NOT closed; see its ledger entry |
 
 **No T0/T1 invariant was deleted to recover bytes.** The ablated variants that
 produce these deltas are diagnostic only, and every one of them reintroduces a

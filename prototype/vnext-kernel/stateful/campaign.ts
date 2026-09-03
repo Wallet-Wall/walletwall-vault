@@ -673,6 +673,7 @@ export async function runCampaign(
     label,
     verifier: profile.verifier ?? "honest",
     ecdsaOnlyFloor: profile.ecdsaOnlyFloor ?? false,
+    commitPqKeyOnEcdsaOnlyFloor: profile.commitPqKeyOnEcdsaOnlyFloor ?? false,
     implOverride: options.implOverride,
   });
   const snap = await networkHelpers.takeSnapshot();

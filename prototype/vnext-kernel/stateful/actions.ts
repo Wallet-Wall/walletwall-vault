@@ -619,7 +619,27 @@ export async function executeAction(
             FAR_DEADLINE,
             sign(credSigningKey(actor, ctx), digest),
             floor.requirePq ? sign(pqSigningKey(actor, ctx), digest) : "0x",
-            floor.requirePq ? pqKeyBytes(pqSigningKey(actor, ctx)) : "0x",
+            // The `pqKey` slot serves TWO different roles depending on the edge,
+            // and conflating them would silently hand an attacker a factor.
+            //
+            //   current requirePq TRUE — `_authorise` measures this against the
+            //     vault's commitment, so it must stay the ACTOR's own key: an
+            //     actor that does not hold the PQ root has to keep failing.
+            //   current FALSE, next TRUE — the DECLARING edge. `_authorise`
+            //     returns before reading it, and the kernel instead demands
+            //     `I-DECLARATION-EXHIBITED`'s satisfiability witness for the
+            //     shape being declared. That witness is the vault's committed
+            //     PUBLIC key, so supplying it grants authority to nobody — every
+            //     actor, attacker included, can read it off chain. On a vault
+            //     with NO commitment it correctly fails to satisfy the witness,
+            //     which is the SD-3 refusal the campaign should now see.
+            //
+            // No `prng` call is added, so no campaign history re-seeds.
+            floor.requirePq
+              ? pqKeyBytes(pqSigningKey(actor, ctx))
+              : requirePqAfter
+                ? pqKeyBytes(w.pqKey)
+                : "0x",
           ]),
         };
       }, () => {

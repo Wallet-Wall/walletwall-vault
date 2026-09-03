@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "527b2f85f829550b583b461a0e2445a45825e60a",
-  "tree": "85c0c7e25a5754543e59054e3f927bc5a25db2b0",
+  "head": "73db1f01b7e60dd850ad8c6c695f66ed88d2ed98",
+  "tree": "37a87d386e598794826a8a81c4aa4ad1b25ae02d",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
@@ -250,7 +250,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9388,
+      "astId": 9422,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -280,7 +280,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9445,
+      "astId": 9479,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -310,7 +310,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 9562,
+      "astId": 9596,
       "reasons": []
     },
     {
@@ -321,7 +321,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9646,
+      "astId": 9680,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -351,7 +351,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9966,
+      "astId": 10000,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -381,7 +381,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10041,
+      "astId": 10075,
       "reasons": [],
       "observedMechanisms": [
         "FLOOR_ONLY"
@@ -411,7 +411,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10128,
+      "astId": 10162,
       "reasons": [],
       "observedMechanisms": [
         "POSSESSION_PROOF"
@@ -443,7 +443,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10232,
+      "astId": 10266,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
       ],
@@ -477,7 +477,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10367,
+      "astId": 10401,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM",
@@ -509,7 +509,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10409,
+      "astId": 10443,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -535,7 +535,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10538,
+      "astId": 10572,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
       ],

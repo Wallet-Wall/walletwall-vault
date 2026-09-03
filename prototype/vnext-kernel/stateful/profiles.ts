@@ -65,6 +65,17 @@ export interface CampaignProfile {
   verifier?: VerifierKind;
   /** Born with an ECDSA-only floor. The ONLY way to reach a requirePq false -> true transition. */
   ecdsaOnlyFloor?: boolean;
+  /**
+   * With `ecdsaOnlyFloor`, commit a PQ key at genesis anyway — a legal genesis,
+   * since `initialize` refuses only `requirePq` WITH a zero commitment.
+   *
+   * Since `I-DECLARATION-EXHIBITED` this is the ONLY vault class on which the
+   * `requirePq` false -> true declaration can SUCCEED, because the satisfiability
+   * witness has something to be a witness for. Without a profile carrying it the
+   * campaign would only ever observe the REFUSAL, and the armed post-state — the
+   * one `G-PQ-COMMITMENT-SATISFIABLE` exists to police — would be unreachable.
+   */
+  commitPqKeyOnEcdsaOnlyFloor?: boolean;
   /** Shifts the ADVANCE_TIME distribution into a pending recovery executable window. */
   timeBias?: "default" | "maturation" | "duty-cycle";
   /** Proposes a LIVE verifier and rarely a stale PoP, so the recovery seam is reachable. */
@@ -309,5 +320,43 @@ export const PROFILES: readonly CampaignProfile[] = [
     actors: [ALL_MATERIAL_ACTOR, STRANGER],
     actorWeights: [3, 7],
     weights: BROAD,
+  },
+  {
+    /**
+     * APPENDED, NOT SUBSTITUTED, and that is deliberate. Setting
+     * `commitPqKeyOnEcdsaOnlyFloor` on the existing `ecdsa-only-floor` profile
+     * would change its genesis, hence its CREATE2 salt (`genesisSalt` binds both
+     * `g.floor` and `g.pqKeyHash`), hence every history and every kill seed it
+     * carries. Appending leaves all fifteen existing profiles byte-identical and
+     * costs only the new profile's own campaigns.
+     */
+    name: "ecdsa-only-committed",
+    description:
+      "A vault born with an ECDSA-only floor but a PQ key ALREADY COMMITTED — legal, since initialize refuses only requirePq WITH a zero commitment. Since I-DECLARATION-EXHIBITED this is the only class on which the requirePq false -> true DECLARATION can succeed, so it is the only profile that reaches the armed post-state at all; the sibling ecdsa-only-floor profile reaches only the refusal. It is also the class SD-4 was reproduced on, so the recovery interlock is exercised here and nowhere else.",
+    actors: [ALL_MATERIAL_ACTOR, ECDSA_ONLY_ATTACKER, ONE_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [5, 3, 2, 2],
+    /**
+     * WEIGHTED SO THE REMEDY COMES FIRST. The declaration is ONE-SHOT — once
+     * `requirePq` holds it can never be taken again — so a profile that arms in
+     * its opening steps observes the edge exactly once, with no recovery live,
+     * and can never reach the interlock seam at all. Recovery is therefore
+     * weighted well above `SET_VERIFIER`, so a quorum-approved request is
+     * usually pending by the time the first arming attempt is generated.
+     */
+    weights: {
+      ...BROAD,
+      SET_VERIFIER: 5,
+      INITIATE_RECOVERY: 22,
+      EXECUTE_RECOVERY: 6,
+      CANCEL_RECOVERY: 3,
+      SET_GUARDIANS: 2,
+      BIND_MIGRATION: 0,
+      RETIRE: 0,
+      FACTORY_DEPLOY_TWIN: 0,
+      ADVANCE_TIME: 12,
+      SPEND: 4,
+    },
+    ecdsaOnlyFloor: true,
+    commitPqKeyOnEcdsaOnlyFloor: true,
   },
 ];

@@ -781,6 +781,66 @@ contract VaultKernelPrototype {
         _authorise(digest, ecdsaSig, pqSig, pqKey);
         _requireNoDowngrade(floor);
         _requireSaneFloor(floor);
+        // ---- THE DECLARING EDGE -----------------------------------------
+        // `requirePq` false -> true is the ONE transition in a vault's life that
+        // arms the PQ conjunct and chooses BOTH structural lengths freely: the
+        // freeze in `_requireNoDowngrade` is guarded on the CURRENT floor, and
+        // `requirePq` is monotone, so it happens at most once and is
+        // irreversible. Two independent things must hold at that moment, and
+        // NEITHER IMPLIES THE OTHER: the first binds `pqPublicKeyHash`, the
+        // second protects `recovery.proposedPqKeyHash` — different variables,
+        // chosen by different principals, only the first of them exhibitable by
+        // the principal making the transition.
+        //
+        // EACH CLAUSE IS A FLAT `if (cond) revert X();` that repeats the edge
+        // test rather than nesting inside it, and that is not a style choice:
+        // `authority/trace.ts` recognises the single-revert guard idiom and
+        // reports an `if` whose body is another `if` as UNRESOLVED, which would
+        // cost this function a declared ordering exception it does not need.
+        // `&&` short-circuits, so nothing below is evaluated off the edge.
+        //
+        // ORDER: this runs AFTER `_authorise`, so an unauthorised caller learns
+        // nothing from a satisfiability revert, and BEFORE `_consume`, so a
+        // refusal burns no nonce. It also runs after `_requireSaneFloor`, which
+        // means a zero-length declaration is already refused by the time we get
+        // here — that is tidier attribution, not a security dependency: the two
+        // are independent guards and either order refuses the same calls.
+
+        // `I-DECLARATION-EXHIBITED`. Every OTHER floor-touching transition
+        // already MEASURES the committed key — `_authorise` on a true->true
+        // call, `_requireIncomingPossession` on every credential install — so
+        // without this the whole chain rests on an unverified assumption about
+        // genesis. This is what makes that measurement an INDUCTIVE invariant.
+        //
+        // IT IS A SATISFIABILITY WITNESS, NOT AN AUTHORITY GATE. `pqKey` is a
+        // PUBLIC key and is deliberately NOT covered by the action digest, so a
+        // relayer rewriting it can only make this call REVERT — never make it
+        // accept a configuration the signer did not authorise. The edge's cut is
+        // 1 before and 1 after; nothing here raises it.
+        //
+        // NO SIGNATURE LEG AND NO VERIFIER CALL, deliberately: the declarer
+        // chooses the verifier in this same transaction, so anything that
+        // verifier validates is self-certification and proves nothing.
+        if (!securityFloor.requirePq && floor.requirePq && pqKey.length != floor.pqPublicKeyLength) {
+            revert BadSignature();
+        }
+        if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+            revert BadSignature();
+        }
+        // SD-4 IS NOT CLOSED HERE, AND THE REASON IS RECORDED RATHER THAN THE
+        // FIX ATTEMPTED. The same edge also adds a whole conjunct to an
+        // ALREADY-QUORUM-APPROVED recovery, which `_requireIncomingPossession`
+        // measures against this floor LIVE. An interlock refusing the
+        // declaration while such a request is live was written, measured and
+        // REMOVED: because the declaration is ONE-SHOT and no guardian path can
+        // ever write `securityFloor`, that refusal hands the quorum a renewable,
+        // uncounted veto over a capability it cannot itself exercise —
+        // `initiateRecovery` has no `!recovery.active` guard, while the
+        // credential's counter-move is capped — which pins an ECDSA-only vault
+        // at asset-control cut 1 forever. Trading a bounded one-shot credential
+        // harm for an unbounded guardian one is not a remediation. See SD-4 in
+        // `stateful/defects.ts` for the analysis and the only design that closes
+        // it soundly.
         _consume(DOMAIN_CREDENTIAL, nonce, deadline);
         pqVerifier = verifier;
         securityFloor = floor;

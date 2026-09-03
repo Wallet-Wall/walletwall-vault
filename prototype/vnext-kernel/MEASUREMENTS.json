@@ -29,21 +29,21 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 17622,
-    "initcodeBytes": 17663,
+    "runtimeBytes": 17806,
+    "initcodeBytes": 17847,
     "immutableSlots": 0,
-    "runtimeSha256": "398426298034b5229a5f48e81bbf7efbd7f88b94ed994721bdaf6d92cc2aa50d",
+    "runtimeSha256": "11476c140f33faa8200355ad0f411249827a2abaca18b5123bf2bfe062cb98ff",
     "selectors": 45,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6954,
-    "headroomVsTargetCeiling": 4354,
+    "headroomVsPortabilityBudget": 6770,
+    "headroomVsTargetCeiling": 4170,
     "verdict": "TARGET PASS"
   },
   "factory": {
     "runtimeBytes": 2226,
     "initcodeBytes": 2575,
     "immutableSlots": 2,
-    "runtimeSha256": "cdd9ab93ad7b2ac0c84de26b7c3b3a1e878d8de63a14dcd1bab69e1a4dfe1598",
+    "runtimeSha256": "632259899bb49c8b37478d21e563b8df930783fe4c1c08e7eb05661f9f61c33a",
     "selectors": 4,
     "_note": "The LENGTH is unchanged and the EXECUTABLE PREFIX is byte-identical — 2,173 bytes before and after, verified by splitting the trailing CBOR. Only the 53-byte metadata block moved, because solc hashes every source in the compilation unit into it and the kernel source changed. No factory logic was touched."
   },
@@ -74,23 +74,24 @@
   "comparison": {
     "currentMonolithRuntime": 23239,
     "mechanicalCloneTargetRuntime": 23249,
-    "minimalKernelRuntime": 17622,
-    "reductionVsMonolithBytes": 5617,
-    "reductionVsMonolithPercent": 24.2
+    "minimalKernelRuntime": 17806,
+    "reductionVsMonolithBytes": 5433,
+    "reductionVsMonolithPercent": 23.4
   },
   "scannerCoverage": {
-    "solhint": "RUN — 32 warnings, 0 errors",
+    "solhint": "RUN — 34 warnings, 0 errors. The two added by the SD-3 / SD-4 clauses are gas-strict-inequality advisories on `block.timestamp <= recovery.expiresAt`, whose non-strict form is deliberate: it mirrors executeRecovery own bound exactly, so the refused window is precisely the executable one. Converting to strict would open a one-second gap",
     "slither": "NOT RUN — no local Python or slither binary, and the Docker daemon is not running. NOT a pass.",
     "codeql": "NOT RUN — codeql.yml is filtered to branches:[main], so it never fires on a PR based on a design branch. NOT a pass."
   },
   "validation": {
-    "prototypeTests": "374 passing, 0 failing (M-K01..M-K37, authority closure, authority-completeness mutations, stateful campaign, mutation adequacy, the defect ledger, and the SD-1 remediation suite)",
-    "prototypeMutationAdequacy": "18/18 killed, including M17 and M18 — the SD-1 clause deleted, and the same clause weakened to one-sided",
+    "prototypeTests": "413 passing, 0 failing (M-K01..M-K37, authority closure, authority-completeness mutations, stateful campaign, mutation adequacy, the defect ledger, and the SD-1 / SD-3 remediation suites)",
+    "prototypeMutationAdequacy": "20/20 killed, including M19 and M20 for I-DECLARATION-EXHIBITED, both by G-PQ-COMMITMENT-SATISFIABLE — the property SD-3 was filed under, which only became ENFORCEABLE once SD-3 left KNOWN_DEFECT_PROPERTIES",
     "productionNormal": "1643 passing, 0 failing, 11 pending",
-    "productionCoverage": "1640 passing, 0 failing, 14 pending, 90.13%"
+    "productionCoverage": "1640 passing, 0 failing, 14 pending, 90.13%",
+    "statefulCampaign": "224 campaigns / 12,160 transitions / 0 violations / positive controls 1078 of 1078. SD-4 is now observed by the campaign (3 hits) via G-DECLARATION-SUBORDINATE-TO-RECOVERY; it previously had no campaign property at all and was found only by narrative reasoning."
   },
   "sourceDigests": {
-    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "ecb570c31da8d5a5fae8a00c7f6458d849542fb36e568739af9a2ce249a8ed2e",
+    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "e922dfdf56cd0fbccc67bf640a8d8ecf2d12b97ce825ffc90c5c0e4d6f0e404e",
     "npm/@openzeppelin/contracts@5.6.1/proxy/Clones.sol": "06c768a2b794ea59dd6d6c1bfe33cf5098a4a8921aec14cf066576a2bffafce6",
     "npm/@openzeppelin/contracts@5.6.1/utils/Create2.sol": "9623aa59745a23a72f313adc5adbf583968bf366a7cbf3fc43c1148d7d2c3c86",
     "npm/@openzeppelin/contracts@5.6.1/utils/Errors.sol": "0704b9d6c032cca8512a3bc3f30f49f86f1f03102d2896a3d23e794b82efea66",
@@ -105,5 +106,17 @@
     "npm/@openzeppelin/contracts@5.6.1/utils/Bytes.sol": "3ce9120a27934c75a074cb785d3a88868069ef6529dbe4dc6b845af0836f3c70",
     "project/prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol": "219e47863e14bc73a464250818ef38e122bc95af7cf6e46783d8f20d990f9bab",
     "project/prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol": "102df285eff4d7ebd51d08223e372b35e7aa7a21ce4aa9aaec80cb9dcbd80f1c"
+  },
+  "sd3Remediation": {
+    "invariant": "I-DECLARATION-EXHIBITED",
+    "vulnerableHead": "73db1f01b7e60dd850ad8c6c695f66ed88d2ed98",
+    "beforeRuntime": 17622,
+    "afterRuntime": 17806,
+    "totalDelta": 184,
+    "beforeRuntimeSha256": "398426298034b5229a5f48e81bbf7efbd7f88b94ed994721bdaf6d92cc2aa50d",
+    "afterRuntimeSha256": "11476c140f33faa8200355ad0f411249827a2abaca18b5123bf2bfe062cb98ff",
+    "storageLayoutChanged": false,
+    "abiChange": "NONE. Selectors unchanged at 45 and the ABI is byte-identical: the change is two comparisons reusing the existing pqKey parameter, which _authorise provably ignores on the declaring edge.",
+    "note": "SD-3 only. SD-4 is NOT closed: an interlock refusing the declaration while a live approved recovery exists was built, measured at +141 B and REMOVED, because refusing a ONE-SHOT transition hands the guardian quorum a renewable veto over a capability no guardian path can itself exercise. See SD-4 in stateful/defects.ts."
   }
 }
