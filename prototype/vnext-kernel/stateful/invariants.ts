@@ -522,7 +522,7 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
      */
     name: "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
     source:
-      "setVerifier's I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY refuses the requirePq false -> true edge while a recovery request is still one executeRecovery would admit, because that edge adds a whole conjunct to an already-quorum-approved request which _requireIncomingPossession measures LIVE",
+      "OPEN REQUIREMENT — NO KERNEL MECHANISM ESTABLISHES THIS, AND THAT IS DELIBERATE. Every other entry's `source` names the code that makes the property hold; this one has none, and an earlier revision of this field wrongly named `setVerifier`'s `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY` as though it did. No such identifier exists in the Solidity: `setVerifier` records at contracts/VaultKernelPrototype.sol:906-918 that precisely this interlock 'was written, measured and REMOVED', because refusing the declaration while a request is live hands the quorum an unbounded veto. The requirement stands anyway — an accepted configuration transition may not silently reduce the satisfiability of an already-quorum-approved recovery — so a firing here is a FINDING (this is how SD-4 is detected), never a regression. CONSUMERS MUST NOT READ THE REMOVED INTERLOCK AS THE INTENDED SEMANTICS: a remediation that leaves the edge permitted and instead lets the quorum re-authorise the request repairs the harm while still tripping this predicate, because the predicate observes the TRANSITION and cannot observe the repair. See test/Sd4PropertyOverApproximation.test.ts and defects.ts SD-4.",
     check: (s, p) => {
       if (!p) return null;
       const wasLive =

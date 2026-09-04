@@ -144,3 +144,48 @@ whose refusal is ignored — which is observable.
 
 `STATEFUL_AUTHORITY_EVIDENCE.json` carries the same list as a first-class field,
 not a footnote.
+
+## Staleness note — generated evidence versus later semantic corrections
+
+> The generated implementation/campaign evidence remains evidence for
+> `c67d1439`. It intentionally does not claim the W2 remediation exists.
+> Semantic corrections discovered after that receipt are persisted separately.
+> The receipt will be regenerated only after W2 implementation and
+> re-measurement.
+
+**Artifact identity.** The receipt's own fields are `head =
+28adbb8834c39ae2e106e31d3a25f5b39c84c943`, `tree =
+849e140b7b02121e9ad4a7f1047539654c45fc9a`, with `solidityChanged.bytes = 299`
+read from `MEASUREMENTS.json`. It was generated there and is carried **unchanged**
+to `c67d1439` (`git diff` against that head is empty for all four artifacts); it
+is evidence for the kernel bytes those measurements were taken from.
+
+**What remains valid.** Every campaign result, every mutation kill, the declared
+cuts, and the four sustained-defect entries it carries (`SD-2`, `SD-4`, `SD-5`,
+`SD-8`) as they stood at that head. Nothing in it is wrong *about that kernel*.
+
+**What it does not represent** — semantic claims discovered after it was
+generated, persisted separately and **deliberately not written into it**:
+
+- the `source` field of `G-DECLARATION-SUBORDINATE-TO-RECOVERY` names an
+  interlock the kernel records as removed. Corrected in `invariants.ts` as a
+  provenance correction only — the predicate is unchanged, so no campaign
+  result changes — and not regenerated into the receipt;
+- the SD-4 entry's *"No fifth family is known"*, its A/E dichotomy, and its
+  unqualified *"liveness cost is INHERENT"* are superseded
+  (`../SD4_*.md`, `../../../docs/Vault_vNext_Recovery_Amendment.md` §4);
+- `SD-9` (a–e) and `SD-10`, and K-9's partial conformance
+  (`../SD9_RECOVERY_LIFECYCLE_DEFECTS.md`, `../KERNEL_ADMISSION.md`), post-date it
+  and are absent from its `sustainedDefects`.
+
+**Why regeneration before W2 would mislead.** The generator embeds the current
+`defects.ts` and re-runs the campaign: it would restamp measurements against a
+kernel W1 does not change, republish the superseded SD-4 ledger text under a
+fresh identity, and still omit SD-9/SD-10 because they are not in `defects.ts`.
+The same holds for `AUTHORITY_CENSUS.json`, `MEASUREMENTS.json` and
+`SCANNER_EVIDENCE.json`, which measure a kernel these corrections do not touch.
+
+**What authorises regeneration.** The W2 implementation landing and being
+re-measured — at which point `defects.ts` carries the remediated entries, the
+campaign runs against the changed kernel, and the receipt's `head` moves for a
+reason.
