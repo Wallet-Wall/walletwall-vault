@@ -6,7 +6,10 @@
 > not be read as if it did.** It is a *derived-vNext amendment* layered above the
 > frozen architecture, recording semantics that adjudication lanes T through
 > W1.2 established were **not stated by #179**, were **required by its
-> composition**, and are **not implemented** by the prototype at `c67d1439`.
+> composition**, and are **not all implemented or explicitly protected** by the
+> prototype at `c67d1439` — §2 finds the challenge-epoch behaviour partly
+> realised by existing side effects with no invariant protecting it, while §1,
+> §3 and the overwrite finding are outright missing or nonconformant.
 > Every statement is tagged with exactly one of three authority classes, and
 > the tags are not interchangeable:
 >
@@ -51,8 +54,11 @@ B. Guardian quorum — CANCEL
 
 Neither mechanism grants credential, floor, verifier or guardian authority;
 `_installCredential` has exactly two callers (`rotateCredential`,
-`executeRecovery`) and no cancellation path reaches it. Successful guardian
-recovery remains the only credential-changing path.
+`executeRecovery`) and no cancellation path reaches it. Neither cancellation
+mechanism changes credentials. Ordinary `rotateCredential` also changes
+credentials, under the credential's own authority; successful guardian recovery
+is the only **guardian-authorized recovery-lifecycle transition** that changes
+credentials.
 
 **IMPLEMENTATION CONFORMANCE.** Mechanism A implemented. **Mechanism B
 missing.** `K9_GUARDIAN_CANCEL_CONFORMANCE = MISSING_IN_PROTOTYPE`. See

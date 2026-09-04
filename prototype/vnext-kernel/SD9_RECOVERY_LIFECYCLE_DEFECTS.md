@@ -15,8 +15,13 @@ not five defects.
 ## SD-9 — `RECOVERY_LIFECYCLE_STATE_OWNERSHIP`
 
 **Root.** The kernel implements one recovery object with one stored liveness
-flag where the architecture and reference model specify two lifecycles (the
-request; the challenge epoch), three enumerated exits, and wall-clock liveness.
+flag. The architecture's recovery requirements (`I-RECOVERY-TERMINATION`,
+`I-RECOVERY-NONVETO`, K-9), composed with the reference model and the adopted
+derived-vNext amendment, require **two semantic lifetimes** — the recovery
+request and the challenge epoch — three enumerated exits, and wall-clock
+liveness. The exits and liveness are source authority; the challenge-epoch
+lifetime and its reset boundary are the **derived** requirement of
+`docs/Vault_vNext_Recovery_Amendment.md` §2, which #179 does not state verbatim.
 **Subfindings are classified individually, because they are not all the same
 kind of thing.**
 
