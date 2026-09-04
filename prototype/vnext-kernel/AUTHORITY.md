@@ -80,6 +80,20 @@ below from `unreachable` to `k`. Both are executed in
 `test/Sd4SnapshotAdjudication.test.ts`. **SD-4's liveness cost is INHERENT**, and
 its real residue is state incoherence: the request is left `active` while dead.
 
+> **CORRECTION (Lanes T–W1.2, append-only; the paragraph above is retained as
+> #188 wrote it).** The general claim is **refuted** — a ratification family
+> exists that is neither design A nor design E — and that refutation stands.
+> Every such family was then itself killed on temporal authority or by the
+> generalised CLOCK RULE (`docs/Vault_vNext_Architecture.md:736`), and the
+> architecture-native path was found to dominate them all:
+> `SD4_DEDICATED_REMEDIATION = NOT_REQUIRED`; the remedy is K-9's *guardian
+> quorum* cancellation (declared, not implemented here) plus a fresh
+> correctly-shaped recovery. The "request is left `active` while dead" residue
+> is now `SD-9b`, a defect in its own right. The full chain, with every falsified
+> intermediate conclusion preserved, is in `SD4_*.md`,
+> `SD9_RECOVERY_LIFECYCLE_DEFECTS.md` and
+> `docs/Vault_vNext_Recovery_Amendment.md`.
+
 **SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
 by a single invariant over the whole commitment ingress surface.**
 
