@@ -605,3 +605,10 @@ Slither environment exists on the authoring machine (no Python, no `slither`,
 Docker daemon not running) and the receipt is never hand-written; Slither and
 CodeQL become authoritative from the W2 PR's CI runs, and the scanner receipt
 stays historical (`0faf7247`) until a truthful local run exists.
+
+**W2S addendum (appended, nothing above rewritten).** That run now exists:
+Lane W2S reproduced the CI-pinned Slither toolchain in a disposable venv, ran
+it on clean checkouts of `0faf7247`, `e6964aeb` and `77ea92cf`, mapped every
+pre-W2 triage key semantically, adjudicated the W2 findings independently, and
+regenerated `SCANNER_EVIDENCE.json` from a clean checkout of its triage commit
+— `W2S_SCANNER_TRIAGE_RECORD.md`.

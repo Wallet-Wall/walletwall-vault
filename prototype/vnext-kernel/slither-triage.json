@@ -1,130 +1,424 @@
 {
   "$schema": "vnext-kernel-slither-triage.v1",
-  "description": "Firsthand triage of every Slither finding that touches prototype/vnext-kernel/contracts (see the vNext Kernel PR description for the reachability argument behind each verdict). Keyed by \"<check>|<sorted filename:line elements, de-duplicated across the per-entry-file recompilation crytic-compile's plain solc platform performs>\" -- the same key generate-scanner-evidence.ts computes from a fresh --json run. generate-scanner-evidence.ts --validate fails if a fresh Slither run surfaces any finding whose key is not in this file, so an untriaged finding cannot silently disappear in a future change.",
+  "description": "Firsthand triage of every Slither finding that touches prototype/vnext-kernel/contracts (see the vNext Kernel PR descriptions and W2S_SCANNER_TRIAGE_RECORD.md for the reachability argument behind each verdict). Keyed by \"<check>|<sorted filename:line elements, de-duplicated across the per-entry-file recompilation crytic-compile's plain solc platform performs>\" -- the same key generate-scanner-evidence.ts computes from a fresh --json run -- at the head named in keyedAt. Re-derived by Lane W2S under the CI-pinned toolchain from raw Slither runs on clean checkouts of the previous head (0faf7247) and the current one: every entry carries a provenance block naming its predecessor key and how identity was proven (UNCHANGED_FINDING_SAME_KEY / UNCHANGED_FINDING_RELOCATED / SEMANTICALLY_CHANGED_FINDING / NEW). generate-scanner-evidence.ts --validate fails if a fresh Slither run surfaces any finding whose key is not in this file, so an untriaged finding cannot silently disappear in a future change; a key that no longer matches any current finding is reported as stale and must be re-derived the same way, never re-keyed by line arithmetic alone.",
+  "keyedAt": {
+    "head": "77ea92cfdb79e160f3f3fa1a787edd8390a51be6",
+    "tree": "247727ecb6005185ff97676990b6dbf3966058d4",
+    "previousHead": "0faf724761a2ec32b24f2763a2c1ccd0d2600719",
+    "lane": "W2S",
+    "record": "W2S_SCANNER_TRIAGE_RECORD.md",
+    "toolchain": "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f semantics reproduced in a disposable venv: slither-analyzer @ https://github.com/crytic/slither/archive/ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad.tar.gz (reports 0.11.5), crytic-compile 0.4.2, solc-select 1.2.0, solc 0.8.24+commit.e11b9ed9, target prototype/vnext-kernel/contracts, --compile-force-framework solc, --solc-remaps @openzeppelin/=node_modules/@openzeppelin/ (@openzeppelin/contracts 5.6.1 from the lockfile), --solc-args '--evm-version cancun --optimize --optimize-runs 200', --exclude-dependencies, --no-fail-pedantic; Python 3.12.3 locally versus the action image's 3.10 (the only toolchain difference; finding counts and locations matched the CI run on this head exactly)."
+  },
   "classifications": {
-    "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180": {
+    "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "egress(address) sends to migration.destinationVault, which is set exclusively by bindMigration (guardian quorum AND credential, see AUTHORITY.md section 3 \"Migration takeover\") and re-validated against migration.destinationVaultCodeHash at execution time. egress itself takes no destination parameter -- the detector's premise (an externally-influenced destination) does not hold."
+      "rationale": "egress(address) sends to migration.destinationVault, which is set exclusively by bindMigration (guardian quorum AND credential, see AUTHORITY.md section 3 \"Migration takeover\") and re-validated against migration.destinationVaultCodeHash at execution time. egress itself takes no destination parameter -- the detector's premise (an externally-influenced destination) does not hold.",
+      "provenance": {
+        "previousKey": "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306,
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634": {
+    "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "execute's recipient is bound into the digest _authorise checks (HYBRID: ECDSA AND, when securityFloor.requirePq, the PQ verifier) before any value moves -- traced at VaultKernelPrototype.sol:605-613. The destination is exactly the parameter the signed authorization covers; this is a custody contract's spend function working as designed, not an unauthorized-destination bug."
+      "rationale": "execute's recipient is bound into the digest _authorise checks (HYBRID: ECDSA AND, when securityFloor.requirePq, the PQ verifier) before any value moves -- traced at VaultKernelPrototype.sol:763-771. The destination is exactly the parameter the signed authorization covers; this is a custody contract's spend function working as designed, not an unauthorized-destination bug.",
+      "provenance": {
+        "previousKey": "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          158,
+          158
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)",
+        "rationaleEdit": "embedded line references moved with execute (+158); wording unchanged"
+      }
     },
-    "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:930": {
+    "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1156,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1173": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "_attests's inline assembly is a bounded-gas (GUARDIAN_CALL_GAS), bounded-returndata (one word) STATICCALL that Solidity's high-level call syntax cannot express -- the whole point of I-GUARDIAN-FAULT-ISOLATION (AUTHORITY.md section 5/6). Removing it would remove the fault isolation, not just the assembly."
+      "rationale": "_attests's inline assembly is a bounded-gas (GUARDIAN_CALL_GAS), bounded-returndata (one word) STATICCALL that Solidity's high-level call syntax cannot express -- the whole point of I-GUARDIAN-FAULT-ISOLATION (AUTHORITY.md section 5/6). Removing it would remove the fault isolation, not just the assembly.",
+      "provenance": {
+        "previousKey": "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:930",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          243,
+          243
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
     "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:37": {
       "classification": "OUT_OF_SCOPE_DEPENDENCY",
-      "rationale": "ConfigurablePolicy is a test-only adversary/control fixture (PrototypeMocks.sol header: \"None is measured by measure.ts\"), never deployed as part of the measured kernel. Pure gas-optimization suggestion, no security content."
+      "rationale": "ConfigurablePolicy is a test-only adversary/control fixture (PrototypeMocks.sol header: \"None is measured by measure.ts\"), never deployed as part of the measured kernel. Pure gas-optimization suggestion, no security content.",
+      "provenance": {
+        "previousKey": "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:37",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0
+        ]
+      }
     },
     "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:96": {
       "classification": "OUT_OF_SCOPE_DEPENDENCY",
-      "rationale": "TestToken is a test-only fixture, never deployed as part of the measured kernel. Pure gas-optimization suggestion, no security content."
+      "rationale": "TestToken is a test-only fixture, never deployed as part of the measured kernel. Pure gas-optimization suggestion, no security content.",
+      "provenance": {
+        "previousKey": "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:96",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0
+        ]
+      }
     },
     "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:143,prototype/vnext-kernel/contracts/PrototypeMocks.sol:144": {
       "classification": "NON_SECURITY_STYLE",
-      "rationale": "DestinationStub is a test-only migration-destination stand-in (\"a destination with code, so a migration binding has a real codehash\", PrototypeMocks.sol comment); it exists only to give egress() tests a real codehash to check against, never to hold funds in production."
+      "rationale": "DestinationStub is a test-only migration-destination stand-in (\"a destination with code, so a migration binding has a real codehash\", PrototypeMocks.sol comment); it exists only to give egress() tests a real codehash to check against, never to hold funds in production.",
+      "provenance": {
+        "previousKey": "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:143,prototype/vnext-kernel/contracts/PrototypeMocks.sol:144",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
     "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:148,prototype/vnext-kernel/contracts/PrototypeMocks.sol:159": {
       "classification": "NON_SECURITY_STYLE",
-      "rationale": "ReentrantRecipient is the test-only adversary that exercises AUTHORITY.md section 6's reentrancy argument (\"a reentrant recipient cannot replay a spend, because the nonce is already consumed\"). It is deliberately not meant to release funds."
+      "rationale": "ReentrantRecipient is the test-only adversary that exercises AUTHORITY.md section 6's reentrancy argument (\"a reentrant recipient cannot replay a spend, because the nonce is already consumed\"). It is deliberately not meant to release funds.",
+      "provenance": {
+        "previousKey": "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:148,prototype/vnext-kernel/contracts/PrototypeMocks.sol:159",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
     "low-level-calls|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162": {
       "classification": "NON_SECURITY_STYLE",
-      "rationale": "ReentrantRecipient.receive() re-entering the kernel is the mechanism of the M-K reentrancy test, not incidental."
+      "rationale": "ReentrantRecipient.receive() re-entering the kernel is the mechanism of the M-K reentrancy test, not incidental.",
+      "provenance": {
+        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
-    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1188": {
+    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "egress's two low-level calls are exactly AUTHORITY.md section 5 call sites 4 and 6: empty-calldata value transfer to the bound destination, and a fixed-selector (0xa9059cbb) ERC-20 transfer to the same bound destination. Both destinations come from the committed migration binding, never from a per-call parameter."
+      "rationale": "egress's two low-level calls are exactly AUTHORITY.md section 5 call sites 4 and 6: empty-calldata value transfer to the bound destination, and a fixed-selector (0xa9059cbb) ERC-20 transfer to the same bound destination. Both destinations come from the committed migration binding, never from a per-call parameter.",
+      "provenance": {
+        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1188",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306,
+          306,
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634": {
+    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1504,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1505": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "execute's low-level call is AUTHORITY.md section 5 call site 4: empty calldata, value transfer only, to the signed-and-authorized recipient. Documented as deliberate (\"never arbitrary execution\")."
+      "rationale": "_balanceOf's staticcall is AUTHORITY.md section 5 call site 6's balanceOf half: fixed selector 0x70a08231, read-only, used only to measure a settlement (I-NO-FALSE-SETTLEMENT).",
+      "provenance": {
+        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1198,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1199",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306,
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1198,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1199": {
+    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "_balanceOf's staticcall is AUTHORITY.md section 5 call site 6's balanceOf half: fixed selector 0x70a08231, read-only, used only to measure a settlement (I-NO-FALSE-SETTLEMENT)."
+      "rationale": "execute's low-level call is AUTHORITY.md section 5 call site 4: empty calldata, value transfer only, to the signed-and-authorized recipient. Documented as deliberate (\"never arbitrary execution\").",
+      "provenance": {
+        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          158,
+          158
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
     "missing-inheritance|prototype/vnext-kernel/contracts/PrototypeMocks.sol:69,prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol:36": {
       "classification": "NON_SECURITY_STYLE",
-      "rationale": "GasBurningGuardian's own doc comment states it is deliberately NOT declared IERC1271Guardian, because that interface is view and this adversary must be free to burn gas without a state-mutability restriction. Slither is correctly observing an intentional deviation."
+      "rationale": "GasBurningGuardian's own doc comment states it is deliberately NOT declared IERC1271Guardian, because that interface is view and this adversary must be free to burn gas without a state-mutability restriction. Slither is correctly observing an intentional deviation.",
+      "provenance": {
+        "previousKey": "missing-inheritance|prototype/vnext-kernel/contracts/PrototypeMocks.sol:69,prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol:36",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
     "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:131,prototype/vnext-kernel/contracts/PrototypeMocks.sol:133": {
       "classification": "OUT_OF_SCOPE_DEPENDENCY",
-      "rationale": "RawCloner exists specifically to deploy a clone outside the factory's atomic init (\"the M-K01 takeover window\" per its own comment) -- it is the adversarial fixture, not code with a security property to enforce."
+      "rationale": "RawCloner exists specifically to deploy a clone outside the factory's atomic init (\"the M-K01 takeover window\" per its own comment) -- it is the adversarial fixture, not code with a security property to enforce.",
+      "provenance": {
+        "previousKey": "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:131,prototype/vnext-kernel/contracts/PrototypeMocks.sol:133",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
     "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:136,prototype/vnext-kernel/contracts/PrototypeMocks.sol:138": {
       "classification": "OUT_OF_SCOPE_DEPENDENCY",
-      "rationale": "Same RawCloner adversarial fixture as the cloneOnly finding above."
+      "rationale": "Same RawCloner adversarial fixture as the cloneOnly finding above.",
+      "provenance": {
+        "previousKey": "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:136,prototype/vnext-kernel/contracts/PrototypeMocks.sol:138",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
     "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:154,prototype/vnext-kernel/contracts/PrototypeMocks.sol:155": {
       "classification": "OUT_OF_SCOPE_DEPENDENCY",
-      "rationale": "ReentrantRecipient.arm is test-only wiring for the reentrancy adversary, not kernel code."
+      "rationale": "ReentrantRecipient.arm is test-only wiring for the reentrancy adversary, not kernel code.",
+      "provenance": {
+        "previousKey": "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:154,prototype/vnext-kernel/contracts/PrototypeMocks.sol:155",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
-    "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:740,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:758": {
+    "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1001,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:983": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "setPolicy's policy is documented and tested to accept address(0) on purpose: PLANE doc-comment states \"address(0) falls back to the kernel FLOOR\", and execute() at VaultKernelPrototype.sol:628-631 explicitly branches on policyEngine == address(0). A zero-check here would break the documented fallback behaviour, not fix a bug."
+      "rationale": "setPolicy's policy is documented and tested to accept address(0) on purpose: PLANE doc-comment states \"address(0) falls back to the kernel FLOOR\", and execute() at VaultKernelPrototype.sol:786-789 explicitly branches on policyEngine == address(0). A zero-check here would break the documented fallback behaviour, not fix a bug.",
+      "provenance": {
+        "previousKey": "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:740,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:758",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          243,
+          243
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)",
+        "rationaleEdit": "embedded line references moved with execute (+158); wording unchanged"
+      }
     },
     "reentrancy-benign|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162,prototype/vnext-kernel/contracts/PrototypeMocks.sol:163": {
       "classification": "NON_SECURITY_STYLE",
-      "rationale": "This IS the AUTHORITY.md section 6 reentrancy adversary firing as designed -- the finding names the exact mechanism the suite tests."
+      "rationale": "This IS the AUTHORITY.md section 6 reentrancy adversary firing as designed -- the finding names the exact mechanism the suite tests.",
+      "provenance": {
+        "previousKey": "reentrancy-benign|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162,prototype/vnext-kernel/contracts/PrototypeMocks.sol:163",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0,
+          0,
+          0
+        ]
+      }
     },
-    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:71,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:77,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:78": {
+    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:82,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:89,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:90": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "deployVault's two external calls (cloneDeterministicWithImmutableArgs, then initialize) both target the clone address CREATE2 just produced in this same call -- a brand-new contract with no prior code cannot reenter deployVault before it exists. VaultDeployed is emitted after both calls with no state left for a reentrant call to exploit (the factory holds no mutable state at all -- VaultKernelFactoryPrototype.sol's own header: its authority closure is EMPTY)."
+      "rationale": "deployVault's external calls before the event are genesisSalt (a STATICCALL to the immutable implementation, which cannot mutate state) and initialize(g, pqKey) on the clone address that Clones.cloneDeterministicWithImmutableArgs (an internal-library CREATE2) just produced in this same call. A brand-new contract with no prior code cannot reenter deployVault before it exists, and the only code at that address is the kernel's own initialize, which makes no external call (it validates g and the pqKey exhibit by keccak256 and length comparison, writes genesis state and emits). VaultDeployed is emitted after the call with no state left for a reentrant call to exploit: the factory holds no mutable state at all (VaultKernelFactoryPrototype.sol's own header: its authority closure is EMPTY). Re-adjudicated by Lane W2S because the construct changed BEFORE W2, in #187 (SD-6/SD-7, I-COMMITMENT-EXHIBITED-AT-ADMISSION): pqKey became a forwarded parameter of deployVault and initialize. The exhibit is a satisfiability witness, adds no external call and changes nothing in the reentrancy argument.",
+      "provenance": {
+        "previousKey": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:71,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:77,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:78",
+        "relocation": "SEMANTICALLY_CHANGED_FINDING",
+        "changeNote": "deployVault(bytes32,GenesisConfig) -> deployVault(bytes32,GenesisConfig,bytes); external call initialize(g) -> initialize(g,pqKey). Changed at 3d2aede8 (#187), i.e. pre-W2; unchanged by W2 (same key at e6964aeb and 77ea92cf).",
+        "supersededClassification": "FALSE_POSITIVE",
+        "supersededRationale": "deployVault's two external calls (cloneDeterministicWithImmutableArgs, then initialize) both target the clone address CREATE2 just produced in this same call -- a brand-new contract with no prior code cannot reenter deployVault before it exists. VaultDeployed is emitted after both calls with no state left for a reentrant call to exploit (the factory holds no mutable state at all -- VaultKernelFactoryPrototype.sol's own header: its authority closure is EMPTY)."
+      }
     },
-    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1188,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1195": {
+    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1501": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "egress is documented PERMISSIONLESS with NO discretion (AUTHORITY.md section 1/6): the recipient and asset disposition are fixed by the prior migration binding, so a reentrant call can only re-move balance to the same already-committed destination -- idempotent by construction, not an exploit path."
+      "rationale": "egress is documented PERMISSIONLESS with NO discretion (AUTHORITY.md section 1/6): the recipient and asset disposition are fixed by the prior migration binding, so a reentrant call can only re-move balance to the same already-committed destination -- idempotent by construction, not an exploit path.",
+      "provenance": {
+        "previousKey": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1188,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1195",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306,
+          306,
+          306,
+          306,
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:630,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:633": {
+    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:788,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:791": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "AUTHORITY.md section 6's documented argument, independently re-traced: _consume(DOMAIN_SPEND, ...) increments nonces[DOMAIN_SPEND] at VaultKernelPrototype.sol:614, strictly before the policy-plane call (628-631) and the value transfer (634). A reentrant execute() needs a fresh signature over nonce+1, which only the credential holder can produce -- reentry is authorized spending, not a bypass."
+      "rationale": "AUTHORITY.md section 6's documented argument, independently re-traced: _consume(DOMAIN_SPEND, ...) increments nonces[DOMAIN_SPEND] at VaultKernelPrototype.sol:772, strictly before the policy-plane call (786-789) and the value transfer (792). A reentrant execute() needs a fresh signature over nonce+1, which only the credential holder can produce -- reentry is authorized spending, not a bypass.",
+      "provenance": {
+        "previousKey": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:630,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:633",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          158,
+          158,
+          158
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)",
+        "rationaleEdit": "embedded line references moved with execute (+158); wording unchanged"
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1033,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1037,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1038": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1250,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1255": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "executeRecovery checks block.timestamp against RECOVERY_DELAY (7 days) / RECOVERY_EXPIRY (14 days) windows. A miner's ~15s timestamp manipulation budget is immaterial at day-scale granularity and grants no capability the guardian quorum did not already grant by initiating recovery."
+      "rationale": "cancelRecovery's only clock read is the _recoveryIsLive() gate at VaultKernelPrototype.sol:1254, adjudicated under the timestamp entry keyed :742,:743. The comparison Slither prints for this function, recovery.challengesUsed >= CHALLENGE_LIMIT (:1255), has no timestamp-derived operand: challengesUsed is written only by the += 1 in this function, the carry-forward in initiateRecovery and the whole-struct delete in executeRecovery (I-RECOVERY-CHALLENGE-EPOCH). It is reported because the timestamp detector evaluates data dependency in NODE context: after the _recoveryIsLive() internal call, whose return value depends on block.timestamp and on the recovery struct, the node-context dependency set of the recovery storage reference includes block.timestamp (probed with the pinned Slither's is_dependent: node-context true, function-context false, W2S_SCANNER_TRIAGE_RECORD.md section 5.2); the identical comparison at e6964aeb, gated by the raw recovery.active byte, produced no report. What the clock decides here is WHETHER a credential challenge is admitted: while live (t < expiresAt) the challenge consumes one budget unit and clears request authority; once expired it is refused with NoRecovery before any nonce or budget is touched (test/W2RecoveryLifecycle.test.ts B1-B3 'challenge' probes; mutant M-K9-expired-request-still-challengeable). Bounded skew (0 s on post-merge L1, ~15 s forward-only PoW-era, 1,800 s OP-Stack sequencer drift) can move that instant by seconds against a 14-day window and can neither refund nor exceed the budget, so it hands the credential no capability beyond the bounded challenge that architecture section 22 D1 already prices (I-VETO-BOUND).",
+      "provenance": {
+        "relocation": "NEW",
+        "changeNote": "Introduced by c182db10 (W2): the gate if (!recovery.active) became if (!_recoveryIsLive()), which taints the function's later nodes in Slither's node-context dependency. Not present at 0faf7247 or e6964aeb."
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1068,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1086": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1325,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1329,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1333": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "enterContainment's window/budget arithmetic (CONTAINMENT_WINDOW = 30 days, CONTAINMENT_BUDGET = 6 days) operates at day-scale; ~15s of miner timestamp slack cannot move the budget check's outcome."
+      "rationale": "executeRecovery gates on block.timestamp < r.executableAt (TooEarly; RECOVERY_DELAY = 7 days) and, CHANGED BY W2 (SD-9e, Recovery Amendment section 3), on block.timestamp >= r.expiresAt (Expired; RECOVERY_EXPIRY = 14 days): the half-open window [executableAt, expiresAt) that makes execution consistent with _recoveryIsLive(). At expiresAt-1 execution, both cancellations and the migration block all hold; at expiresAt and expiresAt+1 execution reverts Expired, both cancellations revert NoRecovery consuming no nonce and no budget, migration binds, and a fresh initiation is admitted with its own full delay (test/W2RecoveryLifecycle.test.ts B1-B4 and G3, each probe mined at its asserted instant). Re-adjudicated in Lane W2S rather than carried forward: the only difference the change makes to the timestamp argument is that the last authorised instant moved from expiresAt to expiresAt-1, removing the one-second window in which the pre-W2 kernel executed a request every other consumer already treated as expired. Validator discretion is bounded: post-merge L1 timestamps are fixed per 12-second slot (no proposer discretion; the only lever is inclusion), PoW-era skew was at most ~15 s and forward-only (a lagging timestamp cost the miner difficulty and was corrected by the next honest block), and OP-Stack L2 sequencer drift is bounded at 1,800 s relative to the L1 origin -- at most 0.3% of RECOVERY_DELAY and 0.15% of RECOVERY_EXPIRY. Skew moves both bounds of every principal's window together, reads no signature, quorum or possession check, and therefore cannot execute an unmatured or expired request, cannot bypass the quorum that alone creates an active request (initiateRecovery), and cannot reset the challenge epoch, whose only reset is this function's own delete recovery after a successful, authorised execution. Mutant M-K9-expiry-inclusive-off-by-one (> here, <= in the predicate) is killed by the B-series boundary property (test/W2RecoveryLifecycleMutations.test.ts).",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1033,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1037,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1038",
+        "relocation": "SEMANTICALLY_CHANGED_FINDING",
+        "changeNote": "Comparison at the expiry bound changed from block.timestamp > r.expiresAt (0faf7247:1038, e6964aeb:1228) to block.timestamp >= r.expiresAt (77ea92cf:1333) in c182db10 (W2, SD-9e). The maturity comparison and the function are otherwise the same construct.",
+        "supersededClassification": "ACCEPTED_DESIGN_TRADEOFF",
+        "supersededRationale": "executeRecovery checks block.timestamp against RECOVERY_DELAY (7 days) / RECOVERY_EXPIRY (14 days) windows. A miner's ~15s timestamp manipulation budget is immaterial at day-scale granularity and grants no capability the guardian quorum did not already grant by initiating recovery."
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1147,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1149": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1372,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1390": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "retire() checks block.timestamp against BIND_DELAY (7 days). Day-scale window, immaterial to ~15s miner slack, and retire() carries no discretion regardless of exact timing."
+      "rationale": "enterContainment's window/budget arithmetic (CONTAINMENT_WINDOW = 30 days, CONTAINMENT_BUDGET = 6 days) operates at day-scale; ~15s of miner timestamp slack cannot move the budget check's outcome.",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1068,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1086",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          304,
+          304
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1174": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1453,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1455": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "egress's codehash re-check has no timestamp arithmetic in it that a miner could exploit; the timestamp read here is incidental to the surrounding function, not a comparison a miner can move a meaningful amount."
+      "rationale": "retire() checks block.timestamp against BIND_DELAY (7 days). Day-scale window, immaterial to ~15s miner slack, and retire() carries no discretion regardless of exact timing.",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1147,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1149",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306,
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:525,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:536": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1480": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "_requireIncomingPossession itself performs no timestamp comparison; the flagged lines are digest/signature checks reusing the enclosing function's timestamp-influenced call sites (rotateCredential / executeRecovery), already covered by those findings' own rationale."
+      "rationale": "egress's codehash re-check has no timestamp arithmetic in it that a miner could exploit; the timestamp read here is incidental to the surrounding function, not a comparison a miner can move a meaningful amount.",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1174",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306,
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:547,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:549": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:640,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:651": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "_consume checks block.timestamp against a caller-supplied deadline. The deadline is the caller's own choice (like a normal transaction deadline pattern); ~15s of miner slack narrows or widens the window the caller themselves already accepted, and grants a miner no capability over WHO is authorized."
+      "rationale": "_requireIncomingPossession itself performs no timestamp comparison; the flagged lines are digest/signature checks reusing the enclosing function's timestamp-influenced call sites (rotateCredential / executeRecovery), already covered by those findings' own rationale.",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:525,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:536",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          115,
+          115
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:573,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:575": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:685,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:687": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "_effectiveState's CONTAINED-vs-NORMAL check compares against containedUntil, set from CONTAINMENT_MAX (3 days) in enterContainment. Day-scale window, immaterial to ~15s miner slack, and the effect of the ~15s ambiguity is which side of a state transition a call lands on that was already scheduled to happen -- not a new capability."
+      "rationale": "_consume checks block.timestamp against a caller-supplied deadline. The deadline is the caller's own choice (like a normal transaction deadline pattern); ~15s of miner slack narrows or widens the window the caller themselves already accepted, and grants a miner no capability over WHO is authorized.",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:547,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:549",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          138,
+          138
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1176": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:711,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:713": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_effectiveState's CONTAINED-vs-NORMAL check compares against containedUntil, set from CONTAINMENT_MAX (3 days) in enterContainment. Day-scale window, immaterial to ~15s miner slack, and the effect of the ~15s ambiguity is which side of a state transition a call lands on that was already scheduled to happen -- not a new capability.",
+      "provenance": {
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:573,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:575",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          138,
+          138
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:742,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:743": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_recoveryIsLive() IS I-RECOVERY-EFFECTIVE-LIVENESS (Recovery Amendment section 3): a request holds authority on the HALF-OPEN window [executableAt, expiresAt), so active && block.timestamp < recovery.expiresAt is the one deliberate clock read that every recovery-lifecycle decision consults -- initiateRecovery's live-overwrite refusal, cancelRecovery, cancelRecoveryByQuorum and bindMigration; executeRecovery mirrors it with >= expiresAt. Adjudicated independently in Lane W2S (W2S_SCANNER_TRIAGE_RECORD.md section 5), not inherited from the older timestamp entries. (1) The predicate decides only WHETHER an already-authorised act lands, never WHO is authorised: no signature, quorum or possession check reads the clock, so no authority cut in AUTHORITY.md section 4 moves with it. (2) Every consumer applies the same inequality, so there is no block in which the request is executable but not cancellable, or cancellable but not executable; test/W2RecoveryLifecycle.test.ts B1-B3 pins all five consumers at expiresAt-1 (live: execution succeeds, both cancellations succeed, migration is blocked, initiation is refused as overwrite), expiresAt and expiresAt+1 (expired: Expired / NoRecovery with nothing consumed / migration binds / fresh initiation admitted), and G3 pins the three instants as consecutive blocks of one world. (3) Validator discretion is bounded: post-merge L1 timestamps are fixed per 12-second slot (no proposer discretion; the only lever is inclusion), PoW-era skew was at most ~15 s and forward-only, and OP-Stack L2 sequencer drift is bounded at 1,800 s relative to the L1 origin -- at most 0.15% of RECOVERY_EXPIRY (14 days) and 0.3% of RECOVERY_DELAY (7 days); a forward skew can only make a request expire EARLY, shrinking every principal's window together, never extend it. (4) Consequently skew cannot refund the challenge epoch (challengesUsed is written only by the += 1 in cancelRecovery, the carry-forward in initiateRecovery and the whole-struct delete in executeRecovery), cannot bypass the quorum (only initiateRecovery creates an active request), cannot execute an expired request (t >= expiresAt reverts, and expiry is defined in the same clock the request was created in), cannot overwrite a live request (initiateRecovery reverts BadState while live; a fresh request over an EXPIRED one is by design not an overwrite, and the quorum could in any case have cancelled its own live request) and cannot lower any cut. Mutants M-K9-expiry-inclusive-off-by-one, M-K9-expired-request-still-challengeable, M-K9-expired-request-still-quorum-cancellable, M-K9-expired-request-blocks-migration, M-K9-expired-request-blocks-initiation, M-K9-live-overwrite-allowed and M-K9-expiry-refunds-budget are all killed (test/W2RecoveryLifecycleMutations.test.ts).",
+      "provenance": {
+        "relocation": "NEW",
+        "changeNote": "Introduced by c182db10 (W2). Not present at 0faf7247 or e6964aeb."
+      }
+    },
+    "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1128": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "egress's `moved` is assigned on every path: the if (asset == address(0)) branch assigns it directly, the else branch assigns it from before - remaining. Both branches of the if/else are exhaustive, so `moved` is never read before assignment despite lacking an explicit literal initializer."
+      "rationale": "_requireQuorum's `counted` is a uint256 local, which Solidity zero-initializes deterministically (not an uninitialized-storage-pointer aliasing hazard, the genuinely dangerous case this detector exists for). The loop only ever increments it from that known-zero start.",
+      "provenance": {
+        "previousKey": "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:885",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          243
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
-    "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:885": {
+    "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1482": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "_requireQuorum's `counted` is a uint256 local, which Solidity zero-initializes deterministically (not an uninitialized-storage-pointer aliasing hazard, the genuinely dangerous case this detector exists for). The loop only ever increments it from that known-zero start."
+      "rationale": "egress's `moved` is assigned on every path: the if (asset == address(0)) branch assigns it directly, the else branch assigns it from before - remaining. Both branches of the if/else are exhaustive, so `moved` is never read before assignment despite lacking an explicit literal initializer.",
+      "provenance": {
+        "previousKey": "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1176",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          306
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     },
     "unused-return|prototype/vnext-kernel/contracts/PrototypeMocks.sol:180,prototype/vnext-kernel/contracts/PrototypeMocks.sol:184": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "EcdsaBackedVerifier.verify destructures ECDSA.tryRecover's THREE return values as (recovered, err, ), using both recovered and err in the following return statement; only the third value (unused by the OZ ECDSA API for this check) is intentionally discarded via the idiomatic blank identifier. Test-only fixture besides."
+      "rationale": "EcdsaBackedVerifier.verify destructures ECDSA.tryRecover's THREE return values as (recovered, err, ), using both recovered and err in the following return statement; only the third value (unused by the OZ ECDSA API for this check) is intentionally discarded via the idiomatic blank identifier. Test-only fixture besides.",
+      "provenance": {
+        "previousKey": "unused-return|prototype/vnext-kernel/contracts/PrototypeMocks.sol:180,prototype/vnext-kernel/contracts/PrototypeMocks.sol:184",
+        "relocation": "UNCHANGED_FINDING_SAME_KEY",
+        "lineDelta": [
+          0,
+          0
+        ]
+      }
     },
-    "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:923": {
+    "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1156,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1166": {
       "classification": "FALSE_POSITIVE",
-      "rationale": "_attests destructures ECDSA.tryRecover the same way and uses both recovered and err in `return err == ECDSA.RecoverError.NoError && recovered == guardian && recovered != address(0);` -- the blanked third value is intentionally discarded, standard Solidity idiom, not an ignored result."
+      "rationale": "_attests destructures ECDSA.tryRecover the same way and uses both recovered and err in `return err == ECDSA.RecoverError.NoError && recovered == guardian && recovered != address(0);` -- the blanked third value is intentionally discarded, standard Solidity idiom, not an ignored result.",
+      "provenance": {
+        "previousKey": "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:923",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          243,
+          243
+        ],
+        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
     }
   }
 }

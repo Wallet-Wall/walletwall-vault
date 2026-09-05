@@ -221,3 +221,10 @@ until a truthful local Slither run exists; Slither and CodeQL are authoritative
 from the W2 PR's CI. The regenerator prefers the `w2RecoveryLifecycle` block of
 `MEASUREMENTS.json`; the re-measurement and the exact protocol are in
 `../W2_IMPLEMENTATION_RECORD.md` §15.
+
+**W2S addendum.** Lane W2S then produced that truthful local Slither run
+(the CI-pinned action semantics reproduced in a disposable venv), re-derived
+`slither-triage.json` at `77ea92cf` from raw runs on clean checkouts of both
+heads, and regenerated `SCANNER_EVIDENCE.json` from a clean checkout of its
+triage commit by the same generated-at convention — see
+`../W2S_SCANNER_TRIAGE_RECORD.md`.
