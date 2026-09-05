@@ -44,6 +44,7 @@ import {
   buildCandidateH1,
   buildCandidateH3,
   buildCandidateHPrecise,
+  buildPreW2Kernel,
   compileAuxContract,
 } from "./sd4-candidate-kernels.js";
 import { checkGlobals, snapshot } from "../stateful/invariants.js";
@@ -98,6 +99,17 @@ let H1: Kernel;
 let H3: Kernel;
 let HP: Kernel;
 let V64: Kernel;
+/**
+ * W2 SUPERSESSION (implementation status only). Two "base-kernel facts" below
+ * were measured on the kernel at c67d1439: that an expired request blocks
+ * migration on the raw flag (SD-9b), and that the quorum reaches a re-proposed
+ * end state by overwriting a live request (SD-9d). Lane W2 remediated both, so
+ * those two measurements are pinned to the pre-W2 build they describe; the
+ * remediated behaviour is asserted on the real artifact in
+ * W2RecoveryLifecycle.test.ts. Every candidate here was always built over
+ * that same pre-W2 source (see sd4-candidate-kernels.ts).
+ */
+let PRE: Kernel;
 
 before(function () {
   this.timeout(600_000);
@@ -108,6 +120,7 @@ before(function () {
   H1 = buildCandidateH1();
   H3 = buildCandidateH3();
   HP = buildCandidateHPrecise();
+  PRE = buildPreW2Kernel();
   V64 = compileAuxContract("EcdsaBackedVerifier64", VERIFIER_32_64_SOURCE);
 });
 
@@ -174,7 +187,11 @@ async function bindMigration(w: World, v: ethers.Contract): Promise<ethers.Contr
 describe("SD-4 round 2 — base-kernel facts the adversarial pass established", () => {
   it("`recovery.active` is NEVER cleared on expiry — a dead request reads as live forever", async function () {
     this.timeout(120_000);
-    const w = await sd4World("r2-corpse");
+    // HISTORICAL (pre-W2 kernel, pinned). The raw byte is still never cleared on
+    // the W2 kernel — expiry needs no transaction — but it no longer carries
+    // anything: an expired request blocks neither migration nor a fresh
+    // initiation there (W2RecoveryLifecycle B2/B3).
+    const w = await sd4World("r2-corpse", PRE);
     await proposeStd(
       w,
       w.vault,
@@ -365,7 +382,12 @@ describe("SD-4 round 2 — G-PRIME closes BOTH axes without collapsing the PQ co
 
   it("G-PRIME grants NO new end state — the same credential AND verifier are reachable today", async function () {
     this.timeout(180_000);
-    const w = await sd4World("r2-gp-endstate");
+    // HISTORICAL (pre-W2 kernel, pinned): "today" is the kernel G-PRIME was
+    // priced against, which reached the re-proposed end state by overwriting a
+    // live request. The W2 kernel reaches the identical end state through the
+    // conformant exit — quorum cancel, then a fresh delay — so the conclusion
+    // (no new end state) is unchanged and its price is one extra quorum act.
+    const w = await sd4World("r2-gp-endstate", PRE);
     const v64 = await deployV64(w);
     const nominee = keyOf("r2-gp-endstate-nominee");
     const nomineePq = keyOf("r2-gp-endstate-pq");

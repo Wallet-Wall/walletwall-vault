@@ -74,6 +74,17 @@ export interface KernelSnapshot {
   nativeBalance: bigint;
   tokenBalance: bigint;
   blockTimestamp: bigint;
+  /**
+   * DERIVED, not read: `recovery.active && blockTimestamp < recovery.expiresAt`
+   * — the kernel's `_recoveryIsLive()` recomputed by the ORACLE from the two
+   * public tuple fields and the block, exactly as `safeStateEffective` is
+   * derived for containment (Lane W2, Recovery Amendment section 3). The kernel
+   * deliberately exposes no getter for it (Option E0), so this is the oracle's
+   * own definition of liveness and cannot be copied from the implementation.
+   * `recovery.active` above stays the RAW stored flag: request AUTHORITY as
+   * written, which after expiry reads true for a request that carries nothing.
+   */
+  recoveryEffectivelyLive: boolean;
 }
 
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -164,6 +175,8 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     nonce3 as bigint,
   ];
 
+  const nowTs = BigInt((block as { timestamp?: number } | null)?.timestamp ?? 0);
+
   return {
     safeStateStored: Number(safeStateStored),
     safeStateEffective: Number(safeStateEffective),
@@ -206,7 +219,8 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     },
     nativeBalance: nativeBalance as bigint,
     tokenBalance: tokenBalance as bigint,
-    blockTimestamp: BigInt((block as { timestamp?: number } | null)?.timestamp ?? 0),
+    blockTimestamp: nowTs,
+    recoveryEffectivelyLive: (recoveryRaw[7] as boolean) && nowTs < (recoveryRaw[4] as bigint),
   };
 }
 
@@ -435,9 +449,66 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
   },
   {
     name: "G-CHALLENGE-CAP",
-    source: "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1",
+    source:
+      "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1; cancelRecoveryByQuorum never touches the field",
     check: (s) =>
       s.recovery.challengesUsed > 2n ? "challengesUsed " + s.recovery.challengesUsed + " exceeds CHALLENGE_LIMIT" : null,
+  },
+  {
+    /**
+     * `I-RECOVERY-CHALLENGE-EPOCH` (Lane W2, Recovery Amendment section 2), on
+     * the REQUIREMENT side and decidable from two consecutive snapshots alone.
+     * The credential's budget may move in exactly two ways: +1 on a credential
+     * challenge, and to 0 at ONE transition — a successful guardian recovery —
+     * which is itself recognisable from storage: the stored proposal becomes the
+     * installed credential and verifier, the credential generation advances by
+     * one, and the request is deleted. Every other exit (credential challenge,
+     * quorum cancellation, expiry, fresh initiation, ordinary rotation) must
+     * leave the count standing. A kernel that refunds on ANY of those, or that
+     * fails to reset on success, fails this; a kernel that bounded the budget
+     * more tightly still passes, which is what makes it a requirement and not a
+     * mirror.
+     */
+    name: "G-CHALLENGE-EPOCH",
+    source:
+      "challengesUsed has exactly two writers — cancelRecovery (`+= 1`, effectively-live request only) and executeRecovery's whole-struct `delete recovery`, the documented reset boundary. initiateRecovery carries it forward (`challengesUsed: recovery.challengesUsed`), cancelRecoveryByQuorum clears only `active`, rotateCredential never references `recovery`, and expiry writes nothing",
+    check: (s, p) => {
+      if (!p) return null;
+      const before = p.recovery.challengesUsed;
+      const after = s.recovery.challengesUsed;
+      const recoveredThisStep =
+        p.recovery.active &&
+        !s.recovery.active &&
+        s.recovery.proposedSigner === ZERO &&
+        s.recovery.expiresAt === 0n &&
+        s.credentialGeneration === p.credentialGeneration + 1n &&
+        s.ecdsaSigner.toLowerCase() === p.recovery.proposedSigner.toLowerCase() &&
+        s.pqVerifier.toLowerCase() === p.recovery.proposedVerifier.toLowerCase();
+      if (recoveredThisStep) {
+        return after === 0n
+          ? null
+          : "a guardian recovery executed (credential generation " +
+              p.credentialGeneration +
+              " -> " +
+              s.credentialGeneration +
+              ") but challengesUsed is " +
+              after +
+              ", not 0 — the challenge epoch was not reset at the authority transition";
+      }
+      if (after < before) {
+        return (
+          "challengesUsed went " +
+          before +
+          " -> " +
+          after +
+          " with no successful guardian recovery in the step — the challenge epoch was REFUNDED by a request-lifetime event"
+        );
+      }
+      if (after > before + 1n) {
+        return "challengesUsed jumped " + before + " -> " + after + " in one step; only a single credential challenge may increment it";
+      }
+      return null;
+    },
   },
   {
     /**
@@ -515,19 +586,22 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
      * the violation count by the campaign's tail length.
      *
      * The "live" test is the exact request set `executeRecovery` would still
-     * admit — active, unexpired, generation-current — so a request nothing could
-     * have executed anyway is correctly not counted as harmed. A kernel that
-     * refused MORE transitions than this still passes, which is what makes this
-     * a requirement and not a mirror of the implementation.
+     * admit — active, inside the HALF-OPEN window `[executableAt, expiresAt)`,
+     * generation-current — so a request nothing could have executed anyway is
+     * correctly not counted as harmed. Lane W2 fixed the boundary here from `<=`
+     * to `<` together with the kernel's own guard (SD-9e): at `expiresAt` the
+     * request is already expired on both sides. A kernel that refused MORE
+     * transitions than this still passes, which is what makes this a requirement
+     * and not a mirror of the implementation.
      */
     name: "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
     source:
-      "OPEN REQUIREMENT — NO KERNEL MECHANISM ESTABLISHES THIS, AND THAT IS DELIBERATE. Every other entry's `source` names the code that makes the property hold; this one has none, and an earlier revision of this field wrongly named `setVerifier`'s `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY` as though it did. No such identifier exists in the Solidity: `setVerifier` records at contracts/VaultKernelPrototype.sol:906-918 that precisely this interlock 'was written, measured and REMOVED', because refusing the declaration while a request is live hands the quorum an unbounded veto. The requirement stands anyway — an accepted configuration transition may not silently reduce the satisfiability of an already-quorum-approved recovery — so a firing here is a FINDING (this is how SD-4 is detected), never a regression. CONSUMERS MUST NOT READ THE REMOVED INTERLOCK AS THE INTENDED SEMANTICS: a remediation that leaves the edge permitted and instead lets the quorum re-authorise the request repairs the harm while still tripping this predicate, because the predicate observes the TRANSITION and cannot observe the repair. See test/Sd4PropertyOverApproximation.test.ts and defects.ts SD-4.",
+      "OPEN REQUIREMENT — NO KERNEL MECHANISM ESTABLISHES THIS, AND THAT IS DELIBERATE. Every other entry's `source` names the code that makes the property hold; this one has none, and an earlier revision of this field wrongly named `setVerifier`'s `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY` as though it did. No such identifier exists in the Solidity: `setVerifier`'s 'SD-4 IS NOT CLOSED HERE' block in contracts/VaultKernelPrototype.sol records that precisely this interlock 'was written, measured and REMOVED', because refusing the declaration while a request is live hands the quorum an unbounded veto. The requirement stands anyway — an accepted configuration transition may not silently reduce the satisfiability of an already-quorum-approved recovery — so a firing here is a FINDING (this is how SD-4 is detected), never a regression. CONSUMERS MUST NOT READ THE REMOVED INTERLOCK AS THE INTENDED SEMANTICS: a remediation that leaves the edge permitted and instead lets the quorum re-authorise the request repairs the harm while still tripping this predicate, because the predicate observes the TRANSITION and cannot observe the repair. Since Lane W2 the architecture-native repair is explicit: guardian-quorum cancellation followed by a correctly-shaped fresh recovery (Recovery Amendment section 4). See test/Sd4PropertyOverApproximation.test.ts and defects.ts SD-4.",
     check: (s, p) => {
       if (!p) return null;
       const wasLive =
         p.recovery.active &&
-        s.blockTimestamp <= p.recovery.expiresAt &&
+        s.blockTimestamp < p.recovery.expiresAt &&
         p.recovery.boundGuardianGeneration === p.guardianGeneration;
       if (!wasLive) return null;
       if (!p.floor.requirePq && s.floor.requirePq) {
@@ -562,7 +636,7 @@ export const REJECTED_INVARIANTS: readonly { name: string; whyRejected: string }
   {
     name: "recovery fields are zeroed whenever active is false",
     whyRejected:
-      "NOT SOURCE-BOUND. cancelRecovery sets active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour. Asserting the stronger form would fail on correct code.",
+      "NOT SOURCE-BOUND. cancelRecovery and cancelRecoveryByQuorum both set active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`, and that delete is the challenge-epoch reset boundary — Lane W2), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour, as is active == true alongside an expired request (expiry writes nothing; liveness is derived, see `recoveryEffectivelyLive`). Asserting the stronger form would fail on correct code.",
   },
   {
     name: "guardianThreshold <= roster size",

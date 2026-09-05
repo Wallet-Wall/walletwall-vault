@@ -223,3 +223,30 @@ change; same-block ordering in both orders; a failed replacement initiation.
 
 **IMPLEMENTATION CONFORMANCE.** Condition 2 is not met at `c67d1439` (overwrite
 is permitted), so the proof holds only for the W2 target, not the prototype.
+
+---
+
+## W2 status addendum (Lane W2I; reviewed in Lane W2R; persisted as Commit A `c182db1099d92ff5830ae71116613c739b034bd9` in Lane W2P; nothing above is rewritten)
+
+Every **IMPLEMENTATION CONFORMANCE** line in this document describes the
+prototype at `c67d1439` and stands as history. On the W2 diff
+(`prototype/vnext-kernel/W2_IMPLEMENTATION_RECORD.md`):
+
+| Section | Status at `c67d1439` (above) | Status on the W2 diff |
+|---|---|---|
+| §1 K-9 | mechanism B `MISSING_IN_PROTOTYPE` | **IMPLEMENTED** — `cancelRecoveryByQuorum(QuorumProof,uint256,uint64)`, `DOMAIN_GUARDIAN` nonce, clears authority only, distinct event |
+| §2 challenge epoch | consistent by side effect, unprotected (SD-9a) | **STATED AND GUARDED** — rule at the struct field and at the `delete recovery` reset site; oracle `G-CHALLENGE-EPOCH`; four refund mutants and the no-reset mutant killed; the reference model resets on successful recovery (M58 discriminates) |
+| §3 effective expiry | `> expiresAt` outlier (SD-9e) | **HALF-OPEN** — `_recoveryIsLive() = active && block.timestamp < expiresAt`; `executeRecovery` refuses at `>= expiresAt`; an expired request blocks neither migration nor initiation and is no cancellation target; no sweeper |
+| §4 SD-4 disposition | remedy requires mechanism B | **REMEDY AVAILABLE** — live: quorum cancel then fresh recovery; expired: fresh recovery directly. `SD4_DEDICATED_REMEDIATION = NOT_REQUIRED` unchanged |
+| §5 replay | condition 2 unmet | **ALL SIX PREMISES HOLD** on the real artifact — live overwrite refused before any nonce is consumed; stale cancel finds no target and consumes nothing, then dies as `BadNonce` after the replacement, or as `QuorumNotMet` after a generation change (`test/W2RecoveryLifecycle.test.ts` §E) |
+
+The generated evidence receipts were not restamped by Lane W2I. Lane W2P
+persisted the implementation as Commit A (`c182db10…`), reconciled the ledger in
+its successor (A′), regenerated `STATEFUL_AUTHORITY_EVIDENCE.json` and
+`AUTHORITY_CENSUS.json` from a clean checkout of A′, and committed them in B —
+so the receipts identify A′, the tree they measured (record §15). §5 premise 1
+is now also a permanent mutant: `M-K9-initiation-does-not-consume-guardian-nonce`
+(`test/W2RecoveryLifecycleMutations.test.ts`) removes `_consume` from
+`initiateRecovery` and is killed by the stale-cancel replay property observing
+an R1 authorisation reach R2 — the creator-side twin of
+`M-K9-guardian-cancel-nonce-replay`.

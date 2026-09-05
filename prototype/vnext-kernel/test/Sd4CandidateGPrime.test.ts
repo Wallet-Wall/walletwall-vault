@@ -37,6 +37,7 @@ import {
   pqPubHash,
   proposeStd,
   quorum,
+  quorumCancelStd,
   spend,
 } from "./sd4-harness.js";
 import {
@@ -347,10 +348,15 @@ describe("SD-4 candidate G-PRIME — the surviving architecture, attacked", () =
     const key32 = bytesOfLength(32, "gp-sd5-key");
 
     // UNMODIFIED: the quorum re-proposes with a permissive verifier and wins.
+    // W2 SUPERSESSION: this block runs on the REAL kernel, which since Lane W2
+    // refuses to overwrite the live request the declaration stranded; the
+    // quorum clears it through its own exit first, then re-proposes. Same menu,
+    // one more explicit quorum act on the price.
     {
       const w = await sd4World("gp-sd5-today");
       await proposeStd(w, w.vault, addrOf(nominee), ethers.keccak256(key32), w.verifiers.honest);
       await (await declare(w, w.vault, w.credKey, w.verifiers.honest, vacuous, pqKeyBytes(w.pqKey))).wait();
+      await (await quorumCancelStd(w, w.vault)).wait();
       await proposeStd(w, w.vault, addrOf(nominee), ethers.keccak256(key32), w.verifiers.alwaysTrue);
       await networkHelpers.time.increase(7 * DAY + 1);
       const pop = (await w.vault.recoveryPossessionDigest()) as string;

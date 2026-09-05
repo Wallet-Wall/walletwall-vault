@@ -29,23 +29,23 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 18105,
-    "initcodeBytes": 18146,
+    "runtimeBytes": 18425,
+    "initcodeBytes": 18466,
     "immutableSlots": 0,
-    "runtimeSha256": "73be083f7747c7905a0794ff1a04e845e62748ac11b33bd05e0a613abf49f02d",
-    "selectors": 45,
+    "runtimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e",
+    "selectors": 46,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6471,
-    "headroomVsTargetCeiling": 3871,
+    "headroomVsPortabilityBudget": 6151,
+    "headroomVsTargetCeiling": 3551,
     "verdict": "TARGET PASS"
   },
   "factory": {
     "runtimeBytes": 2445,
     "initcodeBytes": 2794,
     "immutableSlots": 2,
-    "runtimeSha256": "5d774dcb725ed3c44c3f9b5f3c43be8efada5035677ad6349d28d466b2f1078e",
+    "runtimeSha256": "d3e4a21ecf8ff5737928cadf52c15f7f2ee29f771427523b5a74eb3bfdabcfc1",
     "selectors": 4,
-    "_note": "The factory gained +219 bytes of REAL LOGIC this time, unlike previous lanes where only the metadata block moved: deployVault now carries a third parameter and forwards it to initialize. predictVault and genesisSalt are untouched."
+    "_note": "W2 (K-9 mechanism B + recovery lifecycle) changes NO factory logic: runtime 2,445 and initcode 2,794 are identical to the SD-6/7 head, and the 4 selectors are unchanged. The runtime hash moves anyway because the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR: 32 differing bytes, all inside the 51-byte metadata tail. The previous note stands as history: at SD-6/7 the factory gained +219 bytes of REAL LOGIC (deployVault forwards a third parameter to initialize); predictVault and genesisSalt are untouched by both lanes."
   },
   "sd1Remediation": {
     "invariant": "I-FLOOR-SHAPE-IMMUTABLE",
@@ -137,5 +137,37 @@
     "whyTheWitnessIsNotInGenesisConfig": "genesisSalt binds the genesis AUTHORITY and a preimage proof confers none. Putting the witness inside the struct would additionally change predictVault's ABI and would invite a later editor to add it to the salt enumeration, which WOULD change the configuration -> salt map. The ledger's recorded reason for deferring this fix — that a new struct member changes every vault address BECAUSE the struct is hashed into the salt — is false in its MECHANISM: genesisSalt hashes an enumerated field list, not the struct as a unit, so a new member alone moves no salt. Addresses do move, but for a reason that applies to every change in this stack (the clone initcode embeds the implementation address), so it never distinguished this fix from any other.",
     "note": "The dormant clause deliberately omits any LENGTH comparison. While requirePq is false the floor lengths are unvalidated (_requireSaneFloor returns early) and unfrozen (_requireNoDowngrade is guarded on the current floor), so reading them at install time would let one cut-1 setVerifier make executeRecovery undeliverable forever. Residual SD-8: an exhibit proves a preimage, never that the preimage is a well-formed key of any scheme, and no admission check can establish that without a verifier the admitting principal chooses.",
     "_hashNote": "Both sha256 values were re-measured from a CLEAN rebuild AFTER the final comment and NatSpec edits. solc hashes every source in the compilation unit into the metadata CBOR, so a comment-only edit moves the hash while leaving the byte COUNT identical — 18,105 and 2,445 both before and after those edits."
+  },
+  "w2RecoveryLifecycle": {
+    "status": "COMMITTED — Commit A c182db1099d92ff5830ae71116613c739b034bd9 (parent e6964aeb, tree 4fa06066), the exact object reviewed in Lane W2R (Solidity/model/tests approved unchanged). Every figure in this block was RE-OBSERVED in Lane W2P against a CLEAN checkout of that commit (hardhat clean, compile, measure.ts and reproduce.ts, on both e6964aeb and c182db10) and matched: 18,105 -> 18,425 (+320); selectors 45 -> 46 with exactly +02abce4e, none removed or moved; storage 17 -> 17 identical by slot/offset/label/type/bytes across 11 slots; recovery() ABI byte-identical; factory selectors 4 -> 4 identical, executable prefix 2,392 B identical, 32 differing bytes all inside the 53-byte metadata tail (51-byte CBOR payload plus its 2-byte length)",
+    "remediatedOn": "c182db1099d92ff5830ae71116613c739b034bd9",
+    "invariants": ["K-9 mechanism B (guardian-quorum cancellation)", "I-RECOVERY-EFFECTIVE-LIVENESS", "I-RECOVERY-CHALLENGE-EPOCH"],
+    "vulnerableHead": "e6964aeb7a4417bb8b9cc417b93e4c0b29699eed",
+    "closes": "SD-9b (expired request blocks migration), SD-9c (guardian-quorum cancellation absent), SD-9d (live request overwritten instead of terminated), SD-9e (expiry equality boundary); SD-9a's remediation hazard is guarded by a permanent mutant. SD-4 and SD-10 are NOT changed; the SD-10 interplay is recorded in SD9_RECOVERY_LIFECYCLE_DEFECTS.md.",
+    "beforeRuntime": 18105,
+    "afterRuntime": 18425,
+    "totalDelta": 320,
+    "beforeInitcode": 18146,
+    "afterInitcode": 18466,
+    "beforeRuntimeSha256": "73be083f7747c7905a0794ff1a04e845e62748ac11b33bd05e0a613abf49f02d",
+    "afterRuntimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e",
+    "kernelSourceSha256": "f9dd5711992f91131cb795c50378c86d2cec7a5e1134f49f315c5639db90d50b",
+    "preW2KernelSourceSha256": "a39cea9b41a16ddb204b9af2d1844372b78ae110d840f7886c396872d1a5588b",
+    "factoryBeforeRuntime": 2445,
+    "factoryAfterRuntime": 2445,
+    "factoryDelta": 0,
+    "factoryAfterRuntimeSha256": "d3e4a21ecf8ff5737928cadf52c15f7f2ee29f771427523b5a74eb3bfdabcfc1",
+    "factoryHashNote": "Length identical, hash moved: 32 differing bytes, all within the 51-byte metadata CBOR tail, because the factory's compilation unit includes the kernel source.",
+    "storageLayoutChanged": false,
+    "storageLayoutEntries": 17,
+    "selectorsBefore": 45,
+    "selectorsAfter": 46,
+    "abiChange": "ADDITIVE ONLY. +1 function cancelRecoveryByQuorum((address[],bool[],uint256[],bytes[]),uint256,uint64) selector 0x02abce4e; +1 event RecoveryCancelledByQuorum(uint32). recovery() and every other entry byte-identical; nothing removed, nothing moved. No public liveness getter (Option E0).",
+    "headroomVsPortabilityBudget": 6151,
+    "headroomVsTargetCeiling": 3551,
+    "verdict": "TARGET PASS",
+    "forecast": "W2_IMPLEMENTATION_CONTRACT.md forecast +150–300 B for the cancellation plus ~80 B for liveness/expiry; measured total +320 B, no byte optimisation attempted.",
+    "measuredBy": "npx tsx prototype/vnext-kernel/reproduce.ts --json (independent solc 0.8.24 rebuild) and npx tsx prototype/vnext-kernel/measure.ts, both on the source with kernelSourceSha256 above; the pre-W2 figures are the same tools on the e6964aeb source.",
+    "regenerationNote": "Lane W2P protocol: STATEFUL_AUTHORITY_EVIDENCE.json and AUTHORITY_CENSUS.json are regenerated by the repository generators from a CLEAN checkout of the ledger-reconciliation commit that follows Commit A (A-prime: defects.ts carries SD-9b/c/d/e remediated, SD-10 sustained, SD-9a as a known gap) and committed in its successor (B) with nothing else, so each receipt's head/tree identifies the tree it measured — A-prime — rather than the commit that contains it. SCANNER_EVIDENCE.json is not regenerated locally (no Slither environment on the authoring machine); Slither and CodeQL are authoritative from the W2 PR's CI runs. generate-stateful-evidence.ts prefers this block."
   }
 }

@@ -94,11 +94,24 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e remediated; SD-2 and SD-10 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
-    expect(SUSTAINED_DEFECTS.length).to.equal(4);
+    // IDENTITY, NOT ARITHMETIC. A receipt can carry the right counts and the
+    // wrong defects, so both sets are asserted by id; an entry that arrives or
+    // leaves has to move these lists deliberately (Lane W2P).
+    const SUSTAINED_IDS = [
+      "SD-2-containment-window-is-tumbling",
+      "SD-4-ecdsa-only-shape-declaration-is-uncounted",
+      "SD-5-permanent-shape-capture-on-the-declaring-edge",
+      "SD-8-genesis-exhibit-cannot-prove-well-formedness",
+      "SD-10-approved-request-stranded-by-guardian-rotation",
+    ];
+    expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
+      [...SUSTAINED_IDS].sort(),
+    );
+    expect(SUSTAINED_DEFECTS.length).to.equal(5);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -115,18 +128,56 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7 rem
     // principal a veto over a capability it cannot itself exercise — so it stays
     // SUSTAINED, and it now carries a CAMPAIGN PROPERTY it never had, which means
     // the "still reproducing" assertion covers it for the first time.
-    for (const closed of [
+    const REMEDIATED_IDS = [
       "SD-1-floor-length-poisoning",
       "SD-3-setverifier-skips-genesis-satisfiability",
       "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
       "SD-7-genesis-admits-an-unsatisfiable-floor",
-    ]) {
+      "SD-9b-expired-request-retains-blocking-effect",
+      "SD-9c-guardian-quorum-cancellation-absent",
+      "SD-9d-live-request-overwrite",
+      "SD-9e-expiry-equality-boundary",
+    ];
+    for (const closed of REMEDIATED_IDS) {
       expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
         closed,
       );
       expect(REMEDIATED_DEFECTS.map((d) => d.id), closed + " must be recorded as remediated").to.include(closed);
     }
-    expect(REMEDIATED_DEFECTS.length).to.equal(4);
+    expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
+      [...REMEDIATED_IDS].sort(),
+    );
+    expect(REMEDIATED_DEFECTS.length).to.equal(8);
+    // A defect is sustained or remediated, never both, and never twice.
+    const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
+    expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
+    // SD-9a is a REMEDIATION HAZARD / SPECIFICATION GAP, not a present defect;
+    // it must not be smuggled into either array so that a receipt can count it.
+    expect(everyId.some((id) => id.toLowerCase().includes("sd-9a")), "SD-9a is not a defect entry").to.equal(false);
+    // Lane W2's four closures name their exact source identities.
+    const W1_RECORD = "4b9127269602d8eab3700d96dda4d5cfcf2e0d55";
+    const W2_COMMIT_A = "c182db1099d92ff5830ae71116613c739b034bd9";
+    for (const id of REMEDIATED_IDS.filter((x) => x.startsWith("SD-9"))) {
+      const r = REMEDIATED_DEFECTS.find((x) => x.id === id)!;
+      expect(r.sustainedAt, id + " was first recorded by Lane W1").to.equal(W1_RECORD);
+      expect(r.remediatedOn.startsWith(W2_COMMIT_A), id + " names Lane W2's Commit A as its source").to.equal(true);
+      expect(r.invertedReproduction, id + " must point at the W2 lifecycle suite").to.include(
+        "W2RecoveryLifecycle.test.ts",
+      );
+    }
+    // SD-10 is present, has no campaign oracle, and is reproduced in THIS file.
+    const sd10 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-10-approved-request-stranded-by-guardian-rotation")!;
+    expect(sd10.property, "SD-10 has no campaign property; its reproduction is deterministic").to.equal(null);
+    expect(sd10.reproducedBy ?? "", "SD-10 names this file").to.include("StatefulSustainedDefects.test.ts");
+    // SD-4 stays sustained on its campaign property, and its entry carries the
+    // canonical disposition rather than the refuted general claims.
+    const sd4 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-4-ecdsa-only-shape-declaration-is-uncounted")!;
+    expect(sd4.property).to.equal("G-DECLARATION-SUBORDINATE-TO-RECOVERY");
+    const sd4Text = Object.values(sd4).join(" ");
+    expect(sd4Text, "a refuted claim must not be republished").to.not.include("No fifth family is known");
+    expect(sd4Text, "a refuted claim must not be republished").to.not.include("liveness cost is INHERENT");
+    expect(sd4Text).to.include("SD4_DEDICATED_REMEDIATION = NOT_REQUIRED");
+    expect(sd4Text).to.include("G_PRIME_INCREMENTAL_VALUE = NONE_ESTABLISHED");
     for (const r of REMEDIATED_DEFECTS) {
       expect(r.sustainedAt, r.id + " must name the head it was sustained at").to.match(/^[0-9a-f]{40}$/);
       expect(r.invariant.length, r.id + " must state the invariant that closed it").to.be.greaterThan(60);
@@ -382,6 +433,97 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7 rem
       await w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE, sign(w.credKey, sd), "0x", "0x")
     ).wait();
     expect(await ethers.provider.getBalance(w.recipient), "the vault still works").to.equal(balBefore + amount);
+  });
+
+  // =====================================================================
+  /**
+   * SD-10 — SUSTAINED. Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md),
+   * measured there on the pre-W2 kernel (Sd4LaneV "D"), and RE-MEASURED HERE on
+   * the W2 kernel, because W2 changed the defect's BLAST RADIUS without touching
+   * `setGuardians`: a request stranded by a generation bump is still stored
+   * `active` and, since W2, still EFFECTIVELY LIVE — so it now blocks a fresh
+   * initiation (BadState) and migration (NoRecovery) until the NEW quorum cancels
+   * it or it expires. This test asserts the defective behaviour on purpose, and
+   * then the exit at k as the bound on the claim, so a fix cannot land silently
+   * while the ledger still calls the request stranded.
+   */
+  it("SD-10 — SUSTAINED: a guardian-set replacement STRANDS an approved request, which stays stored active and (since W2) blocks re-initiation until the NEW quorum cancels it", async function () {
+    const w = await deployWorld({ label: "sd10", verifier: "honest" });
+    const guardianAuth = async (actionType: string, params: string) => {
+      const nonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+      const d = digestOf({
+        chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: 1n,
+        actionType, authorityGeneration: (await w.vault.guardianGeneration()) as bigint,
+        params, domain: DOMAIN.GUARDIAN, nonce, deadline: FAR_DEADLINE,
+      });
+      const proof = {
+        members: w.guardians, isContract: w.guardianIsContract,
+        attestingIndices: [0, 1], attestations: [sign(w.gKeys[0]!, d), sign(w.gKeys[1]!, d)],
+      };
+      return { nonce, proof };
+    };
+    const initiate = async (cred: ethers.SigningKey, pq: ethers.SigningKey) => {
+      const a = await guardianAuth(ACTION.RECOVER, recoverParams(addrOf(cred), pqHash(pq), w.verifiers.honest));
+      return w.vault.initiateRecovery(addrOf(cred), pqHash(pq), w.verifiers.honest, a.proof, a.nonce, FAR_DEADLINE);
+    };
+    const change = async (cred: ethers.SigningKey, pq: ethers.SigningKey) => {
+      const pop = (await w.vault.recoveryPossessionDigest()) as string;
+      return {
+        newSigner: addrOf(cred), newPqKeyHash: pqHash(pq), newPqKey: pqKeyBytes(pq),
+        newEcdsaPop: sign(cred, pop), newPqPop: sign(pq, pop),
+      };
+    };
+
+    // 1. An HONEST quorum (k = 2 distinct principals) approves a recovery.
+    const cred1 = w.spareCred[0]!;
+    const pq1 = w.sparePq[0]!;
+    await (await initiate(cred1, pq1)).wait();
+    const boundGeneration = (await w.vault.recovery())[5] as bigint;
+    expect((await w.vault.recovery())[7], "approved and live").to.equal(true);
+
+    // 2. The SAME quorum re-commits the IDENTICAL roster. `setGuardians` consults
+    //    nothing about `recovery`: it is admitted while the request is live, and
+    //    the generation moves. The reference model DENIES this exact move
+    //    (I-APPROVED-REQUEST-PRESERVATION); the kernel does not.
+    const commitment = (await w.vault.rosterCommitment(w.threshold, w.guardians, w.guardianIsContract)) as string;
+    const g = await guardianAuth(ACTION.SET_GUARDIANS, commitment);
+    await (
+      await w.vault.setGuardians(w.threshold, w.guardians, w.guardianIsContract, g.proof, g.nonce, FAR_DEADLINE)
+    ).wait();
+    expect((await w.vault.guardianGeneration()) as bigint, "the generation bumped").to.equal(boundGeneration + 1n);
+
+    // 3. SUSTAINED: at maturity the approved request is unexecutable — the
+    //    generation binding that correctly kills a STALE constituency's authority
+    //    (stateful mutant M16) kills the request this SAME constituency approved —
+    //    and it is still stored active with no challenge consumed.
+    await networkHelpers.time.increase(7 * DAY + 1);
+    await expect(
+      w.vault.executeRecovery(await change(cred1, pq1)),
+      "SUSTAINED (SD-10): the approved request is destroyed in effect",
+    ).to.be.revertedWithCustomError(w.vault, "BadRoster");
+    const stranded = await w.vault.recovery();
+    expect(stranded[7], "SUSTAINED: still stored active").to.equal(true);
+    expect(Number(stranded[6]), "SUSTAINED: no challenge was consumed — no principal ended it").to.equal(0);
+
+    // 4. W2 BLAST RADIUS (recorded, not remediated): the stranded request is still
+    //    effectively live, so a fresh initiation is refused as an overwrite.
+    await expect(
+      initiate(w.spareCred[1]!, w.sparePq[1]!),
+      "W2: a stranded request blocks re-initiation until it is cleared",
+    ).to.be.revertedWithCustomError(w.vault, "BadState");
+
+    // 5. THE BOUND ON THE CLAIM: escapable at k, and by no smaller principal. The
+    //    NEW quorum's explicit exit (K-9 mechanism B, digest bound to the CURRENT
+    //    generation) clears it, and a fresh request then completes.
+    const c = await guardianAuth(ACTION.RECOVER, ethers.id("QUORUM_CANCEL_RECOVERY"));
+    await (await w.vault.cancelRecoveryByQuorum(c.proof, c.nonce, FAR_DEADLINE)).wait();
+    expect((await w.vault.recovery())[7], "cleared by the new quorum").to.equal(false);
+    const cred2 = w.spareCred[1]!;
+    const pq2 = w.sparePq[1]!;
+    await (await initiate(cred2, pq2)).wait();
+    await networkHelpers.time.increase(7 * DAY + 1);
+    await (await w.vault.executeRecovery(await change(cred2, pq2))).wait();
+    expect(await w.vault.ecdsaSigner(), "the re-proposed recovery installs").to.equal(addrOf(cred2));
   });
 
   // =====================================================================

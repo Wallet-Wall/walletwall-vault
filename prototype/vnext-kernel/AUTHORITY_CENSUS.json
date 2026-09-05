@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "28adbb8834c39ae2e106e31d3a25f5b39c84c943",
-  "tree": "849e140b7b02121e9ad4a7f1047539654c45fc9a",
+  "head": "1d9b90a7ec0907b2c296bee3d7cfad035a1dda49",
+  "tree": "d43a4a89a54a5fe359f338ca8c34860e83891534",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
@@ -31,7 +31,7 @@
       "visibility": "public",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8303,
+      "astId": 8310,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -57,7 +57,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8491,
+      "astId": 8498,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -83,7 +83,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 8563,
+      "astId": 8570,
       "reasons": []
     },
     {
@@ -94,7 +94,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8578,
+      "astId": 8585,
       "reasons": []
     },
     {
@@ -105,7 +105,7 @@
       "visibility": "external",
       "stateMutability": "payable",
       "isStateChanging": true,
-      "astId": 8582,
+      "astId": 8589,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -129,7 +129,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8618,
+      "astId": 8625,
       "reasons": []
     },
     {
@@ -140,7 +140,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8688,
+      "astId": 8695,
       "reasons": []
     },
     {
@@ -151,7 +151,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8895,
+      "astId": 8902,
       "reasons": []
     },
     {
@@ -162,7 +162,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8932,
+      "astId": 8939,
       "reasons": []
     },
     {
@@ -173,7 +173,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 9094,
+      "astId": 9101,
       "reasons": []
     },
     {
@@ -184,7 +184,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9262,
+      "astId": 9285,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore."
       ],
@@ -218,7 +218,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9348,
+      "astId": 9371,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID",
@@ -250,7 +250,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9481,
+      "astId": 9504,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -280,7 +280,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9538,
+      "astId": 9561,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -310,7 +310,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 9655,
+      "astId": 9678,
       "reasons": []
     },
     {
@@ -321,7 +321,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9739,
+      "astId": 9762,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -351,7 +351,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10059,
+      "astId": 10088,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -381,7 +381,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10134,
+      "astId": 10163,
       "reasons": [],
       "observedMechanisms": [
         "FLOOR_ONLY"
@@ -404,6 +404,36 @@
       "verdict": "PASS"
     },
     {
+      "key": "VaultKernelPrototype:02abce4e",
+      "contract": "VaultKernelPrototype",
+      "signature": "cancelRecoveryByQuorum(struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "nonpayable",
+      "isStateChanging": true,
+      "astId": 10220,
+      "reasons": [],
+      "observedMechanisms": [
+        "QUORUM"
+      ],
+      "observedOrderOk": true,
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
+      "manifest": {
+        "signature": "cancelRecoveryByQuorum(QuorumProof,uint256,uint64)",
+        "outcomes": [
+          "RECOVERY_CANCEL"
+        ],
+        "expectedMechanisms": [
+          "QUORUM"
+        ],
+        "expectedCut": "k -- guardian quorum evaluated against the CURRENT commitment via _requireQuorum, exactly as initiateRecovery/setGuardians/enterContainment; NOT bounded by CHALLENGE_LIMIT, because the quorum is the recovery trust root and needs no metered veto over its own remedy",
+        "orderingExceptionReason": null,
+        "justification": "K-9 mechanism B (KERNEL_ADMISSION.md K-9: 'credential (bounded count), or guardian quorum'; docs/Vault_vNext_Architecture.md section 8.1 'Direct capabilities (vNext)' grants the guardian quorum CANCEL_RECOVERY). Implemented in Lane W2 per W2_IMPLEMENTATION_CONTRACT.md item 3 and docs/Vault_vNext_Recovery_Amendment.md section 1: requires an EFFECTIVELY-LIVE request (_recoveryIsLive, a view validity predicate the tracer classifies SAFE), _requireQuorum on a digest bound to guardianGeneration, then _consume(DOMAIN_GUARDIAN) -- so a refused cancellation burns no nonce and a superseded constituency dies as QuorumNotMet before its nonce is examined. Clears request AUTHORITY only (recovery.active = false); it neither consumes nor refunds the credential's challenge epoch (challengesUsed untouched -- I-RECOVERY-CHALLENGE-EPOCH), and emits the DISTINCT event RecoveryCancelledByQuorum so an observer can tell which principal ended the request. The outcome label RECOVERY_CANCEL is shared with cancelRecovery; the mechanism and cut are per entry: FLOOR_ONLY at a bounded cut 1 there, QUORUM at k here."
+      },
+      "verdict": "PASS"
+    },
+    {
       "key": "VaultKernelPrototype:bfd6b85c",
       "contract": "VaultKernelPrototype",
       "signature": "executeRecovery(struct VaultKernelPrototype.CredentialChange)",
@@ -411,7 +441,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10221,
+      "astId": 10307,
       "reasons": [],
       "observedMechanisms": [
         "POSSESSION_PROOF"
@@ -443,7 +473,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10325,
+      "astId": 10411,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
       ],
@@ -477,7 +507,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10460,
+      "astId": 10546,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM",
@@ -509,7 +539,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10502,
+      "astId": 10588,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -535,7 +565,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10631,
+      "astId": 10717,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
       ],
@@ -622,15 +652,15 @@
     }
   ],
   "summary": {
-    "total": 17,
-    "pass": 14,
+    "total": 18,
+    "pass": 15,
     "passWithDeclaredException": 3,
     "failed": 0,
     "byVerdict": {
-      "PASS": 14,
+      "PASS": 15,
       "PASS_WITH_DECLARED_EXCEPTION": 3
     }
   },
-  "manifestHash": "05927d99eca546e690ee885c38de7132062bc41a5e71286405e211b9352826f5",
+  "manifestHash": "f69fcafe4e400bc8c26f80022908ff2a42e52d3253a86b12a732d90b73e43291",
   "checkerHash": "79e45cb870db91d527c4e8f55692046ad72420870298a6f7acd2e0b48e875b7f"
 }
