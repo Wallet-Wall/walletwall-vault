@@ -79,16 +79,46 @@
     "reductionVsMonolithPercent": 23.4
   },
   "scannerCoverage": {
-    "solhint": "RUN — 34 warnings, 0 errors. The two added by the SD-3 / SD-4 clauses are gas-strict-inequality advisories on `block.timestamp <= recovery.expiresAt`, whose non-strict form is deliberate: it mirrors executeRecovery own bound exactly, so the refused window is precisely the executable one. Converting to strict would open a one-second gap",
-    "slither": "NOT RUN — no local Python or slither binary, and the Docker daemon is not running. NOT a pass.",
-    "codeql": "NOT RUN — codeql.yml is filtered to branches:[main], so it never fires on a PR based on a design branch. NOT a pass."
+    "_scope": "CURRENT aggregate scanner state of measuredAtHead. TWO PROVENANCES ARE KEPT APART DELIBERATELY: the Slither COUNTS come from the pinned run recorded in SCANNER_EVIDENCE.json (receipt head a46bc50c, tree 1f892b1e) and slither-triage.json (keyed at c32e0d74, tree 90e1a802); the PASS verdicts come from the exact-head #188 CI execution. The scanner receipt was NOT generated at measuredAtHead and is not claimed to be — its counts describe this head only because prototype/vnext-kernel/contracts is byte-identical (tree da8aef1f) from c32e0d74 through measuredAtHead. The figures below were measured against measuredAtHead/measuredAtTree; this file is committed one commit later, which is the same recapture pattern the canonical receipts use. Nothing a test or scanner reads differs between the two — the only delta is this file.",
+    "measuredAtHead": "b7e6cc3a02a6f61c9152a51d9c168f372522a6e3",
+    "measuredAtTree": "216611f72db8f995e9110147b8fe6208ea1d90b2",
+    "solhint": {
+      "run": true,
+      "warnings": 36,
+      "errors": 0,
+      "source": "npx solhint \"prototype/vnext-kernel/contracts/**/*.sol\" at measuredAtHead: \"36 problems (0 errors, 36 warnings)\". Agrees with SCANNER_EVIDENCE.json scanners.solhint and with README.md's solhint row (32 at 0faf7247, 34 at e6964aeb, 36 from the W2 kernel onward).",
+      "supersedes": "This field previously read \"RUN — 34 warnings, 0 errors\". 34 was the e6964aeb count and was never refreshed after W2 added two gas-strict-inequality advisories in the kernel."
+    },
+    "slither": {
+      "run": true,
+      "verdict": "PASS",
+      "rawFindingCount": 217,
+      "distinctOwnCodeFindingCount": 33,
+      "unaccounted": 0,
+      "countsFrom": "SCANNER_EVIDENCE.json scanners.slither (pinned slither-analyzer @ ff1bf3ff, crytic-compile 0.4.2, solc 0.8.24, --evm-version cancun --optimize --optimize-runs 200); every one of the 33 distinct own-code findings carries a triage entry in slither-triage.json, so unaccounted is 0 by construction and the --validate gate fails CI on any untriaged finding.",
+      "ciExecution": "vNext Kernel / Slither — success on measuredAtHead, in both the push and the pull_request run.",
+      "supersedes": "This field previously read \"NOT RUN — no local Python or slither binary, and the Docker daemon is not running. NOT a pass.\" That described a developer workstation at a much earlier head; it was false of this head, where Slither runs in CI and the triage is complete."
+    },
+    "codeql": {
+      "run": true,
+      "verdict": "PASS",
+      "ciExecution": "vNext Kernel / CodeQL — success on measuredAtHead, in both the push and the pull_request run. The job is gated on vars.CODEQL_ENABLED and it ANALYZED rather than skipping (Initialize CodeQL and Analyze both succeeded).",
+      "solidityCoverage": "NONE — GitHub CodeQL has no Solidity extractor. This is a permanent vendor limitation, not a configuration gap, so a CodeQL pass is NOT Solidity security analysis and must not be read as one.",
+      "javascriptTypescriptCoverage": "prototype/vnext-kernel TOOLING only (measure.ts, reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts, test/*.ts), category /language:javascript-typescript/vnext-kernel.",
+      "supersedes": "This field previously read \"NOT RUN — codeql.yml is filtered to branches:[main], so it never fires on a PR based on a design branch. NOT a pass.\" True of codeql.yml, but the vNext Kernel workflow carries its own CodeQL job, which does fire here."
+    }
   },
   "validation": {
-    "prototypeTests": "413 passing, 0 failing (M-K01..M-K37, authority closure, authority-completeness mutations, stateful campaign, mutation adequacy, the defect ledger, and the SD-1 / SD-3 remediation suites)",
-    "prototypeMutationAdequacy": "20/20 killed, including M19 and M20 for I-DECLARATION-EXHIBITED, both by G-PQ-COMMITMENT-SATISFIABLE — the property SD-3 was filed under, which only became ENFORCEABLE once SD-3 left KNOWN_DEFECT_PROPERTIES",
-    "productionNormal": "1643 passing, 0 failing, 11 pending",
-    "productionCoverage": "1640 passing, 0 failing, 14 pending, 90.13%",
-    "statefulCampaign": "224 campaigns / 12,160 transitions / 0 violations / positive controls 1078 of 1078. SD-4 is now observed by the campaign (3 hits) via G-DECLARATION-SUBORDINATE-TO-RECOVERY; it previously had no campaign property at all and was found only by narrative reasoning."
+    "_scope": "CURRENT aggregate test and assurance results of measuredAtHead, taken from the CI execution at that head (ubuntu-latest, the reference platform) rather than carried forward from an earlier lane. The figures below were measured against measuredAtHead/measuredAtTree; this file is committed one commit later, which is the same recapture pattern the canonical receipts use. Nothing a test or scanner reads differs between the two — the only delta is this file.",
+    "measuredAtHead": "b7e6cc3a02a6f61c9152a51d9c168f372522a6e3",
+    "measuredAtTree": "216611f72db8f995e9110147b8fe6208ea1d90b2",
+    "prototypeTests": "710 passing, 0 failing (vNext Kernel / Prototype Tests at measuredAtHead).",
+    "prototypeMutationAdequacy": "21/21 killed, 0 survivors, 0 inconclusive (vNext Kernel / Stateful Authority at measuredAtHead); 21 distinct mutant ids, matching STATEFUL_AUTHORITY_EVIDENCE.json mutationAdequacy.mutations.",
+    "productionNormal": "1,658 passing, 0 failing, 11 pending (CI / Build, lint & test at measuredAtHead).",
+    "productionCoverage": "1,655 passing, 0 failing, 14 pending; line coverage 90.13%, statement coverage 88.03% (npm run coverage in the same CI job at measuredAtHead). The line percentage is unchanged from the previous value here while the passing count is not — 90.13% was NOT sufficient evidence that this block was current.",
+    "statefulCampaign": "252 campaigns / 13,680 transitions / 0 violations / positive controls 1,470 of 1,470 (vNext Kernel / Stateful Authority at measuredAtHead). Fixed seeds only; no randomness in the required check.",
+    "platformNote": "Reference platform is ubuntu-latest. A local Windows run of the production suite reports 1,656 passing / 2 failing: both failures are ReproducibilityAnchorAuthority's shallow-clone helper, where `git clone file:///C:/...` is rejected by MSYS git. Those two tests pass in CI at measuredAtHead. The count is 1,658 either way.",
+    "supersedes": "The previous values in this block — 413 prototype tests, 20/20 mutations, 1,643 production, 1,640 coverage, 224 campaigns / 12,160 transitions / 1,078 controls — were last written at 79e05a34, the commit this file's own _VERDICT_HISTORY records as WITHDRAWN, and were never refreshed by SD-1, SD-3, SD-6/7, W2, W2S or SD-10. They are recorded here rather than silently dropped."
   },
   "sourceDigests": {
     "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "edef95c774ca86495f5bfd41bbf8ff33df439ded78d21bc95f15b01b40d27147",
