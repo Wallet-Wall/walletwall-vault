@@ -8,7 +8,7 @@
  * altered ZERO bytes of Solidity and recorded each as a deterministic,
  * permanently-executed reproduction (test/StatefulSustainedDefects.test.ts).
  *
- * EIGHT HAVE SINCE BEEN REMEDIATED — SD-1 by `I-FLOOR-SHAPE-IMMUTABLE`, SD-3 by
+ * NINE HAVE SINCE BEEN REMEDIATED — SD-1 by `I-FLOOR-SHAPE-IMMUTABLE`, SD-3 by
  * `I-DECLARATION-EXHIBITED`, SD-6 and SD-7 together by
  * `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, and SD-9b, SD-9c, SD-9d and SD-9e
  * together by Lane W2's recovery lifecycle (K-9 mechanism B,

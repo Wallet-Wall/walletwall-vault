@@ -1,5 +1,27 @@
 # SD-10 — implementation record (Lane SD10-I: approved-recovery preservation, implemented)
 
+> **CURRENT STATUS — Lane SD10-P persisted; Lane SD10-RC closed the independent
+> review findings.**
+>
+> ```
+> A  = c32e0d748390b79f4163ad4a783c2467cf502e30   implementation
+> A′ = 3ee927557b808b7594effd43a16d3696a61a0c20   semantic / evidence-source reconciliation
+> B  = 327a654c8754a610d6da3a8da6b446b44d57c1d2   first generated receipt snapshot
+> ```
+>
+> **PR #193 is OPEN / DRAFT**, based on `security/vnext-sd4-recovery-request-semantics`
+> at `a42f5c7e2d517cd25a0fc0c9d90599648f5282a9` (#188, whose head is unchanged).
+>
+> Generated evidence **was** regenerated, from a clean checkout of A′, and
+> committed in B. Lane SD10-RC then corrected three evidence-text defects found
+> by independent review and refreshed the receipts' provenance; that commit pair
+> is recorded in §10c, and the coordinates above are extended there.
+>
+> The "Local, uncommitted implementation object" block immediately below is
+> **retained unchanged as the historical state at SD10-I independent-review
+> time**. Every sentence in it was true then; the first two are false now, which
+> is exactly why this banner sits above rather than in place of it.
+
 > **EXPERIMENTAL · NOT AUDITED · NOT PRODUCTION · NO DEPLOYMENT.**
 > **Local, uncommitted implementation object.** Worktree
 > `C:\dev\wv-sd10-implementation`, branch
@@ -798,9 +820,9 @@ topology is the one Lane W2P used; `git show` on `c182db1` / `1d9b90a` /
 
 | Commit | Role |
 | --- | --- |
-| **A** = `c32e0d748390b79f4163ad4a783c2467cf502e30` (parent `a42f5c7e`, tree `90e1a802`) | the independently reviewed implementation, plus its own append-only `AUTHORITY.md` status block |
-| **A′** | ledger, scanner provenance and measurement reconciliation |
-| **B** | generated receipts, describing a clean checkout of A′ |
+| **A** = `c32e0d748390b79f4163ad4a783c2467cf502e30` (parent `a42f5c7e`, tree `90e1a8020d1caf1132319f55bd1141ba44d07202`) | the independently reviewed implementation, plus its own append-only `AUTHORITY.md` status block |
+| **A′** = `3ee927557b808b7594effd43a16d3696a61a0c20` (parent A, tree `ed40f21830604ffb9b9a2078fefccd932931eba0`) | ledger, scanner provenance and measurement reconciliation |
+| **B** = `327a654c8754a610d6da3a8da6b446b44d57c1d2` (parent A′, tree `853fc6b44e1c13e86885e59f07e82eb55dac1b17`) | generated receipts, describing a clean checkout of A′ |
 
 ### Re-measured on a clean Commit A, reproduced rather than carried
 
@@ -890,6 +912,39 @@ base** (committed `e922dfdf…` / `102df285…` matched neither `a42f5c7e` nor A
 That drift pre-dates this lane; both were corrected to the measured current
 values and re-verified by recomputing sha256 from the working tree.
 
+## 10c. Lane SD10-RC — independent review corrections
+
+Independent review of PR #193 at B found three **evidence-text** defects. None
+touched Solidity, the reference model, mutation semantics, scanner
+classifications or measurements; all three were statements about the work that
+had stopped being true.
+
+| # | Defect | Correction |
+| --- | --- | --- |
+| **RC-1** | `defects.ts`'s header said "**EIGHT** HAVE SINCE BEEN REMEDIATED" while the same sentence enumerated **nine** (SD-10 was appended to the list in A′ without updating the count). The executable ledger was already correct at 4 / 9 — only the prose was wrong. | one word: EIGHT → NINE |
+| **RC-2** | This record still opened "Local, uncommitted implementation object … Nothing is committed, pushed, or proposed. No generated evidence was regenerated." True at SD10-I review time, false at the PR head. | a CURRENT STATUS banner prepended; the historical block retained verbatim beneath it, explicitly labelled as the SD10-I-review state |
+| **RC-3** | §10b's topology table left A′ and B without their SHAs, and the reproduction section claimed the RED was "9 passing / 10 failing" — a figure measured on a **19-test** draft, printed as the reproduction claim for the persisted **23-test** suite. | SHAs and trees filled in; the reproduction section now names the exact command and its exact result, and the superseded 19-test figure is retained only as an explicitly-labelled subset with its four excluded tests identified |
+
+RC-3 is the one that mattered most: an unlabelled 9/10 next to a 23-test suite
+invites a reviewer to re-run it, get 10/13, and reasonably conclude the record
+is unreliable. The subset arithmetic is now stated and checkable — `I1` passes
+on the base while `I2`, `I3` and `I4` fail, so 9 passing / 10 failing becomes
+10 passing / 13 failing exactly.
+
+### Commit topology, extended
+
+| Commit | Role |
+| --- | --- |
+| **A** `c32e0d74` | implementation |
+| **A′** `3ee92755` | semantic / evidence-source reconciliation |
+| **B** `327a654c` | first generated receipt snapshot — **retained as historical intermediate provenance** |
+| **C** | independent-review evidence-text corrections (this section, RC-1…RC-3) |
+| **D** | canonical receipts describing a clean checkout of C |
+
+B is not superseded in the sense of being wrong: it is a correct receipt of A′,
+and it stays in the history as the provenance snapshot that the review examined.
+D describes C.
+
 ## 11. Reproduce
 
 ```bash
@@ -902,6 +957,34 @@ npx hardhat test test/VaultVNextArchitectureModel.test.ts
 npx tsx prototype/vnext-kernel/reproduce.ts --json     # storage layout + selectors, pinned solc
 ```
 
-To reproduce the RED, restore only the kernel
-(`git checkout -- prototype/vnext-kernel/contracts/VaultKernelPrototype.sol`)
-and re-run the first suite: 9 passing / 10 failing.
+### Reproducing the RED
+
+Restore ONLY the kernel to the exact base and re-run the permanent suite. Every
+other file — including all 23 tests — stays at its persisted state:
+
+```bash
+git checkout a42f5c7e -- prototype/vnext-kernel/contracts/VaultKernelPrototype.sol
+npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test prototype/vnext-kernel/test/Sd10ApprovedRequestPreservation.test.ts
+```
+
+```
+exact base a42f5c7e
++ final permanent Sd10ApprovedRequestPreservation.test.ts (23 tests)
+= 10 passing / 13 failing
+```
+
+Every one of the 13 is traceable to the removed statement; the breakdown is in
+§3. Restore the kernel afterwards with
+`git checkout HEAD -- prototype/vnext-kernel/contracts/VaultKernelPrototype.sol`.
+
+**A superseded figure, named so it cannot be mistaken for this one.** An earlier
+draft of this record reported the RED as **9 passing / 10 failing**. That was a
+genuine measurement, but of a **19-test SUBSET** — the suite before section I
+(`I1`–`I4`) was added. The four excluded tests are `I1` (malicious quorum hands
+over to an honest roster), `I2` (containment does not veto a preserved request),
+`I3` (the dead-verifier escape survives rotation) and `I4` (same-material
+recovery). Of those, `I1` passes on the base and `I2`/`I3`/`I4` fail, which is
+exactly how 9/10 becomes 10/13. The 23-test figure above is the one that
+describes the persisted suite; the 19-test figure describes nothing that is
+still committed and is retained only to explain the discrepancy.
