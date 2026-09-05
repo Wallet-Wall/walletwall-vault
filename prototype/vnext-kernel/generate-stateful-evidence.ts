@@ -72,14 +72,21 @@ function main(): void {
     sd3Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     w2RecoveryLifecycle?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd10Preservation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
   const kernel = measurements.kernel;
   // The LATEST remediation is what this receipt describes; earlier ones are
-  // history and are recorded in their own MEASUREMENTS.json blocks. W2 (K-9
-  // mechanism B + recovery lifecycle) is the latest; it is preferred here so
-  // that the receipt regenerated at the commit carrying W2 reports W2's delta
-  // rather than SD-6/7's.
+  // history and keep their own MEASUREMENTS.json blocks, which are never
+  // rewritten — each block's schema MEANS that lane. The chain is ordered
+  // newest-first so the receipt regenerated at a given commit reports THAT
+  // lane's delta rather than its predecessor's.
+  //
+  // SD10-I (approved-request preservation) is the newest. It must be preferred
+  // here or the receipt would publish W2's +320 bytes for a lane that REMOVED
+  // 58 — the first negative delta in this file, because the remediation deletes
+  // a statement instead of adding one.
   const sd1 =
+    measurements.sd10Preservation ??
     measurements.w2RecoveryLifecycle ??
     measurements.sd67Remediation ??
     measurements.sd3Remediation ??

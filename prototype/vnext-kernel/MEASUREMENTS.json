@@ -29,23 +29,23 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 18425,
-    "initcodeBytes": 18466,
+    "runtimeBytes": 18367,
+    "initcodeBytes": 18408,
     "immutableSlots": 0,
-    "runtimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e",
+    "runtimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
     "selectors": 46,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6151,
-    "headroomVsTargetCeiling": 3551,
+    "headroomVsPortabilityBudget": 6209,
+    "headroomVsTargetCeiling": 3609,
     "verdict": "TARGET PASS"
   },
   "factory": {
     "runtimeBytes": 2445,
     "initcodeBytes": 2794,
     "immutableSlots": 2,
-    "runtimeSha256": "d3e4a21ecf8ff5737928cadf52c15f7f2ee29f771427523b5a74eb3bfdabcfc1",
+    "runtimeSha256": "7a5cba517c0800ad4dd8c0834dd538a1a0aed92ded54a9f0b9a3eea9c8e42bf4",
     "selectors": 4,
-    "_note": "W2 (K-9 mechanism B + recovery lifecycle) changes NO factory logic: runtime 2,445 and initcode 2,794 are identical to the SD-6/7 head, and the 4 selectors are unchanged. The runtime hash moves anyway because the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR: 32 differing bytes, all inside the 51-byte metadata tail. The previous note stands as history: at SD-6/7 the factory gained +219 bytes of REAL LOGIC (deployVault forwards a third parameter to initialize); predictVault and genesisSalt are untouched by both lanes."
+    "_note": "SD10-I changes NO factory logic either: runtime 2,445 and initcode 2,794 are unchanged and the executable PREFIX is byte-identical (keccak 0x68f71f67...); only the CBOR metadata tail moves, because the factory imports the kernel source and solc hashes every source of the compilation unit into that tail. The same was true of W2, whose note follows. W2 (K-9 mechanism B + recovery lifecycle) changes NO factory logic: runtime 2,445 and initcode 2,794 are identical to the SD-6/7 head, and the 4 selectors are unchanged. The runtime hash moves anyway because the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR: 32 differing bytes, all inside the 51-byte metadata tail. The previous note stands as history: at SD-6/7 the factory gained +219 bytes of REAL LOGIC (deployVault forwards a third parameter to initialize); predictVault and genesisSalt are untouched by both lanes."
   },
   "sd1Remediation": {
     "invariant": "I-FLOOR-SHAPE-IMMUTABLE",
@@ -91,7 +91,7 @@
     "statefulCampaign": "224 campaigns / 12,160 transitions / 0 violations / positive controls 1078 of 1078. SD-4 is now observed by the campaign (3 hits) via G-DECLARATION-SUBORDINATE-TO-RECOVERY; it previously had no campaign property at all and was found only by narrative reasoning."
   },
   "sourceDigests": {
-    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "e922dfdf56cd0fbccc67bf640a8d8ecf2d12b97ce825ffc90c5c0e4d6f0e404e",
+    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "edef95c774ca86495f5bfd41bbf8ff33df439ded78d21bc95f15b01b40d27147",
     "npm/@openzeppelin/contracts@5.6.1/proxy/Clones.sol": "06c768a2b794ea59dd6d6c1bfe33cf5098a4a8921aec14cf066576a2bffafce6",
     "npm/@openzeppelin/contracts@5.6.1/utils/Create2.sol": "9623aa59745a23a72f313adc5adbf583968bf366a7cbf3fc43c1148d7d2c3c86",
     "npm/@openzeppelin/contracts@5.6.1/utils/Errors.sol": "0704b9d6c032cca8512a3bc3f30f49f86f1f03102d2896a3d23e794b82efea66",
@@ -105,7 +105,7 @@
     "npm/@openzeppelin/contracts@5.6.1/utils/math/SignedMath.sol": "1ed50b1056af886752f0fb48a0165d381e69bb4a4b18b893b066dc144a7e08d7",
     "npm/@openzeppelin/contracts@5.6.1/utils/Bytes.sol": "3ce9120a27934c75a074cb785d3a88868069ef6529dbe4dc6b845af0836f3c70",
     "project/prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol": "219e47863e14bc73a464250818ef38e122bc95af7cf6e46783d8f20d990f9bab",
-    "project/prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol": "102df285eff4d7ebd51d08223e372b35e7aa7a21ce4aa9aaec80cb9dcbd80f1c"
+    "project/prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol": "fac59877470845ccd91c51cafad8af6bab3ee0445a13620d9efa6afe100a0726"
   },
   "sd3Remediation": {
     "invariant": "I-DECLARATION-EXHIBITED",
@@ -141,7 +141,11 @@
   "w2RecoveryLifecycle": {
     "status": "COMMITTED — Commit A c182db1099d92ff5830ae71116613c739b034bd9 (parent e6964aeb, tree 4fa06066), the exact object reviewed in Lane W2R (Solidity/model/tests approved unchanged). Every figure in this block was RE-OBSERVED in Lane W2P against a CLEAN checkout of that commit (hardhat clean, compile, measure.ts and reproduce.ts, on both e6964aeb and c182db10) and matched: 18,105 -> 18,425 (+320); selectors 45 -> 46 with exactly +02abce4e, none removed or moved; storage 17 -> 17 identical by slot/offset/label/type/bytes across 11 slots; recovery() ABI byte-identical; factory selectors 4 -> 4 identical, executable prefix 2,392 B identical, 32 differing bytes all inside the 53-byte metadata tail (51-byte CBOR payload plus its 2-byte length)",
     "remediatedOn": "c182db1099d92ff5830ae71116613c739b034bd9",
-    "invariants": ["K-9 mechanism B (guardian-quorum cancellation)", "I-RECOVERY-EFFECTIVE-LIVENESS", "I-RECOVERY-CHALLENGE-EPOCH"],
+    "invariants": [
+      "K-9 mechanism B (guardian-quorum cancellation)",
+      "I-RECOVERY-EFFECTIVE-LIVENESS",
+      "I-RECOVERY-CHALLENGE-EPOCH"
+    ],
     "vulnerableHead": "e6964aeb7a4417bb8b9cc417b93e4c0b29699eed",
     "closes": "SD-9b (expired request blocks migration), SD-9c (guardian-quorum cancellation absent), SD-9d (live request overwritten instead of terminated), SD-9e (expiry equality boundary); SD-9a's remediation hazard is guarded by a permanent mutant. SD-4 and SD-10 are NOT changed; the SD-10 interplay is recorded in SD9_RECOVERY_LIFECYCLE_DEFECTS.md.",
     "beforeRuntime": 18105,
@@ -169,5 +173,17 @@
     "forecast": "W2_IMPLEMENTATION_CONTRACT.md forecast +150–300 B for the cancellation plus ~80 B for liveness/expiry; measured total +320 B, no byte optimisation attempted.",
     "measuredBy": "npx tsx prototype/vnext-kernel/reproduce.ts --json (independent solc 0.8.24 rebuild) and npx tsx prototype/vnext-kernel/measure.ts, both on the source with kernelSourceSha256 above; the pre-W2 figures are the same tools on the e6964aeb source.",
     "regenerationNote": "Lane W2P protocol: STATEFUL_AUTHORITY_EVIDENCE.json and AUTHORITY_CENSUS.json are regenerated by the repository generators from a CLEAN checkout of the ledger-reconciliation commit that follows Commit A (A-prime: defects.ts carries SD-9b/c/d/e remediated, SD-10 sustained, SD-9a as a known gap) and committed in its successor (B) with nothing else, so each receipt's head/tree identifies the tree it measured — A-prime — rather than the commit that contains it. SCANNER_EVIDENCE.json is not regenerated locally (no Slither environment on the authoring machine); Slither and CodeQL are authoritative from the W2 PR's CI runs. generate-stateful-evidence.ts prefers this block."
+  },
+  "sd10Preservation": {
+    "invariant": "I-APPROVED-REQUEST-PRESERVATION",
+    "closes": "SD-10 (an approved recovery request stranded by a guardian-set replacement)",
+    "vulnerableHead": "a42f5c7e2d517cd25a0fc0c9d90599648f5282a9",
+    "remediatedOn": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+    "beforeRuntime": 18425,
+    "afterRuntime": 18367,
+    "totalDelta": -58,
+    "beforeRuntimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e",
+    "afterRuntimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
+    "_note": "THE FIRST NEGATIVE DELTA IN THIS FILE. The remediation DELETES one statement from executeRecovery (the execution-time re-validation of an already-admitted recovery against the current guardianGeneration) and adds only comments, so the kernel gets SMALLER. Both figures were re-derived on a clean checkout of Commit A with the pinned solc (0.8.24, cancun, optimizer runs 200) and independently reproduced by reproduce.ts and by the Hardhat artifact, which agree byte-for-byte. Storage layout (17 entries), ABI hash, 46 selectors, 15 events, 24 errors and the factory executable prefix are all unchanged; only the CBOR metadata tails move."
   }
 }

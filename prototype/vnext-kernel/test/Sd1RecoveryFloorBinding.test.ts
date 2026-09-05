@@ -540,9 +540,17 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
       await expectRecoveryExecutes(w, cred, pq, "R7a");
     });
 
-    it("a stale guardian generation still invalidates an approved request", async function () {
+    it("a guardian-set change does NOT invalidate an approved request (SD-10 corrected); the possession digest is unmoved by it", async function () {
+      // INVERTED BY LANE SD10-I. This R7 probe asserted `BadRoster` — it pinned
+      // what the kernel did, and what the kernel did was SD-10. Its place in the
+      // R7 series is "the armed possession digest is not moved by things that
+      // happen around it", and that claim is UNCHANGED and now carries further:
+      // the digest binds `boundGuardianGeneration`, which stays pinned at the
+      // approving generation, so the roster change moves neither the digest nor
+      // the request's executability.
       const w = await deployWorld({ label: "sd1-r7b", verifier: "honest" });
       const { cred, pq } = await initiate(w);
+      const armed = (await w.vault.recoveryPossessionDigest()) as string;
       const gGen = (await w.vault.guardianGeneration()) as bigint;
       const nonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
       const newCommitment = ethers.keccak256(
@@ -577,11 +585,10 @@ describe("vNext kernel — SD-1 REMEDIATION: I-FLOOR-SHAPE-IMMUTABLE", function 
           FAR_DEADLINE,
         )
       ).wait();
+      expect((await w.vault.guardianGeneration()) as bigint, "the generation advanced").to.equal(gGen + 1n);
+      expect(await w.vault.recoveryPossessionDigest(), "a roster change must not move the PoP digest").to.equal(armed);
       await networkHelpers.time.increase(7 * DAY + 1);
-      await expect(w.vault.executeRecovery(await recoveryChange(w, cred, pq))).to.be.revertedWithCustomError(
-        w.vault,
-        "BadRoster",
-      );
+      await expectRecoveryExecutes(w, cred, pq, "R7b");
     });
 
     it("a consumed recovery cannot be replayed", async function () {

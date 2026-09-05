@@ -983,31 +983,53 @@ describe("W2 — frozen recovery lifecycle on the real artifact", () => {
   // =========================================================================
   // H. SD-10 interplay — BLAST RADIUS RECORDED, NOT REMEDIATED
   // =========================================================================
-  describe("H. SD-10 (guardian rotation strands an approved request) under W2 — recorded, not absorbed", () => {
-    it("H1 a rotated-away request is still effectively live: it blocks re-initiation and migration until the NEW quorum cancels it or it expires", async function () {
+  describe("H. a rotated-across request under W2 — SD-10's stranding REMOVED, W2's liveness rules unchanged", () => {
+    it("H1 a request that outlived a roster change is effectively live: it blocks re-initiation and migration, and (since Lane SD10-I) it EXECUTES at maturity", async function () {
       this.timeout(600_000);
-      // W2 changes setGuardians in NO way. What changes is the observable shape
-      // of SD-10: before W2 the stranded request could be overwritten directly;
-      // after W2 it is effectively live and therefore blocks a fresh initiation
-      // (BadState) and migration (NoRecovery) until expiry — and the quorum's
-      // explicit exit clears it at once, because the cancellation digest binds
-      // the CURRENT guardian generation, not the stranded request's. Two acts
-      // where there used to be one silent overwrite; no clock touched.
+      // W2 changes `setGuardians` in NO way, and neither did Lane SD10-I. What
+      // this test used to record was SD-10's blast radius under W2: the request
+      // was STRANDED (BadRoster at maturity) yet still effectively live, so it
+      // blocked a fresh initiation and migration until the quorum's explicit
+      // exit cleared it — two acts where there had been one silent overwrite.
+      //
+      // INVERTED BY LANE SD10-I, same sequence, verdict moved. Removing
+      // `executeRecovery`'s execution-time generation re-check means the request
+      // is no longer stranded. EVERY W2 ASSERTION IS RETAINED AND STILL FIRES:
+      // an effectively-live request still blocks initiation (BadState) and
+      // migration (NoRecovery), because those rules are about LIVENESS and were
+      // never about the generation. Only the verdict on `executeRecovery` moved
+      // — from `BadRoster` to success — and with it the need for the quorum's
+      // cancellation as a REMEDY. Mechanism B is unchanged and is exercised in
+      // section A; here there is simply nothing left to rescue.
       const w = await deployWorld({ label: "w2-h1" });
       const v = w2(w);
       const c = mkCred("h1");
       await (await propose(w, v, c)).wait();
+      const boundGen = (await v.recovery())[R.GUARDIAN_GEN] as bigint;
       await (await setGuardiansSame(w, v)).wait();
-      // Stranded: matured but bound to the superseded generation.
+      expect((await v.guardianGeneration()) as bigint, "the generation moved past the request's").to.equal(
+        boundGen + 1n,
+      );
+
+      // Matured, and bound to a superseded generation — which is now PROVENANCE
+      // rather than a gate.
       await networkHelpers.time.increase(7 * DAY + 1);
-      await expect(execute(w, v, c)).to.be.revertedWithCustomError(v, "BadRoster");
       expect(await isActive(v), "still stored active").to.equal(true);
-      // ...and still effectively live, so it blocks.
+      expect((await v.recovery())[R.GUARDIAN_GEN] as bigint, "provenance frozen at the approving generation").to.equal(
+        boundGen,
+      );
+
+      // W2, UNCHANGED: effectively live means it blocks.
       await expect(propose(w, v, mkCred("h1-next"))).to.be.revertedWithCustomError(v, "BadState");
       await expect(bindMigration(w, v, w.credKey)).to.be.revertedWithCustomError(v, "NoRecovery");
-      // The remedy is the quorum's own exit, under the CURRENT generation.
-      await (await quorumCancel(w, v)).wait();
-      expect(await isActive(v)).to.equal(false);
+
+      // SD10-I, INVERTED: the call that reverted `BadRoster` on every kernel up
+      // to a42f5c7e now completes.
+      await (await execute(w, v, c)).wait();
+      expect(await v.ecdsaSigner(), "the rotated-across request installed").to.equal(addrOf(c.nominee));
+      expect(await isActive(v), "consumed by execution").to.equal(false);
+
+      // And the blocking clears with it — no cancellation was needed.
       const fresh = mkCred("h1-fresh");
       await (await propose(w, v, fresh)).wait();
       await networkHelpers.time.increase(7 * DAY + 1);
