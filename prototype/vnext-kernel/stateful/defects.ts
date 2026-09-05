@@ -13,9 +13,11 @@
  * `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, and SD-9b, SD-9c, SD-9d and SD-9e
  * together by Lane W2's recovery lifecycle (K-9 mechanism B,
  * `I-RECOVERY-EFFECTIVE-LIVENESS`, `I-RECOVERY-CHALLENGE-EPOCH`; Commit A
- * c182db1099d92ff5830ae71116613c739b034bd9). SD-2, SD-4, SD-5, SD-8 and SD-10
- * stand, each
- * for a stated reason rather than for want of effort. The history of each closure is
+ * c182db1099d92ff5830ae71116613c739b034bd9), and SD-10 by Lane SD10-I's removal
+ * of `executeRecovery`'s execution-time generation re-check
+ * (`I-APPROVED-REQUEST-PRESERVATION`; Commit A
+ * c32e0d748390b79f4163ad4a783c2467cf502e30). SD-2, SD-4, SD-5 and SD-8 stand,
+ * each for a stated reason rather than for want of effort. The history of each closure is
  * preserved rather than rewritten: every closed entry moved OUT of
  * `SUSTAINED_DEFECTS` and INTO `REMEDIATED_DEFECTS` below, carrying the head it
  * was SUSTAINED at, the invariant that closed it, the designs rejected on the
@@ -36,8 +38,9 @@
  * and SD-7 arrived; SD-6 and SD-7 then left too, and SD-8 arrived as the declared
  * residual of SD-7's fix; SD-9b, SD-9c, SD-9d and SD-9e were recorded by Lane W1
  * (4b912726 — outside this file, by that lane's choice) and left with Lane W2's
- * implementation, and SD-10, recorded by the same lane, arrived here as
- * sustained. Every one of those arrivals came from RE-DERIVING what
+ * implementation; SD-10, recorded by the same lane, arrived here as sustained
+ * and then LEFT with Lane SD10-I, whose one-statement removal also discharged
+ * SD-9d's residual pointer. Every one of those arrivals came from RE-DERIVING what
  * the previous lane had recorded instead of trusting it, and each round found a
  * wrong claim: SD-3's title overstated its severity; SD-3's own minimal fix
  * sketch would not have closed it; SD-7's deferral rested on a false statement
@@ -180,25 +183,6 @@ export const SUSTAINED_DEFECTS: readonly SustainedDefect[] = [
       "TWO FAMILIES WERE BUILT AND BOTH REJECTED, and recording why is the point of this entry. (1) An INTERLOCK refusing the declaration while a live approved request exists was implemented, measured and REMOVED: the declaration is one-shot and no guardian path can ever write `securityFloor`, so the refusal hands the quorum a renewable, uncounted veto over a capability it cannot itself exercise — the quorum's renewal is unmetered (at the time a direct overwrite; since Lane W2 `cancelRecoveryByQuorum` followed by a fresh initiation, so the veto is unchanged and the rejection stands) while the credential's counter-move is capped — pinning an ECDSA-only vault at cut 1 forever. Trading a bounded one-shot credential harm for an unbounded guardian one is not a remediation. (2) METERING the destruction against `challengesUsed` fails for a subtler reason: a counter has teeth only through its REFUSAL, and refusing a ONE-SHOT transition is permanent deprivation, so metering moves the irreversibility from the attacker to the defender. (3) THAT CLAIM WAS WRONG, AND THE CORRECTION IS EXECUTABLE. This field previously ended: 'The only design that closes this soundly RECORDS THE PROPOSED KEY AND SIGNATURE LENGTHS IN RecoveryRequest at initiateRecovery and measures the recovery against the REQUEST rather than the live floor.' That design was BUILT — the two uint32 fields added, bound into the guardian digest, threaded into `_requireIncomingPossession`, with `rotateCredential` left on the live floor — compiled and executed in test/Sd4SnapshotAdjudication.test.ts. It DOES close SD-4, and it BRICKS THE VAULT: the recovery installs a commitment of the request's shape under a floor frozen at a different one, so `_authorise` then demands both `|pqKey| == floor.pqPublicKeyLength` and `keccak256(pqKey) == pqPublicKeyHash`, which are jointly unsatisfiable. The remedy APPEARS to succeed and the vault is dead — strictly worse than today, where the quorum sees a revert and re-proposes at the correct shape for the same one-cycle cost. It also drives a commitment past the shape agreement that `I-DECLARATION-EXHIBITED` and `I-COMMITMENT-EXHIBITED-AT-ADMISSION` exist to enforce. (4) THE ONLY FAMILY THAT CAN ACTUALLY PRESERVE THE REMEDY — letting a completed recovery RE-DECLARE the floor shape to the material it just proved — was also built and executed. It works, and it moves AUTHORITY.md's 'Silent crypto downgrade' row from `unreachable` to `k`: two guardians alone drive an honestly-armed 32/65 vault to a one-byte key and one-byte signature shape, with no credential participation. (5) THE GENERAL CONCLUSION THAT FOLLOWED — an inherent liveness cost, with no further family possible — was REFUTED in Lanes T–W1.2 (a ratification family that is neither design A nor design E exists) and is deliberately NOT restated here; every intermediate conclusion, the refuted ones included, is preserved by pointer in prototype/vnext-kernel/SD4_TEMPORAL_ADJUDICATION.md, SD4_LANE_U_ADJUDICATION.md, SD4_LANE_V_ADJUDICATION.md, SD4_LANE_V2_ADJUDICATION.md and SD4_LANE_W_SEMANTIC_FREEZE.md, and in AUTHORITY.md's append-only correction. Every such family was then itself killed on temporal authority or by the generalised CLOCK RULE of docs/Vault_vNext_Architecture.md ('no state transition may reset, extend, or suspend' any clock), and the architecture-native path dominates them all. THE STANDING DISPOSITION, canonical in docs/Vault_vNext_Recovery_Amendment.md section 4: SD4_DEDICATED_REMEDIATION = NOT_REQUIRED; G_PRIME_INCREMENTAL_VALUE = NONE_ESTABLISHED; the exit is architecture-native — LIVE request: guardian-quorum cancellation (cancelRecoveryByQuorum, K-9 mechanism B, implemented in Lane W2) and then a correctly-shaped fresh recovery; EXPIRED request: a fresh recovery directly. That exit repairs SD-4 at every timing without touching a clock and is executable on the W2 kernel (test/W2RecoveryLifecycle.test.ts sections A and D; test/Sd4SnapshotAdjudication.test.ts's conformant cancel-then-re-propose), and it does NOT close SD-4: the destroying transition is still admitted and uncounted, which is why this entry stays SUSTAINED and its property still fires. What survives of the earlier prose is the narrow fact: once requirePq holds, the floor shape is the vault's permanent authentication policy, so designs A and E remain rejected.",
     reproducedBy:
       "prototype/vnext-kernel/test/Sd34AuthenticationSatisfiability.test.ts (the sustained sequence); test/Sd4RecoverySemantics.test.ts (the exact predicate, both length branches, the digest proof and a positive control); test/Sd4SnapshotAdjudication.test.ts (the two candidate fixes, COMPILED AND EXECUTED, and why each is rejected); test/Sd1RecoveryFloorBinding.test.ts ('RESIDUAL — SD-4 ... STILL SUSTAINED', re-run on the W2 kernel in Lane W2P)",
-  },
-  {
-    id: "SD-10-approved-request-stranded-by-guardian-rotation",
-    title:
-      "setGuardians is admitted while a quorum-approved recovery request is live, and the generation bump STRANDS the request: stored active, unexecutable at maturity (BadRoster), cleared by no principal until it expires or the NEW quorum cancels it",
-    property: null,
-    rootsRequired:
-      "k = the guardian quorum itself — the same principal class that approved the request, acting through setGuardians under the CURRENT commitment. No credential, no outsider, no principal below the declared guardian cut.",
-    contradicts:
-      "docs/Vault_vNext_Architecture.md, I-APPROVED-REQUEST-PRESERVATION (T1): 'Once a request reaches quorum, a guardian-set replacement cannot clear it.' The reference model DENIES the replacement while an approved request exists (test/VaultVNextArchitectureModel.test.ts, 'I-APPROVED-REQUEST-PRESERVATION — a guardian-set replacement cannot clear an approved request'); the kernel admits it, and the request is cleared IN EFFECT — destroyed as authority while its bytes remain.",
-    rootCause:
-      "`setGuardians` consults nothing about `recovery`, and `executeRecovery` requires `r.boundGuardianGeneration == guardianGeneration` (BadRoster). Generation binding is what correctly kills a STALE constituency's authority (stateful mutant M16-recovery-ignores-roster-generation is a P-CUT/CREDENTIAL_REPLACEMENT kill), and it kills a request the SAME constituency approved one block earlier just as thoroughly. Nothing then clears the stranded request: it stays stored `active`, and since Lane W2 it is effectively live until `expiresAt`, so it blocks a fresh initiation (BadState) and migration (NoRecovery) until the new quorum's explicit exit or expiry.",
-    classification: "LIVENESS_DENIAL",
-    notAnEscalationBecause:
-      "It reduces no cut: the stranding act is a k-quorum act, and the request it strands was itself approved at k, so nothing becomes reachable below its declared cut. The harm is one lost recovery cycle for a quorum that rotated mid-request, and it is escapable at k — the NEW quorum cancels the stranded request (cancelRecoveryByQuorum's digest binds the CURRENT generation) and re-proposes. Before W2 that exit was a silent overwrite; W2 made it two explicit, observable acts and touched no clock (blast radius recorded in SD9_RECOVERY_LIFECYCLE_DEFECTS.md and test/W2RecoveryLifecycle.test.ts section H).",
-    minimalFixSketch:
-      "NOT DECIDED HERE, by the W2 contract's explicit exclusion, and NOT BUILT. Two candidate families: (a) DENY setGuardians while a request is effectively live — the reference model's semantics; the quorum first cancels through mechanism B, which costs one explicit act and keeps generation binding intact; (b) PRESERVE the request across a rotation by re-binding it to the new generation — rejected in principle, because generation binding is exactly what kills a stale constituency's authority (mutant M16), and a request re-bound to a roster that never approved it is that mutant wearing a different hat. A costed decision between (a) and leaving the defect recorded belongs to a lane of its own.",
-    reproducedBy:
-      "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts (the ledger's own reproduction on the W2 kernel, with the exit at k asserted as the bound); test/W2RecoveryLifecycle.test.ts section H (H1: stranded, still effectively live, blocks re-initiation and migration, cleared only by the new quorum); test/Sd4LaneV.test.ts 'D' (the original measurement — the kernel strands, the model denies); test/Sd4LaneW12.test.ts A9 (observed identically under both epoch representations)",
   },
 ];
 
@@ -354,7 +338,17 @@ export const REMEDIATED_DEFECTS: readonly RemediatedDefect[] = [
       "KEEPING OVERWRITE as the quorum's only exit — Lane V's AUTHORITY_GENUINELY_CONFLICTS verdict — superseded once K-9 mechanism B exists in the architecture (its load-bearing reason was that overwrite was the sole exit). Refusing AFTER _consume — rejected: it would burn a guardian nonce on a refused call and break premise 4 of the replay proof (a stale cancel before a replacement consumes nothing). Refusing on the raw stored flag — rejected: stale expired storage would block a fresh request forever (mutant M-K9-expired-request-blocks-initiation). Removing the guard altogether is the defect itself and is the permanently killed mutant M-K9-live-overwrite-allowed.",
     invertedReproduction:
       "test/W2RecoveryLifecycle.test.ts C1/C2 (live before and after maturity: BadState, guardian nonce unconsumed, request intact), E3 (same block, both orders: exactly one transaction succeeds and it is the initiation) and G1 (overwrite ordering: refused while live; cancel-then-R2 and expire-then-R2 both create R2). The original measurements, Sd4LaneV B2 and A1, are pinned to the pre-W2 fixture; the stateful model's recordInitiation now returns an SD-9d violation if the previous episode is still live at the mined timestamp.",
-    residual: "SD-10-approved-request-stranded-by-guardian-rotation",
+    // RESIDUAL DISCHARGED, and recorded rather than silently blanked. This entry
+    // named SD-10-approved-request-stranded-by-guardian-rotation as the residual
+    // W2 did not close: W2 changed the stranding's blast radius (a stranded
+    // request became effectively live, so it blocked re-initiation and migration
+    // until the new quorum cancelled it) without touching the stranding itself.
+    // Lane SD10-I closed SD-10 on Commit A c32e0d74, so the pointer is now null:
+    // this file's own contract is that "a residual pointing at a closed defect
+    // would be stale evidence", and the ledger test refuses it. The history is
+    // kept here in prose and in SD-10's own REMEDIATED entry, which names this
+    // one's head as the point from which it was still open.
+    residual: null,
   },
   {
     id: "SD-9e-expiry-equality-boundary",
@@ -370,6 +364,22 @@ export const REMEDIATED_DEFECTS: readonly RemediatedDefect[] = [
       "KEEPING `>` and documenting a closed window — rejected: the model is uniformly `>=` on every expiry and `>` only on a deadline, and the kernel's own containment uses `>= containedUntil`, so the outlier was a conformance defect rather than a convention; Lane W's earlier `<=` reading was itself superseded by Lane W1 after re-deriving the boundary from the model rather than from the artifact under review. Closing BOTH the predicate and the execute check (`<=` and `>`) — that is the permanently killed mutant M-K9-expiry-inclusive-off-by-one.",
     invertedReproduction:
       "test/W2RecoveryLifecycle.test.ts B1–B4 (the expiresAt-1 / expiresAt / expiresAt+1 matrix with mined-block timestamps: live, expired, expired) and G3 (the exact race — three transactions mined at consecutive instants in ONE world). The boundary probes carry an explicit gasLimit so Hardhat mines the reverting transaction and the asserted timestamp is the mined one. The original measurement, Sd4LaneW1's E-series, recorded `>` on c67d1439.",
+    residual: null,
+  },
+  {
+    id: "SD-10-approved-request-stranded-by-guardian-rotation",
+    title:
+      "setGuardians was admitted while a quorum-approved recovery request was live, and the generation bump STRANDED the request: stored active, unexecutable at maturity (BadRoster), cleared by no principal until it expired or the NEW quorum cancelled it",
+    sustainedAt: "4b9127269602d8eab3700d96dda4d5cfcf2e0d55",
+    remediatedOn: "c32e0d748390b79f4163ad4a783c2467cf502e30 (security/vnext-sd10-approved-recovery-preservation, Lane SD10-I Commit A)",
+    invariant:
+      "I-APPROVED-REQUEST-PRESERVATION (docs/Vault_vNext_Architecture.md:951): 'Once a request reaches quorum, a guardian-set replacement cannot clear it.' PRESERVED MEANS STILL EXECUTABLE, not merely still stored — the defect left the request in storage and destroyed it as authority. ROOT CAUSE: executeRecovery REVALIDATED an already-admitted recovery against the CURRENT guardianGeneration. REMEDIATION: remove that execution-time invalidation. RETAINED: boundGuardianGeneration remains the generation that APPROVED the request and remains bound into recoveryPossessionDigest(), so a possession proof signed before a rotation is still the right proof after one. FRESH AUTHORITY IS UNCHANGED: every new guardian authorization — initiation, quorum cancellation, setGuardians, containment, migration binding — still binds the CURRENT guardian commitment and the CURRENT generation, so a replaced roster holds no fresh authority of any kind. Guardian-generation binding was NOT removed; only its misuse as a re-check on an effect the kernel had already admitted.",
+    sourceDelta:
+      "ONE statement deleted from executeRecovery: `if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();`, and its comment replaced by a @dev note distinguishing the two generations. Nothing else in Solidity: the RecoveryRequest struct, storage layout, ABI, 46 selectors, 15 events and 24 errors are unchanged, the factory's executable prefix is byte-identical, setGuardians is untouched, no clock moves and no possession gate is relaxed. Measured on the pinned solc (0.8.24, cancun, optimizer runs 200): kernel runtime 18,425 -> 18,367 B (-58), initcode 18,466 -> 18,408 B (-58).",
+    rejectedAlternatives:
+      "T (setGuardians clears recovery.active on rotation) — a DIRECT violation and worse than the defect: it destroys the effect rather than stranding it, and Hazard Register H-03 names exactly that legacy behaviour as a T1 hazard CAUSE; permanent mutant M-SD10-T-ROTATION-AUTO-TERMINATES-REQUEST. B (setGuardians reverts while a recovery is effectively live) — CONFORMANT with the invariant and NOT an authority-cut violation, rejected as an unnecessary liveness/governance restriction that makes rotating a compromised seat out conditional on first terminating the quorum's own pending remedy; permanent mutant M-SD10-B-ROTATION-BLOCKED-WHILE-REQUEST-LIVE. R (ratify the request under the new generation) — +1 selector, +1 event, ~292 bytes, an extra guardian act, and it REBINDS the possession digest so a pre-signed proof is refused; its end state is identical to the adopted design, so it buys nothing. RE-BINDING boundGuardianGeneration to the new generation — the family THIS ENTRY's own former minimalFixSketch considered and rejected, on the grounds that a request re-bound to a roster that never approved it is mutant M16 wearing a different hat; that rejection STANDS and is not what was built. The adopted design is a third family the old sketch never enumerated: freeze the provenance, remove only the re-check.",
+    invertedReproduction:
+      "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts (the ORIGINAL sequence, step for step, with the verdict moved: the same formerly-stranded R1 now executes after the same roster re-commitment); test/Sd10ApprovedRequestPreservation.test.ts (23 tests — preservation across one and three rotations, the replaced roster's total loss of fresh authority with positive controls, the current quorum's cancellation, the half-open expiry boundary at expiresAt-1/expiresAt/expiresAt+1 at mined instants, same-block ordering in both directions, four incoming-possession probes, and the challenge epoch); test/Sd10PreservationMutations.test.ts (the inverse mutant M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST, which reinstates the exact deleted statement and is denied kill credit unless the observation is precisely a preserved, mature, validly-proven request being refused); test/W2RecoveryLifecycle.test.ts H1, test/Sd1RecoveryFloorBinding.test.ts R7b and test/Sd4LaneV.test.ts D (three further reproductions inverted in place — Lane V's D had recorded a TWO-SIDED divergence, kernel admitted-then-refused versus model refused, now closed on both sides).",
     residual: null,
   },
 ];

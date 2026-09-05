@@ -94,7 +94,7 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e remediated; SD-2 and SD-10 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
@@ -106,12 +106,11 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
       "SD-4-ecdsa-only-shape-declaration-is-uncounted",
       "SD-5-permanent-shape-capture-on-the-declaring-edge",
       "SD-8-genesis-exhibit-cannot-prove-well-formedness",
-      "SD-10-approved-request-stranded-by-guardian-rotation",
     ];
     expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
       [...SUSTAINED_IDS].sort(),
     );
-    expect(SUSTAINED_DEFECTS.length).to.equal(5);
+    expect(SUSTAINED_DEFECTS.length).to.equal(4);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -137,6 +136,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
       "SD-9c-guardian-quorum-cancellation-absent",
       "SD-9d-live-request-overwrite",
       "SD-9e-expiry-equality-boundary",
+      "SD-10-approved-request-stranded-by-guardian-rotation",
     ];
     for (const closed of REMEDIATED_IDS) {
       expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
@@ -147,7 +147,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
       [...REMEDIATED_IDS].sort(),
     );
-    expect(REMEDIATED_DEFECTS.length).to.equal(8);
+    expect(REMEDIATED_DEFECTS.length).to.equal(9);
     // A defect is sustained or remediated, never both, and never twice.
     const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
     expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
@@ -156,6 +156,8 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     expect(everyId.some((id) => id.toLowerCase().includes("sd-9a")), "SD-9a is not a defect entry").to.equal(false);
     // Lane W2's four closures name their exact source identities.
     const W1_RECORD = "4b9127269602d8eab3700d96dda4d5cfcf2e0d55";
+    const W1_RECORD_SD10 = W1_RECORD;
+    const SD10_COMMIT_A = "c32e0d748390b79f4163ad4a783c2467cf502e30";
     const W2_COMMIT_A = "c182db1099d92ff5830ae71116613c739b034bd9";
     for (const id of REMEDIATED_IDS.filter((x) => x.startsWith("SD-9"))) {
       const r = REMEDIATED_DEFECTS.find((x) => x.id === id)!;
@@ -165,10 +167,23 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
         "W2RecoveryLifecycle.test.ts",
       );
     }
-    // SD-10 is present, has no campaign oracle, and is reproduced in THIS file.
-    const sd10 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-10-approved-request-stranded-by-guardian-rotation")!;
-    expect(sd10.property, "SD-10 has no campaign property; its reproduction is deterministic").to.equal(null);
-    expect(sd10.reproducedBy ?? "", "SD-10 names this file").to.include("StatefulSustainedDefects.test.ts");
+    // SD-10 moved to REMEDIATED in Lane SD10-P. It names the commit that fixed
+    // it, the head it was sustained at, and the inverted reproduction — and it
+    // still names THIS file, because the original sequence lives here with its
+    // verdict moved rather than deleted.
+    const sd10 = REMEDIATED_DEFECTS.find((r) => r.id === "SD-10-approved-request-stranded-by-guardian-rotation")!;
+    expect(sd10, "SD-10 is recorded as remediated").to.not.equal(undefined);
+    expect(sd10.sustainedAt, "SD-10 was first recorded by Lane W1").to.equal(W1_RECORD_SD10);
+    expect(sd10.remediatedOn, "SD-10 names Lane SD10-I's Commit A").to.include(SD10_COMMIT_A);
+    expect(sd10.invertedReproduction, "SD-10 still names this file").to.include("StatefulSustainedDefects.test.ts");
+    expect(sd10.invertedReproduction, "and the permanent SD-10 suite").to.include(
+      "Sd10ApprovedRequestPreservation.test.ts",
+    );
+    expect(sd10.residual, "SD-10 leaves no residual").to.equal(null);
+    // The remediation must NOT overstate itself: generation binding survives.
+    expect(sd10.invariant, "the entry must not claim generation binding was removed").to.include(
+      "Guardian-generation binding was NOT removed",
+    );
     // SD-4 stays sustained on its campaign property, and its entry carries the
     // canonical disposition rather than the refuted general claims.
     const sd4 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-4-ecdsa-only-shape-declaration-is-uncounted")!;
@@ -437,17 +452,28 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
 
   // =====================================================================
   /**
-   * SD-10 — SUSTAINED. Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md),
-   * measured there on the pre-W2 kernel (Sd4LaneV "D"), and RE-MEASURED HERE on
-   * the W2 kernel, because W2 changed the defect's BLAST RADIUS without touching
-   * `setGuardians`: a request stranded by a generation bump is still stored
-   * `active` and, since W2, still EFFECTIVELY LIVE — so it now blocks a fresh
-   * initiation (BadState) and migration (NoRecovery) until the NEW quorum cancels
-   * it or it expires. This test asserts the defective behaviour on purpose, and
-   * then the exit at k as the bound on the claim, so a fix cannot land silently
-   * while the ledger still calls the request stranded.
+   * SD-10 — REPRODUCTION INVERTED IN LANE SD10-I; LEDGER ENTRY MOVED TO
+   * REMEDIATED_DEFECTS IN LANE SD10-P.
+   *
+   * Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md), measured
+   * on the pre-W2 kernel (Sd4LaneV "D") and re-measured on the W2 kernel, this
+   * test used to assert the defective behaviour on purpose: at maturity the
+   * approved request reverted `BadRoster`, stayed stored `active`, and — since
+   * W2 — blocked a fresh initiation until the new quorum cancelled it.
+   *
+   * The SAME deterministic sequence now runs to the OPPOSITE end. Lane SD10-I
+   * removed `executeRecovery`'s execution-time generation re-check, so the
+   * request the quorum approved survives the quorum's own roster re-commitment
+   * and executes. Every step below is unchanged except the verdict — that is
+   * what makes this an INVERSION rather than a new test.
+   *
+   * THE LEDGER MOVE HAS NOW HAPPENED. A `RemediatedDefect` entry must name the
+   * head it was remediated ON, which did not exist while SD10-I was an
+   * uncommitted object; Lane SD10-P created that head (Commit A) and filed the
+   * entry against it. The final assertion below is now the INVERSE of the one
+   * that pinned the divergence, and it still fails if either side moves alone.
    */
-  it("SD-10 — SUSTAINED: a guardian-set replacement STRANDS an approved request, which stays stored active and (since W2) blocks re-initiation until the NEW quorum cancels it", async function () {
+  it("SD-10 — REMEDIATED: a guardian-set replacement PRESERVES the approved request, which matures and executes; ledger and behaviour agree", async function () {
     const w = await deployWorld({ label: "sd10", verifier: "honest" });
     const guardianAuth = async (actionType: string, params: string) => {
       const nonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
@@ -492,38 +518,46 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     ).wait();
     expect((await w.vault.guardianGeneration()) as bigint, "the generation bumped").to.equal(boundGeneration + 1n);
 
-    // 3. SUSTAINED: at maturity the approved request is unexecutable — the
-    //    generation binding that correctly kills a STALE constituency's authority
-    //    (stateful mutant M16) kills the request this SAME constituency approved —
-    //    and it is still stored active with no challenge consumed.
+    // 3. INVERTED: the generation bump left the request untouched. It is still
+    //    the SAME request — its clocks did not move, and `boundGuardianGeneration`
+    //    is still the generation that APPROVED it, now one behind the current
+    //    one. That field is approval PROVENANCE; it is no longer re-checked at
+    //    execution time, which is the whole of the correction.
+    const preserved = await w.vault.recovery();
+    expect(preserved[7], "INVERTED: still stored active — the replacement cleared nothing").to.equal(true);
+    expect(preserved[5] as bigint, "INVERTED: still bound to the APPROVING generation").to.equal(boundGeneration);
+    expect(Number(preserved[6]), "no challenge was consumed").to.equal(0);
+
+    // 4. INVERTED: at maturity the approved request EXECUTES. This is the exact
+    //    call that reverted `BadRoster` on every kernel up to a42f5c7e.
     await networkHelpers.time.increase(7 * DAY + 1);
-    await expect(
-      w.vault.executeRecovery(await change(cred1, pq1)),
-      "SUSTAINED (SD-10): the approved request is destroyed in effect",
-    ).to.be.revertedWithCustomError(w.vault, "BadRoster");
-    const stranded = await w.vault.recovery();
-    expect(stranded[7], "SUSTAINED: still stored active").to.equal(true);
-    expect(Number(stranded[6]), "SUSTAINED: no challenge was consumed — no principal ended it").to.equal(0);
+    await (await w.vault.executeRecovery(await change(cred1, pq1))).wait();
+    expect(await w.vault.ecdsaSigner(), "INVERTED (SD-10): the approved request installed").to.equal(addrOf(cred1));
+    expect((await w.vault.recovery())[7], "consumed by execution").to.equal(false);
 
-    // 4. W2 BLAST RADIUS (recorded, not remediated): the stranded request is still
-    //    effectively live, so a fresh initiation is refused as an overwrite.
-    await expect(
-      initiate(w.spareCred[1]!, w.sparePq[1]!),
-      "W2: a stranded request blocks re-initiation until it is cleared",
-    ).to.be.revertedWithCustomError(w.vault, "BadState");
-
-    // 5. THE BOUND ON THE CLAIM: escapable at k, and by no smaller principal. The
-    //    NEW quorum's explicit exit (K-9 mechanism B, digest bound to the CURRENT
-    //    generation) clears it, and a fresh request then completes.
-    const c = await guardianAuth(ACTION.RECOVER, ethers.id("QUORUM_CANCEL_RECOVERY"));
-    await (await w.vault.cancelRecoveryByQuorum(c.proof, c.nonce, FAR_DEADLINE)).wait();
-    expect((await w.vault.recovery())[7], "cleared by the new quorum").to.equal(false);
+    // 5. THE BLAST RADIUS IS GONE WITH IT. The stranding was what made a request
+    //    linger as an obstacle; with none to strand there is nothing blocking a
+    //    fresh initiation, and no cancel-then-re-propose cycle is needed.
     const cred2 = w.spareCred[1]!;
     const pq2 = w.sparePq[1]!;
     await (await initiate(cred2, pq2)).wait();
     await networkHelpers.time.increase(7 * DAY + 1);
     await (await w.vault.executeRecovery(await change(cred2, pq2))).wait();
-    expect(await w.vault.ecdsaSigner(), "the re-proposed recovery installs").to.equal(addrOf(cred2));
+    expect(await w.vault.ecdsaSigner(), "a subsequent recovery still installs").to.equal(addrOf(cred2));
+
+    // 6. LEDGER AND BEHAVIOUR NOW AGREE. Lane SD10-P moved the entry, so this
+    //    assertion is the inverse of the one that stood while the two diverged.
+    //    It still fails the moment either side moves without the other: putting
+    //    SD-10 back into SUSTAINED_DEFECTS, or reinstating the defect in the
+    //    kernel, breaks it from opposite directions.
+    expect(
+      SUSTAINED_DEFECTS.map((d) => d.id),
+      "SD-10 is no longer a sustained defect",
+    ).to.not.include("SD-10-approved-request-stranded-by-guardian-rotation");
+    expect(
+      REMEDIATED_DEFECTS.map((r) => r.id),
+      "and the sequence above is its inverted reproduction",
+    ).to.include("SD-10-approved-request-stranded-by-guardian-rotation");
   });
 
   // =====================================================================

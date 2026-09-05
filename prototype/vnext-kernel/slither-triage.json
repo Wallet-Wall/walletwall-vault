@@ -2,25 +2,25 @@
   "$schema": "vnext-kernel-slither-triage.v1",
   "description": "Firsthand triage of every Slither finding that touches prototype/vnext-kernel/contracts (see the vNext Kernel PR descriptions and W2S_SCANNER_TRIAGE_RECORD.md for the reachability argument behind each verdict). Keyed by \"<check>|<sorted filename:line elements, de-duplicated across the per-entry-file recompilation crytic-compile's plain solc platform performs>\" -- the same key generate-scanner-evidence.ts computes from a fresh --json run -- at the head named in keyedAt. Re-derived by Lane W2S under the CI-pinned toolchain from raw Slither runs on clean checkouts of the previous head (0faf7247) and the current one: every entry carries a provenance block naming its predecessor key and how identity was proven (UNCHANGED_FINDING_SAME_KEY / UNCHANGED_FINDING_RELOCATED / SEMANTICALLY_CHANGED_FINDING / NEW). generate-scanner-evidence.ts --validate fails if a fresh Slither run surfaces any finding whose key is not in this file, so an untriaged finding cannot silently disappear in a future change; a key that no longer matches any current finding is reported as stale and must be re-derived the same way, never re-keyed by line arithmetic alone.",
   "keyedAt": {
-    "head": "77ea92cfdb79e160f3f3fa1a787edd8390a51be6",
-    "tree": "247727ecb6005185ff97676990b6dbf3966058d4",
-    "previousHead": "0faf724761a2ec32b24f2763a2c1ccd0d2600719",
-    "lane": "W2S",
-    "record": "W2S_SCANNER_TRIAGE_RECORD.md",
+    "head": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+    "tree": "90e1a8020d1caf1132319f55bd1141ba44d07202",
+    "previousHead": "a42f5c7e2d517cd25a0fc0c9d90599648f5282a9",
+    "lane": "SD10-P",
+    "record": "SD10_IMPLEMENTATION_RECORD.md",
     "toolchain": "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f semantics reproduced in a disposable venv: slither-analyzer @ https://github.com/crytic/slither/archive/ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad.tar.gz (reports 0.11.5), crytic-compile 0.4.2, solc-select 1.2.0, solc 0.8.24+commit.e11b9ed9, target prototype/vnext-kernel/contracts, --compile-force-framework solc, --solc-remaps @openzeppelin/=node_modules/@openzeppelin/ (@openzeppelin/contracts 5.6.1 from the lockfile), --solc-args '--evm-version cancun --optimize --optimize-runs 200', --exclude-dependencies, --no-fail-pedantic; Python 3.12.3 locally versus the action image's 3.10 (the only toolchain difference; finding counts and locations matched the CI run on this head exactly)."
   },
   "classifications": {
-    "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486": {
+    "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519": {
       "classification": "FALSE_POSITIVE",
       "rationale": "egress(address) sends to migration.destinationVault, which is set exclusively by bindMigration (guardian quorum AND credential, see AUTHORITY.md section 3 \"Migration takeover\") and re-validated against migration.destinationVaultCodeHash at execution time. egress itself takes no destination parameter -- the detector's premise (an externally-influenced destination) does not hold.",
       "provenance": {
-        "previousKey": "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180",
+        "previousKey": "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306,
-          306
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
     "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792": {
@@ -108,31 +108,31 @@
         ]
       }
     },
-    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494": {
+    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1527": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "egress's two low-level calls are exactly AUTHORITY.md section 5 call sites 4 and 6: empty-calldata value transfer to the bound destination, and a fixed-selector (0xa9059cbb) ERC-20 transfer to the same bound destination. Both destinations come from the committed migration binding, never from a per-call parameter.",
       "provenance": {
-        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1188",
+        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306,
-          306,
-          306
+          33,
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
-    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1504,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1505": {
+    "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1537,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1538": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "_balanceOf's staticcall is AUTHORITY.md section 5 call site 6's balanceOf half: fixed selector 0x70a08231, read-only, used only to measure a settlement (I-NO-FALSE-SETTLEMENT).",
       "provenance": {
-        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1198,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1199",
+        "previousKey": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1504,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1505",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306,
-          306
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
     "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792": {
@@ -235,20 +235,19 @@
         "supersededRationale": "deployVault's two external calls (cloneDeterministicWithImmutableArgs, then initialize) both target the clone address CREATE2 just produced in this same call -- a brand-new contract with no prior code cannot reenter deployVault before it exists. VaultDeployed is emitted after both calls with no state left for a reentrant call to exploit (the factory holds no mutable state at all -- VaultKernelFactoryPrototype.sol's own header: its authority closure is EMPTY)."
       }
     },
-    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1501": {
+    "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1527,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1534": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "egress is documented PERMISSIONLESS with NO discretion (AUTHORITY.md section 1/6): the recipient and asset disposition are fixed by the prior migration binding, so a reentrant call can only re-move balance to the same already-committed destination -- idempotent by construction, not an exploit path.",
       "provenance": {
-        "previousKey": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1180,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1188,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1195",
+        "previousKey": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1501",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306,
-          306,
-          306,
-          306,
-          306
+          33,
+          33,
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
     "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:788,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:791": {
@@ -274,54 +273,57 @@
         "changeNote": "Introduced by c182db10 (W2): the gate if (!recovery.active) became if (!_recoveryIsLive()), which taints the function's later nodes in Slither's node-context dependency. Not present at 0faf7247 or e6964aeb."
       }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1325,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1329,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1333": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1356,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1360,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1364": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "executeRecovery gates on block.timestamp < r.executableAt (TooEarly; RECOVERY_DELAY = 7 days) and, CHANGED BY W2 (SD-9e, Recovery Amendment section 3), on block.timestamp >= r.expiresAt (Expired; RECOVERY_EXPIRY = 14 days): the half-open window [executableAt, expiresAt) that makes execution consistent with _recoveryIsLive(). At expiresAt-1 execution, both cancellations and the migration block all hold; at expiresAt and expiresAt+1 execution reverts Expired, both cancellations revert NoRecovery consuming no nonce and no budget, migration binds, and a fresh initiation is admitted with its own full delay (test/W2RecoveryLifecycle.test.ts B1-B4 and G3, each probe mined at its asserted instant). Re-adjudicated in Lane W2S rather than carried forward: the only difference the change makes to the timestamp argument is that the last authorised instant moved from expiresAt to expiresAt-1, removing the one-second window in which the pre-W2 kernel executed a request every other consumer already treated as expired. Validator discretion is bounded: post-merge L1 timestamps are fixed per 12-second slot (no proposer discretion; the only lever is inclusion), PoW-era skew was at most ~15 s and forward-only (a lagging timestamp cost the miner difficulty and was corrected by the next honest block), and OP-Stack L2 sequencer drift is bounded at 1,800 s relative to the L1 origin -- at most 0.3% of RECOVERY_DELAY and 0.15% of RECOVERY_EXPIRY. Skew moves both bounds of every principal's window together, reads no signature, quorum or possession check, and therefore cannot execute an unmatured or expired request, cannot bypass the quorum that alone creates an active request (initiateRecovery), and cannot reset the challenge epoch, whose only reset is this function's own delete recovery after a successful, authorised execution. Mutant M-K9-expiry-inclusive-off-by-one (> here, <= in the predicate) is killed by the B-series boundary property (test/W2RecoveryLifecycleMutations.test.ts).",
       "provenance": {
-        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1033,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1037,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1038",
-        "relocation": "SEMANTICALLY_CHANGED_FINDING",
-        "changeNote": "Comparison at the expiry bound changed from block.timestamp > r.expiresAt (0faf7247:1038, e6964aeb:1228) to block.timestamp >= r.expiresAt (77ea92cf:1333) in c182db10 (W2, SD-9e). The maturity comparison and the function are otherwise the same construct.",
-        "supersededClassification": "ACCEPTED_DESIGN_TRADEOFF",
-        "supersededRationale": "executeRecovery checks block.timestamp against RECOVERY_DELAY (7 days) / RECOVERY_EXPIRY (14 days) windows. A miner's ~15s timestamp manipulation budget is immaterial at day-scale granularity and grants no capability the guardian quorum did not already grant by initiating recovery."
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1325,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1329,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1333",
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "lineDelta": [
+          31,
+          31,
+          31
+        ],
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1372,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1390": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1405,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1423": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "enterContainment's window/budget arithmetic (CONTAINMENT_WINDOW = 30 days, CONTAINMENT_BUDGET = 6 days) operates at day-scale; ~15s of miner timestamp slack cannot move the budget check's outcome.",
       "provenance": {
-        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1068,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1086",
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1372,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1390",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          304,
-          304
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1453,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1455": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1488": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "retire() checks block.timestamp against BIND_DELAY (7 days). Day-scale window, immaterial to ~15s miner slack, and retire() carries no discretion regardless of exact timing.",
       "provenance": {
-        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1147,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1149",
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1453,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1455",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306,
-          306
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
-    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1480": {
+    "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1513": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
       "rationale": "egress's codehash re-check has no timestamp arithmetic in it that a miner could exploit; the timestamp read here is incidental to the surrounding function, not a comparison a miner can move a meaningful amount.",
       "provenance": {
-        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1169,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1174",
+        "previousKey": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1480",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306,
-          306
+          33,
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
     "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:640,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:651": {
@@ -383,16 +385,16 @@
         "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
       }
     },
-    "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1482": {
+    "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1515": {
       "classification": "FALSE_POSITIVE",
       "rationale": "egress's `moved` is assigned on every path: the if (asset == address(0)) branch assigns it directly, the else branch assigns it from before - remaining. Both branches of the if/else are exhaustive, so `moved` is never read before assignment despite lacking an explicit literal initializer.",
       "provenance": {
-        "previousKey": "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1176",
+        "previousKey": "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1482",
         "relocation": "UNCHANGED_FINDING_RELOCATED",
         "lineDelta": [
-          306
+          33
         ],
-        "proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+        "proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
       }
     },
     "unused-return|prototype/vnext-kernel/contracts/PrototypeMocks.sol:180,prototype/vnext-kernel/contracts/PrototypeMocks.sol:184": {

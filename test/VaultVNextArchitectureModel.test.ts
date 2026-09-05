@@ -331,12 +331,192 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
       expect(m.kernel.recovery, "a request must never be simultaneously unexecutable and undeletable").to.equal(null);
     });
 
-    it("I-APPROVED-REQUEST-PRESERVATION — a guardian-set replacement cannot clear an approved request", function () {
+    it("I-APPROVED-REQUEST-PRESERVATION — a guardian-set replacement is ADMITTED and the approved request survives it intact, still executable", function () {
+      // CORRECTED IN LANE SD10-I. This test used to assert that the replacement
+      // was DENIED. That satisfies the invariant's letter — an act that never
+      // happens clears nothing — but it is candidate B, not the selected
+      // semantics, and it is the reason the model and the kernel disagreed in
+      // two different directions at once: the model refused the rotation, the
+      // kernel admitted it and then refused the request.
       const m = vnext();
       driveToApprovedRecovery(m);
+      const req = m.kernel.recovery!;
+      const approvedUnder = req.boundGuardianGeneration;
+      const clocks = { executableAt: req.executableAt, expiresAt: req.expiresAt };
+
       const outcome = m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3"]);
-      expect(outcome.kind).to.equal("DENIED");
-      expect(m.kernel.recovery).to.not.equal(null);
+      expect(outcome.kind, "the replacement is independently available").to.equal("OK");
+
+      const after = m.kernel.recovery;
+      expect(after, "the replacement cleared nothing").to.not.equal(null);
+      expect(after!.boundGuardianGeneration, "approval provenance is frozen at the approving generation").to.equal(
+        approvedUnder,
+      );
+      expect(m.kernel.guardians.generation, "and the current generation has moved past it").to.equal(approvedUnder + 1);
+      expect(
+        { executableAt: after!.executableAt, expiresAt: after!.expiresAt },
+        "no clock moved: rotation is not a state transition that may reset, extend or suspend one",
+      ).to.deep.equal(clocks);
+
+      // PRESERVED MEANS STILL EXECUTABLE, not merely still stored. The base
+      // kernel's defect was precisely a request that survived in storage and
+      // could no longer be executed by anyone. `driveToApprovedRecovery` has
+      // already warped past RECOVERY_DELAY, so the request is mature here.
+      expect(m.executeRecovery().kind, "the preserved request still executes at maturity").to.equal("OK");
+    });
+
+    /**
+     * THE QUORUM-SIZE SEAM, found by independent review after the first draft of
+     * this correction, and then found to have three further surfaces.
+     *
+     * `requiredSupports()` is `floor(members / 2) + 1` over the roster IN FORCE.
+     * Admitting the replacement without LATCHING approval left every question
+     * about a stored request's approval being re-derived under whoever holds
+     * authority later. The four tests below are the four surfaces, each measured
+     * before it was fixed. Every one of them uses a roster of a DIFFERENT SIZE:
+     * a same-size rotation cannot distinguish the latched model from the
+     * re-deriving one, which is exactly why the first draft passed.
+     */
+    it("I-APPROVED-REQUEST-PRESERVATION — approval is LATCHED, so rotating to a LARGER roster with a HIGHER quorum cannot strand the request", function () {
+      const m = vnext();
+      expect(m.requiredSupports(), "genesis quorum is 2 of 3").to.equal(2);
+      driveToApprovedRecovery(m);
+      expect(m.kernel.recovery!.approved, "quorum reached under the roster in force").to.equal(true);
+
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+      expect(m.requiredSupports(), "the quorum in force is now 3").to.equal(3);
+      expect(m.kernel.recovery!.supports.length, "still only the two supports it was approved with").to.equal(2);
+      expect(m.kernel.recovery!.approved, "approval is a latched EVENT, not a recomputation").to.equal(true);
+
+      expect(m.executeRecovery().kind, "a higher quorum in force cannot strand an already-approved request").to.equal(
+        "OK",
+      );
+    });
+
+    it("I-APPROVED-REQUEST-PRESERVATION — a SECOND replacement does not delete the preserved request", function () {
+      // The worst surface: on the unlatched draft the second replacement
+      // re-derived `approved` as false against the grown roster and took the
+      // CLEARING branch, deleting a preserved request outright — reproducing
+      // mutation M60 (candidate T) on a reachable path, in the lane whose whole
+      // purpose is to forbid exactly that.
+      const m = vnext();
+      driveToApprovedRecovery(m);
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+      expect(m.kernel.recovery, "survives the first replacement").to.not.equal(null);
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["j1", "j2", "j3", "j4", "j5", "j6", "j7"]).kind).to.equal("OK");
+      expect(m.requiredSupports(), "quorum is now 4 of 7").to.equal(4);
+      expect(
+        m.kernel.recovery,
+        "and survives the second — preservation is not a one-rotation grace period",
+      ).to.not.equal(null);
+      expect(m.executeRecovery().kind, "and still executes").to.equal("OK");
+    });
+
+    it("I-APPROVED-REQUEST-PRESERVATION — a preserved request cannot be OVERWRITTEN by a fresh initiation after a growth rotation", function () {
+      // `initiateRecovery`'s live-overwrite guard asked the same re-derived
+      // question, so after a growth rotation the preserved request stopped
+      // counting as approved and a fresh initiation could replace it — with
+      // attacker-chosen incoming credential material.
+      const m = vnext();
+      driveToApprovedRecovery(m);
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+      const preserved = m.kernel.recovery!.incoming.commitment;
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("attacker")).kind, "refused as overwrite").to.equal(
+        "DENIED",
+      );
+      expect(m.kernel.recovery!.incoming.commitment, "the preserved request is untouched").to.equal(preserved);
+    });
+
+    /**
+     * CROSS-GENERATION SUPPORT ACCOUNTING. Architecture :457 requires
+     * "per-request support accounting keyed to the generation so support cannot
+     * be replayed across a roster change". Before candidate P that held by
+     * construction — a request never outlived the constituency that opened it,
+     * because a replacement either refused (approved) or cleared (unapproved).
+     * Preservation removed that accident, and the four proofs below pin the
+     * guard that replaces it.
+     */
+    it("SUPPORT-FREEZE 1 — after a rotation, a NEW-roster guardian cannot support an approved request, and the support bytes do not move", function () {
+      const m = vnext();
+      driveToApprovedRecovery(m);
+      const before = [...m.kernel.recovery!.supports];
+      const boundGen = m.kernel.recovery!.boundGuardianGeneration;
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+
+      const out = m.supportRecovery("h1");
+      expect(out.kind, "a constituency that never approved it cannot join its support set").to.equal("DENIED");
+      expect(m.kernel.recovery!.supports, "the support bytes are unchanged").to.deep.equal(before);
+      expect(m.kernel.recovery!.boundGuardianGeneration, "and provenance is still the approving generation").to.equal(
+        boundGen,
+      );
+      expect(m.kernel.guardians.generation, "while the roster has moved past it").to.equal(boundGen + 1);
+    });
+
+    it("SUPPORT-FREEZE 2 — repeated rotations still cannot collect cross-generation support", function () {
+      const m = vnext();
+      driveToApprovedRecovery(m);
+      const before = [...m.kernel.recovery!.supports];
+      for (const roster of [
+        ["h1", "h2", "h3", "h4", "h5"],
+        ["j1", "j2", "j3"],
+        ["k1", "k2", "k3", "k4", "k5", "k6", "k7"],
+      ]) {
+        expect(m.replaceGuardians("GUARDIAN_QUORUM", roster).kind).to.equal("OK");
+        expect(m.supportRecovery(roster[0]!).kind, `roster ${roster[0]} cannot join`).to.equal("DENIED");
+      }
+      expect(m.kernel.recovery!.supports, "support set frozen across every rotation").to.deep.equal(before);
+      expect(m.executeRecovery().kind, "and the request is still the one that was approved").to.equal("OK");
+    });
+
+    it("SUPPORT-FREEZE 3 — an UNAPPROVED request is still cleared by a rotation, so a shrink cannot approve it retroactively", function () {
+      // The freeze must not become the mechanism that lets an unapproved request
+      // outlive its constituency: it is scoped to APPROVED requests precisely so
+      // the clearing rule for unapproved ones is untouched.
+      const m = vnext();
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("freeze3")).kind).to.equal("OK");
+      expect(m.supportRecovery("h1").kind).to.equal("OK");
+      expect(m.supportRecovery("h2").kind).to.equal("OK");
+      expect(m.kernel.recovery!.approved, "2 of 3 required is not approval").to.equal(false);
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["k1", "k2", "k3"]).kind).to.equal("OK");
+      expect(m.kernel.recovery, "cleared with the constituency that was assembling it").to.equal(null);
+    });
+
+    it("SUPPORT-FREEZE 4 — a FRESH request under the new roster collects new-generation support normally", function () {
+      // The positive control. A freeze that also blocked legitimate support
+      // would be a liveness defect wearing a provenance argument.
+      const m = vnext();
+      driveToApprovedRecovery(m);
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+      expect(m.executeRecovery().kind, "clear the preserved request by executing it").to.equal("OK");
+
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("freeze4")).kind).to.equal("OK");
+      expect(m.kernel.recovery!.boundGuardianGeneration, "opened under the CURRENT generation").to.equal(
+        m.kernel.guardians.generation,
+      );
+      for (const g of ["h1", "h2", "h3"]) {
+        expect(m.supportRecovery(g).kind, `${g} may support a fresh request`).to.equal("OK");
+      }
+      expect(m.kernel.recovery!.approved, "and it reaches quorum normally at 3 of 5").to.equal(true);
+    });
+
+    it("supports do NOT become retroactively sufficient: an unapproved request is cleared with the constituency assembling it", function () {
+      // The downward direction. Two of five is FRESH AUTHORITY still being
+      // assembled, not an admitted effect; shrinking the roster to three must
+      // not make those same two supports sufficient under a constituency that
+      // never finished approving. Architecture :457 — per-request support
+      // accounting is generation-bound so support cannot be replayed.
+      const m = vnext();
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind).to.equal("OK");
+      expect(m.requiredSupports(), "quorum is 3 of 5").to.equal(3);
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("partial")).kind).to.equal("OK");
+      expect(m.supportRecovery("h1").kind).to.equal("OK");
+      expect(m.supportRecovery("h2").kind).to.equal("OK");
+      expect(m.kernel.recovery!.approved, "two of three is NOT approval").to.equal(false);
+
+      expect(m.replaceGuardians("GUARDIAN_QUORUM", ["k1", "k2", "k3"]).kind).to.equal("OK");
+      expect(m.requiredSupports(), "quorum is now 2 of 3").to.equal(2);
+      expect(m.kernel.recovery, "the UNAPPROVED request was cleared, not retroactively approved").to.equal(null);
     });
 
     it("I-RECOVERY-CHALLENGE-EPOCH — the challenge budget survives quorum cancellation and rotation, and resets only when a guardian recovery executes", function () {
@@ -1336,6 +1516,91 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         return budgetAfterRecovery === 0;
       });
     });
+
+    /**
+     * Lane SD10-I. I-APPROVED-REQUEST-PRESERVATION has exactly one conformant
+     * reading and three non-conformant neighbours, and the model implemented one
+     * of the neighbours until this lane. Each discriminator below OBSERVES a
+     * different failure, so a kill names WHICH neighbour was reintroduced rather
+     * than merely "preservation broke".
+     */
+    it("M59 — a guardian-set replacement is BLOCKED while an approved request exists (candidate B)", function () {
+      assertMutantKilled("M59_GUARDIAN_REPLACEMENT_BLOCKED_BY_APPROVED_REQUEST", "guardian/replacement", (m) => {
+        // The property is LIVENESS: replacement stays independently available.
+        if (m.initiateRecovery("GUARDIAN", heldCredential("m59")).kind !== "OK") return false;
+        if (m.supportRecovery("g1").kind !== "OK") return false;
+        if (m.supportRecovery("g2").kind !== "OK") return false;
+        return m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3"]).kind === "OK";
+      });
+    });
+
+    it("M60 — a guardian-set replacement CLEARS the approved request (candidate T)", function () {
+      assertMutantKilled("M60_GUARDIAN_REPLACEMENT_CLEARS_APPROVED_REQUEST", "guardian/replacement", (m) => {
+        if (m.initiateRecovery("GUARDIAN", heldCredential("m60")).kind !== "OK") return false;
+        if (m.supportRecovery("g1").kind !== "OK") return false;
+        if (m.supportRecovery("g2").kind !== "OK") return false;
+        if (m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3"]).kind !== "OK") return false;
+        return m.kernel.recovery !== null;
+      });
+    });
+
+    it("M61 — an approved request is INVALIDATED because the generation changed (the base kernel's SD-10)", function () {
+      assertMutantKilled("M61_APPROVED_REQUEST_INVALIDATED_BY_GENERATION_CHANGE", "generation/guardian", (m) => {
+        // PRESERVED MEANS EXECUTABLE. This mutant leaves the request in place and
+        // refuses it at maturity, so a discriminator that only checked for the
+        // request's presence would not see it — which is exactly how the defect
+        // survived in the kernel for as long as it did.
+        //
+        // The rotation deliberately CHANGES THE ROSTER SIZE (3 -> 5, quorum
+        // 2 -> 3). Before the approval latch, the clean model denied this
+        // execution too — for "insufficient supports" rather than for the
+        // generation — so clean and mutant agreed and this kill was VACUOUS in
+        // the one direction it exists to measure.
+        if (m.initiateRecovery("GUARDIAN", heldCredential("m61")).kind !== "OK") return false;
+        if (m.supportRecovery("g1").kind !== "OK") return false;
+        if (m.supportRecovery("g2").kind !== "OK") return false;
+        if (m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind !== "OK") return false;
+        if (m.kernel.recovery === null) return false;
+        m.warp(RECOVERY_DELAY);
+        return m.executeRecovery().kind === "OK";
+      });
+    });
+
+    it("M62 — approval is RE-DERIVED against the quorum currently in force instead of latched", function () {
+      assertMutantKilled("M62_APPROVAL_REEVALUATED_AGAINST_CURRENT_QUORUM", "recovery/approval-latch", (m) => {
+        // The seam an independent review found. The discriminator MUST change
+        // the roster size: under a same-size rotation the re-derived answer and
+        // the latched answer coincide, and the whole 152-test suite that shipped
+        // with the first draft had exactly zero discriminating power for that
+        // reason.
+        if (m.initiateRecovery("GUARDIAN", heldCredential("m62")).kind !== "OK") return false;
+        if (m.supportRecovery("g1").kind !== "OK") return false;
+        if (m.supportRecovery("g2").kind !== "OK") return false;
+        if (m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind !== "OK") return false;
+        if (m.kernel.recovery === null) return false;
+        m.warp(RECOVERY_DELAY);
+        return m.executeRecovery().kind === "OK";
+      });
+    });
+
+    it("M63 — an APPROVED request keeps collecting support, so its support set spans two guardian generations", function () {
+      assertMutantKilled("M63_APPROVED_REQUEST_STILL_COLLECTS_SUPPORT", "recovery/support-frozen", (m) => {
+        // The discriminator is PROVENANCE, not authority. With the approval
+        // latch in place the extra support changes no outcome, so a property
+        // that only checked execution would pass on the mutant. It observes the
+        // support set itself.
+        if (m.initiateRecovery("GUARDIAN", heldCredential("m63")).kind !== "OK") return false;
+        if (m.supportRecovery("g1").kind !== "OK") return false;
+        if (m.supportRecovery("g2").kind !== "OK") return false;
+        if (m.kernel.recovery === null || !m.kernel.recovery.approved) return false;
+        if (m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3", "h4", "h5"]).kind !== "OK") return false;
+        if (m.kernel.recovery === null) return false;
+        const before = m.kernel.recovery.supports.length;
+        m.supportRecovery("h1");
+        const after = m.kernel.recovery.supports.length;
+        return after === before;
+      });
+    });
   });
 
   describe("mutation matrix — remediation mutants M32..M57 (sub-models)", function () {
@@ -1791,9 +2056,15 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         // Numbered after the remediation sub-model's M32..M57 so the two unions
         // stay disjoint and contiguous (asserted below). Added by Lane W2.
         "M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET",
+        // Lane SD10-I: the three neighbours of I-APPROVED-REQUEST-PRESERVATION.
+        "M59_GUARDIAN_REPLACEMENT_BLOCKED_BY_APPROVED_REQUEST",
+        "M60_GUARDIAN_REPLACEMENT_CLEARS_APPROVED_REQUEST",
+        "M61_APPROVED_REQUEST_INVALIDATED_BY_GENERATION_CHANGE",
+        "M62_APPROVAL_REEVALUATED_AGAINST_CURRENT_QUORUM",
+        "M63_APPROVED_REQUEST_STILL_COLLECTS_SUPPORT",
       ];
       expect(new Set(declared).size, "duplicate mutation identifier").to.equal(declared.length);
-      expect(declared).to.have.length(32);
+      expect(declared).to.have.length(37);
 
       const declaredRemediation: readonly RemediationMutation[] = [
         "M32_PROFILE_SUMMARY_IS_MAX_OVER_CLAUSES",
@@ -1828,12 +2099,12 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
       );
       expect(declaredRemediation).to.have.length(26);
 
-      // The two unions are disjoint and contiguous M1..M58. A gap or an overlap
+      // The two unions are disjoint and contiguous M1..M63. A gap or an overlap
       // means a mutant was renumbered without its matrix entry following it.
       const numbers = [...declared, ...declaredRemediation]
         .map((id) => Number(/^M(\d+)_/.exec(id)?.[1]))
         .sort((a, b) => a - b);
-      expect(numbers).to.deep.equal(Array.from({ length: 58 }, (_, i) => i + 1));
+      expect(numbers).to.deep.equal(Array.from({ length: 63 }, (_, i) => i + 1));
     });
 
     /**
