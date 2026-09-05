@@ -44,6 +44,72 @@ so rather than improvising.
 
 **Every one of the 15 is implemented in the prototype.** None is omitted for size.
 
+> **K-9 CORRECTION (Lane V2 / W1P) — the sentence above is retained as written
+> and is FALSE for K-9.** K-9 declares **two** cancellation authorities, and its
+> own authority column says so: *"credential (bounded count), or guardian
+> quorum"*. `docs/Vault_vNext_Architecture.md` §8.1 (`:832`), under the heading
+> *"Direct capabilities (vNext)"*, grants the guardian quorum `CANCEL_RECOVERY`.
+>
+> ```text
+> K-9 declared cancellation authority:
+>
+> A. spending credential:
+>    bounded recovery challenge/cancellation
+>
+> B. guardian quorum:
+>    direct CANCEL_RECOVERY
+>
+> prototype at c67d1439:
+>    A implemented   — cancelRecovery(nonce, deadline, ecdsaSig), gated by
+>                      _floorAuthorises, capped by CHALLENGE_LIMIT
+>    B missing       — the complete quorum-authorised surface, enumerated from
+>                      the ABI, is bindMigration, enterContainment,
+>                      initiateRecovery, setGuardians
+>
+> K9_GUARDIAN_CANCEL_CONFORMANCE = MISSING_IN_PROTOTYPE
+> K9_CONFORMANCE                 = PARTIAL / FAILED FOR THE DECLARED DUAL MECHANISM
+> ```
+>
+> Three substitutes were tested and refuted (`test/Sd4LaneV2.test.ts`): a
+> "null" overwrite cannot express *no request* (`ZeroAddress`); containment does
+> not cancel (`_requireRecoveryOpen` admits `CONTAINED`); `setGuardians` strands
+> rather than cancels, which is a defect of its own (SD-10). The row's own
+> implementation column — *"`cancelRecovery()` with a per-episode challenge
+> budget"* — describes only mechanism A, so the summary line is contradicted by
+> the table it summarises. A defensible restatement is: *fifteen kernel-required
+> concerns are addressed; K-9's declared authority names two principals and only
+> the credential half is implemented.* The direct overwrite the prototype permits
+> instead is classified `NONCONFORMANT_AND_REDUNDANT` — see
+> `SD9_RECOVERY_LIFECYCLE_DEFECTS.md` and `docs/Vault_vNext_Recovery_Amendment.md`.
+
+> **K-9 W2 STATUS (Lane W2I; reviewed in Lane W2R; persisted as Commit A
+> `c182db1099d92ff5830ae71116613c739b034bd9` in Lane W2P; the block above is
+> retained as history).** Mechanism B is now implemented in
+> `contracts/VaultKernelPrototype.sol` as
+> `cancelRecoveryByQuorum(QuorumProof,uint256,uint64)` — guardian quorum under the
+> CURRENT commitment and generation, `DOMAIN_GUARDIAN` nonce, clears request
+> authority only, leaves `challengesUsed` standing, emits
+> `RecoveryCancelledByQuorum`. The quorum-authorised surface is now FIVE:
+> `bindMigration`, `cancelRecoveryByQuorum`, `enterContainment`,
+> `initiateRecovery`, `setGuardians`.
+>
+> ```text
+> K9_GUARDIAN_CANCEL_CONFORMANCE = IMPLEMENTED (W2 Commit A c182db10, reviewed in W2R)
+> K9_CONFORMANCE                 = BOTH MECHANISMS PRESENT — executable-conformant
+>                                  (test/W2RecoveryLifecycle.test.ts §A,
+>                                   test/W2RecoveryLifecycleMutations.test.ts)
+> ```
+>
+> The direct overwrite the prototype permitted is REFUSED (`BadState` while a
+> request is effectively live); an expired request holds no authority and blocks
+> nothing; the executable window is half-open `[executableAt, expiresAt)`; the
+> challenge epoch persists across every exit and resets only through
+> `executeRecovery`'s `delete recovery`. The sentence *"Every one of the 15 is
+> implemented"* is therefore true again as written, and the row's implementation
+> column now reads `cancelRecovery()` (credential, per-epoch challenge budget) +
+> `cancelRecoveryByQuorum()` (guardian quorum). Record:
+> `W2_IMPLEMENTATION_RECORD.md`.
+
 > **K-15 WAS MISSING FROM THE FIRST DRAFT OF THIS MANIFEST, and its absence was
 > a live defect rather than a documentation gap.** The authority-closure pass
 > (AUTHORITY.md) asked which principal could reach a _silent crypto downgrade_

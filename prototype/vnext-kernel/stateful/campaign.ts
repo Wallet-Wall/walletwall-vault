@@ -59,7 +59,7 @@ import {
   PROFILES,
   type CampaignProfile,
 } from "./profiles.js";
-import { addrOf, deployWorld, makeActor, materialiseActor, type Actor, type World } from "./world.js";
+import { ZERO, addrOf, deployWorld, makeActor, materialiseActor, type Actor, type World } from "./world.js";
 import { SAFE_STATE } from "./invariants.js";
 
 const SAFE_STATE_NAMES = ["NORMAL", "CONTAINED", "RECOVERY_ONLY", "MIGRATION_ONLY", "RETIRED"];
@@ -83,7 +83,74 @@ export function detectOutcomes(pre: KernelSnapshot, post: KernelSnapshot): Outco
   if (pre.safeStateStored !== SAFE_STATE.CONTAINED && post.safeStateStored === SAFE_STATE.CONTAINED) {
     out.push("CONTAINMENT");
   }
+  // K-9 mechanism B (Lane W2): request AUTHORITY cleared while the challenge
+  // epoch, the credential generation and the stored proposal are all untouched
+  // — the state-diff signature of a QUORUM cancellation. A credential challenge
+  // moves challengesUsed; an execution advances the generation and deletes the
+  // proposal; expiry changes no storage at all. Detected by diff, never by
+  // asking which function ran.
+  if (
+    pre.recovery.active &&
+    !post.recovery.active &&
+    post.recovery.challengesUsed === pre.recovery.challengesUsed &&
+    post.credentialGeneration === pre.credentialGeneration &&
+    post.recovery.proposedSigner === pre.recovery.proposedSigner &&
+    post.recovery.expiresAt === pre.recovery.expiresAt
+  ) {
+    out.push("RECOVERY_QUORUM_CANCEL");
+  }
   return out;
+}
+
+/**
+ * THE LIFECYCLE SEAMS (Lane W2) — anti-vacuity counters, tallied per step from
+ * the pre/post snapshots and the action's own outcome. A green campaign proves
+ * nothing about a seam it never reached, so StatefulAuthorityFuzz.test.ts
+ * requires every one of these to be non-zero across the fixed matrix. They are
+ * observations, never judgements: nothing here fails a step.
+ */
+export const LIFECYCLE_SEAMS = [
+  "exhaustedBudgetRefusal",
+  "expiredRequestObserved",
+  "reinitiationAfterCancellation",
+  "reinitiationAfterExpiry",
+  "liveOverwriteRefused",
+  "quorumCancelSucceeded",
+  "quorumCancelRefusedBelowQuorum",
+  "expiredCancellationRefused",
+  "recoveryAfterRecovery",
+  "challengeAfterRecoveryReset",
+] as const;
+export type LifecycleSeam = (typeof LIFECYCLE_SEAMS)[number];
+
+function lifecycleSeamsHit(
+  action: GeneratedAction,
+  ok: boolean,
+  revert: string | null,
+  pre: KernelSnapshot,
+  hadSuccessfulRecovery: boolean,
+): LifecycleSeam[] {
+  const hit: LifecycleSeam[] = [];
+  const storedActive = pre.recovery.active;
+  const expiredStored = storedActive && !pre.recoveryEffectivelyLive;
+  const priorRequestExisted = pre.recovery.proposedSigner !== ZERO;
+  if (expiredStored) hit.push("expiredRequestObserved");
+  if (action.kind === "CANCEL_RECOVERY" && revert === "ChallengeExhausted") hit.push("exhaustedBudgetRefusal");
+  if (action.kind === "INITIATE_RECOVERY") {
+    if (ok && priorRequestExisted && !storedActive) hit.push("reinitiationAfterCancellation");
+    if (ok && expiredStored) hit.push("reinitiationAfterExpiry");
+    if (!ok && revert === "BadState" && pre.recoveryEffectivelyLive) hit.push("liveOverwriteRefused");
+    if (ok && hadSuccessfulRecovery) hit.push("recoveryAfterRecovery");
+  }
+  if (action.kind === "CANCEL_RECOVERY_BY_QUORUM") {
+    if (ok) hit.push("quorumCancelSucceeded");
+    if (!ok && revert === "QuorumNotMet" && pre.recoveryEffectivelyLive) hit.push("quorumCancelRefusedBelowQuorum");
+  }
+  if ((action.kind === "CANCEL_RECOVERY" || action.kind === "CANCEL_RECOVERY_BY_QUORUM") && !ok && revert === "NoRecovery" && expiredStored) {
+    hit.push("expiredCancellationRefused");
+  }
+  if (action.kind === "CANCEL_RECOVERY" && ok && hadSuccessfulRecovery) hit.push("challengeAfterRecoveryReset");
+  return hit;
 }
 
 // =====================================================================
@@ -127,6 +194,8 @@ export interface CampaignResult {
   actionCoverage: Record<string, number>;
   positiveControlsPassed: number;
   positiveControlsAttempted: number;
+  /** How often each recovery-lifecycle seam (Lane W2) was actually reached. Observations only. */
+  lifecycle: Record<string, number>;
   minimalSequence: GeneratedAction[] | null;
 }
 
@@ -245,6 +314,10 @@ function genParams(
       return { popStale: prng.chance(cleanRecovery ? 0.1 : 0.3) };
     case "ENTER_CONTAINMENT":
     case "BIND_MIGRATION":
+    // K-9 mechanism B (Lane W2): attacked with every adversarial quorum shape,
+    // like every other quorum act. Generated only where a profile weights it,
+    // so no historical stream gains a draw.
+    case "CANCEL_RECOVERY_BY_QUORUM":
       return { quorumShape: prng.weighted(QUORUM_SHAPES, [4, 3, 2, 2, 1, 1, 1]) };
     case "REPLAY_PAST_CALL":
       return { index: prng.int(64) };
@@ -334,6 +407,7 @@ async function runPlan(
   const outcomeCounts: Record<string, number> = {};
   const revertCounts: Record<string, number> = {};
   const actionCoverage: Record<string, number> = {};
+  const lifecycle: Record<string, number> = {};
 
   let prev: KernelSnapshot | null = null;
   let successful = 0;
@@ -362,6 +436,12 @@ async function runPlan(
 
     const observed = detectOutcomes(pre, post);
     for (const o of observed) outcomeCounts[o] = (outcomeCounts[o] ?? 0) + 1;
+
+    // Lifecycle seam tallies (Lane W2) — reachability evidence, never a judgement.
+    const hadSuccessfulRecovery = [...ctx.abstract.episodes.values()].some((e) => e.state === "CONSUMED");
+    for (const seam of lifecycleSeamsHit(action, res.ok, res.revert, pre, hadSuccessfulRecovery)) {
+      lifecycle[seam] = (lifecycle[seam] ?? 0) + 1;
+    }
 
     // ---- P-CUT: the central authority property (I-A .. I-F) ----------
     //
@@ -490,6 +570,7 @@ async function runPlan(
       actionCoverage,
       positiveControlsPassed: 0,
       positiveControlsAttempted: 0,
+      lifecycle,
     },
   };
 }
@@ -625,6 +706,18 @@ export async function runPositiveControls(
       plan: [{ kind: "BIND_MIGRATION", actorName: ALL_MATERIAL_ACTOR.name, params: { quorumShape: "honest" } }],
       expect: "MIGRATION_BINDING",
       needsLiveVerifier: true,
+    },
+    {
+      // K-9 mechanism B (Lane W2): the quorum's own exit from a live request.
+      // Observed as the state-diff outcome RECOVERY_QUORUM_CANCEL, which by
+      // construction requires the credential's budget to be exactly where it was.
+      name: "honest quorum cancels a live recovery (K-9 mechanism B)",
+      plan: [
+        { kind: "INITIATE_RECOVERY", actorName: ALL_MATERIAL_ACTOR.name, params: { quorumShape: "honest", target: 1, verifier: "honest" } },
+        { kind: "CANCEL_RECOVERY_BY_QUORUM", actorName: ALL_MATERIAL_ACTOR.name, params: { quorumShape: "honest" } },
+      ],
+      expect: "RECOVERY_QUORUM_CANCEL",
+      needsLiveVerifier: false,
     },
   ];
 

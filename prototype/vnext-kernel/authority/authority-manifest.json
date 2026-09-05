@@ -82,6 +82,14 @@
       "orderingExceptionReason": null,
       "justification": "AUTHORITY.md section 1: the credential 'may cancel a pending recovery a BOUNDED number of times per episode... unbounded would restore H-03, a permanent veto held by exactly the principal whose compromise recovery exists to remedy' (VaultKernelPrototype.sol doc comment on cancelRecovery). This is the ONE place a single ECDSA-only factor is an intentionally accepted gate outside _authorise -- it can only CANCEL, never grant anything."
     },
+    "VaultKernelPrototype:02abce4e": {
+      "signature": "cancelRecoveryByQuorum(QuorumProof,uint256,uint64)",
+      "outcomes": ["RECOVERY_CANCEL"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k -- guardian quorum evaluated against the CURRENT commitment via _requireQuorum, exactly as initiateRecovery/setGuardians/enterContainment; NOT bounded by CHALLENGE_LIMIT, because the quorum is the recovery trust root and needs no metered veto over its own remedy",
+      "orderingExceptionReason": null,
+      "justification": "K-9 mechanism B (KERNEL_ADMISSION.md K-9: 'credential (bounded count), or guardian quorum'; docs/Vault_vNext_Architecture.md section 8.1 'Direct capabilities (vNext)' grants the guardian quorum CANCEL_RECOVERY). Implemented in Lane W2 per W2_IMPLEMENTATION_CONTRACT.md item 3 and docs/Vault_vNext_Recovery_Amendment.md section 1: requires an EFFECTIVELY-LIVE request (_recoveryIsLive, a view validity predicate the tracer classifies SAFE), _requireQuorum on a digest bound to guardianGeneration, then _consume(DOMAIN_GUARDIAN) -- so a refused cancellation burns no nonce and a superseded constituency dies as QuorumNotMet before its nonce is examined. Clears request AUTHORITY only (recovery.active = false); it neither consumes nor refunds the credential's challenge epoch (challengesUsed untouched -- I-RECOVERY-CHALLENGE-EPOCH), and emits the DISTINCT event RecoveryCancelledByQuorum so an observer can tell which principal ended the request. The outcome label RECOVERY_CANCEL is shared with cancelRecovery; the mechanism and cut are per entry: FLOOR_ONLY at a bounded cut 1 there, QUORUM at k here."
+    },
     "VaultKernelPrototype:bfd6b85c": {
       "signature": "executeRecovery(CredentialChange)",
       "outcomes": ["CREDENTIAL_REPLACEMENT", "VERIFIER_REPLACEMENT", "RECOVERY_COMPLETION"],

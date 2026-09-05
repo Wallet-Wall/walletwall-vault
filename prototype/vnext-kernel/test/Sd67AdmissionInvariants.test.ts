@@ -42,6 +42,7 @@
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
+import { quorumCancelStd } from "./sd4-harness.js";
 import {
   ACTION,
   DAY,
@@ -292,10 +293,14 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — rotation (SD-6)", () => {
     // THE DISQUALIFYING QUESTION, answered by execution. The new clause makes
     // executeRecovery refuse a commitment the incoming holder cannot exhibit.
     // If that refusal were terminal it would be a permanent denial of the
-    // remedy — the failure that sank the SD-4 interlock. It is not:
-    // `initiateRecovery` has no `!recovery.active` guard, so the quorum stages a
-    // fresh request over the dead one and the remedy completes. The credential
-    // cannot prevent this; `cancelRecovery` is capped at CHALLENGE_LIMIT.
+    // remedy — the failure that sank the SD-4 interlock. It is not. W2
+    // SUPERSESSION: this comment used to read "`initiateRecovery` has no
+    // `!recovery.active` guard, so the quorum stages a fresh request over the
+    // dead one". Since Lane W2 a live request is never overwritten; the quorum
+    // instead takes its own exit (`cancelRecoveryByQuorum`, K-9 mechanism B) and
+    // then stages the fresh request — two explicit acts, same remedy, and the
+    // credential still cannot prevent it: `cancelRecovery` is capped at
+    // CHALLENGE_LIMIT and the quorum's exit consumes nothing from it.
     const w = await deployWorld({ label: "adm-no-lockout", ecdsaOnlyFloor: true });
     const fresh = keyOf("adm-no-lockout-fresh");
     const unheld = ethers.id("a commitment the incoming holder cannot exhibit");
@@ -330,8 +335,9 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — rotation (SD-6)", () => {
       "the unexhibitable proposal is refused",
     ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 
-    // RE-PROPOSE over the dead request, this time with material the quorum and
-    // the incoming holder actually have.
+    // Clear the dead request through the quorum's own exit, then RE-PROPOSE with
+    // material the quorum and the incoming holder actually have.
+    await (await quorumCancelStd(w, w.vault)).wait();
     await propose(pqHash(fresh));
     await networkHelpers.time.increase(7 * DAY + 1);
     pop = (await w.vault.recoveryPossessionDigest()) as string;
