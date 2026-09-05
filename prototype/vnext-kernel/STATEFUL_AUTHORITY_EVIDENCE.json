@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-stateful-authority-evidence.v1",
-  "head": "a46bc50c130dd1eea0969a2fae50ee124ad4c332",
-  "tree": "1f892b1e894bea5e72d12702a8e53f7ea2fb6e9d",
+  "head": "59e0837d04b22096d3fd00c07d9fca7d323f6cd1",
+  "tree": "ed4de5d6e39fc3346a9139fa15d1903c992ef07d",
   "lane": {
     "question": "Can individually-valid, individually-correctly-gated transitions be COMPOSED OVER TIME into an outcome below its declared authority cut?",
     "distinctFrom": {
