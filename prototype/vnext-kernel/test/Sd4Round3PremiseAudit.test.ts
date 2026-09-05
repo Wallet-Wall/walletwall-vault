@@ -35,7 +35,7 @@
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
-import { R, at, bytesOfLength, declare, liveFloor, proposeStd, quorum } from "./sd4-harness.js";
+import { R, at, bytesOfLength, declare, liveFloor, proposeStd, quorum, quorumCancelStd } from "./sd4-harness.js";
 import {
   ACTION,
   DAY,
@@ -134,7 +134,11 @@ describe("SD-4 round 3 — auditing the premises the rejection argument rests on
     ).to.be.revertedWithCustomError(w.vault, "BadState");
 
     // ...and `initiateRecovery` stays open the whole time, because
-    // `_requireRecoveryOpen` admits CONTAINED.
+    // `_requireRecoveryOpen` admits CONTAINED. W2 SUPERSESSION: the W2 kernel
+    // refuses to overwrite the LIVE request staged above, so the quorum takes
+    // its own exit first — which is itself gated by `_requireRecoveryOpen` and
+    // therefore also proves that gate admits CONTAINED — and then re-proposes.
+    await (await quorumCancelStd(w, w.vault)).wait();
     await proposeStd(
       w,
       w.vault,

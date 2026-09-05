@@ -25,6 +25,7 @@ import {
   buildEpochKeyedOnGeneration,
   buildK9Preserving,
   buildK9Refunding,
+  buildPreW2Kernel,
   compileAuxContract,
 } from "./sd4-candidate-kernels.js";
 import { R, abi, at, bytesOfLength, cancel, declare, guardianDigest, quorum } from "./sd4-harness.js";
@@ -62,6 +63,10 @@ before(function () {
   K.refunding = buildK9Refunding();
   K.preserving = buildK9Preserving();
   K.epochGen = buildEpochKeyedOnGeneration();
+  // W2 SUPERSESSION (implementation status only): test 1's refutation was a
+  // measurement of the kernel at c67d1439. It is pinned to that build so it
+  // still measures it; the shipped kernel now carries the exit it found missing.
+  K.pre = buildPreW2Kernel();
   V64 = compileAuxContract("EcdsaBackedVerifier64", VERIFIER_32_64_SOURCE);
 });
 
@@ -85,24 +90,42 @@ describe("SD-4 lane V continued — K-9's missing half, and the epoch boundary",
 
   it("1 REFUTATION ATTEMPT — no path on the unmodified kernel lets a quorum cancel a recovery", async function () {
     this.timeout(300_000);
-    const w = await deployWorld({ label: "v2-k9" });
+    // HISTORICAL (pre-W2 kernel, pinned): "the unmodified kernel" here is the
+    // kernel at c67d1439. Lane W2 added exactly the missing exit.
+    const w = await deployWorld({ label: "v2-k9", implOverride: K.pre });
     const nominee = addrOf(keyOf("v2-k9-nominee"));
     const hash = ethers.keccak256(KEY32("v2-k9-pq"));
+    const preW2 = new ethers.Interface(K.pre.abi as ethers.InterfaceAbi);
 
-    // The single cancellation entry point is credential-authenticated.
-    expect(w.vault.interface.getFunction("cancelRecovery")?.inputs.map((i) => i.name)).to.deep.equal([
+    // The single cancellation entry point was credential-authenticated.
+    expect(preW2.getFunction("cancelRecovery")?.inputs.map((i) => i.name)).to.deep.equal([
       "nonce",
       "deadline",
       "ecdsaSig",
     ]);
 
-    // Every quorum-authorised function, enumerated from the ABI. None cancels.
-    const quorumFns = w.vault.interface.fragments
+    // Every quorum-authorised function, enumerated from the pre-W2 ABI. None cancels.
+    const quorumFns = preW2.fragments
       .filter((f): f is ethers.FunctionFragment => f.type === "function")
       .filter((f) => f.inputs.some((i) => i.name === "proof"))
       .map((f) => f.name)
       .sort();
     expect(quorumFns).to.deep.equal(["bindMigration", "enterContainment", "initiateRecovery", "setGuardians"]);
+
+    // W2 SUPERSESSION: on the shipped kernel the quorum surface is five, and the
+    // fifth is K-9 mechanism B (asserted behaviourally in W2RecoveryLifecycle A).
+    const shipped = w.vault.interface.fragments
+      .filter((f): f is ethers.FunctionFragment => f.type === "function")
+      .filter((f) => f.inputs.some((i) => i.name === "proof"))
+      .map((f) => f.name)
+      .sort();
+    expect(shipped).to.deep.equal([
+      "bindMigration",
+      "cancelRecoveryByQuorum",
+      "enterContainment",
+      "initiateRecovery",
+      "setGuardians",
+    ]);
 
     // The three candidate substitutes are each refuted:
     await propose(w, w.vault, nominee, hash, w.verifiers.honest);

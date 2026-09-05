@@ -267,7 +267,9 @@ export type Mutation =
   | "M28_GUARDIAN_ROSTER_NOT_COMMITMENT_BOUND"
   | "M29_QUORUM_DISTINCTNESS_DROPPED"
   | "M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY"
-  | "M31_ATTESTATION_COUNTED_ON_NON_REVERT";
+  | "M31_ATTESTATION_COUNTED_ON_NON_REVERT"
+  // --- Added by Lane W2 (docs/Vault_vNext_Recovery_Amendment.md section 2). ---
+  | "M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET";
 
 // ---------------------------------------------------------------------------
 // Authentication — added by the remediation
@@ -1057,6 +1059,18 @@ export class VaultVNextModel {
     };
     this.kernel.recovery = null;
     this.kernel.nonce += 1;
+    // I-RECOVERY-CHALLENGE-EPOCH (Recovery Amendment section 2, DERIVED and
+    // adopted for vNext): the spending credential's bounded challenge budget
+    // resets ONLY here — at the one transition the outgoing credential could
+    // not authorise. It survives credential challenges, quorum cancellation,
+    // expiry, fresh initiation and ordinary rotation (which also bumps the
+    // credential generation, so keying the budget on the generation would let
+    // the credential refund itself — hazard H-03). Never resetting would delete
+    // the D1/H-15 defence for every credential after the first. M58 keeps the
+    // spent budget in place across a successful recovery.
+    if (!this.has("M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET")) {
+      this.kernel.credentialChallengesUsed = 0;
+    }
     return ok();
   }
 

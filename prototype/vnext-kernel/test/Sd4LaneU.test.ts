@@ -28,9 +28,10 @@ import {
   buildCandidateU2a,
   buildCandidateU2b,
   buildCandidateU5,
+  buildPreW2Kernel,
   compileAuxContract,
 } from "./sd4-candidate-kernels.js";
-import { R, abi, at, bytesOfLength, cancel, declare, guardianDigest, quorum } from "./sd4-harness.js";
+import { R, abi, at, bytesOfLength, cancel, declare, guardianDigest, quorum, quorumCancelStd } from "./sd4-harness.js";
 import {
   ACTION,
   DAY,
@@ -61,6 +62,14 @@ before(function () {
   K.u2b = buildCandidateU2b();
   K.u4 = buildCandidateGPrimeClamped();
   K.u5 = buildCandidateU5();
+  // W2 SUPERSESSION (implementation status only): the three measurements below
+  // that were taken on "the unmodified kernel" (B1, B3's episode loop, F's
+  // second half) measured a kernel that permitted live overwrite. Lane W2
+  // refuses it (BadState) and adds the quorum's own exit, so those
+  // measurements are pinned to the pre-W2 build they were made on, or routed
+  // through the conformant exit; the W2 behaviour itself is asserted on the
+  // real artifact in W2RecoveryLifecycle.test.ts.
+  K.pre = buildPreW2Kernel();
   V64 = compileAuxContract("EcdsaBackedVerifier64", VERIFIER_32_64_SOURCE);
 });
 
@@ -294,7 +303,11 @@ describe("SD-4 lane U — temporal equivalence and recovery-episode adjudication
 
   it("B1 MODEL/IMPLEMENTATION MISMATCH — the kernel replaces a live, quorum-approved request; the model forbids it", async function () {
     this.timeout(180_000);
-    const w = await deployWorld({ label: "u-b1" });
+    // HISTORICAL (pre-W2 kernel, pinned). This mismatch is SD-9d; Lane W2 closes
+    // it — the real kernel now refuses this exact call with BadState and consumes
+    // no nonce (W2RecoveryLifecycle C1/C2). The measurement is kept as evidence
+    // of what the model was refusing that the kernel permitted.
+    const w = await deployWorld({ label: "u-b1", implOverride: K.pre });
     const a = keyOf("u-b1-a");
     const b = keyOf("u-b1-b");
     const hashA = ethers.keccak256(bytesOfLength(32, "u-b1-a-key"));
@@ -365,7 +378,12 @@ describe("SD-4 lane U — temporal equivalence and recovery-episode adjudication
         await (await cancel(w, w.vault, w.credKey)).wait();
         cancels += 1;
       } catch {
-        /* exhausted */
+        // Exhausted. W2 SUPERSESSION: the request the credential could not
+        // challenge stays LIVE, and the real kernel no longer lets the next
+        // episode overwrite it — the quorum's own exit (K-9 mechanism B) clears
+        // it instead. That exit consumes nothing from the credential's budget,
+        // which is exactly what the arithmetic below depends on.
+        await (await quorumCancelStd(w, w.vault)).wait();
       }
     }
     expect(cancels, "four episodes, still only CHALLENGE_LIMIT cancels in total").to.equal(2);
@@ -564,7 +582,12 @@ describe("SD-4 lane U — temporal equivalence and recovery-episode adjudication
     // SAME AUTHORITY / DIFFERENT PATH, not NEW AUTHORITY: the unmodified kernel
     // reaches indefinite `active` by re-initiating on the same cadence, and the
     // migration blocker that follows from it is identical on both paths.
-    const w2 = await deployWorld({ label: "u-f-base" });
+    // HISTORICAL (pre-W2 kernel, pinned): the "unmodified kernel" this half
+    // priced against permitted live overwrite. On the W2 kernel the same
+    // capability costs two explicit quorum acts per round (cancel, then
+    // re-initiate) and an expired request blocks nothing — asserted in
+    // W2RecoveryLifecycle B/C/F.
+    const w2 = await deployWorld({ label: "u-f-base", implOverride: K.pre });
     const firstBase = (await (async () => {
       await propose(w2, w2.vault, addrOf(nominee), hash, w2.verifiers.honest);
       return (await w2.vault.recovery())[R.EXPIRES_AT] as bigint;

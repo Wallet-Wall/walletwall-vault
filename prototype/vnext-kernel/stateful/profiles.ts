@@ -400,4 +400,52 @@ export const PROFILES: readonly CampaignProfile[] = [
     commitPqKeyOnEcdsaOnlyFloor: true,
     fabricateCommitments: true,
   },
+  {
+    /**
+     * APPENDED (Lane W2), never substituted, for the same reason as the two
+     * profiles above it: every earlier profile keeps its exact action stream,
+     * kill seeds and step indices. This is the ONLY profile that weights
+     * `CANCEL_RECOVERY_BY_QUORUM`, so it is the only place K-9 mechanism B is
+     * generated at all — and it is weighted so that the lifecycle seams the W2
+     * contract requires the campaign to REACH (an exhausted budget, an expired
+     * request, cancellation followed by re-initiation, a recovery followed by a
+     * later recovery, a refused live overwrite) actually occur under the fixed
+     * seed set; StatefulAuthorityFuzz.test.ts asserts each of them non-zero.
+     *
+     * TWO adversaries share the campaign with the honest actor: the ECDSA-only
+     * credential, which may challenge (bounded) but must never quorum-cancel,
+     * and the TWO-guardian actor, which sits exactly AT the guardian cut and may
+     * therefore cancel — the model must call that entitled, not a violation.
+     * The ONE-guardian actor is the below-cut principal whose cancellation must
+     * fail as QuorumNotMet and, when it does not, is the P-CUT violation that
+     * kills a kernel whose quorum gate on mechanism B is missing or wrong.
+     */
+    name: "recovery-lifecycle",
+    description:
+      "The K-9 lifecycle under both principals: bounded credential challenges to exhaustion, guardian-quorum cancellations at and below the cut, expiry with no sweeper, re-initiation after cancellation and after expiry, refused overwrite of a live request, and recovery followed by a later recovery — the seams the W2 contract requires the campaign to reach rather than assume.",
+    actors: [ALL_MATERIAL_ACTOR, ECDSA_ONLY_ATTACKER, TWO_GUARDIAN_ATTACKER, ONE_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [5, 3, 3, 2, 1],
+    weights: {
+      ...BROAD,
+      INITIATE_RECOVERY: 18,
+      CANCEL_RECOVERY: 12,
+      CANCEL_RECOVERY_BY_QUORUM: 12,
+      EXECUTE_RECOVERY: 12,
+      ADVANCE_TIME: 22,
+      ROTATE_CREDENTIAL: 6,
+      SET_GUARDIANS: 2,
+      SPEND: 4,
+      SET_VERIFIER: 3,
+      SET_POLICY: 2,
+      ENTER_CONTAINMENT: 3,
+      BIND_MIGRATION: 1,
+      RETIRE: 0,
+      EGRESS_NATIVE: 0,
+      EGRESS_TOKEN: 0,
+      REPLAY_PAST_CALL: 6,
+      FACTORY_DEPLOY_TWIN: 0,
+    },
+    timeBias: "maturation",
+    honestRecoveryBias: true,
+  },
 ];

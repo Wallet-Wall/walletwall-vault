@@ -94,6 +94,19 @@ its real residue is state incoherence: the request is left `active` while dead.
 > `SD9_RECOVERY_LIFECYCLE_DEFECTS.md` and
 > `docs/Vault_vNext_Recovery_Amendment.md`.
 
+> **W2 STATUS (Lane W2I, local implementation diff for independent review;
+> both paragraphs above retained as written).** The remedy the correction names
+> is now IMPLEMENTED: `cancelRecoveryByQuorum` exists (K-9 mechanism B), a live
+> request can no longer be overwritten, an expired request blocks nothing, the
+> executable window is half-open, and the challenge epoch resets only on a
+> successful recovery. `SD-9b`, `SD-9c`, `SD-9d` and `SD-9e` are remediated on
+> this diff; `SD-9a` (the remediation hazard) is guarded by a permanent mutant;
+> `SD-10` is untouched and its interplay recorded. SD-4 itself stays SUSTAINED
+> and is repaired at every timing by the architecture-native two-path remedy —
+> quorum cancellation, then a correctly-shaped fresh recovery. See
+> `W2_IMPLEMENTATION_RECORD.md`; the ledger (`stateful/defects.ts`) is #188's
+> and is not rewritten by this lane.
+
 **SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
 by a single invariant over the whole commitment ingress surface.**
 
@@ -178,7 +191,7 @@ through to the balance check.
 | Principal                                            | Direct capabilities in the prototype                                                                                               | Notes                                                        |
 | ---------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
 | **Spending credential** (`ecdsaSigner`)              | `execute` · `rotateCredential` · `setVerifier` · `setPolicy` · `cancelRecovery` (bounded) · the credential half of `bindMigration` | The kernel-evaluated possession root                         |
-| **Guardian quorum** (`>= k` of the committed roster) | `setGuardians` · `initiateRecovery` · `enterContainment` · the quorum half of `bindMigration`                                      | **Accepted trust root (D1)**                                 |
+| **Guardian quorum** (`>= k` of the committed roster) | `setGuardians` · `initiateRecovery` · `cancelRecoveryByQuorum` (W2, K-9 mechanism B) · `enterContainment` · the quorum half of `bindMigration` | **Accepted trust root (D1)**                                 |
 | **Guardian (individual)**                            | none                                                                                                                               | Attests; holds nothing alone                                 |
 | **Anyone**                                           | `executeRecovery` (after maturity) · `egress` · `retire` (after delay)                                                             | **No discretion**: recipient and effect are pre-committed    |
 | **PQ verifier**                                      | none                                                                                                                               | Answers a query. Conjunctive barrier only                    |
@@ -248,6 +261,7 @@ path dominates at `k`, exactly as §24 says.
 | **SD-1** `I-FLOOR-SHAPE-IMMUTABLE` (+ the `MAX_PQ_LENGTH` bound)     | **+215**                      | **17,407 -> 17,622.** TARGET PASS, 4,354 B under the ceiling. Storage layout byte-identical; ABI additive only (selectors 44 -> 45, the new `MAX_PQ_LENGTH()` getter) |
 | **SD-3** `I-DECLARATION-EXHIBITED`                                   | **+184**                      | **17,622 -> 17,806.** TARGET PASS, 4,170 B under the ceiling. Storage layout AND ABI byte-identical — two comparisons reusing an existing parameter, on the `requirePq` false -> true edge only. SD-4 is NOT closed; see its ledger entry |
 | **SD-6 + SD-7** `I-COMMITMENT-EXHIBITED-AT-ADMISSION`               | **+299**                      | **17,806 -> 18,105.** TARGET PASS, 3,871 B under the ceiling. Storage layout byte-identical. **ABI: exactly two entries move** — `initialize` and `deployVault` each gain a trailing `bytes` WITNESS; selector COUNTS unchanged at 45 and 4, and `genesisSalt`/`predictVault` are untouched, so the configuration -> salt map is unchanged (addresses still move, as they do for every bytecode change — the clone initcode embeds the implementation address). The factory carries **+219** of its own to forward the witness |
+| **W2** K-9 mechanism B + `I-RECOVERY-EFFECTIVE-LIVENESS` + `I-RECOVERY-CHALLENGE-EPOCH` (SD-9b/c/d/e) — LOCAL, pending review | **+320**                      | **18,105 -> 18,425.** TARGET PASS, 3,551 B under the ceiling (6,151 under EIP-170). Storage layout byte-identical (17 entries, same slots). **ABI additive: exactly +1 selector** (`cancelRecoveryByQuorum`, `0x02abce4e`, kernel selectors 45 -> 46) **and +1 event** (`RecoveryCancelledByQuorum(uint32)`); `recovery()` byte-identical; nothing removed or moved. The factory's LENGTH is unchanged at 2,445 and its selectors at 4; its runtime hash moves because its metadata CBOR embeds the kernel source hash (32 differing bytes, all inside the 51-byte metadata tail) |
 
 **No T0/T1 invariant was deleted to recover bytes.** The ablated variants that
 produce these deltas are diagnostic only, and every one of them reintroduces a

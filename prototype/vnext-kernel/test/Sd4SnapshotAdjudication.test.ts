@@ -36,6 +36,7 @@ import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
 import { compileDeployable } from "../stateful/mutants.js";
 import { replaceWithinFunction } from "../authority/mutation-harness.js";
+import { quorumCancelStd } from "./sd4-harness.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import {
@@ -58,7 +59,19 @@ import {
 
 const KERNEL_GEN = 1n;
 const abi = ethers.AbiCoder.defaultAbiCoder();
-const SRC = path.join(process.cwd(), "prototype", "vnext-kernel", "contracts", "VaultKernelPrototype.sol");
+// W2 SUPERSESSION (implementation status only): designs A and E were adjudicated
+// as textual deltas over the kernel at c67d1439. Lane W2 changed that kernel, so
+// the deltas are built over the byte-exact pinned copy of the pre-W2 source (see
+// the pinning note in sd4-candidate-kernels.ts); the adjudication itself is
+// unchanged. The one test below that measures the REAL kernel is marked in place.
+const SRC = path.join(
+  process.cwd(),
+  "prototype",
+  "vnext-kernel",
+  "test",
+  "fixtures",
+  "VaultKernelPrototype.pre-w2.e6964aeb.sol",
+);
 
 const bytesOfLength = (n: number, tag: string): string => {
   if (n === 0) return "0x";
@@ -434,6 +447,11 @@ describe("SD-4 — adjudicating the snapshot hypothesis against the real counter
     // request is still there, and a re-proposal at the declared shape completes.
     // Cost is one extra cycle — the same cost design A pays, except design A
     // also spends a credential generation and leaves the vault dead in between.
+    // W2 SUPERSESSION: this test runs on the REAL kernel, which since Lane W2
+    // refuses to overwrite a live request. The quorum therefore takes its own
+    // exit (K-9 mechanism B) before re-proposing — the architecture-native
+    // two-path remedy of the Recovery Amendment section 4. Still one extra
+    // cycle, now made of two explicit quorum acts instead of a silent overwrite.
     const w = await deployWorld({
       label: "sd4-realkernel-repropose", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
     });
@@ -473,7 +491,9 @@ describe("SD-4 — adjudicating the snapshot hypothesis against the real counter
         sign(w.credKey, cd), "0x", pqKeyBytes(w.pqKey))
     ).wait();
 
-    // Re-propose at the shape the vault now permanently has.
+    // Re-propose at the shape the vault now permanently has — after the quorum
+    // clears the request the declaration stranded (W2: live overwrite is refused).
+    await (await quorumCancelStd(w, w.vault)).wait();
     const good = keyOf("sd4-rk-good");
     const goodKey = pqKeyBytes(good);
     expect(ethers.dataLength(goodKey)).to.equal(32);

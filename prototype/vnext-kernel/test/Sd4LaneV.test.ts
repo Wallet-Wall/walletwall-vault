@@ -21,6 +21,7 @@
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
 import { R, abi, cancel, guardianDigest, quorum } from "./sd4-harness.js";
+import { buildPreW2Kernel } from "./sd4-candidate-kernels.js";
 import {
   ACTION,
   DAY,
@@ -37,6 +38,18 @@ import { VaultVNextModel } from "../../../test/helpers/vaultVNextModel.js";
 
 /** The architecture test's own factory, replicated: it is local to that file. */
 const makeModel = (identityModel: "ACCOUNT_PER_VAULT") => new VaultVNextModel({ identityModel });
+
+/**
+ * W2 SUPERSESSION (implementation status only). Four measurements below — A1,
+ * B1, B2 and C — were taken on the kernel at c67d1439 and established the
+ * defects Lane W2 then remediated (SD-9b, SD-9c, SD-9d). They are kept as the
+ * record of what was measured, pinned to the byte-exact pre-W2 build so they
+ * still measure it; the remediated behaviour is asserted on the real artifact
+ * in W2RecoveryLifecycle.test.ts, and B1 additionally asserts that the missing
+ * exit now exists on the shipped kernel.
+ */
+let preW2: { abi: unknown[]; bytecode: string } | null = null;
+const PRE_W2 = () => (preW2 ??= buildPreW2Kernel());
 
 const KEY32 = (tag: string) => abi.encode(["address"], [addrOf(keyOf(tag))]);
 
@@ -73,7 +86,10 @@ describe("SD-4 lane V — recovery lifecycle authority reconciliation", () => {
 
   it("A1 the quorum may open UNBOUNDED requests, so a request-local budget is unbounded in total", async function () {
     this.timeout(300_000);
-    const w = await deployWorld({ label: "v-a1" });
+    // HISTORICAL (pre-W2 kernel, pinned): back-to-back initiations over a live
+    // request. The W2 kernel refuses the overwrite; the epoch conclusion holds
+    // there too, through the conformant exits (W2RecoveryLifecycle D-series).
+    const w = await deployWorld({ label: "v-a1", implOverride: PRE_W2() });
     const nominee = addrOf(keyOf("v-a1-nominee"));
     const hash = ethers.keccak256(KEY32("v-a1-pq"));
 
@@ -175,21 +191,30 @@ describe("SD-4 lane V — recovery lifecycle authority reconciliation", () => {
     const frag = w.vault.interface.getFunction("cancelRecovery");
     expect(frag?.inputs.map((i) => i.name)).to.deep.equal(["nonce", "deadline", "ecdsaSig"]);
 
-    // There is no guardian-quorum path that withdraws a request. Every function
-    // taking a QuorumProof is enumerated, and none of them cancels.
-    const quorumFns = w.vault.interface.fragments
+    // There was no guardian-quorum path that withdraws a request. Every function
+    // taking a QuorumProof is enumerated FROM THE PRE-W2 BUILD, and none of them
+    // cancels — that is the measurement this lane made.
+    const quorumFns = new ethers.Interface(PRE_W2().abi as ethers.InterfaceAbi).fragments
       .filter((f): f is ethers.FunctionFragment => f.type === "function")
       .filter((f) => f.inputs.some((i) => i.type.startsWith("tuple") && i.name === "proof"))
       .map((f) => f.name)
       .sort();
-    expect(quorumFns, "no quorum-side withdrawal exists").to.not.include("cancelRecoveryByQuorum");
+    expect(quorumFns, "no quorum-side withdrawal existed at c67d1439").to.not.include("cancelRecoveryByQuorum");
     expect(quorumFns.length, "the quorum surface is small and fully enumerated here").to.be.greaterThan(0);
-    console.log("\n      quorum-authorised functions: " + quorumFns.join(", ") + "\n");
+    console.log("\n      quorum-authorised functions (pre-W2): " + quorumFns.join(", ") + "\n");
+
+    // W2 SUPERSESSION: the shipped kernel carries the missing exit.
+    expect(
+      w.vault.interface.hasFunction("cancelRecoveryByQuorum((address[],bool[],uint256[],bytes[]),uint256,uint64)"),
+      "Lane W2 implemented K-9 mechanism B on the real artifact",
+    ).to.equal(true);
   });
 
   it("B2 the kernel overwrites a LIVE quorum-approved request; the model refuses the same move", async function () {
     this.timeout(300_000);
-    const w = await deployWorld({ label: "v-b2" });
+    // HISTORICAL (pre-W2 kernel, pinned): the kernel half of the mismatch. The
+    // W2 kernel refuses the same move with BadState (W2RecoveryLifecycle C1).
+    const w = await deployWorld({ label: "v-b2", implOverride: PRE_W2() });
     const a = addrOf(keyOf("v-b2-a"));
     const b = addrOf(keyOf("v-b2-b"));
     const hash = ethers.keccak256(KEY32("v-b2-pq"));
@@ -217,7 +242,10 @@ describe("SD-4 lane V — recovery lifecycle authority reconciliation", () => {
 
   it("C the five proofs — an expired request keeps blocking migration with no principal having acted", async function () {
     this.timeout(600_000);
-    const w = await deployWorld({ label: "v-c" });
+    // HISTORICAL (pre-W2 kernel, pinned): this is SD-9b as measured. On the W2
+    // kernel an expired request blocks nothing and is no longer a challenge
+    // target — the inverted proofs are W2RecoveryLifecycle B2/B3.
+    const w = await deployWorld({ label: "v-c", implOverride: PRE_W2() });
     const nominee = addrOf(keyOf("v-c-nominee"));
     const hash = ethers.keccak256(KEY32("v-c-pq"));
 

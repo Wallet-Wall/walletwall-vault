@@ -10,10 +10,19 @@
  *
  * Both are in-memory candidates. Neither is the final W2 artifact; they
  * establish candidate feasibility, and the E0 numbers are the forecast.
+ *
+ * W2 SUPERSESSION (Lane W2): THE FORECAST HAS BEEN REALISED. Two things change
+ * here and nothing else. (1) The BASE of the two forecast comparisons is now the
+ * pinned pre-W2 kernel — the base the forecast was made against — because the
+ * real artifact IS the W2 kernel and a forecast measured against its own
+ * realisation would trivially read zero. (2) A third test measures the shipped
+ * artifact: its function and event surface is exactly the E0 candidate's, and
+ * against the pre-W2 base it is exactly +1 selector and +1 event with the
+ * `recovery()` getter byte-identical. The forecast tests are otherwise verbatim.
  */
 import { expect } from "chai";
 import { ethers } from "./connection.js";
-import { buildLaneWColocated, buildLaneWColocatedE0 } from "./sd4-candidate-kernels.js";
+import { buildLaneWColocated, buildLaneWColocatedE0, buildPreW2Kernel } from "./sd4-candidate-kernels.js";
 import { deployWorld } from "../stateful/world.js";
 
 const sigsOf = (iface: ethers.Interface, type: "function" | "event") =>
@@ -22,27 +31,33 @@ const sigsOf = (iface: ethers.Interface, type: "function" | "event") =>
     .map((f) => (f as ethers.FunctionFragment | ethers.EventFragment).format("sighash"))
     .sort();
 
-async function delta(build: () => { abi: unknown[] }) {
-  const w = await deployWorld({ label: `w1p-abi-${Math.random().toString(36).slice(2, 8)}` });
-  const base = w.vault.interface;
-  const cand = new ethers.Interface(build().abi as ethers.InterfaceAbi);
+let preW2: { abi: unknown[]; bytecode: string } | null = null;
+/** The pinned pre-W2 kernel's interface — the base every forecast was made against. */
+const preW2Interface = () => new ethers.Interface((preW2 ??= buildPreW2Kernel()).abi as ethers.InterfaceAbi);
+
+function deltaAgainst(base: ethers.Interface, cand: ethers.Interface) {
   const gb = base.getFunction("recovery")!;
   const gc = cand.getFunction("recovery")!;
   return {
     addedFns: sigsOf(cand, "function").filter((s) => !sigsOf(base, "function").includes(s)),
     removedFns: sigsOf(base, "function").filter((s) => !sigsOf(cand, "function").includes(s)),
     addedEvs: sigsOf(cand, "event").filter((s) => !sigsOf(base, "event").includes(s)),
+    removedEvs: sigsOf(base, "event").filter((s) => !sigsOf(cand, "event").includes(s)),
     getterSame: gc.selector === gb.selector && gc.outputs.map((o) => o.type).join() === gb.outputs.map((o) => o.type).join(),
     getterFields: gc.outputs.length,
   };
 }
 
+function delta(build: () => { abi: unknown[] }) {
+  return deltaAgainst(preW2Interface(), new ethers.Interface(build().abi as ethers.InterfaceAbi));
+}
+
 const QCANCEL = "cancelRecoveryByQuorum((address[],bool[],uint256[],bytes[]),uint256,uint64)";
 
 describe("SD-4 lane W1P/W1R — Candidate C structural delta, from the ABI", () => {
-  it("E1 probe (observability instrument): +2 selectors, +1 event, recovery() identical", async function () {
+  it("E1 probe (observability instrument): +2 selectors, +1 event, recovery() identical", function () {
     this.timeout(600_000);
-    const d = await delta(buildLaneWColocated);
+    const d = delta(buildLaneWColocated);
     expect(d.removedFns).to.deep.equal([]);
     expect(d.addedFns).to.deep.equal([QCANCEL, "effectiveLiveRecovery()"]);
     expect(d.addedEvs).to.deep.equal(["RecoveryCancelledByQuorum(uint32)"]);
@@ -50,14 +65,35 @@ describe("SD-4 lane W1P/W1R — Candidate C structural delta, from the ABI", () 
     expect(d.getterFields).to.equal(8);
   });
 
-  it("E0 forecast (W2 target): +1 selector, +1 event, recovery() identical — liveness is a pure function of public data", async function () {
+  it("E0 forecast (W2 target): +1 selector, +1 event, recovery() identical — liveness is a pure function of public data", function () {
     this.timeout(600_000);
-    const d = await delta(buildLaneWColocatedE0);
+    const d = delta(buildLaneWColocatedE0);
     expect(d.removedFns).to.deep.equal([]);
     expect(d.addedFns, "the ONLY new selector is K-9's guardian cancellation").to.deep.equal([QCANCEL]);
     expect(d.addedEvs).to.deep.equal(["RecoveryCancelledByQuorum(uint32)"]);
     expect(d.getterSame).to.equal(true);
     // No new public state variable on either build: one would surface as a getter.
     expect(d.addedFns.filter((s) => !s.includes("(")).length).to.equal(0);
+  });
+
+  it("W2 REALISED — the shipped artifact's surface is exactly the E0 forecast: +1 selector, +1 event versus the pre-W2 base, recovery() identical", async function () {
+    this.timeout(600_000);
+    const w = await deployWorld({ label: "w1p-abi-realised" });
+    const shipped = w.vault.interface;
+    const e0 = new ethers.Interface(buildLaneWColocatedE0().abi as ethers.InterfaceAbi);
+
+    // The shipped kernel and the E0 candidate expose the SAME functions and events.
+    expect(sigsOf(shipped, "function"), "function surface == E0 forecast").to.deep.equal(sigsOf(e0, "function"));
+    expect(sigsOf(shipped, "event"), "event surface == E0 forecast").to.deep.equal(sigsOf(e0, "event"));
+
+    // Against the pre-W2 base, the shipped kernel moved by exactly the forecast.
+    const d = deltaAgainst(preW2Interface(), shipped);
+    expect(d.removedFns).to.deep.equal([]);
+    expect(d.removedEvs).to.deep.equal([]);
+    expect(d.addedFns, "exactly one new selector on the real artifact").to.deep.equal([QCANCEL]);
+    expect(d.addedEvs, "exactly one new event on the real artifact").to.deep.equal(["RecoveryCancelledByQuorum(uint32)"]);
+    expect(d.getterSame, "recovery() unchanged on the real artifact").to.equal(true);
+    expect(d.getterFields).to.equal(8);
+    expect(shipped.hasFunction("effectiveLiveRecovery()"), "Option E0: no liveness getter was added").to.equal(false);
   });
 });

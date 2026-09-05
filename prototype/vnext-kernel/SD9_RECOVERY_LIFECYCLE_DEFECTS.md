@@ -93,3 +93,21 @@ representations without absorbing it.
 **Kept separate** because its causal mechanism — generation binding — is
 distinct from SD-9's lifecycle ownership. Its remediation is not in the W2
 contract and is not decided here.
+
+---
+
+## W2 STATUS (Lane W2I — local implementation diff for independent review; every classification above retained as written)
+
+| Subfinding | Status on the W2 diff | Where |
+|---|---|---|
+| SD-9a `RECOVERY_CHALLENGE_EPOCH_LIFETIME_UNSPECIFIED` | **Hazard now GUARDED**: the epoch rule is stated at the struct field and at the `delete recovery` reset site in `VaultKernelPrototype.sol`; the refunding remediation is a permanent mutant (`M-K9-expiry-refunds-budget`, killed) and the oracle carries `G-CHALLENGE-EPOCH` | `test/W2RecoveryLifecycleMutations.test.ts`, `stateful/invariants.ts` |
+| SD-9b expired request retains blocking effect | **REMEDIATED**: `bindMigration` and `initiateRecovery` consult `_recoveryIsLive()`; an expired request blocks nothing and needs no sweeper | `test/W2RecoveryLifecycle.test.ts` §B, §C |
+| SD-9c guardian-quorum cancellation absent | **REMEDIATED**: `cancelRecoveryByQuorum` (K-9 mechanism B) | `test/W2RecoveryLifecycle.test.ts` §A, §E |
+| SD-9d overwrite substitutes for termination | **REMEDIATED**: a live request is never overwritten (`BadState`, no nonce consumed); termination is explicit and observable on both principals' paths | `test/W2RecoveryLifecycle.test.ts` §C, §G |
+| SD-9e expiry equality boundary | **REMEDIATED**: `>= expiresAt` in `executeRecovery`; `LIVE_WINDOW = [executableAt, expiresAt)` everywhere | `test/W2RecoveryLifecycle.test.ts` §B |
+| SD-10 approved request stranded by guardian rotation | **NOT TOUCHED** — `setGuardians` is unchanged. **Blast radius recorded:** a stranded request is still effectively live, so under W2 it blocks re-initiation (`BadState`) and migration (`NoRecovery`) until expiry, where before W2 it could be overwritten directly; the NEW quorum clears it at once with `cancelRecoveryByQuorum` (the digest binds the current generation) and re-proposes. Two explicit acts where there was one silent overwrite; no clock touched | `test/W2RecoveryLifecycle.test.ts` §H |
+
+The historical measurements of SD-9b/9d on the real kernel (`Sd4LaneV` C/A1/B2,
+`Sd4LaneU` B1/F, `Sd4RedTeamRound2`, `Sd4LaneV2` test 1) are pinned to the
+byte-exact pre-W2 source they measured (`test/fixtures/`), so they remain the
+record of the defect; the remediated behaviour lives in the W2 suites.

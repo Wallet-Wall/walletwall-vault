@@ -189,3 +189,24 @@ The same holds for `AUTHORITY_CENSUS.json`, `MEASUREMENTS.json` and
 re-measured — at which point `defects.ts` carries the remediated entries, the
 campaign runs against the changed kernel, and the receipt's `head` moves for a
 reason.
+
+### W2 status (Lane W2I — local implementation diff, receipts still NOT regenerated)
+
+The W2 implementation exists on this diff but is uncommitted, so a regenerated
+receipt would stamp `head`/`tree` values that cannot truthfully identify the
+tree it describes. The canonical `STATEFUL_AUTHORITY_EVIDENCE.json` is therefore
+left byte-unchanged and is now stale in countable ways the campaign suite itself
+detects (its "receipt describes the matrix" test is RED on this diff by design,
+not by accident — it fails on the first comparison, the campaign count):
+**18 profiles** where the receipt lists 17 (`recovery-lifecycle` appended), so
+**252 planned campaigns** where the receipt says 238 and **13,680 planned
+transitions** where it says 12,920; **21 global invariants** where the receipt
+lists 20 (`G-CHALLENGE-EPOCH` added); a new judged outcome
+`RECOVERY_QUORUM_CANCEL`; and kernel bytes 18,425 / sha256 `17884089…` where the
+receipt's `solidityChanged` still names 18,105 / `73be083f…`. The mutation
+catalogue (`MUTATIONS`, 22) is unchanged — the fifteen W2 mutants live in
+`test/W2RecoveryLifecycleMutations.test.ts`, which is deterministic-history
+adequacy rather than campaign adequacy. Regeneration is authorised at the commit
+that carries this diff; the regenerator now prefers the `w2RecoveryLifecycle`
+block of `MEASUREMENTS.json`. The exact plan is in
+`../W2_IMPLEMENTATION_RECORD.md`.

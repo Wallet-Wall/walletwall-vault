@@ -339,6 +339,45 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
       expect(m.kernel.recovery).to.not.equal(null);
     });
 
+    it("I-RECOVERY-CHALLENGE-EPOCH — the challenge budget survives quorum cancellation and rotation, and resets only when a guardian recovery executes", function () {
+      // docs/Vault_vNext_Recovery_Amendment.md section 2 (DERIVED, adopted for
+      // vNext): the credential's bounded budget is independent of request
+      // lifetime and of credentialGeneration; it resets ONLY after a successful
+      // guardian recovery — the one transition the outgoing credential cannot
+      // authorise. Never resetting would delete the D1/H-15 defence for every
+      // credential after the first; resetting on rotation would restore H-03.
+      const m = vnext();
+      for (let i = 0; i < CREDENTIAL_CHALLENGE_LIMIT; i++) {
+        expect(m.initiateRecovery("GUARDIAN", heldCredential(`epoch-${i}`)).kind).to.equal("OK");
+        expect(m.challengeRecoveryByCredential().kind).to.equal("OK");
+      }
+      expect(m.kernel.credentialChallengesUsed).to.equal(CREDENTIAL_CHALLENGE_LIMIT);
+
+      // A guardian-quorum cancellation refunds nothing.
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("epoch-q")).kind).to.equal("OK");
+      expect(m.cancelRecovery("GUARDIAN_QUORUM").kind).to.equal("OK");
+      expect(m.kernel.credentialChallengesUsed, "quorum cancellation refunds nothing").to.equal(
+        CREDENTIAL_CHALLENGE_LIMIT,
+      );
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("epoch-r")).kind).to.equal("OK");
+      expect(m.challengeRecoveryByCredential().kind, "still exhausted").to.equal("DENIED");
+      expect(m.cancelRecovery("GUARDIAN_QUORUM").kind).to.equal("OK");
+
+      // Ordinary credential rotation refunds nothing either (H-03 otherwise).
+      expect(m.rotateCredentials(heldCredential("epoch-rotated")).kind).to.equal("OK");
+      expect(m.kernel.credentialChallengesUsed, "rotation refunds nothing").to.equal(CREDENTIAL_CHALLENGE_LIMIT);
+
+      // A successful guardian recovery is the single reset boundary.
+      driveToApprovedRecovery(m);
+      expect(m.executeRecovery().kind).to.equal("OK");
+      expect(m.kernel.credentialChallengesUsed, "epoch reset at the authority transition").to.equal(0);
+      expect(m.initiateRecovery("GUARDIAN", heldCredential("epoch-later")).kind).to.equal("OK");
+      expect(
+        m.challengeRecoveryByCredential().kind,
+        "the recovered credential regains the full bounded allowance",
+      ).to.equal("OK");
+    });
+
     it("recovery installs only credentials whose possession was proven", function () {
       const m = vnext();
       expect(m.rotateCredentials(unheldCredential("ghost")).kind).to.equal("DENIED");
@@ -1278,6 +1317,25 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         (m) => m.quorumReachable(seats, 2) === false,
       );
     });
+
+    it("M58 — a successful guardian recovery leaves the credential's spent challenge budget in place", function () {
+      // Lane W2 / Recovery Amendment section 2: never resetting silently
+      // deletes the D1/H-15 defence for every credential after the first. The
+      // discriminator OBSERVES the budget after an end-to-end recovery; it never
+      // asserts on the way there.
+      assertMutantKilled("M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET", "recovery/execute", (m) => {
+        for (let i = 0; i < CREDENTIAL_CHALLENGE_LIMIT; i++) {
+          if (m.initiateRecovery("GUARDIAN", heldCredential(`m58-${i}`)).kind !== "OK") return false;
+          if (m.challengeRecoveryByCredential().kind !== "OK") return false;
+        }
+        if (m.kernel.credentialChallengesUsed !== CREDENTIAL_CHALLENGE_LIMIT) return false;
+        if (!recoveryCompletesEndToEnd(m)) return false;
+        // Re-read through a widened binding: control-flow narrowing would
+        // otherwise pin the property to the literal limit across the call above.
+        const budgetAfterRecovery: number = m.kernel.credentialChallengesUsed;
+        return budgetAfterRecovery === 0;
+      });
+    });
   });
 
   describe("mutation matrix — remediation mutants M32..M57 (sub-models)", function () {
@@ -1730,9 +1788,12 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
         "M29_QUORUM_DISTINCTNESS_DROPPED",
         "M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY",
         "M31_ATTESTATION_COUNTED_ON_NON_REVERT",
+        // Numbered after the remediation sub-model's M32..M57 so the two unions
+        // stay disjoint and contiguous (asserted below). Added by Lane W2.
+        "M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET",
       ];
       expect(new Set(declared).size, "duplicate mutation identifier").to.equal(declared.length);
-      expect(declared).to.have.length(31);
+      expect(declared).to.have.length(32);
 
       const declaredRemediation: readonly RemediationMutation[] = [
         "M32_PROFILE_SUMMARY_IS_MAX_OVER_CLAUSES",
@@ -1767,12 +1828,12 @@ describe("WalletWall Vault vNext — architecture reference model", function () 
       );
       expect(declaredRemediation).to.have.length(26);
 
-      // The two unions are disjoint and contiguous M1..M57. A gap or an overlap
+      // The two unions are disjoint and contiguous M1..M58. A gap or an overlap
       // means a mutant was renumbered without its matrix entry following it.
       const numbers = [...declared, ...declaredRemediation]
         .map((id) => Number(/^M(\d+)_/.exec(id)?.[1]))
         .sort((a, b) => a - b);
-      expect(numbers).to.deep.equal(Array.from({ length: 57 }, (_, i) => i + 1));
+      expect(numbers).to.deep.equal(Array.from({ length: 58 }, (_, i) => i + 1));
     });
 
     /**

@@ -34,7 +34,7 @@ import { expect } from "chai";
 import { existsSync, readFileSync } from "node:fs";
 import { PROFILES } from "../stateful/profiles.js";
 import { MUTATIONS } from "../stateful/mutants.js";
-import { runCampaign, type CampaignResult } from "../stateful/campaign.js";
+import { LIFECYCLE_SEAMS, runCampaign, type CampaignResult } from "../stateful/campaign.js";
 import { DECLARED_CUTS } from "../stateful/model.js";
 import { ACTION_KINDS } from "../stateful/actions.js";
 import { GLOBAL_INVARIANTS } from "../stateful/invariants.js";
@@ -69,6 +69,8 @@ interface Aggregate {
   controlsPassed: number;
   controlsAttempted: number;
   knownDefectHits: Record<string, number>;
+  /** Lane W2 recovery-lifecycle seams reached, summed across every campaign. */
+  lifecycle: Record<string, number>;
 }
 
 const AGG: Aggregate = {
@@ -83,6 +85,7 @@ const AGG: Aggregate = {
   controlsPassed: 0,
   controlsAttempted: 0,
   knownDefectHits: {},
+  lifecycle: {},
 };
 
 function absorb(r: CampaignResult): void {
@@ -91,6 +94,7 @@ function absorb(r: CampaignResult): void {
   AGG.successful += r.successfulTransitions;
   AGG.controlsPassed += r.positiveControlsPassed;
   AGG.controlsAttempted += r.positiveControlsAttempted;
+  for (const [k, v] of Object.entries(r.lifecycle)) AGG.lifecycle[k] = (AGG.lifecycle[k] ?? 0) + v;
   for (const [k, v] of Object.entries(r.outcomeCounts)) AGG.outcomes[k] = (AGG.outcomes[k] ?? 0) + v;
   for (const [k, v] of Object.entries(r.actionCoverage)) AGG.actions[k] = (AGG.actions[k] ?? 0) + v;
   for (const [k, v] of Object.entries(r.revertCounts)) AGG.reverts[k] = (AGG.reverts[k] ?? 0) + v;
@@ -194,6 +198,22 @@ describe("vNext kernel — STATEFUL ADVERSARIAL AUTHORITY CAMPAIGN", function ()
       expect(
         never,
         "these protected outcomes NEVER occurred, so the cut property for them was never exercised: " +
+          never.join(", "),
+      ).to.deep.equal([]);
+    });
+
+    it("every W2 recovery-lifecycle seam was actually reached at least once", function () {
+      // Lane W2 requires the campaign to REACH the lifecycle states the K-9
+      // properties are about — an exhausted budget, an expired request, a
+      // refused live overwrite, cancellation and re-initiation on both paths, a
+      // quorum cancellation at and below the cut, a recovery after a recovery.
+      // A green campaign that never reached one of them would be absent
+      // evidence for that seam, so each tally must be non-zero.
+      const never = LIFECYCLE_SEAMS.filter((s) => (AGG.lifecycle[s] ?? 0) === 0);
+      console.log("\n  W2 LIFECYCLE SEAMS REACHED\n" + JSON.stringify(AGG.lifecycle, null, 2).replace(/^/gm, "  "));
+      expect(
+        never,
+        "these recovery-lifecycle seams were NEVER reached by any campaign, so the properties about them were never exercised: " +
           never.join(", "),
       ).to.deep.equal([]);
     });

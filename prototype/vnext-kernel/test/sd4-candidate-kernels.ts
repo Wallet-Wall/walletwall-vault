@@ -53,15 +53,51 @@ import * as path from "node:path";
 import { compileDeployable } from "../stateful/mutants.js";
 import { replaceWithinFunction } from "../authority/mutation-harness.js";
 
-const SRC = path.join(process.cwd(), "prototype", "vnext-kernel", "contracts", "VaultKernelPrototype.sol");
+/**
+ * PINNED TO THE PRE-W2 KERNEL — an implementation-status supersession, not a
+ * change to any candidate.
+ *
+ * Every builder in this module is a TEXTUAL DELTA over the kernel the SD-4
+ * lanes adjudicated: `c67d1439`, carried byte-identical to `e6964aeb` (#188's
+ * head after W1). Lane W2 then changed the kernel on disk — `initiateRecovery`,
+ * `cancelRecovery`, `executeRecovery` and `bindMigration` now read effective
+ * liveness, and `cancelRecoveryByQuorum` / `RecoveryCancelledByQuorum` exist —
+ * so the anchors below no longer occur in `contracts/VaultKernelPrototype.sol`,
+ * and several deltas (the K-9 probes, the Lane W/W1.2 candidates) would
+ * DUPLICATE what the kernel now declares. Building a falsified experiment on top
+ * of the remediation would measure nothing the lanes ever claimed.
+ *
+ * The source is therefore read from a byte-exact copy of the historical blob,
+ * `test/fixtures/VaultKernelPrototype.pre-w2.e6964aeb.sol`, whose SHA-256 is
+ * pinned below and asserted by `W2RecoveryLifecycle.test.ts`. Every candidate
+ * keeps exactly the meaning it had when it was adjudicated; nothing here builds
+ * from the live kernel any more. The W2 kernel itself is measured only through
+ * the real artifact (`deployWorld()` without `implOverride`).
+ */
+const SRC = path.join(
+  process.cwd(),
+  "prototype",
+  "vnext-kernel",
+  "test",
+  "fixtures",
+  "VaultKernelPrototype.pre-w2.e6964aeb.sol",
+);
 const MOCKS = path.join(process.cwd(), "prototype", "vnext-kernel", "contracts", "PrototypeMocks.sol");
+
+/** SHA-256 of the pinned pre-W2 kernel blob (LF), `git show e6964aeb:prototype/vnext-kernel/contracts/VaultKernelPrototype.sol`. */
+export const PRE_W2_KERNEL_SHA256 = "a39cea9b41a16ddb204b9af2d1844372b78ae110d840f7886c396872d1a5588b";
+export const PRE_W2_KERNEL_FIXTURE = SRC;
 
 export interface Deployable {
   abi: unknown[];
   bytecode: string;
 }
 
-export const kernelSource = (): string => fs.readFileSync(SRC, "utf8");
+/** The PRE-W2 kernel source (see the pinning note above), normalised to LF. */
+export const kernelSource = (): string => fs.readFileSync(SRC, "utf8").split("\r\n").join("\n");
+
+/** The unmodified pre-W2 kernel, deployable — the base every historical candidate was measured against. */
+export const buildPreW2Kernel = (): Deployable => build("pre-W2 kernel (e6964aeb)", kernelSource());
 
 /** Whole-file replacement that REFUSES a non-unique or missing anchor. */
 function replaceOnce(source: string, oldText: string, newText: string, label: string): string {

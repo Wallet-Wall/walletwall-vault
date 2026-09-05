@@ -208,6 +208,21 @@ export async function cancel(
 }
 
 /**
+ * K-9 mechanism B (Lane W2): the guardian quorum cancels the effectively-live
+ * request, at the CURRENT guardian nonce and generation. Mirrors the kernel's
+ * `cancelRecoveryByQuorum` digest exactly: `ACTION_RECOVER`, guardianGeneration,
+ * params `keccak256("QUORUM_CANCEL_RECOVERY")`, `DOMAIN_GUARDIAN`.
+ *
+ * Only meaningful against the REAL artifact (or a candidate that carries the
+ * function); the pinned pre-W2 kernel has no such selector by construction.
+ */
+export const QCANCEL_TAG = ethers.id("QUORUM_CANCEL_RECOVERY");
+export async function quorumCancelStd(w: World, vault: ethers.Contract): Promise<ethers.ContractTransactionResponse> {
+  const { digest, nonce } = await guardianDigest(w, vault, QCANCEL_TAG);
+  return vault.cancelRecoveryByQuorum(quorum(w, digest), nonce, FAR_DEADLINE);
+}
+
+/**
  * A spend under the CURRENT floor, following an accepted transition through to
  * an actual asset movement. `pqSigner` is ignored when the floor is dormant.
  */

@@ -71,11 +71,19 @@ function main(): void {
     sd1Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd3Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    w2RecoveryLifecycle?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
   const kernel = measurements.kernel;
   // The LATEST remediation is what this receipt describes; earlier ones are
-  // history and are recorded in their own MEASUREMENTS.json blocks.
-  const sd1 = measurements.sd67Remediation ?? measurements.sd3Remediation ?? measurements.sd1Remediation;
+  // history and are recorded in their own MEASUREMENTS.json blocks. W2 (K-9
+  // mechanism B + recovery lifecycle) is the latest; it is preferred here so
+  // that the receipt regenerated at the commit carrying W2 reports W2's delta
+  // rather than SD-6/7's.
+  const sd1 =
+    measurements.w2RecoveryLifecycle ??
+    measurements.sd67Remediation ??
+    measurements.sd3Remediation ??
+    measurements.sd1Remediation;
 
   const receipt = {
     schema: "vnext-kernel-stateful-authority-evidence.v1",

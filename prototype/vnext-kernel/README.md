@@ -40,7 +40,8 @@ loss against this exact kernel.**
 | `VaultKernelPrototype` (findings A-E remediated)  | 17,407     | pass, headroom 7,169     | TARGET PASS, headroom 4,569     |
 | `VaultKernelPrototype` (SD-1 remediated)          | 17,622     | pass, headroom 6,954     | TARGET PASS, headroom 4,354     |
 | `VaultKernelPrototype` (SD-3 remediated)          | 17,806     | pass, headroom 6,770     | TARGET PASS, headroom 4,170     |
-| **`VaultKernelPrototype` (SD-6 + SD-7 remediated)** | **18,105** | **pass, headroom 6,471** | **TARGET PASS, headroom 3,871** |
+| `VaultKernelPrototype` (SD-6 + SD-7 remediated)   | 18,105     | pass, headroom 6,471     | TARGET PASS, headroom 3,871     |
+| **`VaultKernelPrototype` (W2: K-9 mechanism B + recovery lifecycle, LOCAL, pending review)** | **18,425** | **pass, headroom 6,151** | **TARGET PASS, headroom 3,551** |
 
 **22.1% smaller than the monolith** — 5,144 bytes — and still the only one of the
 three to clear the internal target. The factory adds **2,445** bytes, once per
@@ -61,7 +62,7 @@ implementation address, which moved by +299 bytes.
 |                        | state-changing functions | global admin                                                  |
 | ---------------------- | ------------------------ | ------------------------------------------------------------- |
 | `WalletWallVault`      | **28**                   | `pause` · `unpause` · `transferOwnership` · `acceptOwnership` |
-| `VaultKernelPrototype` | **13**                   | **none — the principal does not exist**                       |
+| `VaultKernelPrototype` | **14** (13 + W2's `cancelRecoveryByQuorum`, guardian quorum) | **none — the principal does not exist**                       |
 
 ## What produced the difference
 
@@ -195,13 +196,13 @@ K6  + rotation, governance, no-downgrade  [FULL]   14,339   +1,741
 | implementation address recoverable from clone code           | **yes**                                |
 | CREATE2 prediction `==` deployed address                     | **yes**                                |
 | declared storage slots                                       | 11 (+3 recovery, +3 migration)         |
-| selectors                                                    | 40 — **13 state-changing**             |
+| selectors                                                    | 40 — **13 state-changing** (this table is the 14,339-byte head's identity, kept as history; the kernel on this diff has 46 selectors, 14 state-changing — see `AUTHORITY.md` §4) |
 
 ## Static analysis coverage
 
 | Scanner     | Status                                                                                                                                                                                                       |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **solhint** | **RUN in CI** (`vNext Kernel / Prototype Tests`) — 32 warnings, 0 errors                                                                                                                                     |
+| **solhint** | **RUN in CI** (`vNext Kernel / Prototype Tests`) — 32 warnings, 0 errors at the head this row was written for; 34 at `e6964aeb`, **36 on the W2 diff** (+2, both in the kernel: the new `RecoveryCancelledByQuorum` event's `gas-indexed-events` hint and the half-open `>= expiresAt` in `executeRecovery` flagged by `gas-strict-inequalities`), still 0 errors                                                                                                                                     |
 | **Slither** | **RUN in CI** (`vNext Kernel / Slither`, path-scoped, branch-unrestricted) — every finding triaged firsthand in `slither-triage.json`; see `SCANNER_EVIDENCE.json` for the receipt                          |
 | **CodeQL**  | **RUN in CI** (`vNext Kernel / CodeQL`) for the prototype's own JavaScript/TypeScript tooling ONLY — GitHub CodeQL has **no Solidity extractor**, so this is not, and cannot be, Solidity security analysis |
 

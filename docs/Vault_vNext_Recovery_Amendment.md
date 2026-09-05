@@ -223,3 +223,22 @@ change; same-block ordering in both orders; a failed replacement initiation.
 
 **IMPLEMENTATION CONFORMANCE.** Condition 2 is not met at `c67d1439` (overwrite
 is permitted), so the proof holds only for the W2 target, not the prototype.
+
+---
+
+## W2 status addendum (Lane W2I — local implementation diff for independent review; nothing above is rewritten)
+
+Every **IMPLEMENTATION CONFORMANCE** line in this document describes the
+prototype at `c67d1439` and stands as history. On the W2 diff
+(`prototype/vnext-kernel/W2_IMPLEMENTATION_RECORD.md`):
+
+| Section | Status at `c67d1439` (above) | Status on the W2 diff |
+|---|---|---|
+| §1 K-9 | mechanism B `MISSING_IN_PROTOTYPE` | **IMPLEMENTED** — `cancelRecoveryByQuorum(QuorumProof,uint256,uint64)`, `DOMAIN_GUARDIAN` nonce, clears authority only, distinct event |
+| §2 challenge epoch | consistent by side effect, unprotected (SD-9a) | **STATED AND GUARDED** — rule at the struct field and at the `delete recovery` reset site; oracle `G-CHALLENGE-EPOCH`; four refund mutants and the no-reset mutant killed; the reference model resets on successful recovery (M58 discriminates) |
+| §3 effective expiry | `> expiresAt` outlier (SD-9e) | **HALF-OPEN** — `_recoveryIsLive() = active && block.timestamp < expiresAt`; `executeRecovery` refuses at `>= expiresAt`; an expired request blocks neither migration nor initiation and is no cancellation target; no sweeper |
+| §4 SD-4 disposition | remedy requires mechanism B | **REMEDY AVAILABLE** — live: quorum cancel then fresh recovery; expired: fresh recovery directly. `SD4_DEDICATED_REMEDIATION = NOT_REQUIRED` unchanged |
+| §5 replay | condition 2 unmet | **ALL SIX PREMISES HOLD** on the real artifact — live overwrite refused before any nonce is consumed; stale cancel finds no target and consumes nothing, then dies as `BadNonce` after the replacement, or as `QuorumNotMet` after a generation change (`test/W2RecoveryLifecycle.test.ts` §E) |
+
+The generated evidence receipts are NOT restamped by this lane (they still
+identify `28adbb88`/`c67d1439`); the regeneration plan is in the record.

@@ -1,5 +1,18 @@
 # W2 — implementation contract (frozen target; NO Solidity in this lane)
 
+> **REALISED BY LANE W2I (local implementation diff for independent review;
+> this contract is retained as the frozen target it was).** The measured
+> outcome, item by item and mutant by mutant, is in `W2_IMPLEMENTATION_RECORD.md`.
+> Forecast versus measurement, in brief: storage layout UNCHANGED (as
+> forecast); `recovery()` ABI UNCHANGED (as forecast); new external selectors
+> EXACTLY ONE, `cancelRecoveryByQuorum` `0x02abce4e` (as forecast, Option E0 —
+> no liveness getter); new events EXACTLY ONE, `RecoveryCancelledByQuorum(uint32)`
+> (as forecast); runtime bytes **18,105 -> 18,425 (+320)** against the
+> "+150–300 B" forecast column, TARGET PASS with 3,551 B of headroom. All fifteen
+> mutants below are compiled and killed by their named properties
+> (`test/W2RecoveryLifecycleMutations.test.ts`); the historical M5 (stateful),
+> M27 and M43 (architecture model) remain killed.
+
 This is the contract a future W2 lane implements. It records **Candidate C**
 from Lane W1.2 — co-located, semantically independent — and supersedes the
 Candidate P assumptions in `SD4_LANE_W_SEMANTIC_FREEZE.md` §H and
