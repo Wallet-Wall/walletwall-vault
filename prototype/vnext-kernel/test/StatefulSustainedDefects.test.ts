@@ -94,7 +94,7 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e remediated; SD-2 reproduced here, SD-10 INVERTED pending its ledger move, SD-4 / SD-5 / SD-8 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
@@ -106,12 +106,11 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
       "SD-4-ecdsa-only-shape-declaration-is-uncounted",
       "SD-5-permanent-shape-capture-on-the-declaring-edge",
       "SD-8-genesis-exhibit-cannot-prove-well-formedness",
-      "SD-10-approved-request-stranded-by-guardian-rotation",
     ];
     expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
       [...SUSTAINED_IDS].sort(),
     );
-    expect(SUSTAINED_DEFECTS.length).to.equal(5);
+    expect(SUSTAINED_DEFECTS.length).to.equal(4);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -137,6 +136,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
       "SD-9c-guardian-quorum-cancellation-absent",
       "SD-9d-live-request-overwrite",
       "SD-9e-expiry-equality-boundary",
+      "SD-10-approved-request-stranded-by-guardian-rotation",
     ];
     for (const closed of REMEDIATED_IDS) {
       expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
@@ -147,7 +147,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
       [...REMEDIATED_IDS].sort(),
     );
-    expect(REMEDIATED_DEFECTS.length).to.equal(8);
+    expect(REMEDIATED_DEFECTS.length).to.equal(9);
     // A defect is sustained or remediated, never both, and never twice.
     const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
     expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
@@ -156,6 +156,8 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     expect(everyId.some((id) => id.toLowerCase().includes("sd-9a")), "SD-9a is not a defect entry").to.equal(false);
     // Lane W2's four closures name their exact source identities.
     const W1_RECORD = "4b9127269602d8eab3700d96dda4d5cfcf2e0d55";
+    const W1_RECORD_SD10 = W1_RECORD;
+    const SD10_COMMIT_A = "c32e0d748390b79f4163ad4a783c2467cf502e30";
     const W2_COMMIT_A = "c182db1099d92ff5830ae71116613c739b034bd9";
     for (const id of REMEDIATED_IDS.filter((x) => x.startsWith("SD-9"))) {
       const r = REMEDIATED_DEFECTS.find((x) => x.id === id)!;
@@ -165,10 +167,23 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
         "W2RecoveryLifecycle.test.ts",
       );
     }
-    // SD-10 is present, has no campaign oracle, and is reproduced in THIS file.
-    const sd10 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-10-approved-request-stranded-by-guardian-rotation")!;
-    expect(sd10.property, "SD-10 has no campaign property; its reproduction is deterministic").to.equal(null);
-    expect(sd10.reproducedBy ?? "", "SD-10 names this file").to.include("StatefulSustainedDefects.test.ts");
+    // SD-10 moved to REMEDIATED in Lane SD10-P. It names the commit that fixed
+    // it, the head it was sustained at, and the inverted reproduction — and it
+    // still names THIS file, because the original sequence lives here with its
+    // verdict moved rather than deleted.
+    const sd10 = REMEDIATED_DEFECTS.find((r) => r.id === "SD-10-approved-request-stranded-by-guardian-rotation")!;
+    expect(sd10, "SD-10 is recorded as remediated").to.not.equal(undefined);
+    expect(sd10.sustainedAt, "SD-10 was first recorded by Lane W1").to.equal(W1_RECORD_SD10);
+    expect(sd10.remediatedOn, "SD-10 names Lane SD10-I's Commit A").to.include(SD10_COMMIT_A);
+    expect(sd10.invertedReproduction, "SD-10 still names this file").to.include("StatefulSustainedDefects.test.ts");
+    expect(sd10.invertedReproduction, "and the permanent SD-10 suite").to.include(
+      "Sd10ApprovedRequestPreservation.test.ts",
+    );
+    expect(sd10.residual, "SD-10 leaves no residual").to.equal(null);
+    // The remediation must NOT overstate itself: generation binding survives.
+    expect(sd10.invariant, "the entry must not claim generation binding was removed").to.include(
+      "Guardian-generation binding was NOT removed",
+    );
     // SD-4 stays sustained on its campaign property, and its entry carries the
     // canonical disposition rather than the refuted general claims.
     const sd4 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-4-ecdsa-only-shape-declaration-is-uncounted")!;
@@ -437,8 +452,8 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
 
   // =====================================================================
   /**
-   * SD-10 — REPRODUCTION INVERTED IN LANE SD10-I, LEDGER ENTRY DELIBERATELY NOT
-   * YET MOVED.
+   * SD-10 — REPRODUCTION INVERTED IN LANE SD10-I; LEDGER ENTRY MOVED TO
+   * REMEDIATED_DEFECTS IN LANE SD10-P.
    *
    * Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md), measured
    * on the pre-W2 kernel (Sd4LaneV "D") and re-measured on the W2 kernel, this
@@ -452,14 +467,13 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
    * and executes. Every step below is unchanged except the verdict — that is
    * what makes this an INVERSION rather than a new test.
    *
-   * WHY THE LEDGER STILL SAYS SUSTAINED. Moving SD-10 into `REMEDIATED_DEFECTS`
-   * is a PERSISTENCE act: a `RemediatedDefect` entry has to name the head it was
-   * remediated ON, and there is no such head until this work is committed and
-   * reviewed. Writing one now would name a commit that does not exist. The final
-   * assertion below therefore pins the divergence explicitly, so the ledger and
-   * this file cannot drift apart silently in either direction.
+   * THE LEDGER MOVE HAS NOW HAPPENED. A `RemediatedDefect` entry must name the
+   * head it was remediated ON, which did not exist while SD10-I was an
+   * uncommitted object; Lane SD10-P created that head (Commit A) and filed the
+   * entry against it. The final assertion below is now the INVERSE of the one
+   * that pinned the divergence, and it still fails if either side moves alone.
    */
-  it("SD-10 — INVERTED: a guardian-set replacement PRESERVES the approved request, which matures and executes; the ledger entry is still SUSTAINED pending its persistence lane", async function () {
+  it("SD-10 — REMEDIATED: a guardian-set replacement PRESERVES the approved request, which matures and executes; ledger and behaviour agree", async function () {
     const w = await deployWorld({ label: "sd10", verifier: "honest" });
     const guardianAuth = async (actionType: string, params: string) => {
       const nonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
@@ -531,14 +545,18 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     await (await w.vault.executeRecovery(await change(cred2, pq2))).wait();
     expect(await w.vault.ecdsaSigner(), "a subsequent recovery still installs").to.equal(addrOf(cred2));
 
-    // 6. THE DIVERGENCE, STATED. The behaviour above is remediated; the LEDGER
-    //    is not, and that is deliberate (see this test's header). This assertion
-    //    fails the moment either side moves without the other — whether someone
-    //    files the RemediatedDefect entry without updating this file, or
-    //    reinstates the defect while the ledger still calls it sustained.
+    // 6. LEDGER AND BEHAVIOUR NOW AGREE. Lane SD10-P moved the entry, so this
+    //    assertion is the inverse of the one that stood while the two diverged.
+    //    It still fails the moment either side moves without the other: putting
+    //    SD-10 back into SUSTAINED_DEFECTS, or reinstating the defect in the
+    //    kernel, breaks it from opposite directions.
     expect(
       SUSTAINED_DEFECTS.map((d) => d.id),
-      "SD-10's ledger move is a PERSISTENCE act and belongs to the lane that commits this work",
+      "SD-10 is no longer a sustained defect",
+    ).to.not.include("SD-10-approved-request-stranded-by-guardian-rotation");
+    expect(
+      REMEDIATED_DEFECTS.map((r) => r.id),
+      "and the sequence above is its inverted reproduction",
     ).to.include("SD-10-approved-request-stranded-by-guardian-rotation");
   });
 

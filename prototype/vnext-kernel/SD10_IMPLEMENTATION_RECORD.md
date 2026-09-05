@@ -790,6 +790,106 @@ scanner drift in §9 is invisible to the suite. It matters only at regeneration.
 | "Reference model stays (its denial is a conformant B-realisation)" | **SUPERSEDED, deliberately.** §5 of the SD10-I brief is the later authority and requires the model to represent the SELECTED semantics and discriminate P from BASE / B / T. The model was corrected and now carries M59/M60/M61 |
 | the tests needing inversion are `StatefulSustainedDefects` SD-10 and `W2RecoveryLifecycle` H1 | **INCOMPLETE — falsified.** Two more assert the defect: `Sd1RecoveryFloorBinding` R7b and `Sd4LaneV` D (see §9a). D1's list was a reading; this lane's is a measurement |
 
+## 10b. Lane SD10-P — persistence and evidence closure
+
+Executed after three rounds of independent adversarial review. The A / A′ / B
+topology is the one Lane W2P used; `git show` on `c182db1` / `1d9b90a` /
+`d3f8ee5` is the template.
+
+| Commit | Role |
+| --- | --- |
+| **A** = `c32e0d748390b79f4163ad4a783c2467cf502e30` (parent `a42f5c7e`, tree `90e1a802`) | the independently reviewed implementation, plus its own append-only `AUTHORITY.md` status block |
+| **A′** | ledger, scanner provenance and measurement reconciliation |
+| **B** | generated receipts, describing a clean checkout of A′ |
+
+### Re-measured on a clean Commit A, reproduced rather than carried
+
+Base and A were recompiled independently with the pinned solc
+(`0.8.24+commit.e11b9ed9`, cancun, optimizer runs 200) — base from a separate
+worktree pinned at `a42f5c7e`.
+
+| | base | A | delta |
+| --- | --- | --- | --- |
+| kernel runtime | 18,425 | **18,367** | **−58** |
+| kernel initcode | 18,466 | 18,408 | −58 |
+| storage entries | 17 | 17 | identical |
+| ABI hash / selector set / event set / error set | — | — | identical (46 / 15 / 24) |
+| factory runtime | 2,445 | 2,445 | executable prefix `0x68f71f67…` identical; CBOR metadata only |
+
+`reproduce.ts` (pinned solc, driven directly) and the Hardhat artifact agree
+byte-for-byte on `5d8b03ec…`, so the figure is two-tool independent.
+
+### Pinned Slither, run BEFORE ledger closure
+
+Reproduced the CI toolchain exactly — `crytic/slither-action@b52cc1cb`'s
+resolved invocation: `slither-analyzer @ ff1bf3ff…` (pip records sha256
+`2e2342c9…`), solc 0.8.24, plain `solc` framework, OZ remap,
+`--evm-version cancun --optimize --optimize-runs 200`,
+`--exclude-dependencies`, `--no-fail-pedantic` — run against BOTH `a42f5c7e`
+and Commit A **on one machine and one path**, so the two finding sets are
+directly comparable.
+
+```
+RAW_COUNT                 base 217   A 217
+OWN_CODE_FINDINGS         base  57   A  57
+DISTINCT_OWN_CODE_KEYS    base  33   A  33   (generator's canonical dedupe)
+UNCHANGED                 24
+RELOCATED                  9
+SEMANTICALLY_CHANGED       0
+REMOVED                    0
+NEW                        0        <- no adjudication required
+```
+
+Matching is by **detector + construct chain + message normalised of every line
+reference**; the line delta is *recorded*, never used to match. That distinction
+earned its keep: a first pass stripped `#1475` but left the `-1502` half of
+Slither's ranges, which made nine pure relocations look like eight removals plus
+eight additions. The measured deltas are **non-uniform** — `[31,31,31]` for
+`executeRecovery`'s own `timestamp` finding, `[33,…]` for everything below the
+body edit — exactly as §9 predicted from source, now confirmed by measurement.
+A persistence lane applying one flat offset would have mis-keyed it.
+
+`slither-triage.json` was re-keyed with the generator's **own** `canonicalKey`
+algorithm, so the keys are what the generator will look up:
+**33 classifications, 24 unmoved, 9 relocated, UNACCOUNTED 0, STALE 0,
+DUPLICATE 0.** Each relocated entry carries `previousKey`,
+`relocation: UNCHANGED_FINDING_RELOCATED`, its own `lineDelta`, and a proof
+naming the toolchain.
+
+### Ledger reconciliation
+
+SD-10 moved to `REMEDIATED_DEFECTS` with all nine required fields, `sustainedAt`
+`4b912726`, `remediatedOn` Commit A, `residual: null`. **SUSTAINED 4 /
+REMEDIATED 9**, asserted by identity and not only by count.
+
+Moving it **discharged SD-9d's residual pointer**, which named SD-10 as what W2
+did not close. `defects.ts`'s own contract is that "a residual pointing at a
+closed defect would be stale evidence, and the ledger test refuses it" — so the
+pointer became `null`, with the history kept in prose at that entry rather than
+silently blanked. The ledger suite caught this the moment SD-10 moved; it was
+not found by reading.
+
+### Measurement truthfulness — what each field MEANS
+
+Two independent falsehoods would have been published had the numbers been
+changed carelessly, and one more had they not been changed at all:
+
+* `MEASUREMENTS.json.kernel.*` is **current source identity** → updated
+  (18,367 / `5d8b03ec…` / headroom 6,209 and 3,609).
+* the per-lane blocks (`sd1Remediation`, `sd3Remediation`, `sd67Remediation`,
+  `w2RecoveryLifecycle`) each **mean that lane** → left byte-for-byte. A new
+  `sd10Preservation` block was ADDED, carrying this file's first **negative**
+  delta.
+* `generate-stateful-evidence.ts` picks the latest lane by a newest-first
+  `??` chain that did not know SD10-I. Left alone it would have published
+  **W2's +320 bytes for a lane that removed 58**. `sd10Preservation` is now
+  first in that chain.
+
+`sourceDigests` for both prototype contracts were found **already stale at the
+base** (committed `e922dfdf…` / `102df285…` matched neither `a42f5c7e` nor A).
+That drift pre-dates this lane; both were corrected to the measured current
+values and re-verified by recomputing sha256 from the working tree.
+
 ## 11. Reproduce
 
 ```bash

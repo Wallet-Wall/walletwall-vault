@@ -112,9 +112,11 @@ its real residue is state incoherence: the request is left `active` while dead.
 > a defect, and the SD-4 entry's refuted general prose replaced by the canonical
 > disposition with pointers to the falsification chain.
 
-> **SD-10 STATUS (Lane SD10-I, implementation persisted; evidence closure
-> pending. The W2 paragraph above is retained as written — its "`SD-10` is
-> untouched" is a statement about `c182db10` and remains true of that diff).**
+> **SD-10 IS NOW REMEDIATED (Lane SD10-I, persisted as Commit A
+> `c32e0d748390b79f4163ad4a783c2467cf502e30`; ledger, scanner provenance and
+> measurements reconciled in its successor commit by Lane SD10-P. The W2
+> paragraph above is retained as written — its "`SD-10` is untouched" is a
+> statement about `c182db10` and remains true of that diff).**
 > The implementation removes the execution-time revalidation of an already
 > quorum-admitted recovery against the CURRENT `guardianGeneration` — one
 > statement in `executeRecovery`, and nothing else in Solidity.
@@ -127,10 +129,22 @@ its real residue is state incoherence: the request is left `active` while dead.
 > generation, so a replaced roster holds no fresh authority of any kind; what
 > survives a rotation is one finite-lived, pre-committed effect, not a seat.
 > Incoming possession remains mandatory, and no recovery clock moves.
-> THIS COMMIT IS THE REMEDIATION SOURCE CANDIDATE. The defect ledger
-> (`stateful/defects.ts`) and every generated receipt are intentionally
-> reconciled in the SUCCESSOR commit; do not cite this intermediate commit as
-> final closure. See `SD10_IMPLEMENTATION_RECORD.md`.
+> THE PRINCIPAL DISTINCTION, stated so it cannot be read loosely: the OLD roster
+> retains NO fresh authority of any kind — it cannot initiate, cancel, set
+> guardians, contain, or bind migration, and every one of those refusals is
+> measured with a positive control. The OLD approved request survives as a
+> FINITE-LIVED, PRE-COMMITTED EFFECT: it still expires on its original clock,
+> the credential's bounded challenge still reaches it, and the NEW roster — the
+> only one holding fresh guardian authority — can cancel it at any point in its
+> live window. Preservation is not tenure.
+> Lane SD10-P then reconciled the ledger (`stateful/defects.ts`): SD-10 moved
+> into `REMEDIATED_DEFECTS` (sustained at `4b912726`, remediated on
+> `c32e0d74`), which also DISCHARGED SD-9d's residual pointer, leaving four
+> sustained and nine remediated entries; `slither-triage.json` was re-keyed
+> semantically from a pinned Slither run against Commit A (0 new, 0 removed, 9
+> relocated); and `MEASUREMENTS.json` gained an `sd10Preservation` block
+> recording this file's first NEGATIVE runtime delta, -58 bytes. See
+> `SD10_IMPLEMENTATION_RECORD.md`.
 
 **SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
 by a single invariant over the whole commitment ingress surface.**
