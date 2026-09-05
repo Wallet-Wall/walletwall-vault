@@ -308,7 +308,7 @@ export const PROFILES: readonly CampaignProfile[] = [
   {
     name: "recovery-vs-roster",
     description:
-      "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to exercise R1's generation binding end-to-end.",
+      "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to compose a rotation with a maturing request end-to-end. Until Lane SD10-I that composition was policed by the harness's R1 rule, which asserted a rotation must VOID the request; that rule was implementation-derived, contradicted I-APPROVED-REQUEST-PRESERVATION and has been retired. The composition still matters — it is where the OLD roster's total loss of FRESH authority and the survival of its already-admitted effect have to hold at the same time.",
     actors: [ALL_MATERIAL_ACTOR, ONE_GUARDIAN_ATTACKER, STRANGER],
     actorWeights: [7, 2, 1],
     weights: {

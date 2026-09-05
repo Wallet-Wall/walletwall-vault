@@ -34,7 +34,7 @@ import {
   sign,
   type World,
 } from "../stateful/world.js";
-import { VaultVNextModel } from "../../../test/helpers/vaultVNextModel.js";
+import { RECOVERY_DELAY as MODEL_RECOVERY_DELAY, VaultVNextModel } from "../../../test/helpers/vaultVNextModel.js";
 
 /** The architecture test's own factory, replicated: it is local to that file. */
 const makeModel = (identityModel: "ACCOUNT_PER_VAULT") => new VaultVNextModel({ identityModel });
@@ -363,7 +363,7 @@ describe("SD-4 lane V — recovery lifecycle authority reconciliation", () => {
   // D — I-APPROVED-REQUEST-PRESERVATION, tested directly
   // ===================================================================
 
-  it("D a guardian-set replacement STRANDS an approved request on the kernel; the model denies the replacement", async function () {
+  it("D a guardian-set replacement PRESERVES an approved request on the kernel, and the model now agrees: the divergence Lane V recorded is CLOSED", async function () {
     this.timeout(300_000);
     const w = await deployWorld({ label: "v-d" });
     const nominee = addrOf(keyOf("v-d-nominee"));
@@ -389,30 +389,41 @@ describe("SD-4 lane V — recovery lifecycle authority reconciliation", () => {
       await w.vault.setGuardians(w.threshold, w.guardians, w.guardianIsContract, quorum(w, d), nonce, FAR_DEADLINE)
     ).wait();
 
-    // The request is not CLEARED — it is left active and permanently
-    // unexecutable, which is the state the model's own I-RECOVERY-TERMINATION
-    // assertion calls out by name: "unexecutable and undeletable".
+    // THIS IS THE ORIGINAL SD-10 MEASUREMENT, INVERTED IN PLACE BY LANE SD10-I.
+    // Lane V recorded a two-sided divergence: the KERNEL admitted the
+    // replacement and then left the request "unexecutable and undeletable",
+    // while the MODEL refused the replacement outright. Both readings were
+    // wrong against `I-APPROVED-REQUEST-PRESERVATION`, and in opposite
+    // directions — which is exactly why the divergence went unresolved for as
+    // long as it did. The kernel no longer re-validates an admitted request
+    // against the current generation, and the model no longer refuses the
+    // replacement. The same sequence now runs to the same end on both sides.
     expect((await w.vault.recovery())[R.ACTIVE], "still stored as live").to.equal(true);
     await networkHelpers.time.increase(7 * DAY + 1);
     const pop = (await w.vault.recoveryPossessionDigest()) as string;
-    await expect(
-      w.vault.executeRecovery({
+    await (
+      await w.vault.executeRecovery({
         newSigner: nominee,
         newPqKeyHash: hash,
         newPqKey: KEY32("v-d-pq"),
         newEcdsaPop: sign(keyOf("v-d-nominee"), pop),
         newPqPop: sign(keyOf("v-d-pq"), pop),
-      }),
-      "the approved request is destroyed in effect",
-    ).to.be.revertedWithCustomError(w.vault, "BadRoster");
+      })
+    ).wait();
+    expect(await w.vault.ecdsaSigner(), "kernel: the approved request executed after the replacement").to.equal(
+      nominee,
+    );
 
-    // Model: the replacement itself is DENIED and the request survives intact.
+    // Model: the replacement is ADMITTED, the request survives it intact, and
+    // it still executes.
     const m = makeModel("ACCOUNT_PER_VAULT");
     const cred = { commitment: "cred-2", schemeId: "ECDSA_SECP256K1" as const, generation: 1, possessionProven: true };
     m.initiateRecovery("GUARDIAN", cred);
     m.supportRecovery("g1");
     m.supportRecovery("g2");
-    expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3"]).kind, "model: denied").to.equal("DENIED");
+    expect(m.replaceGuardians("GUARDIAN_QUORUM", ["h1", "h2", "h3"]).kind, "model: admitted").to.equal("OK");
     expect(m.kernel.recovery, "model: preserved").to.not.equal(null);
+    m.warp(MODEL_RECOVERY_DELAY);
+    expect(m.executeRecovery().kind, "model: and still executable").to.equal("OK");
   });
 });

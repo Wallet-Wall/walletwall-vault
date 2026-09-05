@@ -112,6 +112,26 @@ its real residue is state incoherence: the request is left `active` while dead.
 > a defect, and the SD-4 entry's refuted general prose replaced by the canonical
 > disposition with pointers to the falsification chain.
 
+> **SD-10 STATUS (Lane SD10-I, implementation persisted; evidence closure
+> pending. The W2 paragraph above is retained as written — its "`SD-10` is
+> untouched" is a statement about `c182db10` and remains true of that diff).**
+> The implementation removes the execution-time revalidation of an already
+> quorum-admitted recovery against the CURRENT `guardianGeneration` — one
+> statement in `executeRecovery`, and nothing else in Solidity.
+> `boundGuardianGeneration` REMAINS: it is the generation that APPROVED the
+> request, and it remains bound into `recoveryPossessionDigest()`, so a
+> possession proof signed before a rotation is still the right proof after one.
+> Guardian-generation binding is NOT removed. Every fresh guardian act —
+> initiation, quorum cancellation, `setGuardians`, containment, migration
+> binding — still binds the CURRENT guardian commitment and the CURRENT
+> generation, so a replaced roster holds no fresh authority of any kind; what
+> survives a rotation is one finite-lived, pre-committed effect, not a seat.
+> Incoming possession remains mandatory, and no recovery clock moves.
+> THIS COMMIT IS THE REMEDIATION SOURCE CANDIDATE. The defect ledger
+> (`stateful/defects.ts`) and every generated receipt are intentionally
+> reconciled in the SUCCESSOR commit; do not cite this intermediate commit as
+> final closure. See `SD10_IMPLEMENTATION_RECORD.md`.
+
 **SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
 by a single invariant over the whole commitment ingress surface.**
 

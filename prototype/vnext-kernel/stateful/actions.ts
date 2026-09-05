@@ -967,17 +967,45 @@ export async function executeAction(
         // was it still inside its window when the kernel executed it (Lane W2:
         // LIVE_WINDOW is half-open, so execution AT expiresAt is a violation)?
         modelViolation = judgeRecoveryExecution(ctx.abstract, res.minedAt ?? 0n);
-        if (modelViolation === null && live && live.guardianTransitionsAtApproval !== ctx.abstract.guardianTransitions) {
-          // R1. The constituency that APPROVED this recovery is no longer the
-          // constituency in force. A request that survives the roster change
-          // which replaced its approvers is a stale authorization retargeting
-          // onto a configuration nobody approved it for.
-          modelViolation =
-            "R1 — executeRecovery SUCCEEDED after " +
-            (ctx.abstract.guardianTransitions - live.guardianTransitionsAtApproval) +
-            " guardian-roster transition(s) since the request was approved, so it was authorised by a " +
-            "constituency that is no longer in force";
-        }
+        // R1 — RETIRED IN LANE SD10-I, and retired rather than inverted.
+        //
+        // A rule stood here that reported a violation whenever `executeRecovery`
+        // succeeded after `guardianTransitionsAtApproval !== guardianTransitions`,
+        // on the reasoning that "a request that survives the roster change which
+        // replaced its approvers is a stale authorization retargeting onto a
+        // configuration nobody approved it for".
+        //
+        // ITS AUTHORITY, adjudicated: NONE above the artifact. It was
+        // IMPLEMENTATION-DERIVED — written to agree with the kernel's
+        // execution-time `boundGuardianGeneration != guardianGeneration` check,
+        // and phrased in the same words as that check's mutant (M16). It is not
+        // source-derived: `docs/Vault_vNext_Architecture.md`
+        // I-APPROVED-REQUEST-PRESERVATION says the OPPOSITE — "once a request
+        // reaches quorum, a guardian-set replacement cannot clear it". Nor was
+        // it reference-model-derived in any load-bearing way: the model's own
+        // objection was that it DENIED the replacement (candidate B), a
+        // different claim, and its execute-time generation test was unreachable
+        // for an approved request.
+        //
+        // WHY NOT MERELY FLIP IT. The proposition "rotation must void the
+        // request" is false, but its negation — "rotation must NOT void the
+        // request" — is a LIVENESS claim about a call that did not happen, and
+        // this hook only judges transitions the kernel ACCEPTED. A refusal is
+        // invisible here. The preservation direction is therefore pinned where
+        // it can actually be observed: deterministically, in
+        // `test/Sd10ApprovedRequestPreservation.test.ts`, and as a permanent
+        // mutation contract in `test/Sd10PreservationMutations.test.ts`
+        // (M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST).
+        //
+        // WHAT THE RULE ACTUALLY DID, measured rather than recalled: across
+        // `recovery-vs-roster` and `recovery-composition` at all eight campaign
+        // seeds, M16 produced exactly ONE violation — this rule, once. It was
+        // M16's only killer; the `P-CUT/CREDENTIAL_REPLACEMENT` the catalogue
+        // credited never fired. See the M16 entry retired from `mutants.ts`.
+        //
+        // `guardianTransitionsAtApproval` is KEPT on the evidence record. It is
+        // approval provenance in the model exactly as `boundGuardianGeneration`
+        // is in the kernel, and dropping it would make the history unreadable.
         recordExecution(ctx.abstract, ctx.credLabel);
       }
       return {

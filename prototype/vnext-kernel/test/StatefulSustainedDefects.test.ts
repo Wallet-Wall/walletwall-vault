@@ -94,7 +94,7 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e remediated; SD-2 and SD-10 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e remediated; SD-2 reproduced here, SD-10 INVERTED pending its ledger move, SD-4 / SD-5 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
@@ -437,17 +437,29 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
 
   // =====================================================================
   /**
-   * SD-10 — SUSTAINED. Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md),
-   * measured there on the pre-W2 kernel (Sd4LaneV "D"), and RE-MEASURED HERE on
-   * the W2 kernel, because W2 changed the defect's BLAST RADIUS without touching
-   * `setGuardians`: a request stranded by a generation bump is still stored
-   * `active` and, since W2, still EFFECTIVELY LIVE — so it now blocks a fresh
-   * initiation (BadState) and migration (NoRecovery) until the NEW quorum cancels
-   * it or it expires. This test asserts the defective behaviour on purpose, and
-   * then the exit at k as the bound on the claim, so a fix cannot land silently
-   * while the ledger still calls the request stranded.
+   * SD-10 — REPRODUCTION INVERTED IN LANE SD10-I, LEDGER ENTRY DELIBERATELY NOT
+   * YET MOVED.
+   *
+   * Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md), measured
+   * on the pre-W2 kernel (Sd4LaneV "D") and re-measured on the W2 kernel, this
+   * test used to assert the defective behaviour on purpose: at maturity the
+   * approved request reverted `BadRoster`, stayed stored `active`, and — since
+   * W2 — blocked a fresh initiation until the new quorum cancelled it.
+   *
+   * The SAME deterministic sequence now runs to the OPPOSITE end. Lane SD10-I
+   * removed `executeRecovery`'s execution-time generation re-check, so the
+   * request the quorum approved survives the quorum's own roster re-commitment
+   * and executes. Every step below is unchanged except the verdict — that is
+   * what makes this an INVERSION rather than a new test.
+   *
+   * WHY THE LEDGER STILL SAYS SUSTAINED. Moving SD-10 into `REMEDIATED_DEFECTS`
+   * is a PERSISTENCE act: a `RemediatedDefect` entry has to name the head it was
+   * remediated ON, and there is no such head until this work is committed and
+   * reviewed. Writing one now would name a commit that does not exist. The final
+   * assertion below therefore pins the divergence explicitly, so the ledger and
+   * this file cannot drift apart silently in either direction.
    */
-  it("SD-10 — SUSTAINED: a guardian-set replacement STRANDS an approved request, which stays stored active and (since W2) blocks re-initiation until the NEW quorum cancels it", async function () {
+  it("SD-10 — INVERTED: a guardian-set replacement PRESERVES the approved request, which matures and executes; the ledger entry is still SUSTAINED pending its persistence lane", async function () {
     const w = await deployWorld({ label: "sd10", verifier: "honest" });
     const guardianAuth = async (actionType: string, params: string) => {
       const nonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
@@ -492,38 +504,42 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     ).wait();
     expect((await w.vault.guardianGeneration()) as bigint, "the generation bumped").to.equal(boundGeneration + 1n);
 
-    // 3. SUSTAINED: at maturity the approved request is unexecutable — the
-    //    generation binding that correctly kills a STALE constituency's authority
-    //    (stateful mutant M16) kills the request this SAME constituency approved —
-    //    and it is still stored active with no challenge consumed.
+    // 3. INVERTED: the generation bump left the request untouched. It is still
+    //    the SAME request — its clocks did not move, and `boundGuardianGeneration`
+    //    is still the generation that APPROVED it, now one behind the current
+    //    one. That field is approval PROVENANCE; it is no longer re-checked at
+    //    execution time, which is the whole of the correction.
+    const preserved = await w.vault.recovery();
+    expect(preserved[7], "INVERTED: still stored active — the replacement cleared nothing").to.equal(true);
+    expect(preserved[5] as bigint, "INVERTED: still bound to the APPROVING generation").to.equal(boundGeneration);
+    expect(Number(preserved[6]), "no challenge was consumed").to.equal(0);
+
+    // 4. INVERTED: at maturity the approved request EXECUTES. This is the exact
+    //    call that reverted `BadRoster` on every kernel up to a42f5c7e.
     await networkHelpers.time.increase(7 * DAY + 1);
-    await expect(
-      w.vault.executeRecovery(await change(cred1, pq1)),
-      "SUSTAINED (SD-10): the approved request is destroyed in effect",
-    ).to.be.revertedWithCustomError(w.vault, "BadRoster");
-    const stranded = await w.vault.recovery();
-    expect(stranded[7], "SUSTAINED: still stored active").to.equal(true);
-    expect(Number(stranded[6]), "SUSTAINED: no challenge was consumed — no principal ended it").to.equal(0);
+    await (await w.vault.executeRecovery(await change(cred1, pq1))).wait();
+    expect(await w.vault.ecdsaSigner(), "INVERTED (SD-10): the approved request installed").to.equal(addrOf(cred1));
+    expect((await w.vault.recovery())[7], "consumed by execution").to.equal(false);
 
-    // 4. W2 BLAST RADIUS (recorded, not remediated): the stranded request is still
-    //    effectively live, so a fresh initiation is refused as an overwrite.
-    await expect(
-      initiate(w.spareCred[1]!, w.sparePq[1]!),
-      "W2: a stranded request blocks re-initiation until it is cleared",
-    ).to.be.revertedWithCustomError(w.vault, "BadState");
-
-    // 5. THE BOUND ON THE CLAIM: escapable at k, and by no smaller principal. The
-    //    NEW quorum's explicit exit (K-9 mechanism B, digest bound to the CURRENT
-    //    generation) clears it, and a fresh request then completes.
-    const c = await guardianAuth(ACTION.RECOVER, ethers.id("QUORUM_CANCEL_RECOVERY"));
-    await (await w.vault.cancelRecoveryByQuorum(c.proof, c.nonce, FAR_DEADLINE)).wait();
-    expect((await w.vault.recovery())[7], "cleared by the new quorum").to.equal(false);
+    // 5. THE BLAST RADIUS IS GONE WITH IT. The stranding was what made a request
+    //    linger as an obstacle; with none to strand there is nothing blocking a
+    //    fresh initiation, and no cancel-then-re-propose cycle is needed.
     const cred2 = w.spareCred[1]!;
     const pq2 = w.sparePq[1]!;
     await (await initiate(cred2, pq2)).wait();
     await networkHelpers.time.increase(7 * DAY + 1);
     await (await w.vault.executeRecovery(await change(cred2, pq2))).wait();
-    expect(await w.vault.ecdsaSigner(), "the re-proposed recovery installs").to.equal(addrOf(cred2));
+    expect(await w.vault.ecdsaSigner(), "a subsequent recovery still installs").to.equal(addrOf(cred2));
+
+    // 6. THE DIVERGENCE, STATED. The behaviour above is remediated; the LEDGER
+    //    is not, and that is deliberate (see this test's header). This assertion
+    //    fails the moment either side moves without the other — whether someone
+    //    files the RemediatedDefect entry without updating this file, or
+    //    reinstates the defect while the ledger still calls it sustained.
+    expect(
+      SUSTAINED_DEFECTS.map((d) => d.id),
+      "SD-10's ledger move is a PERSISTENCE act and belongs to the lane that commits this work",
+    ).to.include("SD-10-approved-request-stranded-by-guardian-rotation");
   });
 
   // =====================================================================

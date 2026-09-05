@@ -353,20 +353,57 @@ export const MUTATIONS: readonly Mutation[] = [
         "",
       ),
   },
-  {
-    id: "M16-recovery-ignores-roster-generation",
-    profiles: ["recovery-vs-roster","recovery-composition"],
-    expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT",
-    rationale:
-      "R1. executeRecovery stops rejecting a roster change since initiation, so a recovery approved by the OLD constituency executes against a NEW one — a stale authorization surviving the transition that should have killed it.",
-    apply: (s) =>
-      replaceWithinFunction(
-        s,
-        "executeRecovery",
-        "if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();",
-        "",
-      ),
-  },
+  /*
+   * M16-recovery-ignores-roster-generation — RETIRED IN LANE SD10-I.
+   * ----------------------------------------------------------------
+   * RETIRED, NOT DELETED, because "the implementation now looks like the mutant"
+   * is the weakest possible reason to drop a mutant and the adjudication is the
+   * part worth keeping.
+   *
+   * WHAT IT DID. It removed, from `executeRecovery`, exactly this statement:
+   *
+   *     if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();
+   *
+   * That is BYTE-IDENTICAL to the correction Lane SD10-I makes (verified by
+   * reconstructing the mutation against base a42f5c7e and comparing it to the
+   * lane's removal). The mutant no longer applies at all: its anchor is gone,
+   * and `replaceWithinFunction` would throw rather than silently no-op.
+   *
+   * WHAT ITS LABEL CLAIMED. `expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT"`,
+   * rationale "a stale authorization surviving the transition that should have
+   * killed it".
+   *
+   * WHAT ACTUALLY KILLED IT, MEASURED. Reconstructed against the base kernel and
+   * run across both of its profiles at all eight campaign seeds (16 campaigns,
+   * 22-44 successful transitions each), M16 produced exactly ONE violation:
+   * `P-MODEL` at `recovery-vs-roster` seed 29. `P-CUT/CREDENTIAL_REPLACEMENT`
+   * never fired once. The catalogue credited it because
+   * StatefulMutationAdequacy's attribution falls back to `violations[0]` when the
+   * expected property is absent, so a mutant's `expectedProperty` is a LABEL and
+   * not a measurement.
+   *
+   * WHY THAT KILL DOES NOT SURVIVE SCRUTINY. `P-MODEL` here was the harness's own
+   * R1 rule in `actions.ts`, which asserted that a roster transition after
+   * approval must void the request. That rule was IMPLEMENTATION-DERIVED — it
+   * agreed with the very statement M16 removed — and it contradicts
+   * `docs/Vault_vNext_Architecture.md` I-APPROVED-REQUEST-PRESERVATION: "once a
+   * request reaches quorum, a guardian-set replacement cannot clear it." It has
+   * been retired for that reason, and with it M16's only killer.
+   *
+   * SO M16 IS NOT A MUTANT. Its "weakened" behaviour is the architecture-
+   * conformant behaviour, and SD-10 was the defect it described. Retiring it
+   * costs NO mutation coverage that anything else covered: it was killed by one
+   * rule, on one seed, and that rule was wrong. The direction that DOES need
+   * guarding is the inverse, and it is now guarded far more strictly than M16
+   * ever was — `test/Sd10PreservationMutations.test.ts` carries
+   * M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST (this statement REINSERTED),
+   * killed deterministically, with kill credit refused unless the observation is
+   * exactly "a preserved, mature, validly-proven request was REFUSED (BadRoster)".
+   *
+   * `recovery-vs-roster` keeps its place in `profiles.ts`: composing rotation
+   * with maturing recoveries is still the composition that matters, and it is now
+   * the composition the preservation property is measured over.
+   */
   {
     id: "M17-floor-shape-mutable-again",
     profiles: ["ecdsa-only-attacker", "recovery-composition", "recovery-maturation", "mixed-roots-attacker"],

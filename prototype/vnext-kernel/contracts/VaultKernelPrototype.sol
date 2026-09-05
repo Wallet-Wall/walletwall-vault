@@ -1321,6 +1321,37 @@ contract VaultKernelPrototype {
      * @dev Possession is proven against the INCOMING verifier, so a vault
      *      escaping a dead verifier proves against the replacement rather than
      *      against the corpse.
+     *
+     * @dev THE TWO GENERATIONS, and why only one of them is a question about
+     *      this call (`I-APPROVED-REQUEST-PRESERVATION`: "Once a request reaches
+     *      quorum, a guardian-set replacement cannot clear it"):
+     *
+     *      `r.boundGuardianGeneration` is the generation that APPROVED this
+     *      request — provenance of an effect the kernel has ALREADY admitted. It
+     *      is frozen at approval, never rewritten, and still bound into
+     *      `recoveryPossessionDigest()`, which is why a possession proof signed
+     *      before a rotation is still the right proof after one.
+     *
+     *      `guardianGeneration` is the generation holding CURRENT FRESH guardian
+     *      authority. Every fresh guardian act — initiation, quorum
+     *      cancellation, `setGuardians`, containment, migration binding — signs
+     *      a digest over THIS value, so a superseded roster dies as
+     *      `QuorumNotMet` before its nonce is even examined. A rotation
+     *      therefore costs the old roster every seat it held; what survives it
+     *      is one pre-committed effect, not a member.
+     *
+     *      Re-validating an already-admitted effect against the CURRENT
+     *      generation conflated the two, and that was SD-10: it let the quorum
+     *      destroy, merely by rotating, the request it had itself approved one
+     *      block earlier — a veto manufactured by exactly the principal class
+     *      recovery answers to, and one no principal could then clear before
+     *      expiry. Reinstating that check is the permanent mutant
+     *      `M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST`.
+     *
+     *      PRESERVATION IS NOT UNCONDITIONAL EXECUTION. Maturity, the half-open
+     *      expiry window, the `active` flag and `_requireIncomingPossession`
+     *      below all still stand, and each remains independently sufficient to
+     *      refuse this call.
      */
     function executeRecovery(CredentialChange calldata c) external {
         _requireRecoveryOpen();
@@ -1331,8 +1362,10 @@ contract VaultKernelPrototype {
         // own convention for `containedUntil` and the reference model's for every
         // expiry (SD-9e closed here). Deadlines are inclusive; expiries are not.
         if (block.timestamp >= r.expiresAt) revert Expired();
-        // A roster change since the request invalidates it.
-        if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();
+        // NO GENERATION RE-CHECK HERE, DELIBERATELY: an already-admitted request
+        // is never re-validated against the CURRENT roster. See this function's
+        // `@dev` note on the two generations for why, and the permanent mutant
+        // `M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST` for the guard.
 
         _requireIncomingPossession(
             recoveryPossessionDigest(),

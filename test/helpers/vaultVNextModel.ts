@@ -205,6 +205,42 @@ export interface RecoveryRequest {
   /** Guardian generation under which this request was opened. */
   readonly boundGuardianGeneration: number;
   supports: readonly string[];
+  /**
+   * Whether this request has REACHED QUORUM. LATCHED, never recomputed.
+   *
+   * Approval is an EVENT: it happened once, under the constituency in force at
+   * that moment. `requiredSupports()` is a function of the roster IN FORCE, so
+   * deriving approval from `supports.length` on every read silently
+   * reinterprets a finished act under whoever holds authority later — and both
+   * directions of that are wrong:
+   *
+   *   UPWARD   2-of-3 approved, rotate to five, quorum becomes three: the same
+   *            request the same quorum approved becomes "insufficient
+   *            supports". That is SD-10 arriving through a second door, and it
+   *            is what an independent review measured against this model.
+   *   DOWNWARD 2-of-5 unapproved, rotate to three, quorum becomes two: partial
+   *            support would become retroactively sufficient — the support
+   *            replay that architecture:457 ("per-request support accounting
+   *            keyed to the generation so support cannot be replayed across a
+   *            roster change") exists to prevent. Also blocked by
+   *            `replaceGuardians` clearing an unapproved request.
+   *
+   * The re-derivation was additionally reachable in two worse ways, both
+   * measured: a SECOND replacement re-derived `approved` as false and took the
+   * CLEARING branch, deleting a preserved request outright; and
+   * `initiateRecovery`'s overwrite guard re-derived it too, letting a fresh
+   * request OVERWRITE the preserved one. One latch closes all three.
+   *
+   * THE KERNEL HAS NO EQUIVALENT SEAM, and that is the point: a kernel request
+   * only comes into existence after `_requireQuorum` succeeds inside
+   * `initiateRecovery`, so approval there is atomic at creation and cannot be
+   * revisited. This flag is what makes the model mirror the artifact instead of
+   * inventing a re-derivation the artifact never performs.
+   *
+   * Mutation `M62_APPROVAL_REEVALUATED_AGAINST_CURRENT_QUORUM` restores the
+   * re-derivation, so the seam cannot return unobserved.
+   */
+  approved: boolean;
   readonly openedAt: number;
   readonly executableAt: number;
   /** Wall-clock expiry. Deliberately does NOT suspend while contained. */
@@ -269,7 +305,44 @@ export type Mutation =
   | "M30_GUARDIAN_CONTRACT_FAILURE_ABORTS_RECOVERY"
   | "M31_ATTESTATION_COUNTED_ON_NON_REVERT"
   // --- Added by Lane W2 (docs/Vault_vNext_Recovery_Amendment.md section 2). ---
-  | "M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET";
+  | "M58_RECOVERY_SUCCESS_DOES_NOT_RESET_CHALLENGE_BUDGET"
+  /*
+   * --- Added by Lane SD10-I. --------------------------------------------------
+   * I-APPROVED-REQUEST-PRESERVATION has one conformant reading and three
+   * non-conformant neighbours, and until this lane the model IMPLEMENTED one of
+   * the neighbours. Each is now a mutation, so the model discriminates the
+   * selected semantics from all three rather than merely satisfying the
+   * invariant by a different route.
+   *
+   *   M59  = candidate B, the model's own former behaviour: refuse the
+   *          replacement while an approved request exists. Conformant with the
+   *          invariant, and rejected — the quorum should not have to terminate
+   *          its own pending remedy in order to rotate a compromised seat out.
+   *   M60  = candidate T: the replacement clears the approved request. The
+   *          direct violation.
+   *   M61  = the BASE kernel's defect (SD-10): the request survives in storage
+   *          but is refused at execution because the generation moved. Cleared
+   *          in effect while its bytes remain.
+   */
+  | "M59_GUARDIAN_REPLACEMENT_BLOCKED_BY_APPROVED_REQUEST"
+  | "M60_GUARDIAN_REPLACEMENT_CLEARS_APPROVED_REQUEST"
+  | "M61_APPROVED_REQUEST_INVALIDATED_BY_GENERATION_CHANGE"
+  /*
+   * M62 restores the pre-latch behaviour: approval RE-DERIVED from
+   * `supports.length` against whatever quorum is in force at the moment of the
+   * question, rather than latched when quorum was actually reached. One
+   * mutation, three surfaces — execution, replacement, and the overwrite guard
+   * all consulted it independently before `requestIsApproved` centralised them.
+   */
+  | "M62_APPROVAL_REEVALUATED_AGAINST_CURRENT_QUORUM"
+  /*
+   * M63 reopens an APPROVED request's support set, so a constituency that never
+   * approved it can append to it after a replacement. With the latch in place
+   * that changes no authority — which is the point: the mutant exists because a
+   * forbidden PROVENANCE state that is currently inert is precisely what gets
+   * read back as authority later.
+   */
+  | "M63_APPROVED_REQUEST_STILL_COLLECTS_SUPPORT";
 
 // ---------------------------------------------------------------------------
 // Authentication — added by the remediation
@@ -912,6 +985,22 @@ export class VaultVNextModel {
     return generation === this.kernel.credential.generation;
   }
 
+  /**
+   * Whether an authorisation presented FROM `generation` carries FRESH guardian
+   * authority now. Monotonicity: only the current generation does.
+   *
+   * SCOPE, narrowed in Lane SD10-I. This answers a question about a NEW act —
+   * may this constituency authorise something today — and never about an effect
+   * the vault has already admitted. `executeRecovery` used to consult it about
+   * an already-approved request, which conflated the two and was SD-10; that
+   * call site is gone. The model does not thread a generation through its
+   * guardian acts (they are modelled by principal, not by digest), so this
+   * predicate's discriminating consumer is M3's direct assertion rather than a
+   * transition — a declared limitation of the model, not of the kernel, where
+   * the same rule IS enforced by digest binding and is measured end-to-end in
+   * prototype/vnext-kernel/test/Sd10ApprovedRequestPreservation.test.ts (B1,
+   * B1b, B1c, B2: the replaced roster holds no fresh authority anywhere).
+   */
   guardianGenerationValid(generation: number): boolean {
     this.mark("generation/guardian");
     if (this.has("M3_STALE_GUARDIAN_GENERATION_VALID")) return true;
@@ -934,12 +1023,27 @@ export class VaultVNextModel {
       this.kernel.identityModel === "ACCOUNT_PER_VAULT" ? by === "GUARDIAN_QUORUM" : by === "SPENDING_CREDENTIAL";
     if (!authorised) return denied("not authorised to replace the guardian set");
 
-    // An approved request survives a guardian-set replacement.
+    // I-APPROVED-REQUEST-PRESERVATION. An approved request survives a
+    // guardian-set replacement — it is PRESERVED, not protected by refusing the
+    // replacement. The model used to REFUSE here (candidate B). That is
+    // conformant with the invariant and was rejected in Lane SD10-D1: it makes
+    // rotating a compromised seat out conditional on first terminating the
+    // quorum's own pending remedy, which costs acts and days in exactly the
+    // episode where both are scarce. Refusing is now mutation M59.
+    //
+    // AN UNAPPROVED request is a different object and IS cleared, deliberately.
+    // Its accumulated supports are FRESH AUTHORITY that the outgoing
+    // constituency was still assembling — not an admitted effect — and fresh
+    // authority belongs to the roster in force. This one line is where the model
+    // draws the distinction the whole lane turns on.
     const req = this.kernel.recovery;
-    if (req !== null && req.supports.length >= this.requiredSupports()) {
+    const approved = req !== null && this.requestIsApproved(req);
+    if (approved && this.has("M59_GUARDIAN_REPLACEMENT_BLOCKED_BY_APPROVED_REQUEST")) {
       return denied("an approved recovery request may not be cleared by a set replacement");
     }
-    this.kernel.recovery = null;
+    if (!approved || this.has("M60_GUARDIAN_REPLACEMENT_CLEARS_APPROVED_REQUEST")) {
+      this.kernel.recovery = null;
+    }
     this.kernel.guardians = { members, generation: this.kernel.guardians.generation + 1 };
     return ok();
   }
@@ -995,7 +1099,7 @@ export class VaultVNextModel {
     const existing = this.kernel.recovery;
     if (existing !== null) {
       if (this.clock < existing.executableAt) return denied("a live request may not be replaced");
-      if (existing.supports.length >= this.requiredSupports()) {
+      if (this.requestIsApproved(existing)) {
         return denied("an approved request may not be replaced");
       }
     }
@@ -1005,6 +1109,7 @@ export class VaultVNextModel {
       incoming,
       boundGuardianGeneration: this.kernel.guardians.generation,
       supports: [],
+      approved: false,
       openedAt: this.clock,
       executableAt: this.clock + RECOVERY_DELAY,
       expiresAt: this.clock + RECOVERY_DELAY + RECOVERY_EXPIRY_AFTER_EXECUTABLE,
@@ -1017,10 +1122,66 @@ export class VaultVNextModel {
     if (!this.isAvailable("RECOVERY_SUPPORT")) return denied("unavailable in current safe state");
     const req = this.kernel.recovery;
     if (req === null) return denied("no request");
+    // SUPPORT ACCOUNTING IS GENERATION-KEYED, and an APPROVED request's support
+    // set is CLOSED. Architecture :457 requires "per-request support accounting
+    // keyed to the generation so support cannot be replayed across a roster
+    // change"; the kernel realises that by making admission ATOMIC — a request
+    // only comes into existence once `_requireQuorum` has already succeeded, so
+    // there is no open support phase for a later constituency to join.
+    //
+    // This guard is asked of the REQUEST, before anything is asked about the
+    // supporter, so a refusal names the real reason ("this request is closed")
+    // rather than an incidental fact about who happened to call.
+    //
+    // WHY IT BECAME REACHABLE. Before candidate P, `replaceGuardians` either
+    // refused (approved) or cleared (unapproved), so no request ever outlived
+    // the constituency that opened it and cross-generation support was
+    // impossible by construction. Preservation removed that accident, and
+    // without this guard a new-roster member could append to a request approved
+    // under the previous generation, producing `supports = [g1, g2, h1]` with
+    // `boundGuardianGeneration` still pinned at the old one — a provenance the
+    // architecture forbids. The approval latch means it changes no authority
+    // today, which is exactly what makes it the kind of latent common-mode
+    // modelling error that is later read back AS authority.
+    //
+    // Mutation `M63_APPROVED_REQUEST_STILL_COLLECTS_SUPPORT` reopens it.
+    if (req.approved) {
+      // Marked at the DECISION point, not in the firing branch, so the mutant
+      // records the guard as evaluated too — otherwise its own discriminator
+      // reads as vacuous, which is what the mutation harness caught here.
+      this.mark("recovery/support-frozen");
+      if (!this.has("M63_APPROVED_REQUEST_STILL_COLLECTS_SUPPORT")) {
+        return denied("an approved request's support set is frozen");
+      }
+    }
     if (!this.kernel.guardians.members.includes(guardian)) return denied("not a guardian");
     if (req.supports.includes(guardian)) return denied("already supported");
-    this.kernel.recovery = { ...req, supports: [...req.supports, guardian] };
+    const supports = [...req.supports, guardian];
+    // THE APPROVAL LATCH. Evaluated against the quorum in force AT THIS MOMENT
+    // and never revisited: once true it stays true, so a later roster change
+    // moves `requiredSupports()` without moving this.
+    this.kernel.recovery = {
+      ...req,
+      supports,
+      approved: req.approved || supports.length >= this.requiredSupports(),
+    };
     return ok();
+  }
+
+  /**
+   * Whether `req` has reached quorum — the ONE place that question is answered.
+   *
+   * Reads the LATCH. `M62` restores the defective re-derivation against the
+   * quorum currently in force, which is what every consumer used to do
+   * independently (execution, replacement, and the overwrite guard), so a
+   * single mutation reintroduces all three surfaces of the seam at once.
+   */
+  requestIsApproved(req: RecoveryRequest): boolean {
+    this.mark("recovery/approval-latch");
+    if (this.has("M62_APPROVAL_REEVALUATED_AGAINST_CURRENT_QUORUM")) {
+      return req.supports.length >= this.requiredSupports();
+    }
+    return req.approved;
   }
 
   /**
@@ -1040,11 +1201,22 @@ export class VaultVNextModel {
     if (req === null) return denied("no request");
     if (this.clock < req.executableAt) return denied("not ready");
     if (this.clock >= req.expiresAt) return denied("request expired");
-    if (req.supports.length < this.requiredSupports()) return denied("insufficient supports");
+    if (!this.requestIsApproved(req)) return denied("insufficient supports");
 
-    // A request supported under guardian generation g may not execute under g+1.
-    if (!this.guardianGenerationValid(req.boundGuardianGeneration)) {
-      return denied("request bound to a superseded guardian generation");
+    // NO GENERATION GATE HERE (I-APPROVED-REQUEST-PRESERVATION, Lane SD10-I).
+    // `boundGuardianGeneration` is the generation that APPROVED this request —
+    // provenance of an admitted effect — and re-testing it against the current
+    // generation is what "cleared it" meant in practice on the base kernel: the
+    // request survived in storage and was refused at maturity. That test is now
+    // mutation M61. FRESH guardian authority is a separate question, answered by
+    // `guardianGenerationValid` (see its own note) and asserted executably
+    // against the kernel in prototype/vnext-kernel/test/
+    // Sd10ApprovedRequestPreservation.test.ts section B.
+    if (this.has("M61_APPROVED_REQUEST_INVALIDATED_BY_GENERATION_CHANGE")) {
+      this.mark("generation/guardian");
+      if (req.boundGuardianGeneration !== this.kernel.guardians.generation) {
+        return denied("request bound to a superseded guardian generation");
+      }
     }
 
     for (const id of this.planes.keys()) {
@@ -1456,6 +1628,7 @@ export class VaultVNextModel {
         incoming: this.kernel.credential,
         boundGuardianGeneration: this.kernel.guardians.generation,
         supports: [],
+        approved: false,
         openedAt: this.clock,
         executableAt: this.clock + RECOVERY_DELAY,
         expiresAt: this.clock + RECOVERY_DELAY + RECOVERY_EXPIRY_AFTER_EXECUTABLE,
