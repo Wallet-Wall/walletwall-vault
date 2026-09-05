@@ -2,7 +2,9 @@
  * EXPERIMENTAL PROTOTYPE — LANE W2: THE FROZEN MUTATION CONTRACT, EXECUTED.
  *
  * W2_IMPLEMENTATION_CONTRACT.md defines fifteen mutants, one semantic break
- * each, and names the property that must kill every one. This suite compiles
+ * each, and names the property that must kill every one; Lane W2P added a
+ * sixteenth on the same terms (W2R-2 — the creator-side half of the
+ * nonce-serialisation premise, see the catalogue). This suite compiles
  * each mutant IN MEMORY from the REAL W2 kernel source (never touching
  * `contracts/`), deploys it behind the real factory, and runs the named
  * property against it — and against the real artifact — asserting BOTH
@@ -81,7 +83,8 @@ function removeFunction(src: string, name: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// The fifteen mutants of the frozen contract, one semantic break each.
+// The fifteen mutants of the frozen contract, plus the sixteenth added in Lane
+// W2P — one semantic break each.
 // ---------------------------------------------------------------------------
 
 type PropertyId =
@@ -105,12 +108,27 @@ interface W2Mutant {
   id: string;
   breaks: string;
   killedBy: PropertyId;
+  /**
+   * When set, the kill is credited only if the assigned property's observation
+   * is EXACTLY this string — the dangerous path the mutant exists to open — so
+   * a mutant that merely breaks an earlier step of the scenario scores nothing.
+   * Used by the two nonce-serialisation mutants.
+   */
+  observation?: string;
   apply: (s: string) => string;
 }
 
 const LIVE_GUARD = "        if (_recoveryIsLive()) revert BadState();";
 const NOT_LIVE_GUARD = "        if (!_recoveryIsLive()) revert NoRecovery();";
 const MIGRATION_GUARD = "        if (_recoveryIsLive()) revert NoRecovery();";
+
+/**
+ * THE observation the two nonce-serialisation mutants exist for: a cancellation
+ * authorised for request R1 terminating request R2. A kill of either mutant is
+ * credited only when the replay property reports exactly this (see the kill
+ * test) — never for a setup failure or an unrelated refusal.
+ */
+const STALE_CANCEL_REACHED_R2 = "a cancellation pre-signed for R1 terminated R2";
 
 export const W2_MUTANTS: readonly W2Mutant[] = [
   {
@@ -282,8 +300,25 @@ export const W2_MUTANTS: readonly W2Mutant[] = [
     id: "M-K9-guardian-cancel-nonce-replay",
     breaks: "Recovery Amendment section 5 — the quorum's cancellation no longer consumes the DOMAIN_GUARDIAN nonce",
     killedBy: "P-STALE-QUORUM-CANCEL-REPLAY-EXCLUDED",
+    observation: STALE_CANCEL_REACHED_R2,
     apply: (s) =>
       replaceWithinFunction(s, "cancelRecoveryByQuorum", "        _consume(DOMAIN_GUARDIAN, nonce, deadline);", ""),
+  },
+  {
+    // Lane W2P (closing W2R-2). The creator-side half of the same premise:
+    // Recovery Amendment section 5, premise 1 — "every fresh request consumes a
+    // DOMAIN_GUARDIAN nonce". Remove it and a fresh request can exist WITHOUT
+    // consuming the nonce a cancellation pre-signed for its predecessor needs,
+    // so R1's authorisation reaches R2. Sd4LaneW12 section D asserts the premise
+    // on the real kernel; this mutant proves the replay property would notice
+    // its loss, and is the permanent guard on the nonce-serialisation premise.
+    id: "M-K9-initiation-does-not-consume-guardian-nonce",
+    breaks:
+      "Recovery Amendment section 5, premise 1 — initiateRecovery no longer consumes the DOMAIN_GUARDIAN nonce, so request creation stops serialising the guardian domain",
+    killedBy: "P-STALE-QUORUM-CANCEL-REPLAY-EXCLUDED",
+    observation: STALE_CANCEL_REACHED_R2,
+    apply: (s) =>
+      replaceWithinFunction(s, "initiateRecovery", "        _consume(DOMAIN_GUARDIAN, nonce, deadline);", ""),
   },
 ];
 
@@ -655,7 +690,7 @@ const PROPERTIES: Record<PropertyId, Property> = {
     const r2 = mkCred("stale-r2");
     if (!(await outcome(propose(w, v, r2))).ok) return (why("setup: R2 failed"), false);
     const r = await outcome(v.cancelRecoveryByQuorum(stale.proof, stale.nonce, FAR_DEADLINE));
-    if (r.ok) return (why("a cancellation pre-signed for R1 terminated R2"), false);
+    if (r.ok) return (why(STALE_CANCEL_REACHED_R2), false);
     if (!(await isActive(v))) return (why("R2 not live after the stale cancel"), false);
     return (await v.recovery())[R.SIGNER] === addrOf(r2.nominee) ? true : (why("R2 not the stored request"), false);
   },
@@ -675,12 +710,27 @@ interface Cell {
   detail: string;
 }
 
-describe("W2 — frozen mutation contract: fifteen mutants, one property each", function () {
+describe("W2 — frozen mutation contract: fifteen mutants plus W2P's sixteenth, one property each", function () {
   this.timeout(3_600_000);
 
   const compiled = new Map<string, DeployableMutant>();
   const compileFailures: { id: string; errors: string[] }[] = [];
-  const realVerdicts = new Map<PropertyId, { holds: boolean; detail: string }>();
+  /**
+   * The real-kernel verdict of each property, computed LAZILY and memoised on
+   * first use (Lane W2P, closing W2R-3). Every kill test needs the positive
+   * direction of its own property; resolving it here rather than in a preceding
+   * `it` makes each test independent of intra-file order, so any single kill
+   * test runs alone (mocha --grep) with its vacuity guard intact.
+   */
+  const realVerdicts = new Map<PropertyId, Promise<{ holds: boolean; detail: string }>>();
+  const realVerdict = (p: PropertyId): Promise<{ holds: boolean; detail: string }> => {
+    let pending = realVerdicts.get(p);
+    if (pending === undefined) {
+      pending = evaluate(p, "w2m-real-" + p.toLowerCase());
+      realVerdicts.set(p, pending);
+    }
+    return pending;
+  };
   const matrix: Cell[] = [];
 
   before(function () {
@@ -736,9 +786,9 @@ describe("W2 — frozen mutation contract: fifteen mutants, one property each", 
     });
   }
 
-  it("the contract is complete: fifteen mutants, fifteen distinct ids, every assigned property defined", function () {
-    expect(W2_MUTANTS).to.have.length(15);
-    expect(new Set(W2_MUTANTS.map((m) => m.id)).size).to.equal(15);
+  it("the contract is complete: fifteen frozen mutants plus one, sixteen distinct ids, every assigned property defined", function () {
+    expect(W2_MUTANTS).to.have.length(16);
+    expect(new Set(W2_MUTANTS.map((m) => m.id)).size).to.equal(16);
     for (const m of W2_MUTANTS) expect(PROPERTY_IDS, m.id + " names an unknown property").to.include(m.killedBy);
   });
 
@@ -754,8 +804,7 @@ describe("W2 — frozen mutation contract: fifteen mutants, one property each", 
   it("every property HOLDS on the shipped kernel (the positive direction of every discriminator)", async function () {
     const failures: string[] = [];
     for (const p of PROPERTY_IDS) {
-      const r = await evaluate(p, "w2m-real-" + p.toLowerCase());
-      realVerdicts.set(p, r);
+      const r = await realVerdict(p);
       if (!r.holds) failures.push(p + ": " + r.detail);
     }
     expect(failures, "properties that FAIL on the real W2 kernel").to.deep.equal([]);
@@ -777,10 +826,11 @@ describe("W2 — frozen mutation contract: fifteen mutants, one property each", 
         "INCONCLUSIVE: mutant " + m.id + " cannot even initiate a recovery: " + control.err.slice(0, 120),
       ).to.equal(true);
 
-      const real = realVerdicts.get(m.killedBy);
-      expect(real?.holds, "the assigned property must HOLD on the real kernel before it can kill anything").to.equal(
-        true,
-      );
+      const real = await realVerdict(m.killedBy);
+      expect(
+        real.holds,
+        "the assigned property must HOLD on the real kernel before it can kill anything: " + real.detail,
+      ).to.equal(true);
 
       const r = await evaluate(m.killedBy, "w2m-" + m.id + "-" + m.killedBy.toLowerCase(), kernel);
       matrix.push({ mutant: m.id, property: m.killedBy, holdsOnReal: true, holdsOnMutant: r.holds, detail: r.detail });
@@ -792,12 +842,18 @@ describe("W2 — frozen mutation contract: fifteen mutants, one property each", 
         r.detail.startsWith("setup:"),
         "the kill must be an OBSERVED violation, not a setup failure: " + r.detail,
       ).to.equal(false);
+      if (m.observation !== undefined) {
+        expect(
+          r.detail,
+          "the kill must be THE observation this mutant exists for (the dangerous path), not an unrelated refusal",
+        ).to.equal(m.observation);
+      }
     });
   }
 
   it("prints the full mutant x property kill matrix (informational beyond the assigned diagonal)", async function () {
     const rows: string[] = [];
-    const header = "mutant".padEnd(46) + PROPERTY_IDS.map((_, i) => String(i + 1).padStart(3)).join("");
+    const header = "mutant".padEnd(50) + PROPERTY_IDS.map((_, i) => String(i + 1).padStart(3)).join("");
     rows.push(header);
     for (const m of W2_MUTANTS) {
       const kernel = compiled.get(m.id);
@@ -817,7 +873,7 @@ describe("W2 — frozen mutation contract: fifteen mutants, one property each", 
         }
         cells.push(p === m.killedBy ? (killed ? "  K" : "  S") : killed ? "  k" : "  .");
       }
-      rows.push(m.id.padEnd(46) + cells.join(""));
+      rows.push(m.id.padEnd(50) + cells.join(""));
     }
     rows.push("");
     rows.push(

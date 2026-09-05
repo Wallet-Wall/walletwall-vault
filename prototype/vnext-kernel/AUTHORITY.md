@@ -94,8 +94,9 @@ its real residue is state incoherence: the request is left `active` while dead.
 > `SD9_RECOVERY_LIFECYCLE_DEFECTS.md` and
 > `docs/Vault_vNext_Recovery_Amendment.md`.
 
-> **W2 STATUS (Lane W2I, local implementation diff for independent review;
-> both paragraphs above retained as written).** The remedy the correction names
+> **W2 STATUS (Lane W2I; reviewed in Lane W2R; persisted as Commit A
+> `c182db1099d92ff5830ae71116613c739b034bd9` in Lane W2P; both paragraphs above
+> retained as written).** The remedy the correction names
 > is now IMPLEMENTED: `cancelRecoveryByQuorum` exists (K-9 mechanism B), a live
 > request can no longer be overwritten, an expired request blocks nothing, the
 > executable window is half-open, and the challenge epoch resets only on a
@@ -104,8 +105,12 @@ its real residue is state incoherence: the request is left `active` while dead.
 > `SD-10` is untouched and its interplay recorded. SD-4 itself stays SUSTAINED
 > and is repaired at every timing by the architecture-native two-path remedy —
 > quorum cancellation, then a correctly-shaped fresh recovery. See
-> `W2_IMPLEMENTATION_RECORD.md`; the ledger (`stateful/defects.ts`) is #188's
-> and is not rewritten by this lane.
+> `W2_IMPLEMENTATION_RECORD.md`. Lane W2P then reconciled the ledger
+> (`stateful/defects.ts`): SD-9b/c/d/e moved into `REMEDIATED_DEFECTS`
+> (sustained at `4b912726`, remediated on `c182db10`), SD-10 entered as
+> SUSTAINED with its own reproduction, SD-9a recorded as a known gap rather than
+> a defect, and the SD-4 entry's refuted general prose replaced by the canonical
+> disposition with pointers to the falsification chain.
 
 **SD-6 AND SD-7 ARE NOW REMEDIATED, on `security/vnext-sd6-sd7-commitment-admission`,
 by a single invariant over the whole commitment ingress surface.**
@@ -261,7 +266,7 @@ path dominates at `k`, exactly as §24 says.
 | **SD-1** `I-FLOOR-SHAPE-IMMUTABLE` (+ the `MAX_PQ_LENGTH` bound)     | **+215**                      | **17,407 -> 17,622.** TARGET PASS, 4,354 B under the ceiling. Storage layout byte-identical; ABI additive only (selectors 44 -> 45, the new `MAX_PQ_LENGTH()` getter) |
 | **SD-3** `I-DECLARATION-EXHIBITED`                                   | **+184**                      | **17,622 -> 17,806.** TARGET PASS, 4,170 B under the ceiling. Storage layout AND ABI byte-identical — two comparisons reusing an existing parameter, on the `requirePq` false -> true edge only. SD-4 is NOT closed; see its ledger entry |
 | **SD-6 + SD-7** `I-COMMITMENT-EXHIBITED-AT-ADMISSION`               | **+299**                      | **17,806 -> 18,105.** TARGET PASS, 3,871 B under the ceiling. Storage layout byte-identical. **ABI: exactly two entries move** — `initialize` and `deployVault` each gain a trailing `bytes` WITNESS; selector COUNTS unchanged at 45 and 4, and `genesisSalt`/`predictVault` are untouched, so the configuration -> salt map is unchanged (addresses still move, as they do for every bytecode change — the clone initcode embeds the implementation address). The factory carries **+219** of its own to forward the witness |
-| **W2** K-9 mechanism B + `I-RECOVERY-EFFECTIVE-LIVENESS` + `I-RECOVERY-CHALLENGE-EPOCH` (SD-9b/c/d/e) — LOCAL, pending review | **+320**                      | **18,105 -> 18,425.** TARGET PASS, 3,551 B under the ceiling (6,151 under EIP-170). Storage layout byte-identical (17 entries, same slots). **ABI additive: exactly +1 selector** (`cancelRecoveryByQuorum`, `0x02abce4e`, kernel selectors 45 -> 46) **and +1 event** (`RecoveryCancelledByQuorum(uint32)`); `recovery()` byte-identical; nothing removed or moved. The factory's LENGTH is unchanged at 2,445 and its selectors at 4; its runtime hash moves because its metadata CBOR embeds the kernel source hash (32 differing bytes, all inside the 51-byte metadata tail) |
+| **W2** K-9 mechanism B + `I-RECOVERY-EFFECTIVE-LIVENESS` + `I-RECOVERY-CHALLENGE-EPOCH` (SD-9b/c/d/e) — Commit A `c182db10`, re-observed on a clean checkout (Lane W2P) | **+320**                      | **18,105 -> 18,425.** TARGET PASS, 3,551 B under the ceiling (6,151 under EIP-170). Storage layout byte-identical (17 entries, same slots). **ABI additive: exactly +1 selector** (`cancelRecoveryByQuorum`, `0x02abce4e`, kernel selectors 45 -> 46) **and +1 event** (`RecoveryCancelledByQuorum(uint32)`); `recovery()` byte-identical; nothing removed or moved. The factory's LENGTH is unchanged at 2,445 and its selectors at 4; its runtime hash moves because its metadata CBOR embeds the kernel source hash (32 differing bytes, all inside the 51-byte metadata tail) |
 
 **No T0/T1 invariant was deleted to recover bytes.** The ablated variants that
 produce these deltas are diagnostic only, and every one of them reintroduces a

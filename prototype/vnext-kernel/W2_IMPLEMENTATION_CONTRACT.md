@@ -1,6 +1,7 @@
 # W2 — implementation contract (frozen target; NO Solidity in this lane)
 
-> **REALISED BY LANE W2I (local implementation diff for independent review;
+> **REALISED BY LANE W2I as Commit A `c182db1099d92ff5830ae71116613c739b034bd9`
+> (reviewed in Lane W2R, persisted in Lane W2P;
 > this contract is retained as the frozen target it was).** The measured
 > outcome, item by item and mutant by mutant, is in `W2_IMPLEMENTATION_RECORD.md`.
 > Forecast versus measurement, in brief: storage layout UNCHANGED (as
@@ -9,7 +10,11 @@
 > no liveness getter); new events EXACTLY ONE, `RecoveryCancelledByQuorum(uint32)`
 > (as forecast); runtime bytes **18,105 -> 18,425 (+320)** against the
 > "+150–300 B" forecast column, TARGET PASS with 3,551 B of headroom. All fifteen
-> mutants below are compiled and killed by their named properties
+> mutants below are compiled and killed by their named properties, plus a
+> sixteenth added in Lane W2P outside this frozen table —
+> `M-K9-initiation-does-not-consume-guardian-nonce`, the creator-side half of
+> the nonce-serialisation premise (amendment §5, premise 1) that Lane W2R found
+> unguarded, killed by the same replay property
 > (`test/W2RecoveryLifecycleMutations.test.ts`); the historical M5 (stateful),
 > M27 and M43 (architecture model) remain killed.
 

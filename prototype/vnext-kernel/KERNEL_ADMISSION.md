@@ -82,8 +82,9 @@ so rather than improvising.
 > instead is classified `NONCONFORMANT_AND_REDUNDANT` — see
 > `SD9_RECOVERY_LIFECYCLE_DEFECTS.md` and `docs/Vault_vNext_Recovery_Amendment.md`.
 
-> **K-9 W2 STATUS (Lane W2I, local implementation diff for independent review;
-> the block above is retained as history).** Mechanism B is now implemented in
+> **K-9 W2 STATUS (Lane W2I; reviewed in Lane W2R; persisted as Commit A
+> `c182db1099d92ff5830ae71116613c739b034bd9` in Lane W2P; the block above is
+> retained as history).** Mechanism B is now implemented in
 > `contracts/VaultKernelPrototype.sol` as
 > `cancelRecoveryByQuorum(QuorumProof,uint256,uint64)` — guardian quorum under the
 > CURRENT commitment and generation, `DOMAIN_GUARDIAN` nonce, clears request
@@ -93,7 +94,7 @@ so rather than improvising.
 > `initiateRecovery`, `setGuardians`.
 >
 > ```text
-> K9_GUARDIAN_CANCEL_CONFORMANCE = IMPLEMENTED (W2, local; pending independent review)
+> K9_GUARDIAN_CANCEL_CONFORMANCE = IMPLEMENTED (W2 Commit A c182db10, reviewed in W2R)
 > K9_CONFORMANCE                 = BOTH MECHANISMS PRESENT — executable-conformant
 >                                  (test/W2RecoveryLifecycle.test.ts §A,
 >                                   test/W2RecoveryLifecycleMutations.test.ts)

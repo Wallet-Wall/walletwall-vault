@@ -190,23 +190,34 @@ re-measured — at which point `defects.ts` carries the remediated entries, the
 campaign runs against the changed kernel, and the receipt's `head` moves for a
 reason.
 
-### W2 status (Lane W2I — local implementation diff, receipts still NOT regenerated)
+### W2 status (Lane W2P — persisted; receipts regenerated from the ledger-reconciliation commit)
 
-The W2 implementation exists on this diff but is uncommitted, so a regenerated
-receipt would stamp `head`/`tree` values that cannot truthfully identify the
-tree it describes. The canonical `STATEFUL_AUTHORITY_EVIDENCE.json` is therefore
-left byte-unchanged and is now stale in countable ways the campaign suite itself
-detects (its "receipt describes the matrix" test is RED on this diff by design,
-not by accident — it fails on the first comparison, the campaign count):
-**18 profiles** where the receipt lists 17 (`recovery-lifecycle` appended), so
-**252 planned campaigns** where the receipt says 238 and **13,680 planned
-transitions** where it says 12,920; **21 global invariants** where the receipt
-lists 20 (`G-CHALLENGE-EPOCH` added); a new judged outcome
-`RECOVERY_QUORUM_CANCEL`; and kernel bytes 18,425 / sha256 `17884089…` where the
-receipt's `solidityChanged` still names 18,105 / `73be083f…`. The mutation
-catalogue (`MUTATIONS`, 22) is unchanged — the fifteen W2 mutants live in
-`test/W2RecoveryLifecycleMutations.test.ts`, which is deterministic-history
-adequacy rather than campaign adequacy. Regeneration is authorised at the commit
-that carries this diff; the regenerator now prefers the `w2RecoveryLifecycle`
-block of `MEASUREMENTS.json`. The exact plan is in
-`../W2_IMPLEMENTATION_RECORD.md`.
+The W2 implementation is **Commit A `c182db1099d92ff5830ae71116613c739b034bd9`**
+(reviewed unchanged in Lane W2R). At that commit the canonical
+`STATEFUL_AUTHORITY_EVIDENCE.json` was deliberately left byte-identical to the
+base and was stale in countable ways this suite itself detected (its "receipt
+describes the matrix" test was RED there by design, on the first comparison —
+the campaign count): **18 profiles** where the receipt listed 17
+(`recovery-lifecycle` appended), so **252 planned campaigns** against 238 and
+**13,680 planned transitions** against 12,920; **21 global invariants** against
+20 (`G-CHALLENGE-EPOCH` added); the new judged outcome `RECOVERY_QUORUM_CANCEL`;
+and kernel bytes 18,425 / sha256 `17884089…` where the receipt's
+`solidityChanged` still named 18,105 / `73be083f…`. The mutation catalogue
+(`MUTATIONS`, 22) is unchanged — the W2 mutants (fifteen frozen, plus the
+sixteenth added in W2P) live in `test/W2RecoveryLifecycleMutations.test.ts`,
+which is deterministic-history adequacy rather than campaign adequacy.
+
+**What authorised regeneration, and the order it happened in (Lane W2P):**
+Commit A (implementation) → Commit A′ (the commit carrying this section:
+`defects.ts` carries SD-9b/c/d/e as remediated, SD-10 as sustained with its own
+reproduction, SD-9a as a known gap, and the SD-4 entry's refuted general prose
+replaced by the canonical disposition) → `hardhat clean`, compile,
+`authority/check.ts --out`, `generate-stateful-evidence.ts` on a CLEAN checkout
+of A′ → Commit B (the regenerated receipts and nothing else). The receipts in B
+stamp A′ as `head`/`tree`: that is the tree they measured, and by the
+repository's generated-at convention a receipt identifies its source, never the
+commit that happens to contain it. `SCANNER_EVIDENCE.json` stays historical
+until a truthful local Slither run exists; Slither and CodeQL are authoritative
+from the W2 PR's CI. The regenerator prefers the `w2RecoveryLifecycle` block of
+`MEASUREMENTS.json`; the re-measurement and the exact protocol are in
+`../W2_IMPLEMENTATION_RECORD.md` §15.
