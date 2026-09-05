@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-scanner-evidence.v1",
-  "head": "d48b3528228a65f1e0028347c3c8b735f76f90c4",
-  "tree": "0af01a79f795568f78c93ddba6e5487dc4e21f74",
+  "head": "3ee927557b808b7594effd43a16d3696a61a0c20",
+  "tree": "ed40f21830604ffb9b9a2078fefccd932931eba0",
   "generatedFrom": {
     "note": "Generated locally by a developer or CI running the command in this script's header comment; not itself re-run automatically on every commit."
   },
@@ -22,7 +22,7 @@
         "prototype/vnext-kernel/contracts"
       ],
       "platform": "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
-      "rawOutputSha256": "b1c0d9ee94cce47df2887eb96f31fffade315fa29f9bb9a32ec1bce4d98c6641",
+      "rawOutputSha256": "e06288cf1611e521354e165d036d2943704b988ae798d3a0ec494f17b551ceb6",
       "rawFindingCount": 217,
       "distinctOwnCodeFindingCount": 33,
       "triagedByClassification": {
@@ -49,16 +49,16 @@
   },
   "tests": {
     "prototype": {
-      "passing": 678,
+      "passing": 710,
       "failing": 0
     },
     "productionNormal": {
-      "passing": 1645,
+      "passing": 1658,
       "failing": 0,
       "pending": 11
     },
     "productionCoverage": {
-      "passing": 1642,
+      "passing": 1655,
       "failing": 0,
       "pending": 14,
       "percent": 90.13
@@ -67,13 +67,13 @@
   "bytecode": [
     {
       "name": "VaultKernelPrototype",
-      "runtime": 18425,
-      "runtimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e"
+      "runtime": 18367,
+      "runtimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943"
     },
     {
       "name": "VaultKernelFactoryPrototype",
       "runtime": 2445,
-      "runtimeSha256": "d3e4a21ecf8ff5737928cadf52c15f7f2ee29f771427523b5a74eb3bfdabcfc1"
+      "runtimeSha256": "7a5cba517c0800ad4dd8c0834dd538a1a0aed92ded54a9f0b9a3eea9c8e42bf4"
     }
   ],
   "knownAnalysisAbsences": [

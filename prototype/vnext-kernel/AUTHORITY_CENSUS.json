@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "1d9b90a7ec0907b2c296bee3d7cfad035a1dda49",
-  "tree": "d43a4a89a54a5fe359f338ca8c34860e83891534",
+  "head": "3ee927557b808b7594effd43a16d3696a61a0c20",
+  "tree": "ed40f21830604ffb9b9a2078fefccd932931eba0",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
@@ -441,7 +441,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10307,
+      "astId": 10299,
       "reasons": [],
       "observedMechanisms": [
         "POSSESSION_PROOF"
@@ -473,7 +473,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10411,
+      "astId": 10403,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
       ],
@@ -507,7 +507,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10546,
+      "astId": 10538,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM",
@@ -539,7 +539,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10588,
+      "astId": 10580,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -565,7 +565,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10717,
+      "astId": 10709,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
       ],
