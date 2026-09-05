@@ -27,7 +27,7 @@ import { ethers } from "../test/connection.js";
 import { networkHelpers } from "../test/connection.js";
 import type { Prng } from "./prng.js";
 import type { AbstractState } from "./model.js";
-import { recordCancellation, recordExecution, recordInitiation } from "./model.js";
+import { judgeRecoveryExecution, recordCancellation, recordExecution, recordInitiation } from "./model.js";
 import type { Actor, Floor, Root, VerifierKind, World } from "./world.js";
 import {
   ACTION,
@@ -326,6 +326,11 @@ export const ACTION_KINDS = [
   "ADVANCE_TIME",
   "REPLAY_PAST_CALL",
   "FACTORY_DEPLOY_TWIN",
+  // APPENDED (Lane W2), never inserted. `generatePlan` filters this list by each
+  // profile's weights BEFORE drawing, so a kind that no historical profile
+  // weights leaves every historical action stream, kill seed and step index
+  // byte-identical. K-9 mechanism B — the guardian quorum's own cancellation.
+  "CANCEL_RECOVERY_BY_QUORUM",
 ] as const;
 
 export type ActionKind = (typeof ACTION_KINDS)[number];
@@ -358,6 +363,19 @@ export interface ExecOutcome {
   attributedRoots: Set<Root>;
   /** Set when the model itself judged something wrong, independent of the kernel. */
   modelViolation: string | null;
+  /**
+   * The timestamp of the block a SUCCESSFUL action was mined in. The clock is
+   * the harness's own environment (ADVANCE_TIME moves it), not kernel state,
+   * and the model's recovery-lifecycle judgements (Lane W2) are made against it.
+   */
+  minedAt?: bigint;
+}
+
+/** The timestamp of a mined block, as a bigint; 0n when the block cannot be read. */
+async function minedTimestamp(blockNumber: number | undefined): Promise<bigint> {
+  if (blockNumber === undefined) return 0n;
+  const block = await ethers.provider.getBlock(blockNumber);
+  return BigInt(block?.timestamp ?? 0);
 }
 
 const errName = (e: unknown): string => {
@@ -439,10 +457,11 @@ export async function executeAction(
         data: built.data,
         value: built.value ?? 0n,
       });
-      await tx.wait();
+      const receipt = await tx.wait();
+      const minedAt = await minedTimestamp(receipt?.blockNumber);
       record(w.vaultAddress, built.data, built.value ?? 0n, true);
       if (onSuccess) onSuccess();
-      return { ok: true, revert: null, attributedRoots: held, modelViolation: null };
+      return { ok: true, revert: null, attributedRoots: held, modelViolation: null, minedAt };
     } catch (e) {
       record(w.vaultAddress, built.data, built.value ?? 0n, false);
       return { ok: false, revert: errName(e), attributedRoots: held, modelViolation: null };
@@ -791,73 +810,113 @@ export async function executeAction(
       const verifierKind = String(p.verifier ?? "honest") as VerifierKind;
       const proposedVerifier = w.verifiers[verifierKind];
       let boundGen = 0n;
-      return attempt(
-        async () => {
-          const nonce = (await vault.nonces(DOMAIN.GUARDIAN)) as bigint;
-          boundGen = (await vault.guardianGeneration()) as bigint;
-          const digest = digestOf({
-            chainId: w.chainId,
-            vault: w.vaultAddress,
-            kernelGeneration: kernelGen,
-            actionType: ACTION.RECOVER,
-            authorityGeneration: boundGen,
-            params: recoverParams(addrOf(newCred), pqHash(newPq), proposedVerifier),
-            domain: DOMAIN.GUARDIAN,
-            nonce,
-            deadline: FAR_DEADLINE,
-          });
-          const q = buildQuorum(actor, ctx, digest, shape, prng);
-          return {
-            data: vault.interface.encodeFunctionData("initiateRecovery", [
-              addrOf(newCred),
-              pqHash(newPq),
-              proposedVerifier,
-              q,
-              nonce,
-              FAR_DEADLINE,
-            ]),
-          };
-        },
-        () => {
-          recordInitiation(
-            ctx.abstract,
-            ctx.step,
+      const initiated = await attempt(async () => {
+        const nonce = (await vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+        boundGen = (await vault.guardianGeneration()) as bigint;
+        const digest = digestOf({
+          chainId: w.chainId,
+          vault: w.vaultAddress,
+          kernelGeneration: kernelGen,
+          actionType: ACTION.RECOVER,
+          authorityGeneration: boundGen,
+          params: recoverParams(addrOf(newCred), pqHash(newPq), proposedVerifier),
+          domain: DOMAIN.GUARDIAN,
+          nonce,
+          deadline: FAR_DEADLINE,
+        });
+        const q = buildQuorum(actor, ctx, digest, shape, prng);
+        return {
+          data: vault.interface.encodeFunctionData("initiateRecovery", [
             addrOf(newCred),
             pqHash(newPq),
             proposedVerifier,
-            Number(boundGen),
-            held,
-          );
-        },
+            q,
+            nonce,
+            FAR_DEADLINE,
+          ]),
+        };
+      });
+      if (!initiated.ok) return initiated;
+      // JUDGED BY THE MODEL (Lane W2): an accepted initiation while the harness's
+      // own clock says the previous episode is still live is the SD-9d overwrite
+      // the kernel must refuse. The record function returns that judgement.
+      const { violation } = recordInitiation(
+        ctx.abstract,
+        ctx.step,
+        addrOf(newCred),
+        pqHash(newPq),
+        proposedVerifier,
+        Number(boundGen),
+        held,
+        initiated.minedAt ?? 0n,
       );
+      return { ...initiated, modelViolation: violation };
     }
 
-    case "CANCEL_RECOVERY":
-      return attempt(
-        async () => {
-          const nonce = (await vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
-          const credGen = (await vault.credentialGeneration()) as bigint;
-          const digest = digestOf({
-            chainId: w.chainId,
-            vault: w.vaultAddress,
-            kernelGeneration: kernelGen,
-            actionType: ACTION.RECOVER,
-            authorityGeneration: credGen,
-            params: ethers.id("CANCEL"),
-            domain: DOMAIN.CREDENTIAL,
+    case "CANCEL_RECOVERY": {
+      const cancelled = await attempt(async () => {
+        const nonce = (await vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
+        const credGen = (await vault.credentialGeneration()) as bigint;
+        const digest = digestOf({
+          chainId: w.chainId,
+          vault: w.vaultAddress,
+          kernelGeneration: kernelGen,
+          actionType: ACTION.RECOVER,
+          authorityGeneration: credGen,
+          params: ethers.id("CANCEL"),
+          domain: DOMAIN.CREDENTIAL,
+          nonce,
+          deadline: FAR_DEADLINE,
+        });
+        return {
+          data: vault.interface.encodeFunctionData("cancelRecovery", [
             nonce,
-            deadline: FAR_DEADLINE,
-          });
-          return {
-            data: vault.interface.encodeFunctionData("cancelRecovery", [
-              nonce,
-              FAR_DEADLINE,
-              sign(credSigningKey(actor, ctx), digest),
-            ]),
-          };
-        },
-        () => recordCancellation(ctx.abstract),
-      );
+            FAR_DEADLINE,
+            sign(credSigningKey(actor, ctx), digest),
+          ]),
+        };
+      });
+      if (!cancelled.ok) return cancelled;
+      // JUDGED BY THE MODEL (Lane W2): the credential's challenge may terminate
+      // only an effectively-live request. A success the model's clock calls
+      // expired is a violation, whatever the kernel believed.
+      return {
+        ...cancelled,
+        modelViolation: recordCancellation(ctx.abstract, "CREDENTIAL_CHALLENGE", cancelled.minedAt ?? 0n),
+      };
+    }
+
+    case "CANCEL_RECOVERY_BY_QUORUM": {
+      // K-9 MECHANISM B (Lane W2). Mirrors the kernel's digest EXACTLY — the
+      // guardian nonce domain, the CURRENT guardian generation, the constant
+      // params hash — and builds the proof with the same adversarial quorum
+      // shapes every other quorum act is attacked with. Attribution is to the
+      // roots the actor holds: a cancellation that succeeds for an actor below k
+      // is the outcome RECOVERY_QUORUM_CANCEL at an unentitled root set (P-CUT).
+      const shape = String(p.quorumShape ?? "honest") as QuorumShape;
+      const quorumCancelled = await attempt(async () => {
+        const nonce = (await vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+        const gGen = (await vault.guardianGeneration()) as bigint;
+        const digest = digestOf({
+          chainId: w.chainId,
+          vault: w.vaultAddress,
+          kernelGeneration: kernelGen,
+          actionType: ACTION.RECOVER,
+          authorityGeneration: gGen,
+          params: ethers.id("QUORUM_CANCEL_RECOVERY"),
+          domain: DOMAIN.GUARDIAN,
+          nonce,
+          deadline: FAR_DEADLINE,
+        });
+        const q = buildQuorum(actor, ctx, digest, shape, prng);
+        return { data: vault.interface.encodeFunctionData("cancelRecoveryByQuorum", [q, nonce, FAR_DEADLINE]) };
+      });
+      if (!quorumCancelled.ok) return quorumCancelled;
+      return {
+        ...quorumCancelled,
+        modelViolation: recordCancellation(ctx.abstract, "GUARDIAN_QUORUM", quorumCancelled.minedAt ?? 0n),
+      };
+    }
 
     case "EXECUTE_RECOVERY": {
       // PERMISSIONLESS by design, so the effect is attributed to the ROOTS THAT
@@ -904,12 +963,11 @@ export async function executeAction(
       );
       let modelViolation: string | null = null;
       if (res.ok) {
-        // JUDGED BY THE MODEL, not by the kernel: was there live evidence?
-        if (live === undefined || live === null) {
-          modelViolation = "R2/R3 — executeRecovery SUCCEEDED with no live recovery episode in the model";
-        } else if (live.state !== "LIVE") {
-          modelViolation = "R2/R3 — executeRecovery SUCCEEDED on evidence the model records as " + live.state;
-        } else if (live.guardianTransitionsAtApproval !== ctx.abstract.guardianTransitions) {
+        // JUDGED BY THE MODEL, not by the kernel: was there live evidence, and
+        // was it still inside its window when the kernel executed it (Lane W2:
+        // LIVE_WINDOW is half-open, so execution AT expiresAt is a violation)?
+        modelViolation = judgeRecoveryExecution(ctx.abstract, res.minedAt ?? 0n);
+        if (modelViolation === null && live && live.guardianTransitionsAtApproval !== ctx.abstract.guardianTransitions) {
           // R1. The constituency that APPROVED this recovery is no longer the
           // constituency in force. A request that survives the roster change
           // which replaced its approvers is a stale authorization retargeting
@@ -1056,19 +1114,40 @@ export async function executeAction(
           data: target.data,
           value: target.value,
         });
-        await tx.wait();
+        const receipt = await tx.wait();
+        const minedAt = await minedTimestamp(receipt?.blockNumber);
         // A REPLAYED executeRecovery that succeeds is judged by the MODEL exactly
         // as a direct one is: the question is whether live evidence existed, not
         // who sent the transaction.
         let modelViolation: string | null = null;
         if (target.kind === "EXECUTE_RECOVERY") {
-          if (!live) modelViolation = "R3 — a REPLAYED executeRecovery succeeded with no live recovery episode";
-          else if (live.state !== "LIVE") {
-            modelViolation = "R3 — a REPLAYED executeRecovery succeeded on evidence the model records as " + live.state;
-          }
+          modelViolation = judgeRecoveryExecution(ctx.abstract, minedAt);
           recordExecution(ctx.abstract, ctx.credLabel);
+        } else if (target.kind === "INITIATE_RECOVERY") {
+          // Lane W2 makes a refused initiation RELAYABLE: calldata that first
+          // failed BadState against a live request keeps its unspent guardian
+          // nonce, and succeeds once that request has expired. That creates a
+          // REAL episode, so the model must record it — under the roots that
+          // signed it — or every later judgement about that episode would be
+          // made against evidence the model never held.
+          const decoded = vault.interface.decodeFunctionData("initiateRecovery", target.data);
+          const gGen = (await vault.guardianGeneration()) as bigint;
+          modelViolation = recordInitiation(
+            ctx.abstract,
+            ctx.step,
+            String(decoded[0]),
+            String(decoded[1]),
+            String(decoded[2]),
+            Number(gGen),
+            new Set(target.authorRoots),
+            minedAt,
+          ).violation;
+        } else if (target.kind === "CANCEL_RECOVERY") {
+          modelViolation = recordCancellation(ctx.abstract, "CREDENTIAL_CHALLENGE", minedAt);
+        } else if (target.kind === "CANCEL_RECOVERY_BY_QUORUM") {
+          modelViolation = recordCancellation(ctx.abstract, "GUARDIAN_QUORUM", minedAt);
         }
-        return { ok: true, revert: null, attributedRoots: attributed, modelViolation };
+        return { ok: true, revert: null, attributedRoots: attributed, modelViolation, minedAt };
       } catch (e) {
         return { ok: false, revert: errName(e), attributedRoots: attributed, modelViolation: null };
       }

@@ -39,8 +39,13 @@ const LEVELS: Record<string, number> = {
   // K3 — recovery
   initiateRecovery: 3,
   cancelRecovery: 3,
+  // K-9 mechanism B (W2) arrives with recovery, alongside the credential half.
+  cancelRecoveryByQuorum: 3,
   executeRecovery: 3,
   _requireRecoveryOpen: 3,
+  // Effective liveness is read by initiateRecovery / both cancellations (K3) and
+  // by bindMigration (K5), so it must exist from K3 onward.
+  _recoveryIsLive: 3,
   // Recovery INSTALLS a credential, so the installer arrives with recovery
   // rather than with the voluntary rotation entry point in K6. Placing it later
   // does not compile — a useful reminder that the layering is a dependency

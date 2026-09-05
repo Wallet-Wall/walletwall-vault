@@ -124,26 +124,7 @@ contract VaultKernelPrototype {
         uint64 executableAt;
         uint64 expiresAt;
         uint64 boundGuardianGeneration;
-        /**
-         * @dev THE CHALLENGE EPOCH — co-located in this struct, but with its OWN
-         *      lifetime (`I-RECOVERY-CHALLENGE-EPOCH`, Recovery Amendment §2).
-         *      It is the credential's bounded budget for challenging recovery,
-         *      and it SURVIVES every request-lifetime event: a credential
-         *      challenge, a guardian-quorum cancellation, expiry, a fresh
-         *      initiation (which carries it forward) and ordinary rotation. It
-         *      resets in exactly ONE place — the whole-struct `delete` in
-         *      `executeRecovery`, the authority transition the outgoing
-         *      credential could not have authorised. Never clear this struct on
-         *      any other exit: a refund there is a veto manufactured by the very
-         *      principal recovery exists to remove.
-         */
         uint32 challengesUsed;
-        /**
-         * @dev Request AUTHORITY, not request liveness. Authority ends at
-         *      `expiresAt` with no principal acting (`I-RECOVERY-TERMINATION`), so
-         *      this byte may read true for a request that carries nothing; every
-         *      decision consults `_recoveryIsLive()`, never this flag alone.
-         */
         bool active;
     }
 
@@ -282,9 +263,6 @@ contract VaultKernelPrototype {
     event GuardianCommitmentSet(bytes32 indexed commitment, uint64 generation, uint64 threshold, bytes preimage);
     event RecoveryInitiated(address indexed proposedSigner, uint64 executableAt, uint64 guardianGeneration);
     event RecoveryCancelled(uint32 challengesUsed);
-    /// @dev K-9 mechanism B. A DISTINCT terminal from the credential's challenge:
-    ///      an observer must be able to tell which principal ended the request.
-    event RecoveryCancelledByQuorum(uint32 challengesUsed);
     event RecoveryExecuted(address indexed newSigner, uint64 credentialGeneration);
     event SafeStateChanged(SafeState indexed previous, SafeState indexed next);
     event MigrationBound(address indexed destinationVault, bytes32 codeHash, uint64 destinationGeneration);
@@ -723,26 +701,6 @@ contract VaultKernelPrototype {
         if (s == SafeState.MIGRATION_ONLY || s == SafeState.RETIRED) revert BadState();
     }
 
-    /**
-     * @dev `I-RECOVERY-EFFECTIVE-LIVENESS` (Recovery Amendment §3). A request
-     *      holds authority on the HALF-OPEN window `[executableAt, expiresAt)`:
-     *      at `expiresAt` it is already expired, the same convention
-     *      `_effectiveState` applies to `containedUntil`. Expiry requires no
-     *      principal to act (`I-RECOVERY-TERMINATION`), so nothing clears the
-     *      stored `active` byte — an expired request leaves stale bytes that
-     *      carry zero execution authority, zero cancellation-target authority
-     *      and zero blocking effect. Every authority or blocking decision in this
-     *      kernel consults THIS predicate, never the raw flag.
-     *
-     *      INTERNAL ON PURPOSE (Option E0): liveness is a pure function of two
-     *      fields the `recovery()` getter already exposes and the block a reader
-     *      is in, so an observatory derives it exactly as the stateful oracle
-     *      already derives effective safe state. No selector is added for it.
-     */
-    function _recoveryIsLive() internal view returns (bool) {
-        return recovery.active && block.timestamp < recovery.expiresAt;
-    }
-
     // =====================================================================
     // K-2 — asset execution. EXACT TYPED. There is no execute(address,bytes)
     // anywhere in this kernel (architecture section 5, goal G3).
@@ -959,17 +917,6 @@ contract VaultKernelPrototype {
         // harm for an unbounded guardian one is not a remediation. See SD-4 in
         // `stateful/defects.ts` for the analysis and the only design that closes
         // it soundly.
-        //
-        // W2 CORRECTION TO THE PARAGRAPH ABOVE, appended not rewritten:
-        // `initiateRecovery` NOW refuses to overwrite an effectively-live request,
-        // but the quorum's renewal still exists — `cancelRecoveryByQuorum` then a
-        // fresh initiation, two explicit acts instead of one silent overwrite —
-        // so the veto the interlock would hand the quorum is unchanged and the
-        // rejection stands. "The only design that closes it soundly" was itself
-        // refuted afterwards (Design A bricks the vault, PR #188); the standing
-        // disposition is `SD4_DEDICATED_REMEDIATION = NOT_REQUIRED` (Recovery
-        // Amendment §4): the architecture-native lifecycle — quorum cancel, then
-        // a correctly-shaped fresh recovery — repairs SD-4 at every timing.
         _consume(DOMAIN_CREDENTIAL, nonce, deadline);
         pqVerifier = verifier;
         securityFloor = floor;
@@ -1199,14 +1146,6 @@ contract VaultKernelPrototype {
         uint64 deadline
     ) external {
         _requireRecoveryOpen();
-        // A LIVE request is never overwritten (SD-9d). The quorum's exits from a
-        // live request are `cancelRecoveryByQuorum` and expiry, both explicit and
-        // both observable; an EXPIRED request's stale bytes hold no authority and
-        // do not block a fresh one, so no sweeper is ever needed. Checked before
-        // `_consume`, so a refused overwrite burns no guardian nonce — which is
-        // one of the premises the guardian-cancel replay argument rests on
-        // (Recovery Amendment §5).
-        if (_recoveryIsLive()) revert BadState();
         if (proposedSigner == address(0) || proposedVerifier == address(0)) revert ZeroAddress();
         if (proposedVerifier.code.length == 0) revert ZeroAddress();
 
@@ -1249,9 +1188,7 @@ contract VaultKernelPrototype {
      */
     function cancelRecovery(uint256 nonce, uint64 deadline, bytes calldata ecdsaSig) external {
         _requireRecoveryOpen();
-        // Only an effectively-live request is a challenge target. An expired one
-        // is refused before any nonce or budget is touched.
-        if (!_recoveryIsLive()) revert NoRecovery();
+        if (!recovery.active) revert NoRecovery();
         if (recovery.challengesUsed >= CHALLENGE_LIMIT) revert ChallengeExhausted();
 
         bytes32 digest = _digest(
@@ -1272,45 +1209,6 @@ contract VaultKernelPrototype {
         emit RecoveryCancelled(recovery.challengesUsed);
     }
 
-    /**
-     * @notice K-9 mechanism B: the guardian quorum terminates an effectively-live
-     *         recovery directly (`CANCEL_RECOVERY`, architecture §8.1).
-     *
-     * @dev A DISTINCT authority from the credential's bounded challenge: a
-     *      different principal, a different nonce domain, a different event —
-     *      and it neither consumes nor refunds the challenge epoch. Only request
-     *      AUTHORITY is cleared; `challengesUsed` is left standing, and there is
-     *      no whole-struct delete here because that is reserved for
-     *      `executeRecovery`, the epoch's one reset boundary.
-     *
-     *      REPLAY, without a request identifier (Recovery Amendment §5): every
-     *      request is created by `initiateRecovery`, which always consumes a
-     *      `DOMAIN_GUARDIAN` nonce, and a live request is never overwritten, so
-     *      a cancellation pre-signed for request n is either nonce-invalid by the
-     *      time request n+1 exists or finds no live target and consumes nothing.
-     *      The digest also binds `guardianGeneration`, and `_requireQuorum` runs
-     *      before `_consume`, so a superseded constituency's authorisation dies
-     *      as QuorumNotMet before its nonce is even examined.
-     */
-    function cancelRecoveryByQuorum(QuorumProof calldata proof, uint256 nonce, uint64 deadline) external {
-        _requireRecoveryOpen();
-        if (!_recoveryIsLive()) revert NoRecovery();
-
-        bytes32 digest = _digest(
-            ACTION_RECOVER,
-            guardianGeneration,
-            keccak256("QUORUM_CANCEL_RECOVERY"),
-            DOMAIN_GUARDIAN,
-            nonce,
-            deadline
-        );
-        _requireQuorum(digest, proof);
-        _consume(DOMAIN_GUARDIAN, nonce, deadline);
-
-        recovery.active = false;
-        emit RecoveryCancelledByQuorum(recovery.challengesUsed);
-    }
-
     /// @notice Permissionless once matured — it carries no discretion.
     /**
      * @notice Permissionless once matured, but only on PROOF OF POSSESSION of
@@ -1327,10 +1225,7 @@ contract VaultKernelPrototype {
         RecoveryRequest memory r = recovery;
         if (!r.active) revert NoRecovery();
         if (block.timestamp < r.executableAt) revert TooEarly();
-        // HALF-OPEN window: `expiresAt` itself is already expired, the kernel's
-        // own convention for `containedUntil` and the reference model's for every
-        // expiry (SD-9e closed here). Deadlines are inclusive; expiries are not.
-        if (block.timestamp >= r.expiresAt) revert Expired();
+        if (block.timestamp > r.expiresAt) revert Expired();
         // A roster change since the request invalidates it.
         if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();
 
@@ -1342,15 +1237,6 @@ contract VaultKernelPrototype {
             c
         );
 
-        // THE CHALLENGE-EPOCH RESET BOUNDARY (`I-RECOVERY-CHALLENGE-EPOCH`). This
-        // whole-struct delete is the ONLY place `challengesUsed` returns to zero,
-        // and it is intentional: the credential this recovery replaces could not
-        // authorise the transition, so the budget it spent belongs to a finished
-        // episode and the incoming credential receives the full allowance. Every
-        // other exit — credential challenge, quorum cancellation, expiry — clears
-        // request authority only. A future "cleanup" that deletes elsewhere, or
-        // that preserves the count here, breaks the epoch in one direction or the
-        // other; both are covered by permanent mutants.
         delete recovery;
         pqVerifier = r.proposedVerifier;
         _installCredential(r.proposedSigner, r.proposedPqKeyHash);
@@ -1415,11 +1301,9 @@ contract VaultKernelPrototype {
         if (_effectiveState() == SafeState.RETIRED) revert BadState();
         if (migration.bound) revert AlreadyBound();
         if (destination.vault == address(0) || destination.codeHash == bytes32(0)) revert DestinationMismatch();
-        // A LIVE recovery blocks binding: migration must never front-run the
-        // remedy (I-MIGRATION-SUBORDINATE-TO-RECOVERY). An EXPIRED request holds
-        // no authority and blocks nothing — expiry requires no principal to act
-        // (I-RECOVERY-TERMINATION), so no sweeper exists (SD-9b closed here).
-        if (_recoveryIsLive()) revert NoRecovery();
+        // A pending recovery blocks binding: migration must never front-run the
+        // remedy (I-MIGRATION-SUBORDINATE-TO-RECOVERY).
+        if (recovery.active) revert NoRecovery();
 
         {
             bytes32 digest = _digest(

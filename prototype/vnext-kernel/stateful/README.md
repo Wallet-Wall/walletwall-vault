@@ -144,3 +144,87 @@ whose refusal is ignored — which is observable.
 
 `STATEFUL_AUTHORITY_EVIDENCE.json` carries the same list as a first-class field,
 not a footnote.
+
+## Staleness note — generated evidence versus later semantic corrections
+
+> The generated implementation/campaign evidence remains evidence for
+> `c67d1439`. It intentionally does not claim the W2 remediation exists.
+> Semantic corrections discovered after that receipt are persisted separately.
+> The receipt will be regenerated only after W2 implementation and
+> re-measurement.
+
+**Artifact identity.** The receipt's own fields are `head =
+28adbb8834c39ae2e106e31d3a25f5b39c84c943`, `tree =
+849e140b7b02121e9ad4a7f1047539654c45fc9a`, with `solidityChanged.bytes = 299`
+read from `MEASUREMENTS.json`. It was generated there and is carried **unchanged**
+to `c67d1439` (`git diff` against that head is empty for all four artifacts); it
+is evidence for the kernel bytes those measurements were taken from.
+
+**What remains valid.** Every campaign result, every mutation kill, the declared
+cuts, and the four sustained-defect entries it carries (`SD-2`, `SD-4`, `SD-5`,
+`SD-8`) as they stood at that head. Nothing in it is wrong *about that kernel*.
+
+**What it does not represent** — semantic claims discovered after it was
+generated, persisted separately and **deliberately not written into it**:
+
+- the `source` field of `G-DECLARATION-SUBORDINATE-TO-RECOVERY` names an
+  interlock the kernel records as removed. Corrected in `invariants.ts` as a
+  provenance correction only — the predicate is unchanged, so no campaign
+  result changes — and not regenerated into the receipt;
+- the SD-4 entry's *"No fifth family is known"*, its A/E dichotomy, and its
+  unqualified *"liveness cost is INHERENT"* are superseded
+  (`../SD4_*.md`, `../../../docs/Vault_vNext_Recovery_Amendment.md` §4);
+- `SD-9` (a–e) and `SD-10`, and K-9's partial conformance
+  (`../SD9_RECOVERY_LIFECYCLE_DEFECTS.md`, `../KERNEL_ADMISSION.md`), post-date it
+  and are absent from its `sustainedDefects`.
+
+**Why regeneration before W2 would mislead.** The generator embeds the current
+`defects.ts` and re-runs the campaign: it would restamp measurements against a
+kernel W1 does not change, republish the superseded SD-4 ledger text under a
+fresh identity, and still omit SD-9/SD-10 because they are not in `defects.ts`.
+The same holds for `AUTHORITY_CENSUS.json`, `MEASUREMENTS.json` and
+`SCANNER_EVIDENCE.json`, which measure a kernel these corrections do not touch.
+
+**What authorises regeneration.** The W2 implementation landing and being
+re-measured — at which point `defects.ts` carries the remediated entries, the
+campaign runs against the changed kernel, and the receipt's `head` moves for a
+reason.
+
+### W2 status (Lane W2P — persisted; receipts regenerated from the ledger-reconciliation commit)
+
+The W2 implementation is **Commit A `c182db1099d92ff5830ae71116613c739b034bd9`**
+(reviewed unchanged in Lane W2R). At that commit the canonical
+`STATEFUL_AUTHORITY_EVIDENCE.json` was deliberately left byte-identical to the
+base and was stale in countable ways this suite itself detected (its "receipt
+describes the matrix" test was RED there by design, on the first comparison —
+the campaign count): **18 profiles** where the receipt listed 17
+(`recovery-lifecycle` appended), so **252 planned campaigns** against 238 and
+**13,680 planned transitions** against 12,920; **21 global invariants** against
+20 (`G-CHALLENGE-EPOCH` added); the new judged outcome `RECOVERY_QUORUM_CANCEL`;
+and kernel bytes 18,425 / sha256 `17884089…` where the receipt's
+`solidityChanged` still named 18,105 / `73be083f…`. The mutation catalogue
+(`MUTATIONS`, 22) is unchanged — the W2 mutants (fifteen frozen, plus the
+sixteenth added in W2P) live in `test/W2RecoveryLifecycleMutations.test.ts`,
+which is deterministic-history adequacy rather than campaign adequacy.
+
+**What authorised regeneration, and the order it happened in (Lane W2P):**
+Commit A (implementation) → Commit A′ (the commit carrying this section:
+`defects.ts` carries SD-9b/c/d/e as remediated, SD-10 as sustained with its own
+reproduction, SD-9a as a known gap, and the SD-4 entry's refuted general prose
+replaced by the canonical disposition) → `hardhat clean`, compile,
+`authority/check.ts --out`, `generate-stateful-evidence.ts` on a CLEAN checkout
+of A′ → Commit B (the regenerated receipts and nothing else). The receipts in B
+stamp A′ as `head`/`tree`: that is the tree they measured, and by the
+repository's generated-at convention a receipt identifies its source, never the
+commit that happens to contain it. `SCANNER_EVIDENCE.json` stays historical
+until a truthful local Slither run exists; Slither and CodeQL are authoritative
+from the W2 PR's CI. The regenerator prefers the `w2RecoveryLifecycle` block of
+`MEASUREMENTS.json`; the re-measurement and the exact protocol are in
+`../W2_IMPLEMENTATION_RECORD.md` §15.
+
+**W2S addendum.** Lane W2S then produced that truthful local Slither run
+(the CI-pinned action semantics reproduced in a disposable venv), re-derived
+`slither-triage.json` at `77ea92cf` from raw runs on clean checkouts of both
+heads, and regenerated `SCANNER_EVIDENCE.json` from a clean checkout of its
+triage commit by the same generated-at convention — see
+`../W2S_SCANNER_TRIAGE_RECORD.md`.

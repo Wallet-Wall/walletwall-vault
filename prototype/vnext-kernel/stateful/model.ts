@@ -72,6 +72,17 @@ export const DECLARED_CUTS = {
   GUARDIAN_TRANSITION: 2,
   MIGRATION_BINDING: 3,
   CONTAINMENT: 2,
+  /**
+   * K-9 mechanism B (Lane W2). A guardian quorum terminates a live recovery
+   * request directly — `CANCEL_RECOVERY` in the architecture's direct-capability
+   * table (docs/Vault_vNext_Architecture.md section 8.1). AUTHORITY.md section 3
+   * has no cancellation row, so the cut is DERIVED: the same `k` as every other
+   * quorum act, because the gate is `_requireQuorum` against the current
+   * commitment. It is deliberately NOT the credential's bounded challenge, which
+   * is a FLOOR_ONLY veto at an accepted cut of 1 and is detected separately by
+   * its budget increment.
+   */
+  RECOVERY_QUORUM_CANCEL: 2,
 } as const;
 
 export type Outcome = keyof typeof DECLARED_CUTS;
@@ -100,6 +111,7 @@ export function declaredCuts(credentialFactors: number, k = 2): Record<Outcome, 
     GUARDIAN_TRANSITION: k,
     CONTAINMENT: k,
     MIGRATION_BINDING: k + 1,
+    RECOVERY_QUORUM_CANCEL: k,
   };
 }
 
@@ -118,6 +130,10 @@ export const DOCUMENTED: Record<Outcome, "AUTHORITY.md-section-3" | "DERIVED-FRO
   // The containment row in section 3 is "Permanent recovery veto: unreachable";
   // section 1 assigns enterContainment to the guardian quorum, i.e. k.
   CONTAINMENT: "AUTHORITY.md-section-3",
+  // No cancellation row exists in section 3. Derived from the architecture's
+  // capability table (CANCEL_RECOVERY is a guardian-quorum capability) and from
+  // the implementation's gate (`_requireQuorum`), exactly as POLICY_CHANGE is.
+  RECOVERY_QUORUM_CANCEL: "DERIVED-FROM-SOURCE",
 };
 
 /**
@@ -180,6 +196,7 @@ export function authorityPaths(outcome: Outcome, credentialFactors: number, k: n
       ];
     case "GUARDIAN_TRANSITION":
     case "CONTAINMENT":
+    case "RECOVERY_QUORUM_CANCEL":
       return [{ name: "guardian-quorum", credential: 0, guardians: k }];
     // bindMigration demands BOTH legs: a quorum AND the credential. That is the
     // `k + 1` in the published table, and the `+ 1` is a SECOND PRINCIPAL, not a
@@ -223,7 +240,34 @@ export function judgeCut(
 // Recovery evidence — the harness's OWN record, not the kernel's
 // =====================================================================
 
-export type EvidenceState = "NONE" | "LIVE" | "CANCELLED" | "CONSUMED" | "SUPERSEDED";
+/**
+ * LIVE      — created and, as far as the harness's own clock says, still inside
+ *             its window.
+ * CANCELLED — ended by a principal: the credential's bounded challenge or the
+ *             guardian quorum (see `terminatedBy`).
+ * CONSUMED  — executed.
+ * EXPIRED   — the harness learned, from a LATER accepted initiation, that the
+ *             window had closed with no principal acting (Lane W2: expiry needs
+ *             no transaction, so the model can only observe it retrospectively).
+ * SUPERSEDED — a later initiation was ACCEPTED while this episode was still
+ *             live by the harness's own clock. On the W2 kernel that is a
+ *             VIOLATION (SD-9d, `I-RECOVERY-CHALLENGE-EPOCH` lifecycle); the
+ *             state is kept so the judgement that fires it has a name.
+ */
+export type EvidenceState = "NONE" | "LIVE" | "CANCELLED" | "CONSUMED" | "SUPERSEDED" | "EXPIRED";
+
+export type TerminalCause = "CREDENTIAL_CHALLENGE" | "GUARDIAN_QUORUM";
+
+/**
+ * The recovery window, in seconds, COPIED from the kernel's illustrative
+ * constants (`RECOVERY_DELAY + RECOVERY_EXPIRY` = 7 d + 14 d). Like
+ * `DECLARED_CUTS` this is an INPUT the harness holds independently of the
+ * kernel, never a value read back from it — an oracle that asked the kernel how
+ * long a request lives could not notice the kernel getting it wrong. The window
+ * is HALF-OPEN: a request is live while `now < initiatedAt + RECOVERY_WINDOW`
+ * (docs/Vault_vNext_Recovery_Amendment.md section 3).
+ */
+export const RECOVERY_WINDOW_SECONDS = 21n * 86400n;
 
 /**
  * One recovery episode as the HARNESS remembers it. `id` increments per
@@ -238,6 +282,16 @@ export interface RecoveryEvidence {
   proposedVerifier: string;
   boundGuardianGeneration: number;
   initiatedAtStep: number;
+  /**
+   * The instant the harness's OWN clock says this episode stops being live:
+   * the initiating block's timestamp plus `RECOVERY_WINDOW_SECONDS`. Every
+   * liveness judgement below compares against this, never against the kernel's
+   * stored `expiresAt`, so a kernel that computes or honours its window wrongly
+   * disagrees with the model instead of being copied by it.
+   */
+  expiresAt: bigint;
+  /** Which principal ended a CANCELLED episode. */
+  terminatedBy?: TerminalCause;
   /**
    * The roots that AUTHORIZED this episode, captured at initiation.
    *
@@ -304,6 +358,30 @@ export function freshAbstractState(genesisController: string): AbstractState {
   };
 }
 
+/** The episode the harness believes is current, or null. */
+export function currentEpisode(s: AbstractState): RecoveryEvidence | null {
+  if (s.liveEpisode === null) return null;
+  return s.episodes.get(s.liveEpisode) ?? null;
+}
+
+/** Whether the harness's own clock says the current episode is still live at `nowTs`. */
+export function episodeIsLiveAt(s: AbstractState, nowTs: bigint): boolean {
+  const ev = currentEpisode(s);
+  return ev !== null && ev.state === "LIVE" && nowTs < ev.expiresAt;
+}
+
+/**
+ * Records an ACCEPTED initiation, mined at `initiatedAtTimestamp`.
+ *
+ * Returns the violated property, or null. On the W2 kernel a new request can
+ * only be accepted once the previous one is gone — cancelled, consumed, or
+ * EXPIRED on the wall clock — so an acceptance while the harness's own clock
+ * still says the previous episode is live is the SD-9d overwrite the kernel
+ * must refuse (`BadState`). The previous episode is marked SUPERSEDED in that
+ * case so the violation names it; in the legitimate case it is marked EXPIRED,
+ * which is the only way a clock-driven expiry ever becomes visible to a model
+ * that never asks the kernel.
+ */
 export function recordInitiation(
   s: AbstractState,
   step: number,
@@ -312,13 +390,24 @@ export function recordInitiation(
   proposedVerifier: string,
   boundGuardianGeneration: number,
   authorizedBy: ReadonlySet<Root>,
-): RecoveryEvidence {
-  // A NEW initiation supersedes whatever the harness thought was live. The
-  // kernel overwrites its single slot; the model records that the OLD evidence
-  // is now dead, which is the fact R2/R3 are asserted against.
-  if (s.liveEpisode !== null) {
-    const prev = s.episodes.get(s.liveEpisode);
-    if (prev && prev.state === "LIVE") prev.state = "SUPERSEDED";
+  initiatedAtTimestamp: bigint,
+): { evidence: RecoveryEvidence; violation: string | null } {
+  let violation: string | null = null;
+  const prev = currentEpisode(s);
+  if (prev && prev.state === "LIVE") {
+    if (initiatedAtTimestamp < prev.expiresAt) {
+      prev.state = "SUPERSEDED";
+      violation =
+        "SD-9d — initiateRecovery SUCCEEDED at " +
+        initiatedAtTimestamp +
+        " while the model's episode #" +
+        prev.id +
+        " was still live (its window closes at " +
+        prev.expiresAt +
+        "): a live request was OVERWRITTEN instead of being cancelled or allowed to expire";
+    } else {
+      prev.state = "EXPIRED";
+    }
   }
   const ev: RecoveryEvidence = {
     id: s.nextEpisodeId++,
@@ -328,19 +417,50 @@ export function recordInitiation(
     proposedVerifier,
     boundGuardianGeneration,
     initiatedAtStep: step,
+    expiresAt: initiatedAtTimestamp + RECOVERY_WINDOW_SECONDS,
     authorizedBy: new Set(authorizedBy),
     guardianTransitionsAtApproval: s.guardianTransitions,
   };
   s.episodes.set(ev.id, ev);
   s.liveEpisode = ev.id;
-  return ev;
+  return { evidence: ev, violation };
 }
 
-export function recordCancellation(s: AbstractState): void {
-  if (s.liveEpisode === null) return;
-  const ev = s.episodes.get(s.liveEpisode);
-  if (ev) ev.state = "CANCELLED";
+/**
+ * Records an ACCEPTED cancellation by `by`, mined at `atTimestamp`.
+ *
+ * Returns the violated property, or null. Both K-9 mechanisms may terminate
+ * only an EFFECTIVELY-LIVE request (Recovery Amendment section 1); a
+ * cancellation the kernel accepted after the harness's clock says the episode
+ * expired is a violation, and so is one accepted with no episode at all.
+ */
+export function recordCancellation(s: AbstractState, by: TerminalCause, atTimestamp: bigint): string | null {
+  const ev = currentEpisode(s);
+  if (ev === null || ev.state !== "LIVE") {
+    s.liveEpisode = null;
+    return (
+      "K-9 — a " +
+      by +
+      " cancellation SUCCEEDED with no live recovery episode in the model (" +
+      (ev === null ? "none" : "episode #" + ev.id + " is " + ev.state) +
+      ")"
+    );
+  }
+  const expired = atTimestamp >= ev.expiresAt;
+  ev.state = "CANCELLED";
+  ev.terminatedBy = by;
   s.liveEpisode = null;
+  return expired
+    ? "K-9 — a " +
+        by +
+        " cancellation SUCCEEDED at " +
+        atTimestamp +
+        " on episode #" +
+        ev.id +
+        " whose window closed at " +
+        ev.expiresAt +
+        ": an expired request has zero cancellation-target authority"
+    : null;
 }
 
 export function recordExecution(s: AbstractState, newController: string): void {
@@ -355,16 +475,29 @@ export function recordExecution(s: AbstractState, newController: string): void {
 
 /**
  * R2 / R3, judged by the MODEL: a recovery execution succeeded — was there any
- * live evidence for it to consume?
+ * live evidence for it to consume, and was it still inside its window at
+ * `executedAtTimestamp`? The second question is Lane W2's half-open boundary:
+ * execution AT `expiresAt` is execution of an expired request.
  *
  * Returns the violated property name, or null.
  */
-export function judgeRecoveryExecution(s: AbstractState): string | null {
+export function judgeRecoveryExecution(s: AbstractState, executedAtTimestamp: bigint): string | null {
   if (s.liveEpisode === null) return "R2/R3 — executeRecovery succeeded with NO live recovery evidence in the model";
   const ev = s.episodes.get(s.liveEpisode);
   if (!ev) return "R2/R3 — executeRecovery succeeded against an episode the model does not know";
   if (ev.state !== "LIVE") {
     return "R2/R3 — executeRecovery succeeded on evidence the model records as " + ev.state;
+  }
+  if (executedAtTimestamp >= ev.expiresAt) {
+    return (
+      "R2/R3 — executeRecovery succeeded at " +
+      executedAtTimestamp +
+      " on episode #" +
+      ev.id +
+      " whose window closed at " +
+      ev.expiresAt +
+      " (LIVE_WINDOW is half-open: expiresAt itself is expired)"
+    );
   }
   return null;
 }

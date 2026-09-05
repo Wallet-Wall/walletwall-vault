@@ -71,11 +71,19 @@ function main(): void {
     sd1Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd3Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    w2RecoveryLifecycle?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
   const kernel = measurements.kernel;
   // The LATEST remediation is what this receipt describes; earlier ones are
-  // history and are recorded in their own MEASUREMENTS.json blocks.
-  const sd1 = measurements.sd67Remediation ?? measurements.sd3Remediation ?? measurements.sd1Remediation;
+  // history and are recorded in their own MEASUREMENTS.json blocks. W2 (K-9
+  // mechanism B + recovery lifecycle) is the latest; it is preferred here so
+  // that the receipt regenerated at the commit carrying W2 reports W2's delta
+  // rather than SD-6/7's.
+  const sd1 =
+    measurements.w2RecoveryLifecycle ??
+    measurements.sd67Remediation ??
+    measurements.sd3Remediation ??
+    measurements.sd1Remediation;
 
   const receipt = {
     schema: "vnext-kernel-stateful-authority-evidence.v1",
@@ -249,6 +257,7 @@ function main(): void {
       "A verifier that loses its code between recovery initiation and execution is not reachable in this harness: post-Cancun SELFDESTRUCT only clears code in the same transaction as creation, so G-VERIFIER-HAS-CODE is asserted rather than adversarially exercised.",
       "The ERC-1271 guardian mocks (reverting, gas-burning, huge-returndata, wrong-answer) are exercised by the existing prototype suite, not by this campaign: the generated rosters are EOA seats only.",
       "guardianThreshold is a free parameter a k-quorum may lower to 1, permanently moving the guardian cut. The campaign models this faithfully (cuts are computed from the LIVE threshold) and does not treat it as a defect, because AUTHORITY.md assigns setGuardians to the guardian quorum. It is recorded here as an OBSERVATION worth an explicit row in the published table.",
+      "SD-9a (RECOVERY_CHALLENGE_EPOCH_LIFETIME_UNSPECIFIED) is deliberately in NEITHER defect array of this receipt: it is a REMEDIATION HAZARD / SPECIFICATION GAP, not a present implementation defect. No executed path of any kernel revision ever refunded the challenge epoch on a request-lifetime exit, and the epoch's lifetime is a DERIVED requirement (docs/Vault_vNext_Recovery_Amendment.md section 2) that the architecture does not state verbatim. On the W2 kernel the rule is stated at the struct field and at the single `delete recovery` reset site, the hazardous remediation (a delete-on-expiry sweeper) is a permanently killed mutant (M-K9-expiry-refunds-budget, test/W2RecoveryLifecycleMutations.test.ts), and the oracle carries G-CHALLENGE-EPOCH. Its record is prototype/vnext-kernel/SD9_RECOVERY_LIFECYCLE_DEFECTS.md; counting it as a defect here would misstate what the kernel ever did.",
     ],
   };
 
