@@ -1,0 +1,12 @@
+# Exact pin for the ONE scanner-semantic dependency the workflow cannot express.
+#
+# The pinned slither-action installs Slither from a pinned commit, but crytic-compile is resolved
+# from that commit's own constraint (crytic-compile<0.5.0,>=0.4.1) -- a RANGE. It decides how
+# sources are compiled and named, so a different resolution can change results, and a documented
+# gap is not a pin.
+#
+# The action's slither-plugins input runs `pip3 install -r <this file>` in the SAME venv AFTER
+# Slither is installed, so an exact requirement here forces the version Slither actually runs
+# with -- and fails the step if it cannot be satisfied. scanner-workflow-config.ts asserts this
+# file pins exactly the version PINNED_SEMANTIC_CONFIG hashes.
+crytic-compile==0.4.2

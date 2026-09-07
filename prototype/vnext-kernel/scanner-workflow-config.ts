@@ -21,24 +21,44 @@
  * field that cannot be located throws rather than defaulting, because a silently-absent anchor is
  * exactly how a verifier turns into a rubber stamp.
  *
- * WHAT THIS CANNOT COVER, STATED PLAINLY. The workflow pins the ACTION and, through it,
- * `slither-version` and `solc-version`. It does NOT pin `crytic-compile`: that version is resolved
- * at install time from the pinned Slither commit's own dependency constraints. It is genuinely
- * part of the semantic configuration -- it decides how sources are compiled and named -- so it
- * stays in the hashed config, but its authority is the OBSERVED resolution recorded in the receipt
- * and printed in the CI job log, not the workflow. `WORKFLOW_UNPINNED` names that gap explicitly
- * and a test asserts the list, so a value cannot quietly move between the two regimes.
+ * THE ONE FIELD THE WORKFLOW CANNOT EXPRESS, AND HOW IT IS PINNED ANYWAY. The workflow pins the
+ * ACTION and, through it, `slither-version` and `solc-version`. It cannot name `crytic-compile`:
+ * that comes from the pinned Slither commit's own constraint, `crytic-compile<0.5.0,>=0.4.1` -- a
+ * RANGE. It decides how sources are compiled and named, so a different resolution can change
+ * results.
+ *
+ * An earlier revision merely DOCUMENTED that gap in `WORKFLOW_UNPINNED` and called the observed
+ * 0.4.2 "bound by the observed resolution". That was not a pin: nothing stopped the next install
+ * resolving 0.4.3. The gap is now closed rather than described -- the action's `slither-plugins`
+ * input runs `pip3 install -r` in the SAME venv after Slither, so `scanner-requirements.txt`
+ * forces the exact version and fails the step if it cannot be satisfied.
+ * `assertScannerRequirementsPinned` checks that file against the hashed config and
+ * `assertWorkflowUsesRequirements` checks the workflow actually hands it over; without the second,
+ * the pin could sit in the repository uninstalled.
  */
 import fs from "node:fs";
 import { PINNED_SEMANTIC_CONFIG, type ScannerSemanticConfig } from "./scanner-input-scope.js";
 
 export const WORKFLOW_PATH = ".github/workflows/vnext-kernel-assurance.yml";
 
-/** Semantic-config fields the workflow does NOT pin, with the reason each is absent. */
-export const WORKFLOW_UNPINNED: Readonly<Record<string, string>> = Object.freeze({
-  crypticCompile:
-    "Resolved at install time from the pinned Slither commit's dependency constraints; the workflow never names a version. Bound instead by the observed resolution recorded in SCANNER_EVIDENCE.json and printed in the Slither job log.",
-});
+export const REQUIREMENTS_PATH = "prototype/vnext-kernel/scanner-requirements.txt";
+
+/**
+ * Semantic-config fields the workflow does NOT pin.
+ *
+ * NOW EMPTY, and that is the point. `crypticCompile` used to live here with a paragraph
+ * explaining why it could not be pinned: the action installs Slither from a pinned commit and
+ * crytic-compile is resolved from that commit's own constraint, `crytic-compile<0.5.0,>=0.4.1`.
+ * A RANGE. Documenting the gap did not close it -- the observed 0.4.2 was a resolution, not a pin,
+ * and a later resolution to 0.4.3 would have changed how sources are compiled and named with
+ * nothing to object.
+ *
+ * The action's `slither-plugins` input runs `pip3 install -r <file>` in the SAME venv AFTER
+ * Slither is installed, so `scanner-requirements.txt` forces the exact version and fails the step
+ * if it cannot be satisfied. An entry may only be added back here with a reason that survives the
+ * question this one did not: "what stops it changing?"
+ */
+export const WORKFLOW_UNPINNED: Readonly<Record<string, string>> = Object.freeze({});
 
 export interface WorkflowScannerConfig {
   action: string;
@@ -167,6 +187,63 @@ export function assertWorkflowMatchesPinnedConfig(path: string = WORKFLOW_PATH):
     );
   }
   return result;
+}
+
+/** Parses a pip requirements file into exact `name==version` pins, ignoring comments and blanks. */
+export function readPinnedRequirements(path: string = REQUIREMENTS_PATH): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const raw of fs.readFileSync(path, "utf8").split("\n")) {
+    const line = raw.split("#")[0].trim();
+    if (!line) continue;
+    const m = line.match(/^([A-Za-z0-9._-]+)==([A-Za-z0-9._-]+)$/);
+    if (!m) {
+      throw new Error(
+        `${path}: "${line}" is not an EXACT pin. Only `+"`name==version`"+` is accepted here; a range ` +
+          `is what left crytic-compile unpinned in the first place.`,
+      );
+    }
+    out.set(m[1].toLowerCase(), m[2]);
+  }
+  return out;
+}
+
+/**
+ * The requirements file must pin exactly the versions the hashed config claims.
+ *
+ * Fail-closed in both directions: a version that differs is drift, and a dependency the hashed
+ * config names but the file does not pin is an unclosed gap rather than an omission.
+ */
+export function assertScannerRequirementsPinned(
+  path: string = REQUIREMENTS_PATH,
+  pinned: ScannerSemanticConfig = PINNED_SEMANTIC_CONFIG,
+): Map<string, string> {
+  const reqs = readPinnedRequirements(path);
+  const actual = reqs.get("crytic-compile");
+  if (!actual) {
+    throw new Error(`${path}: crytic-compile is not pinned. It is part of the hashed scanner config and the workflow cannot express it.`);
+  }
+  if (actual !== pinned.crypticCompile) {
+    throw new Error(
+      `${path} pins crytic-compile==${actual} but PINNED_SEMANTIC_CONFIG hashes ${pinned.crypticCompile}; ` +
+        `scannerSemanticConfigSha256 would attest to a compiler front-end nothing installs`,
+    );
+  }
+  return reqs;
+}
+
+/** The workflow must actually hand that requirements file to the action. */
+export function assertWorkflowUsesRequirements(path: string = WORKFLOW_PATH): void {
+  const text = stripYamlComments(fs.readFileSync(path, "utf8"));
+  const m = text.match(/slither-plugins:\s*(\S+)/);
+  if (!m) {
+    throw new Error(
+      `${path}: slither-plugins is not set, so ${REQUIREMENTS_PATH} is never installed and ` +
+        `crytic-compile falls back to range resolution`,
+    );
+  }
+  if (m[1] !== REQUIREMENTS_PATH) {
+    throw new Error(`${path}: slither-plugins points at ${m[1]}, not ${REQUIREMENTS_PATH}`);
+  }
 }
 
 /**

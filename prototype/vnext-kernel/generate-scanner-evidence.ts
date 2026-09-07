@@ -64,7 +64,15 @@ import {
   type SourceReader,
 } from "./scanner-finding-identity.js";
 import { assertScopeEquality, type ScannerInputScope } from "./scanner-input-scope.js";
-import { assertWorkflowMatchesPinnedConfig, assertWorkflowOutputContract } from "./scanner-workflow-config.js";
+import {
+  canonicalAllFindingsSha256,
+  canonicalDistinctOwnFindingsSha256,
+} from "./scanner-canonical-digest.js";
+import {
+  assertScannerRequirementsPinned,
+  assertWorkflowMatchesPinnedConfig,
+  assertWorkflowOutputContract,
+} from "./scanner-workflow-config.js";
 
 /**
  * Field names a receipt may never carry, because each would name its own publication container.
@@ -143,9 +151,6 @@ function parseArgs(argv: string[]) {
 function git(...args: string[]): string {
   return execFileSync("git", args, { encoding: "utf8" }).trim();
 }
-function sha256File(filePath: string): string {
-  return createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
-}
 
 /** Reads project source at a revision. Bound to the SOURCE SUBJECT, never to the working tree. */
 function readerAt(rev: string): SourceReader {
@@ -223,6 +228,7 @@ function main() {
   // scannerSemanticConfigSha256 attests to a configuration nothing executes.
   assertWorkflowMatchesPinnedConfig();
   assertWorkflowOutputContract();
+  assertScannerRequirementsPinned();
 
   // THE ONLY CURRENCY LICENCE. Throws with the differing digest named.
   const scope: ScannerInputScope = assertScopeEquality(sourceHead, triageHead, ".");
@@ -293,11 +299,18 @@ function main() {
     process.exit(1);
   }
 
-  const byClassification: Record<string, number> = {};
+  // COUNTED IN ANY ORDER, SERIALIZED IN ONE. Insertion order into a JS object survives into
+  // JSON.stringify, and iterating findings in the scanner's own emission order made these keys
+  // land differently on different machines -- the same five counts, different bytes. That is the
+  // raw-file-hash defect one level up, and the cross-environment regeneration check is what
+  // exposed it. Keys are sorted so the census depends on the counts alone.
+  const counted: Record<string, number> = {};
   for (const k of byId.keys()) {
     const c = triage[k].classification;
-    byClassification[c] = (byClassification[c] || 0) + 1;
+    counted[c] = (counted[c] || 0) + 1;
   }
+  const byClassification: Record<string, number> = {};
+  for (const c of Object.keys(counted).sort()) byClassification[c] = counted[c];
 
   const relocated = matched.filter((m) => m.klass === "RELOCATED").length;
   console.log(
@@ -337,7 +350,15 @@ function main() {
         action: "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f",
         pathsAnalyzed: ["prototype/vnext-kernel/contracts"],
         platform: "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
-        rawOutputSha256: sha256File(rawPath),
+        // rawOutputSha256 IS GONE, and deliberately. It hashed the whole Slither --json file,
+        // which embeds filename_absolute AND is emitted in a non-deterministic order: 144 of 217
+        // array positions held a different finding between a local run and the CI runner, while
+        // every security-relevant quantity agreed exactly. A whole-file hash of that output is not
+        // a portable identity, so it cannot live in a receipt that must byte-reproduce. The raw
+        // file is uploaded by CI as a diagnostic artifact instead. Keeping it here but excluding
+        // it from regeneration would have reopened exactly the hole byte-identity closed.
+        canonicalAllFindingsSha256: canonicalAllFindingsSha256(detectors),
+        canonicalDistinctOwnFindingsSha256: canonicalDistinctOwnFindingsSha256(byId, (id) => triage[id].classification),
         rawFindingCount: detectors.length,
         ownCodeRawRowCount: ownRawCount,
         distinctOwnCodeFindingCount: byId.size,

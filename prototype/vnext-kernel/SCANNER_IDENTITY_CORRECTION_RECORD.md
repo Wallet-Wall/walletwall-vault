@@ -337,3 +337,101 @@ The container argument is `github.event.pull_request.head.sha` on `pull_request`
 is a synthetic merge commit — trigger-dependent, reachable from no branch, recreated
 whenever base or head moves. It is not a durable publication container, for the same
 reason `evidence-subject.ts` gives.
+
+## 12. The receipt could not reproduce across machines
+
+CI at `0129e2ed` failed the byte-identity check on **one field**, while every
+security-relevant quantity agreed exactly — 217 raw, 54 own-code rows, 33 distinct,
+0 untriaged, 0 stale, 0 ambiguous, 8/15/5/5:
+
+```
+committed rawOutputSha256   054135ac9e4aff807b5d5215b15447945f960e4e0e2e2bcc8433af7e058c21be
+CI-regenerated              47c5ed501dd1ffd421425282783ae26208283bd18d8e3df8bf54719dc96d89e1
+```
+
+`rawOutputSha256` hashed the entire Slither `--json` file. That value was already known
+not to be portable across machines; carrying it into a receipt that must **byte-reproduce**
+made two requirements collide. The defect is mine and it was avoidable.
+
+### What actually differed — measured, not assumed
+
+Substituting the CI workspace roots into the local file did **not** reproduce the CI hash:
+
+| variant | sha256 |
+| --- | --- |
+| local (`/root/w2s/repo`) | `054135ac` |
+| substituted `/github/workspace` | `8812f12d` |
+| substituted `/home/runner/work/…` | `09afbe87` |
+| **actual CI** | **`47c5ed50`** |
+
+So paths were not the only cause, and guessing further would have been exactly the error
+this record exists to stop. The raw JSON is now uploaded as a CI artifact; it was
+downloaded and diffed structurally. **Two causes, and only two:**
+
+1. **Result ordering.** `results.detectors` is emitted in a different order — **144 of 217
+   array positions held a different finding**. This is the dominant cause and is invisible
+   to any whole-file hash.
+2. **Workspace root** in `filename_absolute`. `filename_relative` and `filename_short` were
+   already repo-relative and identical.
+
+Nothing else: after normalising the root and sorting, the two multisets are byte-identical
+(0 only-local, 0 only-CI). The size delta was exactly 1215 × 3 bytes — the root-length
+difference — which is why size alone looked like it explained everything and did not.
+
+### The canonicalisation
+
+Two digests replace the raw-file hash:
+
+- **`canonicalAllFindingsSha256`** — every finding, dependencies included. Preserves detector,
+  impact, confidence, the message with line references normalised, and each element's
+  repo-relative file, line span, type, name, signature and parent chain. Elements sorted
+  within a finding; findings sorted before hashing.
+- **`canonicalDistinctOwnFindingsSha256`** — the 33 distinct own-code findings bound to their
+  adjudication: semantic identity, detector, impact, confidence, both fingerprints,
+  classification, and the locator as metadata.
+
+Kept separate on purpose. The first answers *"did the scanner see the same thing?"*, the
+second *"is the same set of own-code findings still classified the same way?"*. A dependency
+bump moves the first and not the second; conflating them would make an OpenZeppelin upgrade
+look like a change in this kernel's adjudicated state.
+
+**Excluded, each because it varies without the code varying:** `filename_absolute`, emission
+order, byte offsets and columns (`lines` already carries the span, and offsets would make the
+digest sensitive to line-ending normalisation), `filename_short`, and JSON key order and
+whitespace.
+
+**Measured across the two real environments:**
+
+```
+canonicalAllFindingsSha256          55b7fd2b…   local == CI
+canonicalDistinctOwnFindingsSha256  12b65196…   local == CI
+```
+
+`rawOutputSha256` is **removed**, not renamed. Keeping it and excluding it from regeneration
+would have reopened precisely the hole byte-identity closed: an excluded field is an
+unverifiable one.
+
+### The crytic-compile pin
+
+Live CI installed crytic-compile 0.4.2 from `crytic-compile<0.5.0,>=0.4.1` — a **range**.
+`WORKFLOW_UNPINNED` documented that gap and called the observed version "bound by the
+observed resolution". That was not a pin, and describing a gap does not close it.
+
+The action's `slither-plugins` input runs `pip3 install -r <file>` in the **same venv** after
+Slither is installed, so `scanner-requirements.txt` pinning `crytic-compile==0.4.2` forces
+the exact version and fails the step if it cannot be satisfied.
+`assertScannerRequirementsPinned` checks the file against the hashed config;
+`assertWorkflowUsesRequirements` checks the workflow actually hands it over — without the
+second, the pin could sit in the repository uninstalled. `WORKFLOW_UNPINNED` is now empty and
+a test requires it to stay empty. Kills cover a simulated 0.4.3, a range, an empty file, and
+the workflow dropping the input.
+
+### One more ordering defect, found by the same test
+
+Regenerating the receipt from the CI raw output still differed from the local one -- by
+`triagedByClassification` alone. The five counts were identical; only the **key insertion
+order** differed, because the census was accumulated by iterating findings in the scanner's
+own emission order and JS object insertion order survives into `JSON.stringify`. That is the
+raw-file-hash defect one level up, inside the deterministic artifact itself. Keys are now
+sorted, and a test asserts it. The receipt is byte-identical from either environment's raw
+output: `0d38572c`.

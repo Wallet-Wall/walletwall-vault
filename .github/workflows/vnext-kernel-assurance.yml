@@ -112,6 +112,11 @@ jobs:
           # "Build settings, pinned"), so every finding is against the exact
           # code this PR's byte and authority-closure claims describe.
           solc-version: "0.8.24"
+          # EXACT crytic-compile pin. The pinned Slither commit constrains it only to a RANGE
+          # (crytic-compile<0.5.0,>=0.4.1), and it decides how sources are compiled and named, so a
+          # different resolution can change results. This input runs pip install -r in the SAME
+          # venv after Slither, forcing the version and failing the step if it cannot be satisfied.
+          slither-plugins: prototype/vnext-kernel/scanner-requirements.txt
           # `target` is the prototype's OWN contracts, never `contracts/`.
           target: prototype/vnext-kernel/contracts
           # WHY --compile-force-framework solc, not hardhat: crytic-compile

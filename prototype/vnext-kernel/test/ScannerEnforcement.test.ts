@@ -26,16 +26,28 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { normaliseSolidity, FINGERPRINT_ALGORITHM } from "../scanner-finding-identity.js";
+import {
+  normaliseSolidity,
+  FINGERPRINT_ALGORITHM,
+  indexFindings,
+  type SlitherFinding,
+  type SourceReader,
+} from "../scanner-finding-identity.js";
 import {
   assertWorkflowMatchesPinnedConfig,
   assertWorkflowOutputContract,
   readWorkflowScannerConfig,
   WORKFLOW_PATH,
   WORKFLOW_UNPINNED,
+  assertScannerRequirementsPinned,
+  assertWorkflowUsesRequirements,
 } from "../scanner-workflow-config.js";
 import { assertNoContainerFields, FORBIDDEN_RECEIPT_FIELDS } from "../generate-scanner-evidence.js";
 import { PINNED_SEMANTIC_CONFIG } from "../scanner-input-scope.js";
+import {
+  canonicalAllFindingsSha256,
+  canonicalDistinctOwnFindingsSha256,
+} from "../scanner-canonical-digest.js";
 
 const TRIAGE_PATH = path.join("prototype", "vnext-kernel", "slither-triage.json");
 
@@ -100,8 +112,12 @@ describe("scanner enforcement", () => {
       );
     });
 
-    it("states what the workflow does NOT pin, rather than implying full coverage", () => {
-      expect(Object.keys(WORKFLOW_UNPINNED)).to.deep.equal(["crypticCompile"]);
+    it("leaves NO semantic field merely documented as unpinned", () => {
+      // This assertion used to read `deep.equal(["crypticCompile"])` and passed while that
+      // dependency was resolved from a RANGE. Documenting a gap is not closing it: the observed
+      // 0.4.2 was a resolution, and nothing stopped the next install taking 0.4.3. It is now
+      // pinned exactly in scanner-requirements.txt, so the list is empty and must stay empty.
+      expect(Object.keys(WORKFLOW_UNPINNED)).to.deep.equal([]);
       expect(PINNED_SEMANTIC_CONFIG.crypticCompile, "still hashed — it does affect results").to.be.a("string");
     });
 
@@ -176,5 +192,165 @@ describe("scanner enforcement", () => {
       const receipt = JSON.parse(fs.readFileSync(path.join("prototype", "vnext-kernel", "SCANNER_EVIDENCE.json"), "utf8"));
       expect(() => assertNoContainerFields(receipt)).to.not.throw();
     });
+  });
+});
+
+/**
+ * CANONICAL SCANNER-OUTPUT DIGESTS and the EXACT crytic-compile pin.
+ *
+ * WHAT WENT WRONG. The receipt carried `rawOutputSha256` -- sha256 of the whole Slither --json
+ * file -- and the byte-identity check failed in CI at 0129e2ed while every security-relevant
+ * quantity agreed exactly: 217 raw, 54 own rows, 33 distinct, 0 untriaged/stale/ambiguous,
+ * 8/15/5/5. Local 054135ac, CI 47c5ed50.
+ *
+ * The CI output was uploaded as an artifact and diffed. Two causes, both invisible to a whole-file
+ * hash: RESULT ORDERING (144 of 217 array positions held a different finding) and the WORKSPACE
+ * ROOT inside `filename_absolute`. Nothing else differed -- normalising the root and sorting made
+ * the two multisets byte-identical, 0 only-local and 0 only-CI. Substituting the CI root into the
+ * local file did NOT reproduce the CI hash, which is what ruled out "paths are the only cause"
+ * rather than assuming it.
+ *
+ * The fixtures below are the REAL outputs from the two environments, so these are cross-machine
+ * measurements rather than a simulation of one.
+ */
+describe("canonical scanner-output digests", () => {
+  const RAW_LOCAL = path.join("prototype", "vnext-kernel", "test", "fixtures", "scanner", "raw-findings.local.json");
+  const RAW_CI = path.join("prototype", "vnext-kernel", "test", "fixtures", "scanner", "raw-findings.ci.json");
+  const load = (p: string): SlitherFinding[] => JSON.parse(fs.readFileSync(p, "utf8")).detectors;
+  const BASE = () => canonicalAllFindingsSha256(load(RAW_LOCAL));
+
+  it("the two fixtures really are the differing environments, not copies", () => {
+    const a = fs.readFileSync(RAW_LOCAL, "utf8");
+    const b = fs.readFileSync(RAW_CI, "utf8");
+    expect(a, "fixtures must differ, or every control below is vacuous").to.not.equal(b);
+    expect(a).to.contain("/root/w2s/repo");
+    expect(b).to.contain("/github/workspace");
+  });
+
+  it("CONTROL: a different absolute workspace prefix does not move the digest", () => {
+    expect(canonicalAllFindingsSha256(load(RAW_CI))).to.equal(BASE());
+  });
+
+  it("CONTROL: a different result order does not move the digest", () => {
+    expect(canonicalAllFindingsSha256([...load(RAW_LOCAL)].reverse())).to.equal(BASE());
+  });
+
+  it("CONTROL: different key order and whitespace do not move the digest", () => {
+    const findings = load(RAW_LOCAL);
+    const reserialized = (JSON.parse(JSON.stringify(findings, null, 4)) as Array<Record<string, unknown>>).map((f) => {
+      const flipped: Record<string, unknown> = {};
+      for (const k of Object.keys(f).reverse()) flipped[k] = f[k];
+      return flipped as unknown as SlitherFinding;
+    });
+    expect(canonicalAllFindingsSha256(reserialized)).to.equal(BASE());
+  });
+
+  const mutate = (fn: (f: Record<string, any>) => void) => {
+    const findings = JSON.parse(JSON.stringify(load(RAW_LOCAL)));
+    fn(findings[0]);
+    return canonicalAllFindingsSha256(findings);
+  };
+
+  it("KILL: a changed detector moves the digest", () => {
+    expect(mutate((f) => { f.check = "reentrancy-eth"; })).to.not.equal(BASE());
+  });
+  it("KILL: a changed impact moves the digest", () => {
+    expect(mutate((f) => { f.impact = "Critical"; })).to.not.equal(BASE());
+  });
+  it("KILL: a changed confidence moves the digest", () => {
+    expect(mutate((f) => { f.confidence = "Low"; })).to.not.equal(BASE());
+  });
+  it("KILL: a meaningfully changed detector message moves the digest", () => {
+    expect(mutate((f) => { f.description = f.description + " AND SENDS TO AN ATTACKER"; })).to.not.equal(BASE());
+  });
+  it("KILL: a changed repo-relative source moves the digest", () => {
+    expect(mutate((f) => { f.elements[0].source_mapping.filename_relative = "contracts/Other.sol"; })).to.not.equal(BASE());
+  });
+  it("KILL: a changed element line span moves the digest", () => {
+    expect(mutate((f) => { f.elements[0].source_mapping.lines = [9001, 9002]; })).to.not.equal(BASE());
+  });
+  it("KILL: a changed element signature moves the digest", () => {
+    expect(mutate((f) => { f.elements[0].type_specific_fields = { ...(f.elements[0].type_specific_fields || {}), signature: "attack()" }; })).to.not.equal(BASE());
+  });
+  it("KILL: a removed finding moves the digest", () => {
+    expect(canonicalAllFindingsSha256(load(RAW_LOCAL).slice(1))).to.not.equal(BASE());
+  });
+  it("KILL: an added finding moves the digest", () => {
+    const findings = load(RAW_LOCAL);
+    const extra = JSON.parse(JSON.stringify(findings[0]));
+    extra.check = "brand-new-detector";
+    expect(canonicalAllFindingsSha256([...findings, extra])).to.not.equal(BASE());
+  });
+
+  it("KILL: a changed classification moves the OWN digest but not the ALL digest", () => {
+    const findings = load(RAW_LOCAL);
+    const read: SourceReader = () => [];
+    const { byId } = indexFindings(findings, read);
+    const triage = JSON.parse(fs.readFileSync(TRIAGE_PATH, "utf8")).classifications;
+    const honest = (id: string) => triage[id]?.classification ?? "UNTRIAGED";
+    const first = [...byId.keys()].sort()[0];
+    const tampered = (id: string) => (id === first ? "SUDDENLY_FINE" : honest(id));
+    expect(canonicalDistinctOwnFindingsSha256(byId, tampered)).to.not.equal(canonicalDistinctOwnFindingsSha256(byId, honest));
+    expect(canonicalAllFindingsSha256(findings), "adjudication is not part of the scanner-output digest").to.equal(BASE());
+  });
+
+  it("the classification census is serialized in a deterministic key order", () => {
+    // Object insertion order survives into JSON.stringify. Counting findings in the scanner's own
+    // emission order made these keys land differently on different machines -- the same five
+    // counts, different receipt bytes -- and the receipt regenerated from the CI raw output
+    // differed from the local one by nothing else. Sorted keys make the census depend on counts.
+    const receipt = JSON.parse(fs.readFileSync(path.join("prototype", "vnext-kernel", "SCANNER_EVIDENCE.json"), "utf8"));
+    const keys = Object.keys(receipt.scanners.slither.triagedByClassification);
+    expect(keys).to.deep.equal([...keys].sort());
+    expect(keys.length, "a single-key census could not detect ordering at all").to.be.greaterThan(1);
+  });
+
+  it("the receipt carries both canonical digests and no raw-file hash", () => {
+    const receipt = JSON.parse(fs.readFileSync(path.join("prototype", "vnext-kernel", "SCANNER_EVIDENCE.json"), "utf8"));
+    expect(receipt.scanners.slither.canonicalAllFindingsSha256).to.match(/^[0-9a-f]{64}$/);
+    expect(receipt.scanners.slither.canonicalDistinctOwnFindingsSha256).to.match(/^[0-9a-f]{64}$/);
+    expect(receipt.scanners.slither, "a whole-file hash cannot reproduce across machines").to.not.have.property("rawOutputSha256");
+  });
+});
+
+describe("the exact crytic-compile pin", () => {
+  const tempReq = (contents: string) => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "req-")), "scanner-requirements.txt");
+    fs.writeFileSync(file, contents);
+    return file;
+  };
+
+  it("scanner-requirements.txt pins exactly the hashed version", () => {
+    expect(assertScannerRequirementsPinned().get("crytic-compile")).to.equal(PINNED_SEMANTIC_CONFIG.crypticCompile);
+  });
+
+  it("the workflow actually hands that file to the action", () => {
+    expect(() => assertWorkflowUsesRequirements()).to.not.throw();
+  });
+
+  it("KILL: a simulated 0.4.3 cannot pass the scanner-config authority check", () => {
+    expect(() => assertScannerRequirementsPinned(tempReq("crytic-compile==0.4.3\n"))).to.throw(
+      /pins crytic-compile==0\.4\.3 but PINNED_SEMANTIC_CONFIG hashes 0\.4\.2/,
+    );
+  });
+
+  it("KILL: a RANGE is refused — a range is what left it unpinned before", () => {
+    expect(() => assertScannerRequirementsPinned(tempReq("crytic-compile<0.5.0,>=0.4.1\n"))).to.throw(/is not an EXACT pin/);
+  });
+
+  it("KILL: an empty requirements file is refused, not read as nothing to check", () => {
+    expect(() => assertScannerRequirementsPinned(tempReq("# only a comment\n"))).to.throw(/crytic-compile is not pinned/);
+  });
+
+  it("KILL: the workflow dropping slither-plugins is refused", () => {
+    const wf = workflowWith([
+      "          slither-plugins: prototype/vnext-kernel/scanner-requirements.txt",
+      "          # removed",
+    ]);
+    expect(() => assertWorkflowUsesRequirements(wf)).to.throw(/slither-plugins is not set/);
+  });
+
+  it("WORKFLOW_UNPINNED is now empty — the gap is closed, not documented", () => {
+    expect(Object.keys(WORKFLOW_UNPINNED)).to.deep.equal([]);
   });
 });
