@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-stateful-authority-evidence.v1",
-  "head": "be1789f42b4b4abb6aa071f3f15a22333059e60b",
-  "tree": "5d320f93cdeadada4dff7087b173e949f176bb7f",
+  "head": "88ee0c096c9983c864535484b6829b76abbb3d18",
+  "tree": "7959e53a4e43885c6082a62a499d21d6ce64e449",
   "lane": {
     "question": "Can individually-valid, individually-correctly-gated transitions be COMPOSED OVER TIME into an outcome below its declared authority cut?",
     "distinctFrom": {
@@ -698,11 +698,11 @@
     }
   ],
   "solidityChanged": {
-    "bytes": -672,
+    "bytes": 0,
     "note": "The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. Which defects are closed and which stand is carried by the `remediated` and `sustainedDefects` arrays in this same receipt, not by prose here.",
-    "beforeRuntimeBytes": 18367,
+    "beforeRuntimeBytes": 17695,
     "kernelRuntimeBytes": 17695,
-    "kernelRuntimeHash": "aef5845296593e07d249c4771482da873c7e15322144be5a9d78d99588a56b1c"
+    "kernelRuntimeHash": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02"
   },
   "remediated": [
     {
