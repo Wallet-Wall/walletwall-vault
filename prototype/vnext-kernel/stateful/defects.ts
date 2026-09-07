@@ -8,7 +8,11 @@
  * altered ZERO bytes of Solidity and recorded each as a deterministic,
  * permanently-executed reproduction (test/StatefulSustainedDefects.test.ts).
  *
- * NINE HAVE SINCE BEEN REMEDIATED — SD-1 by `I-FLOOR-SHAPE-IMMUTABLE`, SD-3 by
+ * TEN HAVE SINCE BEEN REMEDIATED — SD-1 by `I-FLOOR-SHAPE-IMMUTABLE` and then,
+ * once SD5-I RETIRED that invariant, by
+ * `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE` reaching the same goal by
+ * making the state UNREAD rather than UNMOVABLE; SD-5 by that same amendment
+ * (Lane SD5-I, commit be1789f42b4b4abb6aa071f3f15a22333059e60b); SD-3 by
  * `I-DECLARATION-EXHIBITED`, SD-6 and SD-7 together by
  * `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, and SD-9b, SD-9c, SD-9d and SD-9e
  * together by Lane W2's recovery lifecycle (K-9 mechanism B,
@@ -16,8 +20,11 @@
  * c182db1099d92ff5830ae71116613c739b034bd9), and SD-10 by Lane SD10-I's removal
  * of `executeRecovery`'s execution-time generation re-check
  * (`I-APPROVED-REQUEST-PRESERVATION`; Commit A
- * c32e0d748390b79f4163ad4a783c2467cf502e30). SD-2, SD-4, SD-5 and SD-8 stand,
- * each for a stated reason rather than for want of effort. The history of each closure is
+ * c32e0d748390b79f4163ad4a783c2467cf502e30). SD-2, SD-4 and SD-8 stand, joined
+ * by SD-11A and SD-11B, which SD5-I RECORDED rather than created — the removed
+ * gate was shape-scoped and never strength-scoped, so a forgeable relation
+ * placed AT the declared length defeated it on the unamended kernel too. Five
+ * stand in total, each for a stated reason rather than for want of effort. The history of each closure is
  * preserved rather than rewritten: every closed entry moved OUT of
  * `SUSTAINED_DEFECTS` and INTO `REMEDIATED_DEFECTS` below, carrying the head it
  * was SUSTAINED at, the invariant that closed it, the designs rejected on the
@@ -29,10 +36,11 @@
  * cannot itself exercise. Recording a rejected fix and why it was rejected is
  * worth more than shipping it, and it is what stops the next lane rebuilding it.
  *
- * A RESIDUAL IS A FIRST-CLASS ENTRY, NOT A FOOTNOTE: SD-1 names SD-5, the
- * permanence its freeze introduced, and SD-3 names SD-4, which its exhibit
- * provably does NOT close. A residual pointing at a closed defect would be stale
- * evidence, and the ledger test refuses it.
+ * A RESIDUAL IS A FIRST-CLASS ENTRY, NOT A FOOTNOTE: SD-1 and SD-3 both name
+ * SD-4, which neither closes. SD-1 named SD-5 — the permanence its freeze
+ * introduced — until SD5-I closed SD-5 and the pointer moved back to SD-4. A
+ * residual pointing at a closed defect would be stale evidence, and the ledger
+ * test refuses it, which is what forced that move rather than a reading of it.
  *
  * The count is arithmetic rather than a target. SD-1 and SD-3 left; SD-5, SD-6
  * and SD-7 arrived; SD-6 and SD-7 then left too, and SD-8 arrived as the declared

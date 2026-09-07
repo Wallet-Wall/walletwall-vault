@@ -274,26 +274,39 @@ describe("vNext kernel — STATEFUL ADVERSARIAL AUTHORITY CAMPAIGN", function ()
         "receipt global-invariant count is stale",
       ).to.equal(GLOBAL_INVARIANTS.length);
       /*
-       * SD5-I: THIS COMPARISON IS RED, AND THE REDNESS IS THE FINDING RATHER THAN
-       * A DEFECT IN EITHER SIDE.
+       * SD5-I: THIS COMPARISON WAS RED AT THE IMPLEMENTATION COMMIT, AND THAT
+       * REDNESS WAS THE FINDING RATHER THAN A DEFECT IN EITHER SIDE.
        * ------------------------------------------------------------------------
+       * DISCHARGED. It was red at be1789f4 and went green at 87a3f05, the
+       * evidence commit that regenerated the receipt against be1789f4 exactly as
+       * the protocol below prescribes. The account is kept because it records WHY
+       * a deliberately-red assertion was the correct state to publish an
+       * implementation commit in, not because the condition still holds.
+       *
        * `stateful/mutants.ts` retired `M17-floor-shape-mutable-again` and
        * `M18-floor-shape-freeze-is-one-sided` when this lane retired the clause
        * they targeted — the two-length freeze in `_requireNoDowngrade`. With the
        * lengths no longer authoritative there is no operand for either mutant to
-       * restore, and their `replaceWithinFunction` anchors are gone, so the live
-       * catalogue is 21 -> 19 while the committed receipt still lists 21.
+       * restore, and their `replaceWithinFunction` anchors were gone, so the live
+       * catalogue moved 21 -> 19 while the committed receipt still listed 21.
        *
-       * THE RECEIPT IS DELIBERATELY NOT PATCHED TO MATCH. It is generated, and its
-       * `head` / `tree` / `solidityChanged` identify the tree it measured; an
+       * THE RECEIPT WAS DELIBERATELY NOT PATCHED TO MATCH. It is generated, and
+       * its `head` / `tree` / `solidityChanged` identify the tree it measured; an
        * array edited out of step with those stamps would publish a mutation
        * catalogue that never ran against the bytes the receipt names — the exact
        * failure the surrounding comment calls worse than no receipt. The lane W2
-       * precedent recorded in `stateful/README.md` is the protocol: leave the
+       * precedent recorded in `stateful/README.md` was the protocol: leave the
        * receipt byte-identical, let this comparison stay red, and regenerate at
-       * the commit that carries SD5-I — after `MEASUREMENTS.json` is re-measured,
-       * since the kernel moved 18,367 -> 17,695 runtime bytes and this receipt
-       * does not know it.
+       * the commit that carries SD5-I — after `MEASUREMENTS.json` was re-measured,
+       * since the kernel moved 18,367 -> 17,695 runtime bytes and that receipt
+       * did not know it.
+       *
+       * WHAT THAT EPISODE COST, AND WHAT NOW ENFORCES IT. Nothing mechanical made
+       * the receipt describe the commit it was generated at — the generator
+       * stamped `git rev-parse HEAD`, so correctness depended entirely on an
+       * operator regenerating on a clean checkout of the subject. Provenance is
+       * now DERIVED from the declared evidence subject and checked fail-closed;
+       * see `../evidence-subject.ts` and `EvidenceSubjectProvenance.test.ts`.
        */
       expect(
         receipt.mutationAdequacy.mutations.length,

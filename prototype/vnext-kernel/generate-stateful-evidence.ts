@@ -14,11 +14,11 @@
  *
  * Run: npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
+import { assertReceiptMatchesSubject, resolveEvidenceSubject } from "./evidence-subject.js";
 import { PROFILES } from "./stateful/profiles.js";
 import { MUTATIONS, UNMUTATED_CLAUSES } from "./stateful/mutants.js";
 import { REMEDIATED_DEFECTS, SUSTAINED_DEFECTS } from "./stateful/defects.js";
@@ -28,7 +28,6 @@ import { DECLARED_CUTS, DOCUMENTED } from "./stateful/model.js";
 const ROOT = path.join("prototype", "vnext-kernel");
 const OUT = path.join(ROOT, "STATEFUL_AUTHORITY_EVIDENCE.json");
 
-const git = (args: string[]): string => execFileSync("git", args, { encoding: "utf8" }).trim();
 const sha256OfFile = (p: string): string => "sha256:" + createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 
 /**
@@ -46,9 +45,6 @@ const MUTATION_SEEDS = [11, 29, 47, 83, 131, 197, 251, 307];
 const MUTATION_DEPTH = 90;
 
 function main(): void {
-  const head = git(["rev-parse", "HEAD"]);
-  const tree = git(["rev-parse", "HEAD^{tree}"]);
-
   const plannedCampaigns =
     PROFILES.length * (CI_SEEDS.shallow.length + CI_SEEDS.medium.length + CI_SEEDS.deep.length);
   const plannedTransitions =
@@ -74,7 +70,26 @@ function main(): void {
     w2RecoveryLifecycle?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd10Preservation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd5MetadataDeauthorisation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd5PublicationIntegrity?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    validation?: { measuredAtHead?: unknown; measuredAtTree?: unknown };
   };
+
+  /**
+   * PROVENANCE IS DERIVED FROM THE DECLARED SUBJECT, NEVER FROM `HEAD`.
+   *
+   * This generator previously read `git rev-parse HEAD`, which names the commit that will CONTAIN
+   * the receipt rather than the commit the receipt is ABOUT. The two coincide only when an operator
+   * runs this on a clean checkout of the subject; CI supplies no such operator, and under the
+   * `pull_request` trigger `HEAD` is an ephemeral `refs/pull/N/merge` commit that exists in no
+   * clone — provenance with no referent. See `evidence-subject.ts` for the measured evidence.
+   *
+   * `resolveEvidenceSubject` is FAIL-CLOSED: an undeclared, malformed, unresolvable or
+   * self-inconsistent subject throws here instead of silently falling back to the container.
+   */
+  const subject = resolveEvidenceSubject(measurements);
+  const head = subject.head;
+  const tree = subject.tree;
+
   const kernel = measurements.kernel;
   // The LATEST remediation is what this receipt describes; earlier ones are
   // history and keep their own MEASUREMENTS.json blocks, which are never
@@ -96,7 +111,15 @@ function main(): void {
   // that REMOVED 58 — the first negative delta in this file, because the
   // remediation deletes a statement instead of adding one. SD5-I is the second
   // negative delta, and for the same structural reason: it is purely subtractive.
+  //
+  // SD5-I PUBLICATION INTEGRITY is the newest, and it is registered here for the reason the
+  // paragraph above gives rather than as bookkeeping. Its Solidity delta is ZERO EXECUTABLE BYTES:
+  // it corrects source COMMENTS that still asserted pre-SD5-I semantics as current truth, which
+  // moves the CBOR metadata tail (and therefore the whole-runtime hash) while leaving the
+  // executable prefix byte-identical. Left unregistered, the chain would fall through and pair
+  // SD5-I's -672 with a runtime hash SD5-I did not produce.
   const sd1 =
+    measurements.sd5PublicationIntegrity ??
     measurements.sd5MetadataDeauthorisation ??
     measurements.sd10Preservation ??
     measurements.w2RecoveryLifecycle ??
@@ -281,8 +304,15 @@ function main(): void {
   };
 
   fs.writeFileSync(OUT, JSON.stringify(receipt, null, 2) + "\n");
+
+  // WHAT WAS WRITTEN CARRIES THE SUBJECT — checked by re-reading the artifact from disk, not by
+  // re-inspecting the object we just serialised. The derivation being correct and the file on disk
+  // being correct are different claims, and a reader only ever sees the second.
+  assertReceiptMatchesSubject(JSON.parse(fs.readFileSync(OUT, "utf8")), subject, OUT);
+
   console.log("Wrote " + OUT);
-  console.log("  head            " + head);
+  console.log("  subject head    " + head + "  (declared in MEASUREMENTS.json validation.measuredAtHead)");
+  console.log("  subject tree    " + tree);
   console.log("  profiles        " + PROFILES.length);
   console.log("  planned         " + plannedCampaigns + " campaigns / " + plannedTransitions + " transitions");
   console.log("  invariants      " + GLOBAL_INVARIANTS.length + " global (+ " + REJECTED_INVARIANTS.length + " rejected, recorded)");
