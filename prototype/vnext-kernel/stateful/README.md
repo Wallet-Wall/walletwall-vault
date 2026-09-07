@@ -222,17 +222,6 @@ from the W2 PR's CI. The regenerator prefers the `w2RecoveryLifecycle` block of
 `MEASUREMENTS.json`; the re-measurement and the exact protocol are in
 `../W2_IMPLEMENTATION_RECORD.md` §15.
 
-**SD-SCAN-ID addendum.** The scanner receipt now follows this convention explicitly and
-is CHECKED for it. `SCANNER_EVIDENCE.json` names a SOURCE SUBJECT (the commit whose
-scanner-semantic inputs were analyzed) and a TRIAGE SUBJECT (the commit whose
-`slither-triage.json` adjudicated them), and names no container at all;
-`verify-receipt-container.ts` establishes the publishing commit afterwards from git
-ancestry and delta, and refuses a receipt naming its own container under any field.
-Currency between the declared subjects is licensed only by byte equality of the
-scanner-input scope -- never by equal finding counts or ancestry, both of which held
-across a drift that moved 21 of 33 findings. Findings are keyed by semantic identity
-rather than by line-bearing locators. See `../SCANNER_IDENTITY_CORRECTION_RECORD.md`.
-
 **W2S addendum.** Lane W2S then produced that truthful local Slither run
 (the CI-pinned action semantics reproduced in a disposable venv), re-derived
 `slither-triage.json` at `77ea92cf` from raw runs on clean checkouts of both

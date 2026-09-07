@@ -207,3 +207,37 @@ completeness.
   whitespace; it does not understand the code it hashes.
 - None of this widens what Slither can see. `AUTHORITY.md` section 7 remains the
   statement of what this analysis does not establish.
+
+## 10. A constraint this lane learned the hard way
+
+`EvidenceSubjectProvenance.test.ts` declares two **measured evidence inputs**:
+
+```
+EVIDENCE_INPUTS = ["prototype/vnext-kernel/contracts", "prototype/vnext-kernel/stateful"]
+```
+
+Any commit that changes either path, for any reason, moves that path's tree away from
+the subject declared in `validation.measuredAtHead` and correctly turns the currency
+assertion red. The protocol for a lane that genuinely re-measures those inputs is to
+re-declare the subject; a lane that does not re-measure them must not touch them.
+
+This lane's first attempt added an eleven-line cross-reference to
+`stateful/README.md`. That file sits inside a measured input, so the pointer moved the
+`stateful` tree from `438fc418` to `7e901da7` and broke an assertion that had been green
+at `aaa21d09` — over documentation, in a lane that ran no part of the stateful campaign.
+Re-declaring `validation.measuredAtHead` to silence it would have asserted that the
+campaign figures were measured at this lane's commit, which is false.
+
+The pointer was removed and lives in `README.md` and this record instead, both of which
+are outside `EVIDENCE_INPUTS`. **A cross-reference is never worth moving another lane's
+evidence anchor.**
+
+Two related lessons from the same episode:
+
+- The regression was invisible until `HEAD` moved. The suite ran green at 765/0 while
+  the changes sat uncommitted in the working tree, because the assertion compares the
+  declared subject against `git rev-parse HEAD` — which was still `aaa21d09`. A working
+  tree is not a commit, and an assertion that reads committed state cannot be exercised
+  by one.
+- The failure was briefly masked by reporting `npx hardhat test | grep -E "passing|failing"`,
+  whose exit code is grep's. Never read a test suite's verdict through a pipe.
