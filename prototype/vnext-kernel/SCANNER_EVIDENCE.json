@@ -1,0 +1,104 @@
+{
+  "schema": "vnext-kernel-scanner-evidence.v2",
+  "sourceSubject": "aaa21d093876d23d9e2d790400661d3d242caa31",
+  "sourceTree": "5e47baa2bb09669e62145b23caa65762791ad518",
+  "triageSubject": "ada953998d98ecfc1538367f54ef682df64a3761",
+  "triageTree": "7b6f5d9a83be9577ce2bf689ed418a9ab631e49d",
+  "scannerInputScope": {
+    "contractsTree": "dcc42e76a22b2491e05a6f7ccbc98f447e6acbc5",
+    "externalImportClosureSha256": "deadd7cdf7ac2cc08ffafd31ef5f66c7591ea5ebcf3ca685016268d3b058cfb4",
+    "scannerSemanticConfigSha256": "0c9a1a605f8fb2a3b1310151bcf28d69a55727bde29f8cec249b0b4127657e63",
+    "openzeppelin": {
+      "version": "5.6.1",
+      "integrity": "sha512-Ly6SlsVJ3mj+b18W3R8gNufB7dTICT105fJhodGAGgyC2oqnBAhqSiNDJ8V8DLY05cCz81GLI0CU5vNYA1EC/w=="
+    }
+  },
+  "provenanceNote": "sourceSubject is the commit whose scanner-semantic inputs were analyzed; triageSubject is the commit whose slither-triage.json adjudicated them. Currency between the two is licensed ONLY by scannerInputScope byte equality -- never by equal finding counts, equal raw hashes or ancestry, all three of which held across a drift that moved 21 of 33 findings. The publication container is deliberately unnamed: verify-receipt-container.ts establishes it from git afterwards.",
+  "compiler": {
+    "solcVersion": "0.8.24",
+    "evmVersion": "cancun",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "viaIR": false
+  },
+  "scanners": {
+    "slither": {
+      "version": "pinned via https://github.com/crytic/slither.git@ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad",
+      "action": "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f",
+      "pathsAnalyzed": [
+        "prototype/vnext-kernel/contracts"
+      ],
+      "platform": "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
+      "canonicalAllFindingsSha256": "55b7fd2bbe14b5579879389deec2716a73e2618a116445b7f2b8bdb16a1b27b3",
+      "canonicalDistinctOwnFindingsSha256": "12b6519683deb067c2b276ff38399b9d5ba8608474292fdc0a3ba92d0632dee0",
+      "rawFindingCount": 217,
+      "ownCodeRawRowCount": 54,
+      "distinctOwnCodeFindingCount": 33,
+      "duplicateRowsFromPerEntryRecompile": 21,
+      "relocatedSinceTriage": 0,
+      "untriaged": 0,
+      "stale": 0,
+      "ambiguous": 0,
+      "triagedByClassification": {
+        "ACCEPTED_DESIGN_TRADEOFF": 15,
+        "FALSE_POSITIVE": 8,
+        "NON_SECURITY_STYLE": 5,
+        "OUT_OF_SCOPE_DEPENDENCY": 5
+      }
+    },
+    "codeql": {
+      "solidityCoverage": "NONE -- GitHub CodeQL has no Solidity extractor. This is a permanent vendor limitation, not a configuration gap.",
+      "javascriptTypescriptCoverage": {
+        "pathsAnalyzed": [
+          "prototype/vnext-kernel"
+        ],
+        "note": "Covers the prototype's own measurement/reproduction/test TOOLING (measure.ts, reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts, test/*.ts) via the javascript-typescript language, category /language:javascript-typescript/vnext-kernel. This is NOT Solidity security analysis."
+      }
+    },
+    "solhint": {
+      "run": true,
+      "warnings": 36,
+      "errors": 0
+    }
+  },
+  "tests": {
+    "prototype": {
+      "passing": 793,
+      "failing": 0
+    },
+    "productionNormal": {
+      "passing": 1658,
+      "failing": 0,
+      "pending": 11
+    },
+    "productionCoverage": {
+      "passing": 1655,
+      "failing": 0,
+      "pending": 14,
+      "percent": 90.13
+    }
+  },
+  "bytecode": [
+    {
+      "name": "VaultKernelPrototype",
+      "runtime": 17695,
+      "runtimeSha256": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02"
+    },
+    {
+      "name": "VaultKernelFactoryPrototype",
+      "runtime": 2445,
+      "runtimeSha256": "ab16471a7a97a88c0d823e6d536a01671b388b0acada8a404eaf3da4a2062d6f"
+    }
+  ],
+  "knownAnalysisAbsences": [
+    "No third-party audit.",
+    "No fuzzing campaign, no formal verification (T0/T1 invariants are argued and tested, not proven).",
+    "GitHub CodeQL provides no Solidity semantic analysis of prototype/vnext-kernel/contracts (vendor limitation).",
+    "Slither's own coverage is bounded by what its detectors can express -- see AUTHORITY.md section 7 for what this analysis does not establish, independent of any scanner.",
+    "PQ verifier is structural/mock; no cryptographic claim about the PQ leg (AUTHORITY.md section 7.3).",
+    "Guardian independence is assumed, not enforced on-chain (AUTHORITY.md section 7.4 / H-31).",
+    "Semantic finding identity is derived from Slither's own element chain and message. A detector that reported the same construct under a different chain would present as ADDED plus REMOVED rather than as a change, which is the conservative direction but is not free of judgement."
+  ]
+}

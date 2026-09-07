@@ -1,0 +1,27 @@
+{
+  "$schema": "vnext-kernel-scanner-evidence-inputs.v1",
+  "description": "The non-scanner figures SCANNER_EVIDENCE.json carries, held in a COMMITTED file rather than passed as command-line arguments. This is what makes the receipt's byte identity checkable: regeneration now depends only on committed inputs plus the raw Slither run plus git, so CI can rebuild the receipt and compare bytes. While these arrived as CLI flags, an operator could hand-edit any of them into the receipt and no check would notice -- the value was never derived from anything, so there was nothing to disagree with.",
+  "prototypeTests": {
+    "passing": 793,
+    "failing": 0,
+    "source": "npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test on a clean checkout of the triage subject: 793 passing, 0 failing. 738 at aaa21d09, plus 27 from the semantic-identity lane and 28 from the enforcement lane."
+  },
+  "productionNormal": {
+    "passing": 1658,
+    "failing": 0,
+    "pending": 11,
+    "source": "CARRIED FORWARD from an earlier head. This lane changes no production source; the figure describes the production suite, which it does not run."
+  },
+  "productionCoverage": {
+    "passing": 1655,
+    "failing": 0,
+    "pending": 14,
+    "percent": 90.13,
+    "source": "CARRIED FORWARD from an earlier head, for the same reason as productionNormal."
+  },
+  "solhint": {
+    "warnings": 36,
+    "errors": 0,
+    "source": "npx solhint \"prototype/vnext-kernel/contracts/**/*.sol\" at the source subject: 36 problems (0 errors, 36 warnings)."
+  }
+}

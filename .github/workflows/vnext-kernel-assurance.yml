@@ -1,0 +1,428 @@
+name: vNext Kernel
+
+# Independent scanner coverage for the vNext minimal trust kernel PROTOTYPE
+# (prototype/vnext-kernel/**), which sits OUTSIDE the production Hardhat
+# compilation unit (see prototype/vnext-kernel/README.md "Compilation
+# boundary"). It was never in scope for CI.yml / slither.yml / codeql.yml:
+# those workflows target `contracts/` (a different Hardhat project) and,
+# before this workflow existed, none of them ran on a PR whose base branch
+# isn't `main` -- which every PR in this design/prototype/security stack is.
+# Path-scoped, branch-unrestricted triggers close both gaps at once without
+# touching the production-scoped workflows.
+#
+# These checks are named "vNext Kernel / <job>" specifically so they cannot
+# be mistaken for repository-wide security coverage.
+
+on:
+  push:
+    paths:
+      - "prototype/vnext-kernel/**"
+      - ".github/workflows/vnext-kernel-assurance.yml"
+      - ".github/codeql/vnext-kernel-codeql-config.yml"
+  pull_request:
+    paths:
+      - "prototype/vnext-kernel/**"
+      - ".github/workflows/vnext-kernel-assurance.yml"
+      - ".github/codeql/vnext-kernel-codeql-config.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prototype-tests:
+    name: Prototype Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # FULL HISTORY IS REQUIRED, NOT A PREFERENCE. The evidence-provenance
+          # tests resolve the EVIDENCE SUBJECT declared in MEASUREMENTS.json
+          # (`validation.measuredAtHead`), which is an ANCESTOR of the commit
+          # under test -- evidence is committed one commit after the tree it
+          # measures. The default `fetch-depth: 1` does not fetch that object, and
+          # `resolveEvidenceSubject` is deliberately FAIL-CLOSED, so it would
+          # throw rather than quietly fall back to the container. Guards that
+          # self-skip on a shallow clone are exactly the failure this avoids.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # Hardhat 3 requires Node >= 22.10.0.
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      - name: Run prototype tests
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+
+      - name: Lint prototype contracts (solhint)
+        run: npx solhint "prototype/vnext-kernel/contracts/**/*.sol"
+
+      - name: Measure prototype bytecode
+        run: npx tsx prototype/vnext-kernel/measure.ts
+
+      - name: Verify prototype reproducibility (independent solc rebuild)
+        run: npx tsx prototype/vnext-kernel/reproduce.ts
+
+  slither:
+    name: Slither
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # FULL HISTORY IS REQUIRED BY THE TRIAGE GATE, for the same reason the Prototype Tests
+          # job needs it. The validator resolves the receipt's declared SOURCE SUBJECT -- an
+          # ANCESTOR of the commit under test -- to read the analyzed source and to compare the
+          # scanner-input scope. The default `fetch-depth: 1` does not fetch that object, and the
+          # scope check is deliberately FAIL-CLOSED, so it would throw rather than quietly pass.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Slither
+        id: slither
+        # Same pinned action commit and same pinned Slither commit as the
+        # production-scoped slither.yml (crytic-compile >=0.4.1, needed for
+        # Hardhat 3 support -- see that workflow's own comment).
+        uses: crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f
+        with:
+          slither-version: ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad
+          # Pinned to the prototype's own committed build settings (README.md
+          # "Build settings, pinned"), so every finding is against the exact
+          # code this PR's byte and authority-closure claims describe.
+          solc-version: "0.8.24"
+          # EXACT crytic-compile pin. The pinned Slither commit constrains it only to a RANGE
+          # (crytic-compile<0.5.0,>=0.4.1), and it decides how sources are compiled and named, so a
+          # different resolution can change results. This input runs pip install -r in the SAME
+          # venv after Slither, forcing the version and failing the step if it cannot be satisfied.
+          slither-plugins: prototype/vnext-kernel/scanner-requirements.txt
+          # `target` is the prototype's OWN contracts, never `contracts/`.
+          target: prototype/vnext-kernel/contracts
+          # WHY --compile-force-framework solc, not hardhat: crytic-compile
+          # 0.4.2's Hardhat-v3 filename recovery only reverses the DEFAULT
+          # `contracts/` sources path (crytic_compile/utils/naming.py
+          # process_hardhat_v3_filename, case 2, hardcodes the literal regex
+          # `project/contracts/(.+)`). This prototype's isolated Hardhat
+          # config compiles `prototype/vnext-kernel/contracts` instead, so
+          # every project-owned source stays keyed
+          # "project/prototype/vnext-kernel/contracts/X.sol" in Hardhat 3's
+          # build-info -- a path that exists nowhere on disk -- and
+          # crytic-compile aborts with "Unknown file" before Slither ever
+          # sees the code. Verified locally (Docker + the pinned Slither
+          # commit) against both routes before choosing this one. The plain
+          # `solc` platform sidesteps Hardhat's build-info naming entirely:
+          # it needs the OpenZeppelin remap and the pinned evmVersion/
+          # optimizer settings spelled out explicitly, which is what the
+          # three extra flags below are for.
+          # --json is appended to the SAME execution that produces the SARIF. The pinned
+          # action runs `printf "%s" "$SLITHERARGS" | xargs slither "$TARGET" $SARIFFLAG ...`
+          # (entrypoint.sh line 291), so these land as trailing flags on one invocation.
+          # Verified locally: the SARIF and JSON from the dual run are byte-identical to the
+          # two single-output runs (c13d5d7f... and 054135ac...). A SECOND scan is therefore
+          # unnecessary, and with it goes any need to assert two scans used one toolchain.
+          #
+          # The raw JSON is REQUIRED, not a convenience: SARIF carries only each result's
+          # PRIMARY location and no relatedLocations, so the element chain a finding's
+          # semantic identity is built from cannot be recovered from it.
+          slither-args: >-
+            --compile-force-framework solc
+            --solc-remaps "@openzeppelin/=node_modules/@openzeppelin/"
+            --solc-args "--evm-version cancun --optimize --optimize-runs 200"
+            --exclude-dependencies
+            --json prototype/vnext-kernel/slither-raw.json
+          # `fail-on: none` matches production's slither.yml, and for the
+          # same underlying reason: this kernel's actual security argument is
+          # the authority-closure/minimum-cut analysis in AUTHORITY.md and
+          # the adversarial tests it cites (M-K28..M-K37), not any scanner's
+          # confidence-weighted heuristics. Every current finding is triaged
+          # firsthand in the PR description; hard-gating CI on Slither's
+          # detector severity here would manufacture exactly the
+          # "scanner-green implies safe" signal this whole lane exists to
+          # avoid. SARIF is still uploaded in full, so nothing is hidden.
+          fail-on: none
+          sarif: slither-vnext-kernel-results.sarif
+
+      # DIAGNOSTIC, and the reason it is permanent. The receipt's raw-output hash disagreed between
+      # a local run and this runner while every finding, count and classification matched exactly.
+      # Substituting the CI workspace root into the local JSON did NOT reproduce the CI hash, so the
+      # divergence was never only about absolute paths -- and without the actual bytes there was no
+      # way to find out what else differed. Keeping the raw JSON as an artifact means the next
+      # cross-environment disagreement is diffable instead of guessable.
+      #
+      # Not evidence: it embeds machine-specific absolute paths by construction, which is exactly
+      # why its whole-file hash is unfit for a committed receipt.
+      - name: Upload raw Slither JSON (diagnostic)
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-slither-raw
+          path: prototype/vnext-kernel/slither-raw.json
+          if-no-files-found: warn
+
+      - name: Upload Slither SARIF
+        if: ${{ always() && hashFiles('slither-vnext-kernel-results.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: slither-vnext-kernel-results.sarif
+          category: slither-vnext-kernel
+
+      # THE GATE THAT WAS MISSING. Slither itself stays `fail-on: none` and the complete SARIF is
+      # still uploaded, because scanner-green is not this kernel's security claim (see the Slither
+      # step above). What IS a claim is that every own-code finding has been adjudicated firsthand
+      # -- and until now nothing enforced it: MEASUREMENTS.json asserted that "the --validate gate
+      # fails CI on any untriaged finding" while no workflow ran --validate at all. That is how 21
+      # of 33 adjudicated findings silently lost their triage entries to a line shift.
+      #
+      # Runs in THIS job so it consumes the raw JSON from the SAME scan, and AFTER the SARIF
+      # upload so a validation failure can never suppress the scanner output.
+      #
+      # The subjects are read from the receipt rather than from HEAD. In a `pull_request` run HEAD
+      # is a synthetic refs/pull/N/merge commit that exists on no branch; deriving provenance from
+      # it is the exact defect evidence-subject.ts documents.
+      - name: Validate scanner triage completeness
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        run: |
+          SOURCE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').sourceSubject")"
+          TRIAGE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').triageSubject")"
+          npx tsx prototype/vnext-kernel/generate-scanner-evidence.ts \
+            --raw prototype/vnext-kernel/slither-raw.json \
+            --source-subject "$SOURCE_SUBJECT" \
+            --triage-subject "$TRIAGE_SUBJECT" \
+            --validate
+
+      # Needed by the byte-identity check below: the receipt records the prototype's runtime
+      # bytecode, so regenerating it requires real build artifacts rather than carried figures.
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      # RECEIPT BYTE IDENTITY. --validate proves every finding is adjudicated; it says nothing
+      # about the rest of the file. Every field outside the triage census -- test counts, solhint
+      # totals, bytecode sizes, the scope digests -- could be hand-edited with 217/54/33 and all 33
+      # entries still valid, and nothing would notice. This regenerates the receipt from committed
+      # inputs plus the raw run plus git, and compares BYTES, so an edited field cannot survive.
+      - name: Verify scanner receipt byte identity
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        run: |
+          SOURCE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').sourceSubject")"
+          TRIAGE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').triageSubject")"
+          npx tsx prototype/vnext-kernel/generate-scanner-evidence.ts \
+            --raw prototype/vnext-kernel/slither-raw.json \
+            --source-subject "$SOURCE_SUBJECT" \
+            --triage-subject "$TRIAGE_SUBJECT" \
+            --check
+
+      # PUBLICATION CONTAINER. The container is supplied from OUTSIDE the artifact, which is the
+      # whole point: the receipt names its source and triage subjects and never itself.
+      #
+      # NEVER refs/pull/N/merge. On a pull_request event GITHUB_SHA is a SYNTHETIC merge commit --
+      # trigger-dependent, reachable from no branch, and recreated whenever base or head moves. It
+      # is not a durable publication container, so the real head sha is used instead; on push,
+      # GITHUB_SHA already is the real commit. See evidence-subject.ts for the same argument.
+      - name: Verify publication container
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/SCANNER_EVIDENCE.json') != '' }}
+        env:
+          CONTAINER_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          echo "event=${{ github.event_name }} container=$CONTAINER_SHA github.sha=${{ github.sha }}"
+          npx tsx prototype/vnext-kernel/verify-receipt-container.ts "$CONTAINER_SHA"
+
+
+  authority-completeness:
+    name: Authority Completeness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      - name: Run authority-path completeness checker
+        # Independent from Slither/CodeQL: this checks whether the COMPLETE
+        # externally reachable privileged surface is classified and routed
+        # through the authority model declared in authority-manifest.json --
+        # not an implementation-pattern scan. See authority/README.md. Fails
+        # on any unclassified external state-changing function, any gate/cut
+        # mismatch against the manifest, any unresolved statement ordering
+        # with no declared exception, or any stale/malformed manifest entry.
+        run: npx tsx prototype/vnext-kernel/authority/check.ts --out prototype/vnext-kernel/AUTHORITY_CENSUS.json
+
+      - name: Prove the checker detects the historical and adversarial bypass classes
+        # Compiles real mutated copies of the source in memory (never writing
+        # to contracts/) and asserts the checker's actual verdict on each --
+        # see PHASE 7/8/9/15 in the PR description. A checker that always
+        # passes is worthless; this is what proves it is not.
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test prototype/vnext-kernel/test/AuthorityCompletenessMutations.test.ts
+
+      - name: Upload authority census
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-authority-census
+          path: prototype/vnext-kernel/AUTHORITY_CENSUS.json
+          if-no-files-found: ignore
+
+  stateful-authority:
+    name: Stateful Authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Same reason as the Prototype Tests job: this job REGENERATES the
+          # receipt, whose provenance is derived from the declared evidence
+          # subject -- an ancestor commit that a depth-1 checkout does not fetch.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      - name: Run the stateful adversarial authority campaign
+        # DETERMINISTIC BY CONSTRUCTION. Every campaign is a pure function of
+        # (profile, seed, depth); the seed set is FIXED in the suite itself, and
+        # there is no clock-derived or environment-derived randomness anywhere in
+        # this lane. A red run here is never a coincidence, and every failure
+        # prints the exact profile/seed/depth plus a minimised action sequence.
+        #
+        # This asks a DIFFERENT question from the two jobs above. Slither asks
+        # whether implementation patterns look unsafe; Authority Completeness
+        # asks whether every privileged path reaches its intended gate. This asks
+        # whether individually-valid transitions can be COMPOSED OVER TIME into
+        # an outcome below its declared cut. None of the three is evidence for
+        # another. See prototype/vnext-kernel/stateful/README.md.
+        run: >-
+          npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+          prototype/vnext-kernel/test/StatefulAuthorityFuzz.test.ts
+
+      - name: Reproduce the sustained composition defects
+        # Three defects this lane found are RECORDED rather than fixed (this PR
+        # changes zero bytes of Solidity). These reproductions assert the
+        # DEFECTIVE behaviour on purpose, so a fix cannot land silently while
+        # AUTHORITY.md still calls the outcome unreachable: it makes this job
+        # fail and forces the ledger and the document to move together.
+        run: >-
+          npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+          prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts
+
+      - name: Prove the stateful properties detect deliberately weakened kernels
+        # A campaign that finds nothing is worth nothing until you know it COULD
+        # have found something. Sixteen mutations compile a real weakened kernel
+        # in memory and point the SAME campaign machinery at it; nine reintroduce
+        # a defect actually reproduced against an earlier revision (AUTHORITY.md
+        # section 0: A1, A2, B, D, F). An unexplained survivor fails this job.
+        run: >-
+          npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+          prototype/vnext-kernel/test/StatefulMutationAdequacy.test.ts
+
+      - name: Regenerate the stateful evidence receipt
+        # The receipt must describe the matrix that actually ran; the campaign
+        # suite asserts the two agree.
+        #
+        # THE RECEIPT IS BOUND TO ITS DECLARED SUBJECT, NOT TO THIS CHECKOUT. An
+        # earlier revision of this step claimed regeneration "keeps the uploaded
+        # artifact bound to this commit", and that is precisely the defect that
+        # was corrected: the generator derived provenance from `git rev-parse
+        # HEAD`, so the artifact uploaded from a `pull_request` run stamped the
+        # SYNTHETIC `refs/pull/N/merge` commit -- trigger-dependent, transient,
+        # reachable from no branch and absent from an ordinary clone unless that
+        # ref is fetched explicitly. Fetchable, but not a durable evidence
+        # subject. Provenance now comes from the evidence
+        # subject declared in MEASUREMENTS.json, so this step's output no longer
+        # depends on which trigger fired or what `HEAD` happens to be.
+        run: npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts
+
+      - name: Assert the regenerated receipt is byte-identical to the committed one
+        # THE ENFORCEMENT, and the reason the step above is worth running at all.
+        # Without this comparison the job regenerated the receipt and uploaded it
+        # without ever checking it against the copy the PR actually publishes, so
+        # a committed receipt could drift arbitrarily from what the tooling
+        # produces and CI would stay green. Byte-identity is also what proves no
+        # field of the receipt was hand-typed.
+        #
+        # A FAILURE HERE IS NOT FIXED BY RE-RUNNING. Either the receipt was not
+        # regenerated after its inputs moved (regenerate it on a clean checkout of
+        # the subject), or MEASUREMENTS.json declares a subject that no longer
+        # matches the evidence (re-measure). Both are real staleness.
+        run: git diff --exit-code -- prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
+
+      - name: Upload the stateful evidence receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-stateful-authority-evidence
+          path: prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
+          if-no-files-found: ignore
+
+  codeql:
+    name: CodeQL
+    # Same repo-wide kill switch as codeql.yml, so a single toggle disables
+    # every CodeQL job in the repository together.
+    if: ${{ vars.CODEQL_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          # GitHub CodeQL has no Solidity extractor: this analyzes the
+          # prototype's JavaScript/TypeScript TOOLING (measure.ts,
+          # reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts,
+          # test/*.ts) -- never the contracts. Do not read this job's name as
+          # Solidity security analysis; see the PR description for the exact
+          # scanner coverage matrix.
+          languages: javascript-typescript
+          build-mode: none
+          config-file: ./.github/codeql/vnext-kernel-codeql-config.yml
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:javascript-typescript/vnext-kernel"

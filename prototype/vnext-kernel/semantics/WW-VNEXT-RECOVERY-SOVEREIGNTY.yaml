@@ -1,0 +1,165 @@
+semanticId: WW-VNEXT-RECOVERY-SOVEREIGNTY
+term: recovery sovereignty
+authorityClass: WALLETWALL_NOVEL
+
+# WHY THIS ENTRY EXISTS
+#
+# `I-RECOVERY-SOVEREIGNTY` appears in KERNEL_ADMISSION.md as a table cell naming
+# a catastrophic invariant protected by "recovery request state and recovery
+# execution". It appears nowhere in the Solidity. That is not by itself a
+# defect: a normative security requirement may legitimately live only in the
+# specification. The defect is that the label carried no definition precise
+# enough to ADJUDICATE anything, and it was about to be used to judge a
+# candidate remediation. Seven mutually incompatible readings all fit the label.
+#
+# Six of the seven are settled below BY MEASUREMENT, not by preference. Each
+# cites the lane-T test that settles it. One remains genuinely open and is
+# marked as an owner decision rather than silently defaulted.
+
+source:
+  primary: vNext architecture, PR #179; label introduced in KERNEL_ADMISSION.md
+  adjudication: SD4_TEMPORAL_ADJUDICATION.md (append-only correction to PR #188)
+  externalAnalogue:
+    - document: NIST SP 800-63B, Authentication and Lifecycle Management
+      topic: account recovery and authenticator binding
+      # UNVERIFIED. Revision and section numbers are deliberately omitted: this
+      # mapping has NOT been checked against the published text in this lane,
+      # and a prior lesson in this repository is that citing remembered section
+      # names for a revised NIST document produces fabricated citations. Resolve
+      # against the actual document before this entry is treated as sourced.
+      status: MAPPING_UNVERIFIED
+relationshipToNist: ADAPTED_PENDING_VERIFICATION
+
+# ---------------------------------------------------------------------------
+# THE SEVEN READINGS
+# ---------------------------------------------------------------------------
+readings:
+
+  A:
+    statement: only quorum-authorized values may ever be installed
+    verdict: FORCED_YES
+    settledBy: T3, T4
+    note: >-
+      True on the unmodified kernel and on every candidate rung. `executeRecovery`
+      installs only values that entered storage through a `_requireQuorum` gate,
+      and ratification is itself quorum-gated. This is the one thing the label
+      unambiguously must mean, and nothing under consideration threatens it.
+
+  B:
+    statement: quorum-authorized values are immutable after initiation
+    verdict: NOT_PRIMITIVE
+    settledBy: round-3 re-initiation measurement, plus T10
+    note: >-
+      B decomposes into A and F. `initiateRecovery` carries no `!recovery.active`
+      guard, so the quorum can already replace every proposed value by
+      re-initiating at the same cut; B therefore constrains the PATH, not the
+      reachable set. Its entire security content is that re-initiation restarts
+      the clock — which is F. Adopting A and F and DROPPING B loses nothing, and
+      this is precisely why candidate G-PRIME was reachable at all.
+
+  C:
+    statement: every installed value must have aged through RECOVERY_DELAY
+    verdict: OPEN_OWNER_DECISION
+    settledBy: null
+    note: >-
+      The only reading measurement does not settle. `reset` grants the full 7 d;
+      `clamped` grants a dedicated RATIFICATION_DELAY (3 d as built). Both give a
+      real guarantee; they differ in how much recovery liveness is spent to buy
+      notice. See `openDecision` below.
+
+  D:
+    statement: the quorum may amend its own authorization
+    verdict: YES_AND_FREE_ON_THE_WHO_AXIS
+    settledBy: round-3 verifier-authority measurement, T8, T9
+    note: >-
+      Amendment grants the quorum no end state it lacked, because both amendable
+      values were already its parameters at `initiateRecovery`. The signer is not
+      a parameter on any rung. What amendment changes is the PRICE — one quorum
+      act instead of a fresh delay — which is exactly why C and F must be priced
+      separately rather than assumed to follow.
+
+  E:
+    statement: amendment may happen only before maturity
+    verdict: KILLED_BY_MEASUREMENT
+    settledBy: T10
+    note: >-
+      Measured guaranteed notice under this rule is under 60 seconds, because
+      "before maturity" is unbounded below and maturity-minus-one-second is a
+      legal amendment. E is a broken proxy for C and must not be adopted as a
+      weakening of B. This reading was proposed in round 3 by the same analysis
+      that later killed it.
+
+  F:
+    statement: amendment restarts notice
+    verdict: FORCED_YES_BUT_MUST_BE_CLAMPED
+    settledBy: T10b, T11b for the property; T7b for the clamp
+    note: >-
+      F is the load-bearing reading: it is what restores the coincidence between
+      the payload a defender inspects and the payload that executes, and with it
+      the credential's one remaining remedy applies to the values that would
+      actually run. The NAIVE form is unsafe — a late amendment can push maturity
+      past expiry and leave an episode closed from both sides, a dead episode
+      caused by the remediation with no adversary present. F must therefore be
+      stated as: amendment restarts notice, AND an amendment that could not itself
+      age and still execute is REFUSED rather than installed.
+
+  G:
+    statement: challenge history survives amendment
+    verdict: FORCED_YES
+    settledBy: T5, T0b
+    note: >-
+      Currently holds — ratification writes `challengesUsed` on no rung. Stated
+      explicitly because it is easy to lose by accident and expensive to lose:
+      `initiateRecovery` carries the counter FORWARD across episodes, so the
+      credential holds CHALLENGE_LIMIT cancels for the LIFETIME of the vault. A
+      refund would not be bookkeeping, it would be a real authority grant.
+
+# ---------------------------------------------------------------------------
+requirements:
+  quorumAuthorization: A — every installed value traces to a quorum gate
+  payloadBinding: >-
+    the possession digest and the ratification digest both bind the live
+    `executableAt`, so an attestation cannot be replayed into another episode
+    (cryptographic, not a comparison — T3 fails QuorumNotMet, not BadRoster)
+  noticeSemantics: >-
+    the guarantee is measured on the payload that EXECUTES, adversary playing the
+    latest amendment the rule permits. Elapsed time on a superseded payload is
+    not notice.
+  amendmentSemantics: A and D and F-clamped; explicitly NOT B and NOT E
+  challengePersistence: G — never refunded, never consumed by amendment
+  expirySemantics: >-
+    `expiresAt` is never extended by amendment; an amendment that cannot fit
+    inside the remaining life is refused, and the quorum's fallback is the one it
+    always had — re-initiate and pay a fresh delay
+
+operationalization:
+  measuredBy: test/Sd4TemporalAuthority.test.ts
+  positiveControl: >-
+    T0a-T0c. Required, and required FIRST: an attack on notice measures nothing
+    unless the notice window is first shown to carry a remedy a defender can
+    actually exercise.
+  knownOverApproximation: >-
+    G-DECLARATION-SUBORDINATE-TO-RECOVERY observes the TRANSITION, so it fires on
+    a kernel that repairs the harm as loudly as on one that does not. It must not
+    be used as the admission oracle for any candidate in this family.
+
+openDecision:
+  id: RATIFICATION_DELAY_MAGNITUDE
+  question: how long must an amended recovery payload age before it may execute
+  optionsMeasured:
+    - value: RATIFICATION_DELAY = 3 days
+      guarantee: 3 d notice on the executing payload
+      cost: worst-case recovery completion 7 d -> 10 d
+    - value: RATIFICATION_DELAY = RECOVERY_DELAY = 7 days
+      guarantee: 7 d, identical to an unamended episode
+      cost: worst-case recovery completion 7 d -> 14 d
+  notADefault: >-
+    3 days is the value BUILT, chosen only so the measurement could distinguish
+    the delay clause from the episode's original timer. It is not a recommendation.
+  owner: unresolved
+
+# LANE W1R NOTE. openDecision.RATIFICATION_DELAY_MAGNITUDE is MOOT: every
+# ratification (G-PRIME) family was subsequently killed and the SD-4 remedy is the
+# architecture-native path (docs/Vault_vNext_Recovery_Amendment.md sec 4). This
+# record is retained for its resolution of the seven readings A-G of
+# I-RECOVERY-SOVEREIGNTY, which no later document restates.

@@ -1,0 +1,2929 @@
+{
+ "_note": "Own-code Slither findings from the pinned run, trimmed to the fields scanner-finding-identity.ts reads. Dependency findings are excluded (not part of identity); filename_absolute is excluded (machine-dependent); contiguous line arrays are stored as [start,end]; parent-chain line spans are dropped because parents contribute type:name to identity and no source to either fingerprint.",
+ "subject": "aaa21d093876d23d9e2d790400661d3d242caa31",
+ "ownRawCount": 54,
+ "detectors": [
+  {
+   "check": "locked-ether",
+   "impact": "Medium",
+   "confidence": "High",
+   "description": "Contract locking ether found:\n\tContract DestinationStub (prototype/vnext-kernel/contracts/PrototypeMocks.sol#143-145) has payable functions:\n\t - DestinationStub.receive() (prototype/vnext-kernel/contracts/PrototypeMocks.sol#144)\n\tBut does not have a function to withdraw the ether\n",
+   "elements": [
+    {
+     "type": "contract",
+     "name": "DestinationStub",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       143,
+       145
+      ]
+     }
+    },
+    {
+     "type": "function",
+     "name": "receive",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       144,
+       144
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "receive()",
+      "parent": {
+       "type": "contract",
+       "name": "DestinationStub"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "locked-ether",
+   "impact": "Medium",
+   "confidence": "High",
+   "description": "Contract locking ether found:\n\tContract ReentrantRecipient (prototype/vnext-kernel/contracts/PrototypeMocks.sol#148-165) has payable functions:\n\t - ReentrantRecipient.receive() (prototype/vnext-kernel/contracts/PrototypeMocks.sol#159-164)\n\tBut does not have a function to withdraw the ether\n",
+   "elements": [
+    {
+     "type": "contract",
+     "name": "ReentrantRecipient",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       148,
+       165
+      ]
+     }
+    },
+    {
+     "type": "function",
+     "name": "receive",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       159,
+       164
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "receive()",
+      "parent": {
+       "type": "contract",
+       "name": "ReentrantRecipient"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "unused-return",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "EcdsaBackedVerifier.verify(bytes32,bytes,bytes) (prototype/vnext-kernel/contracts/PrototypeMocks.sol#180-186) ignores return value by (recovered,err,None) = ECDSA.tryRecover(digest,signature) (prototype/vnext-kernel/contracts/PrototypeMocks.sol#184)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "verify",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       180,
+       186
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "verify(bytes32,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "EcdsaBackedVerifier"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(recovered,err,None) = ECDSA.tryRecover(digest,signature)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       184,
+       184
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "verify",
+       "type_specific_fields": {
+        "signature": "verify(bytes32,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "EcdsaBackedVerifier"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "missing-zero-check",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "RawCloner.cloneWithArgs(address,bytes,bytes32).c (prototype/vnext-kernel/contracts/PrototypeMocks.sol#136) lacks a zero-check on :\n\t\t- lastClone = c (prototype/vnext-kernel/contracts/PrototypeMocks.sol#138)\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "c",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       136,
+       136
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "cloneWithArgs",
+       "type_specific_fields": {
+        "signature": "cloneWithArgs(address,bytes,bytes32)",
+        "parent": {
+         "type": "contract",
+         "name": "RawCloner"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "lastClone = c",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       138,
+       138
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "cloneWithArgs",
+       "type_specific_fields": {
+        "signature": "cloneWithArgs(address,bytes,bytes32)",
+        "parent": {
+         "type": "contract",
+         "name": "RawCloner"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "missing-zero-check",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "RawCloner.cloneOnly(address,bytes32).c (prototype/vnext-kernel/contracts/PrototypeMocks.sol#131) lacks a zero-check on :\n\t\t- lastClone = c (prototype/vnext-kernel/contracts/PrototypeMocks.sol#133)\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "c",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       131,
+       131
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "cloneOnly",
+       "type_specific_fields": {
+        "signature": "cloneOnly(address,bytes32)",
+        "parent": {
+         "type": "contract",
+         "name": "RawCloner"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "lastClone = c",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       133,
+       133
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "cloneOnly",
+       "type_specific_fields": {
+        "signature": "cloneOnly(address,bytes32)",
+        "parent": {
+         "type": "contract",
+         "name": "RawCloner"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "missing-zero-check",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "ReentrantRecipient.arm(address,bytes).k (prototype/vnext-kernel/contracts/PrototypeMocks.sol#154) lacks a zero-check on :\n\t\t- kernel = k (prototype/vnext-kernel/contracts/PrototypeMocks.sol#155)\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "k",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       154,
+       154
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "arm",
+       "type_specific_fields": {
+        "signature": "arm(address,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "ReentrantRecipient"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "kernel = k",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       155,
+       155
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "arm",
+       "type_specific_fields": {
+        "signature": "arm(address,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "ReentrantRecipient"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "reentrancy-benign",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "Reentrancy in ReentrantRecipient.receive() (prototype/vnext-kernel/contracts/PrototypeMocks.sol#159-164):\n\tExternal calls:\n\t- (ok,None) = kernel.call(payload) (prototype/vnext-kernel/contracts/PrototypeMocks.sol#162)\n\tState variables written after the call(s):\n\t- succeeded = ok (prototype/vnext-kernel/contracts/PrototypeMocks.sol#163)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "receive",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       159,
+       164
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "receive()",
+      "parent": {
+       "type": "contract",
+       "name": "ReentrantRecipient"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = kernel.call(payload)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       162,
+       162
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "receive",
+       "type_specific_fields": {
+        "signature": "receive()",
+        "parent": {
+         "type": "contract",
+         "name": "ReentrantRecipient"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = kernel.call(payload)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       162,
+       162
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "receive",
+       "type_specific_fields": {
+        "signature": "receive()",
+        "parent": {
+         "type": "contract",
+         "name": "ReentrantRecipient"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "succeeded = ok",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       163,
+       163
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "receive",
+       "type_specific_fields": {
+        "signature": "receive()",
+        "parent": {
+         "type": "contract",
+         "name": "ReentrantRecipient"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in ReentrantRecipient.receive() (prototype/vnext-kernel/contracts/PrototypeMocks.sol#159-164):\n\t- (ok,None) = kernel.call(payload) (prototype/vnext-kernel/contracts/PrototypeMocks.sol#162)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "receive",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       159,
+       164
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "receive()",
+      "parent": {
+       "type": "contract",
+       "name": "ReentrantRecipient"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = kernel.call(payload)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       162,
+       162
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "receive",
+       "type_specific_fields": {
+        "signature": "receive()",
+        "parent": {
+         "type": "contract",
+         "name": "ReentrantRecipient"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "missing-inheritance",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "GasBurningGuardian (prototype/vnext-kernel/contracts/PrototypeMocks.sol#69-77) should inherit from IERC1271Guardian (prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol#36-38)\n",
+   "elements": [
+    {
+     "type": "contract",
+     "name": "GasBurningGuardian",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       69,
+       77
+      ]
+     }
+    },
+    {
+     "type": "contract",
+     "name": "IERC1271Guardian",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol",
+      "lineRange": [
+       36,
+       38
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "check": "immutable-states",
+   "impact": "Optimization",
+   "confidence": "High",
+   "description": "ConfigurablePolicy.allowAll (prototype/vnext-kernel/contracts/PrototypeMocks.sol#37) should be immutable \n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "allowAll",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       37,
+       37
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "contract",
+       "name": "ConfigurablePolicy"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "immutable-states",
+   "impact": "Optimization",
+   "confidence": "High",
+   "description": "TestToken.failTransfers (prototype/vnext-kernel/contracts/PrototypeMocks.sol#96) should be immutable \n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "failTransfers",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/PrototypeMocks.sol",
+      "lineRange": [
+       96,
+       96
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "contract",
+       "name": "TestToken"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "arbitrary-send-eth",
+   "impact": "High",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668) sends eth to arbitrary user\n\tDangerous calls:\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "arbitrary-send-eth",
+   "impact": "High",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#871-914) sends eth to arbitrary user\n\tDangerous calls:\n\t- (ok,None) = recipient.call{value: amount}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#912)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "execute",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       871,
+       914
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = recipient.call{value: amount}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       912,
+       912
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "uninitialized-local",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.egress(address).moved (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1648) is a local variable never initialized\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "moved",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1648,
+       1648
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "uninitialized-local",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._requireQuorum(bytes32,VaultKernelPrototype.QuorumProof).counted (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1261) is a local variable never initialized\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "counted",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1261,
+       1261
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_requireQuorum",
+       "type_specific_fields": {
+        "signature": "_requireQuorum(bytes32,VaultKernelPrototype.QuorumProof)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "unused-return",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._attests(bytes32,address,bool,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1289-1317) ignores return value by (recovered,err,None) = ECDSA.tryRecover(digest,signature) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1299)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_attests",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1289,
+       1317
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_attests(bytes32,address,bool,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(recovered,err,None) = ECDSA.tryRecover(digest,signature)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1299,
+       1299
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_attests",
+       "type_specific_fields": {
+        "signature": "_attests(bytes32,address,bool,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "missing-zero-check",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.setPolicy(address,uint256,uint64,bytes,bytes,bytes).policy (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1116) lacks a zero-check on :\n\t\t- policyEngine = policy (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1134)\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "policy",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1116,
+       1116
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "setPolicy",
+       "type_specific_fields": {
+        "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "policyEngine = policy",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1134,
+       1134
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "setPolicy",
+       "type_specific_fields": {
+        "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "reentrancy-events",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "Reentrancy in VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668):\n\tExternal calls:\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n\t- (ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before)) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1660)\n\tExternal calls sending eth:\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n\tEvent emitted after the call(s):\n\t- Egressed(asset,b.destinationVault,moved) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1667)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before))",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1660,
+       1660
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "Egressed(asset,b.destinationVault,moved)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1667,
+       1667
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "reentrancy-events",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "Reentrancy in VaultKernelFactoryPrototype.deployVault(bytes32,VaultKernelPrototype.GenesisConfig,bytes) (prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol#82-91):\n\tExternal calls:\n\t- VaultKernelPrototype(address(vault)).initialize(g,pqKey) (prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol#89)\n\tEvent emitted after the call(s):\n\t- VaultDeployed(vault,salt,generation) (prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol#90)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "deployVault",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol",
+      "lineRange": [
+       82,
+       91
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "deployVault(bytes32,VaultKernelPrototype.GenesisConfig,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelFactoryPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "VaultKernelPrototype(address(vault)).initialize(g,pqKey)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol",
+      "lineRange": [
+       89,
+       89
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "deployVault",
+       "type_specific_fields": {
+        "signature": "deployVault(bytes32,VaultKernelPrototype.GenesisConfig,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelFactoryPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "VaultDeployed(vault,salt,generation)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol",
+      "lineRange": [
+       90,
+       90
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "deployVault",
+       "type_specific_fields": {
+        "signature": "deployVault(bytes32,VaultKernelPrototype.GenesisConfig,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelFactoryPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "reentrancy-events",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "Reentrancy in VaultKernelPrototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#871-914):\n\tExternal calls:\n\t- ! IKernelPolicy(plane).admit(address(this),recipient,amount) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#908)\n\tEvent emitted after the call(s):\n\t- Executed(recipient,amount,nonce) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#911)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "execute",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       871,
+       914
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "! IKernelPolicy(plane).admit(address(this),recipient,amount)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       908,
+       908
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "Executed(recipient,amount,nonce)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       911,
+       911
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._consume(uint8,uint256,uint64) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#805-811) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp > deadline (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#807)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_consume",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       805,
+       811
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_consume(uint8,uint256,uint64)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp > deadline",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       807,
+       807
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_consume",
+       "type_specific_fields": {
+        "signature": "_consume(uint8,uint256,uint64)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.cancelRecovery(uint256,uint64,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1383-1406) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- recovery.challengesUsed >= CHALLENGE_LIMIT (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1388)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "cancelRecovery",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1383,
+       1406
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "cancelRecovery(uint256,uint64,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "recovery.challengesUsed >= CHALLENGE_LIMIT",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1388,
+       1388
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "cancelRecovery",
+       "type_specific_fields": {
+        "signature": "cancelRecovery(uint256,uint64,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._effectiveState() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#831-835) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- safeState == SafeState.CONTAINED && block.timestamp >= containedUntil (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#833)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_effectiveState",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       831,
+       835
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_effectiveState()",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "safeState == SafeState.CONTAINED && block.timestamp >= containedUntil",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       833,
+       833
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_effectiveState",
+       "type_specific_fields": {
+        "signature": "_effectiveState()",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._recoveryIsLive() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#862-864) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- recovery.active && block.timestamp < recovery.expiresAt (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#863)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_recoveryIsLive",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       862,
+       864
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_recoveryIsLive()",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "recovery.active && block.timestamp < recovery.expiresAt",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       863,
+       863
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_recoveryIsLive",
+       "type_specific_fields": {
+        "signature": "_recoveryIsLive()",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelPrototype.CredentialChange) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#753-803) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- popDigest.recover(c.newEcdsaPop) != expectedSigner (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#764)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_requireIncomingPossession",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       753,
+       803
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelPrototype.CredentialChange)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "popDigest.recover(c.newEcdsaPop) != expectedSigner",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       764,
+       764
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_requireIncomingPossession",
+       "type_specific_fields": {
+        "signature": "_requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelPrototype.CredentialChange)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.enterContainment(VaultKernelPrototype.QuorumProof,uint256,uint64) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1538-1566) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- nowTs >= containmentWindowStart + CONTAINMENT_WINDOW (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1556)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "enterContainment",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1538,
+       1566
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "enterContainment(VaultKernelPrototype.QuorumProof,uint256,uint64)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "nowTs >= containmentWindowStart + CONTAINMENT_WINDOW",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1556,
+       1556
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "enterContainment",
+       "type_specific_fields": {
+        "signature": "enterContainment(VaultKernelPrototype.QuorumProof,uint256,uint64)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.executeRecovery(VaultKernelPrototype.CredentialChange) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1489-1525) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < r.executableAt (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1493)\n\t- block.timestamp >= r.expiresAt (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1497)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "executeRecovery",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1489,
+       1525
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "executeRecovery(VaultKernelPrototype.CredentialChange)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp < r.executableAt",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1493,
+       1493
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "executeRecovery",
+       "type_specific_fields": {
+        "signature": "executeRecovery(VaultKernelPrototype.CredentialChange)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp >= r.expiresAt",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1497,
+       1497
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "executeRecovery",
+       "type_specific_fields": {
+        "signature": "executeRecovery(VaultKernelPrototype.CredentialChange)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- b.destinationVault.codehash != b.destinationVaultCodeHash (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1646)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "b.destinationVault.codehash != b.destinationVaultCodeHash",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1646,
+       1646
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.retire() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1619-1626) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < migration.boundAt + BIND_DELAY (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1621)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "retire",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1619,
+       1626
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "retire()",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp < migration.boundAt + BIND_DELAY",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1621,
+       1621
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "retire",
+       "type_specific_fields": {
+        "signature": "retire()",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "assembly",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "VaultKernelPrototype._attests(bytes32,address,bool,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1289-1317) uses assembly\n\t- INLINE ASM (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1306-1315)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_attests",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1289,
+       1317
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_attests(bytes32,address,bool,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1306,
+       1315
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_attests",
+       "type_specific_fields": {
+        "signature": "_attests(bytes32,address,bool,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in VaultKernelPrototype._balanceOf(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1670-1674):\n\t- (ok,data) = asset.staticcall(abi.encodeWithSelector(0x70a08231,address(this))) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1671)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_balanceOf",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1670,
+       1674
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_balanceOf(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,data) = asset.staticcall(abi.encodeWithSelector(0x70a08231,address(this)))",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1671,
+       1671
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_balanceOf",
+       "type_specific_fields": {
+        "signature": "_balanceOf(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in VaultKernelPrototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#871-914):\n\t- (ok,None) = recipient.call{value: amount}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#912)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "execute",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       871,
+       914
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = recipient.call{value: amount}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       912,
+       912
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668):\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n\t- (ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before)) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1660)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before))",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1660,
+       1660
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "arbitrary-send-eth",
+   "impact": "High",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668) sends eth to arbitrary user\n\tDangerous calls:\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "arbitrary-send-eth",
+   "impact": "High",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#871-914) sends eth to arbitrary user\n\tDangerous calls:\n\t- (ok,None) = recipient.call{value: amount}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#912)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "execute",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       871,
+       914
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = recipient.call{value: amount}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       912,
+       912
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "uninitialized-local",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.egress(address).moved (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1648) is a local variable never initialized\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "moved",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1648,
+       1648
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "uninitialized-local",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._requireQuorum(bytes32,VaultKernelPrototype.QuorumProof).counted (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1261) is a local variable never initialized\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "counted",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1261,
+       1261
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_requireQuorum",
+       "type_specific_fields": {
+        "signature": "_requireQuorum(bytes32,VaultKernelPrototype.QuorumProof)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "unused-return",
+   "impact": "Medium",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._attests(bytes32,address,bool,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1289-1317) ignores return value by (recovered,err,None) = ECDSA.tryRecover(digest,signature) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1299)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_attests",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1289,
+       1317
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_attests(bytes32,address,bool,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(recovered,err,None) = ECDSA.tryRecover(digest,signature)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1299,
+       1299
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_attests",
+       "type_specific_fields": {
+        "signature": "_attests(bytes32,address,bool,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "missing-zero-check",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.setPolicy(address,uint256,uint64,bytes,bytes,bytes).policy (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1116) lacks a zero-check on :\n\t\t- policyEngine = policy (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1134)\n",
+   "elements": [
+    {
+     "type": "variable",
+     "name": "policy",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1116,
+       1116
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "setPolicy",
+       "type_specific_fields": {
+        "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "policyEngine = policy",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1134,
+       1134
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "setPolicy",
+       "type_specific_fields": {
+        "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "reentrancy-events",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "Reentrancy in VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668):\n\tExternal calls:\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n\t- (ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before)) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1660)\n\tExternal calls sending eth:\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n\tEvent emitted after the call(s):\n\t- Egressed(asset,b.destinationVault,moved) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1667)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before))",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1660,
+       1660
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "Egressed(asset,b.destinationVault,moved)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1667,
+       1667
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "reentrancy-events",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "Reentrancy in VaultKernelPrototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#871-914):\n\tExternal calls:\n\t- ! IKernelPolicy(plane).admit(address(this),recipient,amount) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#908)\n\tEvent emitted after the call(s):\n\t- Executed(recipient,amount,nonce) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#911)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "execute",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       871,
+       914
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "! IKernelPolicy(plane).admit(address(this),recipient,amount)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       908,
+       908
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "Executed(recipient,amount,nonce)",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       911,
+       911
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._consume(uint8,uint256,uint64) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#805-811) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp > deadline (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#807)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_consume",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       805,
+       811
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_consume(uint8,uint256,uint64)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp > deadline",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       807,
+       807
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_consume",
+       "type_specific_fields": {
+        "signature": "_consume(uint8,uint256,uint64)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.cancelRecovery(uint256,uint64,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1383-1406) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- recovery.challengesUsed >= CHALLENGE_LIMIT (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1388)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "cancelRecovery",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1383,
+       1406
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "cancelRecovery(uint256,uint64,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "recovery.challengesUsed >= CHALLENGE_LIMIT",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1388,
+       1388
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "cancelRecovery",
+       "type_specific_fields": {
+        "signature": "cancelRecovery(uint256,uint64,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._effectiveState() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#831-835) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- safeState == SafeState.CONTAINED && block.timestamp >= containedUntil (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#833)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_effectiveState",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       831,
+       835
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_effectiveState()",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "safeState == SafeState.CONTAINED && block.timestamp >= containedUntil",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       833,
+       833
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_effectiveState",
+       "type_specific_fields": {
+        "signature": "_effectiveState()",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._recoveryIsLive() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#862-864) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- recovery.active && block.timestamp < recovery.expiresAt (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#863)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_recoveryIsLive",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       862,
+       864
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_recoveryIsLive()",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "recovery.active && block.timestamp < recovery.expiresAt",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       863,
+       863
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_recoveryIsLive",
+       "type_specific_fields": {
+        "signature": "_recoveryIsLive()",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype._requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelPrototype.CredentialChange) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#753-803) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- popDigest.recover(c.newEcdsaPop) != expectedSigner (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#764)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_requireIncomingPossession",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       753,
+       803
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelPrototype.CredentialChange)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "popDigest.recover(c.newEcdsaPop) != expectedSigner",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       764,
+       764
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_requireIncomingPossession",
+       "type_specific_fields": {
+        "signature": "_requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelPrototype.CredentialChange)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.enterContainment(VaultKernelPrototype.QuorumProof,uint256,uint64) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1538-1566) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- nowTs >= containmentWindowStart + CONTAINMENT_WINDOW (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1556)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "enterContainment",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1538,
+       1566
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "enterContainment(VaultKernelPrototype.QuorumProof,uint256,uint64)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "nowTs >= containmentWindowStart + CONTAINMENT_WINDOW",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1556,
+       1556
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "enterContainment",
+       "type_specific_fields": {
+        "signature": "enterContainment(VaultKernelPrototype.QuorumProof,uint256,uint64)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.executeRecovery(VaultKernelPrototype.CredentialChange) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1489-1525) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < r.executableAt (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1493)\n\t- block.timestamp >= r.expiresAt (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1497)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "executeRecovery",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1489,
+       1525
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "executeRecovery(VaultKernelPrototype.CredentialChange)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp < r.executableAt",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1493,
+       1493
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "executeRecovery",
+       "type_specific_fields": {
+        "signature": "executeRecovery(VaultKernelPrototype.CredentialChange)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp >= r.expiresAt",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1497,
+       1497
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "executeRecovery",
+       "type_specific_fields": {
+        "signature": "executeRecovery(VaultKernelPrototype.CredentialChange)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- b.destinationVault.codehash != b.destinationVaultCodeHash (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1646)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "b.destinationVault.codehash != b.destinationVaultCodeHash",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1646,
+       1646
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "timestamp",
+   "impact": "Low",
+   "confidence": "Medium",
+   "description": "VaultKernelPrototype.retire() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1619-1626) uses timestamp for comparisons\n\tDangerous comparisons:\n\t- block.timestamp < migration.boundAt + BIND_DELAY (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1621)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "retire",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1619,
+       1626
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "retire()",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "block.timestamp < migration.boundAt + BIND_DELAY",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1621,
+       1621
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "retire",
+       "type_specific_fields": {
+        "signature": "retire()",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "assembly",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "VaultKernelPrototype._attests(bytes32,address,bool,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1289-1317) uses assembly\n\t- INLINE ASM (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1306-1315)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_attests",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1289,
+       1317
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_attests(bytes32,address,bool,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1306,
+       1315
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_attests",
+       "type_specific_fields": {
+        "signature": "_attests(bytes32,address,bool,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in VaultKernelPrototype._balanceOf(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1670-1674):\n\t- (ok,data) = asset.staticcall(abi.encodeWithSelector(0x70a08231,address(this))) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1671)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "_balanceOf",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1670,
+       1674
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "_balanceOf(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,data) = asset.staticcall(abi.encodeWithSelector(0x70a08231,address(this)))",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1671,
+       1671
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "_balanceOf",
+       "type_specific_fields": {
+        "signature": "_balanceOf(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in VaultKernelPrototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#871-914):\n\t- (ok,None) = recipient.call{value: amount}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#912)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "execute",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       871,
+       914
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = recipient.call{value: amount}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       912,
+       912
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "execute",
+       "type_specific_fields": {
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "check": "low-level-calls",
+   "impact": "Informational",
+   "confidence": "High",
+   "description": "Low level call in VaultKernelPrototype.egress(address) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1641-1668):\n\t- (ok,None) = address(b.destinationVault).call{value: moved}() (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1652)\n\t- (ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before)) (prototype/vnext-kernel/contracts/VaultKernelPrototype.sol#1660)\n",
+   "elements": [
+    {
+     "type": "function",
+     "name": "egress",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1641,
+       1668
+      ]
+     },
+     "type_specific_fields": {
+      "signature": "egress(address)",
+      "parent": {
+       "type": "contract",
+       "name": "VaultKernelPrototype"
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok,None) = address(b.destinationVault).call{value: moved}()",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1652,
+       1652
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "node",
+     "name": "(ok_scope_0,None) = asset.call(abi.encodeWithSelector(0xa9059cbb,b.destinationVault,before))",
+     "source_mapping": {
+      "filename_relative": "prototype/vnext-kernel/contracts/VaultKernelPrototype.sol",
+      "lineRange": [
+       1660,
+       1660
+      ]
+     },
+     "type_specific_fields": {
+      "parent": {
+       "type": "function",
+       "name": "egress",
+       "type_specific_fields": {
+        "signature": "egress(address)",
+        "parent": {
+         "type": "contract",
+         "name": "VaultKernelPrototype"
+        }
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}
