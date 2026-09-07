@@ -36,3 +36,8 @@ lerna-debug.log*
 # Docker image exports (large binary files, not for version control)
 *.tar.gz
 *.tar
+
+# Raw Slither JSON emitted by the vNext Kernel workflow's single scan (alongside the SARIF).
+# It is an INPUT to the triage gate, never an artifact to commit: it embeds filename_absolute,
+# so its bytes differ per machine even when the findings are identical.
+prototype/vnext-kernel/slither-raw.json

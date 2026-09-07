@@ -79,9 +79,9 @@
     "reductionVsMonolithPercent": 23.4
   },
   "scannerCoverage": {
-    "_scope": "CURRENT aggregate scanner state of measuredAtHead. TWO PROVENANCES ARE KEPT APART DELIBERATELY: the Slither COUNTS come from the pinned run recorded in SCANNER_EVIDENCE.json (receipt head a46bc50c, tree 1f892b1e) and slither-triage.json (keyed at c32e0d74, tree 90e1a802); the PASS verdicts come from the exact-head #188 CI execution. The scanner receipt was NOT generated at measuredAtHead and is not claimed to be — its counts describe this head only because prototype/vnext-kernel/contracts is byte-identical (tree da8aef1f) from c32e0d74 through measuredAtHead. The figures below were measured against measuredAtHead/measuredAtTree; this file is committed one commit later, which is the same recapture pattern the canonical receipts use. Nothing a test or scanner reads differs between the two — the only delta is this file.",
-    "measuredAtHead": "b7e6cc3a02a6f61c9152a51d9c168f372522a6e3",
-    "measuredAtTree": "216611f72db8f995e9110147b8fe6208ea1d90b2",
+    "_scope": "CURRENT aggregate scanner state of the SCANNER SOURCE SUBJECT named below. TWO PROVENANCES ARE KEPT APART DELIBERATELY: the Slither COUNTS come from the pinned run recorded in SCANNER_EVIDENCE.json and adjudicated by slither-triage.json, both of which now name this same source subject; the PASS verdicts come from CI execution. THE PREVIOUS REVISION OF THIS BLOCK LICENSED ITS COUNTS BY BYTE IDENTITY OF prototype/vnext-kernel/contracts (tree da8aef1f) FROM c32e0d74 THROUGH ITS ANCHOR. That licence was true for the window it named and TERMINATED AT b7e6cc3a02a6f61c9152a51d9c168f372522a6e3: commit be1789f4 moved the contracts tree to dca808ea and 8ba71c90 moved it to dcc42e76, so the scanner receipt no longer described the branch head. The finding SET did not change across that drift -- 217 raw, 54 own-code raw rows, 33 distinct, 0 added, 0 removed -- which is exactly why equal counts are not a currency licence; 21 of the 33 v1 locator keys stopped matching. Currency is now licensed ONLY by scannerInputScope byte equality in SCANNER_EVIDENCE.json.",
+    "measuredAtHead": "aaa21d093876d23d9e2d790400661d3d242caa31",
+    "measuredAtTree": "5e47baa2bb09669e62145b23caa65762791ad518",
     "solhint": {
       "run": true,
       "warnings": 36,
@@ -93,11 +93,13 @@
       "run": true,
       "verdict": "PASS",
       "rawFindingCount": 217,
+      "ownCodeRawRowCount": 54,
       "distinctOwnCodeFindingCount": 33,
       "unaccounted": 0,
-      "countsFrom": "SCANNER_EVIDENCE.json scanners.slither (pinned slither-analyzer @ ff1bf3ff, crytic-compile 0.4.2, solc 0.8.24, --evm-version cancun --optimize --optimize-runs 200); every one of the 33 distinct own-code findings carries a triage entry in slither-triage.json, so unaccounted is 0 by construction and the --validate gate fails CI on any untriaged finding.",
-      "ciExecution": "vNext Kernel / Slither — success on measuredAtHead, in both the push and the pull_request run.",
-      "supersedes": "This field previously read \"NOT RUN — no local Python or slither binary, and the Docker daemon is not running. NOT a pass.\" That described a developer workstation at a much earlier head; it was false of this head, where Slither runs in CI and the triage is complete."
+      "countsFrom": "SCANNER_EVIDENCE.json scanners.slither (pinned slither-analyzer @ ff1bf3ff, crytic-compile 0.4.2, solc 0.8.24, --evm-version cancun --optimize --optimize-runs 200, --exclude-dependencies). The 54 own-code raw rows collapse to 33 distinct findings because crytic-compile's plain solc platform analyzes a file once per top-level entry point that reaches it; the 21 duplicate rows agree on identity, locator and source fingerprint.",
+      "triageCompleteness": "All 33 distinct own-code findings carry a triage entry keyed by SEMANTIC IDENTITY in slither-triage.json (v2). 0 untriaged, 0 stale, 0 ambiguous, 0 requiring re-adjudication.",
+      "ciExecution": "vNext Kernel / Slither -- the scan runs with fail-on: none and uploads the complete SARIF, then the same job validates triage completeness against the raw JSON from that SAME execution.",
+      "supersedes": "This field previously reported unaccounted: 0 and stated that \"the --validate gate fails CI on any untriaged finding\". The first was false of the branch head at the time (21 of 33 findings were untriaged under v1 locator keying once the source moved), and the second was false of CI in general: no workflow ran --validate at all, so nothing could have failed. Both are true as of this lane -- the first because the triage was re-derived semantically, the second because the gate now exists as a step in the Slither job."
     },
     "codeql": {
       "run": true,
@@ -106,6 +108,14 @@
       "solidityCoverage": "NONE — GitHub CodeQL has no Solidity extractor. This is a permanent vendor limitation, not a configuration gap, so a CodeQL pass is NOT Solidity security analysis and must not be read as one.",
       "javascriptTypescriptCoverage": "prototype/vnext-kernel TOOLING only (measure.ts, reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts, test/*.ts), category /language:javascript-typescript/vnext-kernel.",
       "supersedes": "This field previously read \"NOT RUN — codeql.yml is filtered to branches:[main], so it never fires on a PR based on a design branch. NOT a pass.\" True of codeql.yml, but the vNext Kernel workflow carries its own CodeQL job, which does fire here."
+    },
+    "contractsTree": "dcc42e76a22b2491e05a6f7ccbc98f447e6acbc5",
+    "githubCodeScanning": {
+      "toolName": "Slither",
+      "category": "slither-vnext-kernel",
+      "alertsOnPrRef": 217,
+      "newInChangedCode": 54,
+      "note": "GitHub reports 54 alerts as NEW on PR #181 because the base branch design/vault-vnext-trust-architecture has NO Slither analysis for this category and structurally cannot have one -- the workflow's triggers are path-filtered to prototype/vnext-kernel/**, a path that branch does not contain. Against an absent baseline every alert in changed code is new by definition. The 54 are exactly this file's ownCodeRawRowCount, i.e. the 33 distinct findings before the per-entry recompile dedupe, and 0 of them are regressions: 4 high = 2 distinct arbitrary-send-eth false positives, each reported twice. The check is ADVISORY on this base -- no ruleset or branch protection applies to it, and Slither is not a required status check even on main. It is deliberately left red rather than dismissed or threshold-tuned; the repository's own triage gate is what proves adjudication completeness."
     }
   },
   "validation": {

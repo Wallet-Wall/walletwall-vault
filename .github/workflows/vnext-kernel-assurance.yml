@@ -83,6 +83,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # FULL HISTORY IS REQUIRED BY THE TRIAGE GATE, for the same reason the Prototype Tests
+          # job needs it. The validator resolves the receipt's declared SOURCE SUBJECT -- an
+          # ANCESTOR of the commit under test -- to read the analyzed source and to compare the
+          # scanner-input scope. The default `fetch-depth: 1` does not fetch that object, and the
+          # scope check is deliberately FAIL-CLOSED, so it would throw rather than quietly pass.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -123,11 +130,22 @@ jobs:
           # it needs the OpenZeppelin remap and the pinned evmVersion/
           # optimizer settings spelled out explicitly, which is what the
           # three extra flags below are for.
+          # --json is appended to the SAME execution that produces the SARIF. The pinned
+          # action runs `printf "%s" "$SLITHERARGS" | xargs slither "$TARGET" $SARIFFLAG ...`
+          # (entrypoint.sh line 291), so these land as trailing flags on one invocation.
+          # Verified locally: the SARIF and JSON from the dual run are byte-identical to the
+          # two single-output runs (c13d5d7f... and 054135ac...). A SECOND scan is therefore
+          # unnecessary, and with it goes any need to assert two scans used one toolchain.
+          #
+          # The raw JSON is REQUIRED, not a convenience: SARIF carries only each result's
+          # PRIMARY location and no relatedLocations, so the element chain a finding's
+          # semantic identity is built from cannot be recovered from it.
           slither-args: >-
             --compile-force-framework solc
             --solc-remaps "@openzeppelin/=node_modules/@openzeppelin/"
             --solc-args "--evm-version cancun --optimize --optimize-runs 200"
             --exclude-dependencies
+            --json prototype/vnext-kernel/slither-raw.json
           # `fail-on: none` matches production's slither.yml, and for the
           # same underlying reason: this kernel's actual security argument is
           # the authority-closure/minimum-cut analysis in AUTHORITY.md and
@@ -146,6 +164,31 @@ jobs:
         with:
           sarif_file: slither-vnext-kernel-results.sarif
           category: slither-vnext-kernel
+
+      # THE GATE THAT WAS MISSING. Slither itself stays `fail-on: none` and the complete SARIF is
+      # still uploaded, because scanner-green is not this kernel's security claim (see the Slither
+      # step above). What IS a claim is that every own-code finding has been adjudicated firsthand
+      # -- and until now nothing enforced it: MEASUREMENTS.json asserted that "the --validate gate
+      # fails CI on any untriaged finding" while no workflow ran --validate at all. That is how 21
+      # of 33 adjudicated findings silently lost their triage entries to a line shift.
+      #
+      # Runs in THIS job so it consumes the raw JSON from the SAME scan, and AFTER the SARIF
+      # upload so a validation failure can never suppress the scanner output.
+      #
+      # The subjects are read from the receipt rather than from HEAD. In a `pull_request` run HEAD
+      # is a synthetic refs/pull/N/merge commit that exists on no branch; deriving provenance from
+      # it is the exact defect evidence-subject.ts documents.
+      - name: Validate scanner triage completeness
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        run: |
+          SOURCE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').sourceSubject")"
+          TRIAGE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').triageSubject")"
+          npx tsx prototype/vnext-kernel/generate-scanner-evidence.ts \
+            --raw prototype/vnext-kernel/slither-raw.json \
+            --source-subject "$SOURCE_SUBJECT" \
+            --triage-subject "$TRIAGE_SUBJECT" \
+            --validate
+
 
   authority-completeness:
     name: Authority Completeness
