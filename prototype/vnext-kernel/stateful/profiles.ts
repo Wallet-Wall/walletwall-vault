@@ -65,6 +65,29 @@ export interface CampaignProfile {
   verifier?: VerifierKind;
   /** Born with an ECDSA-only floor. The ONLY way to reach a requirePq false -> true transition. */
   ecdsaOnlyFloor?: boolean;
+  /**
+   * With `ecdsaOnlyFloor`, commit a PQ key at genesis anyway — a legal genesis,
+   * since `initialize` refuses only `requirePq` WITH a zero commitment.
+   *
+   * Since `I-DECLARATION-EXHIBITED` this is the ONLY vault class on which the
+   * `requirePq` false -> true declaration can SUCCEED, because the satisfiability
+   * witness has something to be a witness for. Without a profile carrying it the
+   * campaign would only ever observe the REFUSAL, and the armed post-state — the
+   * one `G-PQ-COMMITMENT-SATISFIABLE` exists to police — would be unreachable.
+   */
+  commitPqKeyOnEcdsaOnlyFloor?: boolean;
+  /**
+   * Makes `ROTATE_CREDENTIAL` FABRICATE its incoming commitment on a
+   * deterministic subset of steps — a hash nothing in the campaign holds a
+   * preimage for, supplied with an empty exhibit. This is the SD-6 attack,
+   * generated rather than argued, and it is what gives `G-COMMITMENT-ATTESTED`
+   * teeth: a property whose violating transition no profile ever attempts is
+   * green for the worst possible reason.
+   *
+   * The subset is derived from the EXISTING `target` draw, so no `prng` call is
+   * added anywhere, and only the appended `commitment-forgery` profile sets it.
+   */
+  fabricateCommitments?: boolean;
   /** Shifts the ADVANCE_TIME distribution into a pending recovery executable window. */
   timeBias?: "default" | "maturation" | "duty-cycle";
   /** Proposes a LIVE verifier and rarely a stale PoP, so the recovery seam is reachable. */
@@ -285,7 +308,7 @@ export const PROFILES: readonly CampaignProfile[] = [
   {
     name: "recovery-vs-roster",
     description:
-      "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to exercise R1's generation binding end-to-end.",
+      "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to compose a rotation with a maturing request end-to-end. Until Lane SD10-I that composition was policed by the harness's R1 rule, which asserted a rotation must VOID the request; that rule was implementation-derived, contradicted I-APPROVED-REQUEST-PRESERVATION and has been retired. The composition still matters — it is where the OLD roster's total loss of FRESH authority and the survival of its already-admitted effect have to hold at the same time.",
     actors: [ALL_MATERIAL_ACTOR, ONE_GUARDIAN_ATTACKER, STRANGER],
     actorWeights: [7, 2, 1],
     weights: {
@@ -309,5 +332,120 @@ export const PROFILES: readonly CampaignProfile[] = [
     actors: [ALL_MATERIAL_ACTOR, STRANGER],
     actorWeights: [3, 7],
     weights: BROAD,
+  },
+  {
+    /**
+     * APPENDED, NOT SUBSTITUTED, and that is deliberate. Setting
+     * `commitPqKeyOnEcdsaOnlyFloor` on the existing `ecdsa-only-floor` profile
+     * would change its genesis, hence its CREATE2 salt (`genesisSalt` binds both
+     * `g.floor` and `g.pqKeyHash`), hence every history and every kill seed it
+     * carries. Appending leaves all fifteen existing profiles byte-identical and
+     * costs only the new profile's own campaigns.
+     */
+    name: "ecdsa-only-committed",
+    description:
+      "A vault born with an ECDSA-only floor but a PQ key ALREADY COMMITTED — legal, since initialize refuses only requirePq WITH a zero commitment. Since I-DECLARATION-EXHIBITED this is the only class on which the requirePq false -> true DECLARATION can succeed, so it is the only profile that reaches the armed post-state at all; the sibling ecdsa-only-floor profile reaches only the refusal. It is also the class SD-4 was reproduced on, so the recovery interlock is exercised here and nowhere else.",
+    actors: [ALL_MATERIAL_ACTOR, ECDSA_ONLY_ATTACKER, ONE_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [5, 3, 2, 2],
+    /**
+     * WEIGHTED SO THE REMEDY COMES FIRST. The declaration is ONE-SHOT — once
+     * `requirePq` holds it can never be taken again — so a profile that arms in
+     * its opening steps observes the edge exactly once, with no recovery live,
+     * and can never reach the interlock seam at all. Recovery is therefore
+     * weighted well above `SET_VERIFIER`, so a quorum-approved request is
+     * usually pending by the time the first arming attempt is generated.
+     */
+    weights: {
+      ...BROAD,
+      SET_VERIFIER: 5,
+      INITIATE_RECOVERY: 22,
+      EXECUTE_RECOVERY: 6,
+      CANCEL_RECOVERY: 3,
+      SET_GUARDIANS: 2,
+      BIND_MIGRATION: 0,
+      RETIRE: 0,
+      FACTORY_DEPLOY_TWIN: 0,
+      ADVANCE_TIME: 12,
+      SPEND: 4,
+    },
+    ecdsaOnlyFloor: true,
+    commitPqKeyOnEcdsaOnlyFloor: true,
+  },
+  {
+    /**
+     * APPENDED, never substituted. Every profile above keeps its exact action
+     * stream, kill seeds and step indices, because this one adds no `prng` draw
+     * and changes no existing profile's flags.
+     */
+    name: "commitment-forgery",
+    description:
+      "An ECDSA-only vault whose credential principal repeatedly attempts to install a PQ commitment it holds no preimage for — the SD-6 attack, generated. This is the ONLY profile on which G-COMMITMENT-ATTESTED's violating transition is ever ATTEMPTED, which is what separates 'the kernel refuses it' from 'no campaign ever tried'. A green campaign without this profile would be absent evidence.",
+    actors: [ALL_MATERIAL_ACTOR, ECDSA_ONLY_ATTACKER, ONE_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [5, 4, 2, 1],
+    weights: {
+      ...BROAD,
+      ROTATE_CREDENTIAL: 26,
+      SET_VERIFIER: 8,
+      INITIATE_RECOVERY: 8,
+      EXECUTE_RECOVERY: 5,
+      CANCEL_RECOVERY: 2,
+      SET_GUARDIANS: 2,
+      BIND_MIGRATION: 0,
+      RETIRE: 0,
+      FACTORY_DEPLOY_TWIN: 0,
+      ADVANCE_TIME: 8,
+      SPEND: 4,
+    },
+    ecdsaOnlyFloor: true,
+    commitPqKeyOnEcdsaOnlyFloor: true,
+    fabricateCommitments: true,
+  },
+  {
+    /**
+     * APPENDED (Lane W2), never substituted, for the same reason as the two
+     * profiles above it: every earlier profile keeps its exact action stream,
+     * kill seeds and step indices. This is the ONLY profile that weights
+     * `CANCEL_RECOVERY_BY_QUORUM`, so it is the only place K-9 mechanism B is
+     * generated at all — and it is weighted so that the lifecycle seams the W2
+     * contract requires the campaign to REACH (an exhausted budget, an expired
+     * request, cancellation followed by re-initiation, a recovery followed by a
+     * later recovery, a refused live overwrite) actually occur under the fixed
+     * seed set; StatefulAuthorityFuzz.test.ts asserts each of them non-zero.
+     *
+     * TWO adversaries share the campaign with the honest actor: the ECDSA-only
+     * credential, which may challenge (bounded) but must never quorum-cancel,
+     * and the TWO-guardian actor, which sits exactly AT the guardian cut and may
+     * therefore cancel — the model must call that entitled, not a violation.
+     * The ONE-guardian actor is the below-cut principal whose cancellation must
+     * fail as QuorumNotMet and, when it does not, is the P-CUT violation that
+     * kills a kernel whose quorum gate on mechanism B is missing or wrong.
+     */
+    name: "recovery-lifecycle",
+    description:
+      "The K-9 lifecycle under both principals: bounded credential challenges to exhaustion, guardian-quorum cancellations at and below the cut, expiry with no sweeper, re-initiation after cancellation and after expiry, refused overwrite of a live request, and recovery followed by a later recovery — the seams the W2 contract requires the campaign to reach rather than assume.",
+    actors: [ALL_MATERIAL_ACTOR, ECDSA_ONLY_ATTACKER, TWO_GUARDIAN_ATTACKER, ONE_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [5, 3, 3, 2, 1],
+    weights: {
+      ...BROAD,
+      INITIATE_RECOVERY: 18,
+      CANCEL_RECOVERY: 12,
+      CANCEL_RECOVERY_BY_QUORUM: 12,
+      EXECUTE_RECOVERY: 12,
+      ADVANCE_TIME: 22,
+      ROTATE_CREDENTIAL: 6,
+      SET_GUARDIANS: 2,
+      SPEND: 4,
+      SET_VERIFIER: 3,
+      SET_POLICY: 2,
+      ENTER_CONTAINMENT: 3,
+      BIND_MIGRATION: 1,
+      RETIRE: 0,
+      EGRESS_NATIVE: 0,
+      EGRESS_TOKEN: 0,
+      REPLAY_PAST_CALL: 6,
+      FACTORY_DEPLOY_TWIN: 0,
+    },
+    timeBias: "maturation",
+    honestRecoveryBias: true,
   },
 ];

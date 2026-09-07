@@ -17,6 +17,7 @@
  * considered and why it is absent.
  */
 import { ethers } from "../test/connection.js";
+import { pqHash } from "./world.js";
 import type { World } from "./world.js";
 
 /** A snapshot of every security-relevant storage slot the kernel exposes. */
@@ -28,6 +29,22 @@ export interface KernelSnapshot {
   containmentUsedInWindow: bigint;
   ecdsaSigner: string;
   pqPublicKeyHash: string;
+  /**
+   * Whether the stored commitment is one this campaign HOLDS A PREIMAGE FOR.
+   *
+   * A preimage is not decidable from storage, so this is the one snapshot field
+   * derived from the harness's own key material rather than read from the chain.
+   * The campaign generates every PQ key from a label, so the set of commitments
+   * it can ever exhibit is enumerable, and a stored value outside that set is
+   * one that nothing on chain ever witnessed. Zero counts as attestable because
+   * it is the kernel's representation of "no PQ credential", not a commitment.
+   *
+   * Without this field `G-COMMITMENT-ATTESTED` would be undecidable, and
+   * `G-PQ-COMMITMENT-SATISFIABLE`'s zero-only check would remain the whole of
+   * the oracle's vision — which is exactly how SD-6 and SD-7 stayed invisible to
+   * 224 green campaigns.
+   */
+  commitmentAttestable: boolean;
   credentialGeneration: bigint;
   floor: { requirePq: boolean; pqParamLevel: bigint; pqPublicKeyLength: bigint; pqSignatureLength: bigint };
   pqVerifier: string;
@@ -57,6 +74,17 @@ export interface KernelSnapshot {
   nativeBalance: bigint;
   tokenBalance: bigint;
   blockTimestamp: bigint;
+  /**
+   * DERIVED, not read: `recovery.active && blockTimestamp < recovery.expiresAt`
+   * — the kernel's `_recoveryIsLive()` recomputed by the ORACLE from the two
+   * public tuple fields and the block, exactly as `safeStateEffective` is
+   * derived for containment (Lane W2, Recovery Amendment section 3). The kernel
+   * deliberately exposes no getter for it (Option E0), so this is the oracle's
+   * own definition of liveness and cannot be copied from the implementation.
+   * `recovery.active` above stays the RAW stored flag: request AUTHORITY as
+   * written, which after expiry reads true for a request that carries nothing.
+   */
+  recoveryEffectivelyLive: boolean;
 }
 
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -69,6 +97,23 @@ const ZERO_HASH = "0x" + "0".repeat(64);
  */
 let cachedToken: ethers.Contract | null = null;
 let cachedTokenAddress = "";
+
+/** Cached per world label — the key set is fixed once the world is built. */
+const attestableCache = new Map<string, ReadonlySet<string>>();
+
+/**
+ * Every commitment this campaign can exhibit a preimage for: the vault's own PQ
+ * key, every spare the action layer may rotate or recover to, and zero. Any
+ * other value in `pqPublicKeyHash` was admitted without a witness.
+ */
+function attestableCommitments(world: World): ReadonlySet<string> {
+  const hit = attestableCache.get(world.opts.label);
+  if (hit !== undefined) return hit;
+  const set = new Set<string>([ZERO_HASH]);
+  for (const k of [world.pqKey, ...world.sparePq]) set.add(pqHash(k).toLowerCase());
+  attestableCache.set(world.opts.label, set);
+  return set;
+}
 
 export async function snapshot(world: World): Promise<KernelSnapshot> {
   const v = world.vault;
@@ -130,6 +175,8 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     nonce3 as bigint,
   ];
 
+  const nowTs = BigInt((block as { timestamp?: number } | null)?.timestamp ?? 0);
+
   return {
     safeStateStored: Number(safeStateStored),
     safeStateEffective: Number(safeStateEffective),
@@ -138,6 +185,7 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     containmentUsedInWindow,
     ecdsaSigner,
     pqPublicKeyHash,
+    commitmentAttestable: attestableCommitments(world).has(String(pqPublicKeyHash).toLowerCase()),
     credentialGeneration,
     floor: {
       requirePq: floorRaw[0] as boolean,
@@ -171,7 +219,8 @@ export async function snapshot(world: World): Promise<KernelSnapshot> {
     },
     nativeBalance: nativeBalance as bigint,
     tokenBalance: tokenBalance as bigint,
-    blockTimestamp: BigInt((block as { timestamp?: number } | null)?.timestamp ?? 0),
+    blockTimestamp: nowTs,
+    recoveryEffectivelyLive: (recoveryRaw[7] as boolean) && nowTs < (recoveryRaw[4] as bigint),
   };
 }
 
@@ -247,77 +296,77 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
       return null;
     },
   },
+  /*
+   * G-FLOOR-SANE — RETIRED IN LANE SD5-I, and retired because it would now be
+   * WRONG rather than merely idle. The distinction matters, so it is recorded.
+   *
+   * WHAT IT ASSERTED. That a mandatory PQ conjunct always declares a shape
+   * satisfiable at both ends: 0 < pqPublicKeyLength <= MAX_PQ_LENGTH, likewise
+   * for pqSignatureLength. Its enforcing construct was `_requireSaneFloor`.
+   *
+   * WHY IT CANNOT SIMPLY BE LEFT IN PLACE. This file is an ORACLE OVER OBSERVED
+   * STATE, not a mirror of the implementation. SD5-I made `_requireSaneFloor`
+   * vacuous, so a campaign may now legitimately reach `requirePq == true` with a
+   * zero or oversized length — and this oracle would have reported that as a
+   * VIOLATION. It is not one: the lengths are
+   * NON_AUTHORITATIVE_SECURITY_METADATA and no authorization, possession,
+   * satisfiability or downgrade path reads them, so no shape is "unsatisfiable"
+   * any more. Leaving the property would have made the campaign fail on
+   * conformant behaviour — a FALSE POSITIVE, which is worse than a gap because it
+   * would have been read as evidence the amendment broke something.
+   *
+   * THAT IT NEVER FIRED IS LUCK, NOT CORRECTNESS. It survived the post-amendment
+   * campaign only because no profile happened to generate a zero-length armed
+   * floor. An oracle that passes for want of an input is not passing.
+   *
+   * WHAT REPLACES IT. Nothing, deliberately, and the reason is the finding: the
+   * property it encoded — "the declared shape must be satisfiable" — presupposed
+   * that the shape CONSTRAINS satisfaction. It no longer does. The requirement
+   * that survives is `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`, which is
+   * the OPPOSITE quantification: moving these fields must not change whether an
+   * approved recovery executes. That is measured in
+   * test/Sd1RecoveryFloorBinding.test.ts rather than as a campaign global.
+   *
+   * MAX_PQ_LENGTH now has no reader in the kernel and is retained for ABI only;
+   * the getter is still pinned against the contract in
+   * test/Sd1RecoveryFloorBinding.test.ts, so its VALUE cannot drift unnoticed
+   * even though nothing enforces it.
+   */
   {
     /**
-     * A mandatory PQ conjunct must declare a shape that is satisfiable at BOTH
-     * ends. Zero is unsatisfiable because no preimage of a committed key has it;
-     * an unbounded `uint32` is unsatisfiable because no block could carry the
-     * calldata. The upper half is a REQUIREMENT-side property, not a restatement
-     * of the implementation: a kernel that bounded the shape more tightly still
-     * passes it.
-     */
-    name: "G-FLOOR-SANE",
-    source:
-      "_requireSaneFloor: requirePq implies 0 < pqPublicKeyLength <= MAX_PQ_LENGTH and 0 < pqSignatureLength <= MAX_PQ_LENGTH, on both initialize and setVerifier",
-    check: (s) => {
-      if (!s.floor.requirePq) return null;
-      if (s.floor.pqPublicKeyLength === 0n || s.floor.pqSignatureLength === 0n) {
-        return "requirePq is set with a zero-length key or signature shape";
-      }
-      // The literal mirrors VaultKernelPrototype.MAX_PQ_LENGTH. It is written out
-      // rather than read from the kernel deliberately: this file is the ORACLE,
-      // and an oracle that sources its threshold from the implementation cannot
-      // detect the implementation moving it. Mutant M18's sibling reasoning
-      // applies — the number is pinned in test/Sd1RecoveryFloorBinding.test.ts
-      // against the contract's own getter, so drift is caught there.
-      if (s.floor.pqPublicKeyLength > 65535n || s.floor.pqSignatureLength > 65535n) {
-        return (
-          "requirePq is set with a shape beyond any standardised PQ scheme (" +
-          s.floor.pqPublicKeyLength +
-          "/" +
-          s.floor.pqSignatureLength +
-          "), which the freeze would make a permanently unsatisfiable floor"
-        );
-      }
-      return null;
-    },
-  },
-  {
-    /**
-     * `I-FLOOR-SHAPE-IMMUTABLE` is the SD-1 remediation, and this is its
-     * REQUIREMENT-side statement rather than a mirror of the new comparisons.
-     * The requirement is that no principal may move state the recovery
-     * satisfiability condition reads — `_requireIncomingPossession` measures an
-     * already-quorum-approved recovery against the two STRUCTURAL fields LIVE,
-     * and no guardian path can repair them, so a kernel that lets them move
-     * while a PQ conjunct is mandatory hands the credential an uncounted veto. A
-     * kernel that froze them even harder still passes this.
+     * `I-NO-SILENT-DOWNGRADE-G1` — NARROWED IN LANE SD5-I, and the narrowing is
+     * the finding rather than a concession.
+     *
+     * This property formerly also required that `pqParamLevel` never decrease and
+     * that neither structural length move while a PQ conjunct was mandatory
+     * (`I-FLOOR-SHAPE-IMMUTABLE`, the SD-1 remediation). Both clauses are gone
+     * because the state they guarded is no longer security authority:
+     *
+     *   - the two lengths are NON_AUTHORITATIVE_SECURITY_METADATA. Freezing them
+     *     was SD-1's way of keeping credential-writable state out of an approved
+     *     recovery's satisfiability condition; SD5-I reaches the same goal by
+     *     making the state UNREAD, which is strictly stronger. What SD-1 bought at
+     *     the price of PERMANENT_PQ_AGILITY_LOSS — a well-formed ML-DSA-44 vault
+     *     could never reach ML-DSA-87, attacker or no attacker — is now free.
+     *     The requirement-side statement lives on as
+     *     `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`.
+     *   - `pqParamLevel` is the flat strength scalar architecture section 12
+     *     WITHDREW as "a scalar asserts a total order that does not exist". A
+     *     ratchet over it asserted an ordering the kernel cannot justify.
+     *
+     * WHAT SURVIVES IS THE WHOLE GENERATION-1 CLAIM: a mandatory PQ conjunct may
+     * not be silently disabled. Generation 1 makes NO claim about WHICH
+     * cryptographic relation the admitted verifier implements
+     * (`GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`, residual SD-11), so this
+     * governs the requirePq conjunct and NOT the strength behind it. A kernel
+     * that froze more still passes; a kernel that lets requirePq fall does not.
      */
     name: "G-FLOOR-NO-DOWNGRADE",
     source:
-      "_requireNoDowngrade: requirePq may not go true -> false, pqParamLevel may not decrease, and neither structural length may change while requirePq already holds (I-FLOOR-SHAPE-IMMUTABLE)",
+      "_requireNoDowngrade: requirePq may not go true -> false (I-NO-SILENT-DOWNGRADE-G1). The pqParamLevel ratchet and the two-length freeze were removed in SD5-I with those fields' authority.",
     check: (s, p) => {
       if (!p) return null;
       if (p.floor.requirePq && !s.floor.requirePq) return "requirePq was downgraded from true to false";
-      if (s.floor.pqParamLevel < p.floor.pqParamLevel) return "pqParamLevel decreased";
-      if (p.floor.requirePq && s.floor.pqPublicKeyLength !== p.floor.pqPublicKeyLength) {
-        return (
-          "pqPublicKeyLength moved (" +
-          p.floor.pqPublicKeyLength +
-          " -> " +
-          s.floor.pqPublicKeyLength +
-          ") while a PQ conjunct was already mandatory"
-        );
-      }
-      if (p.floor.requirePq && s.floor.pqSignatureLength !== p.floor.pqSignatureLength) {
-        return (
-          "pqSignatureLength moved (" +
-          p.floor.pqSignatureLength +
-          " -> " +
-          s.floor.pqSignatureLength +
-          ") while a PQ conjunct was already mandatory"
-        );
-      }
       return null;
     },
   },
@@ -400,18 +449,172 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
   },
   {
     name: "G-CHALLENGE-CAP",
-    source: "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1",
+    source:
+      "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1; cancelRecoveryByQuorum never touches the field",
     check: (s) =>
       s.recovery.challengesUsed > 2n ? "challengesUsed " + s.recovery.challengesUsed + " exceeds CHALLENGE_LIMIT" : null,
   },
   {
+    /**
+     * `I-RECOVERY-CHALLENGE-EPOCH` (Lane W2, Recovery Amendment section 2), on
+     * the REQUIREMENT side and decidable from two consecutive snapshots alone.
+     * The credential's budget may move in exactly two ways: +1 on a credential
+     * challenge, and to 0 at ONE transition — a successful guardian recovery —
+     * which is itself recognisable from storage: the stored proposal becomes the
+     * installed credential and verifier, the credential generation advances by
+     * one, and the request is deleted. Every other exit (credential challenge,
+     * quorum cancellation, expiry, fresh initiation, ordinary rotation) must
+     * leave the count standing. A kernel that refunds on ANY of those, or that
+     * fails to reset on success, fails this; a kernel that bounded the budget
+     * more tightly still passes, which is what makes it a requirement and not a
+     * mirror.
+     */
+    name: "G-CHALLENGE-EPOCH",
+    source:
+      "challengesUsed has exactly two writers — cancelRecovery (`+= 1`, effectively-live request only) and executeRecovery's whole-struct `delete recovery`, the documented reset boundary. initiateRecovery carries it forward (`challengesUsed: recovery.challengesUsed`), cancelRecoveryByQuorum clears only `active`, rotateCredential never references `recovery`, and expiry writes nothing",
+    check: (s, p) => {
+      if (!p) return null;
+      const before = p.recovery.challengesUsed;
+      const after = s.recovery.challengesUsed;
+      const recoveredThisStep =
+        p.recovery.active &&
+        !s.recovery.active &&
+        s.recovery.proposedSigner === ZERO &&
+        s.recovery.expiresAt === 0n &&
+        s.credentialGeneration === p.credentialGeneration + 1n &&
+        s.ecdsaSigner.toLowerCase() === p.recovery.proposedSigner.toLowerCase() &&
+        s.pqVerifier.toLowerCase() === p.recovery.proposedVerifier.toLowerCase();
+      if (recoveredThisStep) {
+        return after === 0n
+          ? null
+          : "a guardian recovery executed (credential generation " +
+              p.credentialGeneration +
+              " -> " +
+              s.credentialGeneration +
+              ") but challengesUsed is " +
+              after +
+              ", not 0 — the challenge epoch was not reset at the authority transition";
+      }
+      if (after < before) {
+        return (
+          "challengesUsed went " +
+          before +
+          " -> " +
+          after +
+          " with no successful guardian recovery in the step — the challenge epoch was REFUNDED by a request-lifetime event"
+        );
+      }
+      if (after > before + 1n) {
+        return "challengesUsed jumped " + before + " -> " + after + " in one step; only a single credential challenge may increment it";
+      }
+      return null;
+    },
+  },
+  {
+    /**
+     * `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, over the WHOLE ingress surface
+     * rather than over any one function. `pqPublicKeyHash` has exactly two write
+     * sites — `initialize` and `_installCredential` — and `_installCredential`
+     * has exactly two callers, so this STATE-shaped property covers all three
+     * admitting transitions (genesis, rotation, recovery) at once. A
+     * transition-shaped version would cover only the two that occur mid-campaign
+     * and would miss genesis entirely, which is where SD-7 lived.
+     *
+     * THE FOUR STATES THIS ORACLE DISTINGUISHES, because collapsing them is how
+     * the previous oracle missed both defects:
+     *   ADMITTED   — a value is in `pqPublicKeyHash`. Visible to every property.
+     *   EXHIBITED  — a preimage was shown to the kernel when it was admitted.
+     *                Visible ONLY through `commitmentAttestable`.
+     *   ACTIVATED  — `floor.requirePq` holds, so a SHAPE now governs the
+     *                commitment. `G-FLOOR-SANE` and `G-FLOOR-NO-DOWNGRADE`.
+     *   REQUIRED   — `_authorise` consults it, which is implied by ACTIVATED.
+     * This property is exactly the ADMITTED-implies-EXHIBITED edge, and it is
+     * deliberately INDEPENDENT of activation: a dormant commitment is still a
+     * credential, and SD-6's whole harm was that nothing checked it while it
+     * was dormant.
+     *
+     * WHAT IT DOES NOT SEE, stated so the greenness is not over-read: an
+     * exhibited preimage need not be a WELL-FORMED KEY of any scheme. No oracle
+     * over storage can see that, and no admission check can either — the only
+     * party who could judge it is a verifier the admitting principal chooses.
+     * That residue is carried as SD-8.
+     */
+    name: "G-COMMITMENT-ATTESTED",
+    source:
+      "every accepted transition that writes a non-zero pqPublicKeyHash must exhibit a preimage of the value being written, so every reachable state holds either bytes32(0) or a commitment some principal demonstrated a preimage for — initialize (base case), rotateCredential and executeRecovery (inductive step, via _requireIncomingPossession)",
+    check: (s) =>
+      s.commitmentAttestable
+        ? null
+        : "pqPublicKeyHash " +
+          s.pqPublicKeyHash +
+          " is in storage but no principal ever exhibited a preimage for it — an unattested commitment was admitted",
+  },
+  {
+    /**
+     * The OBSERVABLE half of "a transition affecting authentication requirements
+     * must leave the vault in a satisfiable authentication state". The oracle
+     * cannot know the preimage LENGTH of a commitment — that is exactly what
+     * `I-DECLARATION-EXHIBITED` makes the kernel prove on chain — but it can see
+     * the degenerate case, where no preimage exists at all. Together with
+     * `G-FLOOR-SANE`, which bounds the declared shape at both ends, this is
+     * everything about post-transition satisfiability that is decidable from
+     * storage alone.
+     *
+     * It was SD-3's property, and while SD-3 stood it sat in
+     * `KNOWN_DEFECT_PROPERTIES`, so campaign violations were moved out of
+     * `violations` and merely counted. With SD-3 remediated it leaves that set
+     * automatically, and this becomes a HARD invariant with the whole campaign
+     * behind it.
+     */
     name: "G-PQ-COMMITMENT-SATISFIABLE",
     source:
-      "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, because a mandatory PQ conjunct with no committed key is unsatisfiable and bricks spending",
+      "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, and setVerifier's I-DECLARATION-EXHIBITED refuses the requirePq false -> true edge unless a preimage of the committed hash is exhibited at the newly declared length — a mandatory PQ conjunct with no satisfiable committed key is unsatisfiable and bricks spending",
     check: (s) =>
       s.floor.requirePq && s.pqPublicKeyHash === ZERO_HASH
         ? "requirePq is set while pqPublicKeyHash is zero — the conjunct keccak256(pqKey) == pqPublicKeyHash is unsatisfiable, so no spend can ever authorise"
         : null,
+  },
+  {
+    /**
+     * `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY`, stated on the REQUIREMENT
+     * side: an accepted configuration transition may not silently reduce the
+     * satisfiability of a recovery the guardians have ALREADY approved.
+     *
+     * TRANSITION-SHAPED, not state-shaped, and deliberately so: the harm is the
+     * MOMENT the requirements move under a live request, not the resulting
+     * state. A state-shaped version would re-fire on every later step and inflate
+     * the violation count by the campaign's tail length.
+     *
+     * The "live" test is the exact request set `executeRecovery` would still
+     * admit — active, inside the HALF-OPEN window `[executableAt, expiresAt)`,
+     * generation-current — so a request nothing could have executed anyway is
+     * correctly not counted as harmed. Lane W2 fixed the boundary here from `<=`
+     * to `<` together with the kernel's own guard (SD-9e): at `expiresAt` the
+     * request is already expired on both sides. A kernel that refused MORE
+     * transitions than this still passes, which is what makes this a requirement
+     * and not a mirror of the implementation.
+     */
+    name: "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
+    source:
+      "OPEN REQUIREMENT — NO KERNEL MECHANISM ESTABLISHES THIS, AND THAT IS DELIBERATE. Every other entry's `source` names the code that makes the property hold; this one has none, and an earlier revision of this field wrongly named `setVerifier`'s `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY` as though it did. No such identifier exists in the Solidity: `setVerifier`'s 'SD-4 IS NOT CLOSED HERE' block in contracts/VaultKernelPrototype.sol records that precisely this interlock 'was written, measured and REMOVED', because refusing the declaration while a request is live hands the quorum an unbounded veto. The requirement stands anyway — an accepted configuration transition may not silently reduce the satisfiability of an already-quorum-approved recovery — so a firing here is a FINDING (this is how SD-4 is detected), never a regression. CONSUMERS MUST NOT READ THE REMOVED INTERLOCK AS THE INTENDED SEMANTICS: a remediation that leaves the edge permitted and instead lets the quorum re-authorise the request repairs the harm while still tripping this predicate, because the predicate observes the TRANSITION and cannot observe the repair. Since Lane W2 the architecture-native repair is explicit: guardian-quorum cancellation followed by a correctly-shaped fresh recovery (Recovery Amendment section 4). See test/Sd4PropertyOverApproximation.test.ts and defects.ts SD-4.",
+    check: (s, p) => {
+      if (!p) return null;
+      const wasLive =
+        p.recovery.active &&
+        s.blockTimestamp < p.recovery.expiresAt &&
+        p.recovery.boundGuardianGeneration === p.guardianGeneration;
+      if (!wasLive) return null;
+      if (!p.floor.requirePq && s.floor.requirePq) {
+        return (
+          "the PQ conjunct was armed while a quorum-approved recovery was still executable (proposed " +
+          p.recovery.proposedSigner +
+          ", expires " +
+          p.recovery.expiresAt +
+          ") — that request is now measured against authentication requirements which did not exist when it was approved"
+        );
+      }
+      return null;
+    },
   },
 ];
 
@@ -433,7 +636,7 @@ export const REJECTED_INVARIANTS: readonly { name: string; whyRejected: string }
   {
     name: "recovery fields are zeroed whenever active is false",
     whyRejected:
-      "NOT SOURCE-BOUND. cancelRecovery sets active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour. Asserting the stronger form would fail on correct code.",
+      "NOT SOURCE-BOUND. cancelRecovery and cancelRecoveryByQuorum both set active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`, and that delete is the challenge-epoch reset boundary — Lane W2), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour, as is active == true alongside an expired request (expiry writes nothing; liveness is derived, see `recoveryEffectivelyLive`). Asserting the stronger form would fail on correct code.",
   },
   {
     name: "guardianThreshold <= roster size",

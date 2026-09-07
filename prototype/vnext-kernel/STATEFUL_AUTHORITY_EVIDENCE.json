@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-stateful-authority-evidence.v1",
-  "head": "527b2f85f829550b583b461a0e2445a45825e60a",
-  "tree": "85c0c7e25a5754543e59054e3f927bc5a25db2b0",
+  "head": "88ee0c096c9983c864535484b6829b76abbb3d18",
+  "tree": "7959e53a4e43885c6082a62a499d21d6ce64e449",
   "lane": {
     "question": "Can individually-valid, individually-correctly-gated transitions be COMPOSED OVER TIME into an outcome below its declared authority cut?",
     "distinctFrom": {
@@ -66,6 +66,10 @@
     "CONTAINMENT": {
       "cut": 2,
       "source": "AUTHORITY.md-section-3"
+    },
+    "RECOVERY_QUORUM_CANCEL": {
+      "cut": 2,
+      "source": "DERIVED-FROM-SOURCE"
     }
   },
   "campaigns": {
@@ -218,7 +222,7 @@
       },
       {
         "name": "recovery-vs-roster",
-        "description": "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to exercise R1's generation binding end-to-end.",
+        "description": "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to compose a rotation with a maturing request end-to-end. Until Lane SD10-I that composition was policed by the harness's R1 rule, which asserted a rotation must VOID the request; that rule was implementation-derived, contradicted I-APPROVED-REQUEST-PRESERVATION and has been retired. The composition still matters — it is where the OLD roster's total loss of FRESH authority and the survival of its already-admitted effect have to hold at the same time.",
         "actors": [
           "honest",
           "attacker-one-guardian",
@@ -232,6 +236,43 @@
         "description": "An adversary holding NOTHING. Every permissionless path and every replay, with no authority at all.",
         "actors": [
           "honest",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
+        "name": "ecdsa-only-committed",
+        "description": "A vault born with an ECDSA-only floor but a PQ key ALREADY COMMITTED — legal, since initialize refuses only requirePq WITH a zero commitment. Since I-DECLARATION-EXHIBITED this is the only class on which the requirePq false -> true DECLARATION can succeed, so it is the only profile that reaches the armed post-state at all; the sibling ecdsa-only-floor profile reaches only the refusal. It is also the class SD-4 was reproduced on, so the recovery interlock is exercised here and nowhere else.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": true
+      },
+      {
+        "name": "commitment-forgery",
+        "description": "An ECDSA-only vault whose credential principal repeatedly attempts to install a PQ commitment it holds no preimage for — the SD-6 attack, generated. This is the ONLY profile on which G-COMMITMENT-ATTESTED's violating transition is ever ATTEMPTED, which is what separates 'the kernel refuses it' from 'no campaign ever tried'. A green campaign without this profile would be absent evidence.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": true
+      },
+      {
+        "name": "recovery-lifecycle",
+        "description": "The K-9 lifecycle under both principals: bounded credential challenges to exhaustion, guardian-quorum cancellations at and below the cut, expiry with no sweeper, re-initiation after cancellation and after expiry, refused overwrite of a live request, and recovery followed by a later recovery — the seams the W2 contract requires the campaign to reach rather than assume.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-two-guardians",
+          "attacker-one-guardian",
           "stranger"
         ],
         "verifierAtGenesis": "honest",
@@ -265,8 +306,8 @@
       "medium": 65,
       "deep": 150
     },
-    "plannedCampaigns": 210,
-    "plannedTransitions": 11400,
+    "plannedCampaigns": 252,
+    "plannedTransitions": 13680,
     "randomnessInRequiredCI": "NONE — the required check runs exactly the fixed seeds above"
   },
   "properties": {
@@ -321,12 +362,8 @@
         "source": "_consume is the only writer of nonces[domain] and sets it to nonce + 1 after requiring equality"
       },
       {
-        "name": "G-FLOOR-SANE",
-        "source": "_requireSaneFloor: requirePq implies 0 < pqPublicKeyLength <= MAX_PQ_LENGTH and 0 < pqSignatureLength <= MAX_PQ_LENGTH, on both initialize and setVerifier"
-      },
-      {
         "name": "G-FLOOR-NO-DOWNGRADE",
-        "source": "_requireNoDowngrade: requirePq may not go true -> false, pqParamLevel may not decrease, and neither structural length may change while requirePq already holds (I-FLOOR-SHAPE-IMMUTABLE)"
+        "source": "_requireNoDowngrade: requirePq may not go true -> false (I-NO-SILENT-DOWNGRADE-G1). The pqParamLevel ratchet and the two-length freeze were removed in SD5-I with those fields' authority."
       },
       {
         "name": "G-VERIFIER-HAS-CODE",
@@ -362,11 +399,23 @@
       },
       {
         "name": "G-CHALLENGE-CAP",
-        "source": "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1"
+        "source": "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1; cancelRecoveryByQuorum never touches the field"
+      },
+      {
+        "name": "G-CHALLENGE-EPOCH",
+        "source": "challengesUsed has exactly two writers — cancelRecovery (`+= 1`, effectively-live request only) and executeRecovery's whole-struct `delete recovery`, the documented reset boundary. initiateRecovery carries it forward (`challengesUsed: recovery.challengesUsed`), cancelRecoveryByQuorum clears only `active`, rotateCredential never references `recovery`, and expiry writes nothing"
+      },
+      {
+        "name": "G-COMMITMENT-ATTESTED",
+        "source": "every accepted transition that writes a non-zero pqPublicKeyHash must exhibit a preimage of the value being written, so every reachable state holds either bytes32(0) or a commitment some principal demonstrated a preimage for — initialize (base case), rotateCredential and executeRecovery (inductive step, via _requireIncomingPossession)"
       },
       {
         "name": "G-PQ-COMMITMENT-SATISFIABLE",
-        "source": "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, because a mandatory PQ conjunct with no committed key is unsatisfiable and bricks spending"
+        "source": "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, and setVerifier's I-DECLARATION-EXHIBITED refuses the requirePq false -> true edge unless a preimage of the committed hash is exhibited at the newly declared length — a mandatory PQ conjunct with no satisfiable committed key is unsatisfiable and bricks spending"
+      },
+      {
+        "name": "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
+        "source": "OPEN REQUIREMENT — NO KERNEL MECHANISM ESTABLISHES THIS, AND THAT IS DELIBERATE. Every other entry's `source` names the code that makes the property hold; this one has none, and an earlier revision of this field wrongly named `setVerifier`'s `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY` as though it did. No such identifier exists in the Solidity: `setVerifier`'s 'SD-4 IS NOT CLOSED HERE' block in contracts/VaultKernelPrototype.sol records that precisely this interlock 'was written, measured and REMOVED', because refusing the declaration while a request is live hands the quorum an unbounded veto. The requirement stands anyway — an accepted configuration transition may not silently reduce the satisfiability of an already-quorum-approved recovery — so a firing here is a FINDING (this is how SD-4 is detected), never a regression. CONSUMERS MUST NOT READ THE REMOVED INTERLOCK AS THE INTENDED SEMANTICS: a remediation that leaves the edge permitted and instead lets the quorum re-authorise the request repairs the harm while still tripping this predicate, because the predicate observes the TRANSITION and cannot observe the repair. Since Lane W2 the architecture-native repair is explicit: guardian-quorum cancellation followed by a correctly-shaped fresh recovery (Recovery Amendment section 4). See test/Sd4PropertyOverApproximation.test.ts and defects.ts SD-4."
       }
     ],
     "rejectedInvariants": [
@@ -380,7 +429,7 @@
       },
       {
         "name": "recovery fields are zeroed whenever active is false",
-        "whyRejected": "NOT SOURCE-BOUND. cancelRecovery sets active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour. Asserting the stronger form would fail on correct code."
+        "whyRejected": "NOT SOURCE-BOUND. cancelRecovery and cancelRecoveryByQuorum both set active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`, and that delete is the challenge-epoch reset boundary — Lane W2), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour, as is active == true alongside an expired request (expiry writes nothing; liveness is derived, see `recoveryEffectivelyLive`). Asserting the stronger form would fail on correct code."
       },
       {
         "name": "guardianThreshold <= roster size",
@@ -532,35 +581,38 @@
         "rationale": "PHASE 8. `_effectiveState` stops honouring wall-clock expiry, so the STORED value and the ENFORCED value diverge: observation and enforcement contradict each other, which is the stale-state hazard this getter exists to prevent."
       },
       {
-        "id": "M16-recovery-ignores-roster-generation",
-        "expectedProperty": "P-CUT/CREDENTIAL_REPLACEMENT",
+        "id": "M19-declaration-not-exhibited",
+        "expectedProperty": "G-PQ-COMMITMENT-SATISFIABLE",
         "profiles": [
-          "recovery-vs-roster",
-          "recovery-composition"
+          "ecdsa-only-floor",
+          "ecdsa-only-committed"
         ],
-        "rationale": "R1. executeRecovery stops rejecting a roster change since initiation, so a recovery approved by the OLD constituency executes against a NEW one — a stale authorization surviving the transition that should have killed it."
+        "rationale": "SD-3, REINTRODUCED — NARROWED IN LANE SD5-I to the surviving conjunct. `I-DECLARATION-EXHIBITED` formerly had two legs, a LENGTH and a PREIMAGE; SD5-I removed the length leg with the field's authority, and this mutant now deletes the leg that remains. `setVerifier` may again arm the PQ conjunct against a commitment no code has ever measured — including the zero commitment `initialize` explicitly refuses. The narrowing does NOT weaken the mutant: SD-5 Form B reproduced against an HONEST incumbent key at the CORRECT key length, so the length leg never bound the reachable capture and the preimage leg is the one carrying the invariant's whole content. The killing property is the one SD-3 was filed under, and it only became ENFORCEABLE when SD-3 left KNOWN_DEFECT_PROPERTIES."
       },
       {
-        "id": "M17-floor-shape-mutable-again",
-        "expectedProperty": "G-FLOOR-NO-DOWNGRADE",
+        "id": "M20-declaration-unbound-from-the-commitment",
+        "expectedProperty": "G-PQ-COMMITMENT-SATISFIABLE",
         "profiles": [
-          "ecdsa-only-attacker",
-          "recovery-composition",
-          "recovery-maturation",
-          "mixed-roots-attacker"
+          "ecdsa-only-floor",
+          "ecdsa-only-committed"
         ],
-        "rationale": "SD-1, REINTRODUCED. Deletes `I-FLOOR-SHAPE-IMMUTABLE` from `_requireNoDowngrade`, restoring the exact defect the remediation closed: `setVerifier` may move the two STRUCTURAL floor fields again, and `_requireIncomingPossession` measures an already-quorum-approved recovery against them LIVE. Since no guardian path writes `securityFloor`, one such move is an UNCOUNTED veto over guardian recovery — `challengesUsed` never advances. It is killed by the transition-level property, not by a downstream revert, so the kill is attributed to the clause that was removed."
+        "rationale": "REMOVE THE BINDING TO THE COMMITTED MATERIAL while keeping the shape check — the half of `I-DECLARATION-EXHIBITED` that carries all of its meaning. The declaration still looks witnessed, because a byte string of the declared length is still demanded, but that string no longer has to be the vault's key: any blob of the right size passes, so a ZERO-commitment vault arms again and the exact SD-3 dead state returns. It is distinct from M19, which deletes the clause outright, and it is the mutant that proves the shape leg alone is worthless."
       },
       {
-        "id": "M18-floor-shape-freeze-is-one-sided",
-        "expectedProperty": "G-FLOOR-NO-DOWNGRADE",
+        "id": "M21-admission-not-exhibited",
+        "expectedProperty": "G-COMMITMENT-ATTESTED",
         "profiles": [
-          "ecdsa-only-attacker",
-          "recovery-composition",
-          "recovery-maturation",
-          "mixed-roots-attacker"
+          "commitment-forgery"
         ],
-        "rationale": "SD-1, REINTRODUCED IN ONE DIRECTION ONLY — the subtler half, and the one a shrink-only campaign cannot see. `I-FLOOR-SHAPE-IMMUTABLE` is an INEQUALITY because `_requireIncomingPossession` compares the shape for EXACT EQUALITY: growing 1312 -> 2000 denies a quorum-approved recovery exactly as shrinking 1312 -> 1 does. Weakening the clause to `<` reads like a downgrade check and passes any campaign that only ever shrinks. It is killed only because `actions.ts` directs the poisoning attempt UPWARD wherever the clause is armed — a choice that costs no prng draw and moves no reachable state, since on the correct kernel a grow and a shrink revert `Downgrade` identically. That is the entire reason the direction is chosen rather than fixed."
+        "rationale": "SD-6, REINTRODUCED. Deletes `I-COMMITMENT-EXHIBITED-AT-ADMISSION`'s dormant clause, so `_requireIncomingPossession` again returns before every PQ check while `requirePq` is false, and BOTH of its callers — `rotateCredential` and `executeRecovery` — write a commitment attested by nothing. Killed by the property that watches the whole ingress surface rather than any one function."
+      },
+      {
+        "id": "M22-admission-bound-to-the-OUTGOING-commitment",
+        "expectedProperty": "G-COMMITMENT-ATTESTED",
+        "profiles": [
+          "commitment-forgery"
+        ],
+        "rationale": "BIND THE WRONG VARIABLE. The clause still runs, still demands a preimage and still reverts on a mismatch — but it measures the exhibit against the commitment ALREADY IN STORAGE instead of the one being installed. An attacker exhibits the vault's current key, which is public data, and writes any hash it likes beside it. This is the old/new commitment confusion, and it proves the clause's value lies in WHICH value it binds rather than in the mere presence of a keccak comparison."
       }
     ],
     "historicalRegressionClasses": [
@@ -575,6 +627,16 @@
         "clause": "_requireSaneFloor's MAX_PQ_LENGTH magnitude bound",
         "coveredBy": "test/Sd1RecoveryFloorBinding.test.ts — BOUNDARY (exactly MAX_PQ_LENGTH admitted, MAX_PQ_LENGTH + 1 refused, pinned against the contract's own getter) and GENESIS, both with positive controls",
         "whyNotMutated": "Reaching the seam needs an extra prng draw in genParams, which re-seeds every campaign history; adding one was measured to turn M9-duplicate-guardian-principal and M11-plane-denial-ignored into survivors. The complete value space for floor lengths across the whole stateful model is {0, 1, 32, 65} plus the armed grow direction, so no campaign proposes an oversized shape and a mutant here would report SURVIVED for want of a generator rather than for want of a property."
+      },
+      {
+        "clause": "I-DECLARATION-EXHIBITED's LENGTH leg (`pqKey.length != floor.pqPublicKeyLength`)",
+        "coveredBy": "test/Sd34DeclarationInvariants.test.ts — 'SD-3 FORM 2' (a shape the committed key cannot meet is refused in BOTH directions) and 'the ZERO-LENGTH trap stays closed', each with a positive control",
+        "whyNotMutated": "The oracle cannot see it. Deleting the length leg produces a state whose commitment is NON-ZERO and whose shape is merely wrong for that commitment, and no property computable from storage alone can detect that — knowing it requires the preimage LENGTH of a hash, which is exactly the fact `I-DECLARATION-EXHIBITED` makes the KERNEL establish on chain precisely because an observer cannot. A mutant here would report SURVIVED for want of an oracle rather than for want of coverage, so it is disclosed instead of faked. The HASH leg, which carries the clause's meaning, IS mutated — see M20."
+      },
+      {
+        "clause": "I-COMMITMENT-EXHIBITED-AT-ADMISSION's two GENESIS legs in `initialize` (the preimage check on a non-zero `g.pqKeyHash`, and the length check under `g.floor.requirePq`)",
+        "coveredBy": "test/Sd67AdmissionInvariants.test.ts — four executed refusals (no preimage, wrong-length preimage, zero commitment under requirePq, unattested dormant commitment) against four positive controls (a legitimate PQ genesis that then SPENDS, the cold-ceremony zero-commitment deploy, the MAX_PQ_LENGTH shape with a genuine 65,535-byte key, and the pinned `genesisSalt` identity constant). test/Sd34AuthenticationSatisfiability.test.ts additionally runs the original 48-against-32 reproduction with its verdict moved.",
+        "whyNotMutated": "The campaign structurally cannot reach the seam. Every world is built by `deployWorld`, which constructs a genesis committing either `bytes32(0)` or `pqHash(world.pqKey)` — both attestable, both consistent with the declared shape — so no profile deploys a hostile genesis and no mutation of the genesis legs would change any campaign outcome. Making one reachable means letting the generator author arbitrary genesis configurations, which is a different harness (a deployment fuzzer, not a transition fuzzer) and would re-seed every existing history. A mutant here would report SURVIVED for want of a generator rather than for want of a property, so the coverage is carried by direct regression instead and disclosed here rather than faked. The INDUCTIVE half of the same invariant — the dormant clause in `_requireIncomingPossession`, which both mid-campaign writers route through — IS mutated twice, by M21 and M22."
       }
     ]
   },
@@ -591,46 +653,167 @@
       "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
     },
     {
-      "id": "SD-3-setverifier-skips-genesis-satisfiability",
-      "title": "setVerifier may raise requirePq to true while pqPublicKeyHash is zero — the exact configuration initialize refuses as unsatisfiable — permanently bricking spending at cut 1 on an ECDSA-only vault",
+      "id": "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+      "title": "Generation 1 pins no scheme: the kernel admits any address with code and never establishes that the admitted verifier exposes only ONE accepting relation over a committed key, so a verifier carrying a forgeable second relation reduces the credential cut from 2 to 1 on the vaults that admit it",
       "classification": "STATE_INCOHERENCE",
-      "rootsRequired": "1 — the sole ECDSA credential root of a vault born with an ECDSA-only floor, where `_authorise` IS the ECDSA conjunct alone. No guardian, no PQ material.",
-      "contradicts": "AUTHORITY.md section 3, row 'Credential stranding | unreachable | Enforced by: I-INCOMING-CREDENTIAL-POSSESSION on both rotation and recovery'. Stranding here is reached through the FLOOR, not through a credential install, so that mechanism never engages.",
-      "rootCause": "`initialize` contains `if (g.floor.requirePq && g.pqKeyHash == bytes32(0)) revert BadSignature();` with the comment 'A mandatory PQ conjunct with no committed key is unsatisfiable, and would brick spending from birth.' `setVerifier` writes the same struct through `_requireSaneFloor`, which checks only that the two LENGTHS are non-zero — it never re-checks the key commitment. `_authorise` then requires `keccak256(pqKey) == pqPublicKeyHash == 0`, which no preimage satisfies.",
-      "notAnEscalationBecause": "The single root that can do this is the same root that can already move every asset on an ECDSA-only vault, so it buys an attacker nothing; and a guardian quorum can still recover, because executeRecovery installs a fresh pqKeyHash of the guardians' choosing. It is an unguarded transition into a state genesis validation explicitly forbids, escapable at k.",
-      "minimalFixSketch": "Add the genesis check to the transition: in setVerifier, after _requireSaneFloor, `if (floor.requirePq && pqPublicKeyHash == bytes32(0)) revert BadSignature();`. One comparison. Not applied here.",
-      "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
+      "rootsRequired": "1 (the ECDSA credential root) PLUS a verifier that ALREADY accepts a forgeable alternate relation. The verifier must be ADMITTED first, and admission is itself authorised: deployer at genesis (cut 0), credential via setVerifier (cut 2 on an armed vault, cut 1 on a dormant one), guardian quorum via recovery (cut k). Measured in lane SD5-A1R N1-N5 with a REALLY DEPLOYED verifier and no setCode.",
+      "contradicts": "Nothing published — it is recorded HERE, at the moment SD5-I removes the structural length gate, precisely so that removal is not read as a stronger claim than it is. The gate DID reject an alternate relation representable under the IKernelPQVerifier interface (SD5-A1R M3, reproduced without setCode as N5), but it was SHAPE-scoped, never strength-scoped: a weak relation placed AT the declared length defeated it identically on the unamended kernel (M6). BASE therefore never supplied scheme binding either, and E-PRIME does not create this residual.",
+      "rootCause": "The kernel's only constraint on a verifier, at all three admission points (initialize, setVerifier, initiateRecovery), is a nonzero code length. IKernelPQVerifier.verify returns a bare bool, so the kernel learns WHETHER this input was accepted and never WHAT RELATION was applied. A verifier may therefore expose a FIPS-204-conformant strong relation AND a forgeable second one over the same committed key — built and executed in lane SD5-A1R, where an 8-bit alternate tag was brute-forced in 10 free view probes and carried through to asset movement and a credential change.",
+      "notAnEscalationBecause": "It reduces no cut RELATIVE TO THE UNAMENDED KERNEL, and the two statements must be kept apart. E-PRIME DELTA: none on a vault with a sound verifier; a conditional 2 -> 1 only for alternate relations that BASE's declared-length gate happened to exclude. GEN-1 SYSTEM RESIDUAL: a verifier admitting a forgeable relation yields 2 -> 1 under EITHER kernel whenever that relation fits the accepted shape (M6). Admission is also gated — on an ARMED vault a cut-1 principal cannot admit a verifier at all (N2) — so the reachable window is the dormant/ECDSA-only class (N3) and the deployer's genesis choice.",
+      "minimalFixSketch": "NOT a kernel-side scheme validator: the kernel cannot prove arbitrary verifier bytecode exposes no unauthorized accepting relation, and inventing that requirement would replace the old length-based pseudo-binding with an unverifiable one. The enforceable shape is an ADMISSION model — AUTHORIZED_RELATION derives from an APPROVED_VERIFIER_IMPLEMENTATION/ARTIFACT, which derives from MECHANICALLY IDENTIFIABLE ADMISSION EVIDENCE. Generation 1 has no such mechanism, and that is the residual rather than a design deferred by preference. Note explicitly: FIPS 204 conformance is NECESSARY cryptographic assurance for the intended relation and is NOT the mitigation — this lane's own dual-relation verifier has a conformant strong leg. Architecture section 12's SecurityProfile (schemeId, family, verifierGeneration) is the intended long-run home and is DEFERRED_TO_FUTURE_GENERATION.",
+      "reproducedBy": "prototype/vnext-kernel/SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md records the executed matrix (M1-M6, N0-N5). NOTE: that record is UNTRACKED lane scratch, so this entry names no tracked deterministic reproduction. Promoting one is owed by the lane that acts on SD-11A."
+    },
+    {
+      "id": "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
+      "title": "The kernel pins no code identity for an admitted verifier and never re-validates it, so whether an already-admitted verifier can change its accepting relation in place — behind a stable address, with no kernel-visible event — is NOT excluded by the kernel and was NOT measured",
+      "classification": "STATE_INCOHERENCE",
+      "rootsRequired": "UNKNOWN, and that is the entry. It depends on a property of the VERIFIER contract (upgradeable, proxied or metamorphic) that lane SD5-A1R did not measure and that this lane does not claim either way.",
+      "contradicts": "Nothing published. It is recorded so that SD5-A1R's admission finding is not over-read: N0-N5 established that every route to a dual-relation verifier runs through an ADMISSION decision by a named principal, and that the kernel has no in-place mutation path OF ITS OWN. Neither statement establishes that the verifier's own semantics are immutable, and a verifier ADDRESS is not a proof of semantic immutability.",
+      "rootCause": "Proven from source in lane SD5-I, and the proof is a CONTRAST INSIDE THE SAME CONTRACT. The verifier is checked for a nonzero code length at admission (initialize, setVerifier, initiateRecovery) and never again; no codehash is recorded or compared. Yet bindMigration DOES pin code identity — it reverts DestinationMismatch when destinationVault.codehash differs from the bound destinationVaultCodeHash — so the kernel possesses the mechanism and applies it elsewhere, but not to the verifier. IKernelPQVerifier.verify is reached by STATICCALL against a stored address, so a delegatecall proxy could change implementation with nothing the kernel observes.",
+      "notAnEscalationBecause": "No cut is claimed to move, because no reachability is claimed at all. This is an UNMEASURED CLASS recorded as open, not a demonstrated capability. Recording it costs nothing and closes the gap between what SD5-A1R measured (admission) and what it did not (transformation).",
+      "minimalFixSketch": "FIRST establish reachability against the intended production verifier design rather than designing a control for an unmeasured threat. If a control is then wanted, note that a codehash pin — the mechanism bindMigration already uses — would address metamorphic redeploy but would NOT close a delegatecall proxy, whose codehash is stable while its implementation pointer moves. Do not present a codehash pin as closing SD-11B. Scope deliberately: this is not licence for a broad proxy/metamorphic research campaign.",
+      "reproducedBy": "NONE — deliberately. There is no reproduction because the class is UNMEASURED; the source-side proof that the kernel does not exclude it is the codehash contrast recorded in rootCause."
+    },
+    {
+      "id": "SD-8-genesis-exhibit-cannot-prove-well-formedness",
+      "title": "The genesis exhibit proves knowledge of a PREIMAGE, never that the preimage is a well-formed key of the verifier's scheme, so a deployer can still commit correct-length garbage and produce a vault born unable to authorise",
+      "classification": "STATE_INCOHERENCE",
+      "rootsRequired": "0 — no principal is compromised. This is the DECLARED RESIDUAL of SD-7's remediation: the configuration is chosen by whoever deploys, and `deployVault` is permissionless, so a bad genesis lands at its own CREATE2 address and harms only that vault.",
+      "contradicts": "Nothing published — it is recorded HERE, at the moment of SD-7's remediation, precisely so that closing SD-7 is not read as a stronger claim than it is. That remediation closes the structurally CONTRADICTORY genesis (no preimage, or a preimage of the wrong length); it does not and cannot close the semantically dead one.",
+      "rootCause": "The only party able to judge whether key bytes are well-formed for a scheme is a verifier, and at genesis the deployer CHOOSES `g.verifier` in the same transaction — so a verifier leg there would be self-certification, rejected for the identical reason `I-DECLARATION-EXHIBITED` has no signature leg. keccak256 is scheme-agnostic by construction: it cannot distinguish an ML-DSA public key from 1,312 bytes of noise. The kernel performs no structural validation of key bytes anywhere, deliberately, because doing so would bind it to one PQ scheme.",
+      "notAnEscalationBecause": "It reduces no cut and is unreachable by an attacker against someone else's vault: the whole genesis is bound into the CREATE2 salt, so a different configuration is a different address (`I-COUNTERFACTUAL-IDENTITY-BINDING`). It is escapable at k — a guardian quorum recovers such a vault and installs material it actually holds, executed rather than argued. The residue over SD-7 is narrow: an ACCIDENTAL misconfiguration is now refused at birth, and only a DELIBERATE one survives, which is indistinguishable from a deployer who commits a real key and then destroys it.",
+      "minimalFixSketch": "No admission-time fix exists, and that is the finding rather than an omission. The candidates are (a) a kernel-held allowlist of trusted verifiers, which introduces a governance principal this kernel does not have and gates deployment on it; (b) scheme-aware structural validation of key bytes, which binds the kernel to one PQ scheme and contradicts the floor/plane separation; (c) a PoP against a verifier fixed OUTSIDE the genesis, which is (a) wearing a different hat. All three trade a cut-0 self-inflicted misconfiguration for a new permanent authority — the trade this repository has now rejected three times.",
+      "reproducedBy": "prototype/vnext-kernel/test/Sd67CommitmentAdmission.test.ts"
     },
     {
       "id": "SD-4-ecdsa-only-shape-declaration-is-uncounted",
-      "title": "On a vault born ECDSA-ONLY, the requirePq false -> true edge DECLARES the structural shape for the first time, and a shape that does not match a pending recovery's proposed key invalidates that already-quorum-approved request without consuming a challenge",
+      "title": "On a vault born ECDSA-only, the requirePq false -> true declaration adds a whole authentication conjunct to an ALREADY-QUORUM-APPROVED recovery, destroying it at cut 1 with no challenge consumed and the request left stranded active",
       "classification": "LIVENESS_DENIAL",
-      "rootsRequired": "1 — the sole ECDSA credential root of an ECDSA-only vault, where `_authorise` degenerates to the ECDSA conjunct alone. Strictly cheaper than SD-1 was, and reachable on a strictly narrower set of vaults.",
-      "contradicts": "AUTHORITY.md section 3, row 'Permanent recovery veto | unreachable'. That row is now enforced by I-FLOOR-SHAPE-IMMUTABLE for every vault whose floor already mandates PQ, and this is the declared exception to it: on an ECDSA-only genesis the shape has not been declared yet, so there is nothing for the freeze to hold.",
-      "rootCause": "`_requireNoDowngrade`'s I-FLOOR-SHAPE-IMMUTABLE clause is guarded on `current.requirePq`, because a vault born ECDSA-only must be able to declare a shape at all — freezing 0/0 forever would make the floor permanently unraisable. On that one edge `setVerifier` therefore still chooses both length fields freely, and `_requireIncomingPossession` measures a pending recovery against them. The guard cannot be moved to `next.requirePq` without also forbidding the legitimate declaration.",
-      "notAnEscalationBecause": "It is ONE-SHOT and self-healing, which is what separates it from the SD-1 veto it is the residue of. `requirePq` is monotone, so the edge exists at most once per vault; the shape is FROZEN immediately afterwards; and `MAX_PQ_LENGTH` bounds it to a shape a block can actually carry, so the quorum simply re-initiates against the now-immovable shape and completes at k. Cost to the defender is one re-initiation (RECOVERY_DELAY), never the remedy. Reproduced end to end, including the escape, in test/Sd1RecoveryFloorBinding.test.ts.",
-      "minimalFixSketch": "Require the caller to EXHIBIT the committed key on the false -> true edge: in _requireNoDowngrade's caller, `if (!current.requirePq && next.requirePq) { if (pqKey.length != next.pqPublicKeyLength || keccak256(pqKey) != pqPublicKeyHash) revert BadSignature(); }`. NOT APPLIED, and the reason is a scope boundary rather than an oversight: that check necessarily also closes SD-3 (a zero pqPublicKeyHash has no exhibitable preimage), so SD-1 and SD-3 are NOT separable at this edge. It also pins the shape to the length of the preimage of the VAULT's incumbent key, which is a different variable from the quorum's r.proposedPqKeyHash, so it narrows the residual without provably eliminating it. Both belong to whichever lane takes SD-3.",
-      "reproducedBy": "prototype/vnext-kernel/test/Sd1RecoveryFloorBinding.test.ts"
+      "rootsRequired": "1 — the sole ECDSA credential root of a vault born ECDSA-only, where `_authorise` returns before the PQ leg. No PQ material, no guardian.",
+      "contradicts": "AUTHORITY.md section 3, row 'Permanent recovery veto | unreachable | Enforced by: containment budgeted B < W; challenge capped; no pause exists'. None of the three named mechanisms bounds this channel: `challengesUsed` stays at 0 throughout, and `setVerifier` contains no reference to `recovery` at all.",
+      "rootCause": "The declaring edge is the one transition that still chooses both structural length fields freely, and `_requireIncomingPossession` measures an already-approved recovery against them LIVE. The mechanism is stronger than a length mismatch: before the edge, line `if (!floor.requirePq) return;` returns before EVERY PQ check, so a quorum may approve a request while no PQ material is required of it; after the edge, three checks and an external verifier call appear on that same request. Both forms are reproduced — one dies on the key length, the other on the signature length — so any fix constraining only ONE length closes neither reliably.",
+      "notAnEscalationBecause": "It reduces no cut. On an ECDSA-only vault the asset-control cut is already 1, so the principal doing this already controls the vault outright. What it falsifies is the separate 'permanent recovery veto is unreachable' row: the REMEDY is deniable for one episode, raising the cut-1 recovery-delay denial from the 14 days `I-VETO-BOUND` implies (2 metered cancellations) to 21 (2 metered plus 1 unmetered). The quorum self-heals through the architecture-native exit: while the destroyed request is still effectively live, `cancelRecoveryByQuorum` (K-9 mechanism B, implemented in Lane W2) and then a correctly-shaped fresh recovery; once it has expired, a fresh recovery directly. One extra cycle at most, and no clock is touched.",
+      "minimalFixSketch": "TWO FAMILIES WERE BUILT AND BOTH REJECTED, and recording why is the point of this entry. (1) An INTERLOCK refusing the declaration while a live approved request exists was implemented, measured and REMOVED: the declaration is one-shot and no guardian path can ever write `securityFloor`, so the refusal hands the quorum a renewable, uncounted veto over a capability it cannot itself exercise — the quorum's renewal is unmetered (at the time a direct overwrite; since Lane W2 `cancelRecoveryByQuorum` followed by a fresh initiation, so the veto is unchanged and the rejection stands) while the credential's counter-move is capped — pinning an ECDSA-only vault at cut 1 forever. Trading a bounded one-shot credential harm for an unbounded guardian one is not a remediation. (2) METERING the destruction against `challengesUsed` fails for a subtler reason: a counter has teeth only through its REFUSAL, and refusing a ONE-SHOT transition is permanent deprivation, so metering moves the irreversibility from the attacker to the defender. (3) THAT CLAIM WAS WRONG, AND THE CORRECTION IS EXECUTABLE. This field previously ended: 'The only design that closes this soundly RECORDS THE PROPOSED KEY AND SIGNATURE LENGTHS IN RecoveryRequest at initiateRecovery and measures the recovery against the REQUEST rather than the live floor.' That design was BUILT — the two uint32 fields added, bound into the guardian digest, threaded into `_requireIncomingPossession`, with `rotateCredential` left on the live floor — compiled and executed in test/Sd4SnapshotAdjudication.test.ts. It DOES close SD-4, and it BRICKS THE VAULT: the recovery installs a commitment of the request's shape under a floor frozen at a different one, so `_authorise` then demands both `|pqKey| == floor.pqPublicKeyLength` and `keccak256(pqKey) == pqPublicKeyHash`, which are jointly unsatisfiable. The remedy APPEARS to succeed and the vault is dead — strictly worse than today, where the quorum sees a revert and re-proposes at the correct shape for the same one-cycle cost. It also drives a commitment past the shape agreement that `I-DECLARATION-EXHIBITED` and `I-COMMITMENT-EXHIBITED-AT-ADMISSION` exist to enforce. (4) THE ONLY FAMILY THAT CAN ACTUALLY PRESERVE THE REMEDY — letting a completed recovery RE-DECLARE the floor shape to the material it just proved — was also built and executed. It works, and it moves AUTHORITY.md's 'Silent crypto downgrade' row from `unreachable` to `k`: two guardians alone drive an honestly-armed 32/65 vault to a one-byte key and one-byte signature shape, with no credential participation. (5) THE GENERAL CONCLUSION THAT FOLLOWED — an inherent liveness cost, with no further family possible — was REFUTED in Lanes T–W1.2 (a ratification family that is neither design A nor design E exists) and is deliberately NOT restated here; every intermediate conclusion, the refuted ones included, is preserved by pointer in prototype/vnext-kernel/SD4_TEMPORAL_ADJUDICATION.md, SD4_LANE_U_ADJUDICATION.md, SD4_LANE_V_ADJUDICATION.md, SD4_LANE_V2_ADJUDICATION.md and SD4_LANE_W_SEMANTIC_FREEZE.md, and in AUTHORITY.md's append-only correction. Every such family was then itself killed on temporal authority or by the generalised CLOCK RULE of docs/Vault_vNext_Architecture.md ('no state transition may reset, extend, or suspend' any clock), and the architecture-native path dominates them all. THE STANDING DISPOSITION, canonical in docs/Vault_vNext_Recovery_Amendment.md section 4: SD4_DEDICATED_REMEDIATION = NOT_REQUIRED; G_PRIME_INCREMENTAL_VALUE = NONE_ESTABLISHED; the exit is architecture-native — LIVE request: guardian-quorum cancellation (cancelRecoveryByQuorum, K-9 mechanism B, implemented in Lane W2) and then a correctly-shaped fresh recovery; EXPIRED request: a fresh recovery directly. That exit repairs SD-4 at every timing without touching a clock and is executable on the W2 kernel (test/W2RecoveryLifecycle.test.ts sections A and D; test/Sd4SnapshotAdjudication.test.ts's conformant cancel-then-re-propose), and it does NOT close SD-4: the destroying transition is still admitted and uncounted, which is why this entry stays SUSTAINED and its property still fires. What survives of the earlier prose is the narrow fact: once requirePq holds, the floor shape is the vault's permanent authentication policy, so designs A and E remain rejected.",
+      "reproducedBy": "prototype/vnext-kernel/test/Sd34AuthenticationSatisfiability.test.ts (the sustained sequence); test/Sd4RecoverySemantics.test.ts (the exact predicate, both length branches, the digest proof and a positive control); test/Sd4SnapshotAdjudication.test.ts (the two candidate fixes, COMPILED AND EXECUTED, and why each is rejected); test/Sd1RecoveryFloorBinding.test.ts ('RESIDUAL — SD-4 ... STILL SUSTAINED', re-run on the W2 kernel in Lane W2P)"
     }
   ],
   "solidityChanged": {
-    "bytes": 215,
-    "note": "SD-1 was REMEDIATED by I-FLOOR-SHAPE-IMMUTABLE. The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. SD-2, SD-3 and SD-4 remain SUSTAINED and change zero bytes.",
-    "beforeRuntimeBytes": 17407,
-    "kernelRuntimeBytes": 17622,
-    "kernelRuntimeHash": "398426298034b5229a5f48e81bbf7efbd7f88b94ed994721bdaf6d92cc2aa50d"
+    "bytes": 0,
+    "note": "The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. Which defects are closed and which stand is carried by the `remediated` and `sustainedDefects` arrays in this same receipt, not by prose here.",
+    "beforeRuntimeBytes": 17695,
+    "kernelRuntimeBytes": 17695,
+    "kernelRuntimeHash": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02"
   },
   "remediated": [
+    {
+      "id": "SD-5-permanent-shape-capture-on-the-declaring-edge",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "5e8c68d31909d9ddc460c12d532f942ae45454b7",
+      "remediatedOn": "SD5-I on security/vnext-sd5-shape-capture-adjudication, over 5e8c68d3 (lane SD5-D1 adjudicated, SD5-A1 amended the architecture, SD5-A1R closed it adversarially)",
+      "invariant": "I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE — for an APPROVED recovery, changing pqPublicKeyLength, pqSignatureLength or pqParamLevel cannot change its executability. requirePq is EXPLICITLY OUTSIDE this invariant and remains the SD-4 declaring-edge residual; it is not smuggled back in through an exception clause. This REPLACES I-FLOOR-SHAPE-IMMUTABLE, which is RETIRED: with no authoritative shape it has no operand, and an invariant with no operand is decoration. I-NO-SILENT-DOWNGRADE is correspondingly narrowed to I-NO-SILENT-DOWNGRADE-G1, which governs the requirePq conjunct alone.",
+      "sourceDelta": "Six removals, no additions, no new state, no changed signature, and no new principal. (1) _authorise drops the pqKey/pqSig length equality; keccak256(pqKey) == pqPublicKeyHash survives. (2) _requireIncomingPossession drops the newPqKey/newPqPop length equality; the commitment comparison survives. (3) _requireSaneFloor becomes vacuous (kept deliberately, documented; MAX_PQ_LENGTH consequently has no reader and is retained for ABI only). (4) _requireNoDowngrade drops BOTH the pqParamLevel ratchet and the two-length freeze, keeping only requirePq true -> false. (5) initialize drops the genesis key-length conjunct; the genesis preimage conjunct survives. (6) the setVerifier declaring edge drops its key-length conjunct; its preimage conjunct survives. MEASURED: runtime 18,367 -> 17,695 bytes (-672); storage layout, ABI, selectors, events, errors and securityFloor()'s return shape BYTE-IDENTICAL; factory unchanged at 2,445. The three fields survive as SIGNED_METADATA + IDENTITY_BOUND_METADATA + NON_AUTHORITATIVE_SECURITY_METADATA + ABI_COMPATIBILITY, and explicitly NOT AUTHORIZATION_INPUT, NOT RECOVERY_SATISFIABILITY_INPUT, NOT CRYPTOGRAPHIC_STRENGTH.",
+      "rejectedAlternatives": "Eight families were BUILT, COMPILED AND EXECUTED in lane SD5-D1, and the ledger's own proposed fix was among the rejected. A MINIMUM LENGTH (this entry's former minimalFixSketch neighbour) dies to 'S = MIN + 1': declaring just above the threshold is permanently dead exactly as before, and no semantic authority exists for the constant — FIPS 204 3.6.2 imposes EXACT equality per parameter set on an ML-DSA IMPLEMENTATION, never a generic minimum on a scheme-agnostic kernel. EXACT TUPLES reproduce the capture at an allowlisted tuple whenever the allowlist has two members, and close SD-5 only by making the kernel single-scheme. VERIFIER-DECLARED SHAPE is self-certification: the declarer deploys the oracle, which the kernel already refuses elsewhere for that reason. GUARDIAN-RECOVERY RE-DECLARATION — the family THIS ENTRY PREVIOUSLY NAMED AS THE ONLY ONE THAT CLOSES IT — does close both forms, but hands the quorum a PROFILE_CHANGE-class capability and moves AUTHORITY.md's 'Silent crypto downgrade' row from unreachable to k; its monotone and possession-bounded variants die to a single declaration of pqSignatureLength = MAX_PQ_LENGTH. FLOOR RESET reopens finding A2. A REGISTRY introduces a governance root present in no authority table. DOCUMENTATION-ONLY is insufficient: the published scope note described Form B and not Form A. Refuting 'only one family closes it' was itself a result — it was a whole-design-space claim drawn from two points, the same error test/sd4-candidate-kernels.ts was written to condemn.",
+      "invertedReproduction": "test/Sd1RecoveryFloorBinding.test.ts is re-anchored on I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE: each metadata mutation is now ADMITTED with requirePq held constant, the approved recovery still EXECUTES, and the recovered credential SPENDS. test/Sd34AuthenticationSatisfiability.test.ts carries the inverted SD-5 sequence — the shape is no longer one-shot and a captured vault is escapable — while preserving the published positive control that exists so a blanket revert can never be mistaken for a fix. test/Sd4RecoverySemantics.test.ts records that SD-4's two SHAPE forms are closed while its requirePq/zero-hash residual survives. Mutants M17 and M18 are RETIRED with their invariant (see stateful/mutants.ts); M19 is NARROWED to its surviving preimage conjunct.",
+      "residual": "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel"
+    },
+    {
+      "id": "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "a70de68db2e3c9d832ef9f4087238c3c6e9826ca",
+      "remediatedOn": "security/vnext-sd6-sd7-commitment-admission",
+      "invariant": "I-COMMITMENT-EXHIBITED-AT-ADMISSION (dormant half) — every accepted transition that writes a NON-ZERO value to pqPublicKeyHash must exhibit a byte string K with keccak256(K) equal to the value being written. bytes32(0) is the kernel's representation of 'no PQ credential' and stays admissible wherever the floor does not mandate PQ, which is what preserves the ECDSA-only rotation and the clear-then-rotate escape.",
+      "sourceDelta": "ONE flat clause added to _requireIncomingPossession, which both rotateCredential and executeRecovery already route through. No new state, no new parameter, no selector change on either path: CredentialChange already carried newPqKey. The clause deliberately omits any LENGTH comparison — see rejectedAlternatives.",
+      "rejectedAlternatives": "DELETING THE requirePq EARLY RETURN OUTRIGHT (so the full exhibit — length, preimage and verifier PoP — runs on the dormant path) was rejected as DISQUALIFYING. While requirePq is false, _requireSaneFloor returns before every bound, so both dormant length fields are unvalidated and may hold any uint32; MAX_PQ_LENGTH is not applied on that path and _requireNoDowngrade's freeze is guarded on the CURRENT floor. Reading them in the install path lets ONE false -> false setVerifier at cut 1 write pqPublicKeyLength = type(uint32).max, after which every credential install INCLUDING executeRecovery is undeliverable forever, with no guardian-reachable writer of securityFloor to undo it. That is a permanent, uncounted, cut-1 veto over the remedy — a strictly worse form of the harm the SD-4 interlock was rejected for, since it gives the CREDENTIAL a renewable veto over the REPEATABLE capability that exists to remove that credential. A VERIFIER leg was rejected as self-certification: on an ECDSA-only vault the same cut-1 principal also owns setVerifier, so it installs an always-true verifier one transaction earlier. Requiring the exhibit REGARDLESS of the commitment being zero was rejected because no byte string hashes to bytes32(0), which would make the entire ECDSA-only class unrotatable and I-DECLARATION-EXHIBITED dead code.",
+      "invertedReproduction": "test/Sd34AuthenticationSatisfiability.test.ts runs the original unattested-install sequence and now asserts the REFUSAL, with a positive control proving a 7-byte exhibit still installs (the invariant is about attestation, not shape). test/Sd67CommitmentAdmission.test.ts carries the full firsthand reproduction with its verdict moved, and test/Sd67AdmissionInvariants.test.ts carries the regression matrix including the recovery twin.",
+      "residual": "SD-8-genesis-exhibit-cannot-prove-well-formedness"
+    },
+    {
+      "id": "SD-7-genesis-admits-an-unsatisfiable-floor",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "a70de68db2e3c9d832ef9f4087238c3c6e9826ca",
+      "remediatedOn": "security/vnext-sd6-sd7-commitment-admission",
+      "invariant": "I-COMMITMENT-EXHIBITED-AT-ADMISSION (base case) — initialize must exhibit a preimage of any non-zero g.pqKeyHash, and where g.floor.requirePq holds that preimage must carry the declared g.floor.pqPublicKeyLength. This is what makes the chain of key measurements an INDUCTIVE invariant with an authenticated base rather than an assumption about genesis.",
+      "sourceDelta": "Two comparisons in initialize plus a new `bytes calldata pqKey` WITNESS parameter, forwarded by the factory. The witness is a PARAMETER and deliberately NOT a GenesisConfig member: genesisSalt binds the genesis AUTHORITY and a preimage proof confers none. Consequence, asserted against a constant captured from the parent build: the CONFIGURATION -> SALT function is unchanged and predictVault keeps its exact signature. That constant pins the SALT and cannot pin an address — a clone's address is CREATE2(factory, salt, keccak256(initcode)) and the ERC-1167 initcode embeds the implementation address, so every deployed address moves whenever the kernel bytecode moves, as it does in every remediation in this stack. Selectors move on initialize (09bbae89 -> 9d288286) and deployVault (f1cfaa80 -> 1d0c155d); both manifest entries are updated with the reason.",
+      "rejectedAlternatives": "THE LEDGER'S OWN RECORDED SKETCH — 'carry the key bytes in GenesisConfig' — was rejected, and its stated REASON was found to be FALSE. That reason was 'GenesisConfig is hashed into genesisSalt, so adding a member changes EVERY vault address the factory can produce'. genesisSalt (VaultKernelPrototype.sol) hashes an ENUMERATED FIELD LIST, not the struct as a unit, so a new member alone moves no SALT. That false mechanism was the recorded justification for deferring the only fix that closes SD-7. (Addresses do move — the clone initcode embeds the implementation address — but that is true of every change to this kernel and so never distinguished this fix from any other.) The member form is still rejected, on the correct and smaller ground that it would change predictVault's ABI as well as deployVault's, and would invite a later editor to add the witness to the salt enumeration, which WOULD change the configuration -> salt map. A VERIFIER call at genesis was rejected as self-certification: the deployer chooses g.verifier in the same transaction. REFUSING requirePq at genesis outright was rejected as a blanket prohibition on a configuration the kernel is supposed to support. ONE LIVENESS COST IS ACCEPTED AND RECORDED RATHER THAN GLOSSED: a genesis carrying a NON-ZERO commitment while requirePq is FALSE now requires the deployer to hold the key at deploy time. The clear-to-zero escape that rescues the ROTATION path does not exist at genesis, because pqKeyHash is enumerated into genesisSalt and a different commitment is a different vault. The remedy is to deploy with bytes32(0) and rotate the commitment in afterwards, which is the same cold-ceremony path and is tested; what is lost is the ability to pre-register a latent commitment for a key you do not yet hold.",
+      "invertedReproduction": "test/Sd34AuthenticationSatisfiability.test.ts runs the original 48-against-32 genesis and now asserts the deployment REVERTS, with a positive control deploying the consistent 32-byte form. test/Sd67CommitmentAdmission.test.ts carries the firsthand reproduction with its verdict moved; test/Sd67AdmissionInvariants.test.ts carries the regression matrix plus the pinned genesisSalt identity constant.",
+      "residual": "SD-8-genesis-exhibit-cannot-prove-well-formedness"
+    },
     {
       "id": "SD-1-floor-length-poisoning",
       "verdict": "DEFECT_REMEDIATED",
       "sustainedAt": "ec5adce91bf6956a655a637513102bd6613c04f8",
       "remediatedOn": "security/vnext-sd1-recovery-floor-binding",
-      "invariant": "I-FLOOR-SHAPE-IMMUTABLE — for every accepted setVerifier transition s -> s', s.securityFloor.requirePq implies s'.pqPublicKeyLength == s.pqPublicKeyLength and s'.pqSignatureLength == s.pqSignatureLength. Since initialize and setVerifier are the only writers of securityFloor, the two structural fields are CONSTANTS for the life of any vault whose floor mandates PQ, and no credential-writable state remains in the recovery satisfiability condition.",
+      "invariant": "I-FLOOR-SHAPE-IMMUTABLE — for every accepted setVerifier transition s -> s', s.securityFloor.requirePq implies s'.pqPublicKeyLength == s.pqPublicKeyLength and s'.pqSignatureLength == s.pqSignatureLength. Since initialize and setVerifier are the only writers of securityFloor, the two structural fields are CONSTANTS for the life of any vault whose floor mandates PQ, and no credential-writable state remains in the recovery satisfiability condition. APPEND-ONLY CORRECTION (LANE SD5-I): I-FLOOR-SHAPE-IMMUTABLE is now RETIRED, and this entry is corrected rather than rewritten because the remediation it records was CORRECT FOR ITS LANE. SD-1 was real and this closed it. What SD-5 later measured is the PRICE: freezing the fields made the shape permanent against every principal, so an honest ML-DSA-44 vault could never reach ML-DSA-87 and a captured shape survived guardian recovery — harm that reached vaults with no attacker anywhere in the sequence. SD5-I reaches SD-1 OWN GOAL by a different mechanism: the state is made UNREAD rather than UNMOVABLE, which is strictly stronger (nothing consumes it, so no schedule can exploit it) and carries none of the permanence. The clause named above no longer exists; the requirement it encoded now lives in I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE. SD-1 REMAINS REMEDIATED — by non-consumption instead of by freezing.",
       "sourceDelta": "Two clauses, both inside existing internal helpers, no new state and no changed signature. (1) _requireNoDowngrade gains the shape-freeze comparison, guarded on current.requirePq. (2) _requireSaneFloor gains a MAX_PQ_LENGTH magnitude bound, because I-FLOOR-SHAPE-IMMUTABLE would otherwise make an unsatisfiable uint32 shape PERMANENT.",
       "rejectedAlternatives": "METERING the veto through challengesUsed was rejected: that counter bounds cancelRecovery only because a cancellation is REVERSIBLE by the defender, and a floor write is not — no guardian path writes securityFloor and executeRecovery never touches it — so a counter bounds only how many times an attacker re-chooses which permanent state to inflict. SNAPSHOTTING the floor into RecoveryRequest was rejected: _authorise reads the same live slot, so a floor poisoned BEFORE the quorum proposes is copied faithfully into the snapshot, and a recovery that did complete would install a credential the live floor could never use. The ledger's own earlier sketch — permitting a length change alongside a pqParamLevel INCREASE — was rejected because pqParamLevel is a bare uint16 with no ceiling, so it converts an unbounded veto into a 65,535-deep one, which over a 21-day episode is not a bound at all.",
       "invertedReproduction": "test/StatefulSustainedDefects.test.ts still runs the exact SD-1 sequence, now asserting that the poisoning transition is REFUSED and the vetoed recovery EXECUTES. test/Sd1RecoveryFloorBinding.test.ts carries the full R1-R9 regression plus the adversarial permutations.",
       "residual": "SD-4-ecdsa-only-shape-declaration-is-uncounted"
+    },
+    {
+      "id": "SD-3-setverifier-skips-genesis-satisfiability",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "ec5adce91bf6956a655a637513102bd6613c04f8",
+      "remediatedOn": "security/vnext-sd3-sd4-authentication-satisfiability",
+      "invariant": "I-DECLARATION-EXHIBITED — for every accepted setVerifier transition s -> s' with !s.requirePq && s'.requirePq, the call must exhibit a byte string K with |K| == s'.pqPublicKeyLength and keccak256(K) == s.pqPublicKeyHash. Every OTHER floor-touching transition already measures the committed key, so this is what makes that measurement an INDUCTIVE invariant rather than an assumption about genesis.",
+      "sourceDelta": "Two comparisons inside setVerifier, on the false -> true edge only, using the `pqKey` parameter that already exists and that `_authorise` provably ignores on that edge. No new state, no new parameter, no selector change.",
+      "rejectedAlternatives": "The ledger's OWN recorded sketch — `if (floor.requirePq && pqPublicKeyHash == bytes32(0)) revert` — was implemented and measured at +55 B and REJECTED as insufficient: it closes only the zero-commitment form, and a vault with a perfectly good NON-ZERO commitment reaches the identical dead state by declaring a shape no preimage of that commitment has. A SIGNATURE leg was rejected because the declarer supplies arbitrary bytes of any length and `_requireSaneFloor` already bounds them, and because two maximal legs would push the arming call past the txpool transaction cap, breaking the legitimate maximum-shape declaration the boundary suite pins. A VERIFIER call was rejected as self-certification in both bindings: the declarer chooses the incoming verifier in the same transaction, and can swap the incumbent to an always-true one first while the floor is still ECDSA-only.",
+      "invertedReproduction": "test/Sd34AuthenticationSatisfiability.test.ts keeps both forms as executed evidence and asserts the refusal; test/Sd34DeclarationInvariants.test.ts carries the full regression including the two-transaction adoption path the exhibit makes necessary.",
+      "residual": "SD-4-ecdsa-only-shape-declaration-is-uncounted"
+    },
+    {
+      "id": "SD-9b-expired-request-retains-blocking-effect",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "4b9127269602d8eab3700d96dda4d5cfcf2e0d55",
+      "remediatedOn": "c182db1099d92ff5830ae71116613c739b034bd9 (security/vnext-recovery-lifecycle-implementation, Lane W2 Commit A)",
+      "invariant": "I-RECOVERY-EFFECTIVE-LIVENESS (docs/Vault_vNext_Recovery_Amendment.md section 3) composed with I-RECOVERY-TERMINATION — a request holds authority on the half-open window [executableAt, expiresAt) and on that window only; every authority or blocking decision in the kernel consults `_recoveryIsLive()` (active && block.timestamp < expiresAt), never the stored flag, so an expired request's stale bytes carry zero execution authority, zero cancellation-target authority and zero blocking effect, and expiry requires no principal to act.",
+      "sourceDelta": "One internal view helper `_recoveryIsLive()`; `bindMigration`'s guard changed from `if (recovery.active)` to `if (_recoveryIsLive())`; `cancelRecovery`'s target check changed from `!recovery.active` to `!_recoveryIsLive()`; `initiateRecovery` reads the same predicate for its new overwrite refusal (SD-9d). No storage, no new state, no sweeper, no liveness selector (Option E0). The stored `active` byte is documented as authority, not liveness, at the struct field.",
+      "rejectedAlternatives": "A PERMISSIONLESS SWEEPER that deletes an expired request — rejected: `delete recovery` refunds the credential's challenge epoch (the SD-9a hazard, measured in Lane V2's probe), and a sweeper is a transaction, so expiry would again require an act; it is now a permanently killed mutant (M-K9-expiry-refunds-budget). A sweeper that clears only `active` — rejected on the second ground alone. A PUBLIC liveness getter (W1 Option B / the E1 probe's effectiveLiveRecovery()) — rejected as NOT_REQUIRED in Lane W1R: liveness is a pure function of two fields the recovery() getter already exposes and the block a reader is in, so it costs a selector and buys nothing an observatory cannot derive; the E1 build remains a measurement instrument only. Reading the raw flag anywhere — that is the defect, and three raw-flag mutants (M-K9-expired-request-blocks-migration, M-K9-expired-request-blocks-initiation, M-K9-expired-request-still-challengeable) are permanently killed.",
+      "invertedReproduction": "test/W2RecoveryLifecycle.test.ts section B (the expiresAt / expiresAt+1 matrix: migration BINDS, a fresh initiation is not overwrite, both cancellations refuse with NoRecovery and consume nothing), C3 (initiation after expiry with the count preserved and no cleanup transaction) and F1 (a LIVE request still blocks migration — the positive control). The original measurement, Sd4LaneV 'C the five proofs', is pinned to the byte-exact pre-W2 kernel (test/fixtures/VaultKernelPrototype.pre-w2.e6964aeb.sol) so it still measures the defect it recorded.",
+      "residual": null
+    },
+    {
+      "id": "SD-9c-guardian-quorum-cancellation-absent",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "4b9127269602d8eab3700d96dda4d5cfcf2e0d55",
+      "remediatedOn": "c182db1099d92ff5830ae71116613c739b034bd9 (security/vnext-recovery-lifecycle-implementation, Lane W2 Commit A)",
+      "invariant": "K-9 mechanism B (KERNEL_ADMISSION.md K-9; docs/Vault_vNext_Architecture.md section 8.1 grants the guardian quorum CANCEL_RECOVERY) — an effectively-live request is terminable by a quorum of the CURRENT roster, under a digest bound to guardianGeneration, consuming one DOMAIN_GUARDIAN nonce, clearing request authority only (challengesUsed neither consumed nor refunded, I-RECOVERY-CHALLENGE-EPOCH) and emitting a terminal event distinct from the credential's.",
+      "sourceDelta": "One new external function cancelRecoveryByQuorum(QuorumProof,uint256,uint64) (selector 02abce4e): _requireRecoveryOpen; refuse unless _recoveryIsLive (NoRecovery); digest = _digest(ACTION_RECOVER, guardianGeneration, keccak256('QUORUM_CANCEL_RECOVERY'), DOMAIN_GUARDIAN, nonce, deadline); _requireQuorum BEFORE _consume; recovery.active = false; emit RecoveryCancelledByQuorum(challengesUsed). One new event. No storage change; +1 selector, +1 event; recovery() byte-identical. Manifest entry VaultKernelPrototype:02abce4e, mechanism QUORUM, cut k.",
+      "rejectedAlternatives": "A REQUEST IDENTIFIER or hash bound into the cancellation digest — rejected: GUARDIAN_NONCE_SERIALIZATION_SUFFICIENT (Lane W1.2 section D, amendment section 5): every request is created by initiateRecovery, which always consumes a DOMAIN_GUARDIAN nonce, and a live request is never overwritten, so a cancellation pre-signed for request n is nonce-invalid by the time n+1 exists or finds no live target and consumes nothing. That proof's two load-bearing premises are now PERMANENT MUTANTS rather than paragraphs: M-K9-guardian-cancel-nonce-replay (the cancellation stops consuming) and M-K9-initiation-does-not-consume-guardian-nonce (the creator stops consuming — the future-danger case Lane W2R found unguarded, added in Lane W2P), both killed by the stale-cancel replay property observing an R1 authorisation reach R2. A whole-struct delete in the quorum cancel — rejected (refunds the epoch; mutant M-K9-quorum-cancel-refunds-budget). Credential-signature authority for the quorum's cancellation — rejected (principal separation; mutant M-K9-guardian-cancel-wrong-authority). Metering the quorum's cancellation by CHALLENGE_LIMIT — rejected: the quorum is the recovery trust root and needs no metered veto over its own remedy. Keeping overwrite as the quorum's exit — that is SD-9d.",
+      "invertedReproduction": "test/W2RecoveryLifecycle.test.ts section A (A1 the exact frozen surface; A2 a current quorum terminates a live request with the epoch and every other slot untouched and one guardian nonce; A3 below quorum / wrong principal / wrong digest refused as QuorumNotMet with nothing consumed; A4 two domains, two events; A5 a fresh request after the cancellation carries the epoch and completes) and section E (a stale cancellation never reaches R2). The original measurement, Sd4LaneV B1, is pinned to the pre-W2 fixture and additionally asserts the exit now exists on the shipped kernel; the stateful campaign gained the action CANCEL_RECOVERY_BY_QUORUM, the outcome RECOVERY_QUORUM_CANCEL at cut k, the profile recovery-lifecycle and the seam tallies.",
+      "residual": null
+    },
+    {
+      "id": "SD-9d-live-request-overwrite",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "4b9127269602d8eab3700d96dda4d5cfcf2e0d55",
+      "remediatedOn": "c182db1099d92ff5830ae71116613c739b034bd9 (security/vnext-recovery-lifecycle-implementation, Lane W2 Commit A)",
+      "invariant": "APPROVED_REQUEST_OVERWRITE = REFUSED while effectively live (SD9_RECOVERY_LIFECYCLE_DEFECTS.md; amendment section 5, premise 2) — a live request leaves the system only by execution, the credential's bounded challenge, the quorum's cancellation, or expiry; a fresh initiation over a live slot reverts BadState BEFORE any nonce is consumed, so a refused overwrite burns no guardian nonce. An EXPIRED request is not live, and replacing it is not overwrite.",
+      "sourceDelta": "One guard at the top of initiateRecovery, immediately after _requireRecoveryOpen and before the ZeroAddress checks, the digest and _consume: `if (_recoveryIsLive()) revert BadState();`. The carry-forward of challengesUsed into the fresh request is unchanged.",
+      "rejectedAlternatives": "KEEPING OVERWRITE as the quorum's only exit — Lane V's AUTHORITY_GENUINELY_CONFLICTS verdict — superseded once K-9 mechanism B exists in the architecture (its load-bearing reason was that overwrite was the sole exit). Refusing AFTER _consume — rejected: it would burn a guardian nonce on a refused call and break premise 4 of the replay proof (a stale cancel before a replacement consumes nothing). Refusing on the raw stored flag — rejected: stale expired storage would block a fresh request forever (mutant M-K9-expired-request-blocks-initiation). Removing the guard altogether is the defect itself and is the permanently killed mutant M-K9-live-overwrite-allowed.",
+      "invertedReproduction": "test/W2RecoveryLifecycle.test.ts C1/C2 (live before and after maturity: BadState, guardian nonce unconsumed, request intact), E3 (same block, both orders: exactly one transaction succeeds and it is the initiation) and G1 (overwrite ordering: refused while live; cancel-then-R2 and expire-then-R2 both create R2). The original measurements, Sd4LaneV B2 and A1, are pinned to the pre-W2 fixture; the stateful model's recordInitiation now returns an SD-9d violation if the previous episode is still live at the mined timestamp.",
+      "residual": null
+    },
+    {
+      "id": "SD-9e-expiry-equality-boundary",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "4b9127269602d8eab3700d96dda4d5cfcf2e0d55",
+      "remediatedOn": "c182db1099d92ff5830ae71116613c739b034bd9 (security/vnext-recovery-lifecycle-implementation, Lane W2 Commit A)",
+      "invariant": "LIVE_WINDOW = [executableAt, expiresAt) — half-open, everywhere: `_recoveryIsLive()` is `block.timestamp < expiresAt`, `executeRecovery` refuses at `>= expiresAt` (Expired), and TooEarly is retained below executableAt. Deadlines stay inclusive; expiries are exclusive, the convention the reference model applies to every expiry (Lane W1 boundary correction).",
+      "sourceDelta": "One comparison in executeRecovery: `if (block.timestamp > r.expiresAt)` became `if (block.timestamp >= r.expiresAt)`, and the new `_recoveryIsLive()` predicate uses the strict `<` on the same field, so no consumer disagrees about the last live instant (expiresAt - 1).",
+      "rejectedAlternatives": "KEEPING `>` and documenting a closed window — rejected: the model is uniformly `>=` on every expiry and `>` only on a deadline, and the kernel's own containment uses `>= containedUntil`, so the outlier was a conformance defect rather than a convention; Lane W's earlier `<=` reading was itself superseded by Lane W1 after re-deriving the boundary from the model rather than from the artifact under review. Closing BOTH the predicate and the execute check (`<=` and `>`) — that is the permanently killed mutant M-K9-expiry-inclusive-off-by-one.",
+      "invertedReproduction": "test/W2RecoveryLifecycle.test.ts B1–B4 (the expiresAt-1 / expiresAt / expiresAt+1 matrix with mined-block timestamps: live, expired, expired) and G3 (the exact race — three transactions mined at consecutive instants in ONE world). The boundary probes carry an explicit gasLimit so Hardhat mines the reverting transaction and the asserted timestamp is the mined one. The original measurement, Sd4LaneW1's E-series, recorded `>` on c67d1439.",
+      "residual": null
+    },
+    {
+      "id": "SD-10-approved-request-stranded-by-guardian-rotation",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "4b9127269602d8eab3700d96dda4d5cfcf2e0d55",
+      "remediatedOn": "c32e0d748390b79f4163ad4a783c2467cf502e30 (security/vnext-sd10-approved-recovery-preservation, Lane SD10-I Commit A)",
+      "invariant": "I-APPROVED-REQUEST-PRESERVATION (docs/Vault_vNext_Architecture.md:951): 'Once a request reaches quorum, a guardian-set replacement cannot clear it.' PRESERVED MEANS STILL EXECUTABLE, not merely still stored — the defect left the request in storage and destroyed it as authority. ROOT CAUSE: executeRecovery REVALIDATED an already-admitted recovery against the CURRENT guardianGeneration. REMEDIATION: remove that execution-time invalidation. RETAINED: boundGuardianGeneration remains the generation that APPROVED the request and remains bound into recoveryPossessionDigest(), so a possession proof signed before a rotation is still the right proof after one. FRESH AUTHORITY IS UNCHANGED: every new guardian authorization — initiation, quorum cancellation, setGuardians, containment, migration binding — still binds the CURRENT guardian commitment and the CURRENT generation, so a replaced roster holds no fresh authority of any kind. Guardian-generation binding was NOT removed; only its misuse as a re-check on an effect the kernel had already admitted.",
+      "sourceDelta": "ONE statement deleted from executeRecovery: `if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();`, and its comment replaced by a @dev note distinguishing the two generations. Nothing else in Solidity: the RecoveryRequest struct, storage layout, ABI, 46 selectors, 15 events and 24 errors are unchanged, the factory's executable prefix is byte-identical, setGuardians is untouched, no clock moves and no possession gate is relaxed. Measured on the pinned solc (0.8.24, cancun, optimizer runs 200): kernel runtime 18,425 -> 18,367 B (-58), initcode 18,466 -> 18,408 B (-58).",
+      "rejectedAlternatives": "T (setGuardians clears recovery.active on rotation) — a DIRECT violation and worse than the defect: it destroys the effect rather than stranding it, and Hazard Register H-03 names exactly that legacy behaviour as a T1 hazard CAUSE; permanent mutant M-SD10-T-ROTATION-AUTO-TERMINATES-REQUEST. B (setGuardians reverts while a recovery is effectively live) — CONFORMANT with the invariant and NOT an authority-cut violation, rejected as an unnecessary liveness/governance restriction that makes rotating a compromised seat out conditional on first terminating the quorum's own pending remedy; permanent mutant M-SD10-B-ROTATION-BLOCKED-WHILE-REQUEST-LIVE. R (ratify the request under the new generation) — +1 selector, +1 event, ~292 bytes, an extra guardian act, and it REBINDS the possession digest so a pre-signed proof is refused; its end state is identical to the adopted design, so it buys nothing. RE-BINDING boundGuardianGeneration to the new generation — the family THIS ENTRY's own former minimalFixSketch considered and rejected, on the grounds that a request re-bound to a roster that never approved it is mutant M16 wearing a different hat; that rejection STANDS and is not what was built. The adopted design is a third family the old sketch never enumerated: freeze the provenance, remove only the re-check.",
+      "invertedReproduction": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts (the ORIGINAL sequence, step for step, with the verdict moved: the same formerly-stranded R1 now executes after the same roster re-commitment); test/Sd10ApprovedRequestPreservation.test.ts (23 tests — preservation across one and three rotations, the replaced roster's total loss of fresh authority with positive controls, the current quorum's cancellation, the half-open expiry boundary at expiresAt-1/expiresAt/expiresAt+1 at mined instants, same-block ordering in both directions, four incoming-possession probes, and the challenge epoch); test/Sd10PreservationMutations.test.ts (the inverse mutant M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST, which reinstates the exact deleted statement and is denied kill credit unless the observation is precisely a preserved, mature, validly-proven request being refused); test/W2RecoveryLifecycle.test.ts H1, test/Sd1RecoveryFloorBinding.test.ts R7b and test/Sd4LaneV.test.ts D (three further reproductions inverted in place — Lane V's D had recorded a TWO-SIDED divergence, kernel admitted-then-refused versus model refused, now closed on both sides).",
+      "residual": null
     }
   ],
   "whatThisDoesNotProve": [
@@ -647,6 +830,7 @@
     "Cross-chain and cross-vault replay is covered only by the domain separator's construction, not by a second deployed chain.",
     "A verifier that loses its code between recovery initiation and execution is not reachable in this harness: post-Cancun SELFDESTRUCT only clears code in the same transaction as creation, so G-VERIFIER-HAS-CODE is asserted rather than adversarially exercised.",
     "The ERC-1271 guardian mocks (reverting, gas-burning, huge-returndata, wrong-answer) are exercised by the existing prototype suite, not by this campaign: the generated rosters are EOA seats only.",
-    "guardianThreshold is a free parameter a k-quorum may lower to 1, permanently moving the guardian cut. The campaign models this faithfully (cuts are computed from the LIVE threshold) and does not treat it as a defect, because AUTHORITY.md assigns setGuardians to the guardian quorum. It is recorded here as an OBSERVATION worth an explicit row in the published table."
+    "guardianThreshold is a free parameter a k-quorum may lower to 1, permanently moving the guardian cut. The campaign models this faithfully (cuts are computed from the LIVE threshold) and does not treat it as a defect, because AUTHORITY.md assigns setGuardians to the guardian quorum. It is recorded here as an OBSERVATION worth an explicit row in the published table.",
+    "SD-9a (RECOVERY_CHALLENGE_EPOCH_LIFETIME_UNSPECIFIED) is deliberately in NEITHER defect array of this receipt: it is a REMEDIATION HAZARD / SPECIFICATION GAP, not a present implementation defect. No executed path of any kernel revision ever refunded the challenge epoch on a request-lifetime exit, and the epoch's lifetime is a DERIVED requirement (docs/Vault_vNext_Recovery_Amendment.md section 2) that the architecture does not state verbatim. On the W2 kernel the rule is stated at the struct field and at the single `delete recovery` reset site, the hazardous remediation (a delete-on-expiry sweeper) is a permanently killed mutant (M-K9-expiry-refunds-budget, test/W2RecoveryLifecycleMutations.test.ts), and the oracle carries G-CHALLENGE-EPOCH. Its record is prototype/vnext-kernel/SD9_RECOVERY_LIFECYCLE_DEFECTS.md; counting it as a defect here would misstate what the kernel ever did."
   ]
 }

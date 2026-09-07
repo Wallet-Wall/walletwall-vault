@@ -27,7 +27,7 @@ import { ethers } from "../test/connection.js";
 import { networkHelpers } from "../test/connection.js";
 import type { Prng } from "./prng.js";
 import type { AbstractState } from "./model.js";
-import { recordCancellation, recordExecution, recordInitiation } from "./model.js";
+import { judgeRecoveryExecution, recordCancellation, recordExecution, recordInitiation } from "./model.js";
 import type { Actor, Floor, Root, VerifierKind, World } from "./world.js";
 import {
   ACTION,
@@ -84,6 +84,19 @@ export interface Ctx {
   requirePqNow: boolean;
   /** Which policy plane the harness installed. "deny" must make every spend fail. */
   policyKind: string;
+  /**
+   * When set, `ROTATE_CREDENTIAL` FABRICATES its incoming commitment on a
+   * deterministic subset of steps: a hash whose preimage nothing in this
+   * campaign holds, with an empty exhibit. This is the SD-6 attack, generated.
+   *
+   * It exists because `G-COMMITMENT-ATTESTED` would otherwise be green for the
+   * worst possible reason — the bad transition being unreachable in every
+   * profile rather than refused by the kernel. The subset is chosen from the
+   * EXISTING `target` draw and never calls `prng` again, and the flag is set on
+   * ONE APPENDED profile, so every historical campaign's action stream, kill
+   * seed and step index are byte-identical.
+   */
+  fabricateCommitments: boolean;
   /** Raw calldata of every attempt, so REPLAY can resubmit one verbatim later. */
   history: Recorded[];
   step: number;
@@ -313,6 +326,11 @@ export const ACTION_KINDS = [
   "ADVANCE_TIME",
   "REPLAY_PAST_CALL",
   "FACTORY_DEPLOY_TWIN",
+  // APPENDED (Lane W2), never inserted. `generatePlan` filters this list by each
+  // profile's weights BEFORE drawing, so a kind that no historical profile
+  // weights leaves every historical action stream, kill seed and step index
+  // byte-identical. K-9 mechanism B — the guardian quorum's own cancellation.
+  "CANCEL_RECOVERY_BY_QUORUM",
 ] as const;
 
 export type ActionKind = (typeof ACTION_KINDS)[number];
@@ -345,6 +363,19 @@ export interface ExecOutcome {
   attributedRoots: Set<Root>;
   /** Set when the model itself judged something wrong, independent of the kernel. */
   modelViolation: string | null;
+  /**
+   * The timestamp of the block a SUCCESSFUL action was mined in. The clock is
+   * the harness's own environment (ADVANCE_TIME moves it), not kernel state,
+   * and the model's recovery-lifecycle judgements (Lane W2) are made against it.
+   */
+  minedAt?: bigint;
+}
+
+/** The timestamp of a mined block, as a bigint; 0n when the block cannot be read. */
+async function minedTimestamp(blockNumber: number | undefined): Promise<bigint> {
+  if (blockNumber === undefined) return 0n;
+  const block = await ethers.provider.getBlock(blockNumber);
+  return BigInt(block?.timestamp ?? 0);
 }
 
 const errName = (e: unknown): string => {
@@ -426,10 +457,11 @@ export async function executeAction(
         data: built.data,
         value: built.value ?? 0n,
       });
-      await tx.wait();
+      const receipt = await tx.wait();
+      const minedAt = await minedTimestamp(receipt?.blockNumber);
       record(w.vaultAddress, built.data, built.value ?? 0n, true);
       if (onSuccess) onSuccess();
-      return { ok: true, revert: null, attributedRoots: held, modelViolation: null };
+      return { ok: true, revert: null, attributedRoots: held, modelViolation: null, minedAt };
     } catch (e) {
       record(w.vaultAddress, built.data, built.value ?? 0n, false);
       return { ok: false, revert: errName(e), attributedRoots: held, modelViolation: null };
@@ -489,6 +521,14 @@ export async function executeAction(
       const targetIdx = Number(p.target ?? 0) % w.spareCred.length;
       const newCred = w.spareCred[targetIdx]!;
       const newPq = w.sparePq[targetIdx]!;
+      // THE SD-6 ATTACK, GENERATED. Derived from the EXISTING `target` draw, so
+      // no `prng` call is added and every historical stream is unchanged; gated
+      // on a flag only the appended `commitment-forgery` profile sets, so no
+      // historical profile changes shape either.
+      const fabricate = ctx.fabricateCommitments && targetIdx === 0;
+      const installedHash = fabricate
+        ? ethers.keccak256(ethers.toUtf8Bytes(w.opts.label + "-fabricated-" + ctx.step))
+        : pqHash(newPq);
       const newCredLabel = w.opts.label + "-spare-cred-" + targetIdx;
       const newPqLabel = w.opts.label + "-spare-pq-" + targetIdx;
       // Captured BEFORE attempt(), whose onSuccess reassigns ctx.credKey.
@@ -503,7 +543,7 @@ export async function executeAction(
           const popStale = Boolean(p.popStale);
           const popKeyEc = popStale ? ctx.credKey : newCred;
           const popKeyPq = popStale ? ctx.pqKey : newPq;
-          const pop = (await vault.credentialPossessionDigest(addrOf(newCred), pqHash(newPq))) as string;
+          const pop = (await vault.credentialPossessionDigest(addrOf(newCred), installedHash)) as string;
           const digest = digestOf({
             chainId: w.chainId,
             vault: w.vaultAddress,
@@ -513,7 +553,7 @@ export async function executeAction(
             params: ethers.keccak256(
               ethers.AbiCoder.defaultAbiCoder().encode(
                 ["address", "bytes32"],
-                [addrOf(newCred), pqHash(newPq)],
+                [addrOf(newCred), installedHash],
               ),
             ),
             domain: DOMAIN.CREDENTIAL,
@@ -522,10 +562,17 @@ export async function executeAction(
           });
           const change = {
             newSigner: addrOf(newCred),
-            newPqKeyHash: pqHash(newPq),
-            newPqKey: pqKeyBytes(newPq),
+            newPqKeyHash: installedHash,
+            // THE FABRICATED CASE EXHIBITS THE VAULT'S CURRENT KEY — public data
+            // the attacker always has — while installing a DIFFERENT hash beside
+            // it. An empty exhibit was tried first and was too weak: it dies on
+            // any keccak comparison, so it could not distinguish a clause bound
+            // to the INCOMING commitment from one bound to the OUTGOING one.
+            // Mutation adequacy caught that (M22 survived), which is the whole
+            // reason the mutant exists.
+            newPqKey: fabricate ? pqKeyBytes(ctx.pqKey) : pqKeyBytes(newPq),
             newEcdsaPop: sign(popKeyEc, pop),
-            newPqPop: sign(popKeyPq, pop),
+            newPqPop: fabricate ? "0x" : sign(popKeyPq, pop),
           };
           return {
             data: vault.interface.encodeFunctionData("rotateCredential", [
@@ -541,8 +588,14 @@ export async function executeAction(
         () => {
           ctx.credKey = newCred;
           ctx.credLabel = newCredLabel;
-          ctx.pqKey = newPq;
-          ctx.pqLabel = newPqLabel;
+          // On a fabricated rotation the harness deliberately does NOT adopt a
+          // PQ belief: it holds no preimage for what was written. Leaving the
+          // stale belief in place is what makes a weakened kernel's acceptance
+          // visible to G-COMMITMENT-ATTESTED instead of being papered over.
+          if (!fabricate) {
+            ctx.pqKey = newPq;
+            ctx.pqLabel = newPqLabel;
+          }
           ctx.abstract.credentialReplacements += 1;
         },
       ).then((r) => ({
@@ -619,7 +672,27 @@ export async function executeAction(
             FAR_DEADLINE,
             sign(credSigningKey(actor, ctx), digest),
             floor.requirePq ? sign(pqSigningKey(actor, ctx), digest) : "0x",
-            floor.requirePq ? pqKeyBytes(pqSigningKey(actor, ctx)) : "0x",
+            // The `pqKey` slot serves TWO different roles depending on the edge,
+            // and conflating them would silently hand an attacker a factor.
+            //
+            //   current requirePq TRUE — `_authorise` measures this against the
+            //     vault's commitment, so it must stay the ACTOR's own key: an
+            //     actor that does not hold the PQ root has to keep failing.
+            //   current FALSE, next TRUE — the DECLARING edge. `_authorise`
+            //     returns before reading it, and the kernel instead demands
+            //     `I-DECLARATION-EXHIBITED`'s satisfiability witness for the
+            //     shape being declared. That witness is the vault's committed
+            //     PUBLIC key, so supplying it grants authority to nobody — every
+            //     actor, attacker included, can read it off chain. On a vault
+            //     with NO commitment it correctly fails to satisfy the witness,
+            //     which is the SD-3 refusal the campaign should now see.
+            //
+            // No `prng` call is added, so no campaign history re-seeds.
+            floor.requirePq
+              ? pqKeyBytes(pqSigningKey(actor, ctx))
+              : requirePqAfter
+                ? pqKeyBytes(w.pqKey)
+                : "0x",
           ]),
         };
       }, () => {
@@ -737,73 +810,113 @@ export async function executeAction(
       const verifierKind = String(p.verifier ?? "honest") as VerifierKind;
       const proposedVerifier = w.verifiers[verifierKind];
       let boundGen = 0n;
-      return attempt(
-        async () => {
-          const nonce = (await vault.nonces(DOMAIN.GUARDIAN)) as bigint;
-          boundGen = (await vault.guardianGeneration()) as bigint;
-          const digest = digestOf({
-            chainId: w.chainId,
-            vault: w.vaultAddress,
-            kernelGeneration: kernelGen,
-            actionType: ACTION.RECOVER,
-            authorityGeneration: boundGen,
-            params: recoverParams(addrOf(newCred), pqHash(newPq), proposedVerifier),
-            domain: DOMAIN.GUARDIAN,
-            nonce,
-            deadline: FAR_DEADLINE,
-          });
-          const q = buildQuorum(actor, ctx, digest, shape, prng);
-          return {
-            data: vault.interface.encodeFunctionData("initiateRecovery", [
-              addrOf(newCred),
-              pqHash(newPq),
-              proposedVerifier,
-              q,
-              nonce,
-              FAR_DEADLINE,
-            ]),
-          };
-        },
-        () => {
-          recordInitiation(
-            ctx.abstract,
-            ctx.step,
+      const initiated = await attempt(async () => {
+        const nonce = (await vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+        boundGen = (await vault.guardianGeneration()) as bigint;
+        const digest = digestOf({
+          chainId: w.chainId,
+          vault: w.vaultAddress,
+          kernelGeneration: kernelGen,
+          actionType: ACTION.RECOVER,
+          authorityGeneration: boundGen,
+          params: recoverParams(addrOf(newCred), pqHash(newPq), proposedVerifier),
+          domain: DOMAIN.GUARDIAN,
+          nonce,
+          deadline: FAR_DEADLINE,
+        });
+        const q = buildQuorum(actor, ctx, digest, shape, prng);
+        return {
+          data: vault.interface.encodeFunctionData("initiateRecovery", [
             addrOf(newCred),
             pqHash(newPq),
             proposedVerifier,
-            Number(boundGen),
-            held,
-          );
-        },
+            q,
+            nonce,
+            FAR_DEADLINE,
+          ]),
+        };
+      });
+      if (!initiated.ok) return initiated;
+      // JUDGED BY THE MODEL (Lane W2): an accepted initiation while the harness's
+      // own clock says the previous episode is still live is the SD-9d overwrite
+      // the kernel must refuse. The record function returns that judgement.
+      const { violation } = recordInitiation(
+        ctx.abstract,
+        ctx.step,
+        addrOf(newCred),
+        pqHash(newPq),
+        proposedVerifier,
+        Number(boundGen),
+        held,
+        initiated.minedAt ?? 0n,
       );
+      return { ...initiated, modelViolation: violation };
     }
 
-    case "CANCEL_RECOVERY":
-      return attempt(
-        async () => {
-          const nonce = (await vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
-          const credGen = (await vault.credentialGeneration()) as bigint;
-          const digest = digestOf({
-            chainId: w.chainId,
-            vault: w.vaultAddress,
-            kernelGeneration: kernelGen,
-            actionType: ACTION.RECOVER,
-            authorityGeneration: credGen,
-            params: ethers.id("CANCEL"),
-            domain: DOMAIN.CREDENTIAL,
+    case "CANCEL_RECOVERY": {
+      const cancelled = await attempt(async () => {
+        const nonce = (await vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
+        const credGen = (await vault.credentialGeneration()) as bigint;
+        const digest = digestOf({
+          chainId: w.chainId,
+          vault: w.vaultAddress,
+          kernelGeneration: kernelGen,
+          actionType: ACTION.RECOVER,
+          authorityGeneration: credGen,
+          params: ethers.id("CANCEL"),
+          domain: DOMAIN.CREDENTIAL,
+          nonce,
+          deadline: FAR_DEADLINE,
+        });
+        return {
+          data: vault.interface.encodeFunctionData("cancelRecovery", [
             nonce,
-            deadline: FAR_DEADLINE,
-          });
-          return {
-            data: vault.interface.encodeFunctionData("cancelRecovery", [
-              nonce,
-              FAR_DEADLINE,
-              sign(credSigningKey(actor, ctx), digest),
-            ]),
-          };
-        },
-        () => recordCancellation(ctx.abstract),
-      );
+            FAR_DEADLINE,
+            sign(credSigningKey(actor, ctx), digest),
+          ]),
+        };
+      });
+      if (!cancelled.ok) return cancelled;
+      // JUDGED BY THE MODEL (Lane W2): the credential's challenge may terminate
+      // only an effectively-live request. A success the model's clock calls
+      // expired is a violation, whatever the kernel believed.
+      return {
+        ...cancelled,
+        modelViolation: recordCancellation(ctx.abstract, "CREDENTIAL_CHALLENGE", cancelled.minedAt ?? 0n),
+      };
+    }
+
+    case "CANCEL_RECOVERY_BY_QUORUM": {
+      // K-9 MECHANISM B (Lane W2). Mirrors the kernel's digest EXACTLY — the
+      // guardian nonce domain, the CURRENT guardian generation, the constant
+      // params hash — and builds the proof with the same adversarial quorum
+      // shapes every other quorum act is attacked with. Attribution is to the
+      // roots the actor holds: a cancellation that succeeds for an actor below k
+      // is the outcome RECOVERY_QUORUM_CANCEL at an unentitled root set (P-CUT).
+      const shape = String(p.quorumShape ?? "honest") as QuorumShape;
+      const quorumCancelled = await attempt(async () => {
+        const nonce = (await vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+        const gGen = (await vault.guardianGeneration()) as bigint;
+        const digest = digestOf({
+          chainId: w.chainId,
+          vault: w.vaultAddress,
+          kernelGeneration: kernelGen,
+          actionType: ACTION.RECOVER,
+          authorityGeneration: gGen,
+          params: ethers.id("QUORUM_CANCEL_RECOVERY"),
+          domain: DOMAIN.GUARDIAN,
+          nonce,
+          deadline: FAR_DEADLINE,
+        });
+        const q = buildQuorum(actor, ctx, digest, shape, prng);
+        return { data: vault.interface.encodeFunctionData("cancelRecoveryByQuorum", [q, nonce, FAR_DEADLINE]) };
+      });
+      if (!quorumCancelled.ok) return quorumCancelled;
+      return {
+        ...quorumCancelled,
+        modelViolation: recordCancellation(ctx.abstract, "GUARDIAN_QUORUM", quorumCancelled.minedAt ?? 0n),
+      };
+    }
 
     case "EXECUTE_RECOVERY": {
       // PERMISSIONLESS by design, so the effect is attributed to the ROOTS THAT
@@ -850,22 +963,49 @@ export async function executeAction(
       );
       let modelViolation: string | null = null;
       if (res.ok) {
-        // JUDGED BY THE MODEL, not by the kernel: was there live evidence?
-        if (live === undefined || live === null) {
-          modelViolation = "R2/R3 — executeRecovery SUCCEEDED with no live recovery episode in the model";
-        } else if (live.state !== "LIVE") {
-          modelViolation = "R2/R3 — executeRecovery SUCCEEDED on evidence the model records as " + live.state;
-        } else if (live.guardianTransitionsAtApproval !== ctx.abstract.guardianTransitions) {
-          // R1. The constituency that APPROVED this recovery is no longer the
-          // constituency in force. A request that survives the roster change
-          // which replaced its approvers is a stale authorization retargeting
-          // onto a configuration nobody approved it for.
-          modelViolation =
-            "R1 — executeRecovery SUCCEEDED after " +
-            (ctx.abstract.guardianTransitions - live.guardianTransitionsAtApproval) +
-            " guardian-roster transition(s) since the request was approved, so it was authorised by a " +
-            "constituency that is no longer in force";
-        }
+        // JUDGED BY THE MODEL, not by the kernel: was there live evidence, and
+        // was it still inside its window when the kernel executed it (Lane W2:
+        // LIVE_WINDOW is half-open, so execution AT expiresAt is a violation)?
+        modelViolation = judgeRecoveryExecution(ctx.abstract, res.minedAt ?? 0n);
+        // R1 — RETIRED IN LANE SD10-I, and retired rather than inverted.
+        //
+        // A rule stood here that reported a violation whenever `executeRecovery`
+        // succeeded after `guardianTransitionsAtApproval !== guardianTransitions`,
+        // on the reasoning that "a request that survives the roster change which
+        // replaced its approvers is a stale authorization retargeting onto a
+        // configuration nobody approved it for".
+        //
+        // ITS AUTHORITY, adjudicated: NONE above the artifact. It was
+        // IMPLEMENTATION-DERIVED — written to agree with the kernel's
+        // execution-time `boundGuardianGeneration != guardianGeneration` check,
+        // and phrased in the same words as that check's mutant (M16). It is not
+        // source-derived: `docs/Vault_vNext_Architecture.md`
+        // I-APPROVED-REQUEST-PRESERVATION says the OPPOSITE — "once a request
+        // reaches quorum, a guardian-set replacement cannot clear it". Nor was
+        // it reference-model-derived in any load-bearing way: the model's own
+        // objection was that it DENIED the replacement (candidate B), a
+        // different claim, and its execute-time generation test was unreachable
+        // for an approved request.
+        //
+        // WHY NOT MERELY FLIP IT. The proposition "rotation must void the
+        // request" is false, but its negation — "rotation must NOT void the
+        // request" — is a LIVENESS claim about a call that did not happen, and
+        // this hook only judges transitions the kernel ACCEPTED. A refusal is
+        // invisible here. The preservation direction is therefore pinned where
+        // it can actually be observed: deterministically, in
+        // `test/Sd10ApprovedRequestPreservation.test.ts`, and as a permanent
+        // mutation contract in `test/Sd10PreservationMutations.test.ts`
+        // (M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST).
+        //
+        // WHAT THE RULE ACTUALLY DID, measured rather than recalled: across
+        // `recovery-vs-roster` and `recovery-composition` at all eight campaign
+        // seeds, M16 produced exactly ONE violation — this rule, once. It was
+        // M16's only killer; the `P-CUT/CREDENTIAL_REPLACEMENT` the catalogue
+        // credited never fired. See the M16 entry retired from `mutants.ts`.
+        //
+        // `guardianTransitionsAtApproval` is KEPT on the evidence record. It is
+        // approval provenance in the model exactly as `boundGuardianGeneration`
+        // is in the kernel, and dropping it would make the history unreadable.
         recordExecution(ctx.abstract, ctx.credLabel);
       }
       return {
@@ -1002,19 +1142,40 @@ export async function executeAction(
           data: target.data,
           value: target.value,
         });
-        await tx.wait();
+        const receipt = await tx.wait();
+        const minedAt = await minedTimestamp(receipt?.blockNumber);
         // A REPLAYED executeRecovery that succeeds is judged by the MODEL exactly
         // as a direct one is: the question is whether live evidence existed, not
         // who sent the transaction.
         let modelViolation: string | null = null;
         if (target.kind === "EXECUTE_RECOVERY") {
-          if (!live) modelViolation = "R3 — a REPLAYED executeRecovery succeeded with no live recovery episode";
-          else if (live.state !== "LIVE") {
-            modelViolation = "R3 — a REPLAYED executeRecovery succeeded on evidence the model records as " + live.state;
-          }
+          modelViolation = judgeRecoveryExecution(ctx.abstract, minedAt);
           recordExecution(ctx.abstract, ctx.credLabel);
+        } else if (target.kind === "INITIATE_RECOVERY") {
+          // Lane W2 makes a refused initiation RELAYABLE: calldata that first
+          // failed BadState against a live request keeps its unspent guardian
+          // nonce, and succeeds once that request has expired. That creates a
+          // REAL episode, so the model must record it — under the roots that
+          // signed it — or every later judgement about that episode would be
+          // made against evidence the model never held.
+          const decoded = vault.interface.decodeFunctionData("initiateRecovery", target.data);
+          const gGen = (await vault.guardianGeneration()) as bigint;
+          modelViolation = recordInitiation(
+            ctx.abstract,
+            ctx.step,
+            String(decoded[0]),
+            String(decoded[1]),
+            String(decoded[2]),
+            Number(gGen),
+            new Set(target.authorRoots),
+            minedAt,
+          ).violation;
+        } else if (target.kind === "CANCEL_RECOVERY") {
+          modelViolation = recordCancellation(ctx.abstract, "CREDENTIAL_CHALLENGE", minedAt);
+        } else if (target.kind === "CANCEL_RECOVERY_BY_QUORUM") {
+          modelViolation = recordCancellation(ctx.abstract, "GUARDIAN_QUORUM", minedAt);
         }
-        return { ok: true, revert: null, attributedRoots: attributed, modelViolation };
+        return { ok: true, revert: null, attributedRoots: attributed, modelViolation, minedAt };
       } catch (e) {
         return { ok: false, revert: errName(e), attributedRoots: attributed, modelViolation: null };
       }
@@ -1058,7 +1219,14 @@ export async function executeAction(
               "I-COUNTERFACTUAL-IDENTITY-BINDING — a DIFFERENT genesis authority predicts the victim vault's address",
           };
         }
-        await (await factory.deployVault(salt, hostileGenesis)).wait();
+        // The genesis witness for `I-COMMITMENT-EXHIBITED-AT-ADMISSION`. The
+        // attacker supplies a CORRECT one on purpose: a PQ public key is public,
+        // so the exhibit is not an obstacle to them and must not be mistaken for
+        // one. This action tests IDENTITY BINDING, and weakening it to an
+        // admission failure would silently delete that coverage.
+        await (
+          await factory.deployVault(salt, hostileGenesis, pqKeyBytes(keyOf(actor.name + "-hostile-pq")))
+        ).wait();
         return { ok: true, revert: null, attributedRoots: new Set<Root>(), modelViolation: null };
       } catch (e) {
         return { ok: false, revert: errName(e), attributedRoots: new Set<Root>(), modelViolation: null };
