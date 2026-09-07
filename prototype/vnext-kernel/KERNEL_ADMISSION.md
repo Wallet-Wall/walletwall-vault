@@ -44,6 +44,72 @@ so rather than improvising.
 
 **Every one of the 15 is implemented in the prototype.** None is omitted for size.
 
+> **K-9 CORRECTION (Lane V2 / W1P) — the sentence above is retained as written
+> and is FALSE for K-9.** K-9 declares **two** cancellation authorities, and its
+> own authority column says so: *"credential (bounded count), or guardian
+> quorum"*. `docs/Vault_vNext_Architecture.md` §8.1 (`:832`), under the heading
+> *"Direct capabilities (vNext)"*, grants the guardian quorum `CANCEL_RECOVERY`.
+>
+> ```text
+> K-9 declared cancellation authority:
+>
+> A. spending credential:
+>    bounded recovery challenge/cancellation
+>
+> B. guardian quorum:
+>    direct CANCEL_RECOVERY
+>
+> prototype at c67d1439:
+>    A implemented   — cancelRecovery(nonce, deadline, ecdsaSig), gated by
+>                      _floorAuthorises, capped by CHALLENGE_LIMIT
+>    B missing       — the complete quorum-authorised surface, enumerated from
+>                      the ABI, is bindMigration, enterContainment,
+>                      initiateRecovery, setGuardians
+>
+> K9_GUARDIAN_CANCEL_CONFORMANCE = MISSING_IN_PROTOTYPE
+> K9_CONFORMANCE                 = PARTIAL / FAILED FOR THE DECLARED DUAL MECHANISM
+> ```
+>
+> Three substitutes were tested and refuted (`test/Sd4LaneV2.test.ts`): a
+> "null" overwrite cannot express *no request* (`ZeroAddress`); containment does
+> not cancel (`_requireRecoveryOpen` admits `CONTAINED`); `setGuardians` strands
+> rather than cancels, which is a defect of its own (SD-10). The row's own
+> implementation column — *"`cancelRecovery()` with a per-episode challenge
+> budget"* — describes only mechanism A, so the summary line is contradicted by
+> the table it summarises. A defensible restatement is: *fifteen kernel-required
+> concerns are addressed; K-9's declared authority names two principals and only
+> the credential half is implemented.* The direct overwrite the prototype permits
+> instead is classified `NONCONFORMANT_AND_REDUNDANT` — see
+> `SD9_RECOVERY_LIFECYCLE_DEFECTS.md` and `docs/Vault_vNext_Recovery_Amendment.md`.
+
+> **K-9 W2 STATUS (Lane W2I; reviewed in Lane W2R; persisted as Commit A
+> `c182db1099d92ff5830ae71116613c739b034bd9` in Lane W2P; the block above is
+> retained as history).** Mechanism B is now implemented in
+> `contracts/VaultKernelPrototype.sol` as
+> `cancelRecoveryByQuorum(QuorumProof,uint256,uint64)` — guardian quorum under the
+> CURRENT commitment and generation, `DOMAIN_GUARDIAN` nonce, clears request
+> authority only, leaves `challengesUsed` standing, emits
+> `RecoveryCancelledByQuorum`. The quorum-authorised surface is now FIVE:
+> `bindMigration`, `cancelRecoveryByQuorum`, `enterContainment`,
+> `initiateRecovery`, `setGuardians`.
+>
+> ```text
+> K9_GUARDIAN_CANCEL_CONFORMANCE = IMPLEMENTED (W2 Commit A c182db10, reviewed in W2R)
+> K9_CONFORMANCE                 = BOTH MECHANISMS PRESENT — executable-conformant
+>                                  (test/W2RecoveryLifecycle.test.ts §A,
+>                                   test/W2RecoveryLifecycleMutations.test.ts)
+> ```
+>
+> The direct overwrite the prototype permitted is REFUSED (`BadState` while a
+> request is effectively live); an expired request holds no authority and blocks
+> nothing; the executable window is half-open `[executableAt, expiresAt)`; the
+> challenge epoch persists across every exit and resets only through
+> `executeRecovery`'s `delete recovery`. The sentence *"Every one of the 15 is
+> implemented"* is therefore true again as written, and the row's implementation
+> column now reads `cancelRecovery()` (credential, per-epoch challenge budget) +
+> `cancelRecoveryByQuorum()` (guardian quorum). Record:
+> `W2_IMPLEMENTATION_RECORD.md`.
+
 > **K-15 WAS MISSING FROM THE FIRST DRAFT OF THIS MANIFEST, and its absence was
 > a live defect rather than a documentation gap.** The authority-closure pass
 > (AUTHORITY.md) asked which principal could reach a _silent crypto downgrade_
@@ -57,6 +123,73 @@ so rather than improvising.
 > This is the finding the lane exists to produce. It was not found by a test —
 > the tests all passed — but by mapping the prototype back onto #179's authority
 > model and noticing an outcome whose cut had silently dropped to 1.
+
+> **K-15 CORRECTION (Lane SD5-I) — the row above is retained as written and is
+> now PARTLY FALSE, in two separate ways.** The K-9 correction is the precedent
+> for stating that in place rather than rewriting history.
+>
+> **(1) THE ROW OVER-SCOPES ITSELF.** Its title reads *"requirePq, param level,
+> structural lengths"*, but its CITATION is to §4.3 floor **component 2**
+> (*"kernel-recorded scheme strength, never read from the verifier"*). The
+> structural lengths are component **1** — a different component with a different
+> justification, carried here under a citation that never covered them. Lane
+> SD5-I DE-AUTHORISES all three, so only `requirePq` remains security authority.
+> The other three are `SIGNED_METADATA` + `IDENTITY_BOUND_METADATA` +
+> `NON_AUTHORITATIVE_SECURITY_METADATA` + `ABI_COMPATIBILITY`, and explicitly NOT
+> `AUTHORIZATION_INPUT`, NOT `RECOVERY_SATISFIABILITY_INPUT`, NOT
+> `CRYPTOGRAPHIC_STRENGTH`. The invariants column moves with them:
+> `I-FLOOR-IS-SOUND` is satisfied by the kernel-evaluable anchored ECDSA factor
+> and NEVER rested on scheme-shape metadata (§4.3a says so in terms — "neither
+> demonstrates possession of a private key"), and `I-NO-SILENT-DOWNGRADE` narrows
+> to `I-NO-SILENT-DOWNGRADE-G1`: a mandatory PQ conjunct may not be silently
+> disabled, and nothing more. `I-FLOOR-SHAPE-IMMUTABLE` is RETIRED and replaced by
+> `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`.
+>
+> **(2) "plus §12's transition rules" WAS NEVER IMPLEMENTED**, so *"Every one of
+> the 15 is implemented in the prototype"* is false for K-15 in a way the W2
+> correction did not reach. §12 replaces the flat strength scalar with a
+> `SecurityProfile` — `schemeId`, `family`, `paramLevel`, `rootTag`,
+> `verifierGeneration`, `anchored`, clause structure — and the prototype
+> implements a flat four-field struct carrying **one** of those seven. §12
+> explicitly WITHDREW the flat scalar as *"a scalar asserts a total order that
+> does not exist"*, and `pqParamLevel` **is** that withdrawn construct.
+> `SECURITY_PROFILE_DISPOSITION = DEFERRED_TO_FUTURE_GENERATION`; Generation 1
+> claims no strength policy at all.
+>
+> **THE VERIFIER-ADMISSION OBLIGATION, which K-15 must now carry because nothing
+> else does.** `GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`: the kernel does not
+> know, and does not claim to know, which cryptographic relation its verifier
+> implements. Its only constraint at all three admission points — `initialize`,
+> `setVerifier`, `initiateRecovery` — is a nonzero code length. Verifier admission
+> is therefore a DEPLOYMENT PRECONDITION in two parts, and BOTH are required:
+>
+> &nbsp;&nbsp;**(a)** the admitted verifier's INTENDED relation conforms to FIPS 204,
+> including §3.6.2 — which binds *an implementation of ML-DSA* to return false on
+> wrong-length inputs, and places no duty on a scheme-agnostic kernel; **and**
+>
+> &nbsp;&nbsp;**(b)** admission SEPARATELY establishes that the verifier exposes **no
+> unauthorized accepting relation** over a committed key.
+>
+> **(a) DOES NOT IMPLY (b)**, and that is measured rather than argued: lane
+> SD5-A1R built a single verifier with a FIPS-shaped strong leg AND a forgeable
+> second leg over the same committed key, and carried the weak leg through to
+> asset movement and a credential change. Anyone writing "mitigated by FIPS 204"
+> has lost the distinction. The kernel CANNOT discharge (b) — it cannot prove
+> arbitrary bytecode exposes only one relation, and requiring it to would replace
+> the old length-based pseudo-binding with an unverifiable one — so (b) is an
+> artifact/admission obligation and the gap is recorded as **SD-11A**.
+>
+> Whether an ALREADY-ADMITTED verifier can change its relation in place is
+> **SD-11B**, recorded as NOT EXCLUDED and NOT MEASURED. The kernel pins no
+> verifier codehash and never re-validates after admission, while `bindMigration`
+> DOES pin `codehash` for migration destinations — so the mechanism exists in this
+> contract and is simply not applied to the verifier. Note before reaching for it:
+> a codehash pin would address metamorphic redeploy but NOT a delegatecall proxy,
+> whose codehash is stable while its implementation pointer moves.
+>
+> Measured cost of the amendment: runtime **18,367 → 17,695 bytes (−672)**, with
+> storage layout, ABI, selectors, events, errors and `securityFloor()`'s return
+> shape BYTE-IDENTICAL. Record: `SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md`.
 
 ---
 

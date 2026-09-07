@@ -37,6 +37,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # FULL HISTORY IS REQUIRED, NOT A PREFERENCE. The evidence-provenance
+          # tests resolve the EVIDENCE SUBJECT declared in MEASUREMENTS.json
+          # (`validation.measuredAtHead`), which is an ANCESTOR of the commit
+          # under test -- evidence is committed one commit after the tree it
+          # measures. The default `fetch-depth: 1` does not fetch that object, and
+          # `resolveEvidenceSubject` is deliberately FAIL-CLOSED, so it would
+          # throw rather than quietly fall back to the container. Guards that
+          # self-skip on a shallow clone are exactly the failure this avoids.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -136,6 +146,152 @@ jobs:
         with:
           sarif_file: slither-vnext-kernel-results.sarif
           category: slither-vnext-kernel
+
+  authority-completeness:
+    name: Authority Completeness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      - name: Run authority-path completeness checker
+        # Independent from Slither/CodeQL: this checks whether the COMPLETE
+        # externally reachable privileged surface is classified and routed
+        # through the authority model declared in authority-manifest.json --
+        # not an implementation-pattern scan. See authority/README.md. Fails
+        # on any unclassified external state-changing function, any gate/cut
+        # mismatch against the manifest, any unresolved statement ordering
+        # with no declared exception, or any stale/malformed manifest entry.
+        run: npx tsx prototype/vnext-kernel/authority/check.ts --out prototype/vnext-kernel/AUTHORITY_CENSUS.json
+
+      - name: Prove the checker detects the historical and adversarial bypass classes
+        # Compiles real mutated copies of the source in memory (never writing
+        # to contracts/) and asserts the checker's actual verdict on each --
+        # see PHASE 7/8/9/15 in the PR description. A checker that always
+        # passes is worthless; this is what proves it is not.
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test prototype/vnext-kernel/test/AuthorityCompletenessMutations.test.ts
+
+      - name: Upload authority census
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-authority-census
+          path: prototype/vnext-kernel/AUTHORITY_CENSUS.json
+          if-no-files-found: ignore
+
+  stateful-authority:
+    name: Stateful Authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Same reason as the Prototype Tests job: this job REGENERATES the
+          # receipt, whose provenance is derived from the declared evidence
+          # subject -- an ancestor commit that a depth-1 checkout does not fetch.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      - name: Run the stateful adversarial authority campaign
+        # DETERMINISTIC BY CONSTRUCTION. Every campaign is a pure function of
+        # (profile, seed, depth); the seed set is FIXED in the suite itself, and
+        # there is no clock-derived or environment-derived randomness anywhere in
+        # this lane. A red run here is never a coincidence, and every failure
+        # prints the exact profile/seed/depth plus a minimised action sequence.
+        #
+        # This asks a DIFFERENT question from the two jobs above. Slither asks
+        # whether implementation patterns look unsafe; Authority Completeness
+        # asks whether every privileged path reaches its intended gate. This asks
+        # whether individually-valid transitions can be COMPOSED OVER TIME into
+        # an outcome below its declared cut. None of the three is evidence for
+        # another. See prototype/vnext-kernel/stateful/README.md.
+        run: >-
+          npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+          prototype/vnext-kernel/test/StatefulAuthorityFuzz.test.ts
+
+      - name: Reproduce the sustained composition defects
+        # Three defects this lane found are RECORDED rather than fixed (this PR
+        # changes zero bytes of Solidity). These reproductions assert the
+        # DEFECTIVE behaviour on purpose, so a fix cannot land silently while
+        # AUTHORITY.md still calls the outcome unreachable: it makes this job
+        # fail and forces the ledger and the document to move together.
+        run: >-
+          npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+          prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts
+
+      - name: Prove the stateful properties detect deliberately weakened kernels
+        # A campaign that finds nothing is worth nothing until you know it COULD
+        # have found something. Sixteen mutations compile a real weakened kernel
+        # in memory and point the SAME campaign machinery at it; nine reintroduce
+        # a defect actually reproduced against an earlier revision (AUTHORITY.md
+        # section 0: A1, A2, B, D, F). An unexplained survivor fails this job.
+        run: >-
+          npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test
+          prototype/vnext-kernel/test/StatefulMutationAdequacy.test.ts
+
+      - name: Regenerate the stateful evidence receipt
+        # The receipt must describe the matrix that actually ran; the campaign
+        # suite asserts the two agree.
+        #
+        # THE RECEIPT IS BOUND TO ITS DECLARED SUBJECT, NOT TO THIS CHECKOUT. An
+        # earlier revision of this step claimed regeneration "keeps the uploaded
+        # artifact bound to this commit", and that is precisely the defect that
+        # was corrected: the generator derived provenance from `git rev-parse
+        # HEAD`, so the artifact uploaded from a `pull_request` run stamped the
+        # SYNTHETIC `refs/pull/N/merge` commit -- trigger-dependent, transient,
+        # reachable from no branch and absent from an ordinary clone unless that
+        # ref is fetched explicitly. Fetchable, but not a durable evidence
+        # subject. Provenance now comes from the evidence
+        # subject declared in MEASUREMENTS.json, so this step's output no longer
+        # depends on which trigger fired or what `HEAD` happens to be.
+        run: npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts
+
+      - name: Assert the regenerated receipt is byte-identical to the committed one
+        # THE ENFORCEMENT, and the reason the step above is worth running at all.
+        # Without this comparison the job regenerated the receipt and uploaded it
+        # without ever checking it against the copy the PR actually publishes, so
+        # a committed receipt could drift arbitrarily from what the tooling
+        # produces and CI would stay green. Byte-identity is also what proves no
+        # field of the receipt was hand-typed.
+        #
+        # A FAILURE HERE IS NOT FIXED BY RE-RUNNING. Either the receipt was not
+        # regenerated after its inputs moved (regenerate it on a clean checkout of
+        # the subject), or MEASUREMENTS.json declares a subject that no longer
+        # matches the evidence (re-measure). Both are real staleness.
+        run: git diff --exit-code -- prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
+
+      - name: Upload the stateful evidence receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-stateful-authority-evidence
+          path: prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
+          if-no-files-found: ignore
 
   codeql:
     name: CodeQL

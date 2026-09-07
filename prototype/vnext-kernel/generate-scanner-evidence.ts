@@ -6,11 +6,15 @@
  * not "immutable because it's a JSON file": every count here is either
  * recomputed from a supplied raw Slither --json file or read from the
  * prototype's own compiled artifacts -- nothing is retyped by hand except
- * the test counts, which come from the same `npx hardhat --config
- * prototype/vnext-kernel/hardhat.config.ts test` / `npm test` / `npm run
- * coverage` runs the vNext Kernel / Prototype Tests CI job and this repo's
- * CI job already execute, passed in explicitly so this script never
- * re-runs a multi-minute suite just to assemble a receipt.
+ * the test counts and the solhint totals, which come from the same `npx
+ * hardhat --config prototype/vnext-kernel/hardhat.config.ts test` / `npm
+ * test` / `npm run coverage` / `npx solhint` runs the vNext Kernel /
+ * Prototype Tests CI job and this repo's CI job already execute, passed in
+ * explicitly so this script never re-runs a multi-minute suite just to
+ * assemble a receipt. (The solhint totals were a hardcoded 32/0 until Lane
+ * W2S: that was the count at 0faf7247 and would have been republished
+ * unchanged under every later head -- 36/0 at 77ea92cf -- so they are now an
+ * explicit input like the test counts.)
  *
  * Run:
  *   npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
@@ -18,11 +22,13 @@
  *     --solc-remaps "@openzeppelin/=node_modules/@openzeppelin/" \
  *     --solc-args "--evm-version cancun --optimize --optimize-runs 200" \
  *     --exclude-dependencies --json prototype/vnext-kernel/.slither-raw.json
+ *   npx solhint <the vNext Kernel / Prototype Tests job's prototype glob>
  *   npx tsx prototype/vnext-kernel/generate-scanner-evidence.ts \
  *     --raw prototype/vnext-kernel/.slither-raw.json \
  *     --prototype-tests 76 0 \
  *     --production-tests 1643 0 11 \
- *     --production-coverage 1640 0 14 90.13
+ *     --production-coverage 1640 0 14 90.13 \
+ *     --solhint 32 0
  *
  * Add --validate to only check that every finding in --raw has a triage
  * entry (exit 1 if not) without rewriting the committed receipt -- this is
@@ -172,8 +178,9 @@ function main() {
   const prototypeTests = args["prototype-tests"];
   const productionTests = args["production-tests"];
   const productionCoverage = args["production-coverage"];
-  if (!prototypeTests || !productionTests || !productionCoverage) {
-    throw new Error("--prototype-tests <pass> <fail>, --production-tests <pass> <fail> <pending>, and --production-coverage <pass> <fail> <pending> <percent> are required to (re)generate the receipt (not needed for --validate).");
+  const solhintTotals = args["solhint"];
+  if (!prototypeTests || !productionTests || !productionCoverage || !solhintTotals) {
+    throw new Error("--prototype-tests <pass> <fail>, --production-tests <pass> <fail> <pending>, --production-coverage <pass> <fail> <pending> <percent> and --solhint <warnings> <errors> are required to (re)generate the receipt (not needed for --validate).");
   }
 
   const receipt = {
@@ -209,8 +216,8 @@ function main() {
       },
       solhint: {
         run: true,
-        warnings: 32,
-        errors: 0,
+        warnings: Number(solhintTotals[0]),
+        errors: Number(solhintTotals[1]),
       },
     },
     tests: {
