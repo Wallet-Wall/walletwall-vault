@@ -5,8 +5,9 @@
  * `git rev-parse HEAD`. `HEAD` is the CONTAINER — the commit that will hold the receipt — not the
  * SUBJECT the receipt is evidence about. The two coincide only when an operator runs the generator
  * on a clean checkout of the subject, and CI supplies no operator. For PR #194 that produced three
- * different heads for one body of evidence, the worst of them an ephemeral `refs/pull/194/merge`
- * id that exists in no clone and can never be checked out.
+ * different heads for one body of evidence, the worst of them a SYNTHETIC `refs/pull/194/merge`
+ * id -- trigger-dependent, transient, reachable from no branch, and absent from an ordinary clone
+ * unless that ref is fetched explicitly. Fetchable, but not a durable evidence subject.
  *
  * WHY COUNT ASSERTIONS DID NOT CATCH IT. `StatefulAuthorityFuzz.test.ts` asserts campaign,
  * transition, profile, invariant and mutation COUNTS against the receipt. Every one of those was

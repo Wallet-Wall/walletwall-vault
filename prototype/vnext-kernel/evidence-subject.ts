@@ -4,8 +4,14 @@
  * EVIDENCE SUBJECT vs EVIDENCE CONTAINER — the one distinction this module exists to enforce.
  *
  * A generated receipt is ABOUT a commit (its SUBJECT). It is committed IN a commit (its
- * CONTAINER). These are necessarily different objects: a commit's tree hash cannot be known
- * before that commit exists, so an artifact that names its own container is unconstructible.
+ * CONTAINER). These are necessarily different objects, and the reason is SELF-REFERENCE rather
+ * than ordering. A tree object is perfectly constructible before the commit that references it --
+ * `git write-tree` does exactly that. The obstruction is that an artifact embedding the identity
+ * of the tree CONTAINING it makes its own bytes part of the identity it is trying to state: change
+ * the embedded value and the tree hash changes, which changes the value that should have been
+ * embedded. Embedding the containing COMMIT id is worse still, since that id also depends on the
+ * message, author and timestamps. So evidence names its SUBJECT -- a tree already fixed and
+ * outside the artifact -- and the two-commit shape follows from the artifact's content.
  * That is why evidence lands in a second commit, and why `stateful/README.md` states the
  * repository convention as "a receipt identifies its SOURCE, never the commit that happens to
  * contain it."
@@ -20,9 +26,12 @@
  *   CI push-run artifact     87a3f056...  the container                (wrong)
  *   CI pull_request artifact 43426b22...  refs/pull/194/merge          (UNRESOLVABLE)
  *
- * The third is the decisive one: `43426b22...` is the ephemeral merge commit GitHub synthesises
- * per run. It exists in no clone, so that artifact's provenance has no referent at all. A rule
- * that can emit an unresolvable commit id is not a provenance rule.
+ * The third is the decisive one. `43426b22...` is a SYNTHETIC GitHub PR merge commit: it is
+ * trigger-dependent (the `pull_request` run has one, the `push` run of the same commit does not),
+ * transient and non-canonical (GitHub recreates it as base or head move, and it is reachable from
+ * no branch), and absent from an ordinary clone unless `refs/pull/N/merge` is fetched explicitly.
+ * It is fetchable -- do not overstate this -- but it is NOT A DURABLE EVIDENCE SUBJECT. Provenance
+ * that changes with which trigger fired is not provenance.
  *
  * THE FIX IS TO DERIVE, NOT TO STAMP. The subject is DECLARED once, in canonical measurements, and
  * every artifact derives from that declaration. `HEAD` is not consulted, so no trigger, checkout

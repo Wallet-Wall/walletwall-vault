@@ -263,8 +263,10 @@ jobs:
         # artifact bound to this commit", and that is precisely the defect that
         # was corrected: the generator derived provenance from `git rev-parse
         # HEAD`, so the artifact uploaded from a `pull_request` run stamped the
-        # ephemeral `refs/pull/N/merge` commit -- an id that exists in no clone
-        # and can never be checked out. Provenance now comes from the evidence
+        # SYNTHETIC `refs/pull/N/merge` commit -- trigger-dependent, transient,
+        # reachable from no branch and absent from an ordinary clone unless that
+        # ref is fetched explicitly. Fetchable, but not a durable evidence
+        # subject. Provenance now comes from the evidence
         # subject declared in MEASUREMENTS.json, so this step's output no longer
         # depends on which trigger fired or what `HEAD` happens to be.
         run: npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts

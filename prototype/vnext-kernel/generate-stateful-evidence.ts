@@ -80,8 +80,9 @@ function main(): void {
    * This generator previously read `git rev-parse HEAD`, which names the commit that will CONTAIN
    * the receipt rather than the commit the receipt is ABOUT. The two coincide only when an operator
    * runs this on a clean checkout of the subject; CI supplies no such operator, and under the
-   * `pull_request` trigger `HEAD` is an ephemeral `refs/pull/N/merge` commit that exists in no
-   * clone — provenance with no referent. See `evidence-subject.ts` for the measured evidence.
+   * `pull_request` trigger `HEAD` is a SYNTHETIC `refs/pull/N/merge` commit: trigger-dependent,
+   * transient, reachable from no branch, and absent from an ordinary clone unless fetched by that
+   * ref. Fetchable, but not a durable evidence subject. See `evidence-subject.ts`.
    *
    * `resolveEvidenceSubject` is FAIL-CLOSED: an undeclared, malformed, unresolvable or
    * self-inconsistent subject throws here instead of silently falling back to the container.
