@@ -59,7 +59,7 @@ import {
   PROFILES,
   type CampaignProfile,
 } from "./profiles.js";
-import { addrOf, deployWorld, makeActor, materialiseActor, type Actor, type World } from "./world.js";
+import { ZERO, addrOf, deployWorld, makeActor, materialiseActor, type Actor, type World } from "./world.js";
 import { SAFE_STATE } from "./invariants.js";
 
 const SAFE_STATE_NAMES = ["NORMAL", "CONTAINED", "RECOVERY_ONLY", "MIGRATION_ONLY", "RETIRED"];
@@ -83,7 +83,74 @@ export function detectOutcomes(pre: KernelSnapshot, post: KernelSnapshot): Outco
   if (pre.safeStateStored !== SAFE_STATE.CONTAINED && post.safeStateStored === SAFE_STATE.CONTAINED) {
     out.push("CONTAINMENT");
   }
+  // K-9 mechanism B (Lane W2): request AUTHORITY cleared while the challenge
+  // epoch, the credential generation and the stored proposal are all untouched
+  // — the state-diff signature of a QUORUM cancellation. A credential challenge
+  // moves challengesUsed; an execution advances the generation and deletes the
+  // proposal; expiry changes no storage at all. Detected by diff, never by
+  // asking which function ran.
+  if (
+    pre.recovery.active &&
+    !post.recovery.active &&
+    post.recovery.challengesUsed === pre.recovery.challengesUsed &&
+    post.credentialGeneration === pre.credentialGeneration &&
+    post.recovery.proposedSigner === pre.recovery.proposedSigner &&
+    post.recovery.expiresAt === pre.recovery.expiresAt
+  ) {
+    out.push("RECOVERY_QUORUM_CANCEL");
+  }
   return out;
+}
+
+/**
+ * THE LIFECYCLE SEAMS (Lane W2) — anti-vacuity counters, tallied per step from
+ * the pre/post snapshots and the action's own outcome. A green campaign proves
+ * nothing about a seam it never reached, so StatefulAuthorityFuzz.test.ts
+ * requires every one of these to be non-zero across the fixed matrix. They are
+ * observations, never judgements: nothing here fails a step.
+ */
+export const LIFECYCLE_SEAMS = [
+  "exhaustedBudgetRefusal",
+  "expiredRequestObserved",
+  "reinitiationAfterCancellation",
+  "reinitiationAfterExpiry",
+  "liveOverwriteRefused",
+  "quorumCancelSucceeded",
+  "quorumCancelRefusedBelowQuorum",
+  "expiredCancellationRefused",
+  "recoveryAfterRecovery",
+  "challengeAfterRecoveryReset",
+] as const;
+export type LifecycleSeam = (typeof LIFECYCLE_SEAMS)[number];
+
+function lifecycleSeamsHit(
+  action: GeneratedAction,
+  ok: boolean,
+  revert: string | null,
+  pre: KernelSnapshot,
+  hadSuccessfulRecovery: boolean,
+): LifecycleSeam[] {
+  const hit: LifecycleSeam[] = [];
+  const storedActive = pre.recovery.active;
+  const expiredStored = storedActive && !pre.recoveryEffectivelyLive;
+  const priorRequestExisted = pre.recovery.proposedSigner !== ZERO;
+  if (expiredStored) hit.push("expiredRequestObserved");
+  if (action.kind === "CANCEL_RECOVERY" && revert === "ChallengeExhausted") hit.push("exhaustedBudgetRefusal");
+  if (action.kind === "INITIATE_RECOVERY") {
+    if (ok && priorRequestExisted && !storedActive) hit.push("reinitiationAfterCancellation");
+    if (ok && expiredStored) hit.push("reinitiationAfterExpiry");
+    if (!ok && revert === "BadState" && pre.recoveryEffectivelyLive) hit.push("liveOverwriteRefused");
+    if (ok && hadSuccessfulRecovery) hit.push("recoveryAfterRecovery");
+  }
+  if (action.kind === "CANCEL_RECOVERY_BY_QUORUM") {
+    if (ok) hit.push("quorumCancelSucceeded");
+    if (!ok && revert === "QuorumNotMet" && pre.recoveryEffectivelyLive) hit.push("quorumCancelRefusedBelowQuorum");
+  }
+  if ((action.kind === "CANCEL_RECOVERY" || action.kind === "CANCEL_RECOVERY_BY_QUORUM") && !ok && revert === "NoRecovery" && expiredStored) {
+    hit.push("expiredCancellationRefused");
+  }
+  if (action.kind === "CANCEL_RECOVERY" && ok && hadSuccessfulRecovery) hit.push("challengeAfterRecoveryReset");
+  return hit;
 }
 
 // =====================================================================
@@ -127,6 +194,8 @@ export interface CampaignResult {
   actionCoverage: Record<string, number>;
   positiveControlsPassed: number;
   positiveControlsAttempted: number;
+  /** How often each recovery-lifecycle seam (Lane W2) was actually reached. Observations only. */
+  lifecycle: Record<string, number>;
   minimalSequence: GeneratedAction[] | null;
 }
 
@@ -157,11 +226,20 @@ function genParams(
   const timeBias = profile.timeBias ?? "default";
   /**
    * A profile that must DRIVE RECOVERY THROUGH TO EXECUTION cannot also spend
-   * its budget proposing verifiers that refuse the incoming possession proof, or
-   * poisoning the floor lengths the same proof is measured against. Those are
-   * real, deliberately-generated adversarial behaviours — they stay ON in every
-   * other profile — but a profile whose job is to reach the seam must be able to
-   * reach it. Distribution, not filtering.
+   * its budget proposing verifiers that refuse the incoming possession proof.
+   * That is a real, deliberately-generated adversarial behaviour — it stays ON
+   * in every other profile — but a profile whose job is to reach the seam must
+   * be able to reach it. Distribution, not filtering.
+   *
+   * IT NO LONGER SUPPRESSES FLOOR POISONING, and that change is deliberate.
+   * `shrinkLengths` used to be disarmed here for the same reason, which meant
+   * the CAUSE (poisoning) and the VICTIM (a recovery driven to execution) lived
+   * in disjoint profiles by construction — so the campaign never had power over
+   * SD-1 at all, and that defect was found by narrative reasoning rather than by
+   * an oracle (`defects.ts` records it with `property: null`). Now that
+   * `I-FLOOR-SHAPE-IMMUTABLE` makes poisoning a refused no-op, the two can and
+   * must coexist: these profiles ATTEMPT the poisoning and complete recoveries
+   * anyway, which is positive evidence rather than the absence of it.
    */
   const cleanRecovery = profile.honestRecoveryBias === true;
   switch (kind) {
@@ -181,11 +259,30 @@ function genParams(
       return {
         verifier: prng.pick(["honest", "alwaysTrue", "alwaysFalse", "reverting"]),
         bumpLevel: prng.chance(0.3),
-        // `shrinkLengths` changes the two floor LENGTHS, which _requireNoDowngrade
-        // does not compare; `raisePq` turns the conjunct ON, which initialize
-        // guards against a zero key commitment and setVerifier does not. Both are
-        // reachable transitions and both are generated deliberately.
-        shrinkLengths: !cleanRecovery && prng.chance(0.25),
+        // `shrinkLengths` changes the two floor LENGTHS — the SD-1 seam, now
+        // frozen by `I-FLOOR-SHAPE-IMMUTABLE` once requirePq holds; `raisePq`
+        // turns the conjunct ON, which initialize guards against a zero key
+        // commitment and setVerifier still does not (SD-3). Both are reachable
+        // transitions and both are generated deliberately, in EVERY profile.
+        //
+        // PRNG-STREAM ACCOUNTING, stated exactly, because it is easy to get wrong.
+        // Every campaign is a pure function of (profile, seed, depth), so a `prng`
+        // call added or removed re-seeds every history from that point on and
+        // silently moves which seed catches which mutant.
+        //
+        //   - Dropping the `!cleanRecovery &&` short-circuit DOES add one draw,
+        //     but ONLY in the two `honestRecoveryBias` profiles, which previously
+        //     skipped it. Their mutants — M7, M8 and M16 — were re-verified after
+        //     the change and are still killed. Every other profile's stream is
+        //     byte-identical, and M1-M6 and M9-M16 still die at the same seed and
+        //     step as before.
+        //   - A separate `oversizeShape` draw, which would have run in EVERY
+        //     profile, was written and then REVERTED: it turned M9 and M11 into
+        //     survivors. The `MAX_PQ_LENGTH` bound is covered by a deterministic
+        //     boundary test with a positive control instead
+        //     (test/Sd1RecoveryFloorBinding.test.ts), and that trade is recorded
+        //     in stateful/mutants.ts's UNMUTATED_CLAUSES.
+        shrinkLengths: prng.chance(0.25),
         raisePq: prng.chance(0.35),
       };
     case "SET_POLICY":
@@ -217,6 +314,10 @@ function genParams(
       return { popStale: prng.chance(cleanRecovery ? 0.1 : 0.3) };
     case "ENTER_CONTAINMENT":
     case "BIND_MIGRATION":
+    // K-9 mechanism B (Lane W2): attacked with every adversarial quorum shape,
+    // like every other quorum act. Generated only where a profile weights it,
+    // so no historical stream gains a draw.
+    case "CANCEL_RECOVERY_BY_QUORUM":
       return { quorumShape: prng.weighted(QUORUM_SHAPES, [4, 3, 2, 2, 1, 1, 1]) };
     case "REPLAY_PAST_CALL":
       return { index: prng.int(64) };
@@ -262,7 +363,7 @@ function seatLabels(world: World): string[] {
   });
 }
 
-function freshCtx(world: World): Ctx {
+function freshCtx(world: World, fabricateCommitments: boolean): Ctx {
   return {
     world,
     abstract: freshAbstractState(world.opts.label + "-cred"),
@@ -277,6 +378,7 @@ function freshCtx(world: World): Ctx {
     verifierKind: world.opts.verifier,
     requirePqNow: !world.opts.ecdsaOnlyFloor,
     policyKind: "none",
+    fabricateCommitments,
     history: [],
     step: 0,
   };
@@ -293,7 +395,7 @@ async function runPlan(
   // choices made during execution (which seat a duplicate-index proof reuses)
   // do not perturb the plan itself. Both are seeded, so both replay.
   const prng = makePrng(seed ^ 0x5f3759df);
-  const ctx = freshCtx(world);
+  const ctx = freshCtx(world, profile.fabricateCommitments === true);
 
   // ROLES -> the concrete key labels of THIS world. Skipping this is what made
   // every attacker inert; see the note on materialiseActor.
@@ -305,6 +407,7 @@ async function runPlan(
   const outcomeCounts: Record<string, number> = {};
   const revertCounts: Record<string, number> = {};
   const actionCoverage: Record<string, number> = {};
+  const lifecycle: Record<string, number> = {};
 
   let prev: KernelSnapshot | null = null;
   let successful = 0;
@@ -333,6 +436,12 @@ async function runPlan(
 
     const observed = detectOutcomes(pre, post);
     for (const o of observed) outcomeCounts[o] = (outcomeCounts[o] ?? 0) + 1;
+
+    // Lifecycle seam tallies (Lane W2) — reachability evidence, never a judgement.
+    const hadSuccessfulRecovery = [...ctx.abstract.episodes.values()].some((e) => e.state === "CONSUMED");
+    for (const seam of lifecycleSeamsHit(action, res.ok, res.revert, pre, hadSuccessfulRecovery)) {
+      lifecycle[seam] = (lifecycle[seam] ?? 0) + 1;
+    }
 
     // ---- P-CUT: the central authority property (I-A .. I-F) ----------
     //
@@ -461,6 +570,7 @@ async function runPlan(
       actionCoverage,
       positiveControlsPassed: 0,
       positiveControlsAttempted: 0,
+      lifecycle,
     },
   };
 }
@@ -597,6 +707,18 @@ export async function runPositiveControls(
       expect: "MIGRATION_BINDING",
       needsLiveVerifier: true,
     },
+    {
+      // K-9 mechanism B (Lane W2): the quorum's own exit from a live request.
+      // Observed as the state-diff outcome RECOVERY_QUORUM_CANCEL, which by
+      // construction requires the credential's budget to be exactly where it was.
+      name: "honest quorum cancels a live recovery (K-9 mechanism B)",
+      plan: [
+        { kind: "INITIATE_RECOVERY", actorName: ALL_MATERIAL_ACTOR.name, params: { quorumShape: "honest", target: 1, verifier: "honest" } },
+        { kind: "CANCEL_RECOVERY_BY_QUORUM", actorName: ALL_MATERIAL_ACTOR.name, params: { quorumShape: "honest" } },
+      ],
+      expect: "RECOVERY_QUORUM_CANCEL",
+      needsLiveVerifier: false,
+    },
   ];
 
   for (const c of controls) {
@@ -645,6 +767,7 @@ export async function runCampaign(
     label,
     verifier: profile.verifier ?? "honest",
     ecdsaOnlyFloor: profile.ecdsaOnlyFloor ?? false,
+    commitPqKeyOnEcdsaOnlyFloor: profile.commitPqKeyOnEcdsaOnlyFloor ?? false,
     implOverride: options.implOverride,
   });
   const snap = await networkHelpers.takeSnapshot();

@@ -353,19 +353,206 @@ export const MUTATIONS: readonly Mutation[] = [
         "",
       ),
   },
+  /*
+   * M16-recovery-ignores-roster-generation — RETIRED IN LANE SD10-I.
+   * ----------------------------------------------------------------
+   * RETIRED, NOT DELETED, because "the implementation now looks like the mutant"
+   * is the weakest possible reason to drop a mutant and the adjudication is the
+   * part worth keeping.
+   *
+   * WHAT IT DID. It removed, from `executeRecovery`, exactly this statement:
+   *
+   *     if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();
+   *
+   * That is BYTE-IDENTICAL to the correction Lane SD10-I makes (verified by
+   * reconstructing the mutation against base a42f5c7e and comparing it to the
+   * lane's removal). The mutant no longer applies at all: its anchor is gone,
+   * and `replaceWithinFunction` would throw rather than silently no-op.
+   *
+   * WHAT ITS LABEL CLAIMED. `expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT"`,
+   * rationale "a stale authorization surviving the transition that should have
+   * killed it".
+   *
+   * WHAT ACTUALLY KILLED IT, MEASURED. Reconstructed against the base kernel and
+   * run across both of its profiles at all eight campaign seeds (16 campaigns,
+   * 22-44 successful transitions each), M16 produced exactly ONE violation:
+   * `P-MODEL` at `recovery-vs-roster` seed 29. `P-CUT/CREDENTIAL_REPLACEMENT`
+   * never fired once. The catalogue credited it because
+   * StatefulMutationAdequacy's attribution falls back to `violations[0]` when the
+   * expected property is absent, so a mutant's `expectedProperty` is a LABEL and
+   * not a measurement.
+   *
+   * WHY THAT KILL DOES NOT SURVIVE SCRUTINY. `P-MODEL` here was the harness's own
+   * R1 rule in `actions.ts`, which asserted that a roster transition after
+   * approval must void the request. That rule was IMPLEMENTATION-DERIVED — it
+   * agreed with the very statement M16 removed — and it contradicts
+   * `docs/Vault_vNext_Architecture.md` I-APPROVED-REQUEST-PRESERVATION: "once a
+   * request reaches quorum, a guardian-set replacement cannot clear it." It has
+   * been retired for that reason, and with it M16's only killer.
+   *
+   * SO M16 IS NOT A MUTANT. Its "weakened" behaviour is the architecture-
+   * conformant behaviour, and SD-10 was the defect it described. Retiring it
+   * costs NO mutation coverage that anything else covered: it was killed by one
+   * rule, on one seed, and that rule was wrong. The direction that DOES need
+   * guarding is the inverse, and it is now guarded far more strictly than M16
+   * ever was — `test/Sd10PreservationMutations.test.ts` carries
+   * M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST (this statement REINSERTED),
+   * killed deterministically, with kill credit refused unless the observation is
+   * exactly "a preserved, mature, validly-proven request was REFUSED (BadRoster)".
+   *
+   * `recovery-vs-roster` keeps its place in `profiles.ts`: composing rotation
+   * with maturing recoveries is still the composition that matters, and it is now
+   * the composition the preservation property is measured over.
+   */
+  /*
+   * M17-floor-shape-mutable-again and M18-floor-shape-freeze-is-one-sided —
+   * RETIRED IN LANE SD5-I.
+   * ----------------------------------------------------------------------
+   * RETIRED, NOT DELETED, on the M16 precedent above: the adjudication is the
+   * part worth keeping, and "the implementation now looks like the mutant" is by
+   * itself the weakest possible reason to drop one.
+   *
+   * WHAT THEY DID. Both targeted `I-FLOOR-SHAPE-IMMUTABLE` in
+   * `_requireNoDowngrade` — M17 by deleting the two-length freeze outright, M18
+   * by weakening its `!=` to `<` so that a shrink-only campaign could not see it.
+   *
+   * WHY THEY ARE RETIRED. Lane SD5-I RETIRES the invariant itself. That is not a
+   * convenience: SD-5 measured that the freeze imposed PERMANENT_PQ_AGILITY_LOSS
+   * on EVERY vault of the class, honest ones included — a well-formed ML-DSA-44
+   * vault could never move to ML-DSA-87, with no attacker anywhere in the
+   * sequence (SD5-D1 probes 4 and 5). SD-1's goal was to keep credential-writable
+   * state out of an approved recovery's satisfiability condition; SD5-I reaches
+   * that goal by making the state UNREAD rather than UNMOVABLE, which is strictly
+   * stronger and costs nothing. SD5-A1 S1a/S1b measured it: on the amended kernel
+   * the SD-1 move is ADMITTED and the approved recovery still completes, because
+   * nothing consumes what it wrote.
+   *
+   * With no authoritative shape there is no operand, so a mutant that "restores
+   * mutability" restores nothing. Their anchors are gone and
+   * `replaceWithinFunction` would throw rather than silently no-op — which is the
+   * correct behaviour and the reason they are removed from the live catalogue
+   * rather than left to rot.
+   *
+   * WHAT REPLACES THE COVERAGE, AND WHY IT IS STRICTLY MORE. The direction that
+   * now needs guarding is the INVERSE — that the lengths never come back as
+   * authority — plus the commitment checks that carry the whole
+   * de-authorisation argument. Both are guarded deterministically in
+   * `test/Sd5MetadataDeauthorisationMutations.test.ts`, which reinserts each
+   * removed clause and requires a NARROW killing observation for each, and
+   * `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE` is measured there against
+   * the BASE kernel as a two-arm discrimination rather than a single assertion.
+   *
+   * A NOTE THE NEXT LANE SHOULD NOT LOSE. M18's rationale contained a real and
+   * still-true observation: `_requireIncomingPossession` compared the shape for
+   * EXACT EQUALITY, so GROWING the declared length denied a quorum-approved
+   * recovery exactly as shrinking it did. That asymmetry-that-wasn't is precisely
+   * why SD-5's harm reached honest vaults, and it is recorded in SD-5's ledger
+   * entry rather than lost with the mutant.
+   */
   {
-    id: "M16-recovery-ignores-roster-generation",
-    profiles: ["recovery-vs-roster","recovery-composition"],
-    expectedProperty: "P-CUT/CREDENTIAL_REPLACEMENT",
+    id: "M19-declaration-not-exhibited",
+    profiles: ["ecdsa-only-floor", "ecdsa-only-committed"],
+    expectedProperty: "G-PQ-COMMITMENT-SATISFIABLE",
     rationale:
-      "R1. executeRecovery stops rejecting a roster change since initiation, so a recovery approved by the OLD constituency executes against a NEW one — a stale authorization surviving the transition that should have killed it.",
+      "SD-3, REINTRODUCED — NARROWED IN LANE SD5-I to the surviving conjunct. `I-DECLARATION-EXHIBITED` formerly had two legs, a LENGTH and a PREIMAGE; SD5-I removed the length leg with the field's authority, and this mutant now deletes the leg that remains. `setVerifier` may again arm the PQ conjunct against a commitment no code has ever measured — including the zero commitment `initialize` explicitly refuses. The narrowing does NOT weaken the mutant: SD-5 Form B reproduced against an HONEST incumbent key at the CORRECT key length, so the length leg never bound the reachable capture and the preimage leg is the one carrying the invariant's whole content. The killing property is the one SD-3 was filed under, and it only became ENFORCEABLE when SD-3 left KNOWN_DEFECT_PROPERTIES.",
     apply: (s) =>
       replaceWithinFunction(
         s,
-        "executeRecovery",
-        "if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();",
+        "setVerifier",
+        `if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+            revert BadSignature();
+        }`,
         "",
       ),
+  },
+  {
+    id: "M20-declaration-unbound-from-the-commitment",
+    profiles: ["ecdsa-only-floor", "ecdsa-only-committed"],
+    expectedProperty: "G-PQ-COMMITMENT-SATISFIABLE",
+    rationale:
+      "REMOVE THE BINDING TO THE COMMITTED MATERIAL while keeping the shape check — the half of `I-DECLARATION-EXHIBITED` that carries all of its meaning. The declaration still looks witnessed, because a byte string of the declared length is still demanded, but that string no longer has to be the vault's key: any blob of the right size passes, so a ZERO-commitment vault arms again and the exact SD-3 dead state returns. It is distinct from M19, which deletes the clause outright, and it is the mutant that proves the shape leg alone is worthless.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "setVerifier",
+        `if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+            revert BadSignature();
+        }`,
+        "",
+      ),
+  },
+  {
+    id: "M21-admission-not-exhibited",
+    profiles: ["commitment-forgery"],
+    expectedProperty: "G-COMMITMENT-ATTESTED",
+    rationale:
+      "SD-6, REINTRODUCED. Deletes `I-COMMITMENT-EXHIBITED-AT-ADMISSION`'s dormant clause, so `_requireIncomingPossession` again returns before every PQ check while `requirePq` is false, and BOTH of its callers — `rotateCredential` and `executeRecovery` — write a commitment attested by nothing. Killed by the property that watches the whole ingress surface rather than any one function.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireIncomingPossession",
+        `if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {
+            revert BadSignature();
+        }`,
+        "",
+      ),
+  },
+  {
+    id: "M22-admission-bound-to-the-OUTGOING-commitment",
+    profiles: ["commitment-forgery"],
+    expectedProperty: "G-COMMITMENT-ATTESTED",
+    rationale:
+      "BIND THE WRONG VARIABLE. The clause still runs, still demands a preimage and still reverts on a mismatch — but it measures the exhibit against the commitment ALREADY IN STORAGE instead of the one being installed. An attacker exhibits the vault's current key, which is public data, and writes any hash it likes beside it. This is the old/new commitment confusion, and it proves the clause's value lies in WHICH value it binds rather than in the mere presence of a keccak comparison.",
+    apply: (s) =>
+      replaceWithinFunction(
+        s,
+        "_requireIncomingPossession",
+        `if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {`,
+        `if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != pqPublicKeyHash) {`,
+      ),
+  },
+];
+
+/**
+ * A CLAUSE THIS CATALOGUE DELIBERATELY DOES NOT COVER, named rather than hidden.
+ *
+ * The SD-1 remediation's companion clause — the `MAX_PQ_LENGTH` magnitude bound
+ * in `_requireSaneFloor` — has no mutant here, and the reason is a real trade
+ * rather than an oversight. Reaching that seam requires the generator to emit an
+ * oversized shape, which needs one more `prng` draw in `genParams`; every
+ * campaign is a pure function of (profile, seed, depth), so a single extra draw
+ * re-seeds every history and moves which seed catches which mutant. It was tried
+ * firsthand and it turned M9 and M11 into survivors. Buying one new seam at the
+ * price of two established ones is a worse catalogue, not a better one.
+ *
+ * The clause is instead covered deterministically, with both directions
+ * asserted, by the BOUNDARY case in test/Sd1RecoveryFloorBinding.test.ts: a
+ * shape above the bound is REFUSED, and a 49,856-byte SPHINCS+-256f signature
+ * shape is ACCEPTED. Deleting the clause turns that test red, which is the same
+ * evidence a mutant would have produced.
+ */
+export const UNMUTATED_CLAUSES: readonly { clause: string; coveredBy: string; whyNotMutated: string }[] = [
+  {
+    clause: "_requireSaneFloor's MAX_PQ_LENGTH magnitude bound",
+    coveredBy:
+      "test/Sd1RecoveryFloorBinding.test.ts — BOUNDARY (exactly MAX_PQ_LENGTH admitted, MAX_PQ_LENGTH + 1 refused, pinned against the contract's own getter) and GENESIS, both with positive controls",
+    whyNotMutated:
+      "Reaching the seam needs an extra prng draw in genParams, which re-seeds every campaign history; adding one was measured to turn M9-duplicate-guardian-principal and M11-plane-denial-ignored into survivors. The complete value space for floor lengths across the whole stateful model is {0, 1, 32, 65} plus the armed grow direction, so no campaign proposes an oversized shape and a mutant here would report SURVIVED for want of a generator rather than for want of a property.",
+  },
+  {
+    clause: "I-DECLARATION-EXHIBITED's LENGTH leg (`pqKey.length != floor.pqPublicKeyLength`)",
+    coveredBy:
+      "test/Sd34DeclarationInvariants.test.ts — 'SD-3 FORM 2' (a shape the committed key cannot meet is refused in BOTH directions) and 'the ZERO-LENGTH trap stays closed', each with a positive control",
+    whyNotMutated:
+      "The oracle cannot see it. Deleting the length leg produces a state whose commitment is NON-ZERO and whose shape is merely wrong for that commitment, and no property computable from storage alone can detect that — knowing it requires the preimage LENGTH of a hash, which is exactly the fact `I-DECLARATION-EXHIBITED` makes the KERNEL establish on chain precisely because an observer cannot. A mutant here would report SURVIVED for want of an oracle rather than for want of coverage, so it is disclosed instead of faked. The HASH leg, which carries the clause's meaning, IS mutated — see M20.",
+  },
+  {
+    clause:
+      "I-COMMITMENT-EXHIBITED-AT-ADMISSION's two GENESIS legs in `initialize` (the preimage check on a non-zero `g.pqKeyHash`, and the length check under `g.floor.requirePq`)",
+    coveredBy:
+      "test/Sd67AdmissionInvariants.test.ts — four executed refusals (no preimage, wrong-length preimage, zero commitment under requirePq, unattested dormant commitment) against four positive controls (a legitimate PQ genesis that then SPENDS, the cold-ceremony zero-commitment deploy, the MAX_PQ_LENGTH shape with a genuine 65,535-byte key, and the pinned `genesisSalt` identity constant). test/Sd34AuthenticationSatisfiability.test.ts additionally runs the original 48-against-32 reproduction with its verdict moved.",
+    whyNotMutated:
+      "The campaign structurally cannot reach the seam. Every world is built by `deployWorld`, which constructs a genesis committing either `bytes32(0)` or `pqHash(world.pqKey)` — both attestable, both consistent with the declared shape — so no profile deploys a hostile genesis and no mutation of the genesis legs would change any campaign outcome. Making one reachable means letting the generator author arbitrary genesis configurations, which is a different harness (a deployment fuzzer, not a transition fuzzer) and would re-seed every existing history. A mutant here would report SURVIVED for want of a generator rather than for want of a property, so the coverage is carried by direct regression instead and disclosed here rather than faked. The INDUCTIVE half of the same invariant — the dormant clause in `_requireIncomingPossession`, which both mid-campaign writers route through — IS mutated twice, by M21 and M22.",
   },
 ];
 

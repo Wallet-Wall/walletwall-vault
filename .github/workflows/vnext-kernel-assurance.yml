@@ -37,6 +37,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # FULL HISTORY IS REQUIRED, NOT A PREFERENCE. The evidence-provenance
+          # tests resolve the EVIDENCE SUBJECT declared in MEASUREMENTS.json
+          # (`validation.measuredAtHead`), which is an ANCESTOR of the commit
+          # under test -- evidence is committed one commit after the tree it
+          # measures. The default `fetch-depth: 1` does not fetch that object, and
+          # `resolveEvidenceSubject` is deliberately FAIL-CLOSED, so it would
+          # throw rather than quietly fall back to the container. Guards that
+          # self-skip on a shallow clone are exactly the failure this avoids.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -189,6 +199,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          # Same reason as the Prototype Tests job: this job REGENERATES the
+          # receipt, whose provenance is derived from the declared evidence
+          # subject -- an ancestor commit that a depth-1 checkout does not fetch.
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -241,10 +256,34 @@ jobs:
 
       - name: Regenerate the stateful evidence receipt
         # The receipt must describe the matrix that actually ran; the campaign
-        # suite asserts the two agree. Regenerating here keeps the uploaded
-        # artifact bound to this commit rather than to whenever it was last
-        # written by hand.
+        # suite asserts the two agree.
+        #
+        # THE RECEIPT IS BOUND TO ITS DECLARED SUBJECT, NOT TO THIS CHECKOUT. An
+        # earlier revision of this step claimed regeneration "keeps the uploaded
+        # artifact bound to this commit", and that is precisely the defect that
+        # was corrected: the generator derived provenance from `git rev-parse
+        # HEAD`, so the artifact uploaded from a `pull_request` run stamped the
+        # SYNTHETIC `refs/pull/N/merge` commit -- trigger-dependent, transient,
+        # reachable from no branch and absent from an ordinary clone unless that
+        # ref is fetched explicitly. Fetchable, but not a durable evidence
+        # subject. Provenance now comes from the evidence
+        # subject declared in MEASUREMENTS.json, so this step's output no longer
+        # depends on which trigger fired or what `HEAD` happens to be.
         run: npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts
+
+      - name: Assert the regenerated receipt is byte-identical to the committed one
+        # THE ENFORCEMENT, and the reason the step above is worth running at all.
+        # Without this comparison the job regenerated the receipt and uploaded it
+        # without ever checking it against the copy the PR actually publishes, so
+        # a committed receipt could drift arbitrarily from what the tooling
+        # produces and CI would stay green. Byte-identity is also what proves no
+        # field of the receipt was hand-typed.
+        #
+        # A FAILURE HERE IS NOT FIXED BY RE-RUNNING. Either the receipt was not
+        # regenerated after its inputs moved (regenerate it on a clean checkout of
+        # the subject), or MEASUREMENTS.json declares a subject that no longer
+        # matches the evidence (re-measure). Both are real staleness.
+        run: git diff --exit-code -- prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
 
       - name: Upload the stateful evidence receipt
         if: always()

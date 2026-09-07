@@ -14,21 +14,20 @@
  *
  * Run: npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts
  */
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 
+import { assertReceiptMatchesSubject, resolveEvidenceSubject } from "./evidence-subject.js";
 import { PROFILES } from "./stateful/profiles.js";
-import { MUTATIONS } from "./stateful/mutants.js";
-import { SUSTAINED_DEFECTS } from "./stateful/defects.js";
+import { MUTATIONS, UNMUTATED_CLAUSES } from "./stateful/mutants.js";
+import { REMEDIATED_DEFECTS, SUSTAINED_DEFECTS } from "./stateful/defects.js";
 import { GLOBAL_INVARIANTS, REJECTED_INVARIANTS } from "./stateful/invariants.js";
 import { DECLARED_CUTS, DOCUMENTED } from "./stateful/model.js";
 
 const ROOT = path.join("prototype", "vnext-kernel");
 const OUT = path.join(ROOT, "STATEFUL_AUTHORITY_EVIDENCE.json");
 
-const git = (args: string[]): string => execFileSync("git", args, { encoding: "utf8" }).trim();
 const sha256OfFile = (p: string): string => "sha256:" + createHash("sha256").update(fs.readFileSync(p)).digest("hex");
 
 /**
@@ -46,9 +45,6 @@ const MUTATION_SEEDS = [11, 29, 47, 83, 131, 197, 251, 307];
 const MUTATION_DEPTH = 90;
 
 function main(): void {
-  const head = git(["rev-parse", "HEAD"]);
-  const tree = git(["rev-parse", "HEAD^{tree}"]);
-
   const plannedCampaigns =
     PROFILES.length * (CI_SEEDS.shallow.length + CI_SEEDS.medium.length + CI_SEEDS.deep.length);
   const plannedTransitions =
@@ -57,10 +53,80 @@ function main(): void {
       CI_SEEDS.medium.length * DEPTHS.medium +
       CI_SEEDS.deep.length * DEPTHS.deep);
 
+  /**
+   * MEASUREMENTS.json exposes TOP-LEVEL `kernel` / `factory` objects. An earlier
+   * revision of this generator read `measurements.contracts[]` — the shape
+   * `measure.ts` PRINTS, not the shape the committed file has — so
+   * `kernelRuntimeBytes` and `kernelRuntimeHash` were permanently null and the
+   * receipt silently published "unknown" as if it were a measurement. It was
+   * harmless while this lane changed zero bytes of Solidity; it stopped being
+   * harmless the moment one did.
+   */
   const measurements = JSON.parse(fs.readFileSync(path.join(ROOT, "MEASUREMENTS.json"), "utf8")) as {
-    contracts?: { name: string; runtime: number; runtimeKeccakOfArtifact: string }[];
+    kernel?: { runtimeBytes: number; runtimeSha256: string };
+    sd1Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd3Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    w2RecoveryLifecycle?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd10Preservation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd5MetadataDeauthorisation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd5PublicationIntegrity?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    validation?: { measuredAtHead?: unknown; measuredAtTree?: unknown };
   };
-  const kernel = (measurements.contracts ?? []).find((c) => c.name === "VaultKernelPrototype");
+
+  /**
+   * PROVENANCE IS DERIVED FROM THE DECLARED SUBJECT, NEVER FROM `HEAD`.
+   *
+   * This generator previously read `git rev-parse HEAD`, which names the commit that will CONTAIN
+   * the receipt rather than the commit the receipt is ABOUT. The two coincide only when an operator
+   * runs this on a clean checkout of the subject; CI supplies no such operator, and under the
+   * `pull_request` trigger `HEAD` is a SYNTHETIC `refs/pull/N/merge` commit: trigger-dependent,
+   * transient, reachable from no branch, and absent from an ordinary clone unless fetched by that
+   * ref. Fetchable, but not a durable evidence subject. See `evidence-subject.ts`.
+   *
+   * `resolveEvidenceSubject` is FAIL-CLOSED: an undeclared, malformed, unresolvable or
+   * self-inconsistent subject throws here instead of silently falling back to the container.
+   */
+  const subject = resolveEvidenceSubject(measurements);
+  const head = subject.head;
+  const tree = subject.tree;
+
+  const kernel = measurements.kernel;
+  // The LATEST remediation is what this receipt describes; earlier ones are
+  // history and keep their own MEASUREMENTS.json blocks, which are never
+  // rewritten — each block's schema MEANS that lane. The chain is ordered
+  // newest-first so the receipt regenerated at a given commit reports THAT
+  // lane's delta rather than its predecessor's.
+  //
+  // SD5-I (PQ shape metadata de-authorisation) is the newest, and registering it
+  // here is not bookkeeping — the comment below predicted this exact failure and
+  // it came true. Regenerated before this line existed, the receipt published
+  // SD-10's -58 for a lane that removed 672, because the chain fell through to
+  // its predecessor. A lane that adds a MEASUREMENTS.json block incurs the
+  // obligation to add it here in the SAME commit; otherwise the receipt reports
+  // the previous lane's delta under the new lane's head, which is worse than
+  // reporting nothing.
+  //
+  // SD10-I (approved-request preservation) is the one before it. It must be
+  // preferred over W2 or the receipt would publish W2's +320 bytes for a lane
+  // that REMOVED 58 — the first negative delta in this file, because the
+  // remediation deletes a statement instead of adding one. SD5-I is the second
+  // negative delta, and for the same structural reason: it is purely subtractive.
+  //
+  // SD5-I PUBLICATION INTEGRITY is the newest, and it is registered here for the reason the
+  // paragraph above gives rather than as bookkeeping. Its Solidity delta is ZERO EXECUTABLE BYTES:
+  // it corrects source COMMENTS that still asserted pre-SD5-I semantics as current truth, which
+  // moves the CBOR metadata tail (and therefore the whole-runtime hash) while leaving the
+  // executable prefix byte-identical. Left unregistered, the chain would fall through and pair
+  // SD5-I's -672 with a runtime hash SD5-I did not produce.
+  const sd1 =
+    measurements.sd5PublicationIntegrity ??
+    measurements.sd5MetadataDeauthorisation ??
+    measurements.sd10Preservation ??
+    measurements.w2RecoveryLifecycle ??
+    measurements.sd67Remediation ??
+    measurements.sd3Remediation ??
+    measurements.sd1Remediation;
 
   const receipt = {
     schema: "vnext-kernel-stateful-authority-evidence.v1",
@@ -176,6 +242,12 @@ function main(): void {
         "D  — possession proven against the OUTGOING credential (M7)",
         "F  — a policy plane whose refusal is not honoured (M11)",
       ],
+      /**
+       * Clauses of the kernel that this catalogue does NOT cover, published so a
+       * reader cannot mistake the kill matrix for total coverage. A disclosure
+       * that lives only in a source comment is not a disclosure.
+       */
+      unmutatedClauses: UNMUTATED_CLAUSES,
     },
 
     sustainedDefects: SUSTAINED_DEFECTS.map((d) => ({
@@ -187,15 +259,30 @@ function main(): void {
       rootCause: d.rootCause,
       notAnEscalationBecause: d.notAnEscalationBecause,
       minimalFixSketch: d.minimalFixSketch,
-      reproducedBy: "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts",
+      reproducedBy: d.reproducedBy ?? "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts",
     })),
 
     solidityChanged: {
-      bytes: 0,
-      note: "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change.",
-      kernelRuntimeBytes: kernel?.runtime ?? null,
-      kernelRuntimeHash: kernel?.runtimeKeccakOfArtifact ?? null,
+      bytes: sd1?.totalDelta ?? 0,
+      note:
+        sd1 === undefined
+          ? "This lane changes ZERO bytes of Solidity. Every sustained defect is RECORDED and REPRODUCED; remediation is a separate, minimal change."
+          : "The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. Which defects are closed and which stand is carried by the `remediated` and `sustainedDefects` arrays in this same receipt, not by prose here.",
+      beforeRuntimeBytes: sd1?.beforeRuntime ?? null,
+      kernelRuntimeBytes: kernel?.runtimeBytes ?? null,
+      kernelRuntimeHash: kernel?.runtimeSha256 ?? null,
     },
+    remediated: REMEDIATED_DEFECTS.map((r) => ({
+      id: r.id,
+      verdict: "DEFECT_REMEDIATED",
+      sustainedAt: r.sustainedAt,
+      remediatedOn: r.remediatedOn,
+      invariant: r.invariant,
+      sourceDelta: r.sourceDelta,
+      rejectedAlternatives: r.rejectedAlternatives,
+      invertedReproduction: r.invertedReproduction,
+      residual: r.residual,
+    })),
 
     whatThisDoesNotProve: [
       "NOT EXHAUSTIVE. A bounded, seeded campaign over a bounded action vocabulary. Any sequence outside the generated distribution is untested.",
@@ -213,17 +300,26 @@ function main(): void {
       "A verifier that loses its code between recovery initiation and execution is not reachable in this harness: post-Cancun SELFDESTRUCT only clears code in the same transaction as creation, so G-VERIFIER-HAS-CODE is asserted rather than adversarially exercised.",
       "The ERC-1271 guardian mocks (reverting, gas-burning, huge-returndata, wrong-answer) are exercised by the existing prototype suite, not by this campaign: the generated rosters are EOA seats only.",
       "guardianThreshold is a free parameter a k-quorum may lower to 1, permanently moving the guardian cut. The campaign models this faithfully (cuts are computed from the LIVE threshold) and does not treat it as a defect, because AUTHORITY.md assigns setGuardians to the guardian quorum. It is recorded here as an OBSERVATION worth an explicit row in the published table.",
+      "SD-9a (RECOVERY_CHALLENGE_EPOCH_LIFETIME_UNSPECIFIED) is deliberately in NEITHER defect array of this receipt: it is a REMEDIATION HAZARD / SPECIFICATION GAP, not a present implementation defect. No executed path of any kernel revision ever refunded the challenge epoch on a request-lifetime exit, and the epoch's lifetime is a DERIVED requirement (docs/Vault_vNext_Recovery_Amendment.md section 2) that the architecture does not state verbatim. On the W2 kernel the rule is stated at the struct field and at the single `delete recovery` reset site, the hazardous remediation (a delete-on-expiry sweeper) is a permanently killed mutant (M-K9-expiry-refunds-budget, test/W2RecoveryLifecycleMutations.test.ts), and the oracle carries G-CHALLENGE-EPOCH. Its record is prototype/vnext-kernel/SD9_RECOVERY_LIFECYCLE_DEFECTS.md; counting it as a defect here would misstate what the kernel ever did.",
     ],
   };
 
   fs.writeFileSync(OUT, JSON.stringify(receipt, null, 2) + "\n");
+
+  // WHAT WAS WRITTEN CARRIES THE SUBJECT — checked by re-reading the artifact from disk, not by
+  // re-inspecting the object we just serialised. The derivation being correct and the file on disk
+  // being correct are different claims, and a reader only ever sees the second.
+  assertReceiptMatchesSubject(JSON.parse(fs.readFileSync(OUT, "utf8")), subject, OUT);
+
   console.log("Wrote " + OUT);
-  console.log("  head            " + head);
+  console.log("  subject head    " + head + "  (declared in MEASUREMENTS.json validation.measuredAtHead)");
+  console.log("  subject tree    " + tree);
   console.log("  profiles        " + PROFILES.length);
   console.log("  planned         " + plannedCampaigns + " campaigns / " + plannedTransitions + " transitions");
   console.log("  invariants      " + GLOBAL_INVARIANTS.length + " global (+ " + REJECTED_INVARIANTS.length + " rejected, recorded)");
   console.log("  mutations       " + MUTATIONS.length);
-  console.log("  sustained       " + SUSTAINED_DEFECTS.length + " defects, 0 Solidity bytes changed");
+  console.log("  sustained       " + SUSTAINED_DEFECTS.length + " defects still open");
+  console.log("  remediated      " + REMEDIATED_DEFECTS.length + " defect(s), " + (sd1?.totalDelta ?? 0) + " Solidity bytes changed");
   console.log("  digest          " + sha256OfFile(OUT));
 }
 

@@ -1,25 +1,31 @@
 /**
- * EXPERIMENTAL PROTOTYPE — SUSTAINED COMPOSITION DEFECTS, REPRODUCED.
+ * EXPERIMENTAL PROTOTYPE — THE COMPOSITION DEFECT LEDGER, EXECUTED.
  *
- * Three defects found by the stateful campaign and then reproduced FIRSTHAND
- * against the compiled kernel. This PR changes ZERO bytes of Solidity, so each
- * one is recorded here as a deterministic, permanently-executed reproduction
- * rather than fixed in passing. `stateful/defects.ts` carries the full analysis,
- * the contradicted published claim, the root cause, and a minimal fix sketch.
+ * Defects found by the stateful campaign and reproduced FIRSTHAND against the
+ * compiled kernel. `stateful/defects.ts` carries the full analysis, the
+ * contradicted published claim, the root cause, and a minimal fix sketch.
  *
  * THESE TESTS ASSERT THE DEFECTIVE BEHAVIOUR ON PURPOSE.
  * ------------------------------------------------------
- * That is the point. Each one is written so that IF A FIX LANDS IT FAILS, which
- * is what forces the fixer to update this file, `stateful/defects.ts` and
+ * That is the point. Each is written so that IF A FIX LANDS IT FAILS, which is
+ * what forces the fixer to update this file, `stateful/defects.ts` and
  * AUTHORITY.md together. A defect that can be quietly fixed while a security
  * table still says it is unreachable is how a stale table is born; a defect that
  * is quietly SUPPRESSED is worse. Neither happens here.
  *
- * NONE OF THE THREE IS AN UNAUTHORIZED ASSET OR CONTROL ESCALATION. All three
- * are DENIAL / LIVENESS or state-incoherence outcomes. No declared cut for
- * asset control, credential replacement, verifier replacement, guardian
- * transition or migration is reduced by any of them. That bound is asserted
- * below, not merely asserted in prose.
+ * THE MECHANISM HAS NOW FIRED ONCE, WHICH IS WHY SD-1 READS DIFFERENTLY.
+ * ---------------------------------------------------------------------
+ * SD-1 was remediated by `I-FLOOR-SHAPE-IMMUTABLE`, its reproduction went red
+ * exactly as designed, and it is INVERTED IN PLACE rather than deleted: the same
+ * sequence, step for step, with the verdict moved. Deleting it would have
+ * erased the evidence that the interlock worked. Its ledger entry moved to
+ * `REMEDIATED_DEFECTS`, which records the head it was SUSTAINED at, and the
+ * residual it left is carried as SD-4 in its own right.
+ *
+ * NONE OF THESE IS AN UNAUTHORIZED ASSET OR CONTROL ESCALATION. All are DENIAL /
+ * LIVENESS or state-incoherence outcomes. No declared cut for asset control,
+ * credential replacement, verifier replacement, guardian transition or migration
+ * is reduced by any of them. That bound is asserted below, not merely in prose.
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
@@ -40,7 +46,7 @@ import {
   type Floor,
   type World,
 } from "../stateful/world.js";
-import { SUSTAINED_DEFECTS } from "../stateful/defects.js";
+import { REMEDIATED_DEFECTS, SUSTAINED_DEFECTS } from "../stateful/defects.js";
 
 const DAY = 24 * 60 * 60;
 
@@ -80,21 +86,163 @@ async function setVerifierAs(
   ).wait();
 }
 
-describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed here)", function () {
+/**
+ * SD-4 is SUSTAINED but is NOT reproduced in this file, and that is deliberate
+ * rather than an omission: it is the declared residual of the SD-1 remediation,
+ * it needs a genesis shape `deployWorld` could not previously build, and it is
+ * only meaningful beside the fix that produced it. Its reproduction — including
+ * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
+ * what its ledger entry's `reproducedBy` names and what the receipt publishes.
+ */
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-2 reproduced here, SD-4 / SD-8 / SD-11A / SD-11B next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
-    expect(SUSTAINED_DEFECTS.length).to.equal(3);
+    // IDENTITY, NOT ARITHMETIC. A receipt can carry the right counts and the
+    // wrong defects, so both sets are asserted by id; an entry that arrives or
+    // leaves has to move these lists deliberately (Lane W2P).
+    // LANE SD5-I MOVED ONE ENTRY OUT AND ADDED TWO. SD-5 left this list for
+    // REMEDIATED_DEFECTS — de-authorising the three shape fields, not
+    // constraining the values they may take. In its place stand the two residuals
+    // that removal EXPOSED rather than created, and the distinction is the reason
+    // they are recorded at all: the structural length gate never supplied scheme
+    // binding (a forgeable relation placed AT the declared length defeated it on
+    // the unamended kernel too), so what follows was always true and is now
+    // merely visible.
+    //   SD-11A — the kernel cannot establish that an admitted verifier exposes
+    //            only ONE accepting relation. Measured, with a really-deployed
+    //            verifier and no setCode.
+    //   SD-11B — the kernel pins no code identity for an admitted verifier, so
+    //            in-place semantic change is NOT EXCLUDED. Deliberately recorded
+    //            as UNMEASURED rather than dressed up as a demonstrated capability.
+    const SUSTAINED_IDS = [
+      "SD-2-containment-window-is-tumbling",
+      "SD-4-ecdsa-only-shape-declaration-is-uncounted",
+      "SD-8-genesis-exhibit-cannot-prove-well-formedness",
+      "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+      "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
+    ];
+    expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
+      [...SUSTAINED_IDS].sort(),
+    );
+    expect(SUSTAINED_DEFECTS.length).to.equal(5);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
       expect(d.rootCause.length, d.id + " must name the source construct").to.be.greaterThan(40);
       expect(d.minimalFixSketch.length, d.id + " must carry a minimal fix sketch").to.be.greaterThan(30);
     }
+    // SD-1 and SD-3 are no longer here; they are in REMEDIATED_DEFECTS. A fix
+    // that merely DELETED a ledger entry would leave a repository in which the
+    // inverted reproduction has no explanation, so each entry MOVED rather than
+    // vanished, and each still names the head it was sustained at.
+    //
+    // SD-4 is deliberately NOT in that list. A fix for it was built, measured
+    // and then removed — refusing a ONE-SHOT transition hands the opposing
+    // principal a veto over a capability it cannot itself exercise — so it stays
+    // SUSTAINED, and it now carries a CAMPAIGN PROPERTY it never had, which means
+    // the "still reproducing" assertion covers it for the first time.
+    const REMEDIATED_IDS = [
+      "SD-1-floor-length-poisoning",
+      "SD-3-setverifier-skips-genesis-satisfiability",
+      "SD-5-permanent-shape-capture-on-the-declaring-edge",
+      "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
+      "SD-7-genesis-admits-an-unsatisfiable-floor",
+      "SD-9b-expired-request-retains-blocking-effect",
+      "SD-9c-guardian-quorum-cancellation-absent",
+      "SD-9d-live-request-overwrite",
+      "SD-9e-expiry-equality-boundary",
+      "SD-10-approved-request-stranded-by-guardian-rotation",
+    ];
+    for (const closed of REMEDIATED_IDS) {
+      expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
+        closed,
+      );
+      expect(REMEDIATED_DEFECTS.map((d) => d.id), closed + " must be recorded as remediated").to.include(closed);
+    }
+    expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
+      [...REMEDIATED_IDS].sort(),
+    );
+    expect(REMEDIATED_DEFECTS.length).to.equal(10);
+    // A defect is sustained or remediated, never both, and never twice.
+    const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
+    expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
+    // SD-9a is a REMEDIATION HAZARD / SPECIFICATION GAP, not a present defect;
+    // it must not be smuggled into either array so that a receipt can count it.
+    expect(everyId.some((id) => id.toLowerCase().includes("sd-9a")), "SD-9a is not a defect entry").to.equal(false);
+    // Lane W2's four closures name their exact source identities.
+    const W1_RECORD = "4b9127269602d8eab3700d96dda4d5cfcf2e0d55";
+    const W1_RECORD_SD10 = W1_RECORD;
+    const SD10_COMMIT_A = "c32e0d748390b79f4163ad4a783c2467cf502e30";
+    const W2_COMMIT_A = "c182db1099d92ff5830ae71116613c739b034bd9";
+    for (const id of REMEDIATED_IDS.filter((x) => x.startsWith("SD-9"))) {
+      const r = REMEDIATED_DEFECTS.find((x) => x.id === id)!;
+      expect(r.sustainedAt, id + " was first recorded by Lane W1").to.equal(W1_RECORD);
+      expect(r.remediatedOn.startsWith(W2_COMMIT_A), id + " names Lane W2's Commit A as its source").to.equal(true);
+      expect(r.invertedReproduction, id + " must point at the W2 lifecycle suite").to.include(
+        "W2RecoveryLifecycle.test.ts",
+      );
+    }
+    // SD-10 moved to REMEDIATED in Lane SD10-P. It names the commit that fixed
+    // it, the head it was sustained at, and the inverted reproduction — and it
+    // still names THIS file, because the original sequence lives here with its
+    // verdict moved rather than deleted.
+    const sd10 = REMEDIATED_DEFECTS.find((r) => r.id === "SD-10-approved-request-stranded-by-guardian-rotation")!;
+    expect(sd10, "SD-10 is recorded as remediated").to.not.equal(undefined);
+    expect(sd10.sustainedAt, "SD-10 was first recorded by Lane W1").to.equal(W1_RECORD_SD10);
+    expect(sd10.remediatedOn, "SD-10 names Lane SD10-I's Commit A").to.include(SD10_COMMIT_A);
+    expect(sd10.invertedReproduction, "SD-10 still names this file").to.include("StatefulSustainedDefects.test.ts");
+    expect(sd10.invertedReproduction, "and the permanent SD-10 suite").to.include(
+      "Sd10ApprovedRequestPreservation.test.ts",
+    );
+    expect(sd10.residual, "SD-10 leaves no residual").to.equal(null);
+    // The remediation must NOT overstate itself: generation binding survives.
+    expect(sd10.invariant, "the entry must not claim generation binding was removed").to.include(
+      "Guardian-generation binding was NOT removed",
+    );
+    // SD-4 stays sustained on its campaign property, and its entry carries the
+    // canonical disposition rather than the refuted general claims.
+    const sd4 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-4-ecdsa-only-shape-declaration-is-uncounted")!;
+    expect(sd4.property).to.equal("G-DECLARATION-SUBORDINATE-TO-RECOVERY");
+    const sd4Text = Object.values(sd4).join(" ");
+    expect(sd4Text, "a refuted claim must not be republished").to.not.include("No fifth family is known");
+    expect(sd4Text, "a refuted claim must not be republished").to.not.include("liveness cost is INHERENT");
+    expect(sd4Text).to.include("SD4_DEDICATED_REMEDIATION = NOT_REQUIRED");
+    expect(sd4Text).to.include("G_PRIME_INCREMENTAL_VALUE = NONE_ESTABLISHED");
+    for (const r of REMEDIATED_DEFECTS) {
+      expect(r.sustainedAt, r.id + " must name the head it was sustained at").to.match(/^[0-9a-f]{40}$/);
+      expect(r.invariant.length, r.id + " must state the invariant that closed it").to.be.greaterThan(60);
+      expect(
+        r.rejectedAlternatives.length,
+        r.id + " must record the designs rejected — a fix with no rejected alternatives was not chosen",
+      ).to.be.greaterThan(60);
+    }
+    // The residual is a first-class sustained defect, not a footnote.
+    const residuals = REMEDIATED_DEFECTS.map((r) => r.residual).filter((x): x is string => x !== null);
+    for (const id of residuals) {
+      expect(SUSTAINED_DEFECTS.map((d) => d.id), "a declared residual must be carried as a sustained defect").to.include(
+        id,
+      );
+    }
   });
 
   // =====================================================================
-  it("SD-1 — floor-length poisoning gives the credential an UNCOUNTED, repeatable veto over guardian recovery", async function () {
+  /**
+   * REMEDIATED — and kept here, running, rather than deleted.
+   *
+   * This is the SAME sequence that sustained SD-1 at ec5adce9, step for step:
+   * the same honest quorum, the same approved recovery, the same single-field
+   * length change. Only the VERDICT has moved. Steps 1 and 2 still assert what
+   * they always did; step 3 now asserts that the poisoning transition is
+   * REFUSED, and step 4 — which is the point — asserts that the recovery the
+   * attack existed to veto actually EXECUTES.
+   *
+   * Asserting the execution, not merely the absence of a revert, is deliberate:
+   * `_requireIncomingPossession` reverts `BadSignature` from three different
+   * branches, so a revert-selector assertion could not distinguish a fixed
+   * kernel from a broken one.
+   */
+  it("SD-1 — REMEDIATED, RE-INVERTED BY SD5-I: the poisoning write is now ADMITTED and the recovery executes anyway", async function () {
     const w = await deployWorld({ label: "sd1", verifier: "honest" });
 
     // 1. An HONEST guardian quorum (k = 2 distinct principals) approves a recovery.
@@ -118,40 +266,63 @@ describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed 
     expect(Number((await w.vault.recovery())[6]), "challenge budget untouched").to.equal(0);
 
     // 2. The COMPROMISED credential (2 roots — the declared asset cut, so it has
-    //    gained nothing it did not already have) changes ONLY the signature LENGTH.
-    //    requirePq stays true and pqParamLevel does not decrease, so
-    //    _requireNoDowngrade — which compares only those two fields — permits it.
+    //    gained nothing it did not already have) attempts to change ONLY the
+    //    signature LENGTH.
+    //
+    //    RE-INVERTED IN LANE SD5-I, AND THE MECHANISM IS THE POINT. At the SD-1
+    //    remediation this write was REFUSED by I-FLOOR-SHAPE-IMMUTABLE, and that
+    //    refusal was the evidence. SD5-I RETIRES that invariant, so the write is
+    //    now ADMITTED — and the recovery in step 3 completes anyway, because
+    //    _requireIncomingPossession no longer READS what the write moved.
+    //
+    //    SD-1's remedy made the state UNMOVABLE; SD5-I makes it UNREAD. The
+    //    second is strictly stronger: a freeze still has to be complete to work,
+    //    while state nothing consumes cannot be weaponised on ANY schedule. What
+    //    the freeze cost is what SD-5 measured — the shape became permanent
+    //    against every principal, so an honest ML-DSA-44 vault could never reach
+    //    ML-DSA-87 and a captured shape survived guardian recovery.
+    //
+    //    requirePq is HELD CONSTANT across this write, so the fact that step 3
+    //    still executes is attributable to the metadata alone. That is
+    //    I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE, which replaces
+    //    I-FLOOR-SHAPE-IMMUTABLE and deliberately excludes requirePq (still the
+    //    SD-4 residual).
     const before = await w.vault.securityFloor();
+    expect(Number(before[3]), "the honest floor declares a 65-byte signature").to.equal(65);
     await setVerifierAs(
       w, w.verifiers.honest,
       { requirePq: true, pqParamLevel: Number(before[1]), pqPublicKeyLength: 32, pqSignatureLength: 64 },
       w.credKey, w.pqKey,
     );
     const after = await w.vault.securityFloor();
-    expect(Number(before[3]), "the honest floor declares a 65-byte signature").to.equal(65);
-    expect(Number(after[3]), "SUSTAINED: the length was changed with no downgrade check").to.equal(64);
+    expect(Number(after[3]), "SD5-I: the write LANDS — the metadata is not frozen").to.equal(64);
+    expect(after[0], "requirePq is held CONSTANT, so step 3 isolates the metadata").to.equal(true);
+    expect(Number(after[1]), "and so is the level").to.equal(Number(before[1]));
 
-    // 3. THE VETO. Both branches of the incoming-possession check are now closed.
+    // 3. AND THE POINT, now carried entirely by NON-CONSUMPTION. The recovery
+    //    this attack existed to veto completes even though the write LANDED.
+    //    Asserted as an OBSERVED INSTALL, because _requireIncomingPossession
+    //    reverts BadSignature from three branches and the absence of one
+    //    particular revert would prove nothing.
     await networkHelpers.time.increase(7 * DAY + 1);
     const pop = (await w.vault.recoveryPossessionDigest()) as string;
-    const change = (pqPop: string): Record<string, string> => ({
-      newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
-      newEcdsaPop: sign(newCred, pop), newPqPop: pqPop,
-    });
-    // A REAL 65-byte proof now fails the LENGTH check against the poisoned floor.
-    await expect(w.vault.executeRecovery(change(sign(newPq, pop))))
-      .to.be.revertedWithCustomError(w.vault, "BadSignature");
-    // A 64-byte proof passes the length check and fails the VERIFIER, which is
-    // length-bound like every real PQ scheme at a fixed parameter level.
-    await expect(w.vault.executeRecovery(change(ethers.hexlify(new Uint8Array(64)))))
-      .to.be.revertedWithCustomError(w.vault, "BadSignature");
+    await (
+      await w.vault.executeRecovery({
+        newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
+        newEcdsaPop: sign(newCred, pop), newPqPop: sign(newPq, pop),
+      })
+    ).wait();
+    expect(await w.vault.ecdsaSigner(), "REMEDIATED: the guardian-approved credential is installed")
+      .to.equal(addrOf(newCred));
+    expect(await w.vault.pqPublicKeyHash(), "REMEDIATED: and so is its PQ commitment").to.equal(pqHash(newPq));
 
-    // 4. THE POINT: the challenge budget — the ONLY mechanism AUTHORITY.md cites
-    //    for "permanent recovery veto: unreachable" — was never touched, so the
-    //    veto is repeatable without limit.
+    // 4. The challenge budget was never needed, because there was never a veto.
+    //    At ec5adce9 this same assertion read "challengesUsed is STILL 0" and was
+    //    the PROOF OF THE DEFECT: the counter never engaged while the veto ran
+    //    unbounded. Here it means the opposite — nothing was ever vetoed.
     const rec = await w.vault.recovery();
-    expect(rec[7], "the request is still active and still unexecutable").to.equal(true);
-    expect(Number(rec[6]), "SUSTAINED: challengesUsed is STILL 0 — CHALLENGE_LIMIT never engages").to.equal(0);
+    expect(rec[7], "the request is consumed, not stranded").to.equal(false);
+    expect(Number(rec[6]), "no challenge was consumed").to.equal(0);
 
     // 5. AND THE BOUND ON THE CLAIM: no guardian was compromised, and the
     //    guardian roster is untouched, so no authority CUT moved.
@@ -249,36 +420,52 @@ describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed 
   });
 
   // =====================================================================
-  it("SD-3 — setVerifier raises requirePq against a ZERO key commitment, the exact state initialize refuses", async function () {
-    // A vault BORN with an ECDSA-only floor — a configuration initialize permits,
-    // and the only one from which requirePq can legally go false -> true.
+  /**
+   * REMEDIATED, and inverted in place rather than deleted.
+   *
+   * This is the SAME sequence that sustained SD-3 at ec5adce9 — an ECDSA-only
+   * genesis, one root, the same arming call — with only the VERDICT moved. The
+   * genesis positive control is kept because it is what made the defect legible:
+   * `initialize` always refused this state, and the transition simply did not.
+   * `I-DECLARATION-EXHIBITED` is what closed the gap between them.
+   *
+   * The full remediation evidence, including the NON-ZERO form the ledger's own
+   * fix sketch would have missed, lives in Sd34AuthenticationSatisfiability and
+   * Sd34DeclarationInvariants.
+   */
+  it("SD-3 — REMEDIATED: the transition now refuses exactly what genesis always refused", async function () {
     const w = await deployWorld({ label: "sd3", verifier: "honest", ecdsaOnlyFloor: true });
     expect(await w.vault.pqPublicKeyHash(), "no PQ key is committed").to.equal(ethers.ZeroHash);
     expect((await w.vault.securityFloor())[0], "and no PQ conjunct is demanded").to.equal(false);
 
-    // GENESIS REFUSES THIS EXACT COMBINATION — the positive control that proves
-    // the kernel knows the state is invalid.
+    // GENESIS REFUSES THIS EXACT COMBINATION — unchanged, and still the control
+    // that proves the kernel knows the state is invalid.
     const factory = await ethers.getContractAt("VaultKernelFactoryPrototype", w.factoryAddress, w.deployer);
     await expect(
       factory.deployVault(ethers.id("sd3-genesis-control"), {
         signer: addrOf(w.credKey), pqKeyHash: ethers.ZeroHash, verifier: w.verifiers.honest,
         threshold: 2, guardians: w.guardians, guardianIsContract: w.guardianIsContract,
         floor: { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 },
-      }),
+      }, "0x"),
       "initialize must refuse requirePq with a zero key commitment",
     ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 
-    // THE TRANSITION DOES NOT. One root — the sole ECDSA credential of an
-    // ECDSA-only vault, where _authorise IS the ECDSA conjunct alone.
-    await setVerifierAs(
-      w, w.verifiers.honest,
-      { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 },
-      w.credKey, null,
-    );
-    expect((await w.vault.securityFloor())[0], "SUSTAINED: the conjunct is now mandatory").to.equal(true);
-    expect(await w.vault.pqPublicKeyHash(), "against a commitment no preimage can satisfy").to.equal(ethers.ZeroHash);
+    // AND NOW SO DOES THE TRANSITION. At ec5adce9 this SUCCEEDED at one root and
+    // left every credential path dead on a conjunct with no preimage.
+    await expect(
+      setVerifierAs(
+        w, w.verifiers.honest,
+        { requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 },
+        w.credKey, null,
+      ),
+      "REMEDIATED: nothing hashes to a zero commitment, so the declaration cannot be witnessed",
+    ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 
-    // AND SPENDING IS NOW UNSATISFIABLE: _authorise requires keccak256(pqKey) == 0.
+    expect((await w.vault.securityFloor())[0], "the conjunct was never armed").to.equal(false);
+    expect(await w.vault.pqPublicKeyHash(), "and the commitment is untouched").to.equal(ethers.ZeroHash);
+
+    // POSITIVE CONTROL — the vault is not merely refusing everything: it still
+    // spends under its ECDSA-only floor, exactly as before.
     const sNonce = (await w.vault.nonces(DOMAIN.SPEND)) as bigint;
     const credGen = (await w.vault.credentialGeneration()) as bigint;
     const amount = ethers.parseEther("1");
@@ -288,59 +475,134 @@ describe("vNext kernel — SUSTAINED COMPOSITION DEFECTS (reproduced, NOT fixed 
       params: spendParams(w.recipient, amount),
       domain: DOMAIN.SPEND, nonce: sNonce, deadline: FAR_DEADLINE,
     });
-    await expect(
-      w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE, sign(w.credKey, sd),
-        ethers.hexlify(new Uint8Array(65)), ethers.hexlify(new Uint8Array(32))),
-      "SUSTAINED: the vault is now permanently unspendable by its own credential",
-    ).to.be.revertedWithCustomError(w.vault, "BadSignature");
-
-    // THE BOUND ON THE CLAIM: guardian recovery still escapes it, because
-    // executeRecovery installs a FRESH key commitment of the guardians' choosing.
-    const gGen = (await w.vault.guardianGeneration()) as bigint;
-    const gNonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
-    const newCred = w.spareCred[0]!;
-    const newPq = w.sparePq[0]!;
-    const rd = digestOf({
-      chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: 1n,
-      actionType: ACTION.RECOVER, authorityGeneration: gGen,
-      params: recoverParams(addrOf(newCred), pqHash(newPq), w.verifiers.honest),
-      domain: DOMAIN.GUARDIAN, nonce: gNonce, deadline: FAR_DEADLINE,
-    });
+    const balBefore = await ethers.provider.getBalance(w.recipient);
     await (
-      await w.vault.initiateRecovery(addrOf(newCred), pqHash(newPq), w.verifiers.honest, {
+      await w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE, sign(w.credKey, sd), "0x", "0x")
+    ).wait();
+    expect(await ethers.provider.getBalance(w.recipient), "the vault still works").to.equal(balBefore + amount);
+  });
+
+  // =====================================================================
+  /**
+   * SD-10 — REPRODUCTION INVERTED IN LANE SD10-I; LEDGER ENTRY MOVED TO
+   * REMEDIATED_DEFECTS IN LANE SD10-P.
+   *
+   * Recorded by Lane W1 (4b912726, SD9_RECOVERY_LIFECYCLE_DEFECTS.md), measured
+   * on the pre-W2 kernel (Sd4LaneV "D") and re-measured on the W2 kernel, this
+   * test used to assert the defective behaviour on purpose: at maturity the
+   * approved request reverted `BadRoster`, stayed stored `active`, and — since
+   * W2 — blocked a fresh initiation until the new quorum cancelled it.
+   *
+   * The SAME deterministic sequence now runs to the OPPOSITE end. Lane SD10-I
+   * removed `executeRecovery`'s execution-time generation re-check, so the
+   * request the quorum approved survives the quorum's own roster re-commitment
+   * and executes. Every step below is unchanged except the verdict — that is
+   * what makes this an INVERSION rather than a new test.
+   *
+   * THE LEDGER MOVE HAS NOW HAPPENED. A `RemediatedDefect` entry must name the
+   * head it was remediated ON, which did not exist while SD10-I was an
+   * uncommitted object; Lane SD10-P created that head (Commit A) and filed the
+   * entry against it. The final assertion below is now the INVERSE of the one
+   * that pinned the divergence, and it still fails if either side moves alone.
+   */
+  it("SD-10 — REMEDIATED: a guardian-set replacement PRESERVES the approved request, which matures and executes; ledger and behaviour agree", async function () {
+    const w = await deployWorld({ label: "sd10", verifier: "honest" });
+    const guardianAuth = async (actionType: string, params: string) => {
+      const nonce = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+      const d = digestOf({
+        chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: 1n,
+        actionType, authorityGeneration: (await w.vault.guardianGeneration()) as bigint,
+        params, domain: DOMAIN.GUARDIAN, nonce, deadline: FAR_DEADLINE,
+      });
+      const proof = {
         members: w.guardians, isContract: w.guardianIsContract,
-        attestingIndices: [0, 1], attestations: [sign(w.gKeys[0]!, rd), sign(w.gKeys[1]!, rd)],
-      }, gNonce, FAR_DEADLINE)
-    ).wait();
-    await networkHelpers.time.increase(7 * DAY + 1);
-    const pop = (await w.vault.recoveryPossessionDigest()) as string;
-    await (
-      await w.vault.executeRecovery({
-        newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
-        newEcdsaPop: sign(newCred, pop), newPqPop: sign(newPq, pop),
-      })
-    ).wait();
-    expect(await w.vault.pqPublicKeyHash(), "the guardian quorum repaired the commitment").to.equal(pqHash(newPq));
+        attestingIndices: [0, 1], attestations: [sign(w.gKeys[0]!, d), sign(w.gKeys[1]!, d)],
+      };
+      return { nonce, proof };
+    };
+    const initiate = async (cred: ethers.SigningKey, pq: ethers.SigningKey) => {
+      const a = await guardianAuth(ACTION.RECOVER, recoverParams(addrOf(cred), pqHash(pq), w.verifiers.honest));
+      return w.vault.initiateRecovery(addrOf(cred), pqHash(pq), w.verifiers.honest, a.proof, a.nonce, FAR_DEADLINE);
+    };
+    const change = async (cred: ethers.SigningKey, pq: ethers.SigningKey) => {
+      const pop = (await w.vault.recoveryPossessionDigest()) as string;
+      return {
+        newSigner: addrOf(cred), newPqKeyHash: pqHash(pq), newPqKey: pqKeyBytes(pq),
+        newEcdsaPop: sign(cred, pop), newPqPop: sign(pq, pop),
+      };
+    };
 
-    // END-TO-END (R6): the recovered authority is USABLE, proven by a real balance change.
-    const balBefore = await ethers.provider.getBalance(w.vaultAddress);
-    const n2 = (await w.vault.nonces(DOMAIN.SPEND)) as bigint;
-    const cg2 = (await w.vault.credentialGeneration()) as bigint;
-    const sd2 = digestOf({
-      chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: 1n,
-      actionType: ACTION.SPEND, authorityGeneration: cg2,
-      params: spendParams(w.recipient, amount), domain: DOMAIN.SPEND, nonce: n2, deadline: FAR_DEADLINE,
-    });
+    // 1. An HONEST quorum (k = 2 distinct principals) approves a recovery.
+    const cred1 = w.spareCred[0]!;
+    const pq1 = w.sparePq[0]!;
+    await (await initiate(cred1, pq1)).wait();
+    const boundGeneration = (await w.vault.recovery())[5] as bigint;
+    expect((await w.vault.recovery())[7], "approved and live").to.equal(true);
+
+    // 2. The SAME quorum re-commits the IDENTICAL roster. `setGuardians` consults
+    //    nothing about `recovery`: it is admitted while the request is live, and
+    //    the generation moves. The reference model DENIES this exact move
+    //    (I-APPROVED-REQUEST-PRESERVATION); the kernel does not.
+    const commitment = (await w.vault.rosterCommitment(w.threshold, w.guardians, w.guardianIsContract)) as string;
+    const g = await guardianAuth(ACTION.SET_GUARDIANS, commitment);
     await (
-      await w.vault.execute(w.recipient, amount, n2, FAR_DEADLINE,
-        sign(newCred, sd2), sign(newPq, sd2), pqKeyBytes(newPq))
+      await w.vault.setGuardians(w.threshold, w.guardians, w.guardianIsContract, g.proof, g.nonce, FAR_DEADLINE)
     ).wait();
-    expect(await ethers.provider.getBalance(w.vaultAddress)).to.equal(balBefore - amount);
+    expect((await w.vault.guardianGeneration()) as bigint, "the generation bumped").to.equal(boundGeneration + 1n);
+
+    // 3. INVERTED: the generation bump left the request untouched. It is still
+    //    the SAME request — its clocks did not move, and `boundGuardianGeneration`
+    //    is still the generation that APPROVED it, now one behind the current
+    //    one. That field is approval PROVENANCE; it is no longer re-checked at
+    //    execution time, which is the whole of the correction.
+    const preserved = await w.vault.recovery();
+    expect(preserved[7], "INVERTED: still stored active — the replacement cleared nothing").to.equal(true);
+    expect(preserved[5] as bigint, "INVERTED: still bound to the APPROVING generation").to.equal(boundGeneration);
+    expect(Number(preserved[6]), "no challenge was consumed").to.equal(0);
+
+    // 4. INVERTED: at maturity the approved request EXECUTES. This is the exact
+    //    call that reverted `BadRoster` on every kernel up to a42f5c7e.
+    await networkHelpers.time.increase(7 * DAY + 1);
+    await (await w.vault.executeRecovery(await change(cred1, pq1))).wait();
+    expect(await w.vault.ecdsaSigner(), "INVERTED (SD-10): the approved request installed").to.equal(addrOf(cred1));
+    expect((await w.vault.recovery())[7], "consumed by execution").to.equal(false);
+
+    // 5. THE BLAST RADIUS IS GONE WITH IT. The stranding was what made a request
+    //    linger as an obstacle; with none to strand there is nothing blocking a
+    //    fresh initiation, and no cancel-then-re-propose cycle is needed.
+    const cred2 = w.spareCred[1]!;
+    const pq2 = w.sparePq[1]!;
+    await (await initiate(cred2, pq2)).wait();
+    await networkHelpers.time.increase(7 * DAY + 1);
+    await (await w.vault.executeRecovery(await change(cred2, pq2))).wait();
+    expect(await w.vault.ecdsaSigner(), "a subsequent recovery still installs").to.equal(addrOf(cred2));
+
+    // 6. LEDGER AND BEHAVIOUR NOW AGREE. Lane SD10-P moved the entry, so this
+    //    assertion is the inverse of the one that stood while the two diverged.
+    //    It still fails the moment either side moves without the other: putting
+    //    SD-10 back into SUSTAINED_DEFECTS, or reinstating the defect in the
+    //    kernel, breaks it from opposite directions.
+    expect(
+      SUSTAINED_DEFECTS.map((d) => d.id),
+      "SD-10 is no longer a sustained defect",
+    ).to.not.include("SD-10-approved-request-stranded-by-guardian-rotation");
+    expect(
+      REMEDIATED_DEFECTS.map((r) => r.id),
+      "and the sequence above is its inverted reproduction",
+    ).to.include("SD-10-approved-request-stranded-by-guardian-rotation");
   });
 
   // =====================================================================
   it("prints the sustained-defect ledger", function () {
-    console.log("\n  SUSTAINED COMPOSITION DEFECTS (zero Solidity changed in this PR)");
+    console.log("\n  REMEDIATED COMPOSITION DEFECTS");
+    for (const r of REMEDIATED_DEFECTS) {
+      console.log("\n  " + r.id);
+      console.log("    DEFECT_SUSTAINED_AT   " + r.sustainedAt);
+      console.log("    DEFECT_REMEDIATED_ON  " + r.remediatedOn);
+      console.log("    invariant   : " + r.invariant.slice(0, 150) + "...");
+      console.log("    residual    : " + (r.residual ?? "none"));
+    }
+    console.log("\n  SUSTAINED COMPOSITION DEFECTS (still open)");
     for (const d of SUSTAINED_DEFECTS) {
       console.log("\n  " + d.id + "  [" + d.classification + "]  roots: " + d.rootsRequired.split("—")[0]!.trim());
       console.log("    " + d.title);
