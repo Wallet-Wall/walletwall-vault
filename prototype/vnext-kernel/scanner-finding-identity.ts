@@ -140,17 +140,80 @@ export function semanticId(f: SlitherFinding): string {
   return sha256Hex(JSON.stringify(semanticIdParts(f)));
 }
 
+/** Identifies the fingerprint algorithm. Stored in the triage and asserted by the generator, so a
+ *  change to comment handling cannot silently invalidate every stored fingerprint. */
+export const FINGERPRINT_ALGORITHM = "solidity-lexer-v1";
+
 /**
- * Strips comments and collapses whitespace, so a reflow or a comment rewrite is not mistaken for
- * a change in what the code does. Deliberately lexical: this is a change DETECTOR, not a parser,
- * and it is only ever used to compare one revision of a span against another.
+ * Strips comments and collapses whitespace, so a reflow or a comment rewrite is not mistaken for a
+ * change in what the code does.
+ *
+ * SCANS, NEVER REGEX-REPLACES. The obvious implementation -- one regex replacing block-comment
+ * spans and another replacing everything after a double slash to end of line -- is WRONG and
+ * dangerously so: a double slash or a slash-star inside a STRING LITERAL is an ordinary character
+ * sequence, and a regex cannot tell the difference. Under that implementation
+ *
+ *     string constant X = "https://example.com/a";
+ *
+ * normalises to `string constant X = "https:` -- everything after `//` is erased. Two revisions
+ * whose URLs, revert strings or ABI signatures differ only after a `//` would produce the SAME
+ * fingerprint, and a real source change would be reported as UNCHANGED. For a value whose entire
+ * job is to detect change, silently deleting string contents is the worst possible failure mode.
+ *
+ * This scanner tracks whether it is inside a string, so comment markers within one are preserved.
+ * Solidity string literals are double- or single-quoted with backslash escapes; the `hex"..."` and
+ * `unicode"..."` prefixes are ordinary identifiers followed by an ordinary quoted literal, so they
+ * need no special handling here.
  */
 export function normaliseSolidity(text: string): string {
-  return text
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/\/\/[^\n]*/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  let out = "";
+  let i = 0;
+  const n = text.length;
+  while (i < n) {
+    const c = text[i];
+    const next = text[i + 1];
+    if (c === '"' || c === "'") {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < n) {
+        if (text[i] === "\\" && i + 1 < n) {
+          out += text[i] + text[i + 1];
+          i += 2;
+          continue;
+        }
+        out += text[i];
+        if (text[i] === quote) {
+          i++;
+          break;
+        }
+        // An unterminated literal at a span boundary ends at the newline rather than
+        // swallowing the rest of the span: fingerprints are taken over LINE RANGES, so a
+        // string can legitimately be cut in half by the range.
+        if (text[i] === "\n") {
+          i++;
+          break;
+        }
+        i++;
+      }
+      continue;
+    }
+    if (c === "/" && next === "/") {
+      while (i < n && text[i] !== "\n") i++;
+      out += " ";
+      continue;
+    }
+    if (c === "/" && next === "*") {
+      i += 2;
+      while (i < n && !(text[i] === "*" && text[i + 1] === "/")) i++;
+      i += 2;
+      out += " ";
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out.replace(/\s+/g, " ").trim();
 }
 
 function fingerprintOver(

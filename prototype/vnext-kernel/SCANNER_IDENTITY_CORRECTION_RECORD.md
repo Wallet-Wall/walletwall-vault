@@ -241,3 +241,99 @@ Two related lessons from the same episode:
   by one.
 - The failure was briefly masked by reporting `npx hardhat test | grep -E "passing|failing"`,
   whose exit code is grep's. Never read a test suite's verdict through a pipe.
+
+## 11. Enforcement gaps closed after the identity work
+
+Semantic identity stopped a moved finding from losing its adjudication. It closed none of
+the following, each of which is now covered.
+
+### A. The hashed config could drift from the workflow
+
+`scannerSemanticConfigSha256` hashes `PINNED_SEMANTIC_CONFIG`, which was **transcribed**
+from `.github/workflows/vnext-kernel-assurance.yml`. Bump `solc-version` in the workflow
+and the constant stays put: the digest keeps attesting to a configuration nothing runs.
+
+`scanner-workflow-config.ts` now extracts the invocation from the workflow and compares
+it field by field, fail-closed — an anchor it cannot find is drift, never agreement.
+Nine fields are covered (slither commit, solc, EVM, optimizer enabled, optimizer runs,
+remap, target, compile framework, dependency policy), each with its own mutation test.
+
+**`crytic-compile` is not among them, and the file says so.** The workflow never names a
+version; it is resolved at install time from the pinned Slither commit's own constraints.
+It stays in the hashed config because it genuinely affects results, but its authority is
+the observed resolution in the receipt and the CI job log. `WORKFLOW_UNPINNED` names that
+gap explicitly and a test asserts the list, so a value cannot quietly move between regimes.
+
+**The first version of this verifier was wrong in the most embarrassing way available.**
+The workflow documents itself heavily and its comments quote the very flags being
+extracted — `# WHY --compile-force-framework solc, not hardhat:` and
+``# `fail-on: none` matches production's slither.yml``. Matching raw text captured
+`"solc,"` and ``"none`"`` from that prose. The verifier was comparing **documentation** to
+the constant and reporting agreement it had never established; someone could have changed
+the real argument and left the comment alone. Full-line comments are now stripped before
+extraction, and a test asserts the extracted values are the configuration rather than the
+prose.
+
+### B. The receipt was hand-editable
+
+`--validate` proves every finding is adjudicated and says nothing about the rest of the
+file. Test counts, solhint totals, bytecode sizes and the scope digests could all be
+edited with 217/54/33 and every triage entry still valid.
+
+The non-scanner figures moved out of command-line flags into the committed
+`scanner-evidence-inputs.json`, so a regeneration depends only on committed state, the raw
+run and git. `--check` regenerates and compares **bytes**. A hand-edited field cannot
+survive, because the compared bytes are derived rather than read back from the file under
+test.
+
+### C. The normaliser could erase string contents
+
+`normaliseSolidity` stripped comments with regexes. A regex cannot tell a comment marker
+from the same characters inside a **string literal**, so
+
+```solidity
+string constant X = "https://example.com/a";
+```
+
+normalised to `string constant X = "https:` — everything after the double slash erased.
+Two revisions differing only inside such a string produced identical fingerprints, and a
+real source change would have been reported `UNCHANGED`. For a value whose entire job is
+detecting change, silently deleting string contents is the worst available failure mode.
+
+Replaced with a string-aware scanner, covered by kill tests for URLs, `//` and `/* */`
+inside literals, single quotes and escaped quotes, plus controls proving real comments are
+still stripped and whitespace reflow is still ignored.
+
+**The bug was latent, not active.** Re-deriving all 33 stored fingerprints under the new
+scanner changed **zero** of them, because no string literal in the analyzed contracts
+currently contains `//` or `/*`. The census is unaffected; the fix is preventive.
+`keyedAt.fingerprintAlgorithm` now records the scheme and the generator refuses a triage
+whose algorithm it does not implement, so comment handling can never change again without
+the stored values being re-derived.
+
+### D. Container self-naming was only checked by value
+
+`assertReceiptDoesNotNameContainer` catches an oid that equals the container but cannot
+see intent. `FORBIDDEN_RECEIPT_FIELDS` now rejects `container`, `publicationContainer`,
+`containerHead`, `containerTree`, `publishedIn`, and `head`/`tree` — the last two because
+they are exactly what the v1 receipt stamped from `git rev-parse HEAD`. Neither check
+subsumes the other: the name rule stops a field being added to hold the container, the
+value rule stops an oid smuggled into an innocuous one.
+
+### The CI ordering, and why
+
+```
+Run Slither (SARIF + raw JSON, one execution, fail-on: none)
+  -> Upload Slither SARIF          scanner output reaches GitHub FIRST, so no
+                                    later failure can suppress it
+  -> Validate scanner triage completeness
+  -> Compile prototype             the receipt records runtime bytecode
+  -> Verify scanner receipt byte identity
+  -> Verify publication container
+```
+
+The container argument is `github.event.pull_request.head.sha` on `pull_request` and
+`GITHUB_SHA` on `push`. **Never `refs/pull/N/merge`**: on a pull_request event `GITHUB_SHA`
+is a synthetic merge commit — trigger-dependent, reachable from no branch, recreated
+whenever base or head moves. It is not a durable publication container, for the same
+reason `evidence-subject.ts` gives.

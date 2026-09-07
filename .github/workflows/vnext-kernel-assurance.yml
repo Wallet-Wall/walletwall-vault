@@ -189,6 +189,43 @@ jobs:
             --triage-subject "$TRIAGE_SUBJECT" \
             --validate
 
+      # Needed by the byte-identity check below: the receipt records the prototype's runtime
+      # bytecode, so regenerating it requires real build artifacts rather than carried figures.
+      - name: Compile prototype (isolated Hardhat config; contracts/ untouched)
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        run: npx hardhat --config prototype/vnext-kernel/hardhat.config.ts compile
+
+      # RECEIPT BYTE IDENTITY. --validate proves every finding is adjudicated; it says nothing
+      # about the rest of the file. Every field outside the triage census -- test counts, solhint
+      # totals, bytecode sizes, the scope digests -- could be hand-edited with 217/54/33 and all 33
+      # entries still valid, and nothing would notice. This regenerates the receipt from committed
+      # inputs plus the raw run plus git, and compares BYTES, so an edited field cannot survive.
+      - name: Verify scanner receipt byte identity
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        run: |
+          SOURCE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').sourceSubject")"
+          TRIAGE_SUBJECT="$(node -p "require('./prototype/vnext-kernel/SCANNER_EVIDENCE.json').triageSubject")"
+          npx tsx prototype/vnext-kernel/generate-scanner-evidence.ts \
+            --raw prototype/vnext-kernel/slither-raw.json \
+            --source-subject "$SOURCE_SUBJECT" \
+            --triage-subject "$TRIAGE_SUBJECT" \
+            --check
+
+      # PUBLICATION CONTAINER. The container is supplied from OUTSIDE the artifact, which is the
+      # whole point: the receipt names its source and triage subjects and never itself.
+      #
+      # NEVER refs/pull/N/merge. On a pull_request event GITHUB_SHA is a SYNTHETIC merge commit --
+      # trigger-dependent, reachable from no branch, and recreated whenever base or head moves. It
+      # is not a durable publication container, so the real head sha is used instead; on push,
+      # GITHUB_SHA already is the real commit. See evidence-subject.ts for the same argument.
+      - name: Verify publication container
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/SCANNER_EVIDENCE.json') != '' }}
+        env:
+          CONTAINER_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          echo "event=${{ github.event_name }} container=$CONTAINER_SHA github.sha=${{ github.sha }}"
+          npx tsx prototype/vnext-kernel/verify-receipt-container.ts "$CONTAINER_SHA"
+
 
   authority-completeness:
     name: Authority Completeness

@@ -10,10 +10,11 @@
  *     --raw <slither --json output> \
  *     --source-subject <commit whose contracts were analyzed> \
  *     --triage-subject <commit whose triage file was used> \
- *     --prototype-tests <pass> <fail> \
- *     --production-tests <pass> <fail> <pending> \
- *     --production-coverage <pass> <fail> <pending> <percent> \
- *     --solhint <warnings> <errors>
+ *
+ * The non-scanner figures (test counts, solhint totals) come from the COMMITTED
+ * scanner-evidence-inputs.json rather than from flags, so a regeneration is reproducible from
+ * committed state alone and the receipt can be byte-compared. Pass --check to regenerate and
+ * compare instead of writing.
  *
  * The scan that produced <raw> must be the pinned one, which CI now emits in a SINGLE execution:
  *
@@ -55,6 +56,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
+  FINGERPRINT_ALGORITHM,
   indexFindings,
   matchFindings,
   type PriorEntry,
@@ -62,10 +64,57 @@ import {
   type SourceReader,
 } from "./scanner-finding-identity.js";
 import { assertScopeEquality, type ScannerInputScope } from "./scanner-input-scope.js";
+import { assertWorkflowMatchesPinnedConfig, assertWorkflowOutputContract } from "./scanner-workflow-config.js";
+
+/**
+ * Field names a receipt may never carry, because each would name its own publication container.
+ *
+ * Enforced by NAME as well as by value. `assertReceiptDoesNotNameContainer` catches an oid that
+ * equals the container, but only a name rule stops a future field being ADDED that is intended to
+ * hold it -- and only the value rule catches an oid smuggled into an innocuous field. Neither
+ * check subsumes the other. `head`/`tree` are here because they are exactly what the v1 receipt
+ * stamped from `git rev-parse HEAD`.
+ */
+export const FORBIDDEN_RECEIPT_FIELDS = [
+  "container",
+  "publicationContainer",
+  "containerHead",
+  "containerTree",
+  "publishedIn",
+  "head",
+  "tree",
+] as const;
+
+/** Throws if any forbidden field name appears anywhere in the receipt object. */
+export function assertNoContainerFields(value: unknown, path: string[] = []): void {
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => assertNoContainerFields(v, [...path, String(i)]));
+    return;
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if ((FORBIDDEN_RECEIPT_FIELDS as readonly string[]).includes(k)) {
+      throw new Error(
+        `receipt field "${[...path, k].join(".")}" is forbidden: it names, or is shaped to name, the ` +
+          `commit publishing the receipt. A receipt names its SOURCE and TRIAGE subjects only; the ` +
+          `container is established afterwards from git by verify-receipt-container.ts.`,
+      );
+    }
+    assertNoContainerFields(v, [...path, k]);
+  }
+}
+
+export interface ScannerEvidenceInputs {
+  prototypeTests: { passing: number; failing: number };
+  productionNormal: { passing: number; failing: number; pending: number };
+  productionCoverage: { passing: number; failing: number; pending: number; percent: number };
+  solhint: { warnings: number; errors: number };
+}
 
 const ROOT = path.join("prototype", "vnext-kernel");
 const TRIAGE_PATH = path.join(ROOT, "slither-triage.json");
 const RECEIPT_PATH = path.join(ROOT, "SCANNER_EVIDENCE.json");
+const INPUTS_PATH = path.join(ROOT, "scanner-evidence-inputs.json");
 const SCHEMA = "vnext-kernel-scanner-evidence.v2";
 const TRIAGE_SCHEMA = "vnext-kernel-slither-triage.v2";
 
@@ -170,6 +219,11 @@ function main() {
 
   assertTriageMatchesSubject(triageHead);
 
+  // The hashed config must still describe what the workflow actually runs, or
+  // scannerSemanticConfigSha256 attests to a configuration nothing executes.
+  assertWorkflowMatchesPinnedConfig();
+  assertWorkflowOutputContract();
+
   // THE ONLY CURRENCY LICENCE. Throws with the differing digest named.
   const scope: ScannerInputScope = assertScopeEquality(sourceHead, triageHead, ".");
 
@@ -189,6 +243,16 @@ function main() {
   const triageFile = JSON.parse(fs.readFileSync(TRIAGE_PATH, "utf8"));
   if (triageFile.$schema !== TRIAGE_SCHEMA) {
     throw new Error(`${TRIAGE_PATH} declares ${triageFile.$schema}; this generator requires ${TRIAGE_SCHEMA}`);
+  }
+  // The stored fingerprints are only comparable to freshly computed ones when both come from the
+  // SAME normaliser. Without this, changing comment handling would silently reclassify every
+  // finding as drifted -- or, worse, appear to agree by coincidence.
+  if (triageFile.keyedAt?.fingerprintAlgorithm !== FINGERPRINT_ALGORITHM) {
+    throw new Error(
+      `${TRIAGE_PATH} stores ${FINGERPRINT_ALGORITHM === undefined ? "no" : ""}fingerprints computed by ` +
+        `"${triageFile.keyedAt?.fingerprintAlgorithm}" but this generator computes "${FINGERPRINT_ALGORITHM}"; ` +
+        `re-derive the stored fingerprints rather than comparing across algorithms`,
+    );
   }
   const triage = triageFile.classifications as Record<string, TriageEntry>;
 
@@ -247,13 +311,7 @@ function main() {
     return;
   }
 
-  const prototypeTests = args["prototype-tests"];
-  const productionTests = args["production-tests"];
-  const productionCoverage = args["production-coverage"];
-  const solhintTotals = args["solhint"];
-  if (!prototypeTests || !productionTests || !productionCoverage || !solhintTotals) {
-    throw new Error("--prototype-tests <pass> <fail>, --production-tests <pass> <fail> <pending>, --production-coverage <pass> <fail> <pending> <percent> and --solhint <warnings> <errors> are required to (re)generate the receipt (not needed for --validate).");
-  }
+  const inputs = JSON.parse(fs.readFileSync(INPUTS_PATH, "utf8")) as ScannerEvidenceInputs;
 
   const receipt = {
     schema: SCHEMA,
@@ -299,22 +357,22 @@ function main() {
       },
       solhint: {
         run: true,
-        warnings: Number(solhintTotals[0]),
-        errors: Number(solhintTotals[1]),
+        warnings: inputs.solhint.warnings,
+        errors: inputs.solhint.errors,
       },
     },
     tests: {
-      prototype: { passing: Number(prototypeTests[0]), failing: Number(prototypeTests[1]) },
+      prototype: { passing: inputs.prototypeTests.passing, failing: inputs.prototypeTests.failing },
       productionNormal: {
-        passing: Number(productionTests[0]),
-        failing: Number(productionTests[1]),
-        pending: Number(productionTests[2]),
+        passing: inputs.productionNormal.passing,
+        failing: inputs.productionNormal.failing,
+        pending: inputs.productionNormal.pending,
       },
       productionCoverage: {
-        passing: Number(productionCoverage[0]),
-        failing: Number(productionCoverage[1]),
-        pending: Number(productionCoverage[2]),
-        percent: Number(productionCoverage[3]),
+        passing: inputs.productionCoverage.passing,
+        failing: inputs.productionCoverage.failing,
+        pending: inputs.productionCoverage.pending,
+        percent: inputs.productionCoverage.percent,
       },
     },
     bytecode: readMeasurements(),
@@ -329,8 +387,39 @@ function main() {
     ],
   };
 
-  fs.writeFileSync(RECEIPT_PATH, `${JSON.stringify(receipt, null, 2)}\n`);
+  assertNoContainerFields(receipt);
+  const serialized = `${JSON.stringify(receipt, null, 2)}\n`;
+
+  // BYTE IDENTITY. Regeneration now depends only on committed inputs, the raw run and git, so CI
+  // can rebuild the receipt and compare bytes. A hand-edit to ANY field -- including one that
+  // leaves 217/54/33 and every triage entry valid -- no longer survives, because the compared
+  // bytes are derived rather than read back from the file being checked.
+  if ("check" in args) {
+    const committed = fs.readFileSync(RECEIPT_PATH, "utf8");
+    if (committed !== serialized) {
+      const a = committed.split("\n");
+      const b = serialized.split("\n");
+      const firstDiff = a.findIndex((line, i) => line !== b[i]);
+      console.error(`${RECEIPT_PATH} is not byte-identical to a regeneration from its declared subjects.`);
+      console.error(`  committed bytes : ${committed.length}`);
+      console.error(`  regenerated     : ${serialized.length}`);
+      if (firstDiff >= 0) {
+        console.error(`  first difference at line ${firstDiff + 1}:`);
+        console.error(`    committed   : ${JSON.stringify(a[firstDiff])}`);
+        console.error(`    regenerated : ${JSON.stringify(b[firstDiff])}`);
+      }
+      process.exit(1);
+    }
+    console.log(`--check: ${RECEIPT_PATH} is byte-identical to a regeneration from its declared subjects. OK.`);
+    return;
+  }
+
+  fs.writeFileSync(RECEIPT_PATH, serialized);
   console.log(`Wrote ${RECEIPT_PATH}`);
 }
 
-main();
+// Only runs as a CLI. The module also EXPORTS its receipt rules so tests can exercise them
+// directly; without this guard, importing it would regenerate evidence as a side effect.
+if (process.argv[1] && process.argv[1].endsWith("generate-scanner-evidence.ts")) {
+  main();
+}
