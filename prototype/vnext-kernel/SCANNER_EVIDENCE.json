@@ -1,10 +1,19 @@
 {
-  "schema": "vnext-kernel-scanner-evidence.v1",
-  "head": "a46bc50c130dd1eea0969a2fae50ee124ad4c332",
-  "tree": "1f892b1e894bea5e72d12702a8e53f7ea2fb6e9d",
-  "generatedFrom": {
-    "note": "Generated locally by a developer or CI running the command in this script's header comment; not itself re-run automatically on every commit."
+  "schema": "vnext-kernel-scanner-evidence.v2",
+  "sourceSubject": "aaa21d093876d23d9e2d790400661d3d242caa31",
+  "sourceTree": "5e47baa2bb09669e62145b23caa65762791ad518",
+  "triageSubject": "354c1ea18a5ea4f93c05496e60547e37bf7b00d5",
+  "triageTree": "fec6108f22434946b1f9c3b438d4e146da253c76",
+  "scannerInputScope": {
+    "contractsTree": "dcc42e76a22b2491e05a6f7ccbc98f447e6acbc5",
+    "externalImportClosureSha256": "deadd7cdf7ac2cc08ffafd31ef5f66c7591ea5ebcf3ca685016268d3b058cfb4",
+    "scannerSemanticConfigSha256": "0c9a1a605f8fb2a3b1310151bcf28d69a55727bde29f8cec249b0b4127657e63",
+    "openzeppelin": {
+      "version": "5.6.1",
+      "integrity": "sha512-Ly6SlsVJ3mj+b18W3R8gNufB7dTICT105fJhodGAGgyC2oqnBAhqSiNDJ8V8DLY05cCz81GLI0CU5vNYA1EC/w=="
+    }
   },
+  "provenanceNote": "sourceSubject is the commit whose scanner-semantic inputs were analyzed; triageSubject is the commit whose slither-triage.json adjudicated them. Currency between the two is licensed ONLY by scannerInputScope byte equality -- never by equal finding counts, equal raw hashes or ancestry, all three of which held across a drift that moved 21 of 33 findings. The publication container is deliberately unnamed: verify-receipt-container.ts establishes it from git afterwards.",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun",
@@ -22,9 +31,15 @@
         "prototype/vnext-kernel/contracts"
       ],
       "platform": "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
-      "rawOutputSha256": "e06288cf1611e521354e165d036d2943704b988ae798d3a0ec494f17b551ceb6",
+      "rawOutputSha256": "054135ac9e4aff807b5d5215b15447945f960e4e0e2e2bcc8433af7e058c21be",
       "rawFindingCount": 217,
+      "ownCodeRawRowCount": 54,
       "distinctOwnCodeFindingCount": 33,
+      "duplicateRowsFromPerEntryRecompile": 21,
+      "relocatedSinceTriage": 0,
+      "untriaged": 0,
+      "stale": 0,
+      "ambiguous": 0,
       "triagedByClassification": {
         "NON_SECURITY_STYLE": 5,
         "FALSE_POSITIVE": 8,
@@ -49,7 +64,7 @@
   },
   "tests": {
     "prototype": {
-      "passing": 710,
+      "passing": 765,
       "failing": 0
     },
     "productionNormal": {
@@ -67,13 +82,13 @@
   "bytecode": [
     {
       "name": "VaultKernelPrototype",
-      "runtime": 18367,
-      "runtimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943"
+      "runtime": 17695,
+      "runtimeSha256": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02"
     },
     {
       "name": "VaultKernelFactoryPrototype",
       "runtime": 2445,
-      "runtimeSha256": "7a5cba517c0800ad4dd8c0834dd538a1a0aed92ded54a9f0b9a3eea9c8e42bf4"
+      "runtimeSha256": "ab16471a7a97a88c0d823e6d536a01671b388b0acada8a404eaf3da4a2062d6f"
     }
   ],
   "knownAnalysisAbsences": [
@@ -82,6 +97,7 @@
     "GitHub CodeQL provides no Solidity semantic analysis of prototype/vnext-kernel/contracts (vendor limitation).",
     "Slither's own coverage is bounded by what its detectors can express -- see AUTHORITY.md section 7 for what this analysis does not establish, independent of any scanner.",
     "PQ verifier is structural/mock; no cryptographic claim about the PQ leg (AUTHORITY.md section 7.3).",
-    "Guardian independence is assumed, not enforced on-chain (AUTHORITY.md section 7.4 / H-31)."
+    "Guardian independence is assumed, not enforced on-chain (AUTHORITY.md section 7.4 / H-31).",
+    "Semantic finding identity is derived from Slither's own element chain and message. A detector that reported the same construct under a different chain would present as ADDED plus REMOVED rather than as a change, which is the conservative direction but is not free of judgement."
   ]
 }
