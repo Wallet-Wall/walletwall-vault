@@ -1,0 +1,87 @@
+{
+  "schema": "vnext-kernel-scanner-evidence.v1",
+  "head": "a46bc50c130dd1eea0969a2fae50ee124ad4c332",
+  "tree": "1f892b1e894bea5e72d12702a8e53f7ea2fb6e9d",
+  "generatedFrom": {
+    "note": "Generated locally by a developer or CI running the command in this script's header comment; not itself re-run automatically on every commit."
+  },
+  "compiler": {
+    "solcVersion": "0.8.24",
+    "evmVersion": "cancun",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "viaIR": false
+  },
+  "scanners": {
+    "slither": {
+      "version": "pinned via https://github.com/crytic/slither.git@ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad",
+      "action": "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f",
+      "pathsAnalyzed": [
+        "prototype/vnext-kernel/contracts"
+      ],
+      "platform": "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
+      "rawOutputSha256": "e06288cf1611e521354e165d036d2943704b988ae798d3a0ec494f17b551ceb6",
+      "rawFindingCount": 217,
+      "distinctOwnCodeFindingCount": 33,
+      "triagedByClassification": {
+        "NON_SECURITY_STYLE": 5,
+        "FALSE_POSITIVE": 8,
+        "OUT_OF_SCOPE_DEPENDENCY": 5,
+        "ACCEPTED_DESIGN_TRADEOFF": 15
+      }
+    },
+    "codeql": {
+      "solidityCoverage": "NONE -- GitHub CodeQL has no Solidity extractor. This is a permanent vendor limitation, not a configuration gap.",
+      "javascriptTypescriptCoverage": {
+        "pathsAnalyzed": [
+          "prototype/vnext-kernel"
+        ],
+        "note": "Covers the prototype's own measurement/reproduction/test TOOLING (measure.ts, reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts, test/*.ts) via the javascript-typescript language, category /language:javascript-typescript/vnext-kernel. This is NOT Solidity security analysis."
+      }
+    },
+    "solhint": {
+      "run": true,
+      "warnings": 36,
+      "errors": 0
+    }
+  },
+  "tests": {
+    "prototype": {
+      "passing": 710,
+      "failing": 0
+    },
+    "productionNormal": {
+      "passing": 1658,
+      "failing": 0,
+      "pending": 11
+    },
+    "productionCoverage": {
+      "passing": 1655,
+      "failing": 0,
+      "pending": 14,
+      "percent": 90.13
+    }
+  },
+  "bytecode": [
+    {
+      "name": "VaultKernelPrototype",
+      "runtime": 18367,
+      "runtimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943"
+    },
+    {
+      "name": "VaultKernelFactoryPrototype",
+      "runtime": 2445,
+      "runtimeSha256": "7a5cba517c0800ad4dd8c0834dd538a1a0aed92ded54a9f0b9a3eea9c8e42bf4"
+    }
+  ],
+  "knownAnalysisAbsences": [
+    "No third-party audit.",
+    "No fuzzing campaign, no formal verification (T0/T1 invariants are argued and tested, not proven).",
+    "GitHub CodeQL provides no Solidity semantic analysis of prototype/vnext-kernel/contracts (vendor limitation).",
+    "Slither's own coverage is bounded by what its detectors can express -- see AUTHORITY.md section 7 for what this analysis does not establish, independent of any scanner.",
+    "PQ verifier is structural/mock; no cryptographic claim about the PQ leg (AUTHORITY.md section 7.3).",
+    "Guardian independence is assumed, not enforced on-chain (AUTHORITY.md section 7.4 / H-31)."
+  ]
+}
