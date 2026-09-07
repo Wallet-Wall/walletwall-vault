@@ -158,6 +158,23 @@ jobs:
           fail-on: none
           sarif: slither-vnext-kernel-results.sarif
 
+      # DIAGNOSTIC, and the reason it is permanent. The receipt's raw-output hash disagreed between
+      # a local run and this runner while every finding, count and classification matched exactly.
+      # Substituting the CI workspace root into the local JSON did NOT reproduce the CI hash, so the
+      # divergence was never only about absolute paths -- and without the actual bytes there was no
+      # way to find out what else differed. Keeping the raw JSON as an artifact means the next
+      # cross-environment disagreement is diffable instead of guessable.
+      #
+      # Not evidence: it embeds machine-specific absolute paths by construction, which is exactly
+      # why its whole-file hash is unfit for a committed receipt.
+      - name: Upload raw Slither JSON (diagnostic)
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-slither-raw
+          path: prototype/vnext-kernel/slither-raw.json
+          if-no-files-found: warn
+
       - name: Upload Slither SARIF
         if: ${{ always() && hashFiles('slither-vnext-kernel-results.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
