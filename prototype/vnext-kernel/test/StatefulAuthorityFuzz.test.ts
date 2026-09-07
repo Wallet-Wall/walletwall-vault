@@ -268,9 +268,39 @@ describe("vNext kernel — STATEFUL ADVERSARIAL AUTHORITY CAMPAIGN", function ()
       expect(receipt.campaigns.plannedCampaigns, "receipt campaign count is stale").to.equal(expectedCampaigns);
       expect(AGG.campaigns, "the executed matrix does not match the receipt").to.equal(expectedCampaigns);
       expect(receipt.campaigns.plannedTransitions, "receipt transition count is stale").to.equal(AGG.transitions);
-      expect(receipt.campaigns.profiles.length).to.equal(PROFILES.length);
-      expect(receipt.properties.globalInvariants.length).to.equal(GLOBAL_INVARIANTS.length);
-      expect(receipt.mutationAdequacy.mutations.length).to.equal(MUTATIONS.length);
+      expect(receipt.campaigns.profiles.length, "receipt profile count is stale").to.equal(PROFILES.length);
+      expect(
+        receipt.properties.globalInvariants.length,
+        "receipt global-invariant count is stale",
+      ).to.equal(GLOBAL_INVARIANTS.length);
+      /*
+       * SD5-I: THIS COMPARISON IS RED, AND THE REDNESS IS THE FINDING RATHER THAN
+       * A DEFECT IN EITHER SIDE.
+       * ------------------------------------------------------------------------
+       * `stateful/mutants.ts` retired `M17-floor-shape-mutable-again` and
+       * `M18-floor-shape-freeze-is-one-sided` when this lane retired the clause
+       * they targeted — the two-length freeze in `_requireNoDowngrade`. With the
+       * lengths no longer authoritative there is no operand for either mutant to
+       * restore, and their `replaceWithinFunction` anchors are gone, so the live
+       * catalogue is 21 -> 19 while the committed receipt still lists 21.
+       *
+       * THE RECEIPT IS DELIBERATELY NOT PATCHED TO MATCH. It is generated, and its
+       * `head` / `tree` / `solidityChanged` identify the tree it measured; an
+       * array edited out of step with those stamps would publish a mutation
+       * catalogue that never ran against the bytes the receipt names — the exact
+       * failure the surrounding comment calls worse than no receipt. The lane W2
+       * precedent recorded in `stateful/README.md` is the protocol: leave the
+       * receipt byte-identical, let this comparison stay red, and regenerate at
+       * the commit that carries SD5-I — after `MEASUREMENTS.json` is re-measured,
+       * since the kernel moved 18,367 -> 17,695 runtime bytes and this receipt
+       * does not know it.
+       */
+      expect(
+        receipt.mutationAdequacy.mutations.length,
+        "receipt mutation-catalogue count is stale. Regenerate the receipt at the commit that carries " +
+          "this lane (npx tsx prototype/vnext-kernel/generate-stateful-evidence.ts, on a clean checkout); " +
+          "do NOT hand-edit its mutations array to match.",
+      ).to.equal(MUTATIONS.length);
     });
 
     it("prints the campaign summary", function () {

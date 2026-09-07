@@ -31,6 +31,23 @@
  * REQUIRING ANOTHER RECOVERY, and the fair comparison is a timeline, not the
  * word "bricked". That timeline is driven below, and it does NOT favour the
  * unmodified kernel in SD-4's own threat model.
+ *
+ * SD5-I NOTE, APPENDED NOT REWRITTEN. Everything above was written against the
+ * PRE-AMENDMENT kernel, and design A's own behaviour is unaffected by the
+ * amendment — the replica is compiled from its own pinned source, so CLAIM A and
+ * the design-A observations below stand exactly as measured.
+ *
+ * What DID change is the kernel arm of the fair-timeline comparison. E-PRIME
+ * removes the pqKey/pqSig LENGTH equalities from `_authorise` and
+ * `_requireIncomingPossession`, the genesis and declaring-edge length conjuncts,
+ * and the `pqParamLevel` ratchet together with the two-length freeze. The
+ * approved recovery that the arming used to kill now COMPLETES, so the assertion
+ * that "the remedy dies" is RESTATED to pin the new outcome instead of being
+ * left asserting a behaviour the kernel no longer has.
+ *
+ * SD-4 is NARROWED, not closed. The declaring edge still strands an approved
+ * recovery whose commitment is `bytes32(0)`, and that residual gets its own
+ * two-arm test below so the narrowing cannot be mistaken for a closure.
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
@@ -43,7 +60,9 @@ import {
   declare,
   guardianDigest,
   liveFloor,
+  proposeStd,
   quorum,
+  quorumCancelStd,
   spend,
 } from "./sd4-harness.js";
 import { DAY, FAR_DEADLINE, addrOf, deployWorld, keyOf, pqKeyBytes, sign, type Floor } from "../stateful/world.js";
@@ -232,17 +251,30 @@ describe("SD-4 — correcting two overstated claims in #188", () => {
     expect((await liveFloor(v)), "and no floor field ever moved").to.deep.equal(frozen);
   });
 
-  it("CLAIM B — the fair timeline: in SD-4's OWN threat model the unmodified kernel is not better", async function () {
+  it("CLAIM B — the fair timeline, RESTATED for E-PRIME: the amended kernel's remedy SURVIVES the arming", async function () {
     this.timeout(240_000);
     // SD-4's adversary is the OUTGOING CREDENTIAL at cut 1 on an ECDSA-only
     // vault. It arms the PQ conjunct to destroy the remedy, and it chooses the
     // verifier in the same act — so it picks one that keeps ITS own spending
     // alive. What matters during the extra cycle is therefore not "is the vault
     // usable" but "WHO can move the money".
+    //
+    // SD5-I INVERTS THE FIRST ARM. Before the amendment the kernel measured the
+    // approved recovery's key against the LIVE floor's `pqPublicKeyLength`, so
+    // arming at a disagreeing shape killed the remedy and the whole timeline
+    // collapsed into "who suffers the extra cycle". The assertion is RESTATED
+    // rather than deleted, because the operand did not merely vanish — the
+    // OUTCOME changed, and the new outcome is what must now be pinned. Under
+    // E-PRIME the three legacy fields are SIGNED_METADATA +
+    // IDENTITY_BOUND_METADATA + NON_AUTHORITATIVE_SECURITY_METADATA +
+    // ABI_COMPATIBILITY, and explicitly NOT AUTHORIZATION_INPUT, NOT
+    // RECOVERY_SATISFIABILITY_INPUT and NOT CRYPTOGRAPHIC_STRENGTH. The barrier
+    // the adversary used to raise here was SHAPE-SCOPED: it discriminated on an
+    // encoded length and on nothing else.
     const nominee = keyOf("corr-b-time-nominee");
     const key48 = bytesOfLength(48, "corr-b-time-key");
 
-    // ---- UNMODIFIED KERNEL ---------------------------------------------
+    // ---- THE AMENDED KERNEL --------------------------------------------
     {
       const w = await sd4World("corr-b-time-real");
       await (
@@ -269,29 +301,61 @@ describe("SD-4 — correcting two overstated claims in #188", () => {
           FAR_DEADLINE,
         )
       ).wait();
+      // The SAME arming move the adversary made before: `requirePq` false -> true
+      // at a 32-byte declared shape, against a 48-byte approved proposal.
       await (await declare(w, w.vault, w.credKey, w.verifiers.alwaysTrue, ARMED32, pqKeyBytes(w.pqKey))).wait();
       await networkHelpers.time.increase(7 * DAY + 1);
       const pop = (await w.vault.recoveryPossessionDigest()) as string;
-      await expect(
-        w.vault.executeRecovery({
-          newSigner: addrOf(nominee),
-          newPqKeyHash: ethers.keccak256(key48),
-          newPqKey: key48,
-          newEcdsaPop: sign(nominee, pop),
-          newPqPop: bytesOfLength(65, "corr-b-time-sig"),
-        }),
-        "the remedy dies",
-      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+      expect(
+        (
+          await (
+            await w.vault.executeRecovery({
+              newSigner: addrOf(nominee),
+              newPqKeyHash: ethers.keccak256(key48),
+              newPqKey: key48,
+              newEcdsaPop: sign(nominee, pop),
+              newPqPop: bytesOfLength(65, "corr-b-time-sig"),
+            })
+          ).wait()
+        )?.status,
+        "THE REMEDY SURVIVES: the arming no longer kills the approved recovery",
+      ).to.equal(1);
 
-      // AND THE ADVERSARY KEEPS SPENDING throughout the extra cycle.
+      // The shape DISAGREEMENT is still there and is still observable — it is
+      // simply no longer consulted. The declared metadata says 32; the installed
+      // credential is 48 bytes. That divergence is exactly what
+      // NON_AUTHORITATIVE_SECURITY_METADATA means, and it is asserted rather
+      // than assumed so a future kernel restoring the comparison fails HERE.
+      expect(ethers.dataLength(key48), "the installed key is 48 bytes").to.equal(48);
+      const floor = await liveFloor(w.vault);
+      expect(floor.pqPublicKeyLength, "while the floor still declares 32").to.equal(32);
+      expect(floor.requirePq, "and the conjunct is genuinely armed, not quietly dropped").to.equal(true);
+
+      // POSITIVE CONTROL, and the reason the arm above is not merely "the
+      // transaction did not revert": the recovered principal can actually MOVE
+      // MONEY under the armed floor. A credential that installs and cannot spend
+      // is the stranded state design A produces, and this is what separates the
+      // two outcomes.
       const before = await ethers.provider.getBalance(w.recipient);
-      await (
-        await spend(w, w.vault, w.credKey, w.pqKey, pqKeyBytes(w.pqKey), 3n)
-      ).wait();
+      await (await spend(w, w.vault, nominee, PQ_BLOB, key48)).wait();
       expect(
         await ethers.provider.getBalance(w.recipient),
-        "the compromised credential retains asset control for the whole extra delay",
-      ).to.equal(before + 3n);
+        "and the recovered credential is USABLE under the armed floor",
+      ).to.equal(before + 1n);
+
+      // AND THE ADVERSARY IS EVICTED AT THE ORIGINAL MATURITY. This refusal is
+      // an AUTHORIZATION refusal inside `_authorise`: the outgoing key is no
+      // longer `ecdsaSigner`, so `_floorAuthorises` reverts `BadSignature`
+      // before the verifier is ever consulted. It is NOT `VerifierDenied` — the
+      // always-true verifier denies nothing — and it is NOT a
+      // recovery-satisfiability effect, because no request is live. Naming the
+      // specific error is what stops this probe passing for the wrong reason at
+      // an earlier guard.
+      await expect(
+        spend(w, w.vault, w.credKey, w.pqKey, pqKeyBytes(w.pqKey), 3n),
+        "the compromised credential has lost asset control",
+      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+      expect(await w.vault.ecdsaSigner(), "the nominee holds the vault").to.equal(addrOf(nominee));
     }
 
     // ---- DESIGN A -------------------------------------------------------
@@ -312,8 +376,9 @@ describe("SD-4 — correcting two overstated claims in #188", () => {
         })
       ).wait();
 
-      // The adversary is EVICTED at the original maturity. The vault is frozen
-      // for one further cycle, and the compromised principal can move nothing.
+      // The adversary is evicted at the original maturity here too — but design
+      // A pays for it with a vault frozen for one further cycle, because the
+      // credential it installed can authorise nothing.
       await expect(
         spend(w, v, w.credKey, w.pqKey, pqKeyBytes(w.pqKey), 3n),
         "the compromised credential has lost asset control",
@@ -321,14 +386,137 @@ describe("SD-4 — correcting two overstated claims in #188", () => {
       expect(await v.ecdsaSigner()).to.equal(addrOf(nominee));
     }
 
-    // CONCLUSION, stated as a trade rather than a ranking: design A converts
-    // "the attacker keeps spending for another cycle" into "nobody spends for
-    // another cycle". #188's "strictly worse than today" does not hold in the
-    // threat model SD-4 itself describes. Design A remains rejected — it costs a
-    // credential generation, produces a state no observer can distinguish from
-    // success, and drives a commitment past the shape agreement
-    // I-DECLARATION-EXHIBITED exists to enforce — but it is rejected for those
-    // reasons, not for permanence.
+    // CONCLUSION, RESTATED. #188's "strictly worse than today" never held in
+    // SD-4's own threat model, and that finding stands unchanged. But the trade
+    // it argued over — "the attacker keeps spending for another cycle" versus
+    // "nobody spends for another cycle" — is no longer a trade this kernel has
+    // to make. E-PRIME evicts the adversary at the ORIGINAL maturity AND leaves
+    // the recovered credential usable, which dominates both arms above. Design
+    // A remains rejected, and now for one fewer reason: it still costs a
+    // credential generation and still produces a state no observer can
+    // distinguish from success, but the harm it traded against has been removed
+    // at the source instead of exchanged for a different one.
+  });
+
+  it("CLAIM B — SD-4 is NARROWED, NOT CLOSED: the requirePq / zero-hash residual survives E-PRIME", async function () {
+    this.timeout(240_000);
+    // `I-FLOOR-SHAPE-IMMUTABLE` is RETIRED. Its replacement is
+    // `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`: for an APPROVED
+    // recovery, changing `pqPublicKeyLength`, `pqSignatureLength` or
+    // `pqParamLevel` cannot change its executability. `requirePq` is EXPLICITLY
+    // OUTSIDE that invariant — not as an exception carved into it, but as a
+    // separately recorded residual. This test is what keeps that residual
+    // visible, so the amendment above cannot be read as a closure of SD-4.
+    //
+    // THE RESIDUAL, exactly: an approved recovery whose `proposedPqKeyHash` is
+    // `bytes32(0)` — a guardian recovery to an ECDSA-only credential — is still
+    // stranded by the declaring edge, because `keccak256` of ANY preimage, the
+    // empty string included, is never zero. No length participates, and none is
+    // reintroduced here.
+    const nominee = keyOf("corr-b-resid-nominee");
+
+    // ---- POSITIVE CONTROL: the identical recovery, WITHOUT the arming -------
+    // Without this arm the revert below would prove only that the fixture was
+    // broken. The two arms differ in exactly one fact: the `setVerifier` call.
+    {
+      const w = await sd4World("corr-b-resid-control");
+      await proposeStd(w, w.vault, addrOf(nominee), ethers.ZeroHash, w.verifiers.alwaysTrue);
+      await networkHelpers.time.increase(7 * DAY + 1);
+      const pop = (await w.vault.recoveryPossessionDigest()) as string;
+      expect(
+        (
+          await (
+            await w.vault.executeRecovery({
+              newSigner: addrOf(nominee),
+              newPqKeyHash: ethers.ZeroHash,
+              newPqKey: "0x",
+              newEcdsaPop: sign(nominee, pop),
+              newPqPop: "0x",
+            })
+          ).wait()
+        )?.status,
+        "an approved zero-commitment recovery executes on a DORMANT floor",
+      ).to.equal(1);
+      expect(await w.vault.ecdsaSigner()).to.equal(addrOf(nominee));
+      expect(await w.vault.pqPublicKeyHash(), "installed with no PQ credential").to.equal(ethers.ZeroHash);
+    }
+
+    // ---- THE RESIDUAL: the same recovery, with the arming -------------------
+    {
+      const w = await sd4World("corr-b-resid-armed");
+      await proposeStd(w, w.vault, addrOf(nominee), ethers.ZeroHash, w.verifiers.alwaysTrue);
+      // The ONE differing fact.
+      await (await declare(w, w.vault, w.credKey, w.verifiers.alwaysTrue, ARMED32, pqKeyBytes(w.pqKey))).wait();
+      await networkHelpers.time.increase(7 * DAY + 1);
+      const pop = (await w.vault.recoveryPossessionDigest()) as string;
+      // ATTRIBUTION. This is `_requireIncomingPossession` refusing the incoming
+      // material against a ZERO expectation — a recovery-satisfiability refusal,
+      // reached only after the signer cross-check and the ECDSA
+      // proof-of-possession have both already PASSED. The control arm above
+      // drives those same two legs to completion on identical material, so this
+      // probe cannot be dying at an earlier guard.
+      await expect(
+        w.vault.executeRecovery({
+          newSigner: addrOf(nominee),
+          newPqKeyHash: ethers.ZeroHash,
+          newPqKey: "0x",
+          newEcdsaPop: sign(nominee, pop),
+          newPqPop: "0x",
+        }),
+        "SD-4 SURVIVES: the declaring edge still strands a zero-commitment recovery",
+      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+      expect(await w.vault.ecdsaSigner(), "and the compromised credential keeps the vault").to.equal(
+        addrOf(w.credKey),
+      );
+
+      // No preimage rescues it, and that is the point: the obstacle is not a
+      // shape a caller can meet, so no supplied blob — not the empty string, not
+      // the incumbent key — changes the outcome. This is why the residual is
+      // about `requirePq` and the zero commitment, and not about any length.
+      await expect(
+        w.vault.executeRecovery({
+          newSigner: addrOf(nominee),
+          newPqKeyHash: ethers.ZeroHash,
+          newPqKey: pqKeyBytes(w.pqKey),
+          newEcdsaPop: sign(nominee, pop),
+          newPqPop: bytesOfLength(65, "corr-b-resid-sig"),
+        }),
+        "keccak256 of any preimage is never zero",
+      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+
+      // SAME-WORLD DISCRIMINATOR, the sharpest form of the attribution. The
+      // signer cross-check and the ECDSA proof-of-possession legs are driven to
+      // completion in THIS world, under THIS armed floor, with THIS nominee: the
+      // quorum cancels, re-proposes the same nominee at a NON-ZERO commitment,
+      // and the recovery executes. Only the commitment changed, so the strand
+      // above is attributable to the zero commitment alone — not to the arming
+      // in general, and not to any length, since the key installed here is 48
+      // bytes against a floor that still declares 32.
+      await (await quorumCancelStd(w, w.vault)).wait();
+      const key48 = bytesOfLength(48, "corr-b-resid-key48");
+      await proposeStd(w, w.vault, addrOf(nominee), ethers.keccak256(key48), w.verifiers.alwaysTrue);
+      await networkHelpers.time.increase(7 * DAY + 1);
+      const pop2 = (await w.vault.recoveryPossessionDigest()) as string;
+      expect(
+        (
+          await (
+            await w.vault.executeRecovery({
+              newSigner: addrOf(nominee),
+              newPqKeyHash: ethers.keccak256(key48),
+              newPqKey: key48,
+              newEcdsaPop: sign(nominee, pop2),
+              newPqPop: bytesOfLength(65, "corr-b-resid-sig2"),
+            })
+          ).wait()
+        )?.status,
+        "a NON-ZERO commitment executes under the identical armed floor",
+      ).to.equal(1);
+      expect(await w.vault.ecdsaSigner()).to.equal(addrOf(nominee));
+      expect(
+        (await liveFloor(w.vault)).pqPublicKeyLength,
+        "and the floor still declares 32 while a 48-byte key is installed",
+      ).to.equal(32);
+    }
   });
 
   it("CLAIM B — enumerating what the stranded state can and cannot still do", async function () {

@@ -73,6 +73,7 @@ function main(): void {
     sd67Remediation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     w2RecoveryLifecycle?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd10Preservation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd5MetadataDeauthorisation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
   };
   const kernel = measurements.kernel;
   // The LATEST remediation is what this receipt describes; earlier ones are
@@ -81,11 +82,22 @@ function main(): void {
   // newest-first so the receipt regenerated at a given commit reports THAT
   // lane's delta rather than its predecessor's.
   //
-  // SD10-I (approved-request preservation) is the newest. It must be preferred
-  // here or the receipt would publish W2's +320 bytes for a lane that REMOVED
-  // 58 — the first negative delta in this file, because the remediation deletes
-  // a statement instead of adding one.
+  // SD5-I (PQ shape metadata de-authorisation) is the newest, and registering it
+  // here is not bookkeeping — the comment below predicted this exact failure and
+  // it came true. Regenerated before this line existed, the receipt published
+  // SD-10's -58 for a lane that removed 672, because the chain fell through to
+  // its predecessor. A lane that adds a MEASUREMENTS.json block incurs the
+  // obligation to add it here in the SAME commit; otherwise the receipt reports
+  // the previous lane's delta under the new lane's head, which is worse than
+  // reporting nothing.
+  //
+  // SD10-I (approved-request preservation) is the one before it. It must be
+  // preferred over W2 or the receipt would publish W2's +320 bytes for a lane
+  // that REMOVED 58 — the first negative delta in this file, because the
+  // remediation deletes a statement instead of adding one. SD5-I is the second
+  // negative delta, and for the same structural reason: it is purely subtractive.
   const sd1 =
+    measurements.sd5MetadataDeauthorisation ??
     measurements.sd10Preservation ??
     measurements.w2RecoveryLifecycle ??
     measurements.sd67Remediation ??

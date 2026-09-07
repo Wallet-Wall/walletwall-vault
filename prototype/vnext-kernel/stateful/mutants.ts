@@ -404,54 +404,62 @@ export const MUTATIONS: readonly Mutation[] = [
    * with maturing recoveries is still the composition that matters, and it is now
    * the composition the preservation property is measured over.
    */
-  {
-    id: "M17-floor-shape-mutable-again",
-    profiles: ["ecdsa-only-attacker", "recovery-composition", "recovery-maturation", "mixed-roots-attacker"],
-    expectedProperty: "G-FLOOR-NO-DOWNGRADE",
-    rationale:
-      "SD-1, REINTRODUCED. Deletes `I-FLOOR-SHAPE-IMMUTABLE` from `_requireNoDowngrade`, restoring the exact defect the remediation closed: `setVerifier` may move the two STRUCTURAL floor fields again, and `_requireIncomingPossession` measures an already-quorum-approved recovery against them LIVE. Since no guardian path writes `securityFloor`, one such move is an UNCOUNTED veto over guardian recovery — `challengesUsed` never advances. It is killed by the transition-level property, not by a downstream revert, so the kill is attributed to the clause that was removed.",
-    apply: (s) =>
-      replaceWithinFunction(
-        s,
-        "_requireNoDowngrade",
-        `if (
-            current.requirePq &&
-            (next.pqPublicKeyLength != current.pqPublicKeyLength ||
-                next.pqSignatureLength != current.pqSignatureLength)
-        ) revert Downgrade();`,
-        "",
-      ),
-  },
-  {
-    id: "M18-floor-shape-freeze-is-one-sided",
-    profiles: ["ecdsa-only-attacker", "recovery-composition", "recovery-maturation", "mixed-roots-attacker"],
-    expectedProperty: "G-FLOOR-NO-DOWNGRADE",
-    rationale:
-      "SD-1, REINTRODUCED IN ONE DIRECTION ONLY — the subtler half, and the one a shrink-only campaign cannot see. `I-FLOOR-SHAPE-IMMUTABLE` is an INEQUALITY because `_requireIncomingPossession` compares the shape for EXACT EQUALITY: growing 1312 -> 2000 denies a quorum-approved recovery exactly as shrinking 1312 -> 1 does. Weakening the clause to `<` reads like a downgrade check and passes any campaign that only ever shrinks. It is killed only because `actions.ts` directs the poisoning attempt UPWARD wherever the clause is armed — a choice that costs no prng draw and moves no reachable state, since on the correct kernel a grow and a shrink revert `Downgrade` identically. That is the entire reason the direction is chosen rather than fixed.",
-    apply: (s) =>
-      replaceWithinFunction(
-        s,
-        "_requireNoDowngrade",
-        `(next.pqPublicKeyLength != current.pqPublicKeyLength ||
-                next.pqSignatureLength != current.pqSignatureLength)`,
-        `(next.pqPublicKeyLength < current.pqPublicKeyLength ||
-                next.pqSignatureLength < current.pqSignatureLength)`,
-      ),
-  },
+  /*
+   * M17-floor-shape-mutable-again and M18-floor-shape-freeze-is-one-sided —
+   * RETIRED IN LANE SD5-I.
+   * ----------------------------------------------------------------------
+   * RETIRED, NOT DELETED, on the M16 precedent above: the adjudication is the
+   * part worth keeping, and "the implementation now looks like the mutant" is by
+   * itself the weakest possible reason to drop one.
+   *
+   * WHAT THEY DID. Both targeted `I-FLOOR-SHAPE-IMMUTABLE` in
+   * `_requireNoDowngrade` — M17 by deleting the two-length freeze outright, M18
+   * by weakening its `!=` to `<` so that a shrink-only campaign could not see it.
+   *
+   * WHY THEY ARE RETIRED. Lane SD5-I RETIRES the invariant itself. That is not a
+   * convenience: SD-5 measured that the freeze imposed PERMANENT_PQ_AGILITY_LOSS
+   * on EVERY vault of the class, honest ones included — a well-formed ML-DSA-44
+   * vault could never move to ML-DSA-87, with no attacker anywhere in the
+   * sequence (SD5-D1 probes 4 and 5). SD-1's goal was to keep credential-writable
+   * state out of an approved recovery's satisfiability condition; SD5-I reaches
+   * that goal by making the state UNREAD rather than UNMOVABLE, which is strictly
+   * stronger and costs nothing. SD5-A1 S1a/S1b measured it: on the amended kernel
+   * the SD-1 move is ADMITTED and the approved recovery still completes, because
+   * nothing consumes what it wrote.
+   *
+   * With no authoritative shape there is no operand, so a mutant that "restores
+   * mutability" restores nothing. Their anchors are gone and
+   * `replaceWithinFunction` would throw rather than silently no-op — which is the
+   * correct behaviour and the reason they are removed from the live catalogue
+   * rather than left to rot.
+   *
+   * WHAT REPLACES THE COVERAGE, AND WHY IT IS STRICTLY MORE. The direction that
+   * now needs guarding is the INVERSE — that the lengths never come back as
+   * authority — plus the commitment checks that carry the whole
+   * de-authorisation argument. Both are guarded deterministically in
+   * `test/Sd5MetadataDeauthorisationMutations.test.ts`, which reinserts each
+   * removed clause and requires a NARROW killing observation for each, and
+   * `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE` is measured there against
+   * the BASE kernel as a two-arm discrimination rather than a single assertion.
+   *
+   * A NOTE THE NEXT LANE SHOULD NOT LOSE. M18's rationale contained a real and
+   * still-true observation: `_requireIncomingPossession` compared the shape for
+   * EXACT EQUALITY, so GROWING the declared length denied a quorum-approved
+   * recovery exactly as shrinking it did. That asymmetry-that-wasn't is precisely
+   * why SD-5's harm reached honest vaults, and it is recorded in SD-5's ledger
+   * entry rather than lost with the mutant.
+   */
   {
     id: "M19-declaration-not-exhibited",
     profiles: ["ecdsa-only-floor", "ecdsa-only-committed"],
     expectedProperty: "G-PQ-COMMITMENT-SATISFIABLE",
     rationale:
-      "SD-3, REINTRODUCED. Deletes `I-DECLARATION-EXHIBITED`'s two comparisons, so `setVerifier` may again arm the PQ conjunct against a commitment no code has ever measured — including the zero commitment `initialize` explicitly refuses. The killing property is the one SD-3 was filed under, and it only became ENFORCEABLE when SD-3 left KNOWN_DEFECT_PROPERTIES: while the defect stood, this very violation was counted and discarded rather than failing the run.",
+      "SD-3, REINTRODUCED — NARROWED IN LANE SD5-I to the surviving conjunct. `I-DECLARATION-EXHIBITED` formerly had two legs, a LENGTH and a PREIMAGE; SD5-I removed the length leg with the field's authority, and this mutant now deletes the leg that remains. `setVerifier` may again arm the PQ conjunct against a commitment no code has ever measured — including the zero commitment `initialize` explicitly refuses. The narrowing does NOT weaken the mutant: SD-5 Form B reproduced against an HONEST incumbent key at the CORRECT key length, so the length leg never bound the reachable capture and the preimage leg is the one carrying the invariant's whole content. The killing property is the one SD-3 was filed under, and it only became ENFORCEABLE when SD-3 left KNOWN_DEFECT_PROPERTIES.",
     apply: (s) =>
       replaceWithinFunction(
         s,
         "setVerifier",
-        `if (!securityFloor.requirePq && floor.requirePq && pqKey.length != floor.pqPublicKeyLength) {
-            revert BadSignature();
-        }
-        if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+        `if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
             revert BadSignature();
         }`,
         "",

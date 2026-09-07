@@ -868,11 +868,11 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
           "NotOrdered",
         ],
         ["mandatory PQ with no committed key", { ...base, pqKeyHash: ethers.ZeroHash }, "BadSignature"],
-        [
-          "mandatory PQ with zero-length shapes",
-          { ...base, floor: { ...FLOOR, pqSignatureLength: 0 } },
-          "BadSignature",
-        ],
+        // SD5-I. `["mandatory PQ with zero-length shapes", { floor.pqSignatureLength: 0 },
+        // "BadSignature"]` used to sit here and is DELETED, not relaxed: the genesis
+        // key-LENGTH conjunct it pinned no longer exists, so the row had no operand
+        // left and would have asserted nothing. The behaviour that replaced it is
+        // INVERTED and pinned in the test below rather than left implicit.
       ];
       for (const [name, g, err] of cases) {
         await expect(r.factory.deployVault(ethers.id("gv-" + name), g, pqKeyBytes(keyOf("gv-pq"))), name).to.be.revertedWithCustomError(
@@ -880,6 +880,155 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
           err,
         );
       }
+
+      // NARROW — the genesis exhibit had two conjuncts and only one was removed.
+      // The PREIMAGE conjunct SURVIVES: a genesis that commits to a hash whose
+      // preimage is not exhibited is still refused, and refused with the SPECIFIC
+      // error, so this cannot be confused with the zero-hash row above. Pinned
+      // separately from the table because its refusal depends on the exhibited
+      // BYTES rather than on any field of the genesis struct.
+      await expect(
+        r.factory.deployVault(ethers.id("gv-unexhibited-preimage"), base, pqKeyBytes(keyOf("gv-other-pq"))),
+        "unexhibited preimage",
+      ).to.be.revertedWithCustomError(r.impl, "BadSignature");
+    });
+
+    /**
+     * SD5-I — the INVERSION of the row deleted from the table above.
+     *
+     * `pqPublicKeyLength`, `pqSignatureLength` and `pqParamLevel` are, after the
+     * accepted E-PRIME amendment, SIGNED_METADATA + IDENTITY_BOUND_METADATA +
+     * NON_AUTHORITATIVE_SECURITY_METADATA + ABI_COMPATIBILITY. They are
+     * explicitly NOT AUTHORIZATION_INPUT, NOT RECOVERY_SATISFIABILITY_INPUT and
+     * NOT CRYPTOGRAPHIC_STRENGTH. The gate this suite used to pin was
+     * SHAPE-SCOPED — it compared a DECLARED shape against the exhibited
+     * preimage's length, and nothing downstream ever read that shape again — so
+     * a genesis declaring zero shapes is now ADMITTED.
+     *
+     * Admission is the claim under test, so it is carried through to ASSET
+     * MOVEMENT to this suite's standard, and the refusal arm names the SPECIFIC
+     * error: a probe that dies at an earlier guard than the reader assumes would
+     * prove nothing about the second factor. No minimum length and no exact-shape
+     * allowlist is reintroduced here or anywhere else — a minimum was measured and
+     * rejected, because `S = MIN + 1` defeats it.
+     */
+    it("SD5-I — a floor declaring ZERO shapes is admitted, and neither the second factor nor the observable surface is diminished", async function () {
+      const r = await rig();
+      const [, , recipient] = await ethers.getSigners();
+      const ownerKey = keyOf("zs-owner");
+      const pqKey = keyOf("zs-pq");
+      const ZERO_SHAPES = { requirePq: true, pqParamLevel: 0, pqPublicKeyLength: 0, pqSignatureLength: 0 };
+      const genesis: Genesis = {
+        signer: addrOf(ownerKey),
+        pqKeyHash: pqHash(pqKey),
+        verifier: r.verifier,
+        threshold: 2,
+        guardians: ascending([addrOf(keyOf("zs1")), addrOf(keyOf("zs2")), addrOf(keyOf("zs3"))]),
+        guardianIsContract: [false, false, false],
+        floor: ZERO_SHAPES,
+      };
+      const salt = ethers.id("zs-vault");
+      const predicted = await r.factory.predictVault(salt, genesis);
+
+      // (1) THE INVERSION. This genesis used to revert `BadSignature`. It deploys.
+      await (await r.factory.deployVault(salt, genesis, pqKeyBytes(pqKey))).wait();
+      const vault = await ethers.getContractAt("VaultKernelPrototype", predicted, r.deployer);
+
+      // (2) OBSERVABILITY is undiminished. All FOUR floor fields are still stored
+      //     and still readable, verbatim as declared — de-authorising a field did
+      //     not hide it. What changed is who READS them, not who can SEE them.
+      const fl = await vault.securityFloor();
+      expect(fl.requirePq).to.equal(true);
+      expect(fl.pqParamLevel).to.equal(0n);
+      expect(fl.pqPublicKeyLength).to.equal(0n);
+      expect(fl.pqSignatureLength).to.equal(0n);
+
+      await r.deployer.sendTransaction({ to: predicted, value: ethers.parseEther("10") });
+      const chainId = (await ethers.provider.getNetwork()).chainId;
+      const amount = ethers.parseEther("1");
+      const to = recipient.address;
+      const spendDigest = (nonce: bigint) =>
+        digestOf({
+          chainId,
+          vault: predicted,
+          kernelGeneration: 1n,
+          actionType: ACTION.SPEND,
+          authorityGeneration: 1n,
+          params: spendParams(to, amount),
+          domain: DOMAIN.SPEND,
+          nonce,
+          deadline: BigInt(2 ** 40),
+        });
+
+      // (3) THE SECOND FACTOR IS UNDIMINISHED, and the refusal is ATTRIBUTED. A
+      //     forged PQ conjunct dies at `VerifierDenied` — the VERIFIER refusing —
+      //     not at `BadSignature` (the kernel's own keccak measurement of the
+      //     exhibited key) and not at any shape check. Assets do not move.
+      const d0 = spendDigest(0n);
+      await expect(
+        vault.execute(to, amount, 0, BigInt(2 ** 40), sign(ownerKey, d0), sign(keyOf("zs-wrong"), d0), pqKeyBytes(pqKey)),
+      ).to.be.revertedWithCustomError(vault, "VerifierDenied");
+      // And the kernel's OWN conjunct is equally alive: an exhibited key that is
+      // not the committed preimage dies at `BadSignature`, a DIFFERENT principal
+      // refusing, which is what makes the arm above attributable at all.
+      await expect(
+        vault.execute(
+          to,
+          amount,
+          0,
+          BigInt(2 ** 40),
+          sign(ownerKey, d0),
+          sign(pqKey, d0),
+          pqKeyBytes(keyOf("zs-other-pq")),
+        ),
+      ).to.be.revertedWithCustomError(vault, "BadSignature");
+      expect(await ethers.provider.getBalance(predicted)).to.equal(ethers.parseEther("10"));
+
+      // (4) POSITIVE CONTROL, carried through to ASSET MOVEMENT: with both honest
+      //     factors the vault spends, so the two refusals above are the missing
+      //     factor and not a vault bricked by its zero-shape declaration.
+      const before = await ethers.provider.getBalance(to);
+      await (
+        await vault.execute(to, amount, 0, BigInt(2 ** 40), sign(ownerKey, d0), sign(pqKey, d0), pqKeyBytes(pqKey))
+      ).wait();
+      expect(await ethers.provider.getBalance(to)).to.equal(before + amount);
+
+      // (5) The EVENT surface is unchanged and remains NARROWER than the getter:
+      //     `SecurityFloorChanged` carries `(requirePq, pqParamLevel)` ONLY, so it
+      //     cannot propagate a shape claim, while `securityFloor()` continues to
+      //     expose all four declared fields to an observer that wants them.
+      const floorTuple = [true, 3, 32, 65];
+      const svDigest = digestOf({
+        chainId,
+        vault: predicted,
+        kernelGeneration: 1n,
+        actionType: ACTION.SET_VERIFIER,
+        authorityGeneration: 1n,
+        params: ethers.keccak256(
+          abi.encode(["address", "tuple(bool,uint16,uint32,uint32)"], [r.verifier, floorTuple]),
+        ),
+        domain: DOMAIN.CREDENTIAL,
+        nonce: 0n,
+        deadline: BigInt(2 ** 40),
+      });
+      await expect(
+        vault.setVerifier(
+          r.verifier,
+          floorTuple,
+          0,
+          BigInt(2 ** 40),
+          sign(ownerKey, svDigest),
+          sign(pqKey, svDigest),
+          pqKeyBytes(pqKey),
+        ),
+      )
+        .to.emit(vault, "SecurityFloorChanged")
+        .withArgs(true, 3);
+      const fl2 = await vault.securityFloor();
+      expect(fl2.requirePq).to.equal(true);
+      expect(fl2.pqParamLevel).to.equal(3n);
+      expect(fl2.pqPublicKeyLength).to.equal(32n);
+      expect(fl2.pqSignatureLength).to.equal(65n);
     });
 
     it("a factory cannot be bound to a codeless implementation or generation zero", async function () {

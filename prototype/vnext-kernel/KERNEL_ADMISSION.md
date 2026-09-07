@@ -124,6 +124,73 @@ so rather than improvising.
 > the tests all passed — but by mapping the prototype back onto #179's authority
 > model and noticing an outcome whose cut had silently dropped to 1.
 
+> **K-15 CORRECTION (Lane SD5-I) — the row above is retained as written and is
+> now PARTLY FALSE, in two separate ways.** The K-9 correction is the precedent
+> for stating that in place rather than rewriting history.
+>
+> **(1) THE ROW OVER-SCOPES ITSELF.** Its title reads *"requirePq, param level,
+> structural lengths"*, but its CITATION is to §4.3 floor **component 2**
+> (*"kernel-recorded scheme strength, never read from the verifier"*). The
+> structural lengths are component **1** — a different component with a different
+> justification, carried here under a citation that never covered them. Lane
+> SD5-I DE-AUTHORISES all three, so only `requirePq` remains security authority.
+> The other three are `SIGNED_METADATA` + `IDENTITY_BOUND_METADATA` +
+> `NON_AUTHORITATIVE_SECURITY_METADATA` + `ABI_COMPATIBILITY`, and explicitly NOT
+> `AUTHORIZATION_INPUT`, NOT `RECOVERY_SATISFIABILITY_INPUT`, NOT
+> `CRYPTOGRAPHIC_STRENGTH`. The invariants column moves with them:
+> `I-FLOOR-IS-SOUND` is satisfied by the kernel-evaluable anchored ECDSA factor
+> and NEVER rested on scheme-shape metadata (§4.3a says so in terms — "neither
+> demonstrates possession of a private key"), and `I-NO-SILENT-DOWNGRADE` narrows
+> to `I-NO-SILENT-DOWNGRADE-G1`: a mandatory PQ conjunct may not be silently
+> disabled, and nothing more. `I-FLOOR-SHAPE-IMMUTABLE` is RETIRED and replaced by
+> `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`.
+>
+> **(2) "plus §12's transition rules" WAS NEVER IMPLEMENTED**, so *"Every one of
+> the 15 is implemented in the prototype"* is false for K-15 in a way the W2
+> correction did not reach. §12 replaces the flat strength scalar with a
+> `SecurityProfile` — `schemeId`, `family`, `paramLevel`, `rootTag`,
+> `verifierGeneration`, `anchored`, clause structure — and the prototype
+> implements a flat four-field struct carrying **one** of those seven. §12
+> explicitly WITHDREW the flat scalar as *"a scalar asserts a total order that
+> does not exist"*, and `pqParamLevel` **is** that withdrawn construct.
+> `SECURITY_PROFILE_DISPOSITION = DEFERRED_TO_FUTURE_GENERATION`; Generation 1
+> claims no strength policy at all.
+>
+> **THE VERIFIER-ADMISSION OBLIGATION, which K-15 must now carry because nothing
+> else does.** `GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`: the kernel does not
+> know, and does not claim to know, which cryptographic relation its verifier
+> implements. Its only constraint at all three admission points — `initialize`,
+> `setVerifier`, `initiateRecovery` — is a nonzero code length. Verifier admission
+> is therefore a DEPLOYMENT PRECONDITION in two parts, and BOTH are required:
+>
+> &nbsp;&nbsp;**(a)** the admitted verifier's INTENDED relation conforms to FIPS 204,
+> including §3.6.2 — which binds *an implementation of ML-DSA* to return false on
+> wrong-length inputs, and places no duty on a scheme-agnostic kernel; **and**
+>
+> &nbsp;&nbsp;**(b)** admission SEPARATELY establishes that the verifier exposes **no
+> unauthorized accepting relation** over a committed key.
+>
+> **(a) DOES NOT IMPLY (b)**, and that is measured rather than argued: lane
+> SD5-A1R built a single verifier with a FIPS-shaped strong leg AND a forgeable
+> second leg over the same committed key, and carried the weak leg through to
+> asset movement and a credential change. Anyone writing "mitigated by FIPS 204"
+> has lost the distinction. The kernel CANNOT discharge (b) — it cannot prove
+> arbitrary bytecode exposes only one relation, and requiring it to would replace
+> the old length-based pseudo-binding with an unverifiable one — so (b) is an
+> artifact/admission obligation and the gap is recorded as **SD-11A**.
+>
+> Whether an ALREADY-ADMITTED verifier can change its relation in place is
+> **SD-11B**, recorded as NOT EXCLUDED and NOT MEASURED. The kernel pins no
+> verifier codehash and never re-validates after admission, while `bindMigration`
+> DOES pin `codehash` for migration destinations — so the mechanism exists in this
+> contract and is simply not applied to the verifier. Note before reaching for it:
+> a codehash pin would address metamorphic redeploy but NOT a delegatecall proxy,
+> whose codehash is stable while its implementation pointer moves.
+>
+> Measured cost of the amendment: runtime **18,367 → 17,695 bytes (−672)**, with
+> storage layout, ABI, selectors, events, errors and `securityFloor()`'s return
+> shape BYTE-IDENTICAL. Record: `SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md`.
+
 ---
 
 ## 2. NOT KERNEL — excluded, with the exclusion argument

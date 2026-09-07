@@ -130,22 +130,42 @@ export const SUSTAINED_DEFECTS: readonly SustainedDefect[] = [
       "Either implement a true rolling window (a small ring of (start,duration) entries, as the production vault's rolling spend ledger already does), or restate I-CONTAINMENT-BUDGET as a TUMBLING-epoch bound and publish the real worst case as 2 x CONTAINMENT_MAX contiguous plus one epoch boundary. The second is a documentation change and costs zero bytes.",
   },
   {
-    id: "SD-5-permanent-shape-capture-on-the-declaring-edge",
+    id: "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
     title:
-      "The requirePq false -> true declaration is one-shot and IRREVERSIBLE, so one root on an ECDSA-only vault may pin a structurally vacuous shape — 1-byte key, 1-byte signature, pqParamLevel 65535 — that no principal, a guardian quorum included, can ever change",
+      "Generation 1 pins no scheme: the kernel admits any address with code and never establishes that the admitted verifier exposes only ONE accepting relation over a committed key, so a verifier carrying a forgeable second relation reduces the credential cut from 2 to 1 on the vaults that admit it",
     property: null,
     rootsRequired:
-      "1 — the sole ECDSA credential root of a vault born ECDSA-only, where `_authorise` degenerates to the ECDSA conjunct alone. The same cut that already moves every asset on that vault class, so it is no escalation; what is new is that this particular choice outlives the remedy.",
+      "1 (the ECDSA credential root) PLUS a verifier that ALREADY accepts a forgeable alternate relation. The verifier must be ADMITTED first, and admission is itself authorised: deployer at genesis (cut 0), credential via setVerifier (cut 2 on an armed vault, cut 1 on a dormant one), guardian quorum via recovery (cut k). Measured in lane SD5-A1R N1-N5 with a REALLY DEPLOYED verifier and no setCode.",
     contradicts:
-      "AUTHORITY.md section 3, the 'Silent crypto downgrade' row's unqualified parenthetical 'true of all four fields since I-FLOOR-SHAPE-IMMUTABLE'. That holds only ONCE requirePq already does. On the declaring edge two of the four fields are free, and the choice made there is permanent.",
+      "Nothing published — it is recorded HERE, at the moment SD5-I removes the structural length gate, precisely so that removal is not read as a stronger claim than it is. The gate DID reject an alternate relation representable under the IKernelPQVerifier interface (SD5-A1R M3, reproduced without setCode as N5), but it was SHAPE-scoped, never strength-scoped: a weak relation placed AT the declared length defeated it identically on the unamended kernel (M6). BASE therefore never supplied scheme binding either, and E-PRIME does not create this residual.",
     rootCause:
-      "`_requireSaneFloor` bounds the two lengths only against 0 and MAX_PQ_LENGTH, and `_requireNoDowngrade` admits any pqParamLevel INCREASE, so {1, 1, 65535} is admissible. `I-FLOOR-SHAPE-IMMUTABLE` then freezes both lengths for the life of the vault, and `securityFloor` has exactly two writers — `initialize`, one-shot, and `setVerifier`, which the freeze closes. `executeRecovery` writes `recovery`, `pqVerifier` and the credential and NEVER the floor, so the shape survives the remedy intact. `I-DECLARATION-EXHIBITED` blunts this — a 1-byte shape needs a 1-byte preimage of the committed hash — and `I-COMMITMENT-EXHIBITED-AT-ADMISSION` now forces that commitment to have been exhibited when it was installed. NEITHER closes it, and the reason is that an exhibit proves POSSESSION OF A PREIMAGE and nothing about that preimage being a well-formed key: the attacker simply holds the 1-byte string and exhibits it at both points. `pqSignatureLength` is weaker still — no commitment anywhere in this kernel binds it, so the vacuous shape is reachable against an HONEST genesis commitment with no rotation in the sequence at all (test/Sd34AuthenticationSatisfiability.test.ts). SD-5 is a MIN_PQ_LENGTH question, not an admission question.",
-    classification: "LIVENESS_DENIAL",
+      "The kernel's only constraint on a verifier, at all three admission points (initialize, setVerifier, initiateRecovery), is a nonzero code length. IKernelPQVerifier.verify returns a bare bool, so the kernel learns WHETHER this input was accepted and never WHAT RELATION was applied. A verifier may therefore expose a FIPS-204-conformant strong relation AND a forgeable second one over the same committed key — built and executed in lane SD5-A1R, where an 8-bit alternate tag was brute-forced in 10 free view probes and carried through to asset movement and a credential change.",
+    classification: "STATE_INCOHERENCE",
     notAnEscalationBecause:
-      "It reduces no cut. On an ECDSA-only vault the asset-control cut is ALREADY 1 — `_authorise` returns before the PQ leg — so a permanently vacuous second factor removes nothing the vault ever had. The harm is that the vault can never GAIN one: a real 1,312-byte ML-DSA-44 key is refused forever. A permanent agility loss on one vault class, not an authority gain.",
+      "It reduces no cut RELATIVE TO THE UNAMENDED KERNEL, and the two statements must be kept apart. E-PRIME DELTA: none on a vault with a sound verifier; a conditional 2 -> 1 only for alternate relations that BASE's declared-length gate happened to exclude. GEN-1 SYSTEM RESIDUAL: a verifier admitting a forgeable relation yields 2 -> 1 under EITHER kernel whenever that relation fits the accepted shape (M6). Admission is also gated — on an ARMED vault a cut-1 principal cannot admit a verifier at all (N2) — so the reachable window is the dormant/ECDSA-only class (N3) and the deployer's genesis choice.",
     minimalFixSketch:
-      "Only one family closes it: let a COMPLETED guardian recovery re-declare the shape to that of the material it just proved possession of. NOT APPLIED, and for a hard constraint rather than a preference — it lets a quorum move a field `I-FLOOR-SHAPE-IMMUTABLE` currently freezes against every principal, i.e. it LOOSENS an existing check, and it moves AUTHORITY.md's 'Silent crypto downgrade' row from unreachable to k. Cheaper blunting worth costing first: a MIN_PQ_LENGTH, or removing `pqParamLevel`, which no execution path reads.",
-    reproducedBy: "prototype/vnext-kernel/test/Sd34AuthenticationSatisfiability.test.ts",
+      "NOT a kernel-side scheme validator: the kernel cannot prove arbitrary verifier bytecode exposes no unauthorized accepting relation, and inventing that requirement would replace the old length-based pseudo-binding with an unverifiable one. The enforceable shape is an ADMISSION model — AUTHORIZED_RELATION derives from an APPROVED_VERIFIER_IMPLEMENTATION/ARTIFACT, which derives from MECHANICALLY IDENTIFIABLE ADMISSION EVIDENCE. Generation 1 has no such mechanism, and that is the residual rather than a design deferred by preference. Note explicitly: FIPS 204 conformance is NECESSARY cryptographic assurance for the intended relation and is NOT the mitigation — this lane's own dual-relation verifier has a conformant strong leg. Architecture section 12's SecurityProfile (schemeId, family, verifierGeneration) is the intended long-run home and is DEFERRED_TO_FUTURE_GENERATION.",
+    reproducedBy:
+      "prototype/vnext-kernel/SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md records the executed matrix (M1-M6, N0-N5). NOTE: that record is UNTRACKED lane scratch, so this entry names no tracked deterministic reproduction. Promoting one is owed by the lane that acts on SD-11A.",
+  },
+  {
+    id: "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
+    title:
+      "The kernel pins no code identity for an admitted verifier and never re-validates it, so whether an already-admitted verifier can change its accepting relation in place — behind a stable address, with no kernel-visible event — is NOT excluded by the kernel and was NOT measured",
+    property: null,
+    rootsRequired:
+      "UNKNOWN, and that is the entry. It depends on a property of the VERIFIER contract (upgradeable, proxied or metamorphic) that lane SD5-A1R did not measure and that this lane does not claim either way.",
+    contradicts:
+      "Nothing published. It is recorded so that SD5-A1R's admission finding is not over-read: N0-N5 established that every route to a dual-relation verifier runs through an ADMISSION decision by a named principal, and that the kernel has no in-place mutation path OF ITS OWN. Neither statement establishes that the verifier's own semantics are immutable, and a verifier ADDRESS is not a proof of semantic immutability.",
+    rootCause:
+      "Proven from source in lane SD5-I, and the proof is a CONTRAST INSIDE THE SAME CONTRACT. The verifier is checked for a nonzero code length at admission (initialize, setVerifier, initiateRecovery) and never again; no codehash is recorded or compared. Yet bindMigration DOES pin code identity — it reverts DestinationMismatch when destinationVault.codehash differs from the bound destinationVaultCodeHash — so the kernel possesses the mechanism and applies it elsewhere, but not to the verifier. IKernelPQVerifier.verify is reached by STATICCALL against a stored address, so a delegatecall proxy could change implementation with nothing the kernel observes.",
+    classification: "STATE_INCOHERENCE",
+    notAnEscalationBecause:
+      "No cut is claimed to move, because no reachability is claimed at all. This is an UNMEASURED CLASS recorded as open, not a demonstrated capability. Recording it costs nothing and closes the gap between what SD5-A1R measured (admission) and what it did not (transformation).",
+    minimalFixSketch:
+      "FIRST establish reachability against the intended production verifier design rather than designing a control for an unmeasured threat. If a control is then wanted, note that a codehash pin — the mechanism bindMigration already uses — would address metamorphic redeploy but would NOT close a delegatecall proxy, whose codehash is stable while its implementation pointer moves. Do not present a codehash pin as closing SD-11B. Scope deliberately: this is not licence for a broad proxy/metamorphic research campaign.",
+    reproducedBy:
+      "NONE — deliberately. There is no reproduction because the class is UNMEASURED; the source-side proof that the kernel does not exclude it is the codehash contrast recorded in rootCause.",
   },
   {
     id: "SD-8-genesis-exhibit-cannot-prove-well-formedness",
@@ -222,6 +242,32 @@ export interface RemediatedDefect {
 
 export const REMEDIATED_DEFECTS: readonly RemediatedDefect[] = [
   {
+    id: "SD-5-permanent-shape-capture-on-the-declaring-edge",
+    title:
+      "The requirePq false -> true declaration chose pqPublicKeyLength and pqSignatureLength once and irreversibly, and I-FLOOR-SHAPE-IMMUTABLE then froze them for the life of the vault while _requireIncomingPossession measured every future credential install against them LIVE — so a shape chosen once was permanent against every principal, a guardian quorum included",
+    sustainedAt: "5e8c68d31909d9ddc460c12d532f942ae45454b7",
+    remediatedOn: "SD5-I on security/vnext-sd5-shape-capture-adjudication, over 5e8c68d3 (lane SD5-D1 adjudicated, SD5-A1 amended the architecture, SD5-A1R closed it adversarially)",
+    invariant:
+      "I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE — for an APPROVED recovery, changing pqPublicKeyLength, pqSignatureLength or pqParamLevel cannot change its executability. requirePq is EXPLICITLY OUTSIDE this invariant and remains the SD-4 declaring-edge residual; it is not smuggled back in through an exception clause. This REPLACES I-FLOOR-SHAPE-IMMUTABLE, which is RETIRED: with no authoritative shape it has no operand, and an invariant with no operand is decoration. I-NO-SILENT-DOWNGRADE is correspondingly narrowed to I-NO-SILENT-DOWNGRADE-G1, which governs the requirePq conjunct alone.",
+    sourceDelta:
+      "Six removals, no additions, no new state, no changed signature, and no new principal. (1) _authorise drops the pqKey/pqSig length equality; keccak256(pqKey) == pqPublicKeyHash survives. (2) _requireIncomingPossession drops the newPqKey/newPqPop length equality; the commitment comparison survives. (3) _requireSaneFloor becomes vacuous (kept deliberately, documented; MAX_PQ_LENGTH consequently has no reader and is retained for ABI only). (4) _requireNoDowngrade drops BOTH the pqParamLevel ratchet and the two-length freeze, keeping only requirePq true -> false. (5) initialize drops the genesis key-length conjunct; the genesis preimage conjunct survives. (6) the setVerifier declaring edge drops its key-length conjunct; its preimage conjunct survives. MEASURED: runtime 18,367 -> 17,695 bytes (-672); storage layout, ABI, selectors, events, errors and securityFloor()'s return shape BYTE-IDENTICAL; factory unchanged at 2,445. The three fields survive as SIGNED_METADATA + IDENTITY_BOUND_METADATA + NON_AUTHORITATIVE_SECURITY_METADATA + ABI_COMPATIBILITY, and explicitly NOT AUTHORIZATION_INPUT, NOT RECOVERY_SATISFIABILITY_INPUT, NOT CRYPTOGRAPHIC_STRENGTH.",
+    rejectedAlternatives:
+      "Eight families were BUILT, COMPILED AND EXECUTED in lane SD5-D1, and the ledger's own proposed fix was among the rejected. A MINIMUM LENGTH (this entry's former minimalFixSketch neighbour) dies to 'S = MIN + 1': declaring just above the threshold is permanently dead exactly as before, and no semantic authority exists for the constant — FIPS 204 3.6.2 imposes EXACT equality per parameter set on an ML-DSA IMPLEMENTATION, never a generic minimum on a scheme-agnostic kernel. EXACT TUPLES reproduce the capture at an allowlisted tuple whenever the allowlist has two members, and close SD-5 only by making the kernel single-scheme. VERIFIER-DECLARED SHAPE is self-certification: the declarer deploys the oracle, which the kernel already refuses elsewhere for that reason. GUARDIAN-RECOVERY RE-DECLARATION — the family THIS ENTRY PREVIOUSLY NAMED AS THE ONLY ONE THAT CLOSES IT — does close both forms, but hands the quorum a PROFILE_CHANGE-class capability and moves AUTHORITY.md's 'Silent crypto downgrade' row from unreachable to k; its monotone and possession-bounded variants die to a single declaration of pqSignatureLength = MAX_PQ_LENGTH. FLOOR RESET reopens finding A2. A REGISTRY introduces a governance root present in no authority table. DOCUMENTATION-ONLY is insufficient: the published scope note described Form B and not Form A. Refuting 'only one family closes it' was itself a result — it was a whole-design-space claim drawn from two points, the same error test/sd4-candidate-kernels.ts was written to condemn.",
+    invertedReproduction:
+      "test/Sd1RecoveryFloorBinding.test.ts is re-anchored on I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE: each metadata mutation is now ADMITTED with requirePq held constant, the approved recovery still EXECUTES, and the recovered credential SPENDS. test/Sd34AuthenticationSatisfiability.test.ts carries the inverted SD-5 sequence — the shape is no longer one-shot and a captured vault is escapable — while preserving the published positive control that exists so a blanket revert can never be mistaken for a fix. test/Sd4RecoverySemantics.test.ts records that SD-4's two SHAPE forms are closed while its requirePq/zero-hash residual survives. Mutants M17 and M18 are RETIRED with their invariant (see stateful/mutants.ts); M19 is NARROWED to its surviving preimage conjunct.",
+    // THE FIELD TAKES ONE ID, AND THIS REMEDIATION LEAVES THREE THINGS OPEN, so the
+    // other two are stated here rather than crammed into an identifier the suite
+    // parses as a single sustained-defect id:
+    //   SD-8 is UNCHANGED IN BOTH DIRECTIONS — deleting an integer comparison cannot
+    //     make bytes well-formed, and this lane claims nothing about it.
+    //   SD-11B (admitted-verifier semantic immutability) is NOT EXCLUDED and NOT
+    //     MEASURED; it is carried as its own sustained entry.
+    //   SD-4 is NARROWED, not closed: the shape route is gone, but a recovery
+    //     proposing a zero PQ commitment is still stranded by the requirePq flip.
+    // SD-11A is named below because it is the one this removal MEASURED.
+    residual: "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+  },
+  {
     id: "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
     title:
       "While requirePq was false, rotateCredential and executeRecovery installed an arbitrary pqPublicKeyHash with NO possession proof of any kind, because _requireIncomingPossession returned before every PQ check",
@@ -235,7 +281,12 @@ export const REMEDIATED_DEFECTS: readonly RemediatedDefect[] = [
       "DELETING THE requirePq EARLY RETURN OUTRIGHT (so the full exhibit — length, preimage and verifier PoP — runs on the dormant path) was rejected as DISQUALIFYING. While requirePq is false, _requireSaneFloor returns before every bound, so both dormant length fields are unvalidated and may hold any uint32; MAX_PQ_LENGTH is not applied on that path and _requireNoDowngrade's freeze is guarded on the CURRENT floor. Reading them in the install path lets ONE false -> false setVerifier at cut 1 write pqPublicKeyLength = type(uint32).max, after which every credential install INCLUDING executeRecovery is undeliverable forever, with no guardian-reachable writer of securityFloor to undo it. That is a permanent, uncounted, cut-1 veto over the remedy — a strictly worse form of the harm the SD-4 interlock was rejected for, since it gives the CREDENTIAL a renewable veto over the REPEATABLE capability that exists to remove that credential. A VERIFIER leg was rejected as self-certification: on an ECDSA-only vault the same cut-1 principal also owns setVerifier, so it installs an always-true verifier one transaction earlier. Requiring the exhibit REGARDLESS of the commitment being zero was rejected because no byte string hashes to bytes32(0), which would make the entire ECDSA-only class unrotatable and I-DECLARATION-EXHIBITED dead code.",
     invertedReproduction:
       "test/Sd34AuthenticationSatisfiability.test.ts runs the original unattested-install sequence and now asserts the REFUSAL, with a positive control proving a 7-byte exhibit still installs (the invariant is about attestation, not shape). test/Sd67CommitmentAdmission.test.ts carries the full firsthand reproduction with its verdict moved, and test/Sd67AdmissionInvariants.test.ts carries the regression matrix including the recovery twin.",
-    residual: "SD-5-permanent-shape-capture-on-the-declaring-edge",
+    // SD5-I: this entry formerly named SD-5 as its residual, which was TRUE when
+    // written and is now closed. What survives of what THIS remediation did not
+    // reach is SD-8 — an exhibit proves knowledge of a preimage, never that the
+    // bytes are well-formed for a scheme. SD-11A/SD-11B are recorded separately
+    // against the amendment that exposed them, not back-dated onto this one.
+    residual: "SD-8-genesis-exhibit-cannot-prove-well-formedness",
   },
   {
     id: "SD-7-genesis-admits-an-unsatisfiable-floor",
@@ -260,7 +311,7 @@ export const REMEDIATED_DEFECTS: readonly RemediatedDefect[] = [
     sustainedAt: "ec5adce91bf6956a655a637513102bd6613c04f8",
     remediatedOn: "security/vnext-sd1-recovery-floor-binding",
     invariant:
-      "I-FLOOR-SHAPE-IMMUTABLE — for every accepted setVerifier transition s -> s', s.securityFloor.requirePq implies s'.pqPublicKeyLength == s.pqPublicKeyLength and s'.pqSignatureLength == s.pqSignatureLength. Since initialize and setVerifier are the only writers of securityFloor, the two structural fields are CONSTANTS for the life of any vault whose floor mandates PQ, and no credential-writable state remains in the recovery satisfiability condition.",
+      "I-FLOOR-SHAPE-IMMUTABLE — for every accepted setVerifier transition s -> s', s.securityFloor.requirePq implies s'.pqPublicKeyLength == s.pqPublicKeyLength and s'.pqSignatureLength == s.pqSignatureLength. Since initialize and setVerifier are the only writers of securityFloor, the two structural fields are CONSTANTS for the life of any vault whose floor mandates PQ, and no credential-writable state remains in the recovery satisfiability condition. APPEND-ONLY CORRECTION (LANE SD5-I): I-FLOOR-SHAPE-IMMUTABLE is now RETIRED, and this entry is corrected rather than rewritten because the remediation it records was CORRECT FOR ITS LANE. SD-1 was real and this closed it. What SD-5 later measured is the PRICE: freezing the fields made the shape permanent against every principal, so an honest ML-DSA-44 vault could never reach ML-DSA-87 and a captured shape survived guardian recovery — harm that reached vaults with no attacker anywhere in the sequence. SD5-I reaches SD-1 OWN GOAL by a different mechanism: the state is made UNREAD rather than UNMOVABLE, which is strictly stronger (nothing consumes it, so no schedule can exploit it) and carries none of the permanence. The clause named above no longer exists; the requirement it encoded now lives in I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE. SD-1 REMAINS REMEDIATED — by non-consumption instead of by freezing.",
     sourceDelta:
       "Two clauses, both inside existing internal helpers, no new state and no changed signature. (1) _requireNoDowngrade gains the shape-freeze comparison, guarded on current.requirePq. (2) _requireSaneFloor gains a MAX_PQ_LENGTH magnitude bound, because I-FLOOR-SHAPE-IMMUTABLE would otherwise make an unsatisfiable uint32 shape PERMANENT.",
     rejectedAlternatives:
@@ -274,7 +325,12 @@ export const REMEDIATED_DEFECTS: readonly RemediatedDefect[] = [
     // its own right". It never was — the interlock was built, measured and
     // REMOVED, and SD-4 is still in SUSTAINED_DEFECTS below. The re-pointing was
     // right; its stated reason was not.
-    residual: "SD-5-permanent-shape-capture-on-the-declaring-edge",
+    // SD5-I: this entry formerly named SD-5 as its residual, which was TRUE when
+    // written and is now closed. The residual that survives is SD-4, which is what
+    // this file's own header has said all along ("the residual it left is carried
+    // as SD-4 in its own right"). The freeze this entry installed is RETIRED by
+    // SD5-I; SD-1 remains REMEDIATED, now by non-consumption rather than freezing.
+    residual: "SD-4-ecdsa-only-shape-declaration-is-uncounted",
   },
   {
     id: "SD-3-setverifier-skips-genesis-satisfiability",
