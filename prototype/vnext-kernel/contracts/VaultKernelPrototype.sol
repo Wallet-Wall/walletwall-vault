@@ -80,16 +80,46 @@ contract VaultKernelPrototype {
     bytes32 public pqPublicKeyHash;
 
     /**
-     * @dev K-15 — the KERNEL-RECORDED cryptographic floor (architecture 4.3
-     *      component 2, and 12). It is never read from the verifier, which is
-     *      the whole point: a plane cannot report its own strength.
+     * @dev K-15 — the KERNEL-RECORDED cryptographic floor. AMENDED BY SD5-I.
+     *
+     *      ONE field is security authority in Generation 1:
      *
      *      `requirePq` decides whether the PQ conjunct is MANDATORY. It is
-     *      deliberately NOT the caller's choice — see `_authorise`.
-     *      `pqParamLevel` is a WITHIN-FAMILY level and may only increase
-     *      (I-NO-SILENT-DOWNGRADE). The two lengths are the structural
-     *      rejection of component 1: pure integer comparisons the kernel
-     *      performs itself, needing no trust in any verifier.
+     *      deliberately NOT the caller's choice (see `_authorise`), and it is
+     *      MONOTONE: true -> false is refused (`I-NO-SILENT-DOWNGRADE-G1`).
+     *
+     *      THE OTHER THREE ARE NOT SECURITY AUTHORITY, and the precise
+     *      classification matters because two earlier and weaker labels were
+     *      withdrawn on measurement. They are NOT "compatibility only" and NOT
+     *      "inert": each is
+     *
+     *          SIGNED_METADATA                   — covered by the `setVerifier`
+     *                                              action digest, so a signature
+     *                                              over one floor cannot install
+     *                                              another (SD5-A1R C2);
+     *          IDENTITY_BOUND_METADATA           — hashed into `genesisSalt`, so
+     *                                              each one changes the
+     *                                              counterfactual CREATE2 address
+     *                                              (SD5-A1R C1);
+     *          NON_AUTHORITATIVE_SECURITY_METADATA;
+     *          ABI_COMPATIBILITY.
+     *
+     *      And explicitly NOT: `AUTHORIZATION_INPUT`, NOT
+     *      `RECOVERY_SATISFIABILITY_INPUT`, NOT `CRYPTOGRAPHIC_STRENGTH`.
+     *
+     *      CONSEQUENCE, STATED RATHER THAN GLOSSED: the vault's address remains
+     *      committed to values the runtime kernel no longer treats as security
+     *      authority. Two deployments differing only in this metadata land at
+     *      DIFFERENT addresses, and anyone computing a counterfactual address must
+     *      still supply the exact tuple. That is a documentation obligation, not a
+     *      cryptographic property, and it must never be published as evidence that
+     *      these fields still bind anything about the scheme.
+     *
+     *      `pqParamLevel` additionally reaches off-chain through
+     *      `SecurityFloorChanged`, which events `(requirePq, pqParamLevel)` and
+     *      NOT the two lengths — the widest surface of the three, and therefore
+     *      the one most likely to propagate a false strength claim. It carries
+     *      none: architecture section 12 withdrew the flat scalar it instantiates.
      */
     struct SecurityFloor {
         bool requirePq;
@@ -124,7 +154,26 @@ contract VaultKernelPrototype {
         uint64 executableAt;
         uint64 expiresAt;
         uint64 boundGuardianGeneration;
+        /**
+         * @dev THE CHALLENGE EPOCH — co-located in this struct, but with its OWN
+         *      lifetime (`I-RECOVERY-CHALLENGE-EPOCH`, Recovery Amendment §2).
+         *      It is the credential's bounded budget for challenging recovery,
+         *      and it SURVIVES every request-lifetime event: a credential
+         *      challenge, a guardian-quorum cancellation, expiry, a fresh
+         *      initiation (which carries it forward) and ordinary rotation. It
+         *      resets in exactly ONE place — the whole-struct `delete` in
+         *      `executeRecovery`, the authority transition the outgoing
+         *      credential could not have authorised. Never clear this struct on
+         *      any other exit: a refund there is a veto manufactured by the very
+         *      principal recovery exists to remove.
+         */
         uint32 challengesUsed;
+        /**
+         * @dev Request AUTHORITY, not request liveness. Authority ends at
+         *      `expiresAt` with no principal acting (`I-RECOVERY-TERMINATION`), so
+         *      this byte may read true for a request that carries nothing; every
+         *      decision consults `_recoveryIsLive()`, never this flag alone.
+         */
         bool active;
     }
 
@@ -202,6 +251,31 @@ contract VaultKernelPrototype {
     uint64 public constant CONTAINMENT_WINDOW = 30 days;
     uint64 public constant CONTAINMENT_BUDGET = 6 days; // B < W
     uint32 public constant CHALLENGE_LIMIT = 2;
+    /**
+     * @dev RETAINED FOR ABI COMPATIBILITY SINCE SD5-I. IT HAS NO READER.
+     *
+     *      It FORMERLY bounded the largest PQ key or signature shape a floor
+     *      could declare. Under E-PRIME the two length fields are
+     *      NON_AUTHORITATIVE_SECURITY_METADATA — no authorization, possession or
+     *      satisfiability path reads them — so there is no shape left to bound.
+     *      `_requireSaneFloor` states the same disposition at its own natspec,
+     *      including the instruction this comment previously violated: this
+     *      constant must NOT be documented as preventing unsatisfiable floors.
+     *
+     *      WHY A BOUND ONCE HAD TO EXIST, kept as record. The two length fields
+     *      are `uint32`, so an unbounded floor could demand a 4,294,967,295-byte
+     *      proof — calldata no block could ever carry, and therefore a floor no
+     *      possession proof could ever satisfy. `I-FLOOR-SHAPE-IMMUTABLE` would
+     *      then have made that unsatisfiability PERMANENT, which was the whole
+     *      reason the bound shipped in the same change rather than as a separate
+     *      tidy-up. SD5-I retired that invariant, which removed the operand.
+     *
+     *      WHERE THE BOUND SAT was a different question, answered on different
+     *      grounds: 65,535 admits every standardised PQ shape, SPHINCS+-256f's
+     *      49,856-byte signature included. It was NOT a claim that 65,536 bytes
+     *      is unmineable — it plainly is not — only that no real scheme needs it.
+     */
+    uint32 public constant MAX_PQ_LENGTH = 65_535;
 
     bytes4 private constant ERC1271_MAGIC = 0x1626ba7e;
     uint256 private constant GUARDIAN_CALL_GAS = 30_000;
@@ -247,6 +321,9 @@ contract VaultKernelPrototype {
     event GuardianCommitmentSet(bytes32 indexed commitment, uint64 generation, uint64 threshold, bytes preimage);
     event RecoveryInitiated(address indexed proposedSigner, uint64 executableAt, uint64 guardianGeneration);
     event RecoveryCancelled(uint32 challengesUsed);
+    /// @dev K-9 mechanism B. A DISTINCT terminal from the credential's challenge:
+    ///      an observer must be able to tell which principal ended the request.
+    event RecoveryCancelledByQuorum(uint32 challengesUsed);
     event RecoveryExecuted(address indexed newSigner, uint64 credentialGeneration);
     event SafeStateChanged(SafeState indexed previous, SafeState indexed next);
     event MigrationBound(address indexed destinationVault, bytes32 codeHash, uint64 destinationGeneration);
@@ -268,7 +345,27 @@ contract VaultKernelPrototype {
      *         same transaction as the clone deployment, so an uninitialised
      *         clone never exists between transactions and cannot be claimed.
      */
-    function initialize(GenesisConfig calldata g) external {
+    /**
+     * @param pqKey The PQ public key witnessing `g.pqKeyHash`, required by
+     *        `I-COMMITMENT-EXHIBITED-AT-ADMISSION` whenever that commitment is
+     *        non-zero. It is a PARAMETER and deliberately NOT a member of
+     *        `GenesisConfig`, because `genesisSalt` binds the genesis
+     *        AUTHORITY and a preimage proof confers none: a witness inside the
+     *        identity struct would change `predictVault`'s ABI and invite a
+     *        later editor to add it to the salt's enumerated field list. Kept
+     *        outside, the CONFIGURATION -> SALT function is unchanged: the same
+     *        `GenesisConfig` yields the same salt as the parent build, pinned
+     *        against a captured constant in `Sd67AdmissionInvariants.test.ts`.
+     *
+     *        THAT IS A CLAIM ABOUT THE SALT, NOT ABOUT ADDRESSES. A clone's
+     *        address is `CREATE2(factory, salt, keccak256(initcode))` and the
+     *        ERC-1167 initcode embeds the IMPLEMENTATION address, so every
+     *        deployed address moves whenever the kernel's bytecode moves — as
+     *        it does in every remediation in this stack, this one included. No
+     *        change to this contract could have preserved addresses, and none
+     *        is claimed.
+     */
+    function initialize(GenesisConfig calldata g, bytes calldata pqKey) external {
         if (_initialized) revert AlreadyInitialized();
         _initialized = true;
 
@@ -288,6 +385,31 @@ contract VaultKernelPrototype {
         // A mandatory PQ conjunct with no committed key is unsatisfiable, and
         // would brick spending from birth.
         if (g.floor.requirePq && g.pqKeyHash == bytes32(0)) revert BadSignature();
+
+        // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, the BASE CASE — the fix for
+        // SD-7. The line above tests only ZERO-ness, so it catches the
+        // degenerate unsatisfiable genesis and admits every other one. These two
+        // give the induction an authenticated base: a stored commitment always
+        // had a preimage exhibited to the kernel. (Before SD5-I that preimage
+        // also had to carry the declared shape; the SD5-I note below records
+        // the removal of that length conjunct.)
+        //
+        // NO VERIFIER IS CONSULTED HERE, for the same reason `setVerifier` does
+        // not consult one on the declaring edge: the deployer CHOOSES
+        // `g.verifier` in this same transaction, so anything that verifier
+        // certified would be self-certification. The consequence is stated
+        // rather than buried — an exhibit proves knowledge of a preimage, NOT
+        // that the bytes are a well-formed key of any scheme, so a deployer
+        // determined to build a dead vault still can. What is closed is the
+        // structurally CONTRADICTORY genesis a well-intentioned deployer
+        // reaches by accident.
+        // SD5-I: the exhibit survives; its LENGTH conjunct does not. What the
+        // exhibit proves is unchanged and deliberately narrow — a preimage of the
+        // committed hash was known at admission — which is what makes the kernel's
+        // later keccak measurement an INDUCTIVE invariant rather than an assumption
+        // about genesis. It has never proven possession of a signing capability,
+        // and SD-8 is untouched by this lane in either direction.
+        if (g.pqKeyHash != bytes32(0) && keccak256(pqKey) != g.pqKeyHash) revert BadSignature();
 
         securityFloor = g.floor;
         ecdsaSigner = g.signer;
@@ -310,10 +432,29 @@ contract VaultKernelPrototype {
         );
     }
 
-    /// @dev A floor that demands a PQ conjunct must declare satisfiable shapes.
+    /**
+     * @dev VACUOUS SINCE SD5-I, AND KEPT DELIBERATELY RATHER THAN DELETED.
+     *
+     *      It formerly bounded the two structural lengths against 0 and
+     *      `MAX_PQ_LENGTH`, on the reasoning that a floor demanding a PQ conjunct
+     *      must declare SATISFIABLE shapes. Under E-PRIME the lengths are
+     *      NON_AUTHORITATIVE_SECURITY_METADATA: no authorization, possession or
+     *      satisfiability path reads them, so there is no shape left to render
+     *      unsatisfiable and nothing for this bound to protect.
+     *
+     *      The function and its two call sites are retained because the accepted
+     *      amendment is exactly the DE-AUTHORISATION transform that SD5-A1R
+     *      measured (runtime 18,367 -> 17,695 B, ABI and storage byte-identical).
+     *      Deleting the helper is a separate tidy, NOT part of the accepted
+     *      amendment, and must be measured on its own before it is taken.
+     *
+     *      `MAX_PQ_LENGTH` consequently has no reader. It is retained for ABI
+     *      compatibility — its selector is part of the measured byte-identical
+     *      surface — and it must NOT be documented as preventing unsatisfiable
+     *      floors, because those floors no longer participate in authorization.
+     */
     function _requireSaneFloor(SecurityFloor calldata floor) internal pure {
         if (!floor.requirePq) return;
-        if (floor.pqPublicKeyLength == 0 || floor.pqSignatureLength == 0) revert BadSignature();
     }
 
     /**
@@ -453,11 +594,25 @@ contract VaultKernelPrototype {
         SecurityFloor memory floor = securityFloor;
         if (!floor.requirePq) return;
 
-        // FLOOR component 1: structural length rejection. Pure integer
-        // comparisons, performed by the kernel, trusting no verifier.
-        if (pqKey.length != floor.pqPublicKeyLength || pqSig.length != floor.pqSignatureLength) {
-            revert BadSignature();
-        }
+        // SD5-I / E-PRIME. The structural length rejection that stood here is
+        // REMOVED, and the justification it carried — "pure integer comparisons,
+        // performed by the kernel, trusting no verifier" — was MEASURABLY FALSE
+        // for the case it named: against an over-permissive verifier the equality
+        // refused nothing, because a caller pads to the declared length and the
+        // spend lands (SD5-D1 probe X1). It was SHAPE-scoped, never
+        // strength-scoped: a verifier exposing a forgeable alternate relation AT
+        // the declared length defeated it identically (SD5-A1R M6).
+        //
+        // Scheme-specific structural validity is the VERIFIER's duty. FIPS 204
+        // 3.6.2 binds "an implementation of ML-DSA" to RETURN FALSE on inputs of
+        // the wrong length; it places no duty on a scheme-agnostic caller, and
+        // duplicating it here bound this kernel to one scheme's encoding while
+        // proving nothing (SD5-A1 section 2, read first-hand).
+        //
+        // What survives is the kernel's OWN binding — the exact committed key
+        // bytes — which is a possession-independent statement about identity, not
+        // a claim about the scheme behind it. See `I-NO-SILENT-DOWNGRADE-G1` and
+        // residual SD-11 for what Generation 1 does and does not claim.
         if (keccak256(pqKey) != pqPublicKeyHash) revert BadSignature();
 
         // PLANE: consulted only to impose an ADDITIONAL requirement.
@@ -465,16 +620,89 @@ contract VaultKernelPrototype {
     }
 
     /**
-     * @dev `I-NO-SILENT-DOWNGRADE`. A floor transition may only be neutral or
-     *      strengthening. Turning `requirePq` off, or lowering the parameter
-     *      level, is REFUSED outright rather than gated on a higher authority:
-     *      there is no principal in this design entitled to weaken the floor.
-     *      Length changes accompany a parameter change and move with it.
+     * @dev `I-NO-SILENT-DOWNGRADE-G1`, NARROWED BY SD5-I to its one true clause:
+     *      a MANDATORY PQ CONJUNCT MAY NOT BE SILENTLY DISABLED. Turning
+     *      `requirePq` off is REFUSED outright rather than gated on a higher
+     *      authority — no principal in this design is entitled to disable it.
+     *      That is the whole of the Generation-1 claim; the body below records
+     *      why it had to shrink.
+     *
+     *      THE OTHER TWO CLAUSES THIS NATSPEC ONCE CARRIED ARE GONE. The
+     *      `pqParamLevel` ratchet is REMOVED, and so is the two-length freeze.
+     *      A floor transition is therefore NOT constrained to be "neutral or
+     *      strengthening": `pqPublicKeyLength`, `pqSignatureLength` and
+     *      `pqParamLevel` are NON_AUTHORITATIVE_SECURITY_METADATA and are
+     *      writable on every `setVerifier`.
+     *
+     *      `I-FLOOR-SHAPE-IMMUTABLE` — RETIRED BY SD5-I, recorded here as
+     *      history because the reasoning it settled is still worth having.
+     *      It WAS the third clause and the fix for SD-1: the two STRUCTURAL
+     *      fields WERE FROZEN once a PQ conjunct was mandatory. They had
+     *      previously been unconstrained, and `_requireIncomingPossession` THEN
+     *      measured an ALREADY-QUORUM-APPROVED recovery against them LIVE, so the
+     *      credential principal held a veto over guardian recovery that
+     *      `CHALLENGE_LIMIT` never saw. The remedy was to REMOVE that state from
+     *      the satisfiability condition — not to count the veto, and not to
+     *      snapshot the floor into the request:
+     *
+     *        - counting fails because `challengesUsed` bounds `cancelRecovery`
+     *          only by virtue of a cancellation being REVERSIBLE (the quorum
+     *          re-initiates and the state returns). No guardian path writes
+     *          `securityFloor` and `executeRecovery` never touches it, so a floor
+     *          write is irreversible, and a counter bounds only how many times an
+     *          attacker re-chooses which permanent state to inflict;
+     *        - snapshotting fails because `_authorise` reads the SAME slot, so a
+     *          floor poisoned BEFORE the quorum proposes is copied faithfully into
+     *          the snapshot, and a recovery that did complete would install a
+     *          credential the live floor could never use.
+     *
+     *      E-PRIME reaches the same SD-1 goal by a different route: the freeze
+     *      made the state UNMOVABLE, and this makes it UNREAD. SD-1 stays
+     *      remediated because nothing consumes what a floor write puts there.
+     *
+     *      `pqParamLevel` is neither frozen NOR ratcheted. It is NOT recorded
+     *      cryptographic strength — it is NON_AUTHORITATIVE_SECURITY_METADATA,
+     *      and neither `_authorise` nor `_requireIncomingPossession` reads it, so
+     *      it cannot unsettle a pending recovery.
+     *
+     *      The guard reads `current.requirePq`, so a vault born ECDSA-only may
+     *      still ARM the PQ conjunct once, on the `false -> true` edge. That edge
+     *      retains ONE uncounted arming move against a pending recovery, and it
+     *      is RECORDED in `stateful/defects.ts` rather than silently absorbed.
+     *      The declared SHAPE is no longer one-shot and no longer bounded:
+     *      `MAX_PQ_LENGTH` has no reader, and the lengths may be rewritten on any
+     *      later `setVerifier` without effect on any authorization path.
      */
     function _requireNoDowngrade(SecurityFloor memory next) internal view {
         SecurityFloor memory current = securityFloor;
+        // `I-NO-SILENT-DOWNGRADE-G1`, the narrowest TRUE form (SD5-A1 section 8):
+        // a mandatory PQ conjunct may not be silently disabled. That is the whole
+        // of the Generation-1 claim, and the two clauses SD5-I removed are why the
+        // claim had to shrink.
+        //
+        // REMOVED — the pqParamLevel RATCHET. Architecture section 12 itself
+        // WITHDREW the flat strength scalar as "a scalar asserts a total order
+        // that does not exist", and this field is that withdrawn construct: it
+        // carries no family, and section 12's R4 makes paramLevel meaningful
+        // within-family and ONLY within-family. Ratcheting it asserted an ordering
+        // the kernel cannot justify, while the encoding it named stayed frozen —
+        // the LABEL of an upgrade without its SUBSTANCE.
+        //
+        // REMOVED — `I-FLOOR-SHAPE-IMMUTABLE`, the two-length freeze. It was
+        // SD-1's remedy, and it worked by making the state UNMOVABLE. SD-5 showed
+        // the cost: the shape chosen once became permanent against EVERY
+        // principal, a guardian quorum included, on honest vaults as much as
+        // captured ones. E-PRIME reaches SD-1's goal by making the state UNREAD
+        // instead — measured as SD5-A1 S1a/S1b, where the SD-1 move is now
+        // ADMITTED and the approved recovery still completes, because nothing
+        // consumes what it wrote. The invariant is RETIRED, not weakened: with no
+        // authoritative shape it has no operand.
+        //
+        // Generation 1 makes NO claim about which cryptographic relation the
+        // admitted verifier implements (`GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`,
+        // residual SD-11), so "no silent downgrade" governs the requirePq conjunct
+        // and NOT the strength of the relation behind it.
         if (current.requirePq && !next.requirePq) revert Downgrade();
-        if (next.pqParamLevel < current.pqParamLevel) revert Downgrade();
     }
 
     /**
@@ -536,10 +764,40 @@ contract VaultKernelPrototype {
         if (popDigest.recover(c.newEcdsaPop) != expectedSigner) revert BadSignature();
 
         SecurityFloor memory floor = securityFloor;
-        if (!floor.requirePq) return;
-        if (c.newPqKey.length != floor.pqPublicKeyLength || c.newPqPop.length != floor.pqSignatureLength) {
+
+        // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, dormant half — the fix for
+        // SD-6. A NON-ZERO commitment is a CREDENTIAL and must be attested even
+        // while nothing reads it; `bytes32(0)` is this kernel's representation
+        // of "no PQ credential" and stays admissible, which is what preserves
+        // the ECDSA-only rotation and the clear-then-rotate escape.
+        //
+        // THE ABSENCE OF A LENGTH COMPARISON HERE IS THE DESIGN, NOT AN
+        // OVERSIGHT — and SD5-I GENERALISES that design to the armed path too.
+        // The original reasoning, preserved because it is still the reason the
+        // DORMANT branch reads no length: while `requirePq` is false the length
+        // fields are unvalidated, so reading them would let one `false -> false`
+        // `setVerifier` at cut 1 pin `pqPublicKeyLength = type(uint32).max` and
+        // make every later credential install — `executeRecovery` INCLUDED —
+        // undeliverable forever, with no guardian-reachable writer of
+        // `securityFloor` to undo it.
+        //
+        // SD-5 then measured that the ARMED branch had the SAME defect in a
+        // slower form: the shape chosen once on the declaring edge was frozen for
+        // the life of the vault and measured LIVE here, so a captured shape made
+        // every future credential — rotation and guardian recovery alike —
+        // undeliverable. That was PERMANENT_PQ_AGILITY_LOSS, and it reached
+        // HONEST vaults with no attacker at all (an ML-DSA-44 vault could never
+        // move to ML-DSA-87). SD5-I removes the armed comparison for the same
+        // reason the dormant one never existed.
+        //
+        // `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE` is what this buys:
+        // the three non-authoritative metadata fields can no longer change
+        // whether an APPROVED recovery executes. `requirePq` is deliberately
+        // OUTSIDE that invariant and remains the SD-4 declaring-edge residual.
+        if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {
             revert BadSignature();
         }
+        if (!floor.requirePq) return;
         if (keccak256(c.newPqKey) != expectedPqKeyHash) revert BadSignature();
         if (!IKernelPQVerifier(verifierToUse).verify(popDigest, c.newPqKey, c.newPqPop)) revert BadSignature();
     }
@@ -583,6 +841,26 @@ contract VaultKernelPrototype {
     function _requireRecoveryOpen() internal view {
         SafeState s = _effectiveState();
         if (s == SafeState.MIGRATION_ONLY || s == SafeState.RETIRED) revert BadState();
+    }
+
+    /**
+     * @dev `I-RECOVERY-EFFECTIVE-LIVENESS` (Recovery Amendment §3). A request
+     *      holds authority on the HALF-OPEN window `[executableAt, expiresAt)`:
+     *      at `expiresAt` it is already expired, the same convention
+     *      `_effectiveState` applies to `containedUntil`. Expiry requires no
+     *      principal to act (`I-RECOVERY-TERMINATION`), so nothing clears the
+     *      stored `active` byte — an expired request leaves stale bytes that
+     *      carry zero execution authority, zero cancellation-target authority
+     *      and zero blocking effect. Every authority or blocking decision in this
+     *      kernel consults THIS predicate, never the raw flag.
+     *
+     *      INTERNAL ON PURPOSE (Option E0): liveness is a pure function of two
+     *      fields the `recovery()` getter already exposes and the block a reader
+     *      is in, so an observatory derives it exactly as the stateful oracle
+     *      already derives effective safe state. No selector is added for it.
+     */
+    function _recoveryIsLive() internal view returns (bool) {
+        return recovery.active && block.timestamp < recovery.expiresAt;
     }
 
     // =====================================================================
@@ -687,8 +965,10 @@ contract VaultKernelPrototype {
     /**
      * @notice Replace the verifier and, in the same act, declare the floor the
      *         new verifier is trusted for. The two are inseparable: a verifier
-     *         swap that left the recorded strength behind would be a downgrade
-     *         with no transition to refuse.
+     *         swap that left the `requirePq` conjunct behind would be a downgrade
+     *         with no transition to refuse. Since SD5-I that conjunct is the ONLY
+     *         part of the floor with authority — the three metadata fields travel
+     *         with the swap but constrain nothing.
      *
      * @dev **HYBRID-AUTHORISED, and that is the fix for finding A2.** An earlier
      *      draft gated this on the ECDSA conjunct alone, reasoning that
@@ -727,6 +1007,102 @@ contract VaultKernelPrototype {
         _authorise(digest, ecdsaSig, pqSig, pqKey);
         _requireNoDowngrade(floor);
         _requireSaneFloor(floor);
+        // ---- THE DECLARING EDGE -----------------------------------------
+        // `requirePq` false -> true is the ONE transition in a vault's life that
+        // ARMS the PQ conjunct: `requirePq` is monotone, so it happens at most
+        // once and is irreversible. ONE clause holds at that moment, and it
+        // binds `pqPublicKeyHash`: a preimage.
+        //
+        // NARROWED BY SD5-I. Pre-SD5-I this edge was ALSO the only place the two
+        // structural lengths could be chosen, because the freeze in
+        // `_requireNoDowngrade` was guarded on the CURRENT floor and fixed them
+        // thereafter; the clause here then had TWO conjuncts, a length and a
+        // preimage. The freeze is retired and the length conjunct is removed, so
+        // the lengths are writable on every later `setVerifier` and bind nothing.
+        //
+        // CORRECTED. An earlier revision of this comment said a second clause
+        // "protects `recovery.proposedPqKeyHash`". No such clause exists — the
+        // interlock was written, measured and REMOVED for the reason recorded
+        // forty lines below, and SD-4 remains SUSTAINED. The text was residue
+        // from the removed code and contradicted both the block below it and
+        // `stateful/defects.ts`.
+        //
+        // The clause here is NOT redundant with
+        // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`. That invariant proves a
+        // preimage existed when the commitment was INSTALLED. This one proves
+        // the DECLARER, who may be a different principal, holds a preimage NOW,
+        // which did not exist at install time. (Pre-SD5-I both were additionally
+        // bound to the declared LENGTH; that binding is removed on both sides.)
+        // Neither implies the other, and the mutation catalogue proves both
+        // directions: M19 and M20 kill a kernel missing THIS clause, while M21
+        // and M22 kill one missing the admission clause.
+        //
+        // EACH CLAUSE IS A FLAT `if (cond) revert X();` that repeats the edge
+        // test rather than nesting inside it, and that is not a style choice:
+        // `authority/trace.ts` recognises the single-revert guard idiom and
+        // reports an `if` whose body is another `if` as UNRESOLVED, which would
+        // cost this function a declared ordering exception it does not need.
+        // `&&` short-circuits, so nothing below is evaluated off the edge.
+        //
+        // ORDER: this runs AFTER `_authorise`, so an unauthorised caller learns
+        // nothing from a satisfiability revert, and BEFORE `_consume`, so a
+        // refusal burns no nonce. It also runs after `_requireSaneFloor`, which
+        // since SD5-I refuses NOTHING — that helper is vacuous — so the ordering
+        // now buys attribution tidiness only. It FORMERLY meant a zero-length
+        // declaration was already refused by the time we got here, and even then
+        // it was not a security dependency: the two were independent guards and
+        // either order refused the same calls.
+
+        // `I-DECLARATION-EXHIBITED`. Every OTHER floor-touching transition
+        // already MEASURES the committed key — `_authorise` on a true->true
+        // call, `_requireIncomingPossession` on every credential install — so
+        // without this the whole chain rests on an unverified assumption about
+        // genesis. This is what makes that measurement an INDUCTIVE invariant.
+        //
+        // IT IS A SATISFIABILITY WITNESS, NOT AN AUTHORITY GATE. `pqKey` is a
+        // PUBLIC key and is deliberately NOT covered by the action digest, so a
+        // relayer rewriting it can only make this call REVERT — never make it
+        // accept a configuration the signer did not authorise. The edge's cut is
+        // 1 before and 1 after; nothing here raises it.
+        //
+        // NO SIGNATURE LEG AND NO VERIFIER CALL, deliberately: the declarer
+        // chooses the verifier in this same transaction, so anything that
+        // verifier validates is self-certification and proves nothing.
+        // SD5-I NARROWS `I-DECLARATION-EXHIBITED` to its surviving half: the
+        // declarer must exhibit the exact PREIMAGE of the committed
+        // `pqPublicKeyHash`. The LENGTH conjunct is removed with the field's
+        // authority. That half was in any case the weaker one — SD-5 Form B
+        // reproduced against an HONEST incumbent key and correct key length,
+        // taking its vacuity entirely in `pqSignatureLength`, which no commitment
+        // anywhere bound.
+        if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
+            revert BadSignature();
+        }
+        // SD-4 IS NOT CLOSED HERE, AND THE REASON IS RECORDED RATHER THAN THE
+        // FIX ATTEMPTED. The same edge also adds a whole conjunct to an
+        // ALREADY-QUORUM-APPROVED recovery, which `_requireIncomingPossession`
+        // measures against this floor LIVE. An interlock refusing the
+        // declaration while such a request is live was written, measured and
+        // REMOVED: because the declaration is ONE-SHOT and no guardian path can
+        // ever write `securityFloor`, that refusal hands the quorum a renewable,
+        // uncounted veto over a capability it cannot itself exercise —
+        // `initiateRecovery` has no `!recovery.active` guard, while the
+        // credential's counter-move is capped — which pins an ECDSA-only vault
+        // at asset-control cut 1 forever. Trading a bounded one-shot credential
+        // harm for an unbounded guardian one is not a remediation. See SD-4 in
+        // `stateful/defects.ts` for the analysis and the only design that closes
+        // it soundly.
+        //
+        // W2 CORRECTION TO THE PARAGRAPH ABOVE, appended not rewritten:
+        // `initiateRecovery` NOW refuses to overwrite an effectively-live request,
+        // but the quorum's renewal still exists — `cancelRecoveryByQuorum` then a
+        // fresh initiation, two explicit acts instead of one silent overwrite —
+        // so the veto the interlock would hand the quorum is unchanged and the
+        // rejection stands. "The only design that closes it soundly" was itself
+        // refuted afterwards (Design A bricks the vault, PR #188); the standing
+        // disposition is `SD4_DEDICATED_REMEDIATION = NOT_REQUIRED` (Recovery
+        // Amendment §4): the architecture-native lifecycle — quorum cancel, then
+        // a correctly-shaped fresh recovery — repairs SD-4 at every timing.
         _consume(DOMAIN_CREDENTIAL, nonce, deadline);
         pqVerifier = verifier;
         securityFloor = floor;
@@ -956,6 +1332,14 @@ contract VaultKernelPrototype {
         uint64 deadline
     ) external {
         _requireRecoveryOpen();
+        // A LIVE request is never overwritten (SD-9d). The quorum's exits from a
+        // live request are `cancelRecoveryByQuorum` and expiry, both explicit and
+        // both observable; an EXPIRED request's stale bytes hold no authority and
+        // do not block a fresh one, so no sweeper is ever needed. Checked before
+        // `_consume`, so a refused overwrite burns no guardian nonce — which is
+        // one of the premises the guardian-cancel replay argument rests on
+        // (Recovery Amendment §5).
+        if (_recoveryIsLive()) revert BadState();
         if (proposedSigner == address(0) || proposedVerifier == address(0)) revert ZeroAddress();
         if (proposedVerifier.code.length == 0) revert ZeroAddress();
 
@@ -998,7 +1382,9 @@ contract VaultKernelPrototype {
      */
     function cancelRecovery(uint256 nonce, uint64 deadline, bytes calldata ecdsaSig) external {
         _requireRecoveryOpen();
-        if (!recovery.active) revert NoRecovery();
+        // Only an effectively-live request is a challenge target. An expired one
+        // is refused before any nonce or budget is touched.
+        if (!_recoveryIsLive()) revert NoRecovery();
         if (recovery.challengesUsed >= CHALLENGE_LIMIT) revert ChallengeExhausted();
 
         bytes32 digest = _digest(
@@ -1019,6 +1405,45 @@ contract VaultKernelPrototype {
         emit RecoveryCancelled(recovery.challengesUsed);
     }
 
+    /**
+     * @notice K-9 mechanism B: the guardian quorum terminates an effectively-live
+     *         recovery directly (`CANCEL_RECOVERY`, architecture §8.1).
+     *
+     * @dev A DISTINCT authority from the credential's bounded challenge: a
+     *      different principal, a different nonce domain, a different event —
+     *      and it neither consumes nor refunds the challenge epoch. Only request
+     *      AUTHORITY is cleared; `challengesUsed` is left standing, and there is
+     *      no whole-struct delete here because that is reserved for
+     *      `executeRecovery`, the epoch's one reset boundary.
+     *
+     *      REPLAY, without a request identifier (Recovery Amendment §5): every
+     *      request is created by `initiateRecovery`, which always consumes a
+     *      `DOMAIN_GUARDIAN` nonce, and a live request is never overwritten, so
+     *      a cancellation pre-signed for request n is either nonce-invalid by the
+     *      time request n+1 exists or finds no live target and consumes nothing.
+     *      The digest also binds `guardianGeneration`, and `_requireQuorum` runs
+     *      before `_consume`, so a superseded constituency's authorisation dies
+     *      as QuorumNotMet before its nonce is even examined.
+     */
+    function cancelRecoveryByQuorum(QuorumProof calldata proof, uint256 nonce, uint64 deadline) external {
+        _requireRecoveryOpen();
+        if (!_recoveryIsLive()) revert NoRecovery();
+
+        bytes32 digest = _digest(
+            ACTION_RECOVER,
+            guardianGeneration,
+            keccak256("QUORUM_CANCEL_RECOVERY"),
+            DOMAIN_GUARDIAN,
+            nonce,
+            deadline
+        );
+        _requireQuorum(digest, proof);
+        _consume(DOMAIN_GUARDIAN, nonce, deadline);
+
+        recovery.active = false;
+        emit RecoveryCancelledByQuorum(recovery.challengesUsed);
+    }
+
     /// @notice Permissionless once matured — it carries no discretion.
     /**
      * @notice Permissionless once matured, but only on PROOF OF POSSESSION of
@@ -1029,15 +1454,51 @@ contract VaultKernelPrototype {
      * @dev Possession is proven against the INCOMING verifier, so a vault
      *      escaping a dead verifier proves against the replacement rather than
      *      against the corpse.
+     *
+     * @dev THE TWO GENERATIONS, and why only one of them is a question about
+     *      this call (`I-APPROVED-REQUEST-PRESERVATION`: "Once a request reaches
+     *      quorum, a guardian-set replacement cannot clear it"):
+     *
+     *      `r.boundGuardianGeneration` is the generation that APPROVED this
+     *      request — provenance of an effect the kernel has ALREADY admitted. It
+     *      is frozen at approval, never rewritten, and still bound into
+     *      `recoveryPossessionDigest()`, which is why a possession proof signed
+     *      before a rotation is still the right proof after one.
+     *
+     *      `guardianGeneration` is the generation holding CURRENT FRESH guardian
+     *      authority. Every fresh guardian act — initiation, quorum
+     *      cancellation, `setGuardians`, containment, migration binding — signs
+     *      a digest over THIS value, so a superseded roster dies as
+     *      `QuorumNotMet` before its nonce is even examined. A rotation
+     *      therefore costs the old roster every seat it held; what survives it
+     *      is one pre-committed effect, not a member.
+     *
+     *      Re-validating an already-admitted effect against the CURRENT
+     *      generation conflated the two, and that was SD-10: it let the quorum
+     *      destroy, merely by rotating, the request it had itself approved one
+     *      block earlier — a veto manufactured by exactly the principal class
+     *      recovery answers to, and one no principal could then clear before
+     *      expiry. Reinstating that check is the permanent mutant
+     *      `M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST`.
+     *
+     *      PRESERVATION IS NOT UNCONDITIONAL EXECUTION. Maturity, the half-open
+     *      expiry window, the `active` flag and `_requireIncomingPossession`
+     *      below all still stand, and each remains independently sufficient to
+     *      refuse this call.
      */
     function executeRecovery(CredentialChange calldata c) external {
         _requireRecoveryOpen();
         RecoveryRequest memory r = recovery;
         if (!r.active) revert NoRecovery();
         if (block.timestamp < r.executableAt) revert TooEarly();
-        if (block.timestamp > r.expiresAt) revert Expired();
-        // A roster change since the request invalidates it.
-        if (r.boundGuardianGeneration != guardianGeneration) revert BadRoster();
+        // HALF-OPEN window: `expiresAt` itself is already expired, the kernel's
+        // own convention for `containedUntil` and the reference model's for every
+        // expiry (SD-9e closed here). Deadlines are inclusive; expiries are not.
+        if (block.timestamp >= r.expiresAt) revert Expired();
+        // NO GENERATION RE-CHECK HERE, DELIBERATELY: an already-admitted request
+        // is never re-validated against the CURRENT roster. See this function's
+        // `@dev` note on the two generations for why, and the permanent mutant
+        // `M-SD10-GENERATION-INVALIDATES-APPROVED-REQUEST` for the guard.
 
         _requireIncomingPossession(
             recoveryPossessionDigest(),
@@ -1047,6 +1508,15 @@ contract VaultKernelPrototype {
             c
         );
 
+        // THE CHALLENGE-EPOCH RESET BOUNDARY (`I-RECOVERY-CHALLENGE-EPOCH`). This
+        // whole-struct delete is the ONLY place `challengesUsed` returns to zero,
+        // and it is intentional: the credential this recovery replaces could not
+        // authorise the transition, so the budget it spent belongs to a finished
+        // episode and the incoming credential receives the full allowance. Every
+        // other exit — credential challenge, quorum cancellation, expiry — clears
+        // request authority only. A future "cleanup" that deletes elsewhere, or
+        // that preserves the count here, breaks the epoch in one direction or the
+        // other; both are covered by permanent mutants.
         delete recovery;
         pqVerifier = r.proposedVerifier;
         _installCredential(r.proposedSigner, r.proposedPqKeyHash);
@@ -1111,9 +1581,11 @@ contract VaultKernelPrototype {
         if (_effectiveState() == SafeState.RETIRED) revert BadState();
         if (migration.bound) revert AlreadyBound();
         if (destination.vault == address(0) || destination.codeHash == bytes32(0)) revert DestinationMismatch();
-        // A pending recovery blocks binding: migration must never front-run the
-        // remedy (I-MIGRATION-SUBORDINATE-TO-RECOVERY).
-        if (recovery.active) revert NoRecovery();
+        // A LIVE recovery blocks binding: migration must never front-run the
+        // remedy (I-MIGRATION-SUBORDINATE-TO-RECOVERY). An EXPIRED request holds
+        // no authority and blocks nothing — expiry requires no principal to act
+        // (I-RECOVERY-TERMINATION), so no sweeper exists (SD-9b closed here).
+        if (_recoveryIsLive()) revert NoRecovery();
 
         {
             bytes32 digest = _digest(
