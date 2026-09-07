@@ -296,77 +296,77 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
       return null;
     },
   },
+  /*
+   * G-FLOOR-SANE — RETIRED IN LANE SD5-I, and retired because it would now be
+   * WRONG rather than merely idle. The distinction matters, so it is recorded.
+   *
+   * WHAT IT ASSERTED. That a mandatory PQ conjunct always declares a shape
+   * satisfiable at both ends: 0 < pqPublicKeyLength <= MAX_PQ_LENGTH, likewise
+   * for pqSignatureLength. Its enforcing construct was `_requireSaneFloor`.
+   *
+   * WHY IT CANNOT SIMPLY BE LEFT IN PLACE. This file is an ORACLE OVER OBSERVED
+   * STATE, not a mirror of the implementation. SD5-I made `_requireSaneFloor`
+   * vacuous, so a campaign may now legitimately reach `requirePq == true` with a
+   * zero or oversized length — and this oracle would have reported that as a
+   * VIOLATION. It is not one: the lengths are
+   * NON_AUTHORITATIVE_SECURITY_METADATA and no authorization, possession,
+   * satisfiability or downgrade path reads them, so no shape is "unsatisfiable"
+   * any more. Leaving the property would have made the campaign fail on
+   * conformant behaviour — a FALSE POSITIVE, which is worse than a gap because it
+   * would have been read as evidence the amendment broke something.
+   *
+   * THAT IT NEVER FIRED IS LUCK, NOT CORRECTNESS. It survived the post-amendment
+   * campaign only because no profile happened to generate a zero-length armed
+   * floor. An oracle that passes for want of an input is not passing.
+   *
+   * WHAT REPLACES IT. Nothing, deliberately, and the reason is the finding: the
+   * property it encoded — "the declared shape must be satisfiable" — presupposed
+   * that the shape CONSTRAINS satisfaction. It no longer does. The requirement
+   * that survives is `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`, which is
+   * the OPPOSITE quantification: moving these fields must not change whether an
+   * approved recovery executes. That is measured in
+   * test/Sd1RecoveryFloorBinding.test.ts rather than as a campaign global.
+   *
+   * MAX_PQ_LENGTH now has no reader in the kernel and is retained for ABI only;
+   * the getter is still pinned against the contract in
+   * test/Sd1RecoveryFloorBinding.test.ts, so its VALUE cannot drift unnoticed
+   * even though nothing enforces it.
+   */
   {
     /**
-     * A mandatory PQ conjunct must declare a shape that is satisfiable at BOTH
-     * ends. Zero is unsatisfiable because no preimage of a committed key has it;
-     * an unbounded `uint32` is unsatisfiable because no block could carry the
-     * calldata. The upper half is a REQUIREMENT-side property, not a restatement
-     * of the implementation: a kernel that bounded the shape more tightly still
-     * passes it.
-     */
-    name: "G-FLOOR-SANE",
-    source:
-      "_requireSaneFloor: requirePq implies 0 < pqPublicKeyLength <= MAX_PQ_LENGTH and 0 < pqSignatureLength <= MAX_PQ_LENGTH, on both initialize and setVerifier",
-    check: (s) => {
-      if (!s.floor.requirePq) return null;
-      if (s.floor.pqPublicKeyLength === 0n || s.floor.pqSignatureLength === 0n) {
-        return "requirePq is set with a zero-length key or signature shape";
-      }
-      // The literal mirrors VaultKernelPrototype.MAX_PQ_LENGTH. It is written out
-      // rather than read from the kernel deliberately: this file is the ORACLE,
-      // and an oracle that sources its threshold from the implementation cannot
-      // detect the implementation moving it. Mutant M18's sibling reasoning
-      // applies — the number is pinned in test/Sd1RecoveryFloorBinding.test.ts
-      // against the contract's own getter, so drift is caught there.
-      if (s.floor.pqPublicKeyLength > 65535n || s.floor.pqSignatureLength > 65535n) {
-        return (
-          "requirePq is set with a shape beyond any standardised PQ scheme (" +
-          s.floor.pqPublicKeyLength +
-          "/" +
-          s.floor.pqSignatureLength +
-          "), which the freeze would make a permanently unsatisfiable floor"
-        );
-      }
-      return null;
-    },
-  },
-  {
-    /**
-     * `I-FLOOR-SHAPE-IMMUTABLE` is the SD-1 remediation, and this is its
-     * REQUIREMENT-side statement rather than a mirror of the new comparisons.
-     * The requirement is that no principal may move state the recovery
-     * satisfiability condition reads — `_requireIncomingPossession` measures an
-     * already-quorum-approved recovery against the two STRUCTURAL fields LIVE,
-     * and no guardian path can repair them, so a kernel that lets them move
-     * while a PQ conjunct is mandatory hands the credential an uncounted veto. A
-     * kernel that froze them even harder still passes this.
+     * `I-NO-SILENT-DOWNGRADE-G1` — NARROWED IN LANE SD5-I, and the narrowing is
+     * the finding rather than a concession.
+     *
+     * This property formerly also required that `pqParamLevel` never decrease and
+     * that neither structural length move while a PQ conjunct was mandatory
+     * (`I-FLOOR-SHAPE-IMMUTABLE`, the SD-1 remediation). Both clauses are gone
+     * because the state they guarded is no longer security authority:
+     *
+     *   - the two lengths are NON_AUTHORITATIVE_SECURITY_METADATA. Freezing them
+     *     was SD-1's way of keeping credential-writable state out of an approved
+     *     recovery's satisfiability condition; SD5-I reaches the same goal by
+     *     making the state UNREAD, which is strictly stronger. What SD-1 bought at
+     *     the price of PERMANENT_PQ_AGILITY_LOSS — a well-formed ML-DSA-44 vault
+     *     could never reach ML-DSA-87, attacker or no attacker — is now free.
+     *     The requirement-side statement lives on as
+     *     `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`.
+     *   - `pqParamLevel` is the flat strength scalar architecture section 12
+     *     WITHDREW as "a scalar asserts a total order that does not exist". A
+     *     ratchet over it asserted an ordering the kernel cannot justify.
+     *
+     * WHAT SURVIVES IS THE WHOLE GENERATION-1 CLAIM: a mandatory PQ conjunct may
+     * not be silently disabled. Generation 1 makes NO claim about WHICH
+     * cryptographic relation the admitted verifier implements
+     * (`GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`, residual SD-11), so this
+     * governs the requirePq conjunct and NOT the strength behind it. A kernel
+     * that froze more still passes; a kernel that lets requirePq fall does not.
      */
     name: "G-FLOOR-NO-DOWNGRADE",
     source:
-      "_requireNoDowngrade: requirePq may not go true -> false, pqParamLevel may not decrease, and neither structural length may change while requirePq already holds (I-FLOOR-SHAPE-IMMUTABLE)",
+      "_requireNoDowngrade: requirePq may not go true -> false (I-NO-SILENT-DOWNGRADE-G1). The pqParamLevel ratchet and the two-length freeze were removed in SD5-I with those fields' authority.",
     check: (s, p) => {
       if (!p) return null;
       if (p.floor.requirePq && !s.floor.requirePq) return "requirePq was downgraded from true to false";
-      if (s.floor.pqParamLevel < p.floor.pqParamLevel) return "pqParamLevel decreased";
-      if (p.floor.requirePq && s.floor.pqPublicKeyLength !== p.floor.pqPublicKeyLength) {
-        return (
-          "pqPublicKeyLength moved (" +
-          p.floor.pqPublicKeyLength +
-          " -> " +
-          s.floor.pqPublicKeyLength +
-          ") while a PQ conjunct was already mandatory"
-        );
-      }
-      if (p.floor.requirePq && s.floor.pqSignatureLength !== p.floor.pqSignatureLength) {
-        return (
-          "pqSignatureLength moved (" +
-          p.floor.pqSignatureLength +
-          " -> " +
-          s.floor.pqSignatureLength +
-          ") while a PQ conjunct was already mandatory"
-        );
-      }
       return null;
     },
   },

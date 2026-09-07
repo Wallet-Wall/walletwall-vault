@@ -94,23 +94,38 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-2 reproduced here, SD-4 / SD-5 / SD-8 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-2 reproduced here, SD-4 / SD-8 / SD-11A / SD-11B next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
     // IDENTITY, NOT ARITHMETIC. A receipt can carry the right counts and the
     // wrong defects, so both sets are asserted by id; an entry that arrives or
     // leaves has to move these lists deliberately (Lane W2P).
+    // LANE SD5-I MOVED ONE ENTRY OUT AND ADDED TWO. SD-5 left this list for
+    // REMEDIATED_DEFECTS — de-authorising the three shape fields, not
+    // constraining the values they may take. In its place stand the two residuals
+    // that removal EXPOSED rather than created, and the distinction is the reason
+    // they are recorded at all: the structural length gate never supplied scheme
+    // binding (a forgeable relation placed AT the declared length defeated it on
+    // the unamended kernel too), so what follows was always true and is now
+    // merely visible.
+    //   SD-11A — the kernel cannot establish that an admitted verifier exposes
+    //            only ONE accepting relation. Measured, with a really-deployed
+    //            verifier and no setCode.
+    //   SD-11B — the kernel pins no code identity for an admitted verifier, so
+    //            in-place semantic change is NOT EXCLUDED. Deliberately recorded
+    //            as UNMEASURED rather than dressed up as a demonstrated capability.
     const SUSTAINED_IDS = [
       "SD-2-containment-window-is-tumbling",
       "SD-4-ecdsa-only-shape-declaration-is-uncounted",
-      "SD-5-permanent-shape-capture-on-the-declaring-edge",
       "SD-8-genesis-exhibit-cannot-prove-well-formedness",
+      "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+      "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
     ];
     expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
       [...SUSTAINED_IDS].sort(),
     );
-    expect(SUSTAINED_DEFECTS.length).to.equal(4);
+    expect(SUSTAINED_DEFECTS.length).to.equal(5);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -130,6 +145,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     const REMEDIATED_IDS = [
       "SD-1-floor-length-poisoning",
       "SD-3-setverifier-skips-genesis-satisfiability",
+      "SD-5-permanent-shape-capture-on-the-declaring-edge",
       "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
       "SD-7-genesis-admits-an-unsatisfiable-floor",
       "SD-9b-expired-request-retains-blocking-effect",
@@ -147,7 +163,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
     expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
       [...REMEDIATED_IDS].sort(),
     );
-    expect(REMEDIATED_DEFECTS.length).to.equal(9);
+    expect(REMEDIATED_DEFECTS.length).to.equal(10);
     // A defect is sustained or remediated, never both, and never twice.
     const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
     expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
@@ -226,7 +242,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
    * branches, so a revert-selector assertion could not distinguish a fixed
    * kernel from a broken one.
    */
-  it("SD-1 — REMEDIATED: the floor-length poisoning that vetoed recovery is now refused, and the recovery executes", async function () {
+  it("SD-1 — REMEDIATED, RE-INVERTED BY SD5-I: the poisoning write is now ADMITTED and the recovery executes anyway", async function () {
     const w = await deployWorld({ label: "sd1", verifier: "honest" });
 
     // 1. An HONEST guardian quorum (k = 2 distinct principals) approves a recovery.
@@ -251,24 +267,40 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-6, SD-7, SD
 
     // 2. The COMPROMISED credential (2 roots — the declared asset cut, so it has
     //    gained nothing it did not already have) attempts to change ONLY the
-    //    signature LENGTH. requirePq stays true and pqParamLevel does not
-    //    decrease, so the two ORIGINAL clauses of _requireNoDowngrade permit it.
-    //    I-FLOOR-SHAPE-IMMUTABLE is the third clause, and it does not.
+    //    signature LENGTH.
+    //
+    //    RE-INVERTED IN LANE SD5-I, AND THE MECHANISM IS THE POINT. At the SD-1
+    //    remediation this write was REFUSED by I-FLOOR-SHAPE-IMMUTABLE, and that
+    //    refusal was the evidence. SD5-I RETIRES that invariant, so the write is
+    //    now ADMITTED — and the recovery in step 3 completes anyway, because
+    //    _requireIncomingPossession no longer READS what the write moved.
+    //
+    //    SD-1's remedy made the state UNMOVABLE; SD5-I makes it UNREAD. The
+    //    second is strictly stronger: a freeze still has to be complete to work,
+    //    while state nothing consumes cannot be weaponised on ANY schedule. What
+    //    the freeze cost is what SD-5 measured — the shape became permanent
+    //    against every principal, so an honest ML-DSA-44 vault could never reach
+    //    ML-DSA-87 and a captured shape survived guardian recovery.
+    //
+    //    requirePq is HELD CONSTANT across this write, so the fact that step 3
+    //    still executes is attributable to the metadata alone. That is
+    //    I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE, which replaces
+    //    I-FLOOR-SHAPE-IMMUTABLE and deliberately excludes requirePq (still the
+    //    SD-4 residual).
     const before = await w.vault.securityFloor();
     expect(Number(before[3]), "the honest floor declares a 65-byte signature").to.equal(65);
-    await expect(
-      setVerifierAs(
-        w, w.verifiers.honest,
-        { requirePq: true, pqParamLevel: Number(before[1]), pqPublicKeyLength: 32, pqSignatureLength: 64 },
-        w.credKey, w.pqKey,
-      ),
-      "REMEDIATED: the poisoning transition is refused at the write",
-    ).to.be.revertedWithCustomError(w.vault, "Downgrade");
+    await setVerifierAs(
+      w, w.verifiers.honest,
+      { requirePq: true, pqParamLevel: Number(before[1]), pqPublicKeyLength: 32, pqSignatureLength: 64 },
+      w.credKey, w.pqKey,
+    );
     const after = await w.vault.securityFloor();
-    expect(Number(after[3]), "REMEDIATED: the recorded shape did not move").to.equal(65);
-    expect(Number(after[2]), "REMEDIATED: neither did the key shape").to.equal(Number(before[2]));
+    expect(Number(after[3]), "SD5-I: the write LANDS — the metadata is not frozen").to.equal(64);
+    expect(after[0], "requirePq is held CONSTANT, so step 3 isolates the metadata").to.equal(true);
+    expect(Number(after[1]), "and so is the level").to.equal(Number(before[1]));
 
-    // 3. AND THE POINT. The recovery this attack existed to veto now completes.
+    // 3. AND THE POINT, now carried entirely by NON-CONSUMPTION. The recovery
+    //    this attack existed to veto completes even though the write LANDED.
     //    Asserted as an OBSERVED INSTALL, because _requireIncomingPossession
     //    reverts BadSignature from three branches and the absence of one
     //    particular revert would prove nothing.

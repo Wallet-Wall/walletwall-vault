@@ -80,16 +80,46 @@ contract VaultKernelPrototype {
     bytes32 public pqPublicKeyHash;
 
     /**
-     * @dev K-15 — the KERNEL-RECORDED cryptographic floor (architecture 4.3
-     *      component 2, and 12). It is never read from the verifier, which is
-     *      the whole point: a plane cannot report its own strength.
+     * @dev K-15 — the KERNEL-RECORDED cryptographic floor. AMENDED BY SD5-I.
+     *
+     *      ONE field is security authority in Generation 1:
      *
      *      `requirePq` decides whether the PQ conjunct is MANDATORY. It is
-     *      deliberately NOT the caller's choice — see `_authorise`.
-     *      `pqParamLevel` is a WITHIN-FAMILY level and may only increase
-     *      (I-NO-SILENT-DOWNGRADE). The two lengths are the structural
-     *      rejection of component 1: pure integer comparisons the kernel
-     *      performs itself, needing no trust in any verifier.
+     *      deliberately NOT the caller's choice (see `_authorise`), and it is
+     *      MONOTONE: true -> false is refused (`I-NO-SILENT-DOWNGRADE-G1`).
+     *
+     *      THE OTHER THREE ARE NOT SECURITY AUTHORITY, and the precise
+     *      classification matters because two earlier and weaker labels were
+     *      withdrawn on measurement. They are NOT "compatibility only" and NOT
+     *      "inert": each is
+     *
+     *          SIGNED_METADATA                   — covered by the `setVerifier`
+     *                                              action digest, so a signature
+     *                                              over one floor cannot install
+     *                                              another (SD5-A1R C2);
+     *          IDENTITY_BOUND_METADATA           — hashed into `genesisSalt`, so
+     *                                              each one changes the
+     *                                              counterfactual CREATE2 address
+     *                                              (SD5-A1R C1);
+     *          NON_AUTHORITATIVE_SECURITY_METADATA;
+     *          ABI_COMPATIBILITY.
+     *
+     *      And explicitly NOT: `AUTHORIZATION_INPUT`, NOT
+     *      `RECOVERY_SATISFIABILITY_INPUT`, NOT `CRYPTOGRAPHIC_STRENGTH`.
+     *
+     *      CONSEQUENCE, STATED RATHER THAN GLOSSED: the vault's address remains
+     *      committed to values the runtime kernel no longer treats as security
+     *      authority. Two deployments differing only in this metadata land at
+     *      DIFFERENT addresses, and anyone computing a counterfactual address must
+     *      still supply the exact tuple. That is a documentation obligation, not a
+     *      cryptographic property, and it must never be published as evidence that
+     *      these fields still bind anything about the scheme.
+     *
+     *      `pqParamLevel` additionally reaches off-chain through
+     *      `SecurityFloorChanged`, which events `(requirePq, pqParamLevel)` and
+     *      NOT the two lengths — the widest surface of the three, and therefore
+     *      the one most likely to propagate a false strength claim. It carries
+     *      none: architecture section 12 withdrew the flat scalar it instantiates.
      */
     struct SecurityFloor {
         bool requirePq;
@@ -222,18 +252,27 @@ contract VaultKernelPrototype {
     uint64 public constant CONTAINMENT_BUDGET = 6 days; // B < W
     uint32 public constant CHALLENGE_LIMIT = 2;
     /**
-     * @dev The largest PQ key or signature shape a floor may declare.
+     * @dev RETAINED FOR ABI COMPATIBILITY SINCE SD5-I. IT HAS NO READER.
      *
-     *      WHY A BOUND MUST EXIST. The two length fields are `uint32`, so an
-     *      unbounded floor may demand a 4,294,967,295-byte proof — calldata no
-     *      block could ever carry, and therefore a floor no possession proof can
-     *      ever satisfy. `I-FLOOR-SHAPE-IMMUTABLE` would then make that
-     *      unsatisfiability PERMANENT, which is the whole reason this bound is
-     *      part of the same change rather than a separate tidy-up.
+     *      It FORMERLY bounded the largest PQ key or signature shape a floor
+     *      could declare. Under E-PRIME the two length fields are
+     *      NON_AUTHORITATIVE_SECURITY_METADATA — no authorization, possession or
+     *      satisfiability path reads them — so there is no shape left to bound.
+     *      `_requireSaneFloor` states the same disposition at its own natspec,
+     *      including the instruction this comment previously violated: this
+     *      constant must NOT be documented as preventing unsatisfiable floors.
      *
-     *      WHERE THE BOUND SITS is a different question, answered on different
+     *      WHY A BOUND ONCE HAD TO EXIST, kept as record. The two length fields
+     *      are `uint32`, so an unbounded floor could demand a 4,294,967,295-byte
+     *      proof — calldata no block could ever carry, and therefore a floor no
+     *      possession proof could ever satisfy. `I-FLOOR-SHAPE-IMMUTABLE` would
+     *      then have made that unsatisfiability PERMANENT, which was the whole
+     *      reason the bound shipped in the same change rather than as a separate
+     *      tidy-up. SD5-I retired that invariant, which removed the operand.
+     *
+     *      WHERE THE BOUND SAT was a different question, answered on different
      *      grounds: 65,535 admits every standardised PQ shape, SPHINCS+-256f's
-     *      49,856-byte signature included. It is NOT a claim that 65,536 bytes
+     *      49,856-byte signature included. It was NOT a claim that 65,536 bytes
      *      is unmineable — it plainly is not — only that no real scheme needs it.
      */
     uint32 public constant MAX_PQ_LENGTH = 65_535;
@@ -351,8 +390,9 @@ contract VaultKernelPrototype {
         // SD-7. The line above tests only ZERO-ness, so it catches the
         // degenerate unsatisfiable genesis and admits every other one. These two
         // give the induction an authenticated base: a stored commitment always
-        // had a preimage exhibited to the kernel, and where a shape is declared
-        // that preimage carries it.
+        // had a preimage exhibited to the kernel. (Before SD5-I that preimage
+        // also had to carry the declared shape; the SD5-I note below records
+        // the removal of that length conjunct.)
         //
         // NO VERIFIER IS CONSULTED HERE, for the same reason `setVerifier` does
         // not consult one on the declaring edge: the deployer CHOOSES
@@ -363,8 +403,13 @@ contract VaultKernelPrototype {
         // determined to build a dead vault still can. What is closed is the
         // structurally CONTRADICTORY genesis a well-intentioned deployer
         // reaches by accident.
+        // SD5-I: the exhibit survives; its LENGTH conjunct does not. What the
+        // exhibit proves is unchanged and deliberately narrow — a preimage of the
+        // committed hash was known at admission — which is what makes the kernel's
+        // later keccak measurement an INDUCTIVE invariant rather than an assumption
+        // about genesis. It has never proven possession of a signing capability,
+        // and SD-8 is untouched by this lane in either direction.
         if (g.pqKeyHash != bytes32(0) && keccak256(pqKey) != g.pqKeyHash) revert BadSignature();
-        if (g.floor.requirePq && pqKey.length != g.floor.pqPublicKeyLength) revert BadSignature();
 
         securityFloor = g.floor;
         ecdsaSigner = g.signer;
@@ -387,14 +432,29 @@ contract VaultKernelPrototype {
         );
     }
 
-    /// @dev A floor that demands a PQ conjunct must declare satisfiable shapes —
-    ///      satisfiable at BOTH ends. Zero is unsatisfiable because no preimage
-    ///      of a committed key has it; an unbounded `uint32` is unsatisfiable
-    ///      because the calldata carrying it would not fit in a block.
+    /**
+     * @dev VACUOUS SINCE SD5-I, AND KEPT DELIBERATELY RATHER THAN DELETED.
+     *
+     *      It formerly bounded the two structural lengths against 0 and
+     *      `MAX_PQ_LENGTH`, on the reasoning that a floor demanding a PQ conjunct
+     *      must declare SATISFIABLE shapes. Under E-PRIME the lengths are
+     *      NON_AUTHORITATIVE_SECURITY_METADATA: no authorization, possession or
+     *      satisfiability path reads them, so there is no shape left to render
+     *      unsatisfiable and nothing for this bound to protect.
+     *
+     *      The function and its two call sites are retained because the accepted
+     *      amendment is exactly the DE-AUTHORISATION transform that SD5-A1R
+     *      measured (runtime 18,367 -> 17,695 B, ABI and storage byte-identical).
+     *      Deleting the helper is a separate tidy, NOT part of the accepted
+     *      amendment, and must be measured on its own before it is taken.
+     *
+     *      `MAX_PQ_LENGTH` consequently has no reader. It is retained for ABI
+     *      compatibility — its selector is part of the measured byte-identical
+     *      surface — and it must NOT be documented as preventing unsatisfiable
+     *      floors, because those floors no longer participate in authorization.
+     */
     function _requireSaneFloor(SecurityFloor calldata floor) internal pure {
         if (!floor.requirePq) return;
-        if (floor.pqPublicKeyLength == 0 || floor.pqSignatureLength == 0) revert BadSignature();
-        if (floor.pqPublicKeyLength > MAX_PQ_LENGTH || floor.pqSignatureLength > MAX_PQ_LENGTH) revert BadSignature();
     }
 
     /**
@@ -534,11 +594,25 @@ contract VaultKernelPrototype {
         SecurityFloor memory floor = securityFloor;
         if (!floor.requirePq) return;
 
-        // FLOOR component 1: structural length rejection. Pure integer
-        // comparisons, performed by the kernel, trusting no verifier.
-        if (pqKey.length != floor.pqPublicKeyLength || pqSig.length != floor.pqSignatureLength) {
-            revert BadSignature();
-        }
+        // SD5-I / E-PRIME. The structural length rejection that stood here is
+        // REMOVED, and the justification it carried — "pure integer comparisons,
+        // performed by the kernel, trusting no verifier" — was MEASURABLY FALSE
+        // for the case it named: against an over-permissive verifier the equality
+        // refused nothing, because a caller pads to the declared length and the
+        // spend lands (SD5-D1 probe X1). It was SHAPE-scoped, never
+        // strength-scoped: a verifier exposing a forgeable alternate relation AT
+        // the declared length defeated it identically (SD5-A1R M6).
+        //
+        // Scheme-specific structural validity is the VERIFIER's duty. FIPS 204
+        // 3.6.2 binds "an implementation of ML-DSA" to RETURN FALSE on inputs of
+        // the wrong length; it places no duty on a scheme-agnostic caller, and
+        // duplicating it here bound this kernel to one scheme's encoding while
+        // proving nothing (SD5-A1 section 2, read first-hand).
+        //
+        // What survives is the kernel's OWN binding — the exact committed key
+        // bytes — which is a possession-independent statement about identity, not
+        // a claim about the scheme behind it. See `I-NO-SILENT-DOWNGRADE-G1` and
+        // residual SD-11 for what Generation 1 does and does not claim.
         if (keccak256(pqKey) != pqPublicKeyHash) revert BadSignature();
 
         // PLANE: consulted only to impose an ADDITIONAL requirement.
@@ -546,17 +620,28 @@ contract VaultKernelPrototype {
     }
 
     /**
-     * @dev `I-NO-SILENT-DOWNGRADE`. A floor transition may only be neutral or
-     *      strengthening. Turning `requirePq` off, or lowering the parameter
-     *      level, is REFUSED outright rather than gated on a higher authority:
-     *      there is no principal in this design entitled to weaken the floor.
+     * @dev `I-NO-SILENT-DOWNGRADE-G1`, NARROWED BY SD5-I to its one true clause:
+     *      a MANDATORY PQ CONJUNCT MAY NOT BE SILENTLY DISABLED. Turning
+     *      `requirePq` off is REFUSED outright rather than gated on a higher
+     *      authority — no principal in this design is entitled to disable it.
+     *      That is the whole of the Generation-1 claim; the body below records
+     *      why it had to shrink.
      *
-     *      `I-FLOOR-SHAPE-IMMUTABLE` — the third clause, and the fix for SD-1.
-     *      The two STRUCTURAL fields are FROZEN once a PQ conjunct is mandatory.
-     *      They were previously unconstrained, and `_requireIncomingPossession`
-     *      measures an ALREADY-QUORUM-APPROVED recovery against them LIVE, so the
+     *      THE OTHER TWO CLAUSES THIS NATSPEC ONCE CARRIED ARE GONE. The
+     *      `pqParamLevel` ratchet is REMOVED, and so is the two-length freeze.
+     *      A floor transition is therefore NOT constrained to be "neutral or
+     *      strengthening": `pqPublicKeyLength`, `pqSignatureLength` and
+     *      `pqParamLevel` are NON_AUTHORITATIVE_SECURITY_METADATA and are
+     *      writable on every `setVerifier`.
+     *
+     *      `I-FLOOR-SHAPE-IMMUTABLE` — RETIRED BY SD5-I, recorded here as
+     *      history because the reasoning it settled is still worth having.
+     *      It WAS the third clause and the fix for SD-1: the two STRUCTURAL
+     *      fields WERE FROZEN once a PQ conjunct was mandatory. They had
+     *      previously been unconstrained, and `_requireIncomingPossession` THEN
+     *      measured an ALREADY-QUORUM-APPROVED recovery against them LIVE, so the
      *      credential principal held a veto over guardian recovery that
-     *      `CHALLENGE_LIMIT` never saw. The remedy is to REMOVE that state from
+     *      `CHALLENGE_LIMIT` never saw. The remedy was to REMOVE that state from
      *      the satisfiability condition — not to count the veto, and not to
      *      snapshot the floor into the request:
      *
@@ -571,25 +656,53 @@ contract VaultKernelPrototype {
      *          the snapshot, and a recovery that did complete would install a
      *          credential the live floor could never use.
      *
-     *      `pqParamLevel` is deliberately NOT frozen: it is recorded strength,
-     *      neither `_authorise` nor `_requireIncomingPossession` reads it, and it
-     *      therefore cannot unsettle a pending recovery. The ratchet stays free.
+     *      E-PRIME reaches the same SD-1 goal by a different route: the freeze
+     *      made the state UNMOVABLE, and this makes it UNREAD. SD-1 stays
+     *      remediated because nothing consumes what a floor write puts there.
+     *
+     *      `pqParamLevel` is neither frozen NOR ratcheted. It is NOT recorded
+     *      cryptographic strength — it is NON_AUTHORITATIVE_SECURITY_METADATA,
+     *      and neither `_authorise` nor `_requireIncomingPossession` reads it, so
+     *      it cannot unsettle a pending recovery.
      *
      *      The guard reads `current.requirePq`, so a vault born ECDSA-only may
-     *      still declare its shape once, on the `false -> true` edge. That edge
-     *      retains ONE uncounted arming move against a pending recovery; it is
-     *      RECORDED in `stateful/defects.ts` rather than silently absorbed, and
-     *      `MAX_PQ_LENGTH` is what keeps it one-shot rather than permanent.
+     *      still ARM the PQ conjunct once, on the `false -> true` edge. That edge
+     *      retains ONE uncounted arming move against a pending recovery, and it
+     *      is RECORDED in `stateful/defects.ts` rather than silently absorbed.
+     *      The declared SHAPE is no longer one-shot and no longer bounded:
+     *      `MAX_PQ_LENGTH` has no reader, and the lengths may be rewritten on any
+     *      later `setVerifier` without effect on any authorization path.
      */
     function _requireNoDowngrade(SecurityFloor memory next) internal view {
         SecurityFloor memory current = securityFloor;
+        // `I-NO-SILENT-DOWNGRADE-G1`, the narrowest TRUE form (SD5-A1 section 8):
+        // a mandatory PQ conjunct may not be silently disabled. That is the whole
+        // of the Generation-1 claim, and the two clauses SD5-I removed are why the
+        // claim had to shrink.
+        //
+        // REMOVED — the pqParamLevel RATCHET. Architecture section 12 itself
+        // WITHDREW the flat strength scalar as "a scalar asserts a total order
+        // that does not exist", and this field is that withdrawn construct: it
+        // carries no family, and section 12's R4 makes paramLevel meaningful
+        // within-family and ONLY within-family. Ratcheting it asserted an ordering
+        // the kernel cannot justify, while the encoding it named stayed frozen —
+        // the LABEL of an upgrade without its SUBSTANCE.
+        //
+        // REMOVED — `I-FLOOR-SHAPE-IMMUTABLE`, the two-length freeze. It was
+        // SD-1's remedy, and it worked by making the state UNMOVABLE. SD-5 showed
+        // the cost: the shape chosen once became permanent against EVERY
+        // principal, a guardian quorum included, on honest vaults as much as
+        // captured ones. E-PRIME reaches SD-1's goal by making the state UNREAD
+        // instead — measured as SD5-A1 S1a/S1b, where the SD-1 move is now
+        // ADMITTED and the approved recovery still completes, because nothing
+        // consumes what it wrote. The invariant is RETIRED, not weakened: with no
+        // authoritative shape it has no operand.
+        //
+        // Generation 1 makes NO claim about which cryptographic relation the
+        // admitted verifier implements (`GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`,
+        // residual SD-11), so "no silent downgrade" governs the requirePq conjunct
+        // and NOT the strength of the relation behind it.
         if (current.requirePq && !next.requirePq) revert Downgrade();
-        if (next.pqParamLevel < current.pqParamLevel) revert Downgrade();
-        if (
-            current.requirePq &&
-            (next.pqPublicKeyLength != current.pqPublicKeyLength ||
-                next.pqSignatureLength != current.pqSignatureLength)
-        ) revert Downgrade();
     }
 
     /**
@@ -659,25 +772,32 @@ contract VaultKernelPrototype {
         // the ECDSA-only rotation and the clear-then-rotate escape.
         //
         // THE ABSENCE OF A LENGTH COMPARISON HERE IS THE DESIGN, NOT AN
-        // OVERSIGHT. While `requirePq` is false, `_requireSaneFloor` returns
-        // before every bound, so BOTH dormant length fields are unvalidated and
-        // may hold any `uint32` — `MAX_PQ_LENGTH` is not applied on that path,
-        // and `_requireNoDowngrade`'s freeze is guarded on the CURRENT floor.
-        // Reading them here would let one `false -> false` `setVerifier` at cut
-        // 1 write `pqPublicKeyLength = type(uint32).max` and make every later
-        // credential install — `executeRecovery` INCLUDED — undeliverable
-        // forever, with no writer of `securityFloor` reachable by any guardian
-        // path to undo it. That is a permanent, uncounted, cut-1 veto over the
-        // remedy: a strictly worse form of the harm the SD-4 interlock was
-        // rejected for. The shape is bound where it EXISTS — at the declaring
-        // edge, by `I-DECLARATION-EXHIBITED`.
+        // OVERSIGHT — and SD5-I GENERALISES that design to the armed path too.
+        // The original reasoning, preserved because it is still the reason the
+        // DORMANT branch reads no length: while `requirePq` is false the length
+        // fields are unvalidated, so reading them would let one `false -> false`
+        // `setVerifier` at cut 1 pin `pqPublicKeyLength = type(uint32).max` and
+        // make every later credential install — `executeRecovery` INCLUDED —
+        // undeliverable forever, with no guardian-reachable writer of
+        // `securityFloor` to undo it.
+        //
+        // SD-5 then measured that the ARMED branch had the SAME defect in a
+        // slower form: the shape chosen once on the declaring edge was frozen for
+        // the life of the vault and measured LIVE here, so a captured shape made
+        // every future credential — rotation and guardian recovery alike —
+        // undeliverable. That was PERMANENT_PQ_AGILITY_LOSS, and it reached
+        // HONEST vaults with no attacker at all (an ML-DSA-44 vault could never
+        // move to ML-DSA-87). SD5-I removes the armed comparison for the same
+        // reason the dormant one never existed.
+        //
+        // `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE` is what this buys:
+        // the three non-authoritative metadata fields can no longer change
+        // whether an APPROVED recovery executes. `requirePq` is deliberately
+        // OUTSIDE that invariant and remains the SD-4 declaring-edge residual.
         if (!floor.requirePq && expectedPqKeyHash != bytes32(0) && keccak256(c.newPqKey) != expectedPqKeyHash) {
             revert BadSignature();
         }
         if (!floor.requirePq) return;
-        if (c.newPqKey.length != floor.pqPublicKeyLength || c.newPqPop.length != floor.pqSignatureLength) {
-            revert BadSignature();
-        }
         if (keccak256(c.newPqKey) != expectedPqKeyHash) revert BadSignature();
         if (!IKernelPQVerifier(verifierToUse).verify(popDigest, c.newPqKey, c.newPqPop)) revert BadSignature();
     }
@@ -845,8 +965,10 @@ contract VaultKernelPrototype {
     /**
      * @notice Replace the verifier and, in the same act, declare the floor the
      *         new verifier is trusted for. The two are inseparable: a verifier
-     *         swap that left the recorded strength behind would be a downgrade
-     *         with no transition to refuse.
+     *         swap that left the `requirePq` conjunct behind would be a downgrade
+     *         with no transition to refuse. Since SD5-I that conjunct is the ONLY
+     *         part of the floor with authority — the three metadata fields travel
+     *         with the swap but constrain nothing.
      *
      * @dev **HYBRID-AUTHORISED, and that is the fix for finding A2.** An earlier
      *      draft gated this on the ECDSA conjunct alone, reasoning that
@@ -887,11 +1009,16 @@ contract VaultKernelPrototype {
         _requireSaneFloor(floor);
         // ---- THE DECLARING EDGE -----------------------------------------
         // `requirePq` false -> true is the ONE transition in a vault's life that
-        // arms the PQ conjunct and chooses BOTH structural lengths freely: the
-        // freeze in `_requireNoDowngrade` is guarded on the CURRENT floor, and
-        // `requirePq` is monotone, so it happens at most once and is
-        // irreversible. ONE clause holds at that moment, in two conjuncts, and
-        // both bind `pqPublicKeyHash`: a length and a preimage.
+        // ARMS the PQ conjunct: `requirePq` is monotone, so it happens at most
+        // once and is irreversible. ONE clause holds at that moment, and it
+        // binds `pqPublicKeyHash`: a preimage.
+        //
+        // NARROWED BY SD5-I. Pre-SD5-I this edge was ALSO the only place the two
+        // structural lengths could be chosen, because the freeze in
+        // `_requireNoDowngrade` was guarded on the CURRENT floor and fixed them
+        // thereafter; the clause here then had TWO conjuncts, a length and a
+        // preimage. The freeze is retired and the length conjunct is removed, so
+        // the lengths are writable on every later `setVerifier` and bind nothing.
         //
         // CORRECTED. An earlier revision of this comment said a second clause
         // "protects `recovery.proposedPqKeyHash`". No such clause exists — the
@@ -900,12 +1027,12 @@ contract VaultKernelPrototype {
         // from the removed code and contradicted both the block below it and
         // `stateful/defects.ts`.
         //
-        // The two conjuncts here are NOT redundant with
+        // The clause here is NOT redundant with
         // `I-COMMITMENT-EXHIBITED-AT-ADMISSION`. That invariant proves a
-        // preimage existed when the commitment was INSTALLED, under whatever
-        // shape was then in force — possibly none. This one proves the
-        // DECLARER, who may be a different principal, holds a preimage at the
-        // length being declared NOW, which did not exist at install time.
+        // preimage existed when the commitment was INSTALLED. This one proves
+        // the DECLARER, who may be a different principal, holds a preimage NOW,
+        // which did not exist at install time. (Pre-SD5-I both were additionally
+        // bound to the declared LENGTH; that binding is removed on both sides.)
         // Neither implies the other, and the mutation catalogue proves both
         // directions: M19 and M20 kill a kernel missing THIS clause, while M21
         // and M22 kill one missing the admission clause.
@@ -920,9 +1047,11 @@ contract VaultKernelPrototype {
         // ORDER: this runs AFTER `_authorise`, so an unauthorised caller learns
         // nothing from a satisfiability revert, and BEFORE `_consume`, so a
         // refusal burns no nonce. It also runs after `_requireSaneFloor`, which
-        // means a zero-length declaration is already refused by the time we get
-        // here — that is tidier attribution, not a security dependency: the two
-        // are independent guards and either order refuses the same calls.
+        // since SD5-I refuses NOTHING — that helper is vacuous — so the ordering
+        // now buys attribution tidiness only. It FORMERLY meant a zero-length
+        // declaration was already refused by the time we got here, and even then
+        // it was not a security dependency: the two were independent guards and
+        // either order refused the same calls.
 
         // `I-DECLARATION-EXHIBITED`. Every OTHER floor-touching transition
         // already MEASURES the committed key — `_authorise` on a true->true
@@ -939,9 +1068,13 @@ contract VaultKernelPrototype {
         // NO SIGNATURE LEG AND NO VERIFIER CALL, deliberately: the declarer
         // chooses the verifier in this same transaction, so anything that
         // verifier validates is self-certification and proves nothing.
-        if (!securityFloor.requirePq && floor.requirePq && pqKey.length != floor.pqPublicKeyLength) {
-            revert BadSignature();
-        }
+        // SD5-I NARROWS `I-DECLARATION-EXHIBITED` to its surviving half: the
+        // declarer must exhibit the exact PREIMAGE of the committed
+        // `pqPublicKeyHash`. The LENGTH conjunct is removed with the field's
+        // authority. That half was in any case the weaker one — SD-5 Form B
+        // reproduced against an HONEST incumbent key and correct key length,
+        // taking its vacuity entirely in `pqSignatureLength`, which no commitment
+        // anywhere bound.
         if (!securityFloor.requirePq && floor.requirePq && keccak256(pqKey) != pqPublicKeyHash) {
             revert BadSignature();
         }

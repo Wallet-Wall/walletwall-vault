@@ -152,7 +152,14 @@ function setVerifierParams(verifier: string, floor: Floor): string {
  */
 const PQ_KEY_LABEL = "pq-key";
 const PQ_KEY = ethers.hexlify(ethers.toUtf8Bytes(PQ_KEY_LABEL));
-/** The STRUCTURAL shape the kernel checks. Sizes only — never content. */
+/**
+ * The two structural lengths the floor RECORDS. Since SD5-I they are
+ * SIGNED_METADATA + IDENTITY_BOUND_METADATA + NON_AUTHORITATIVE_SECURITY_METADATA
+ * + ABI_COMPATIBILITY: they are bound into the genesis salt and into every
+ * `setVerifier` digest, and they are stored — but they are explicitly NOT
+ * AUTHORIZATION_INPUT, NOT RECOVERY_SATISFIABILITY_INPUT and NOT
+ * CRYPTOGRAPHIC_STRENGTH. No kernel path reads either value.
+ */
 const PQ_PUBLIC_KEY_LENGTH = ethers.dataLength(PQ_KEY);
 const PQ_SIGNATURE_LENGTH = 3309;
 /** A correctly SHAPED signature. Its content is meaningless — see the header. */
@@ -161,8 +168,10 @@ const PQ_SIG = ethers.hexlify(new Uint8Array(PQ_SIGNATURE_LENGTH));
 /**
  * The KERNEL-RECORDED floor the fixture commits to. `requirePq` is the KERNEL's
  * decision, never the CALLER's, so a HYBRID vault demands the PQ conjunct on
- * every asset-moving path. The two lengths are the structural rejection the
- * kernel performs itself, trusting no verifier.
+ * every asset-moving path. `pqParamLevel` and the two lengths are RECORDED
+ * alongside it and are read by nothing: the kernel's own binding in `_authorise`
+ * is `keccak256(pqKey) == pqPublicKeyHash`, and scheme-specific structural
+ * validity is the VERIFIER's duty (SD5-A1R).
  */
 const HYBRID_FLOOR = {
   requirePq: true,
@@ -173,9 +182,11 @@ const HYBRID_FLOOR = {
 const ECDSA_ONLY_FLOOR = { requirePq: false, pqParamLevel: 0, pqPublicKeyLength: 0, pqSignatureLength: 0 };
 
 /** A second PQ factor, for rotation/recovery targets that must be POSSESSED. */
-// SAME LENGTH as PQ_KEY: the kernel structural check compares against the
-// declared floor length, so a second factor of a different size is refused
-// before the verifier is ever consulted.
+// SAME LENGTH as PQ_KEY, retained because the fixture's shape is now
+// incidental rather than load-bearing: since SD5-I no kernel path compares a
+// key or signature against a declared floor length, so a second factor of a
+// different size would be admitted identically. What the kernel does bind is
+// this key's COMMITMENT, `PQ_HASH_2`.
 const PQ_KEY_2_LABEL = "pqkey2";
 const PQ_KEY_2 = ethers.hexlify(ethers.toUtf8Bytes(PQ_KEY_2_LABEL));
 const PQ_HASH_2 = ethers.id(PQ_KEY_2_LABEL);
@@ -591,29 +602,93 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       // THE DEFECT THIS PINS. An earlier draft engaged the PQ leg only when the
       // caller supplied a non-empty signature, so anyone holding the ECDSA key
       // alone could downgrade HYBRID to ECDSA-only through the ARGUMENT LIST.
-      // Under a `requirePq` floor an omitted or mis-shaped PQ leg is refused.
+      // Under a `requirePq` floor an omitted PQ leg is refused. The verifier
+      // here is ALWAYS_TRUE, so `VerifierDenied` cannot be what kills this call
+      // and the SPECIFIC error names the kernel as the refuser.
       await expect(f.vault.execute(to, amount, 0, BigInt(2 ** 40), sig, "0x", "0x")).to.be.revertedWithCustomError(
         f.vault,
         "BadSignature",
       );
-      // A structurally WRONG length is refused by the kernel itself, before the
-      // verifier is consulted at all (FLOOR component 1).
+
+      // NARROWED at SD5-I. This leg previously fed a 10-byte `pqSig` and
+      // asserted `BadSignature`, resting on the pqSig/pqSignatureLength equality
+      // in `_authorise`. That equality is REMOVED, so the operand of that
+      // assertion no longer exists and asserting it would be vacuous. What
+      // survives is the kernel's OWN binding — the exact committed key bytes —
+      // so the surviving leg is exercised with a COMMITMENT mismatch instead of
+      // a length mismatch: a correctly-SHAPED key the vault never committed to.
+      const uncommittedKey = ethers.hexlify(ethers.toUtf8Bytes("pq-KEY")); // same length, wrong bytes
+      expect(ethers.dataLength(uncommittedKey)).to.equal(PQ_PUBLIC_KEY_LENGTH);
+      expect(ethers.keccak256(uncommittedKey)).to.not.equal(ethers.id(PQ_KEY_LABEL));
       await expect(
-        f.vault.execute(to, amount, 0, BigInt(2 ** 40), sig, ethers.hexlify(new Uint8Array(10)), PQ_KEY),
+        f.vault.execute(to, amount, 0, BigInt(2 ** 40), sig, PQ_SIG, uncommittedKey),
       ).to.be.revertedWithCustomError(f.vault, "BadSignature");
-      // Control: correctly shaped material succeeds.
-      await (await f.vault.execute(to, amount, 0, BigInt(2 ** 40), sig, PQ_SIG, PQ_KEY)).wait();
+
+      // INVERTED at SD5-I, and this is the delta itself rather than a repair.
+      // The same 10-byte `pqSig` that the removed equality refused is now
+      // ADMITTED: the kernel does not read `pqSignatureLength`, and against a
+      // verifier that accepts, the spend LANDS. The gate it replaces was
+      // SHAPE-SCOPED — a caller who padded to the declared length defeated it
+      // (SD5-D1 probe X1), and a verifier exposing a forgeable alternate
+      // relation AT the declared length defeated it identically (SD5-A1R M6).
+      // Scheme-specific structural validity is the VERIFIER's duty, and
+      // Generation 1 makes NO claim about which relation the admitted verifier
+      // implements (residual SD-11).
+      //
+      // Asserting the SUCCESS, not merely the absence of the old revert, is
+      // what makes this a live guard against reintroducing a length gate — a
+      // minimum was measured and REJECTED, because "S = MIN + 1" defeats it.
+      const before = await ethers.provider.getBalance(to);
+      await (
+        await f.vault.execute(to, amount, 0, BigInt(2 ** 40), sig, ethers.hexlify(new Uint8Array(10)), PQ_KEY)
+      ).wait();
+      expect(await ethers.provider.getBalance(to)).to.equal(before + amount);
+
+      // Control: correctly shaped material succeeds too, at the next nonce. Both
+      // arms landing is the full statement — the length discriminates in NEITHER
+      // direction, which is what NON_AUTHORITATIVE_SECURITY_METADATA means.
+      const d2 = digestOf(parts(f, { params: spendParams(to, amount), nonce: 1n }));
+      await (await f.vault.execute(to, amount, 1, BigInt(2 ** 40), signDigest(f.ownerKey, d2), PQ_SIG, PQ_KEY)).wait();
     });
 
-    it("M-K27 — I-NO-SILENT-DOWNGRADE: the recorded floor may never be weakened", async function () {
+    /**
+     * RETITLED AND NARROWED AT SD5-I — a record of the accepted amendment, not
+     * a test repair.
+     *
+     * This asserted that "the recorded floor may never be weakened" on THREE
+     * clauses. Two of them are gone:
+     *
+     *   - the `pqParamLevel` RATCHET. Architecture section 12 itself withdrew
+     *     the flat strength scalar, because a scalar asserts a total order that
+     *     does not exist; paramLevel is meaningful within-family and ONLY
+     *     within-family, and this field carries no family. Ratcheting it pinned
+     *     the LABEL of an upgrade without its substance.
+     *   - `I-FLOOR-SHAPE-IMMUTABLE`, the two-length freeze. It is RETIRED, not
+     *     weakened. Its replacement is
+     *     `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`: for an APPROVED
+     *     recovery, moving `pqPublicKeyLength`, `pqSignatureLength` or
+     *     `pqParamLevel` cannot change its executability. That invariant is
+     *     exercised on the recovery paths, not here.
+     *
+     * `requirePq` is EXPLICITLY OUTSIDE that replacement invariant and remains
+     * the SD-4 residual, so it is asserted here on its own terms and is NOT
+     * smuggled back in as an exception clause to the metadata rule.
+     *
+     * What is left is the narrowest TRUE form, `I-NO-SILENT-DOWNGRADE-G1`: a
+     * mandatory PQ conjunct may not be silently disabled. It says nothing about
+     * the STRENGTH of the relation behind that conjunct, because Generation 1
+     * makes no claim about which relation the admitted verifier implements
+     * (`GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`, residual SD-11).
+     */
+    it("M-K27 — I-NO-SILENT-DOWNGRADE-G1: a mandatory PQ conjunct may not be disabled", async function () {
       const f = await deploy(0);
       const Verifier = await ethers.getContractFactory("ConfigurableVerifier", f.deployer);
       const other = await Verifier.deploy(0);
       await other.waitForDeployment();
       const addr = await other.getAddress();
 
-      // Turning the PQ requirement OFF is refused outright — there is no
-      // principal in this design entitled to weaken the floor.
+      // SURVIVING CLAUSE. Turning the PQ requirement OFF is refused outright —
+      // there is no principal in this design entitled to disable the conjunct.
       const offD = digestOf(
         parts(f, {
           actionType: ACTION.SET_VERIFIER,
@@ -625,7 +700,11 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         f.vault.setVerifier(addr, ECDSA_ONLY_FLOOR, 0, BigInt(2 ** 40), signDigest(f.ownerKey, offD), PQ_SIG, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "Downgrade");
 
-      // Lowering the parameter level is refused too.
+      // INVERTED. Lowering the parameter level is now ADMITTED, and the floor
+      // records the lowered value. `pqParamLevel` is SIGNED_METADATA — it is
+      // bound into this digest and evented by `SecurityFloorChanged` — and
+      // IDENTITY_BOUND_METADATA, but it is NOT AUTHORIZATION_INPUT and NOT
+      // CRYPTOGRAPHIC_STRENGTH: no kernel path reads it.
       const weaker = { ...HYBRID_FLOOR, pqParamLevel: 2 };
       const weakD = digestOf(
         parts(f, {
@@ -634,22 +713,43 @@ describe("vNext minimal trust kernel — prototype v0", function () {
           domain: DOMAIN.CREDENTIAL,
         }),
       );
+      await (
+        await f.vault.setVerifier(addr, weaker, 0, BigInt(2 ** 40), signDigest(f.ownerKey, weakD), PQ_SIG, PQ_KEY)
+      ).wait();
+      expect((await f.vault.securityFloor()).pqParamLevel).to.equal(2);
+      expect((await f.vault.securityFloor()).requirePq).to.equal(true);
+
+      // DISCRIMINATOR, and the guard against reading the line above as "a
+      // downgrade is now permitted": with the level at its lowest observed
+      // value, the surviving clause still fires on the very next nonce. Moving
+      // the metadata bought no authority over the conjunct.
+      const offD2 = digestOf(
+        parts(f, {
+          actionType: ACTION.SET_VERIFIER,
+          params: setVerifierParams(addr, ECDSA_ONLY_FLOOR),
+          domain: DOMAIN.CREDENTIAL,
+          nonce: 1n,
+        }),
+      );
       await expect(
-        f.vault.setVerifier(addr, weaker, 0, BigInt(2 ** 40), signDigest(f.ownerKey, weakD), PQ_SIG, PQ_KEY),
+        f.vault.setVerifier(addr, ECDSA_ONLY_FLOOR, 1, BigInt(2 ** 40), signDigest(f.ownerKey, offD2), PQ_SIG, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "Downgrade");
 
-      // CONTROL: a STRENGTHENING transition is permitted, proving the refusals
-      // above are the downgrade rule and not a blanket refusal to change.
+      // CONTROL: a RAISING move is admitted on the same terms, which is what
+      // proves the two refusals above are the `requirePq` clause and not a
+      // blanket refusal to change the floor. Both directions landing is the
+      // point: the field is recorded, and recording is all it does.
       const stronger = { ...HYBRID_FLOOR, pqParamLevel: 5 };
       const strongD = digestOf(
         parts(f, {
           actionType: ACTION.SET_VERIFIER,
           params: setVerifierParams(addr, stronger),
           domain: DOMAIN.CREDENTIAL,
+          nonce: 1n,
         }),
       );
       await (
-        await f.vault.setVerifier(addr, stronger, 0, BigInt(2 ** 40), signDigest(f.ownerKey, strongD), PQ_SIG, PQ_KEY)
+        await f.vault.setVerifier(addr, stronger, 1, BigInt(2 ** 40), signDigest(f.ownerKey, strongD), PQ_SIG, PQ_KEY)
       ).wait();
       expect((await f.vault.securityFloor()).pqParamLevel).to.equal(5);
     });

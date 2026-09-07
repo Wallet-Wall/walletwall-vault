@@ -16,18 +16,43 @@
  * inherited. Two clauses were needed, and each is discriminated by its own tests
  * in `Sd34DeclarationInvariants.test.ts`.
  *
- * WHY THE EDGE IS THE ONLY MOMENT. `securityFloor` has exactly two writers,
- * `initialize` and `setVerifier`; `initialize` validates satisfiability at
- * genesis; `requirePq` is monotone; and since `I-FLOOR-SHAPE-IMMUTABLE` the two
- * structural length fields freeze the instant `requirePq` holds. So the shape
- * moves at most once, here, and never again.
+ * WHY THE EDGE IS THE ONLY MOMENT — AND WHAT SD5-I CHANGED ABOUT THAT.
+ * `securityFloor` has exactly two writers, `initialize` and `setVerifier`, and
+ * `requirePq` is monotone, so the ARMING moment still happens at most once.
+ * `I-FLOOR-SHAPE-IMMUTABLE` used to add a far stronger claim on top of that —
+ * that the two structural length fields FROZE the instant `requirePq` held. That
+ * invariant is RETIRED by SD5-I, which removed the two-length freeze and the
+ * `pqParamLevel` ratchet together with every reader of those three fields. They
+ * are now
+ *
+ *     SIGNED_METADATA + IDENTITY_BOUND_METADATA +
+ *     NON_AUTHORITATIVE_SECURITY_METADATA + ABI_COMPATIBILITY
+ *
+ * and explicitly NOT `AUTHORIZATION_INPUT`, NOT
+ * `RECOVERY_SATISFIABILITY_INPUT`, NOT `CRYPTOGRAPHIC_STRENGTH`. Nothing in
+ * authorization, incoming possession, recovery satisfiability or downgrade reads
+ * them. The removed gates were SHAPE-SCOPED: they compared declared lengths, and
+ * a caller who pads to the declared length was never refused by them.
+ *
+ * `I-FLOOR-SHAPE-IMMUTABLE`'s replacement is
+ * `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`: for an APPROVED recovery,
+ * changing `pqPublicKeyLength`, `pqSignatureLength` or `pqParamLevel` cannot
+ * change whether it executes. `requirePq` is EXPLICITLY OUTSIDE that invariant
+ * and remains the SD-4 residual — which is why SD-4 below is NARROWED to that one
+ * route and is NOT marked remediated.
+ *
+ * NO LENGTH GATE MAY EVER COME BACK, here or in the kernel — not a minimum, not
+ * an exact-tuple allowlist. A minimum was measured and REJECTED: "S = MIN + 1"
+ * defeats it.
  *
  * THIS FILE IS THE EVIDENCE LEDGER FOR THAT EDGE. The sequences below are the
- * ones that SUSTAINED SD-3 and SD-4 at `ec5adce9`, kept verbatim with their
- * verdicts moved — deleting them would erase the proof that the interlock in
- * `stateful/defects.ts` worked. Alongside them are the facts about the edge that
- * NO ledger entry recorded and that remain true after the fix; those are now
- * SD-5 and SD-6, and they are declared rather than absorbed.
+ * ones that SUSTAINED SD-3, SD-4 and SD-5 at `ec5adce9`, kept with their verdicts
+ * moved rather than deleted — deleting them would erase the proof that the
+ * interlock in `stateful/defects.ts` worked. SD-5 in particular is kept in its
+ * ORIGINAL shape: the capture sequence still runs to the same state, and what
+ * changed is that the state is now ESCAPABLE. Where a guard lost one of two legs,
+ * the surviving leg is asserted alongside the inverted one, so a green result
+ * cannot be produced by the guard having disappeared altogether.
  *
  * TWO LEDGER CLAIMS WERE TESTED AND BOTH WERE WRONG:
  *   1. SD-3's title said "PERMANENTLY bricking spending at cut 1". Its own
@@ -134,7 +159,7 @@ async function initiate(w: World, i: number, verifier: string, pqKeyHash: string
 const keyOfLength = (n: number, fill: number): string => ethers.hexlify(new Uint8Array(n).fill(fill));
 const RECOVERY = { CHALLENGES: 6, ACTIVE: 7 } as const;
 
-describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 remediated; SD-4 / SD-5 sustained)", function () {
+describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-5, SD-6, SD-7 remediated; SD-4 NARROWED and sustained)", function () {
   this.timeout(600_000);
 
   // =====================================================================
@@ -196,56 +221,192 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 re
   });
 
   // =====================================================================
-  // SD-4 — SUSTAINED. (This banner previously read "REMEDIATED", contradicting
-  // the describe below it, the kernel, and stateful/defects.ts. The interlock
-  // that would have closed SD-4 was built, measured and REMOVED.)
+  // SD-4 — NARROWED BY SD5-I, AND STILL SUSTAINED. (This banner once read
+  // "REMEDIATED", contradicting the describe below it, the kernel, and
+  // stateful/defects.ts. The interlock that would have closed SD-4 was built,
+  // measured and REMOVED.)
+  //
+  // SD-4 had TWO routes into the same harm — a declaration destroying an
+  // already-approved recovery. SD5-I closes exactly one of them:
+  //
+  //   SHAPE route     — CLOSED by `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`.
+  //                     The declared lengths are no longer read by
+  //                     `_requireIncomingPossession`, so they can no longer
+  //                     change whether an approved recovery executes.
+  //   requirePq route — SURVIVES, untouched and deliberately outside that
+  //                     invariant. `requirePq` is the one field that is still
+  //                     security authority.
+  //
+  // SD-4 IS THEREFORE NARROWED, NOT REMEDIATED, and it is not marked so here.
   // =====================================================================
-  describe("SD-4 — SUSTAINED: the declaration still front-runs an approved remedy", function () {
-    it("SD-4 — the sustained sequence: the declaration SUCCEEDS and the approved recovery then dies, uncounted", async function () {
+  describe("SD-4 — NARROWED, still SUSTAINED: the declaration front-runs an approved remedy through `requirePq` alone", function () {
+    it("SD-4 SHAPE ROUTE — CLOSED: the identical sequence now lets the approved 48-byte recovery EXECUTE", async function () {
       const w = await deployWorld({
         label: "sd4-cut", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
       });
+      // THE SEQUENCE IS THE ONE THAT SUSTAINED SD-4 AT `ec5adce9`, UNCHANGED.
       // An honest k = 2 quorum approves a recovery to a 48-byte PQ key. Nothing
       // about the proposal is malformed; the quorum picks hash and verifier.
       const proposedKey = keyOfLength(48, 0xab);
       const proposedHash = ethers.keccak256(proposedKey);
       const newCred = await initiate(w, 0, w.verifiers.alwaysTrue, proposedHash);
       expect((await w.vault.recovery())[RECOVERY.ACTIVE]).to.equal(true);
-      // SUSTAINED: one root declares a 32-byte shape — satisfiable for the
-      // vault's OWN committed key, so `I-DECLARATION-EXHIBITED` is satisfied on
-      // BOTH conjuncts — and fatal for the quorum's 48-byte proposal.
+      // The declaration itself is UNCHANGED by SD5-I and still succeeds: one root
+      // declares a 32-byte shape while the quorum's approved material is 48 bytes,
+      // and `I-DECLARATION-EXHIBITED`'s surviving PREIMAGE conjunct is satisfied
+      // by the vault's own committed key.
       await (
         await setVerifierTx(w, w.verifiers.honest, {
           requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65,
         })
       ).wait();
-      expect((await liveFloor(w)).requirePq, "SUSTAINED: the declaration succeeded").to.equal(true);
+      expect((await liveFloor(w)).requirePq, "the declaration still succeeds").to.equal(true);
 
+      await networkHelpers.time.increase(7 * DAY + 1);
+      const pop = (await w.vault.recoveryPossessionDigest()) as string;
+      // VERDICT INVERTED. At `ec5adce9` this call reverted `BadSignature` on a
+      // pure integer comparison — the approved key's 48 against the declared 32 —
+      // and the quorum's remedy was destroyed uncounted. That comparison was
+      // SHAPE-SCOPED and is removed with the field's authority, so the remedy now
+      // completes.
+      //
+      // ATTRIBUTION: the recovery carries `alwaysTrue` as its incoming verifier,
+      // so nothing on this path can be a VERIFIER refusal, and the possession
+      // helper reports a verifier refusal as `BadSignature` — the same error the
+      // removed length gate raised. Pinning the verifier to `alwaysTrue` is what
+      // makes the outcome attributable to the KERNEL declining to read the
+      // declared lengths and to nothing else.
+      await (
+        await w.vault.executeRecovery({
+          newSigner: addrOf(newCred), newPqKeyHash: proposedHash, newPqKey: proposedKey,
+          newEcdsaPop: sign(newCred, pop), newPqPop: keyOfLength(65, 1),
+        })
+      ).wait();
+      expect(await w.vault.ecdsaSigner(), "the quorum's remedy completed").to.equal(addrOf(newCred));
+      expect(await w.vault.pqPublicKeyHash(), "against the 48-byte material it approved").to.equal(proposedHash);
+      // THE ACCEPTED CONSEQUENCE, STATED RATHER THAN GLOSSED: the floor still
+      // advertises a 32-byte key while a 48-byte one is committed. The metadata
+      // no longer describes the installed material and must never be published as
+      // evidence about it.
+      expect((await liveFloor(w)).pqPublicKeyLength, "and the metadata no longer describes it").to.equal(32);
+
+      // The request was CONSUMED by execution, not stranded: `executeRecovery`'s
+      // whole-struct delete is the challenge epoch's one reset boundary.
+      const rec = await w.vault.recovery();
+      expect(rec[RECOVERY.ACTIVE], "consumed by execution, not left dead-active").to.equal(false);
+      expect(Number(rec[RECOVERY.CHALLENGES]), "and the epoch reset at the authority transition").to.equal(0);
+    });
+
+    it("SD-4 SHAPE ROUTE — the SURVIVING leg still bites: material that is not the approved PREIMAGE is refused", async function () {
+      // WITHOUT THIS, THE TEST ABOVE IS NOT EVIDENCE. "The approved recovery now
+      // executes" is equally consistent with the length gate having been removed
+      // and with `_requireIncomingPossession` having lost its possession check
+      // altogether. This discriminates the two: the same world, the same
+      // declaration, the same `alwaysTrue` incoming verifier — and material whose
+      // keccak does NOT equal the quorum-approved commitment is still refused.
+      const w = await deployWorld({
+        label: "sd4-preimage", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
+      });
+      const proposedHash = ethers.keccak256(keyOfLength(48, 0xab));
+      const newCred = await initiate(w, 0, w.verifiers.alwaysTrue, proposedHash);
+      await (
+        await setVerifierTx(w, w.verifiers.honest, {
+          requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65,
+        })
+      ).wait();
       await networkHelpers.time.increase(7 * DAY + 1);
       const pop = (await w.vault.recoveryPossessionDigest()) as string;
       await expect(
         w.vault.executeRecovery({
-          newSigner: addrOf(newCred), newPqKeyHash: proposedHash, newPqKey: proposedKey,
+          // The struct still NAMES the approved commitment, so the cross-check
+          // passes and the ECDSA possession proof is valid — the refusal below
+          // cannot be either of those earlier guards.
+          newSigner: addrOf(newCred), newPqKeyHash: proposedHash, newPqKey: keyOfLength(48, 0xac),
           newEcdsaPop: sign(newCred, pop), newPqPop: keyOfLength(65, 1),
         }),
-        "SUSTAINED (SD-4): the approved recovery is unexecutable",
+        "SURVIVING LEG: the kernel's own binding to the exact committed bytes",
+      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+      expect((await w.vault.recovery())[RECOVERY.ACTIVE], "and the approved request is untouched").to.equal(true);
+    });
+
+    it("SD-4 requirePq ROUTE — SUSTAINED: the flip still kills an approved zero-commitment recovery, uncounted", async function () {
+      const w = await deployWorld({
+        label: "sd4-req", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
+      });
+      // An honest k = 2 quorum approves an ECDSA-ONLY remedy. `bytes32(0)` is
+      // this kernel's representation of "no PQ credential" and is a legitimate
+      // proposal on an ECDSA-only vault — it is the natural remedy for a
+      // compromised signer where no PQ material is in play.
+      const newCred = await initiate(w, 0, w.verifiers.alwaysTrue, ethers.ZeroHash);
+      expect((await w.vault.recovery())[RECOVERY.ACTIVE]).to.equal(true);
+      // The credential then flips `requirePq`. This is NOT metadata: `requirePq`
+      // is the one floor field that is still security authority, and it is
+      // EXPLICITLY outside `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`. No
+      // exception clause smuggles it back in, and none may be added.
+      await (
+        await setVerifierTx(w, w.verifiers.honest, {
+          requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65,
+        })
+      ).wait();
+      expect((await liveFloor(w)).requirePq, "the declaration succeeded").to.equal(true);
+
+      await networkHelpers.time.increase(7 * DAY + 1);
+      const pop = (await w.vault.recoveryPossessionDigest()) as string;
+      // ATTRIBUTION: the incoming verifier is `alwaysTrue`, the struct names the
+      // approved signer and commitment, and the ECDSA possession proof is valid —
+      // so this is neither a verifier refusal, nor the cross-check, nor the ECDSA
+      // leg. It is `keccak256(newPqKey) != bytes32(0)`, which no preimage can
+      // satisfy, reached only because `requirePq` now holds.
+      await expect(
+        w.vault.executeRecovery({
+          newSigner: addrOf(newCred), newPqKeyHash: ethers.ZeroHash, newPqKey: "0x",
+          newEcdsaPop: sign(newCred, pop), newPqPop: "0x",
+        }),
+        "SUSTAINED (SD-4): the approved remedy is unexecutable",
       ).to.be.revertedWithCustomError(w.vault, "BadSignature");
 
-      // THE POINT: the destruction is UNACCOUNTED. `challengesUsed` — the only
-      // mechanism AUTHORITY.md cites for bounding a credential-held veto — never
-      // engages, and the request is left stranded ACTIVE.
+      // THE POINT, UNCHANGED BY SD5-I: the destruction is UNACCOUNTED.
+      // `challengesUsed` — the only mechanism AUTHORITY.md cites for bounding a
+      // credential-held veto — never engages, and the request is left stranded
+      // ACTIVE.
       const rec = await w.vault.recovery();
       expect(rec[RECOVERY.ACTIVE], "the request is still active and still dead").to.equal(true);
       expect(Number(rec[RECOVERY.CHALLENGES]), "SUSTAINED: challengesUsed is STILL 0").to.equal(0);
+
+      // POSITIVE CONTROL — the IDENTICAL approved remedy, on an identical vault,
+      // where the credential does NOT flip `requirePq`, EXECUTES. Without this the
+      // revert above would be equally consistent with a zero commitment being
+      // independently inadmissible at `executeRecovery`. It is not: the flip is
+      // the whole cause.
+      const pc = await deployWorld({
+        label: "sd4-req-pc", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
+      });
+      const pcCred = await initiate(pc, 0, pc.verifiers.alwaysTrue, ethers.ZeroHash);
+      await networkHelpers.time.increase(7 * DAY + 1);
+      const pcPop = (await pc.vault.recoveryPossessionDigest()) as string;
+      await (
+        await pc.vault.executeRecovery({
+          newSigner: addrOf(pcCred), newPqKeyHash: ethers.ZeroHash, newPqKey: "0x",
+          newEcdsaPop: sign(pcCred, pcPop), newPqPop: "0x",
+        })
+      ).wait();
+      expect(await pc.vault.ecdsaSigner(), "the same remedy completes without the flip").to.equal(addrOf(pcCred));
     });
 
-    it("SD-4 — the EXHIBIT provably cannot close this, which is why it is still open", async function () {
+    it("SD-4 — the EXHIBIT is not an interlock, which is why the requirePq route is still open", async function () {
       // The prior lane hypothesised that exhibiting the committed key closes SD-4.
-      // It does not, and this is the proof: the declared key length MATCHES the
-      // incumbent exactly, so BOTH exhibit conjuncts pass and the declaration
-      // still succeeds — while the quorum's 48-byte proposal dies. SD-3 concerns
-      // `pqPublicKeyHash`; SD-4 concerns `recovery.proposedPqKeyHash`. Different
-      // variables, chosen by different principals.
+      // It does not, and this is the proof: `I-DECLARATION-EXHIBITED` binds
+      // `pqPublicKeyHash` and says NOTHING about `recovery.proposedPqKeyHash`, so
+      // a declaration is admitted while a quorum-approved request naming entirely
+      // different material is live. SD-3 concerns `pqPublicKeyHash`; SD-4 concerns
+      // `recovery.proposedPqKeyHash`. Different variables, chosen by different
+      // principals — which is why two clauses were needed and why closing one
+      // never closed the other.
+      //
+      // NARROWED BY SD5-I: the exhibit's LENGTH conjunct is gone, so the declared
+      // key length no longer has to match the incumbent for the declaration to be
+      // admitted. The surviving PREIMAGE conjunct is what is satisfied here, and
+      // it is the weaker of the two against this defect — it always was.
       const w = await deployWorld({
         label: "sd4-indep", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
       });
@@ -260,18 +421,39 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 re
   });
 
   // =====================================================================
-  // SD-5 — SUSTAINED; SD-6 — REMEDIATED. Both reproduced here rather than argued.
+  // SD-5 — REMEDIATED BY SD5-I; SD-6 — REMEDIATED. Both reproduced rather than
+  // argued.
+  //
+  // WHAT SD-5 WAS: the declaring edge chose the two structural lengths ONCE, and
+  // `I-FLOOR-SHAPE-IMMUTABLE` then froze them for the life of the vault against
+  // EVERY principal — a k = 2 guardian quorum included. A captured vault could be
+  // pinned at an advertised-maximal, one-byte-signature shape forever, and the
+  // same permanence reached HONEST vaults with no attacker at all: an ML-DSA-44
+  // vault could never move to ML-DSA-87. That is PERMANENT_PQ_AGILITY_LOSS.
+  //
+  // WHAT CLOSED IT: E-PRIME. The invariant is RETIRED, not weakened — it has no
+  // operand left. The state is made UNREAD instead of UNMOVABLE, so the three
+  // metadata fields have no reader in authorization, incoming possession,
+  // recovery satisfiability or downgrade, and the SD-1 move they were introduced
+  // to block is now admitted while the approved recovery still completes.
+  //
+  // NOT CLOSED BY A MINIMUM, AND NEVER TO BE: a minimum length was measured and
+  // REJECTED, because "S = MIN + 1" defeats it. Neither this file nor the kernel
+  // may reintroduce a length gate, a minimum, or an exact-tuple allowlist.
   // =====================================================================
-  describe("SD-5 — SUSTAINED: the declaration is one-shot and IRREVERSIBLE", function () {
-    it("a vacuous shape, once declared, can never be changed by any principal — a quorum included", async function () {
+  describe("SD-5 — REMEDIATED: the declaration is no longer one-shot, and a captured shape is escapable", function () {
+    it("VERDICT MOVED — the same capture runs, then a k = 2 quorum recovers to GENUINE material and the vault spends on a real second factor", async function () {
       const w = await deployWorld({
         label: "sd5-perm", verifier: "honest", ecdsaOnlyFloor: true, commitPqKeyOnEcdsaOnlyFloor: true,
       });
-      // `_requireSaneFloor` bounds only 0 and MAX_PQ_LENGTH, and any pqParamLevel
-      // INCREASE is admitted, so maximal advertised strength on a one-byte factor
-      // is a legal declaration. The exhibit constrains the KEY length to the
-      // committed key's, so the attacker uses the honest 32-byte shape here and
-      // takes its vacuity in `pqSignatureLength`, which no commitment binds.
+      // ---- PHASE 1: THE CAPTURE, UNCHANGED ------------------------------
+      // Still admitted, and SD5-I did not try to prevent it. Maximal advertised
+      // strength on a one-byte factor is a legal declaration, pointed at an
+      // always-true verifier. Historically the exhibit's LENGTH conjunct forced
+      // the attacker to reuse the incumbent's 32-byte key shape and take the
+      // vacuity in `pqSignatureLength`; that conjunct is gone, so the 32 below is
+      // sequence fidelity rather than a constraint. What the declaration proves is
+      // unchanged and narrow: a preimage of the committed hash was exhibited.
       await (
         await setVerifierTx(w, w.verifiers.alwaysTrue, {
           requirePq: true, pqParamLevel: 65535, pqPublicKeyLength: 32, pqSignatureLength: 1,
@@ -281,39 +463,123 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 re
       expect(f.pqParamLevel, "advertises maximal strength...").to.equal(65535);
       expect(f.pqSignatureLength, "...backed by a one-byte signature").to.equal(1);
 
-      // A guardian quorum recovers the vault completely — and inherits the shape.
+      // ---- PHASE 2: THE REMEDY THAT USED TO BE IMPOSSIBLE ----------------
+      // VERDICT MOVED. A k = 2 quorum recovers to GENUINE material — a fresh
+      // credential, a fresh PQ keypair, and the HONEST verifier as the incoming
+      // one — proving possession with a REAL 65-byte second-factor signature.
+      //
+      // At `ec5adce9` this exact call reverted: `_requireIncomingPossession`
+      // measured the 65-byte possession proof against the captured
+      // `pqSignatureLength == 1` LIVE, so the only material that could be
+      // recovered to was material the capture had already made useless. The
+      // quorum's own remedy was hostage to the credential's one-shot choice.
       const newPq = w.sparePq[0]!;
-      const newCred = await initiate(w, 0, w.verifiers.alwaysTrue, pqHash(newPq));
+      const newCred = await initiate(w, 0, w.verifiers.honest, pqHash(newPq));
       await networkHelpers.time.increase(7 * DAY + 1);
       const pop = (await w.vault.recoveryPossessionDigest()) as string;
       await (
         await w.vault.executeRecovery({
           newSigner: addrOf(newCred), newPqKeyHash: pqHash(newPq), newPqKey: pqKeyBytes(newPq),
-          newEcdsaPop: sign(newCred, pop), newPqPop: keyOfLength(1, 0x02),
+          newEcdsaPop: sign(newCred, pop), newPqPop: sign(newPq, pop),
         })
       ).wait();
       expect(await w.vault.ecdsaSigner(), "the quorum owns the vault now").to.equal(addrOf(newCred));
-      expect((await liveFloor(w)).pqSignatureLength, "and the shape survived the remedy").to.equal(1);
+      expect(await w.vault.pqPublicKeyHash(), "on GENUINE PQ material of its own choosing").to.equal(pqHash(newPq));
+      expect(await w.vault.pqVerifier(), "and the always-true verifier is gone").to.equal(w.verifiers.honest);
+      // The captured metadata is INHERITED, exactly as it always was. That is not
+      // the harm any more; the harm was that it could never be undone.
+      expect((await liveFloor(w)).pqSignatureLength, "the shape still survives the remedy").to.equal(1);
 
+      // ---- PHASE 3: THE REPAIR THAT USED TO REVERT `Downgrade` -----------
       // The RECOVERED credential — full authority, installed by k guardians —
-      // still cannot restore a real signature shape.
-      const cur = await liveFloor(w);
+      // restores a truthful floor. Two of the three fields move in the direction
+      // the retired invariants forbade: `pqSignatureLength` 1 -> 65 was the
+      // two-length FREEZE, and `pqParamLevel` 65535 -> 3 is a DECREASE the
+      // withdrawn ratchet refused. The ratchet went because a flat scalar asserts
+      // a total order across families that does not exist, so ratcheting it was
+      // the LABEL of an upgrade without its substance.
+      //
+      // This call also carries a real second-factor signature against the honest
+      // verifier, so its success is itself evidence that the recovered vault has a
+      // working second factor and not merely a rewritten label.
+      const repaired = { requirePq: true, pqParamLevel: 3, pqPublicKeyLength: 32, pqSignatureLength: 65 };
       const nonce = (await w.vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
       const gen = (await w.vault.credentialGeneration()) as bigint;
-      const target = { ...cur, pqSignatureLength: 65 };
       const d = digestOf({
         chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: KERNEL_GEN,
         actionType: ACTION.SET_VERIFIER, authorityGeneration: gen,
-        params: setVerifierParams(w.verifiers.honest, target),
+        params: setVerifierParams(w.verifiers.honest, repaired),
         domain: DOMAIN.CREDENTIAL, nonce, deadline: FAR_DEADLINE,
+      });
+      await (
+        await w.vault.setVerifier(
+          w.verifiers.honest, floorTuple(repaired), nonce, FAR_DEADLINE,
+          sign(newCred, d), sign(newPq, d), pqKeyBytes(newPq),
+        )
+      ).wait();
+      expect(await liveFloor(w), "REMEDIATED (SD-5): the shape is repairable").to.deep.equal(repaired);
+
+      // ---- PHASE 4: THE SURVIVING LEG OF `_requireNoDowngrade` -----------
+      // WITHOUT THIS, PHASE 3 IS NOT EVIDENCE. "The repair succeeds" is equally
+      // consistent with the two removals and with `_requireNoDowngrade` having
+      // been deleted outright. `I-NO-SILENT-DOWNGRADE-G1` is the narrowest TRUE
+      // form and it still bites: a mandatory PQ conjunct may not be disabled.
+      // `_authorise` passes on this call — same credential, same real PQ
+      // signature — so the revert is the downgrade guard and not an earlier one.
+      const off = { ...repaired, requirePq: false };
+      const nonce2 = (await w.vault.nonces(DOMAIN.CREDENTIAL)) as bigint;
+      const gen2 = (await w.vault.credentialGeneration()) as bigint;
+      const d2 = digestOf({
+        chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: KERNEL_GEN,
+        actionType: ACTION.SET_VERIFIER, authorityGeneration: gen2,
+        params: setVerifierParams(w.verifiers.honest, off),
+        domain: DOMAIN.CREDENTIAL, nonce: nonce2, deadline: FAR_DEADLINE,
       });
       await expect(
         w.vault.setVerifier(
-          w.verifiers.honest, floorTuple(target), nonce, FAR_DEADLINE,
-          sign(newCred, d), keyOfLength(1, 0x03), pqKeyBytes(newPq),
+          w.verifiers.honest, floorTuple(off), nonce2, FAR_DEADLINE,
+          sign(newCred, d2), sign(newPq, d2), pqKeyBytes(newPq),
         ),
-        "SUSTAINED (SD-5): the shape is permanent, against every principal at every cut",
+        "SURVIVING LEG: requirePq true -> false is still refused",
       ).to.be.revertedWithCustomError(w.vault, "Downgrade");
+
+      // ---- PHASE 5: THE SECOND FACTOR IS REAL, AND ATTRIBUTED ------------
+      // Three arms over the SAME spend digest, separating the three refusals this
+      // repository has previously confused. Each negative arm reverts before
+      // `_consume`, so the nonce is still live for the positive arm.
+      const sNonce = (await w.vault.nonces(DOMAIN.SPEND)) as bigint;
+      const sGen = (await w.vault.credentialGeneration()) as bigint;
+      const amount = ethers.parseEther("1");
+      const sd = digestOf({
+        chainId: w.chainId, vault: w.vaultAddress, kernelGeneration: KERNEL_GEN,
+        actionType: ACTION.SPEND, authorityGeneration: sGen,
+        params: spendParams(w.recipient, amount),
+        domain: DOMAIN.SPEND, nonce: sNonce, deadline: FAR_DEADLINE,
+      });
+      // (a) VERIFIER refusal: the committed key is exhibited correctly, so the
+      //     kernel's own binding passes, and the honest verifier rejects a
+      //     signature from a keypair the caller does not hold.
+      await expect(
+        w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE,
+          sign(newCred, sd), sign(w.pqKey, sd), pqKeyBytes(newPq)),
+        "the second factor genuinely requires material the caller lacks",
+      ).to.be.revertedWithCustomError(w.vault, "VerifierDenied");
+      // (b) KERNEL refusal: a real signature over the right digest, but by the
+      //     wrong key, so the exhibited bytes are not the committed ones. This
+      //     dies at the keccak binding BEFORE any verifier is consulted.
+      await expect(
+        w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE,
+          sign(newCred, sd), sign(w.pqKey, sd), pqKeyBytes(w.pqKey)),
+        "and the kernel's own binding is a separate, earlier refusal",
+      ).to.be.revertedWithCustomError(w.vault, "BadSignature");
+      // (c) POSITIVE ARM: both factors, and the vault spends.
+      const before = await ethers.provider.getBalance(w.recipient);
+      await (
+        await w.vault.execute(w.recipient, amount, sNonce, FAR_DEADLINE,
+          sign(newCred, sd), sign(newPq, sd), pqKeyBytes(newPq))
+      ).wait();
+      expect(await ethers.provider.getBalance(w.recipient), "the recovered vault is genuinely usable")
+        .to.equal(before + amount);
     });
 
     it("the cut on an ECDSA-only vault is ONE, which AUTHORITY.md's asset-control row does not caveat", async function () {
@@ -331,8 +597,8 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 re
     });
   });
 
-  describe("SD-7 — REMEDIATED: the GENESIS twin is now reached by the admission invariant", function () {
-    it("VERDICT MOVED — a genesis whose committed key cannot satisfy its own floor is now REFUSED", async function () {
+  describe("SD-7 — REMEDIATED, NARROWED by SD5-I: the GENESIS twin is reached by the admission invariant's PREIMAGE half", function () {
+    it("VERDICT MOVED, then NARROWED — a genesis whose commitment has no exhibited preimage is REFUSED; the LENGTH leg is gone", async function () {
       // SUSTAINING CLAIM (parent): `initialize`'s only material check was a
       // ZERO-ness test, and `_requireIncomingPossession` has exactly two call
       // sites — neither of them `initialize` — so there was no genesis
@@ -340,43 +606,61 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 re
       // `setVerifier` and never run here.
       //
       // VERDICT MOVED by `I-COMMITMENT-EXHIBITED-AT-ADMISSION`, which adds the
-      // base case directly to `initialize`: a non-zero commitment must exhibit
-      // its preimage, and where `requirePq` holds that preimage must carry the
-      // declared key length. The 48-against-32 genesis below is exactly that
-      // contradiction and is now refused at birth.
+      // base case directly to `initialize`. That invariant had TWO conjuncts: a
+      // non-zero commitment must exhibit its PREIMAGE, and where `requirePq`
+      // holds that preimage must carry the declared key LENGTH.
+      //
+      // SD5-I NARROWS IT TO THE FIRST. The length conjunct is removed with the
+      // field's authority, so this test now pins the SURVIVING leg and RECORDS
+      // the removed one rather than leaving a vacuously green assertion behind.
       const w = await deployWorld({ label: "sd7-genesis", verifier: "honest" });
       const factory = await ethers.getContractAt("VaultKernelPrototype", w.vaultAddress, w.deployer);
       const fac = await ethers.getContractAt("VaultKernelFactoryPrototype", w.factoryAddress, w.deployer);
       const salt = ethers.id("sd7-genesis-twin");
       const genesis = {
         signer: addrOf(w.credKey),
-        // A 48-byte key committed against a floor that declares 32.
-        pqKeyHash: ethers.keccak256(keyOfLength(48, 0x5a)),
+        pqKeyHash: ethers.keccak256(keyOfLength(32, 0x5a)),
         verifier: w.verifiers.honest,
         threshold: w.threshold,
         guardians: w.guardians,
         guardianIsContract: w.guardianIsContract,
         floor: floorTuple({ requirePq: true, pqParamLevel: 1, pqPublicKeyLength: 32, pqSignatureLength: 65 }),
       };
-      // REMEDIATED: the deployment itself now reverts, so the unspendable twin
-      // is never born. The exhibit is the 48-byte key the commitment is of, and
-      // it contradicts the 32-byte shape the same genesis declares.
+      // SURVIVING LEG — the deployment reverts because the exhibit does not hash
+      // to the commitment the same genesis carries, so the unattested twin is
+      // never born. This is what makes the kernel's later keccak measurements an
+      // INDUCTIVE invariant rather than an assumption about genesis. It proves
+      // knowledge of a preimage and deliberately nothing more — not that the bytes
+      // are a well-formed key of any scheme.
       await expect(
-        fac.deployVault(salt, genesis, keyOfLength(48, 0x5a)),
-        "REMEDIATED (SD-7): a genesis that contradicts itself is refused at birth",
+        fac.deployVault(salt, genesis, keyOfLength(32, 0x5b)),
+        "REMEDIATED (SD-7): a commitment with no exhibited preimage is refused at birth",
       ).to.be.revertedWithCustomError(factory, "BadSignature");
 
-      // POSITIVE CONTROL — the SAME genesis with a consistent 32-byte shape and
-      // a 32-byte exhibit deploys, so the refusal above is the contradiction and
-      // not a blanket refusal to deploy a PQ vault.
-      const consistent = {
-        ...genesis,
-        pqKeyHash: ethers.keccak256(keyOfLength(32, 0x5a)),
-      };
-      const okAddr: string = await fac.predictVault(salt, consistent);
-      await (await fac.deployVault(salt, consistent, keyOfLength(32, 0x5a))).wait();
+      // POSITIVE CONTROL — the SAME genesis, differing ONLY in the exhibit,
+      // deploys. So the refusal above is the missing preimage and not a blanket
+      // refusal to deploy a PQ vault.
+      const okAddr: string = await fac.predictVault(salt, genesis);
+      await (await fac.deployVault(salt, genesis, keyOfLength(32, 0x5a))).wait();
       const twin = await ethers.getContractAt("VaultKernelPrototype", okAddr, w.deployer);
       expect(Number((await twin.securityFloor())[2])).to.equal(32);
+
+      // REMOVED LEG, RECORDED. The original SD-7 reproduction — a 48-byte key
+      // committed against a floor declaring 32, exhibited CORRECTLY — is now
+      // ADMITTED. The old refusal was SHAPE-SCOPED: it compared two declared
+      // numbers, and a deployer who padded to the declared length was never
+      // refused by it. `pqPublicKeyLength` is NON_AUTHORITATIVE_SECURITY_METADATA
+      // and no longer describes the committed material; that consequence is
+      // stated here rather than glossed, and the floor value below must never be
+      // published as evidence about the key behind the commitment.
+      const lengthContradicting = { ...genesis, pqKeyHash: ethers.keccak256(keyOfLength(48, 0x5a)) };
+      const bornAddr: string = await fac.predictVault(salt, lengthContradicting);
+      await (await fac.deployVault(salt, lengthContradicting, keyOfLength(48, 0x5a))).wait();
+      const born = await ethers.getContractAt("VaultKernelPrototype", bornAddr, w.deployer);
+      expect(await born.pqPublicKeyHash(), "a 48-byte commitment, exhibited and admitted")
+        .to.equal(lengthContradicting.pqKeyHash);
+      expect(Number((await born.securityFloor())[2]), "under metadata that still reads 32 and binds nothing")
+        .to.equal(32);
     });
   });
 
@@ -424,7 +708,10 @@ describe("vNext kernel — the requirePq false -> true edge (SD-3, SD-6, SD-7 re
 
       // POSITIVE CONTROL — exhibiting the 7-byte preimage installs it. The
       // invariant is about ATTESTATION, not about shape: a 7-byte "key" is still
-      // admissible while dormant, which is why SD-5 is untouched by this lane.
+      // admissible while dormant, which is why the SD-6 lane left SD-5 standing.
+      // SD-5 was closed later, by SD5-I, and this path is unaffected in either
+      // direction because it never read a length to begin with — that absence was
+      // the design, and SD5-I generalised it to the armed path.
       await (
         await w.vault.rotateCredential(
           {

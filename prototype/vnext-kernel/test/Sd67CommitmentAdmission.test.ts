@@ -11,18 +11,42 @@
  * WHAT CHANGED
  *   `I-COMMITMENT-EXHIBITED-AT-ADMISSION` — every accepted transition that
  *   writes a NON-ZERO `pqPublicKeyHash` must exhibit a preimage of the value
- *   being written; where the governing floor already mandates PQ, that preimage
- *   must also carry the declared key length. Three writers, one rule:
- *   `initialize`, `rotateCredential`, `executeRecovery`.
+ *   being written. Three writers, one rule: `initialize`, `rotateCredential`,
+ *   `executeRecovery`.
+ *
+ * WHAT SD5-I NARROWED (E-PRIME, the accepted amendment)
+ *   The rule above ORIGINALLY carried a second, SHAPE-SCOPED conjunct: where
+ *   the governing floor mandated PQ, the exhibit also had to carry the DECLARED
+ *   key length. That conjunct is REMOVED. `pqPublicKeyLength`,
+ *   `pqSignatureLength` and `pqParamLevel` are SIGNED_METADATA +
+ *   IDENTITY_BOUND_METADATA + NON_AUTHORITATIVE_SECURITY_METADATA +
+ *   ABI_COMPATIBILITY. They are NOT AUTHORIZATION_INPUT, NOT
+ *   RECOVERY_SATISFIABILITY_INPUT and NOT CRYPTOGRAPHIC_STRENGTH.
+ *
+ *   The PREIMAGE conjunct is UNTOUCHED, and it is the leg SD-7's remediation
+ *   actually rests on: a stored commitment always had a preimage exhibited to
+ *   the kernel, which is what makes the kernel's later keccak measurement an
+ *   INDUCTIVE invariant rather than an assumption about genesis. Nothing in the
+ *   SD-6 / SD-7 remediation was ever carried by the length conjunct.
+ *
+ *   `I-FLOOR-SHAPE-IMMUTABLE` is RETIRED. Its replacement is
+ *   `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`: for an APPROVED
+ *   recovery, changing `pqPublicKeyLength`, `pqSignatureLength` or
+ *   `pqParamLevel` cannot change its executability. `requirePq` is EXPLICITLY
+ *   OUTSIDE that invariant and remains the SD-4 residual.
  *
  * WHAT DID NOT CHANGE, AND IS RECORDED HERE RATHER THAN OMITTED
  *   SD-5 is untouched. An exhibit proves possession of a preimage; it says
  *   nothing about that preimage being a well-formed key of any scheme, and
  *   nothing at all about `pqSignatureLength`, which no commitment anywhere in
  *   this kernel binds. The one-byte-shape capture is still reachable — now with
- *   an exhibited one-byte key instead of an unattested one. That is a
- *   MIN_PQ_LENGTH question, and the tests that prove it are kept below with
- *   their verdicts UNCHANGED.
+ *   an exhibited one-byte key instead of an unattested one. It was formerly
+ *   recorded here as a MIN_PQ_LENGTH question; that remedy is CLOSED OFF. A
+ *   minimum was measured and REJECTED (`S = MIN + 1` defeats it), and under
+ *   E-PRIME the declared lengths are not authority for anything to bound. The
+ *   tests that exercise the capture are kept below with their verdicts
+ *   UNCHANGED; what changed is only that the capture's PERMANENCE is no longer
+ *   claimed here, because the two-length freeze it rested on is retired.
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
@@ -308,11 +332,23 @@ describe("SD-6 — REMEDIATED: rotateCredential no longer admits an unattested c
     expect(await canSpend({ ...w, credKey: target } as World), "cut 1 AFTER").to.equal(true);
   });
 
-  it("SD-5 REMAINS SUSTAINED — the shape capture survives, now with an EXHIBITED one-byte key", async () => {
-    // THE HONEST BOUNDARY OF THIS REMEDIATION. SD-6 was the mechanism by which
-    // a cut-1 root planted the commitment; closing it removes the UNATTESTED
-    // plant and nothing else. An attacker who simply holds a one-byte "key"
-    // exhibits it and reaches the identical permanent end state.
+  it("SD-5 IS NOW REMEDIATED ELSEWHERE — the shape capture is still DECLARABLE here, and no longer PERMANENT", async () => {
+    // THE HONEST BOUNDARY OF THIS REMEDIATION, RESTATED FOR LANE SD5-I. SD-6 was
+    // the mechanism by which a cut-1 root planted the commitment; closing it
+    // removed the UNATTESTED plant and nothing else. An attacker who simply holds
+    // a one-byte "key" exhibits it and still reaches the same DECLARED state, so
+    // this assertion is unchanged and still correct.
+    //
+    // WHAT CHANGED IS WHAT HAPPENS NEXT, and it is not this file s subject. The
+    // end state is no longer PERMANENT: SD5-I de-authorised the three shape
+    // fields, so a k-of-n guardian recovery can install genuine material over a
+    // captured shape and the recovered credential spends on a real second factor.
+    // The word "permanent" is therefore removed from the comment rather than left
+    // to rot into a false claim in a passing test. SD-5 now sits in
+    // REMEDIATED_DEFECTS; its inverted reproduction is
+    // test/Sd34AuthenticationSatisfiability.test.ts and
+    // test/Sd1RecoveryFloorBinding.test.ts. THIS test still measures the ADMISSION
+    // question only, which SD5-I did not touch.
     const w = await deployWorld({ label: "sd6r-shape-capture", ecdsaOnlyFloor: true });
     const target = keyOf("sd6r-shape-capture-target");
     const oneByte = "0xaa";
@@ -329,7 +365,11 @@ describe("SD-6 — REMEDIATED: rotateCredential no longer admits an unattested c
       (await (await declare({ ...w, credKey: target } as World,
         { requirePq: true, pqParamLevel: 65535, pqPublicKeyLength: 1, pqSignatureLength: 1 },
         { pqKey: oneByte, cred: target })).wait())?.status,
-      "SD-5: still reachable, and still permanent",
+      // SD5-I: REACHABILITY is what this line actually measures, and it is
+      // unchanged. The word "permanent" is dropped because the two-length
+      // freeze it rested on (`I-FLOOR-SHAPE-IMMUTABLE`) is RETIRED — this
+      // assertion never measured permanence and must not keep claiming it.
+      "SD-5: the shape capture is still reachable",
     ).to.equal(1);
     const f = await liveFloor(w);
     expect(f.pqPublicKeyLength).to.equal(1);
@@ -424,13 +464,60 @@ describe("SD-7 — REMEDIATED: initialize no longer admits a structurally unsati
     expect(r.ok, "admitted on the parent; refused now").to.equal(false);
   });
 
-  it("VERDICT MOVED — a 48-byte key under a 32-byte declared shape is now REFUSED", async () => {
+  it("NARROWED BY SD5-I — the PREIMAGE leg still refuses a 48-byte exhibit; the SHAPE-SCOPED length leg is gone", async () => {
+    // This assertion originally had TWO legs and only ONE was removed, so it is
+    // NARROWED rather than deleted or inverted. The removed leg refused this
+    // genesis because a 48-byte exhibit did not carry the 32-byte DECLARED
+    // shape — a SHAPE-SCOPED conjunct. The surviving leg refuses an exhibit
+    // that is not a preimage of the commitment being written, and that is the
+    // leg SD-7's remediation actually rests on.
+    //
+    // Both arms are kept because arm 2 is what makes arm 1's refusal
+    // ATTRIBUTABLE: without it, a refusal at the same 48-vs-32 shape could be
+    // silently re-attributed to a length gate that no longer exists.
     const w = await deployWorld({ label: "sd7r-mismatch" });
     const key48 = bytesOfLength(48, "sd7r-key48");
-    const r = await deployGenesis(
+
+    // ARM 1 — SURVIVING LEG. Same 48-byte exhibit, same 32-byte declared shape,
+    // but the exhibit is NOT a preimage of the commitment: still REFUSED, and
+    // refused by the KERNEL's own admission check. The SPECIFIC error is
+    // asserted so a refusal arriving from an EARLIER guard (zero address, a
+    // codeless verifier, the roster check, or the requirePq-with-zero-commitment
+    // check) can never be mistaken for this one.
+    const wrongPreimage = await deployGenesis(
+      w,
+      { pqKeyHash: ethers.keccak256(bytesOfLength(48, "sd7r-key48-unrelated")) },
+      ethers.id("sd7r-mm-preimage-salt"),
+      key48,
+    );
+    expect(wrongPreimage.ok, "an exhibit that hashes to something else is refused").to.equal(false);
+    if (!wrongPreimage.ok) {
+      expect(
+        wrongPreimage.error,
+        "attributed to the kernel's preimage refusal, not to any earlier guard",
+      ).to.match(/BadSignature/);
+    }
+
+    // ARM 2 — REMOVED LEG, pinned as the NEW behaviour. Identical 48-byte
+    // exhibit under the identical 32-byte declared shape, preimage now
+    // consistent: ADMITTED. `pqPublicKeyLength` is
+    // NON_AUTHORITATIVE_SECURITY_METADATA — no admission, authorization,
+    // possession or recovery-satisfiability path reads it — so there is nothing
+    // left here for a declared shape to contradict.
+    const consistentPreimage = await deployGenesis(
       w, { pqKeyHash: ethers.keccak256(key48) }, ethers.id("sd7r-mm-salt"), key48,
     );
-    expect(r.ok, "the recorded SD-7 reproduction, closed").to.equal(false);
+    expect(
+      consistentPreimage.ok,
+      "the declared length is not authority; only the preimage is",
+    ).to.equal(true);
+    if (!consistentPreimage.ok) return;
+    const f = await consistentPreimage.vault.securityFloor();
+    expect(f[2], "the declared shape is still RECORDED — it is signed metadata, not a gate").to.equal(32);
+    expect(
+      await consistentPreimage.vault.pqPublicKeyHash(),
+      "and the commitment written is exactly the one exhibited",
+    ).to.equal(ethers.keccak256(key48));
   });
 
   it("VERDICT MOVED — a DORMANT genesis carrying an unattested latent commitment is now REFUSED", async () => {

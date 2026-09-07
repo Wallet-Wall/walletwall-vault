@@ -29,23 +29,23 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 18367,
-    "initcodeBytes": 18408,
+    "runtimeBytes": 17695,
+    "initcodeBytes": 17736,
     "immutableSlots": 0,
-    "runtimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
+    "runtimeSha256": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02",
     "selectors": 46,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6209,
-    "headroomVsTargetCeiling": 3609,
+    "headroomVsPortabilityBudget": 6881,
+    "headroomVsTargetCeiling": 4281,
     "verdict": "TARGET PASS"
   },
   "factory": {
     "runtimeBytes": 2445,
     "initcodeBytes": 2794,
     "immutableSlots": 2,
-    "runtimeSha256": "7a5cba517c0800ad4dd8c0834dd538a1a0aed92ded54a9f0b9a3eea9c8e42bf4",
+    "runtimeSha256": "ab16471a7a97a88c0d823e6d536a01671b388b0acada8a404eaf3da4a2062d6f",
     "selectors": 4,
-    "_note": "SD10-I changes NO factory logic either: runtime 2,445 and initcode 2,794 are unchanged and the executable PREFIX is byte-identical (keccak 0x68f71f67...); only the CBOR metadata tail moves, because the factory imports the kernel source and solc hashes every source of the compilation unit into that tail. The same was true of W2, whose note follows. W2 (K-9 mechanism B + recovery lifecycle) changes NO factory logic: runtime 2,445 and initcode 2,794 are identical to the SD-6/7 head, and the 4 selectors are unchanged. The runtime hash moves anyway because the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR: 32 differing bytes, all inside the 51-byte metadata tail. The previous note stands as history: at SD-6/7 the factory gained +219 bytes of REAL LOGIC (deployVault forwards a third parameter to initialize); predictVault and genesisSalt are untouched by both lanes."
+    "_note": "SD5-I PUBLICATION INTEGRITY changes NO factory source and NO factory logic: runtime 2445 and initcode 2794 are unchanged, the 4 selectors are unchanged, and the executable PREFIX is byte-identical (keccak 0x68f71f67...). The runtime hash moves anyway, 4f683945 -> ab16471a, for the reason the earlier notes below already record: the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR, so a COMMENT-ONLY edit to the kernel moves this tail. That is the third time, and the mechanism is unchanged. SD10-I changes NO factory logic either: runtime 2,445 and initcode 2,794 are unchanged and the executable PREFIX is byte-identical (keccak 0x68f71f67...); only the CBOR metadata tail moves, because the factory imports the kernel source and solc hashes every source of the compilation unit into that tail. The same was true of W2, whose note follows. W2 (K-9 mechanism B + recovery lifecycle) changes NO factory logic: runtime 2,445 and initcode 2,794 are identical to the SD-6/7 head, and the 4 selectors are unchanged. The runtime hash moves anyway because the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR: 32 differing bytes, all inside the 51-byte metadata tail. The previous note stands as history: at SD-6/7 the factory gained +219 bytes of REAL LOGIC (deployVault forwards a third parameter to initialize); predictVault and genesisSalt are untouched by both lanes."
   },
   "sd1Remediation": {
     "invariant": "I-FLOOR-SHAPE-IMMUTABLE",
@@ -109,19 +109,20 @@
     }
   },
   "validation": {
-    "_scope": "CURRENT aggregate test and assurance results of measuredAtHead, taken from the CI execution at that head (ubuntu-latest, the reference platform) rather than carried forward from an earlier lane. The figures below were measured against measuredAtHead/measuredAtTree; this file is committed one commit later, which is the same recapture pattern the canonical receipts use. Nothing a test or scanner reads differs between the two — the only delta is this file.",
-    "measuredAtHead": "b7e6cc3a02a6f61c9152a51d9c168f372522a6e3",
-    "measuredAtTree": "216611f72db8f995e9110147b8fe6208ea1d90b2",
-    "prototypeTests": "710 passing, 0 failing (vNext Kernel / Prototype Tests at measuredAtHead).",
-    "prototypeMutationAdequacy": "21/21 killed, 0 survivors, 0 inconclusive (vNext Kernel / Stateful Authority at measuredAtHead); 21 distinct mutant ids, matching STATEFUL_AUTHORITY_EVIDENCE.json mutationAdequacy.mutations.",
-    "productionNormal": "1,658 passing, 0 failing, 11 pending (CI / Build, lint & test at measuredAtHead).",
-    "productionCoverage": "1,655 passing, 0 failing, 14 pending; line coverage 90.13%, statement coverage 88.03% (npm run coverage in the same CI job at measuredAtHead). The line percentage is unchanged from the previous value here while the passing count is not — 90.13% was NOT sufficient evidence that this block was current.",
+    "_scope": "PROVENANCE DIFFERS BY CLASS AND IS STATED PER FIELD, NEVER BLANKET-CLAIMED. An earlier revision of this block said every figure here was 'taken from the CI execution at that head'; that was false for two of the four classes below, and publishing a figure against a tree that did not produce it is the exact defect lane SD5-I PUBLICATION INTEGRITY exists to remove. The classes: (a) SUBJECT VALIDATION — prototypeTests, prototypeMutationAdequacy and statefulCampaign are measured on a CLEAN CHECKOUT OF measuredAtHead, and prototypeTests publishes that result even when it is not green; (b) CONTAINER CLOSURE — publicationIntegrityClosure is measured on the evidence-container state, a DIFFERENT tree from the subject, and is labelled as such rather than folded into (a); (c) CARRIED FORWARD — productionNormal and productionCoverage are inherited from an earlier head, which those fields state, because this lane changes no production source; (d) SCANNERS — those figures live in scannerCoverage, which carries its own, deliberately older anchor and says so. measuredAtHead/measuredAtTree designate the EVIDENCE SUBJECT and are the authority every generated receipt derives provenance from (prototype/vnext-kernel/evidence-subject.ts).",
+    "measuredAtHead": "88ee0c096c9983c864535484b6829b76abbb3d18",
+    "measuredAtTree": "7959e53a4e43885c6082a62a499d21d6ce64e449",
+    "prototypeTests": "738 passing, 0 failing (vNext Kernel / Prototype Tests on a CLEAN CHECKOUT of measuredAtHead, tree verified before the run, rebuilt from clean). THIS IS THE SUBJECT FIGURE AND IT IS NOT THE CONTAINER FIGURE — see publicationIntegrityClosure. The clean subject is green because this lane changes no path the evidence-currency assertion measures (contracts/ and stateful/ are byte-identical between the previously declared subject and this one), so no container-dependent assertion is red here. test/EvidenceSubjectProvenance.test.ts contributes 16 assertions and is the first test in this repository to constrain a receipt's head/tree at all; a container-stamping mutant kills 12 of them.",
+    "prototypeMutationAdequacy": "19/19 killed, 0 survivors, 0 inconclusive (vNext Kernel / Stateful Authority at measuredAtHead); 19 distinct mutant ids, matching STATEFUL_AUTHORITY_EVIDENCE.json mutationAdequacy.mutations. Lane SD5-I RETIRED M17 and M18 together with the invariant they guarded (I-FLOOR-SHAPE-IMMUTABLE): with no authoritative shape there is no operand, so a mutant that \"restores mutability\" restores nothing. The direction that now needs guarding is the INVERSE — that the de-authorised fields never return as authority, and that the surviving commitment checks stand — and it is covered deterministically, with a narrow killing observation per mutant, by test/Sd5MetadataDeauthorisationMutations.test.ts.",
+    "productionNormal": "1,658 passing, 0 failing, 11 pending (CI / Build, lint & test at be1789f4, NOT at measuredAtHead) CARRIED FORWARD from be1789f4 rather than re-run: this lane changes no production source, which sourceDigests corroborates — only the prototype kernel's digest moved, and only via its comments.",
+    "productionCoverage": "1,655 passing, 0 failing, 14 pending; line coverage 90.13%, statement coverage 88.03% (npm run coverage in the same CI job at be1789f4, NOT at measuredAtHead). The line percentage is unchanged from the previous value here while the passing count is not — 90.13% was NOT sufficient evidence that this block was current Carried forward on the same basis as productionNormal.",
     "statefulCampaign": "252 campaigns / 13,680 transitions / 0 violations / positive controls 1,470 of 1,470 (vNext Kernel / Stateful Authority at measuredAtHead). Fixed seeds only; no randomness in the required check.",
-    "platformNote": "Reference platform is ubuntu-latest. A local Windows run of the production suite reports 1,656 passing / 2 failing: both failures are ReproducibilityAnchorAuthority's shallow-clone helper, where `git clone file:///C:/...` is rejected by MSYS git. Those two tests pass in CI at measuredAtHead. The count is 1,658 either way.",
-    "supersedes": "The previous values in this block — 413 prototype tests, 20/20 mutations, 1,643 production, 1,640 coverage, 224 campaigns / 12,160 transitions / 1,078 controls — were last written at 79e05a34, the commit this file's own _VERDICT_HISTORY records as WITHDRAWN, and were never refreshed by SD-1, SD-3, SD-6/7, W2, W2S or SD-10. They are recorded here rather than silently dropped."
+    "platformNote": "Reference platform is ubuntu-latest. A local Windows run of the production suite reports 1,656 passing / 2 failing: both failures are ReproducibilityAnchorAuthority's shallow-clone helper, where `git clone file:///C:/...` is rejected by MSYS git. Those two tests pass in CI at be1789f4; like productionNormal this is a CARRIED-FORWARD production observation, NOT a measurement at measuredAtHead. The count is 1,658 either way.",
+    "supersedes": "The previous values in this block — 413 prototype tests, 20/20 mutations, 1,643 production, 1,640 coverage, 224 campaigns / 12,160 transitions / 1,078 controls — were last written at 79e05a34, the commit this file's own _VERDICT_HISTORY records as WITHDRAWN, and were never refreshed by SD-1, SD-3, SD-6/7, W2, W2S or SD-10. They are recorded here rather than silently dropped.",
+    "publicationIntegrityClosure": "CONTAINER CLOSURE, measured on the evidence-container state — i.e. once this file declares measuredAtHead and STATEFUL_AUTHORITY_EVIDENCE.json has been regenerated against it. Full prototype suite 738 passing, 0 failing; the evidence-currency assertion green; the receipt regenerating BYTE-IDENTICALLY, which CI asserts with `git diff --exit-code`; and the receipt naming the SUBJECT rather than its container. NO CONTAINER COMMIT ID AND NO CI RUN ID IS RECORDED HERE, deliberately: naming the commit that contains this file would embed that commit's identity in its own content and reintroduce the self-reference this lane removes. The container is identified by its RELATIONSHIP to the subject — it is the commit whose only delta from measuredAtHead is the generated evidence — which is a property a reader can check, not an id this file has to predict."
   },
   "sourceDigests": {
-    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "edef95c774ca86495f5bfd41bbf8ff33df439ded78d21bc95f15b01b40d27147",
+    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "402a14a8704853657cfbb2ad5a0bc6a302fd8f346e3af8760d1c16ecd3b7a240",
     "npm/@openzeppelin/contracts@5.6.1/proxy/Clones.sol": "06c768a2b794ea59dd6d6c1bfe33cf5098a4a8921aec14cf066576a2bffafce6",
     "npm/@openzeppelin/contracts@5.6.1/utils/Create2.sol": "9623aa59745a23a72f313adc5adbf583968bf366a7cbf3fc43c1148d7d2c3c86",
     "npm/@openzeppelin/contracts@5.6.1/utils/Errors.sol": "0704b9d6c032cca8512a3bc3f30f49f86f1f03102d2896a3d23e794b82efea66",
@@ -215,5 +216,31 @@
     "beforeRuntimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e",
     "afterRuntimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
     "_note": "THE FIRST NEGATIVE DELTA IN THIS FILE. The remediation DELETES one statement from executeRecovery (the execution-time re-validation of an already-admitted recovery against the current guardianGeneration) and adds only comments, so the kernel gets SMALLER. Both figures were re-derived on a clean checkout of Commit A with the pinned solc (0.8.24, cancun, optimizer runs 200) and independently reproduced by reproduce.ts and by the Hardhat artifact, which agree byte-for-byte. Storage layout (17 entries), ABI hash, 46 selectors, 15 events, 24 errors and the factory executable prefix are all unchanged; only the CBOR metadata tails move."
+  },
+  "sd5MetadataDeauthorisation": {
+    "invariant": "I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE (replacing I-FLOOR-SHAPE-IMMUTABLE, RETIRED)",
+    "closes": "SD-5 (a PQ shape chosen once on the declaring edge was permanent against every principal, a guardian quorum included)",
+    "vulnerableHead": "5e8c68d31909d9ddc460c12d532f942ae45454b7",
+    "remediatedOn": "be1789f42b4b4abb6aa071f3f15a22333059e60b",
+    "beforeRuntime": 18367,
+    "afterRuntime": 17695,
+    "totalDelta": -672,
+    "beforeRuntimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
+    "afterRuntimeSha256": "aef5845296593e07d249c4771482da873c7e15322144be5a9d78d99588a56b1c",
+    "_note": "PURELY SUBTRACTIVE: six sites, eight statements, ZERO added code lines, so the kernel gets smaller. The de-authorised fields (pqPublicKeyLength, pqSignatureLength, pqParamLevel) are RETAINED in the struct, which is why storage layout (11 distinct slots), ABI, 46 selectors, events, errors and securityFloor()'s return shape are all UNCHANGED, and the factory is byte-identical at 2445. E-CLEAN (physically deleting the tuple members) was rejected for Generation 1 because it silently changes securityFloor()'s return shape while keeping its selector. Both figures were derived on a CLEAN checkout of be1789f4 with the pinned solc (0.8.24, cancun, optimizer runs 200), and reproduce.ts and the Hardhat artifact agree byte-for-byte."
+  },
+  "sd5PublicationIntegrity": {
+    "invariant": "Evidence SUBJECT is DECLARED and DERIVED, never taken from the commit that contains the receipt",
+    "closes": "SD5-I publication-integrity finding: generate-stateful-evidence.ts derived receipt.head/tree from `git rev-parse HEAD` (the CONTAINER), so the same evidence existed under three different heads — the implementation subject be1789f4 as committed, the container 87a3f05 from the CI push run, and 43426b229238d2dbdd2e4972acea7454b3d2c9a8 from the CI pull_request run, which is a SYNTHETIC GitHub PR merge commit: trigger-dependent (the pull_request run has one, the push run of the same commit does not), transient and non-canonical (recreated as base or head move, reachable from no branch), and absent from an ordinary clone unless refs/pull/N/merge is fetched explicitly. It IS fetchable — an earlier revision of this text overstated that — but it is not a durable evidence subject, which is the defect: provenance that changes with which trigger fired is not provenance.",
+    "vulnerableHead": "87a3f05647709c93fc8ab959c37c3cc732f5e3f6",
+    "remediatedOn": "8ba71c90e7ecbf61277a6e68e8a202e569477147",
+    "beforeRuntime": 17695,
+    "afterRuntime": 17695,
+    "totalDelta": 0,
+    "beforeRuntimeSha256": "aef5845296593e07d249c4771482da873c7e15322144be5a9d78d99588a56b1c",
+    "afterRuntimeSha256": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02",
+    "executablePrefixSha256": "c956697577d3717c68c4b86e70c5eb2a68b76f049f3c5f3108a3c8d3472750b6",
+    "metadataTailBytes": 51,
+    "_note": "ZERO EXECUTABLE BYTES CHANGED, AND THE HASH MOVED ANYWAY — both facts are reportable and neither implies the other. The Solidity delta of this lane is entirely COMMENTS: source comments that still asserted pre-SD5-I semantics as CURRENT truth (MAX_PQ_LENGTH as a live bound, pqParamLevel as recorded strength and ratcheted, the two structural lengths as FROZEN under I-FLOOR-SHAPE-IMMUTABLE, _requireSaneFloor as refusing zero-length declarations). Runtime stays 17695 bytes with 46 selectors and 11 storage slots; the 17642-byte EXECUTABLE PREFIX is byte-identical (sha256 c9566975...), and only the 51-byte CBOR metadata tail moves, because solc hashes every source of the compilation unit into it. Proven by splitting the runtime at the 2-byte metadata length suffix and comparing prefixes, not asserted. The same movement hits the factory, whose source this lane does not touch at all. Two independent tools agree: reproduce.ts compiling from source, and the Hardhat artifact."
   }
 }

@@ -215,6 +215,93 @@ judge that is a verifier the admitting principal chooses in the same transaction
 A deployer determined to build a dead vault still can; what is closed is the
 self-contradictory genesis a well-intentioned one reaches by accident.
 
+---
+
+### SD5-I CORRECTION — SD-5 is REMEDIATED, and three claims above are amended
+
+**Append-only, on the precedent of the three corrections recorded earlier in this
+section.** Lane SD5-I implements the E-PRIME amendment adjudicated in SD5-D1,
+scoped in SD5-A1 and closed adversarially in SD5-A1R.
+
+**SD-5 LEAVES THE SUSTAINED LIST.** The paragraph above is retained as written and
+its SD-5 clause is now false. What closed it is not what that clause anticipated:
+`pqPublicKeyLength`, `pqSignatureLength` and `pqParamLevel` are DE-AUTHORISED —
+removed from authorization, incoming possession, recovery satisfiability and
+downgrade — rather than constrained to better values. A minimum length was built
+and REJECTED: declaring `MIN + 1` is permanently dead exactly as `1` was, and no
+semantic authority exists for the constant. FIPS 204 §3.6.2 imposes EXACT equality
+per parameter set on *an implementation of ML-DSA*, never a generic minimum on a
+scheme-agnostic kernel (read first-hand in SD5-A1; the repository's own earlier
+citation of it was marked NOT VERIFIED, and that marking was over-cautious about
+the clause's existence and correct about its placement).
+
+**THE DEFECT WAS PERMANENCE, NOT VACUITY — and it reached honest vaults.** A
+well-formed ML-DSA-44 declaration was as permanent as a one-byte one, and a vault
+BORN with an honest floor, with no declaring edge and no attacker anywhere in the
+sequence, could never move to ML-DSA-87. That is why no validation constraint
+could close it.
+
+#### The three rows this amends
+
+| Row | Was | Now |
+| --- | --- | --- |
+| **Silent crypto downgrade** | `unreachable`, with a SCOPE note naming SD-5 as a permanent residue | `I-NO-SILENT-DOWNGRADE-G1`: a mandatory PQ conjunct may not be silently disabled. **Generation 1 makes no claim about WHICH cryptographic relation the admitted verifier implements**, so this row governs the `requirePq` conjunct and NOT the strength behind it. |
+| **Permanent recovery veto** | `unreachable`, via `I-FLOOR-SHAPE-IMMUTABLE` | `I-FLOOR-SHAPE-IMMUTABLE` is **RETIRED**; the requirement is now `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE` — for an APPROVED recovery, moving the three metadata fields cannot change its executability. `requirePq` is EXPLICITLY OUTSIDE that invariant and remains the SD-4 residual. |
+| **`I-FLOOR-IS-SOUND`** | grouped with the structural floor components | Satisfied by the kernel-evaluable **anchored ECDSA factor** and nothing else. §4.3a already said so — "neither demonstrates possession of a private key" — so this corrects a grouping, not a mechanism. |
+
+#### Authority cut: two facts, deliberately not collapsed
+
+Stating these as one invites a reader to see "no change" and mentally discount the
+residual, so they are kept apart.
+
+* **E-PRIME DELTA** — NONE on any vault with a sound verifier. A conditional
+  2 → 1 arises ONLY for alternate accepting relations that the removed
+  declared-length gate happened to exclude.
+* **GEN-1 SYSTEM RESIDUAL** — a verifier admitting a forgeable relation yields
+  2 → 1 under **either** kernel whenever that relation fits the accepted shape.
+  This is **SD-11A**, and it is neither created nor reduced by the amendment. The
+  removed gate was SHAPE-scoped, never strength-scoped.
+
+#### Two residuals join the sustained list
+
+* **SD-11A** — the kernel cannot establish that an admitted verifier exposes only
+  ONE accepting relation. `GEN1_SCHEME_SEMANTICS = VERIFIER_DEFINED`. Verifier
+  admission is a two-part deployment precondition: **(a)** the intended relation
+  conforms to FIPS 204 including §3.6.2, **and (b)** admission separately
+  establishes no unauthorized accepting relation exists. **(a) does not imply
+  (b)** — a verifier with a conforming strong leg and a forgeable second leg was
+  built and executed — so "mitigated by FIPS 204" is not available and is not
+  written anywhere.
+* **SD-11B** — the kernel pins no code identity for an admitted verifier and never
+  re-validates it, so in-place semantic change is **NOT EXCLUDED** and was **NOT
+  MEASURED**. Recorded as an unmeasured class rather than a demonstrated
+  capability. `bindMigration` pins `codehash` for migration destinations, so the
+  mechanism exists in this contract and is not applied to the verifier; note that
+  such a pin would address metamorphic redeploy but not a delegatecall proxy.
+
+#### Evidence discipline carried forward
+
+`setCode` proves REPRESENTABILITY under the kernel/verifier interface, never
+DEPLOYMENT REACHABILITY. Every claim above about a dual-relation verifier rests on
+a REALLY DEPLOYED verifier admitted by a real transaction. **No document
+downstream of this one may write "reachable attack via `setCode`".** Admission
+paths are the deployer at genesis (cut 0), the credential via `setVerifier`
+(cut 2 armed, cut 1 dormant), and the guardian quorum via recovery (cut k);
+admission is IDENTICAL on the amended and unamended kernels.
+
+**SD-8 is UNCHANGED in both directions.** Deleting an integer comparison cannot
+make bytes well-formed. **SD-4 is NARROWED, not closed**: the declaring edge can
+no longer strand an approved recovery via the shape, but a recovery proposing a
+zero PQ commitment is still stranded by the `requirePq` flip, because `keccak256`
+of any preimage is never zero.
+
+Measured: runtime **18,367 → 17,695 bytes (−672)**; storage layout, ABI, selectors,
+events, errors and `securityFloor()`'s return shape BYTE-IDENTICAL; factory
+unchanged. Records: `SD5_D1_ADJUDICATION.scratch.md`,
+`SD5_A1_ARCHITECTURE_ADJUDICATION.scratch.md`,
+`SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md`.
+
+
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,
 using distinct guardians, deploying at a fresh salt. None asked what an attacker

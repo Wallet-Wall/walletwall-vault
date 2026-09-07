@@ -3,12 +3,14 @@
  *
  * ONE INVARIANT OVER THE WHOLE COMMITMENT INGRESS SURFACE.
  *
- *   I-COMMITMENT-EXHIBITED-AT-ADMISSION
+ *   I-COMMITMENT-EXHIBITED-AT-ADMISSION   (NARROWED BY SD5-I)
  *     Every accepted transition that writes a NON-ZERO value to
  *     `pqPublicKeyHash` must exhibit a byte string K with
- *     keccak256(K) == the value being written. Where the floor governing that
- *     write already mandates PQ, K must additionally carry the declared key
- *     length, and the pre-existing proof-of-possession applies unchanged.
+ *     keccak256(K) == the value being written. That is the WHOLE of the
+ *     admission obligation: the exhibit binds the PREIMAGE and nothing else.
+ *     The pre-existing proofs of possession apply unchanged and are SEPARATE
+ *     conjuncts, not part of the exhibit: the ECDSA one is recovered by the
+ *     kernel, and the PQ one on the armed path is decided by the verifier.
  *
  * There are exactly three such transitions — `initialize`, `rotateCredential`
  * and `executeRecovery` — because `pqPublicKeyHash` has exactly two write sites
@@ -17,16 +19,31 @@
  * which is why it lands in one shared helper plus genesis rather than in three
  * places.
  *
- * WHY THE LENGTH CONJUNCT IS CONDITIONAL, AND WHY THAT IS NOT A COMPROMISE.
+ * WHY THERE IS NO LENGTH CONJUNCT ANYWHERE, AS OF SD5-I.
  * The mission hypothesis was "a preimage consistent with the commitment AND all
- * structural parameters that will later govern its use". The second half is not
- * evaluable at admission time in the dormant case: on an ECDSA-only vault no
- * shape exists yet, `pqPublicKeyLength` is 0, and comparing against it would
- * make every PQ commitment unadmittable — bricking PQ adoption for the entire
- * class. The parameters are therefore bound at the moment they EXIST, which is
- * the declaring edge, and that is precisely SD-3's `I-DECLARATION-EXHIBITED`.
- * The two invariants are complementary, not redundant; the mutants in
- * `stateful/mutants.ts` prove neither subsumes the other.
+ * structural parameters that will later govern its use". The second half is
+ * withdrawn, because those parameters govern nothing. Under the accepted
+ * E-PRIME amendment `pqPublicKeyLength`, `pqSignatureLength` and `pqParamLevel`
+ * are SIGNED_METADATA + IDENTITY_BOUND_METADATA +
+ * NON_AUTHORITATIVE_SECURITY_METADATA + ABI_COMPATIBILITY. They are explicitly
+ * NOT AUTHORIZATION_INPUT, NOT RECOVERY_SATISFIABILITY_INPUT and NOT
+ * CRYPTOGRAPHIC_STRENGTH: no authorization, incoming-possession, recovery
+ * satisfiability or downgrade path reads them.
+ *
+ * The genesis conjunct that used to compare the exhibit's length against the
+ * declared shape was SHAPE-SCOPED — it constrained the exhibit's shape, never
+ * its cryptographic content — and it is removed. It had always been conditional
+ * for a structural reason worth preserving: on an ECDSA-only vault no shape
+ * exists yet, `pqPublicKeyLength` is 0, and comparing against it would make
+ * every PQ commitment unadmittable, bricking PQ adoption for the entire class.
+ * SD-5 then measured that the ARMED branch carried the same defect in a slower
+ * form, so SD5-I generalises the dormant branch's design to every branch.
+ * SD-3's `I-DECLARATION-EXHIBITED` narrows identically on the declaring edge:
+ * its PREIMAGE conjunct survives, its key-LENGTH conjunct does not.
+ *
+ * A MINIMUM LENGTH IS NOT THE MISSING PIECE. A minimum was measured and
+ * REJECTED — "S = MIN + 1" defeats it — so no test here may pin a minimum, a
+ * length gate or an exact-tuple allowlist, in either direction.
  *
  * ZERO IS NOT A COMMITMENT. `bytes32(0)` is the kernel's representation of
  * "this vault has no PQ credential", and it remains admissible wherever the
@@ -34,11 +51,27 @@
  * deployment: deploy with no commitment, run the key ceremony off-chain, then
  * rotate the real commitment in once you actually hold the key.
  *
- * WHAT THIS DOES NOT CLOSE. SD-5 is untouched and is not closeable by an
- * exhibit: exhibiting a one-byte key proves possession of a one-byte key. The
- * key-length and signature-length axes are bound by no commitment anywhere in
- * the kernel, and `_requireSaneFloor` bounds them only against 0 and
- * MAX_PQ_LENGTH. That is a MIN_PQ_LENGTH question, not an admission question.
+ * WHAT THIS DOES NOT CLOSE — AND MUST NOT BE READ AS CLOSING. Admission proves
+ * ONE thing: a preimage of the committed hash was known to the caller at the
+ * moment of the write. Three distinct properties are kept strictly separate,
+ * and no assertion in this file may let the narrowed invariant claim the second
+ * or the third:
+ *   1. PREIMAGE EXISTENCE                — what an exhibit proves.
+ *   2. CRYPTOGRAPHIC WELL-FORMEDNESS     — that the bytes are a valid key of
+ *                                          some scheme. NOT proven here; the
+ *                                          genesis edge consults no verifier at
+ *                                          all, deliberately, because the
+ *                                          deployer chooses the verifier in the
+ *                                          same transaction.
+ *   3. PRIVATE-KEY POSSESSION            — SD-8. NOT proven here, and untouched
+ *                                          by SD5-I in either direction.
+ *
+ * `I-FLOOR-SHAPE-IMMUTABLE` is RETIRED. Its replacement is
+ * `I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE`: for an APPROVED recovery,
+ * changing `pqPublicKeyLength`, `pqSignatureLength` or `pqParamLevel` cannot
+ * change its executability. `requirePq` is EXPLICITLY OUTSIDE that invariant and
+ * remains the SD-4 declaring-edge residual — it is not an exception clause to be
+ * smuggled back in.
  */
 import { expect } from "chai";
 import { ethers, networkHelpers } from "./connection.js";
@@ -231,7 +264,10 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — rotation (SD-6)", () => {
     expect(await w.vault.pqPublicKeyHash()).to.equal(ethers.ZeroHash);
   });
 
-  it("the requirePq-TRUE path is unchanged: length, preimage and PoP all still bind", async () => {
+  it("the requirePq-TRUE path NARROWS to preimage and PoP — the kernel's length leg is gone", async () => {
+    // NARROWED BY SD5-I. This assertion had two legs on the armed path; the
+    // key-LENGTH leg was removed and the PREIMAGE leg survives, so the title and
+    // the attributions below are restated to claim only what still runs.
     const w = await deployWorld({ label: "adm-rot-hybrid" });
     const target = keyOf("adm-rot-hybrid-target");
     // POSITIVE CONTROL first.
@@ -240,12 +276,43 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — rotation (SD-6)", () => {
     ).wait();
     expect(await w.vault.pqPublicKeyHash()).to.equal(pqHash(target));
 
-    // Wrong length is still refused, on a fresh world.
+    // A 33-byte exhibit of a 32-byte commitment is still refused — but by the
+    // PREIMAGE leg, which is the only leg left that could catch it.
+    // keccak256(junk33) != pqHash(t2), and that comparison runs before the
+    // verifier is ever reached.
     const w2 = await deployWorld({ label: "adm-rot-hybrid-2" });
     const t2 = keyOf("adm-rot-hybrid-2-target");
     await expect(
       rotate(w2, { newCred: t2, newPqKeyHash: pqHash(t2), newPqKey: bytesOfLength(33, "long") }),
     ).to.be.revertedWithCustomError(w2.vault, "BadSignature");
+
+    // ATTRIBUTION, by discrimination rather than by assertion. Take a 33-byte
+    // key that DOES exhibit its own commitment, so the preimage leg passes and
+    // only the verifier conjunct is left standing. Change NOTHING but the
+    // verifier between the two arms.
+    const key33 = bytesOfLength(33, "adm-rot-hybrid-33");
+    const hash33 = ethers.keccak256(key33);
+
+    // Arm A — honest verifier. Refused. `EcdsaBackedVerifier` returns false for
+    // any public key that is not exactly 32 bytes, so this is that VERIFIER's
+    // own well-formedness refusal. It is not evidence of a surviving kernel
+    // length gate, and arm B is what settles that.
+    const w3 = await deployWorld({ label: "adm-rot-hybrid-33-honest" });
+    const t3 = keyOf("adm-rot-hybrid-33-honest-target");
+    await expect(
+      rotate(w3, { newCred: t3, newPqKeyHash: hash33, newPqKey: key33 }),
+    ).to.be.revertedWithCustomError(w3.vault, "BadSignature");
+
+    // Arm B — an accepting verifier, same kernel, same inputs. ADMITTED. The
+    // kernel therefore holds no length gate on this edge: the refusal in arm A
+    // was located entirely in the verifier.
+    const w4 = await deployWorld({ label: "adm-rot-hybrid-33-open", verifier: "alwaysTrue" });
+    const t4 = keyOf("adm-rot-hybrid-33-open-target");
+    await (await rotate(w4, { newCred: t4, newPqKeyHash: hash33, newPqKey: key33 })).wait();
+    expect(
+      await w4.vault.pqPublicKeyHash(),
+      "a 33-byte credential installs under a floor declaring 32 — shape is not authority",
+    ).to.equal(hash33);
   });
 
   it("GUARDIAN RECOVERY is bound by the same invariant, and still succeeds when exhibited", async () => {
@@ -351,7 +418,7 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — rotation (SD-6)", () => {
     expect(await w.vault.pqPublicKeyHash()).to.equal(pqHash(fresh));
   });
 
-  it("the UNATTESTED plant is refused; the EXHIBITED one is not — SD-5 is untouched", async () => {
+  it("the UNATTESTED plant is refused; the EXHIBITED one is not — admission binds attestation, not shape", async () => {
     const w = await deployWorld({ label: "adm-chain", ecdsaOnlyFloor: true });
     const target = keyOf("adm-chain-target");
     // The SD-5 composition needed a one-byte commitment planted here. Refused.
@@ -359,7 +426,8 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — rotation (SD-6)", () => {
       rotate(w, { newCred: target, newPqKeyHash: ethers.keccak256("0xaa"), newPqKey: "0x" }),
     ).to.be.revertedWithCustomError(w.vault, "BadSignature");
     // Exhibiting it is still possible — the invariant is about ATTESTATION, not
-    // about shape. SD-5 remains open and is not an admission question.
+    // about shape, and after SD5-I no edge anywhere reads a shape. What an
+    // exhibit proves stays narrow: a preimage was known. SD-8 is untouched.
     await (await rotate(w, { newCred: target, newPqKeyHash: ethers.keccak256("0xaa"), newPqKey: "0xaa" })).wait();
     expect(await w.vault.pqPublicKeyHash()).to.equal(ethers.keccak256("0xaa"));
   });
@@ -396,13 +464,56 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — genesis (SD-7)", () => {
     expect(r.ok, "SD-7 refused").to.equal(false);
   });
 
-  it("REFUSES a PQ-mandatory genesis whose exhibit is the WRONG LENGTH for its own floor", async () => {
+  it("ADMITS a genesis whose exhibit does not match its own declared shape — length is not admission authority", async () => {
+    // INVERTED BY SD5-I. This case used to be REFUSED by the genesis key-LENGTH
+    // conjunct, which was SHAPE-SCOPED. That conjunct is removed, so a 48-byte
+    // exhibit under a floor declaring 32 is now ADMITTED: the commitment is
+    // bound to its PREIMAGE and to nothing else.
+    //
+    // TWO ARMS, so this pins the narrowing rather than merely observing that
+    // something got easier. Arm A exhibits the true preimage and is ADMITTED.
+    // Arm B changes ONLY the committed hash, keeping the identical 48-byte
+    // exhibit, and is still REFUSED — with the kernel's own `BadSignature`, so
+    // the refusal is attributed to the surviving preimage leg and not to some
+    // earlier guard. The surviving leg is therefore doing real work, and arm A's
+    // acceptance is not the vacuous acceptance of a check that no longer runs.
+    //
+    // Arm A proves PREIMAGE EXISTENCE only. It does NOT claim the 48 bytes are a
+    // well-formed key of any scheme, and it does NOT claim possession of a
+    // private key — the honest verifier is never consulted on this edge.
     const w = await deployWorld({ label: "adm-gen-mismatch" });
     const key48 = bytesOfLength(48, "adm-gen-48");
-    const r = await deployGenesis(
+    const other48 = bytesOfLength(48, "adm-gen-48-other");
+
+    const admitted = await deployGenesis(
       w, { pqKeyHash: ethers.keccak256(key48) }, ethers.id("adm-gen-mm-salt"), key48,
     );
-    expect(r.ok, "48-byte key under a 32-byte declared shape is refused").to.equal(false);
+    expect(admitted.ok, "a 48-byte exhibit under a floor declaring 32 is ADMITTED").to.equal(true);
+    if (!admitted.ok) return;
+    expect(
+      await admitted.vault.pqPublicKeyHash(),
+      "the commitment stored is exactly the one exhibited",
+    ).to.equal(ethers.keccak256(key48));
+    // The three fields are RETAINED verbatim — de-authorised, not deleted — and
+    // still readable at the unchanged `securityFloor()` return shape.
+    const floor = await admitted.vault.securityFloor();
+    expect(
+      [floor[0] as boolean, Number(floor[1]), Number(floor[2]), Number(floor[3])],
+      "the declared metadata is stored as declared, and simply governs nothing",
+    ).to.deep.equal([
+      HYBRID.requirePq,
+      HYBRID.pqParamLevel,
+      HYBRID.pqPublicKeyLength,
+      HYBRID.pqSignatureLength,
+    ]);
+
+    // ARM B — the discriminating control. Identical exhibit, different commitment.
+    const refused = await deployGenesis(
+      w, { pqKeyHash: ethers.keccak256(other48) }, ethers.id("adm-gen-mm-salt-b"), key48,
+    );
+    expect(refused.ok, "a 48-byte exhibit of the WRONG commitment is still refused").to.equal(false);
+    if (refused.ok) return;
+    expect(refused.error, "and it is the KERNEL refusing, at the preimage leg").to.include("BadSignature");
   });
 
   it("REFUSES a PQ-mandatory genesis with a zero commitment (the pre-existing check survives)", async () => {
@@ -456,7 +567,7 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — genesis (SD-7)", () => {
     expect(await r.vault.pqPublicKeyHash()).to.equal(ethers.ZeroHash);
   });
 
-  it("POSITIVE CONTROL: the MAXIMUM legal shape is still deployable when genuinely exhibited", async () => {
+  it("POSITIVE CONTROL: a 65,535-byte exhibit still deploys — MAX_PQ_LENGTH has no reader", async () => {
     const w = await deployWorld({ label: "adm-gen-max" });
     const big = bytesOfLength(65535, "adm-gen-max-key");
     const r = await deployGenesis(
@@ -468,13 +579,20 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — genesis (SD-7)", () => {
       ethers.id("adm-gen-max-salt"),
       big,
     );
-    expect(r.ok, "MAX_PQ_LENGTH remains reachable — the exhibit is not a new bound").to.equal(true);
+    expect(
+      r.ok,
+      "the exhibit is not a bound in either direction; MAX_PQ_LENGTH is retained for ABI only",
+    ).to.equal(true);
   });
 
-  it("SD-7 x SD-5: a vacuous shape is STILL admissible at genesis — this fix does not close SD-5", async () => {
+  it("a shape declaring 1 and 1 is admissible at genesis — the declared shape is not authority", async () => {
     // Stated as a test so the boundary of the remediation is executable rather
-    // than merely asserted in prose. Exhibiting a one-byte key proves possession
-    // of a one-byte key; nothing about admission constrains the shape.
+    // than merely asserted in prose. Exhibiting a one-byte key proves that a
+    // one-byte preimage was known — not that it is a well-formed key, and not
+    // that anyone holds a corresponding private key. Nothing about admission
+    // constrains the shape, and after SD5-I nothing downstream reads it either:
+    // the declared lengths and param level are NON_AUTHORITATIVE_SECURITY_METADATA,
+    // so a "small" declaration is a metadata fact, not a weakened gate.
     const w = await deployWorld({ label: "adm-gen-vacuous" });
     const r = await deployGenesis(
       w,
@@ -485,6 +603,6 @@ describe("I-COMMITMENT-EXHIBITED-AT-ADMISSION — genesis (SD-7)", () => {
       ethers.id("adm-gen-vacuous-salt"),
       "0xaa",
     );
-    expect(r.ok, "SD-5 is untouched and remains SUSTAINED").to.equal(true);
+    expect(r.ok, "admission constrains the preimage and nothing else").to.equal(true);
   });
 });
