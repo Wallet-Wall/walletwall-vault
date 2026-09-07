@@ -29,21 +29,21 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 18367,
-    "initcodeBytes": 18408,
+    "runtimeBytes": 17695,
+    "initcodeBytes": 17736,
     "immutableSlots": 0,
-    "runtimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
+    "runtimeSha256": "aef5845296593e07d249c4771482da873c7e15322144be5a9d78d99588a56b1c",
     "selectors": 46,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6209,
-    "headroomVsTargetCeiling": 3609,
+    "headroomVsPortabilityBudget": 6881,
+    "headroomVsTargetCeiling": 4281,
     "verdict": "TARGET PASS"
   },
   "factory": {
     "runtimeBytes": 2445,
     "initcodeBytes": 2794,
     "immutableSlots": 2,
-    "runtimeSha256": "7a5cba517c0800ad4dd8c0834dd538a1a0aed92ded54a9f0b9a3eea9c8e42bf4",
+    "runtimeSha256": "4f6839453b061e2721895b01d1c3f5e2431b32503ec03a9ea2f524b8b8452d23",
     "selectors": 4,
     "_note": "SD10-I changes NO factory logic either: runtime 2,445 and initcode 2,794 are unchanged and the executable PREFIX is byte-identical (keccak 0x68f71f67...); only the CBOR metadata tail moves, because the factory imports the kernel source and solc hashes every source of the compilation unit into that tail. The same was true of W2, whose note follows. W2 (K-9 mechanism B + recovery lifecycle) changes NO factory logic: runtime 2,445 and initcode 2,794 are identical to the SD-6/7 head, and the 4 selectors are unchanged. The runtime hash moves anyway because the factory imports the kernel source and solc hashes every source of the compilation unit into the metadata CBOR: 32 differing bytes, all inside the 51-byte metadata tail. The previous note stands as history: at SD-6/7 the factory gained +219 bytes of REAL LOGIC (deployVault forwards a third parameter to initialize); predictVault and genesisSalt are untouched by both lanes."
   },
@@ -110,10 +110,10 @@
   },
   "validation": {
     "_scope": "CURRENT aggregate test and assurance results of measuredAtHead, taken from the CI execution at that head (ubuntu-latest, the reference platform) rather than carried forward from an earlier lane. The figures below were measured against measuredAtHead/measuredAtTree; this file is committed one commit later, which is the same recapture pattern the canonical receipts use. Nothing a test or scanner reads differs between the two — the only delta is this file.",
-    "measuredAtHead": "b7e6cc3a02a6f61c9152a51d9c168f372522a6e3",
-    "measuredAtTree": "216611f72db8f995e9110147b8fe6208ea1d90b2",
-    "prototypeTests": "710 passing, 0 failing (vNext Kernel / Prototype Tests at measuredAtHead).",
-    "prototypeMutationAdequacy": "21/21 killed, 0 survivors, 0 inconclusive (vNext Kernel / Stateful Authority at measuredAtHead); 21 distinct mutant ids, matching STATEFUL_AUTHORITY_EVIDENCE.json mutationAdequacy.mutations.",
+    "measuredAtHead": "be1789f42b4b4abb6aa071f3f15a22333059e60b",
+    "measuredAtTree": "5d320f93cdeadada4dff7087b173e949f176bb7f",
+    "prototypeTests": "722 passing, 0 failing (vNext Kernel / Prototype Tests at measuredAtHead). Lane SD5-I moved this figure for three reasons, all of them accounted: the SD5-I mutation suite test/Sd5MetadataDeauthorisationMutations.test.ts is new (6 assertions, each mutant killed by a narrow observation); thirteen existing suites were re-anchored on the de-authorised semantics rather than deleted; and the receipt-consistency assertion in StatefulAuthorityFuzz, which was RED at the implementation commit BY DESIGN because receipts stamp git HEAD and may not be generated on an uncommitted tree, is GREEN once this file and STATEFUL_AUTHORITY_EVIDENCE.json are regenerated against that commit.",
+    "prototypeMutationAdequacy": "19/19 killed, 0 survivors, 0 inconclusive (vNext Kernel / Stateful Authority at measuredAtHead); 19 distinct mutant ids, matching STATEFUL_AUTHORITY_EVIDENCE.json mutationAdequacy.mutations. Lane SD5-I RETIRED M17 and M18 together with the invariant they guarded (I-FLOOR-SHAPE-IMMUTABLE): with no authoritative shape there is no operand, so a mutant that \"restores mutability\" restores nothing. The direction that now needs guarding is the INVERSE — that the de-authorised fields never return as authority, and that the surviving commitment checks stand — and it is covered deterministically, with a narrow killing observation per mutant, by test/Sd5MetadataDeauthorisationMutations.test.ts.",
     "productionNormal": "1,658 passing, 0 failing, 11 pending (CI / Build, lint & test at measuredAtHead).",
     "productionCoverage": "1,655 passing, 0 failing, 14 pending; line coverage 90.13%, statement coverage 88.03% (npm run coverage in the same CI job at measuredAtHead). The line percentage is unchanged from the previous value here while the passing count is not — 90.13% was NOT sufficient evidence that this block was current.",
     "statefulCampaign": "252 campaigns / 13,680 transitions / 0 violations / positive controls 1,470 of 1,470 (vNext Kernel / Stateful Authority at measuredAtHead). Fixed seeds only; no randomness in the required check.",
@@ -121,7 +121,7 @@
     "supersedes": "The previous values in this block — 413 prototype tests, 20/20 mutations, 1,643 production, 1,640 coverage, 224 campaigns / 12,160 transitions / 1,078 controls — were last written at 79e05a34, the commit this file's own _VERDICT_HISTORY records as WITHDRAWN, and were never refreshed by SD-1, SD-3, SD-6/7, W2, W2S or SD-10. They are recorded here rather than silently dropped."
   },
   "sourceDigests": {
-    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "edef95c774ca86495f5bfd41bbf8ff33df439ded78d21bc95f15b01b40d27147",
+    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "ede1e2f7de8487cdc561e8a4b11da8a781540c2bbfc7be696bc5c2eb2f8d00df",
     "npm/@openzeppelin/contracts@5.6.1/proxy/Clones.sol": "06c768a2b794ea59dd6d6c1bfe33cf5098a4a8921aec14cf066576a2bffafce6",
     "npm/@openzeppelin/contracts@5.6.1/utils/Create2.sol": "9623aa59745a23a72f313adc5adbf583968bf366a7cbf3fc43c1148d7d2c3c86",
     "npm/@openzeppelin/contracts@5.6.1/utils/Errors.sol": "0704b9d6c032cca8512a3bc3f30f49f86f1f03102d2896a3d23e794b82efea66",
@@ -215,5 +215,17 @@
     "beforeRuntimeSha256": "178840891570e259bb4c1629f6879704b83ed0c33de8db686a1aa9dc514cbc7e",
     "afterRuntimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
     "_note": "THE FIRST NEGATIVE DELTA IN THIS FILE. The remediation DELETES one statement from executeRecovery (the execution-time re-validation of an already-admitted recovery against the current guardianGeneration) and adds only comments, so the kernel gets SMALLER. Both figures were re-derived on a clean checkout of Commit A with the pinned solc (0.8.24, cancun, optimizer runs 200) and independently reproduced by reproduce.ts and by the Hardhat artifact, which agree byte-for-byte. Storage layout (17 entries), ABI hash, 46 selectors, 15 events, 24 errors and the factory executable prefix are all unchanged; only the CBOR metadata tails move."
+  },
+  "sd5MetadataDeauthorisation": {
+    "invariant": "I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE (replacing I-FLOOR-SHAPE-IMMUTABLE, RETIRED)",
+    "closes": "SD-5 (a PQ shape chosen once on the declaring edge was permanent against every principal, a guardian quorum included)",
+    "vulnerableHead": "5e8c68d31909d9ddc460c12d532f942ae45454b7",
+    "remediatedOn": "be1789f42b4b4abb6aa071f3f15a22333059e60b",
+    "beforeRuntime": 18367,
+    "afterRuntime": 17695,
+    "totalDelta": -672,
+    "beforeRuntimeSha256": "5d8b03ec7fcae15e1a986b6c102f2c1f91afb7e984818b3a526cbcb57bb44943",
+    "afterRuntimeSha256": "aef5845296593e07d249c4771482da873c7e15322144be5a9d78d99588a56b1c",
+    "_note": "PURELY SUBTRACTIVE: six sites, eight statements, ZERO added code lines, so the kernel gets smaller. The de-authorised fields (pqPublicKeyLength, pqSignatureLength, pqParamLevel) are RETAINED in the struct, which is why storage layout (11 distinct slots), ABI, 46 selectors, events, errors and securityFloor()'s return shape are all UNCHANGED, and the factory is byte-identical at 2445. E-CLEAN (physically deleting the tuple members) was rejected for Generation 1 because it silently changes securityFloor()'s return shape while keeping its selector. Both figures were derived on a CLEAN checkout of be1789f4 with the pinned solc (0.8.24, cancun, optimizer runs 200), and reproduce.ts and the Hardhat artifact agree byte-for-byte."
   }
 }
