@@ -1,9 +1,9 @@
 {
-  "schema": "vnext-kernel-scanner-evidence.v2",
+  "schema": "vnext-kernel-scanner-evidence.v3",
   "sourceSubject": "aaa21d093876d23d9e2d790400661d3d242caa31",
   "sourceTree": "5e47baa2bb09669e62145b23caa65762791ad518",
-  "triageSubject": "ada953998d98ecfc1538367f54ef682df64a3761",
-  "triageTree": "7b6f5d9a83be9577ce2bf689ed418a9ab631e49d",
+  "triageSubject": "4677861c5437f653a5443142f23444903a8c252a",
+  "triageTree": "4c5a27d1dabe131f6d5191cfc85625372a6877aa",
   "scannerInputScope": {
     "contractsTree": "dcc42e76a22b2491e05a6f7ccbc98f447e6acbc5",
     "externalImportClosureSha256": "deadd7cdf7ac2cc08ffafd31ef5f66c7591ea5ebcf3ca685016268d3b058cfb4",
@@ -63,23 +63,6 @@
       "errors": 0
     }
   },
-  "tests": {
-    "prototype": {
-      "passing": 793,
-      "failing": 0
-    },
-    "productionNormal": {
-      "passing": 1658,
-      "failing": 0,
-      "pending": 11
-    },
-    "productionCoverage": {
-      "passing": 1655,
-      "failing": 0,
-      "pending": 14,
-      "percent": 90.13
-    }
-  },
   "bytecode": [
     {
       "name": "VaultKernelPrototype",
@@ -92,13 +75,11 @@
       "runtimeSha256": "ab16471a7a97a88c0d823e6d536a01671b388b0acada8a404eaf3da4a2062d6f"
     }
   ],
-  "knownAnalysisAbsences": [
-    "No third-party audit.",
-    "No fuzzing campaign, no formal verification (T0/T1 invariants are argued and tested, not proven).",
-    "GitHub CodeQL provides no Solidity semantic analysis of prototype/vnext-kernel/contracts (vendor limitation).",
-    "Slither's own coverage is bounded by what its detectors can express -- see AUTHORITY.md section 7 for what this analysis does not establish, independent of any scanner.",
-    "PQ verifier is structural/mock; no cryptographic claim about the PQ leg (AUTHORITY.md section 7.3).",
-    "Guardian independence is assumed, not enforced on-chain (AUTHORITY.md section 7.4 / H-31).",
-    "Semantic finding identity is derived from Slither's own element chain and message. A detector that reported the same construct under a different chain would present as ADDED plus REMOVED rather than as a change, which is the conservative direction but is not free of judgement."
+  "scannerEvidenceDoesNotEstablish": [
+    "That the kernel is free of defects Slither's detector model cannot express. Detector coverage bounds this evidence entirely; see AUTHORITY.md section 7 for what the authority-closure argument does and does not establish, independent of any scanner.",
+    "Any Solidity semantic result from CodeQL: GitHub ships no Solidity extractor, so the CodeQL runs cover this prototype's TypeScript tooling only. This is a permanent vendor limitation, not a configuration gap.",
+    "That a finding reported under a different element chain is the same finding. Semantic identity is derived from Slither's own chain and message, so such a report would present as ADDED plus REMOVED rather than as a change -- the conservative direction, but a judgement.",
+    "That a source change invisible to the flagged construct is harmless. A narrow (node-only) fingerprint proves a construct changed; a broad-only difference proves the surrounding source changed and forces re-adjudication without asserting more than that.",
+    "Anything about the repository outside prototype/vnext-kernel/contracts and its declared dependency closure. Audit status, formal verification, fuzzing campaigns, PQ verifier assurance and guardian independence are stated by AUTHORITY.md and the campaign receipts, and are deliberately NOT restated here."
   ]
 }
