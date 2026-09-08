@@ -1,12 +1,22 @@
 # vNext Minimal Trust Kernel — prototype v0
 
-> # EXPERIMENTAL · NOT AUDITED · NOT PRODUCTION · NO DEPLOYMENT · DO NOT MERGE INTO MAIN
+> # EXPERIMENTAL · NOT AUDITED · NOT PRODUCTION · NO DEPLOYMENT
 >
-> A measurement prototype for the architecture adjudicated in **PR #179**
-> (`design/vault-vnext-trust-architecture`, head `71aee6f3`). It exists to answer
-> one question and produce numbers. It is **not** a production specification, has
-> **no** audit, **no** fuzzing campaign and **no** formal verification, and
-> nothing here has been or may be deployed.
+> **Merging this research prototype does not authorize production deployment or
+> custody use.**
+>
+> A measurement prototype for the architecture adjudicated in **PR #179**, whose
+> architecture-adjudication head was `71aee6f3` (a historical anchor — that branch
+> has moved since, and this line deliberately does not track it). It exists to
+> answer one question and produce numbers. It is **not** a production
+> specification, has **no** audit and **no** formal verification, and nothing here
+> has been or may be deployed.
+>
+> It **does** carry a deterministic seeded stateful adversarial authority/recovery
+> campaign, an authority-path completeness checker and firsthand scanner triage —
+> none of which is an audit or formal verification, and all of which report
+> sustained findings. `STATEFUL_AUTHORITY_EVIDENCE.json` lists the sustained
+> defects and `whatThisDoesNotProve`; read those before quoting any result here.
 >
 > **This tree is OUTSIDE the production Hardhat compilation unit** — see
 > _Compilation boundary_ below. `contracts/` is untouched.
@@ -41,11 +51,22 @@ loss against this exact kernel.**
 | `VaultKernelPrototype` (SD-1 remediated)          | 17,622     | pass, headroom 6,954     | TARGET PASS, headroom 4,354     |
 | `VaultKernelPrototype` (SD-3 remediated)          | 17,806     | pass, headroom 6,770     | TARGET PASS, headroom 4,170     |
 | `VaultKernelPrototype` (SD-6 + SD-7 remediated)   | 18,105     | pass, headroom 6,471     | TARGET PASS, headroom 3,871     |
-| **`VaultKernelPrototype` (W2: K-9 mechanism B + recovery lifecycle, Commit A `c182db10`)** | **18,425** | **pass, headroom 6,151** | **TARGET PASS, headroom 3,551** |
+| `VaultKernelPrototype` (W2: K-9 mechanism B + recovery lifecycle, Commit A `c182db10`) | 18,425     | pass, headroom 6,151     | TARGET PASS, headroom 3,551     |
 
-**22.1% smaller than the monolith** — 5,144 bytes — and still the only one of the
-three to clear the internal target. The factory adds **2,445** bytes, once per
-generation. Remediating findings A-E cost **+3,068** bytes; per-fix attribution is
+> **This table is a HISTORY of the size progression, not the current state.** Every
+> row is anchored to the commit that produced it, and the last row stops at
+> `c182db10`. Lanes after it (notably SD5-I) changed the kernel again.
+>
+> **`MEASUREMENTS.json` is the authority for the current measured kernel** —
+> runtime bytes, initcode, selectors, storage slots and headroom. It is regenerated
+> by `measure.ts` and re-derived by `reproduce.ts` in CI. Those figures are
+> deliberately **not** duplicated here: a second hand-maintained copy of a live
+> number is exactly how the superseded row below came to be read as current.
+
+The kernel has cleared the internal target at every measured head since findings
+A-E were remediated, and it is the only one of the three to do so; the factory
+adds **2,445** bytes, once per generation. Remediating findings A-E cost **+3,068**
+bytes; per-fix attribution is
 in `AUTHORITY.md` §4 and reproducible with `deltas.ts`. Remediating **SD-1** with
 `I-FLOOR-SHAPE-IMMUTABLE` cost a further **+215**, closing **SD-3** with
 `I-DECLARATION-EXHIBITED` another **+184**, and closing **SD-6 and SD-7** together
@@ -169,9 +190,11 @@ on hash is not a reproducible build.
 
 ## K0–K6 byte attribution
 
-Diagnostic only. Each level is the full kernel with later responsibilities
-ablated; storage and getters are held constant, so a delta is the cost of
-**logic**. Only K6 is a candidate.
+Diagnostic only, and **measured at the `79e05a34` head** — the totals below sum to
+that head's 14,339 bytes, not to the current kernel (see `MEASUREMENTS.json`). Each
+level is the full kernel with later responsibilities ablated; storage and getters
+are held constant, so a delta is the cost of **logic**. Only K6 is a candidate. The
+ATTRIBUTION is what this table is for; the absolute byte counts are historical.
 
 ```text
 K0  identity + initialization                       2,998
@@ -183,9 +206,19 @@ K5  + migration                                    12,598   +2,298
 K6  + rotation, governance, no-downgrade  [FULL]   14,339   +1,741
 ```
 
-## Measured code identity
+## Measured code identity — at the `79e05a34` head, kept as history
 
-| Property                                                     | Result                                 |
+> **HISTORICAL. Every figure in this table is the `79e05a34` (14,339-byte) head's
+> identity**, kept because the reproducibility *properties* it establishes —
+> zero `immutableReferences`, byte-identical rebuilds, clone/CREATE2 recovery —
+> are the ones the prototype set out to demonstrate, and they have held at every
+> head since. The BYTE COUNTS below are superseded.
+>
+> For the current kernel's runtime, initcode, selectors, storage slots and
+> headroom, read **`MEASUREMENTS.json`** — the authority, regenerated by
+> `measure.ts` and independently re-derived by `reproduce.ts` in CI.
+
+| Property                                                     | Result at `79e05a34`                   |
 | ------------------------------------------------------------ | -------------------------------------- |
 | implementation runtime                                       | **14,339** bytes                       |
 | implementation initcode                                      | **14,380** bytes                       |
