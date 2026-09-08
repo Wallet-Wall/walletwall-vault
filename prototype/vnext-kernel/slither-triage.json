@@ -1,0 +1,943 @@
+{
+  "$schema": "vnext-kernel-slither-triage.v2",
+  "description": "Firsthand triage of every Slither finding that touches prototype/vnext-kernel/contracts. Keyed by SEMANTIC IDENTITY (scanner-finding-identity.ts semanticId): a sha256 over detector + per-element file, element chain and signature + the detector message with line references normalised away. The key contains NO line numbers, offsets or spans, so a finding that only moves keeps its identity and its adjudication. The v1 locator key (<check>|<sorted filename:firstLine>) is RETAINED per entry under locators, together with every superseded locator, because it is how a finding is found in a specific checkout and because deleting it would discard history. fingerprints.narrow covers the node elements Slither actually flagged and is absent when a finding has none; fingerprints.broad covers every element including the enclosing function. A narrow difference PROVES the flagged construct changed; a broad-only difference proves the surrounding source changed and requires re-adjudication without asserting more than that. generate-scanner-evidence.ts --validate fails on any untriaged finding, any triage entry matching no current finding, any ambiguous identity, any fingerprint drift, and any scanner-input scope mismatch between the declared subjects.",
+  "keyedAt": {
+    "sourceSubject": "aaa21d093876d23d9e2d790400661d3d242caa31",
+    "sourceTree": "5e47baa2bb09669e62145b23caa65762791ad518",
+    "contractsTree": "dcc42e76a22b2491e05a6f7ccbc98f447e6acbc5",
+    "supersedes": {
+      "schema": "vnext-kernel-slither-triage.v1",
+      "keyedAtHead": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+      "keyedAtTree": "90e1a8020d1caf1132319f55bd1141ba44d07202"
+    },
+    "migration": "Every v1 key was mapped to a semanticId computed from a pinned Slither run on a clean checkout of c32e0d74 (where those keys were valid), then joined to the run at aaa21d09. All 33 v1 keys were consumed exactly once and the resulting key set equals the current run's 33 distinct own-code findings: 12 same locator, 20 relocated, 1 SOURCE_CONTEXT_CHANGED_REQUIRES_READJUDICATION. No entry was re-keyed by line arithmetic and none was grandfathered.",
+    "toolchain": "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f semantics reproduced in a disposable venv: slither-analyzer @ https://github.com/crytic/slither/archive/ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad.tar.gz (reports 0.11.5), crytic-compile 0.4.2, solc-select 1.2.0, solc 0.8.24+commit.e11b9ed9, target prototype/vnext-kernel/contracts, --compile-force-framework solc, --solc-remaps @openzeppelin/=node_modules/@openzeppelin/ (@openzeppelin/contracts 5.6.1 from the lockfile), --solc-args '--evm-version cancun --optimize --optimize-runs 200', --exclude-dependencies, --no-fail-pedantic. 217 raw results, 54 own-code raw rows, 33 distinct own-code findings; raw sha256 054135ac9e4aff807b5d5215b15447945f960e4e0e2e2bcc8433af7e058c21be.",
+    "fingerprintAlgorithm": "solidity-lexer-v1",
+    "fingerprintNote": "fingerprints.narrow (node elements only) and fingerprints.broad (every element) are computed with normaliseSolidity, a STRING-AWARE scanner. The regex it replaces stripped comment markers wherever they appeared, including inside string literals, so a URL, revert string or ABI signature containing a double slash had everything after it erased -- two revisions differing only there produced the same fingerprint and a real change would have been reported UNCHANGED. fingerprintAlgorithm names the current scheme and the generator refuses a triage whose algorithm it does not implement, so comment handling can never change without the stored values being re-derived."
+  },
+  "classifications": {
+    "0efd8f39bece6f7dcb9a47c6bec76adc1ae1554eb61686d8ad0903544d4ec5fd": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "execute's recipient is bound into the digest _authorise checks (HYBRID: ECDSA AND, when securityFloor.requirePq, the PQ verifier) before any value moves -- traced at VaultKernelPrototype.sol:883-891. The destination is exactly the parameter the signed authorization covers; this is a custody contract's spend function working as designed, not an unauthorized-destination bug.",
+      "locators": {
+        "current": "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:871,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:912",
+        "previous": [
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792",
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "eec727a6972df1b86d610d7302b39f9daa629d6a00bf14ab23441c676dbdf0c6",
+        "broad": "36bfa1dbdb3064e368bfae58884b153c5919acc438cea3e6400273e87911283b"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792",
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634"
+        ],
+        "lineDelta": [
+          120,
+          120
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)",
+        "v1RationaleEdit": "embedded line references moved with execute (+158); wording unchanged",
+        "rationaleEdit": "embedded source line citations moved with the code; wording unchanged"
+      }
+    },
+    "296e4c50cb5c6b1f707bad19d356e48ca5396f176038a05a763632ea88cd4ad6": {
+      "classification": "NON_SECURITY_STYLE",
+      "rationale": "ReentrantRecipient is the test-only adversary that exercises AUTHORITY.md section 6's reentrancy argument (\"a reentrant recipient cannot replay a spend, because the nonce is already consumed\"). It is deliberately not meant to release funds.",
+      "locators": {
+        "current": "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:148,prototype/vnext-kernel/contracts/PrototypeMocks.sol:159",
+        "previous": [
+          "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:148,prototype/vnext-kernel/contracts/PrototypeMocks.sol:159"
+        ]
+      },
+      "fingerprints": {
+        "broad": "5fc7d3537254d27d73de308d8c9f9679acfafe4038884eb28589b0e35f4fdfc7"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:148,prototype/vnext-kernel/contracts/PrototypeMocks.sol:159"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "31b65643c0f35f97c655ca7d6d28142babac9795c4d4e0c74d7959ed89f9fe4b": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "_requireQuorum's `counted` is a uint256 local, which Solidity zero-initializes deterministically (not an uninitialized-storage-pointer aliasing hazard, the genuinely dangerous case this detector exists for). The loop only ever increments it from that known-zero start.",
+      "locators": {
+        "current": "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1261",
+        "previous": [
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1128",
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:885"
+        ]
+      },
+      "fingerprints": {
+        "broad": "3cea214bae6af897ce076e61801707481e0c0fe6a7b1936f7dc9a3662ea287a5"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1128",
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:885"
+        ],
+        "lineDelta": [
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "3ba30bffbf17569142cf4083ed0fafe3cafadf738d9ca71ce2ca1a010a1cabc6": {
+      "classification": "OUT_OF_SCOPE_DEPENDENCY",
+      "rationale": "RawCloner exists specifically to deploy a clone outside the factory's atomic init (\"the M-K01 takeover window\" per its own comment) -- it is the adversarial fixture, not code with a security property to enforce.",
+      "locators": {
+        "current": "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:131,prototype/vnext-kernel/contracts/PrototypeMocks.sol:133",
+        "previous": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:131,prototype/vnext-kernel/contracts/PrototypeMocks.sol:133"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "ec18bf0390da1f1a5a38f49e64fd8bf3c3b90814146fa5de0313c0813f12665b",
+        "broad": "e49cea6c3515366352b46448078ff337efc2c33277d6e4b45887595928429b23"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:131,prototype/vnext-kernel/contracts/PrototypeMocks.sol:133"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "3c76da0776574d6d50edb88c252b4c8c577217047ebfc3f85a079908164a0b75": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "enterContainment's window/budget arithmetic (CONTAINMENT_WINDOW = 30 days, CONTAINMENT_BUDGET = 6 days) operates at day-scale; ~15s of miner timestamp slack cannot move the budget check's outcome.",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1538,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1556",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1405,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1423",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1372,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1390"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "141b0c07c7c0d372b9ad3d92eaf1729688bd3a5ee7837bb1f031ae86ac65e007",
+        "broad": "4c208bde2c0e92fbac2410cd1ce8919eeca4dad039acb440edc88adbe76ebb44"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1405,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1423",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1372,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1390"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "49a9b6fb48441f38de30bbe69918497289941cfa05c49888ff1b2bc75b48290c": {
+      "classification": "NON_SECURITY_STYLE",
+      "rationale": "ReentrantRecipient.receive() re-entering the kernel is the mechanism of the M-K reentrancy test, not incidental.",
+      "locators": {
+        "current": "low-level-calls|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162",
+        "previous": [
+          "low-level-calls|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "b871b50d04b3a5a79e3cd7672def76a610939256acae15c6254e2d9396b3d1ce",
+        "broad": "ad6679bfbcc23c049ba71bc514a63618b81f56baba095af135ed8e129ddd33a3"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "low-level-calls|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "53e7c99e40a24565edcedacc1d8e61c053ebca4ef387c6853f69afc6a6c597b9": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_requireIncomingPossession reads no clock: there is no block.timestamp, deadline or expiresAt reference anywhere in its body (verified at the source subject over lines 753-803), and the comparison Slither prints -- `popDigest.recover(c.newEcdsaPop) != expectedSigner` -- has no clock operand. The report is the node-context taint described in the W2S record: the function is reached from rotateCredential (line 954) and executeRecovery (line 1503), both of which do read the clock, and Slither evaluates data dependency in NODE context with field-insensitive struct dependency, so every later comparison in the callee is flagged. The clock argument therefore rests on those two callers' own entries, not on this one.",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:753,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:764",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:640,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:651",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:525,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:536"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "5fa17ec1a57d0b6c36a71266199a117fb192f10a5440f79ad675152316ce26ea",
+        "broad": "f5fe73222478e0e59104e638df9d3b56a8597fb389ea8c3cb4297645b6e24592"
+      },
+      "provenance": {
+        "relocation": "SOURCE_CONTEXT_CHANGED_REQUIRES_READJUDICATION",
+        "sourceChange": "Commit be1789f4 (SD5-I, PQ shape de-authorisation) deleted `if (c.newPqKey.length != floor.pqPublicKeyLength || c.newPqPop.length != floor.pqSignatureLength) revert BadSignature();` from this function and rewrote the surrounding comment block. The enclosing function body therefore changed; the flagged construct did not.",
+        "whyClassificationSurvives": "The deleted construct is a length equality on PQ key and signature bytes. It carries no clock operand and its removal adds and removes no block.timestamp read, so it cannot move the timestamp adjudication in either direction. It is a SHAPE-scoped change, adjudicated on its own merits in the SD-5 lane (PRs #194/#195); it is recorded here only because it is why this entry could not be carried forward as a relocation.",
+        "evidence": "narrowFingerprint (node elements only) is EQUAL across c32e0d74 and aaa21d09; broadFingerprint (all elements, enclosing function included) DIFFERS. That pair is what distinguishes a proven semantic change from enclosing-context drift, and it is why this entry is classified REQUIRES_READJUDICATION rather than SEMANTIC_CHANGE_PROVEN.",
+        "supersededRationale": "_requireIncomingPossession itself performs no timestamp comparison; the flagged lines are digest/signature checks reusing the enclosing function's timestamp-influenced call sites (rotateCredential / executeRecovery), already covered by those findings' own rationale.",
+        "supersededReason": "Substantively re-verified rather than reworded: the superseded text was written against the pre-SD5-I body and asserted the clock property without naming the mechanism or the line range it held over. It was re-checked firsthand at the source subject and found still true; the replacement states the mechanism and cites what was measured.",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:640,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:651",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:525,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:536"
+        ],
+        "lineDelta": [
+          113,
+          113
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30"
+      }
+    },
+    "55e5b023be72f1bc1ecddfd943b4c0bd88620b7496386b8dd65584b9bea35343": {
+      "classification": "NON_SECURITY_STYLE",
+      "rationale": "DestinationStub is a test-only migration-destination stand-in (\"a destination with code, so a migration binding has a real codehash\", PrototypeMocks.sol comment); it exists only to give egress() tests a real codehash to check against, never to hold funds in production.",
+      "locators": {
+        "current": "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:143,prototype/vnext-kernel/contracts/PrototypeMocks.sol:144",
+        "previous": [
+          "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:143,prototype/vnext-kernel/contracts/PrototypeMocks.sol:144"
+        ]
+      },
+      "fingerprints": {
+        "broad": "1f0e767c8df267d1bd65d77896c6f42fdfe8031f6265ad5768516185df31565b"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "locked-ether|prototype/vnext-kernel/contracts/PrototypeMocks.sol:143,prototype/vnext-kernel/contracts/PrototypeMocks.sol:144"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "67105f17ea8353a8c4e9f04f1b2130bc46ff38584407d46b9465f22a01587153": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "cancelRecovery's only clock read is the _recoveryIsLive() gate at VaultKernelPrototype.sol:1387, adjudicated under the timestamp entry keyed :742,:743. The comparison Slither prints for this function, recovery.challengesUsed >= CHALLENGE_LIMIT (:1255), has no timestamp-derived operand: challengesUsed is written only by the += 1 in this function, the carry-forward in initiateRecovery and the whole-struct delete in executeRecovery (I-RECOVERY-CHALLENGE-EPOCH). It is reported because the timestamp detector evaluates data dependency in NODE context: after the _recoveryIsLive() internal call, whose return value depends on block.timestamp and on the recovery struct, the node-context dependency set of the recovery storage reference includes block.timestamp (probed with the pinned Slither's is_dependent: node-context true, function-context false, W2S_SCANNER_TRIAGE_RECORD.md section 5.2); the identical comparison at e6964aeb, gated by the raw recovery.active byte, produced no report. What the clock decides here is WHETHER a credential challenge is admitted: while live (t < expiresAt) the challenge consumes one budget unit and clears request authority; once expired it is refused with NoRecovery before any nonce or budget is touched (test/W2RecoveryLifecycle.test.ts B1-B3 'challenge' probes; mutant M-K9-expired-request-still-challengeable). Bounded skew (0 s on post-merge L1, ~15 s forward-only PoW-era, 1,800 s OP-Stack sequencer drift) can move that instant by seconds against a 14-day window and can neither refund nor exceed the budget, so it hands the credential no capability beyond the bounded challenge that architecture section 22 D1 already prices (I-VETO-BOUND).",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1383,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1388",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1250,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1255"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "3b600a676bd35283de26716eb4627985c85463652f2efb51235fe727adcf33e5",
+        "broad": "985538d263c42f5a9f130b806aea4e53fb8654f2594d8eb61115e5bb717dedd6"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1250,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1255"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "rationaleEdit": "embedded source line citations moved with the code; wording unchanged"
+      }
+    },
+    "6e4c498d3bd894e9f50a1287e2f5d16935a6fb9ca0ba7dff1f832a6b6428e090": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "egress's `moved` is assigned on every path: the if (asset == address(0)) branch assigns it directly, the else branch assigns it from before - remaining. Both branches of the if/else are exhaustive, so `moved` is never read before assignment despite lacking an explicit literal initializer.",
+      "locators": {
+        "current": "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1648",
+        "previous": [
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1515",
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1482"
+        ]
+      },
+      "fingerprints": {
+        "broad": "9a74289be72fde04b0400267120321e9cb22424e1fb3aded098e69f2ddb17b35"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1515",
+          "uninitialized-local|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1482"
+        ],
+        "lineDelta": [
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "7b1d6800eaadd7789e6847d3c03391e2adc12f3456ddb7d53828b912a326fce8": {
+      "classification": "OUT_OF_SCOPE_DEPENDENCY",
+      "rationale": "TestToken is a test-only fixture, never deployed as part of the measured kernel. Pure gas-optimization suggestion, no security content.",
+      "locators": {
+        "current": "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:96",
+        "previous": [
+          "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:96"
+        ]
+      },
+      "fingerprints": {
+        "broad": "ef01a3a94bd67a22a425e849af3dcb58f6226d917e2a9bfe110994821ecc11d8"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:96"
+        ],
+        "lineDelta": [
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "835a770ae04198b1b186a2dee6616cb0503c2f939e0db2e6cf1ce0eda0ba830f": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_consume checks block.timestamp against a caller-supplied deadline. The deadline is the caller's own choice (like a normal transaction deadline pattern); ~15s of miner slack narrows or widens the window the caller themselves already accepted, and grants a miner no capability over WHO is authorized.",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:805,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:807",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:685,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:687",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:547,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:549"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "b4692f5d1ce990f85006dbcfbb4f8a6b049978c2d96d31a75d9ffcc02512a317",
+        "broad": "a52a6a457e19b504fb0a27223bdfc00174ecb9aa740e4520d34a3a787cd3e3ab"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:685,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:687",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:547,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:549"
+        ],
+        "lineDelta": [
+          120,
+          120
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "859d755a2585b266790ea14fd2eb5f73d79d0d1b29308ec8f66963c4954e53d0": {
+      "classification": "OUT_OF_SCOPE_DEPENDENCY",
+      "rationale": "Same RawCloner adversarial fixture as the cloneOnly finding above.",
+      "locators": {
+        "current": "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:136,prototype/vnext-kernel/contracts/PrototypeMocks.sol:138",
+        "previous": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:136,prototype/vnext-kernel/contracts/PrototypeMocks.sol:138"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "ade6345b65d6ad05ef7169eb6cee4f9169ed83798a6a3e4d8a516b04db3900d7",
+        "broad": "5b998f0fe5977eb5434404a0bc9b25719d203adc8f670a503de44c4f277b9045"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:136,prototype/vnext-kernel/contracts/PrototypeMocks.sol:138"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "88bc83854320237601314a402f9a2c7901368f70e891d73428c86007f982a467": {
+      "classification": "NON_SECURITY_STYLE",
+      "rationale": "This IS the AUTHORITY.md section 6 reentrancy adversary firing as designed -- the finding names the exact mechanism the suite tests.",
+      "locators": {
+        "current": "reentrancy-benign|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162,prototype/vnext-kernel/contracts/PrototypeMocks.sol:163",
+        "previous": [
+          "reentrancy-benign|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162,prototype/vnext-kernel/contracts/PrototypeMocks.sol:163"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "48e3216e408cb62ef33170639710f1a7f2c9f0725f67c1f7d5abe3ed84875516",
+        "broad": "dcbb0cd444bc5aa4bd379022bb46482e8f265d77e4fa0827626556335f6f2351"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "reentrancy-benign|prototype/vnext-kernel/contracts/PrototypeMocks.sol:159,prototype/vnext-kernel/contracts/PrototypeMocks.sol:162,prototype/vnext-kernel/contracts/PrototypeMocks.sol:163"
+        ],
+        "lineDelta": [
+          0,
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "89d8ff5b24085ada75c252301ce66dbb7408a8551376b80e44733e699627379b": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_balanceOf's staticcall is AUTHORITY.md section 5 call site 6's balanceOf half: fixed selector 0x70a08231, read-only, used only to measure a settlement (I-NO-FALSE-SETTLEMENT).",
+      "locators": {
+        "current": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1670,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1671",
+        "previous": [
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1537,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1538",
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1504,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1505"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "5646d6c3ba37c67e53a5d83089dbab6e1f075b8b00e4ee83330c50a9af332cdf",
+        "broad": "fbf16757fe101f72722432381fad6953f473c5635e118c8dcad02c42b563fbbf"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1537,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1538",
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1504,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1505"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "92178691cbbb30c266f3d3b6771920388cc6abb11ad453aa4daab92605f1e6e3": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "AUTHORITY.md section 6's documented argument, independently re-traced: _consume(DOMAIN_SPEND, ...) increments nonces[DOMAIN_SPEND] at VaultKernelPrototype.sol:892, strictly before the policy-plane call (786-789) and the value transfer (792). A reentrant execute() needs a fresh signature over nonce+1, which only the credential holder can produce -- reentry is authorized spending, not a bypass.",
+      "locators": {
+        "current": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:871,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:908,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:911",
+        "previous": [
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:788,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:791",
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:630,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:633"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "80b1e7f360d3b113916c4d26066ad0c641bf2ba84241938e53677b75a7250e2d",
+        "broad": "975bb29394f593b8921e82eeef0773aea54d81ee078b383754cf9ab78290a9a6"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:788,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:791",
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:630,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:633"
+        ],
+        "lineDelta": [
+          120,
+          120,
+          120
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)",
+        "v1RationaleEdit": "embedded line references moved with execute (+158); wording unchanged",
+        "rationaleEdit": "embedded source line citations moved with the code; wording unchanged"
+      }
+    },
+    "951fd542bfda583b589d5977d56cd31a7c66129b9e429755fc59e0c123dbbaf0": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "deployVault's external calls before the event are genesisSalt (a STATICCALL to the immutable implementation, which cannot mutate state) and initialize(g, pqKey) on the clone address that Clones.cloneDeterministicWithImmutableArgs (an internal-library CREATE2) just produced in this same call. A brand-new contract with no prior code cannot reenter deployVault before it exists, and the only code at that address is the kernel's own initialize, which makes no external call (it validates g and the pqKey exhibit by keccak256 and length comparison, writes genesis state and emits). VaultDeployed is emitted after the call with no state left for a reentrant call to exploit: the factory holds no mutable state at all (VaultKernelFactoryPrototype.sol's own header: its authority closure is EMPTY). Re-adjudicated by Lane W2S because the construct changed BEFORE W2, in #187 (SD-6/SD-7, I-COMMITMENT-EXHIBITED-AT-ADMISSION): pqKey became a forwarded parameter of deployVault and initialize. The exhibit is a satisfiability witness, adds no external call and changes nothing in the reentrancy argument.",
+      "locators": {
+        "current": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:82,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:89,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:90",
+        "previous": [
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:82,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:89,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:90",
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:71,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:77,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:78"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "97c2a7ff5d3c2908c5374e771ced1388174dc34f77b34446f24c9465b8e7c6a6",
+        "broad": "a9a26bec13459da77383b103d35cdb4f096f178b9448ee5a1392c3a837e20457"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:82,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:89,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:90",
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:71,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:77,prototype/vnext-kernel/contracts/VaultKernelFactoryPrototype.sol:78"
+        ],
+        "lineDelta": [
+          0,
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "956c3cf8a6ef6e4d674e39880a0e78fb532d15fe152d1c2ff584b3ff8fcbda5f": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "_attests destructures ECDSA.tryRecover the same way and uses both recovered and err in `return err == ECDSA.RecoverError.NoError && recovered == guardian && recovered != address(0);` -- the blanked third value is intentionally discarded, standard Solidity idiom, not an ignored result.",
+      "locators": {
+        "current": "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1289,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1299",
+        "previous": [
+          "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1156,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1166",
+          "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:923"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "a188f30409dc1eb6a86d7eb693187d3530c843df3cbbf364f4427cb51b04baf6",
+        "broad": "a9ef09bc3356597adf59017009eb20d56796c4b6552a7cfa1cab5986461b1b28"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1156,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1166",
+          "unused-return|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:923"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "9e45209ae6b1417b45ece4237546cd845a1cdc081568f437e02e5aa79476d472": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "execute's low-level call is AUTHORITY.md section 5 call site 4: empty calldata, value transfer only, to the signed-and-authorized recipient. Documented as deliberate (\"never arbitrary execution\").",
+      "locators": {
+        "current": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:871,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:912",
+        "previous": [
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792",
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "eec727a6972df1b86d610d7302b39f9daa629d6a00bf14ab23441c676dbdf0c6",
+        "broad": "36bfa1dbdb3064e368bfae58884b153c5919acc438cea3e6400273e87911283b"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:751,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:792",
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:593,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:634"
+        ],
+        "lineDelta": [
+          120,
+          120
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "9ed4e1a4ffeb6b36cea4acb893be3c37b5afa85f3548c632035f3a790a8736a6": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "egress's two low-level calls are exactly AUTHORITY.md section 5 call sites 4 and 6: empty-calldata value transfer to the bound destination, and a fixed-selector (0xa9059cbb) ERC-20 transfer to the same bound destination. Both destinations come from the committed migration binding, never from a per-call parameter.",
+      "locators": {
+        "current": "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1641,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1652,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1660",
+        "previous": [
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1527",
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "6eb16c23ccf75c34081c06d1e9af1c29fc478f42fff3da799e02c2922cb552ef",
+        "broad": "6a9dfe82d5d1d1fd3185667802a7ef6a80deff72e6fc292c6a1435ecb77ca06a"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1527",
+          "low-level-calls|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494"
+        ],
+        "lineDelta": [
+          133,
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "a40b08ff68c3fb8b1713973bc3a5704ad459cc5ecb3cb978c33591298cb7e6cf": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "executeRecovery gates on block.timestamp < r.executableAt (TooEarly; RECOVERY_DELAY = 7 days) and, CHANGED BY W2 (SD-9e, Recovery Amendment section 3), on block.timestamp >= r.expiresAt (Expired; RECOVERY_EXPIRY = 14 days): the half-open window [executableAt, expiresAt) that makes execution consistent with _recoveryIsLive(). At expiresAt-1 execution, both cancellations and the migration block all hold; at expiresAt and expiresAt+1 execution reverts Expired, both cancellations revert NoRecovery consuming no nonce and no budget, migration binds, and a fresh initiation is admitted with its own full delay (test/W2RecoveryLifecycle.test.ts B1-B4 and G3, each probe mined at its asserted instant). Re-adjudicated in Lane W2S rather than carried forward: the only difference the change makes to the timestamp argument is that the last authorised instant moved from expiresAt to expiresAt-1, removing the one-second window in which the pre-W2 kernel executed a request every other consumer already treated as expired. Validator discretion is bounded: post-merge L1 timestamps are fixed per 12-second slot (no proposer discretion; the only lever is inclusion), PoW-era skew was at most ~15 s and forward-only (a lagging timestamp cost the miner difficulty and was corrected by the next honest block), and OP-Stack L2 sequencer drift is bounded at 1,800 s relative to the L1 origin -- at most 0.3% of RECOVERY_DELAY and 0.15% of RECOVERY_EXPIRY. Skew moves both bounds of every principal's window together, reads no signature, quorum or possession check, and therefore cannot execute an unmatured or expired request, cannot bypass the quorum that alone creates an active request (initiateRecovery), and cannot reset the challenge epoch, whose only reset is this function's own delete recovery after a successful, authorised execution. Mutant M-K9-expiry-inclusive-off-by-one (> here, <= in the predicate) is killed by the B-series boundary property (test/W2RecoveryLifecycleMutations.test.ts).",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1489,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1493,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1497",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1356,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1360,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1364",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1325,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1329,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1333"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "24c2d98f0000efe0a4a246518a4e0131c94154ca9e95b298529d431119a87470",
+        "broad": "53a4f28ac46a7fbc2460123c3c24e261627d139f918a0cec165b5a2b272a0ccd"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1356,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1360,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1364",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1325,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1329,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1333"
+        ],
+        "lineDelta": [
+          133,
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "a8259fbeaf6239363340cd540693e7642c0a71790b21913e227956c8552437b3": {
+      "classification": "OUT_OF_SCOPE_DEPENDENCY",
+      "rationale": "ReentrantRecipient.arm is test-only wiring for the reentrancy adversary, not kernel code.",
+      "locators": {
+        "current": "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:154,prototype/vnext-kernel/contracts/PrototypeMocks.sol:155",
+        "previous": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:154,prototype/vnext-kernel/contracts/PrototypeMocks.sol:155"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "f49c09ef2597473ca13fc96d75f2bc676bc3dd7c65676b1e73810b3d851a6aa9",
+        "broad": "80ce4d9f98f77fba7ea6f1eff29e8d9276849c35bd3ae81b33f7327d2b0eb339"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/PrototypeMocks.sol:154,prototype/vnext-kernel/contracts/PrototypeMocks.sol:155"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "abe95d187e1c12962e204fac0e3a622668f6679cd2c8b5b7303de13b5ed306f1": {
+      "classification": "NON_SECURITY_STYLE",
+      "rationale": "GasBurningGuardian's own doc comment states it is deliberately NOT declared IERC1271Guardian, because that interface is view and this adversary must be free to burn gas without a state-mutability restriction. Slither is correctly observing an intentional deviation.",
+      "locators": {
+        "current": "missing-inheritance|prototype/vnext-kernel/contracts/PrototypeMocks.sol:69,prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol:36",
+        "previous": [
+          "missing-inheritance|prototype/vnext-kernel/contracts/PrototypeMocks.sol:69,prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol:36"
+        ]
+      },
+      "fingerprints": {
+        "broad": "3b72457db9e3d34d519f0159660bd303dd44bfe625fc239cec08266d4a9deed2"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "missing-inheritance|prototype/vnext-kernel/contracts/PrototypeMocks.sol:69,prototype/vnext-kernel/contracts/interfaces/IKernelPlanes.sol:36"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "ad663fbd0354c03e65b432873e0ed5759560e4b1b609234551c573a9c4d38c5d": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_effectiveState's CONTAINED-vs-NORMAL check compares against containedUntil, set from CONTAINMENT_MAX (3 days) in enterContainment. Day-scale window, immaterial to ~15s miner slack, and the effect of the ~15s ambiguity is which side of a state transition a call lands on that was already scheduled to happen -- not a new capability.",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:831,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:833",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:711,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:713",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:573,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:575"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "7860a24c6c70a4b9fcb21bbed5567da64302784495b00adecb9f2111450b3b5e",
+        "broad": "96e55dd552a78fd9ccf419df41c7e48fa73c42f373624de718250ef2bfd82748"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:711,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:713",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:573,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:575"
+        ],
+        "lineDelta": [
+          120,
+          120
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "b4a9a0935784f86de1eb84b8ed800e46b381a3cfdec0a75c3033d1c91cdcb4dc": {
+      "classification": "OUT_OF_SCOPE_DEPENDENCY",
+      "rationale": "ConfigurablePolicy is a test-only adversary/control fixture (PrototypeMocks.sol header: \"None is measured by measure.ts\"), never deployed as part of the measured kernel. Pure gas-optimization suggestion, no security content.",
+      "locators": {
+        "current": "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:37",
+        "previous": [
+          "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:37"
+        ]
+      },
+      "fingerprints": {
+        "broad": "f48438da27554f79b046cb202fbec61d96e6fe0f50e726e011fea63f80f2e6c4"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "immutable-states|prototype/vnext-kernel/contracts/PrototypeMocks.sol:37"
+        ],
+        "lineDelta": [
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "bdb031c85673971be7364b3e0d98ae03f5fd90bc0335b35da6e5bb242bf6ce9e": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "egress(address) sends to migration.destinationVault, which is set exclusively by bindMigration (guardian quorum AND credential, see AUTHORITY.md section 3 \"Migration takeover\") and re-validated against migration.destinationVaultCodeHash at execution time. egress itself takes no destination parameter -- the detector's premise (an externally-influenced destination) does not hold.",
+      "locators": {
+        "current": "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1641,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1652",
+        "previous": [
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519",
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "886bd663150814da90cf4ade2e13b831d40848391f61198137994cace2c84ea0",
+        "broad": "94c8d733bbddc8ad09c45721c937e942068eeb8188171af807b42e0d62ddb7b9"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519",
+          "arbitrary-send-eth|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "c270b29978cb5d6618da816c8f2811650c6ec04cd69bbe96c9d601d7a8cc2b48": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_attests's inline assembly is a bounded-gas (GUARDIAN_CALL_GAS), bounded-returndata (one word) STATICCALL that Solidity's high-level call syntax cannot express -- the whole point of I-GUARDIAN-FAULT-ISOLATION (AUTHORITY.md section 5/6). Removing it would remove the fault isolation, not just the assembly.",
+      "locators": {
+        "current": "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1289,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1306",
+        "previous": [
+          "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1156,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1173",
+          "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:930"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "55483d9f0dc7e995248a27b7c212b6daf162ddb5c3197cedcc5cc388e474784a",
+        "broad": "17d8c8ce36a9369123a34ad7058d6b4ea9731efeca95c7e048e8f02db83af3f6"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1156,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1173",
+          "assembly|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:913,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:930"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)"
+      }
+    },
+    "cc6862e008d3c932f0023c0e2fa1f9b7e0b5fdc84a24feddb8d119113f5a2a63": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "retire() checks block.timestamp against BIND_DELAY (7 days). Day-scale window, immaterial to ~15s miner slack, and retire() carries no discretion regardless of exact timing.",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1619,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1621",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1488",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1453,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1455"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "b612ad6516e2b5e97463900fa257101c04c7263fd488eed6a91fafb0c7c9ea66",
+        "broad": "1648fbb687a80544cfe6e29a5a81ae55cf670bce6fa40243255f0680682b83f0"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1488",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1453,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1455"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "d642d2aab6b1574259a0134a997b1414cd7465f3b720361a9ae61bc89ace85fc": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "EcdsaBackedVerifier.verify destructures ECDSA.tryRecover's THREE return values as (recovered, err, ), using both recovered and err in the following return statement; only the third value (unused by the OZ ECDSA API for this check) is intentionally discarded via the idiomatic blank identifier. Test-only fixture besides.",
+      "locators": {
+        "current": "unused-return|prototype/vnext-kernel/contracts/PrototypeMocks.sol:180,prototype/vnext-kernel/contracts/PrototypeMocks.sol:184",
+        "previous": [
+          "unused-return|prototype/vnext-kernel/contracts/PrototypeMocks.sol:180,prototype/vnext-kernel/contracts/PrototypeMocks.sol:184"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "a21663a340a049eddbb621339b5b39f671e7ed7e4d2c162d3129c7dbd0928d6d",
+        "broad": "1f541edb21c8d9df5437ff52354f6bbe1278a452a7c29e64f1caa1c9f7344055"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_SAME_LOCATOR",
+        "previousKeys": [
+          "unused-return|prototype/vnext-kernel/contracts/PrototypeMocks.sol:180,prototype/vnext-kernel/contracts/PrototypeMocks.sol:184"
+        ],
+        "lineDelta": [
+          0,
+          0
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "dab74d67c746fea1e0973f8f476caae989097c3b0c0933d935e9f226a999ba5c": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "_recoveryIsLive() IS I-RECOVERY-EFFECTIVE-LIVENESS (Recovery Amendment section 3): a request holds authority on the HALF-OPEN window [executableAt, expiresAt), so active && block.timestamp < recovery.expiresAt is the one deliberate clock read that every recovery-lifecycle decision consults -- initiateRecovery's live-overwrite refusal, cancelRecovery, cancelRecoveryByQuorum and bindMigration; executeRecovery mirrors it with >= expiresAt. Adjudicated independently in Lane W2S (W2S_SCANNER_TRIAGE_RECORD.md section 5), not inherited from the older timestamp entries. (1) The predicate decides only WHETHER an already-authorised act lands, never WHO is authorised: no signature, quorum or possession check reads the clock, so no authority cut in AUTHORITY.md section 4 moves with it. (2) Every consumer applies the same inequality, so there is no block in which the request is executable but not cancellable, or cancellable but not executable; test/W2RecoveryLifecycle.test.ts B1-B3 pins all five consumers at expiresAt-1 (live: execution succeeds, both cancellations succeed, migration is blocked, initiation is refused as overwrite), expiresAt and expiresAt+1 (expired: Expired / NoRecovery with nothing consumed / migration binds / fresh initiation admitted), and G3 pins the three instants as consecutive blocks of one world. (3) Validator discretion is bounded: post-merge L1 timestamps are fixed per 12-second slot (no proposer discretion; the only lever is inclusion), PoW-era skew was at most ~15 s and forward-only, and OP-Stack L2 sequencer drift is bounded at 1,800 s relative to the L1 origin -- at most 0.15% of RECOVERY_EXPIRY (14 days) and 0.3% of RECOVERY_DELAY (7 days); a forward skew can only make a request expire EARLY, shrinking every principal's window together, never extend it. (4) Consequently skew cannot refund the challenge epoch (challengesUsed is written only by the += 1 in cancelRecovery, the carry-forward in initiateRecovery and the whole-struct delete in executeRecovery), cannot bypass the quorum (only initiateRecovery creates an active request), cannot execute an expired request (t >= expiresAt reverts, and expiry is defined in the same clock the request was created in), cannot overwrite a live request (initiateRecovery reverts BadState while live; a fresh request over an EXPIRED one is by design not an overwrite, and the quorum could in any case have cancelled its own live request) and cannot lower any cut. Mutants M-K9-expiry-inclusive-off-by-one, M-K9-expired-request-still-challengeable, M-K9-expired-request-still-quorum-cancellable, M-K9-expired-request-blocks-migration, M-K9-expired-request-blocks-initiation, M-K9-live-overwrite-allowed and M-K9-expiry-refunds-budget are all killed (test/W2RecoveryLifecycleMutations.test.ts).",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:862,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:863",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:742,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:743"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "6fd3422caef65553f0da54ca8fcc124b475c1543a3c9362c67908adf3d804ae8",
+        "broad": "43fa29cc02e9b725ebcd8cb87f60cd2a612087dbdd25bb64eb6fd3a29aa5fe1c"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:742,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:743"
+        ],
+        "lineDelta": [
+          120,
+          120
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it."
+      }
+    },
+    "e73eb7d462d3f9278ff2da8e1fa6b830383623ed415000a591105a0bf61117bf": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "egress is documented PERMISSIONLESS with NO discretion (AUTHORITY.md section 1/6): the recipient and asset disposition are fixed by the prior migration binding, so a reentrant call can only re-move balance to the same already-committed destination -- idempotent by construction, not an exploit path.",
+      "locators": {
+        "current": "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1641,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1652,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1660,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1667",
+        "previous": [
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1527,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1534",
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1501"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "5ea2f0819dfa21dc779ae8f68d1a378ed66cba2aebc5a4ebf480f5cd6d7fc8e2",
+        "broad": "b445999cd9c67dcfc360540bc1c1bada04a2b9716da8f38ccb28d3050b846b7e"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1519,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1527,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1534",
+          "reentrancy-events|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1486,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1494,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1501"
+        ],
+        "lineDelta": [
+          133,
+          133,
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    },
+    "e877f4fbabfc528d802821d7faa773dab8005a7051bee20c3563ddb81e23b6b2": {
+      "classification": "FALSE_POSITIVE",
+      "rationale": "setPolicy's policy is documented and tested to accept address(0) on purpose: PLANE doc-comment states \"address(0) falls back to the kernel FLOOR\", and execute() at VaultKernelPrototype.sol:906-909 explicitly branches on policyEngine == address(0). A zero-check here would break the documented fallback behaviour, not fix a bug.",
+      "locators": {
+        "current": "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1116,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1134",
+        "previous": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1001,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:983",
+          "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:740,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:758"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "205fe6bcab017ec6e90f6e5ef8cb78e3b5b235d166265b1d55a06176239e8df2",
+        "broad": "8734c8d5208cde90ef263b8472a7f7d441c0ceb55e483612af7dc1ef582b80e1"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1001,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:983",
+          "missing-zero-check|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:740,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:758"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names), finding message modulo line references, and source text at every element under the CI-pinned toolchain at both heads (Lane W2S, W2S_SCANNER_TRIAGE_RECORD.md section 4)",
+        "v1RationaleEdit": "embedded line references moved with execute (+158); wording unchanged",
+        "rationaleEdit": "embedded source line citations moved with the code; wording unchanged"
+      }
+    },
+    "f62071e536820681dac539793f8fefa485ea7efdc28b093e2af146056e23ae87": {
+      "classification": "ACCEPTED_DESIGN_TRADEOFF",
+      "rationale": "egress's codehash re-check has no timestamp arithmetic in it that a miner could exploit; the timestamp read here is incidental to the surrounding function, not a comparison a miner can move a meaningful amount.",
+      "locators": {
+        "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1641,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1646",
+        "previous": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1513",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1480"
+        ]
+      },
+      "fingerprints": {
+        "narrow": "84a7994e5bf8baafcb35cdb239f09b4fe0e890b6328027d58c8469583977dc37",
+        "broad": "67ac686f0c3f0d72c121ea0fbbb2081c452ea344d74220b3f9409a428b2cd03a"
+      },
+      "provenance": {
+        "relocation": "UNCHANGED_FINDING_RELOCATED",
+        "previousKeys": [
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1508,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1513",
+          "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1475,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1480"
+        ],
+        "lineDelta": [
+          133,
+          133
+        ],
+        "keyedAtV1": "c32e0d748390b79f4163ad4a783c2467cf502e30",
+        "proof": "Matched on semanticId (detector + element chain + signatures + message modulo line references; no line information in the hashed tuple) with narrowFingerprint and broadFingerprint both byte-equal across c32e0d74 and aaa21d09 under the CI-pinned toolchain. The line delta is an OUTPUT of the match, never an input to it.",
+        "v1Proof": "identical detector, element chain (contract/function/node names) and finding message modulo line references, under the CI-pinned toolchain (crytic/slither-action@b52cc1cb resolved set: slither-analyzer @ ff1bf3ff, solc 0.8.24, plain solc platform, OZ remap, cancun/optimize/runs=200, --exclude-dependencies) run against BOTH a42f5c7e and Commit A on one machine (Lane SD10-P). Matched semantically; the line delta is recorded, not used to match."
+      }
+    }
+  }
+}

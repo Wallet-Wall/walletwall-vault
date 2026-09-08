@@ -1,0 +1,85 @@
+{
+  "schema": "vnext-kernel-scanner-evidence.v3",
+  "sourceSubject": "aaa21d093876d23d9e2d790400661d3d242caa31",
+  "sourceTree": "5e47baa2bb09669e62145b23caa65762791ad518",
+  "triageSubject": "4677861c5437f653a5443142f23444903a8c252a",
+  "triageTree": "4c5a27d1dabe131f6d5191cfc85625372a6877aa",
+  "scannerInputScope": {
+    "contractsTree": "dcc42e76a22b2491e05a6f7ccbc98f447e6acbc5",
+    "externalImportClosureSha256": "deadd7cdf7ac2cc08ffafd31ef5f66c7591ea5ebcf3ca685016268d3b058cfb4",
+    "scannerSemanticConfigSha256": "0c9a1a605f8fb2a3b1310151bcf28d69a55727bde29f8cec249b0b4127657e63",
+    "openzeppelin": {
+      "version": "5.6.1",
+      "integrity": "sha512-Ly6SlsVJ3mj+b18W3R8gNufB7dTICT105fJhodGAGgyC2oqnBAhqSiNDJ8V8DLY05cCz81GLI0CU5vNYA1EC/w=="
+    }
+  },
+  "provenanceNote": "sourceSubject is the commit whose scanner-semantic inputs were analyzed; triageSubject is the commit whose slither-triage.json adjudicated them. Currency between the two is licensed ONLY by scannerInputScope byte equality -- never by equal finding counts, equal raw hashes or ancestry, all three of which held across a drift that moved 21 of 33 findings. The publication container is deliberately unnamed: verify-receipt-container.ts establishes it from git afterwards.",
+  "compiler": {
+    "solcVersion": "0.8.24",
+    "evmVersion": "cancun",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "viaIR": false
+  },
+  "scanners": {
+    "slither": {
+      "version": "pinned via https://github.com/crytic/slither.git@ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad",
+      "action": "crytic/slither-action@b52cc1cbfee9ca3e8722dd5224299d16c9a6b80f",
+      "pathsAnalyzed": [
+        "prototype/vnext-kernel/contracts"
+      ],
+      "platform": "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
+      "canonicalAllFindingsSha256": "55b7fd2bbe14b5579879389deec2716a73e2618a116445b7f2b8bdb16a1b27b3",
+      "canonicalDistinctOwnFindingsSha256": "12b6519683deb067c2b276ff38399b9d5ba8608474292fdc0a3ba92d0632dee0",
+      "rawFindingCount": 217,
+      "ownCodeRawRowCount": 54,
+      "distinctOwnCodeFindingCount": 33,
+      "duplicateRowsFromPerEntryRecompile": 21,
+      "relocatedSinceTriage": 0,
+      "untriaged": 0,
+      "stale": 0,
+      "ambiguous": 0,
+      "triagedByClassification": {
+        "ACCEPTED_DESIGN_TRADEOFF": 15,
+        "FALSE_POSITIVE": 8,
+        "NON_SECURITY_STYLE": 5,
+        "OUT_OF_SCOPE_DEPENDENCY": 5
+      }
+    },
+    "codeql": {
+      "solidityCoverage": "NONE -- GitHub CodeQL has no Solidity extractor. This is a permanent vendor limitation, not a configuration gap.",
+      "javascriptTypescriptCoverage": {
+        "pathsAnalyzed": [
+          "prototype/vnext-kernel"
+        ],
+        "note": "Covers the prototype's own measurement/reproduction/test TOOLING (measure.ts, reproduce.ts, decompose.ts, deltas.ts, hardhat.config.ts, test/*.ts) via the javascript-typescript language, category /language:javascript-typescript/vnext-kernel. This is NOT Solidity security analysis."
+      }
+    },
+    "solhint": {
+      "run": true,
+      "warnings": 36,
+      "errors": 0
+    }
+  },
+  "bytecode": [
+    {
+      "name": "VaultKernelPrototype",
+      "runtime": 17695,
+      "runtimeSha256": "8800f2a35345e7af03c730a4807943e707d00dbe449410ef70bde5c6f8651d02"
+    },
+    {
+      "name": "VaultKernelFactoryPrototype",
+      "runtime": 2445,
+      "runtimeSha256": "ab16471a7a97a88c0d823e6d536a01671b388b0acada8a404eaf3da4a2062d6f"
+    }
+  ],
+  "scannerEvidenceDoesNotEstablish": [
+    "That the kernel is free of defects Slither's detector model cannot express. Detector coverage bounds this evidence entirely; see AUTHORITY.md section 7 for what the authority-closure argument does and does not establish, independent of any scanner.",
+    "Any Solidity semantic result from CodeQL: GitHub ships no Solidity extractor, so the CodeQL runs cover this prototype's TypeScript tooling only. This is a permanent vendor limitation, not a configuration gap.",
+    "That a finding reported under a different element chain is the same finding. Semantic identity is derived from Slither's own chain and message, so such a report would present as ADDED plus REMOVED rather than as a change -- the conservative direction, but a judgement.",
+    "That a source change invisible to the flagged construct is harmless. A narrow (node-only) fingerprint proves a construct changed; a broad-only difference proves the surrounding source changed and forces re-adjudication without asserting more than that.",
+    "Anything about the repository outside prototype/vnext-kernel/contracts and its declared dependency closure. Audit status, formal verification, fuzzing campaigns, PQ verifier assurance and guardian independence are stated by AUTHORITY.md and the campaign receipts, and are deliberately NOT restated here."
+  ]
+}

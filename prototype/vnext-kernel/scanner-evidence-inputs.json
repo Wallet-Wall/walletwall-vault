@@ -1,0 +1,9 @@
+{
+  "$schema": "vnext-kernel-scanner-evidence-inputs.v2",
+  "description": "The ONE non-derived figure SCANNER_EVIDENCE.json carries, held in a committed file so the receipt can be regenerated and byte-compared from committed state alone. The domain is deliberately tiny and the parser is fail-closed: any unknown top-level key is refused. v1 also carried prototypeTests, productionNormal and productionCoverage; those were removed because test execution has its own CI authority and a scanner receipt restating it was duplicated authority with no mechanism behind it -- the prototype count went stale twice (765 when the truth was 793, then 793 when the truth was 816) and byte-identity could not catch either, because this file is the regeneration source: self-consistent, and wrong about the world. solhint stays because solhint IS a scanner, so its totals are in-domain; it remains a carried figure and that residual is disclosed in SCANNER_IDENTITY_CORRECTION_RECORD.md for a separate lane.",
+  "solhint": {
+    "warnings": 36,
+    "errors": 0,
+    "source": "npx solhint \"prototype/vnext-kernel/contracts/**/*.sol\" at the source subject: 36 problems (0 errors, 36 warnings)."
+  }
+}
