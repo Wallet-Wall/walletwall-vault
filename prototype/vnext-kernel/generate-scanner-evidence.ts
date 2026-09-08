@@ -93,6 +93,42 @@ export const FORBIDDEN_RECEIPT_FIELDS = [
   "tree",
 ] as const;
 
+/**
+ * Keys a SCANNER receipt may never carry, because they restate evidence with its own authority.
+ *
+ * Test execution is measured by the Prototype Tests CI job. A scanner receipt repeating that
+ * count created a second, hand-maintained authority for the same fact -- and it went stale twice
+ * (765 when the truth was 793, then 793 when the truth was 816). Byte-identity could not catch
+ * either, because the regeneration source was the same stale file: self-consistent, wrong about
+ * the world. The fix is domain separation, enforced here so a future edit cannot reintroduce it.
+ */
+export const OUT_OF_DOMAIN_RECEIPT_FIELDS = [
+  "tests",
+  "prototypeTests",
+  "productionNormal",
+  "productionCoverage",
+  "testExecutionSummary",
+] as const;
+
+/** Throws if the receipt restates evidence belonging to another authority. */
+export function assertReceiptDomain(value: unknown, path: string[] = []): void {
+  if (value === null || typeof value !== "object") return;
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => assertReceiptDomain(v, [...path, String(i)]));
+    return;
+  }
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if ((OUT_OF_DOMAIN_RECEIPT_FIELDS as readonly string[]).includes(k)) {
+      throw new Error(
+        `receipt field "${[...path, k].join(".")}" is out of domain for scanner evidence: test ` +
+          `execution has its own CI authority, and restating it here is what let the published ` +
+          `receipt go stale twice.`,
+      );
+    }
+    assertReceiptDomain(v, [...path, k]);
+  }
+}
+
 /** Throws if any forbidden field name appears anywhere in the receipt object. */
 export function assertNoContainerFields(value: unknown, path: string[] = []): void {
   if (value === null || typeof value !== "object") return;
@@ -113,18 +149,66 @@ export function assertNoContainerFields(value: unknown, path: string[] = []): vo
 }
 
 export interface ScannerEvidenceInputs {
-  prototypeTests: { passing: number; failing: number };
-  productionNormal: { passing: number; failing: number; pending: number };
-  productionCoverage: { passing: number; failing: number; pending: number; percent: number };
   solhint: { warnings: number; errors: number };
+}
+
+/**
+ * Parses the inputs file fail-closed: exact schema, exact key set, exact value shapes.
+ *
+ * WHY THIS EXISTS. `tests.prototype` was a hand-maintained count carried in this file and copied
+ * into the receipt. It went stale TWICE -- 765 when the truth was 793, then 793 when the truth was
+ * 816 -- and byte-identity could not catch either, because the inputs file is the REGENERATION
+ * SOURCE: self-consistent, and wrong about the world. Test execution has its own CI authority; a
+ * scanner receipt restating it was duplicated authority with no mechanism behind it. The field is
+ * gone, and this parser is what stops it, or any relative of it, coming back.
+ */
+export function readScannerEvidenceInputs(path: string): ScannerEvidenceInputs {
+  const parsed = JSON.parse(fs.readFileSync(path, "utf8")) as Record<string, unknown>;
+  if (parsed.$schema !== INPUTS_SCHEMA) {
+    throw new Error(`${path} declares ${JSON.stringify(parsed.$schema)}; this generator requires ${INPUTS_SCHEMA}`);
+  }
+  const unknown = Object.keys(parsed).filter((k) => !ALLOWED_INPUT_KEYS.has(k));
+  if (unknown.length > 0) {
+    throw new Error(
+      `${path}: unknown top-level key(s) ${unknown.map((k) => JSON.stringify(k)).join(", ")}. ` +
+        `The scanner-evidence input domain is exactly ${[...ALLOWED_INPUT_KEYS].join(", ")}. ` +
+        `Test-execution counts in particular are OUT OF DOMAIN -- they have their own CI authority, ` +
+        `and carrying them here is what let the published receipt go stale twice.`,
+    );
+  }
+  const solhint = parsed.solhint as { warnings?: unknown; errors?: unknown } | undefined;
+  if (!solhint || typeof solhint.warnings !== "number" || typeof solhint.errors !== "number") {
+    throw new Error(`${path}: solhint must be { warnings: number, errors: number }`);
+  }
+  if (Object.keys(solhint).some((k) => !["warnings", "errors", "source"].includes(k))) {
+    throw new Error(`${path}: solhint carries unexpected keys; its shape is { warnings, errors, source? }`);
+  }
+  return { solhint: { warnings: solhint.warnings, errors: solhint.errors } };
 }
 
 const ROOT = path.join("prototype", "vnext-kernel");
 const TRIAGE_PATH = path.join(ROOT, "slither-triage.json");
 const RECEIPT_PATH = path.join(ROOT, "SCANNER_EVIDENCE.json");
 const INPUTS_PATH = path.join(ROOT, "scanner-evidence-inputs.json");
-const SCHEMA = "vnext-kernel-scanner-evidence.v2";
+const SCHEMA = "vnext-kernel-scanner-evidence.v3";
+/** Exported so tests assert the declared schema rather than a snapshot of a generated file. */
+export const RECEIPT_SCHEMA = SCHEMA;
+const INPUTS_SCHEMA = "vnext-kernel-scanner-evidence-inputs.v2";
 const TRIAGE_SCHEMA = "vnext-kernel-slither-triage.v2";
+
+/**
+ * The COMPLETE set of top-level keys the inputs file may carry.
+ *
+ * AN ALLOWLIST, NOT A DENYLIST. A list of four known-bad names would have stopped
+ * `prototypeTests` coming back and nothing else -- `testExecutionSummary` would have sailed
+ * through, and so would any future alias nobody thought to forbid. The invariant that actually
+ * holds the domain is UNKNOWN INPUT FIELD => FAIL.
+ *
+ * The domain is deliberately tiny. `solhint` is here because solhint IS a scanner, so its totals
+ * are in-domain for scanner evidence; it remains a carried figure and that residual is disclosed
+ * in the correction record for a separate lane.
+ */
+const ALLOWED_INPUT_KEYS = new Set(["$schema", "description", "solhint"]);
 
 export interface TriageEntry {
   classification: string;
@@ -324,7 +408,7 @@ function main() {
     return;
   }
 
-  const inputs = JSON.parse(fs.readFileSync(INPUTS_PATH, "utf8")) as ScannerEvidenceInputs;
+  const inputs = readScannerEvidenceInputs(INPUTS_PATH);
 
   const receipt = {
     schema: SCHEMA,
@@ -382,33 +466,27 @@ function main() {
         errors: inputs.solhint.errors,
       },
     },
-    tests: {
-      prototype: { passing: inputs.prototypeTests.passing, failing: inputs.prototypeTests.failing },
-      productionNormal: {
-        passing: inputs.productionNormal.passing,
-        failing: inputs.productionNormal.failing,
-        pending: inputs.productionNormal.pending,
-      },
-      productionCoverage: {
-        passing: inputs.productionCoverage.passing,
-        failing: inputs.productionCoverage.failing,
-        pending: inputs.productionCoverage.pending,
-        percent: inputs.productionCoverage.percent,
-      },
-    },
     bytecode: readMeasurements(),
-    knownAnalysisAbsences: [
-      "No third-party audit.",
-      "No fuzzing campaign, no formal verification (T0/T1 invariants are argued and tested, not proven).",
-      "GitHub CodeQL provides no Solidity semantic analysis of prototype/vnext-kernel/contracts (vendor limitation).",
-      "Slither's own coverage is bounded by what its detectors can express -- see AUTHORITY.md section 7 for what this analysis does not establish, independent of any scanner.",
-      "PQ verifier is structural/mock; no cryptographic claim about the PQ leg (AUTHORITY.md section 7.3).",
-      "Guardian independence is assumed, not enforced on-chain (AUTHORITY.md section 7.4 / H-31).",
-      "Semantic finding identity is derived from Slither's own element chain and message. A detector that reported the same construct under a different chain would present as ADDED plus REMOVED rather than as a change, which is the conservative direction but is not free of judgement.",
+    // WHAT THIS SCANNER EVIDENCE DOES NOT ESTABLISH.
+    //
+    // Every entry is now scoped to THIS receipt. The previous list made repository-wide absence
+    // claims a scanner receipt has no standing to make, and one of them was simply FALSE at this
+    // receipt's own source subject: "No fuzzing campaign" while
+    // prototype/vnext-kernel/test/StatefulAuthorityFuzz.test.ts existed at aaa21d09 declaring a
+    // STATEFUL ADVERSARIAL AUTHORITY / RECOVERY CAMPAIGN over deterministic (profile, seed, depth).
+    // A receipt asserting a global absence it never measured is the same defect as a stale count,
+    // in prose. Repository-wide posture belongs to AUTHORITY.md and the campaign receipts.
+    scannerEvidenceDoesNotEstablish: [
+      "That the kernel is free of defects Slither's detector model cannot express. Detector coverage bounds this evidence entirely; see AUTHORITY.md section 7 for what the authority-closure argument does and does not establish, independent of any scanner.",
+      "Any Solidity semantic result from CodeQL: GitHub ships no Solidity extractor, so the CodeQL runs cover this prototype's TypeScript tooling only. This is a permanent vendor limitation, not a configuration gap.",
+      "That a finding reported under a different element chain is the same finding. Semantic identity is derived from Slither's own chain and message, so such a report would present as ADDED plus REMOVED rather than as a change -- the conservative direction, but a judgement.",
+      "That a source change invisible to the flagged construct is harmless. A narrow (node-only) fingerprint proves a construct changed; a broad-only difference proves the surrounding source changed and forces re-adjudication without asserting more than that.",
+      "Anything about the repository outside prototype/vnext-kernel/contracts and its declared dependency closure. Audit status, formal verification, fuzzing campaigns, PQ verifier assurance and guardian independence are stated by AUTHORITY.md and the campaign receipts, and are deliberately NOT restated here.",
     ],
   };
 
   assertNoContainerFields(receipt);
+  assertReceiptDomain(receipt);
   const serialized = `${JSON.stringify(receipt, null, 2)}\n`;
 
   // BYTE IDENTITY. Regeneration now depends only on committed inputs, the raw run and git, so CI

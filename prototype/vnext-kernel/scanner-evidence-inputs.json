@@ -1,24 +1,6 @@
 {
-  "$schema": "vnext-kernel-scanner-evidence-inputs.v1",
-  "description": "The non-scanner figures SCANNER_EVIDENCE.json carries, held in a COMMITTED file rather than passed as command-line arguments. This is what makes the receipt's byte identity checkable: regeneration now depends only on committed inputs plus the raw Slither run plus git, so CI can rebuild the receipt and compare bytes. While these arrived as CLI flags, an operator could hand-edit any of them into the receipt and no check would notice -- the value was never derived from anything, so there was nothing to disagree with.",
-  "prototypeTests": {
-    "passing": 793,
-    "failing": 0,
-    "source": "npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test on a clean checkout of the triage subject: 793 passing, 0 failing. 738 at aaa21d09, plus 27 from the semantic-identity lane and 28 from the enforcement lane."
-  },
-  "productionNormal": {
-    "passing": 1658,
-    "failing": 0,
-    "pending": 11,
-    "source": "CARRIED FORWARD from an earlier head. This lane changes no production source; the figure describes the production suite, which it does not run."
-  },
-  "productionCoverage": {
-    "passing": 1655,
-    "failing": 0,
-    "pending": 14,
-    "percent": 90.13,
-    "source": "CARRIED FORWARD from an earlier head, for the same reason as productionNormal."
-  },
+  "$schema": "vnext-kernel-scanner-evidence-inputs.v2",
+  "description": "The ONE non-derived figure SCANNER_EVIDENCE.json carries, held in a committed file so the receipt can be regenerated and byte-compared from committed state alone. The domain is deliberately tiny and the parser is fail-closed: any unknown top-level key is refused. v1 also carried prototypeTests, productionNormal and productionCoverage; those were removed because test execution has its own CI authority and a scanner receipt restating it was duplicated authority with no mechanism behind it -- the prototype count went stale twice (765 when the truth was 793, then 793 when the truth was 816) and byte-identity could not catch either, because this file is the regeneration source: self-consistent, and wrong about the world. solhint stays because solhint IS a scanner, so its totals are in-domain; it remains a carried figure and that residual is disclosed in SCANNER_IDENTITY_CORRECTION_RECORD.md for a separate lane.",
   "solhint": {
     "warnings": 36,
     "errors": 0,

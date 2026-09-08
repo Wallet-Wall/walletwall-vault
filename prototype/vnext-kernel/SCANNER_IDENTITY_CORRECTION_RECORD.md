@@ -435,3 +435,131 @@ own emission order and JS object insertion order survives into `JSON.stringify`.
 raw-file-hash defect one level up, inside the deterministic artifact itself. Keys are now
 sorted, and a test asserts it. The receipt is byte-identical from either environment's raw
 output: `0d38572c`.
+
+## 13. Integration boundary: what broke when the stack was actually merged
+
+`c6c99478` merged PR #181 into #179 with an ordinary `--no-ff` merge. Every scanner
+claim survived it untouched — receipt bytes, triage bytes, `contracts` tree
+`dcc42e76` and `stateful` tree `438fc418` are all byte-identical to the publication
+commit `3ce6a18d`, and the merge's tree equals that commit's tree exactly. Slither
+still reported 217 raw / 54 own-code rows / 33 distinct with 0 untriaged, 0 stale,
+0 ambiguous, and receipt byte identity passed.
+
+**One step failed: `Verify publication container`.**
+
+```
+container    c6c99478
+first parent 71aee6f3   (the #179 branch tip)
+expected     ada95399   (the triage subject)
+```
+
+### The verifier was wrong, not the evidence
+
+It required the commit under test to **be** the publication container — `HEAD^1 == T`
+and `diff T..HEAD` == the receipt alone. That is true at the publication commit and
+false forever afterwards. Publication is a **historical fact about one commit**;
+currency is a **live fact about the head**. Conflating them makes every legitimate
+integration look like tampering.
+
+The real danger was never the red X. A check that cries wolf on every merge invites
+someone to skip it on merge commits — which is exactly where a silent receipt swap
+would hide.
+
+### The two-stage model
+
+**Stage 1 — original publication.** From the declared triage subject `T`, find the
+unique commit `P` **reachable from the real head** with `P^1 == T` and `diff T..P`
+exactly `SCANNER_EVIDENCE.json`. Zero → FAIL. More than one → `FAIL_AMBIGUOUS`.
+Candidates come from the head's own ancestry, so an abandoned attempt that no branch
+reaches can never create ambiguity.
+
+**Stage 2 — descendant currency.** `P` is an ancestor of `H`; receipt bytes at `H`
+equal `P`; triage bytes at `H` equal `P`; scanner-semantic input scope at `H` equals
+both `P` and the declared source subject.
+
+Not consulted, because each held while the receipt was stale: ancestry alone, equal
+finding counts, equal tree counts, merge status, filename equality.
+
+Ten controls, symmetric by design — half prove legitimate integration passes, half
+prove tampering under an integration head still fails. Control 2 is additionally
+exercised against **real history**: verifying at `c6c99478` now discovers
+`P = 3ce6a18d` and passes every currency proof.
+
+One control was wrong on the first attempt and is worth recording: control 10 made
+`H` a direct child of `T` changing only the receipt, which legitimately made `H` its
+**own** publication container and passed. The control was malformed, not the rule.
+
+### A second stale claim, and why the whole class is now gone
+
+The receipt declared `prototypeTests: 793`. Live CI at `c6c99478` ran **816 / 0**.
+The 23 tests added by the enforcement lane never reached the carried figure. This was
+the same defect as the 765→793 one, and byte-identity could not catch either: the
+inputs file is the **regeneration source**, so it was self-consistent and wrong about
+the world. **Byte-identity proves reproducibility, not the truth of carried figures.**
+
+The fix is domain separation, not a better number. Test execution has its own CI
+authority; a scanner receipt restating it was duplicated authority with no mechanism
+behind it. The whole `tests` block is removed — prototype, production and coverage —
+and `assertReceiptDomain` refuses to emit any of them. **793 was stale; the aggregate
+predecessor `c6c99478` ran 816/0; the field is gone because it is out-of-domain
+carried observational evidence, not because 816 is being hidden.**
+
+The inputs file is now parsed against a strict **allowlist** (`$schema`,
+`description`, `solhint`). The invariant is *unknown input field → FAIL*, not four
+forbidden names — a denylist would have stopped `prototypeTests` returning and waved
+through `testExecutionSummary`.
+
+Receipt schema `v2 → v3`; inputs schema `v1 → v2`; both asserted exactly. Historical
+v2 receipts remain untouched.
+
+**Disclosed residual:** `scanners.solhint` (36/0) is still a hand-carried figure with
+the same staleness exposure. It stays because solhint *is* a scanner, so it is
+in-domain — but binding it mechanically is a separate lane, deliberately not widened
+into here.
+
+### A false absence claim
+
+The receipt asserted *"No fuzzing campaign, no formal verification"*. That was
+**false at the receipt's own source subject**:
+`prototype/vnext-kernel/test/StatefulAuthorityFuzz.test.ts` exists at `aaa21d09` and
+declares a *STATEFUL ADVERSARIAL AUTHORITY / RECOVERY CAMPAIGN* over deterministic
+`(profile, seed, depth)`.
+
+A receipt asserting a repository-wide absence it never measured is a stale claim in
+prose. `knownAnalysisAbsences` is replaced by `scannerEvidenceDoesNotEstablish`,
+scoped to what this receipt can legitimately state: detector-model bounds, CodeQL's
+missing Solidity extractor, the element-chain identity limitation, and the
+narrow/broad fingerprint limitation. Audit status, formal verification, fuzzing,
+PQ verifier assurance and guardian independence are stated by `AUTHORITY.md` and the
+campaign receipts, and are deliberately **not** restated here.
+
+### Fixture minimization — stated accurately
+
+The cross-environment fixtures were **10,324,917 bytes — 91% of this stack's entire
+insertion count** — because they were pretty-printed and retained parent-chain line
+arrays the digest never reads (one contract element carries 1,638 line numbers).
+
+| historical fixture | sha256 | bytes |
+| --- | --- | --- |
+| `raw-findings.local.json` | `cb5d09372c4d772b3325938ab0db1dccb8d89df8ed18e94538d2f3ca418443bb` | 5,160,636 |
+| `raw-findings.ci.json` | `1428aec4c6dc809830e225254261f22e4ae13f1f7ada48ad30f4b38d749d6e64` | 5,164,281 |
+
+Both reproduce the published `canonicalAllFindingsSha256` `55b7fd2b…`, verified before
+replacement.
+
+They are replaced by **minimized excerpts selected and derived from those historical
+real outputs**, not by the outputs themselves — 32,897 + 32,866 bytes. The excerpts
+cover every discriminator: own+node+parent-chain, own with no node element, own
+multi-element, a `node_modules` dependency, High/Low/Informational impact, Medium
+confidence. The CI excerpt uses the **real** workspace-root substitution and the
+**actual relative order** the CI run produced.
+
+The full 12-point matrix was run against both pairs — historical read from git at
+`3ce6a18d`, minimized from disk — with identical verdicts: 3 controls (workspace root,
+result order, key order/whitespace) and 9 kills (detector, impact, confidence, message,
+repo-relative source, line span, signature, removed finding, added finding). **All
+discriminators retained.**
+
+This reduces the **current tree and future checkout/diff footprint**. It does **not**
+remove the historical blobs from git history — accepted history is immutable and no
+rewrite was attempted or permitted.

@@ -42,7 +42,14 @@ import {
   assertScannerRequirementsPinned,
   assertWorkflowUsesRequirements,
 } from "../scanner-workflow-config.js";
-import { assertNoContainerFields, FORBIDDEN_RECEIPT_FIELDS } from "../generate-scanner-evidence.js";
+import {
+  assertNoContainerFields,
+  readScannerEvidenceInputs,
+  FORBIDDEN_RECEIPT_FIELDS,
+  RECEIPT_SCHEMA,
+  OUT_OF_DOMAIN_RECEIPT_FIELDS,
+  assertReceiptDomain,
+} from "../generate-scanner-evidence.js";
 import { PINNED_SEMANTIC_CONFIG } from "../scanner-input-scope.js";
 import {
   canonicalAllFindingsSha256,
@@ -210,8 +217,13 @@ describe("scanner enforcement", () => {
  * local file did NOT reproduce the CI hash, which is what ruled out "paths are the only cause"
  * rather than assuming it.
  *
- * The fixtures below are the REAL outputs from the two environments, so these are cross-machine
- * measurements rather than a simulation of one.
+ * The fixtures below are MINIMIZED EXCERPTS selected and derived from the historical real local
+ * and CI outputs -- not the full outputs themselves. The full pair was 10,324,917 bytes, 91% of
+ * this stack's entire insertion count, mostly parent-chain line arrays the digest never reads. The
+ * excerpts preserve every discriminator, proven by running this exact matrix against both pairs and
+ * comparing verdicts; their historical sha256s are recorded in SCANNER_IDENTITY_CORRECTION_RECORD
+ * section 13. Replacing them reduces the CURRENT TREE and future checkout/diff footprint; it does
+ * NOT remove the historical blobs from git history, and no rewrite is attempted.
  */
 describe("canonical scanner-output digests", () => {
   const RAW_LOCAL = path.join("prototype", "vnext-kernel", "test", "fixtures", "scanner", "raw-findings.local.json");
@@ -219,12 +231,18 @@ describe("canonical scanner-output digests", () => {
   const load = (p: string): SlitherFinding[] => JSON.parse(fs.readFileSync(p, "utf8")).detectors;
   const BASE = () => canonicalAllFindingsSha256(load(RAW_LOCAL));
 
-  it("the two fixtures really are the differing environments, not copies", () => {
+  it("the excerpts still differ in the real measured environment dimensions", () => {
     const a = fs.readFileSync(RAW_LOCAL, "utf8");
     const b = fs.readFileSync(RAW_CI, "utf8");
-    expect(a, "fixtures must differ, or every control below is vacuous").to.not.equal(b);
+    expect(a, "excerpts must differ, or every control below is vacuous").to.not.equal(b);
+    // dimension 1: workspace root
     expect(a).to.contain("/root/w2s/repo");
     expect(b).to.contain("/github/workspace");
+    // dimension 2: result order -- the dominant cause, and the one a whole-file hash cannot see
+    const order = (t: string) => JSON.parse(t).detectors.map((f: { check: string }) => f.check).join(",");
+    expect(order(a), "the CI excerpt must preserve a real order difference").to.not.equal(order(b));
+    // and they are excerpts, not the historical full outputs
+    expect(JSON.parse(a).detectors.length).to.be.lessThan(217);
   });
 
   it("CONTROL: a different absolute workspace prefix does not move the digest", () => {
@@ -310,6 +328,74 @@ describe("canonical scanner-output digests", () => {
     expect(receipt.scanners.slither.canonicalAllFindingsSha256).to.match(/^[0-9a-f]{64}$/);
     expect(receipt.scanners.slither.canonicalDistinctOwnFindingsSha256).to.match(/^[0-9a-f]{64}$/);
     expect(receipt.scanners.slither, "a whole-file hash cannot reproduce across machines").to.not.have.property("rawOutputSha256");
+  });
+});
+
+describe("the scanner receipt's input domain is an allowlist", () => {
+  const INPUTS = path.join("prototype", "vnext-kernel", "scanner-evidence-inputs.json");
+  const tempInputs = (o: Record<string, unknown>) => {
+    const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "in-")), "scanner-evidence-inputs.json");
+    fs.writeFileSync(f, JSON.stringify(o, null, 2));
+    return f;
+  };
+  const valid = () => JSON.parse(fs.readFileSync(INPUTS, "utf8"));
+
+  it("the committed inputs file is v2 and carries only the allowed domain", () => {
+    const j = valid();
+    expect(j.$schema).to.equal("vnext-kernel-scanner-evidence-inputs.v2");
+    expect(Object.keys(j).sort()).to.deep.equal(["$schema", "description", "solhint"]);
+    expect(() => readScannerEvidenceInputs(INPUTS)).to.not.throw();
+  });
+
+  it("KILL: an exact-schema mismatch is refused", () => {
+    expect(() => readScannerEvidenceInputs(tempInputs({ ...valid(), $schema: "vnext-kernel-scanner-evidence-inputs.v1" }))).to.throw(/requires vnext-kernel-scanner-evidence-inputs.v2/);
+  });
+
+  // The invariant is UNKNOWN FIELD => FAIL, not "four known-bad names => FAIL". A denylist would
+  // have stopped prototypeTests returning and waved through any alias nobody thought to forbid.
+  for (const key of ["prototypeTests", "productionNormal", "productionCoverage", "tests", "testExecutionSummary", "prototype_tests", "suiteTotals"]) {
+    it(`KILL: reintroducing "${key}" is refused as an unknown input field`, () => {
+      expect(() => readScannerEvidenceInputs(tempInputs({ ...valid(), [key]: { passing: 816, failing: 0 } }))).to.throw(/unknown top-level key/);
+    });
+  }
+
+  it("KILL: solhint with a wrong shape is refused", () => {
+    expect(() => readScannerEvidenceInputs(tempInputs({ ...valid(), solhint: { warnings: "36", errors: 0 } }))).to.throw(/solhint must be/);
+    expect(() => readScannerEvidenceInputs(tempInputs({ ...valid(), solhint: { warnings: 36, errors: 0, prototypeTests: 816 } }))).to.throw(/unexpected keys/);
+  });
+
+  it("POSITIVE CONTROL: the legitimate domain still parses, and yields solhint only", () => {
+    const parsed = readScannerEvidenceInputs(INPUTS);
+    expect(Object.keys(parsed)).to.deep.equal(["solhint"]);
+    expect(parsed.solhint.warnings).to.be.a("number");
+  });
+
+  it("the generator declares receipt schema v3", () => {
+    expect(RECEIPT_SCHEMA).to.equal("vnext-kernel-scanner-evidence.v3");
+  });
+
+  // The GENERATOR is what cannot emit a test count -- asserted as a rule, not as a snapshot of the
+  // currently committed file. A snapshot assertion would be red on the implementation commit and
+  // green only after the next publication, which is exactly the ordering trap that produced the
+  // stale figures. The committed receipt is proven separately, and mechanically, by --check.
+  it("KILL: the generator refuses to emit any test-execution field", () => {
+    for (const k of OUT_OF_DOMAIN_RECEIPT_FIELDS) {
+      expect(() => assertReceiptDomain({ [k]: { passing: 816 } }), k).to.throw(/out of domain for scanner evidence/);
+    }
+  });
+
+  it("KILL: it refuses one nested anywhere in the receipt", () => {
+    expect(() => assertReceiptDomain({ scanners: { slither: { tests: { prototype: 1 } } } })).to.throw(/scanners\.slither\.tests/);
+  });
+
+  it("POSITIVE CONTROL: the in-domain scanner fields are accepted", () => {
+    expect(() =>
+      assertReceiptDomain({
+        schema: RECEIPT_SCHEMA,
+        sourceSubject: "a".repeat(40),
+        scanners: { slither: { rawFindingCount: 217, triagedByClassification: { FALSE_POSITIVE: 8 } }, solhint: { warnings: 36, errors: 0 } },
+      }),
+    ).to.not.throw();
   });
 });
 
