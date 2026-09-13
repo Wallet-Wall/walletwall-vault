@@ -61,6 +61,9 @@ function main(): void {
   const rows = [
     measure("VaultKernelPrototype.sol", "VaultKernelPrototype"),
     measure("VaultKernelFactoryPrototype.sol", "VaultKernelFactoryPrototype"),
+    // Lane SD-11: the Generation-1 verifier provenance root the factory binds. Its code is what fixes the
+    // admissible verifier class, so it is weighed like the two contracts that trust it.
+    measure("ImmutableAttestationVerifierFactoryPrototype.sol", "ImmutableAttestationVerifierFactoryPrototype"),
   ];
   const out = {
     solc: "0.8.24",

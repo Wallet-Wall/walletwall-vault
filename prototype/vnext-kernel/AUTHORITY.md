@@ -301,6 +301,74 @@ unchanged. Records: `SD5_D1_ADJUDICATION.scratch.md`,
 `SD5_A1_ARCHITECTURE_ADJUDICATION.scratch.md`,
 `SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md`.
 
+---
+
+### SD-11 CLOSURE — `G-VERIFIER-ADMISSION-PROVENANCE`, and exactly what it does not close
+
+**Append-only.** The SD5-I block above is retained as written; three of its statements are
+false of this kernel and are amended here rather than rewritten.
+
+**The owner decision this implements.** Generation 1 admits only verifiers whose accepting
+relation is fixed after deployment and whose implementation provenance is mechanically
+established. It does NOT promise safe admission of arbitrary verifier implementations.
+
+**The invariant.** A verifier may become ACTIVE only if (1) it belongs to a Generation-1-approved
+implementation class, (2) its accepting-relation configuration is immutable after deployment,
+(3) that fact is mechanically attributable rather than documentary, and (4) every path that can
+change the active verifier applies the same check.
+
+**The mechanism — provenance by construction, not approval by an administrator.**
+
+| Piece | What it is | What it cannot do |
+| --- | --- | --- |
+| `ImmutableAttestationVerifierFactoryPrototype` — the Generation-1 root | creates exactly one class, `ImmutableAttestationPQCVerifier` (a byte-identical copy of the production file), by CREATE2 with the attestor as salt, and records `isAdmissibleVerifier[v] = true` in that same function | no owner, no setter, no second writer, no constructor parameter; no power over any verifier it created, or over any vault |
+| `VaultKernelFactoryPrototype.verifierAuthority` | the root, bound once at construction exactly as D8 binds the implementation, and copied into every clone's immutable args (8-byte generation, then the 20-byte root) | cannot be changed by any principal, the deployer included, and cannot be changed for a vault that exists |
+| `_requireAdmissibleVerifier` | one `view` STATICCALL to the root named in the clone's OWN code, at `initialize`, `setVerifier` and `initiateRecovery`, before any gate, nonce or write; a clone with no root fails closed | never asks the candidate; never consulted on authorisation |
+
+`executeRecovery` installs only the stored proposal, whose one writer is `initiateRecovery`; an
+AST census in `test/Sd11VerifierAdmissionProvenance.test.ts` (M6) proves the three `pqVerifier`
+writers, the one proposal writer, and that each check examines the value later written.
+
+**Three statements above, amended.** (i) "Generation 1 makes no claim about WHICH cryptographic
+relation the admitted verifier implements" — it now makes a CLASS claim: on a Generation-1 vault
+the active verifier is a root-created `ImmutableAttestationPQCVerifier`, whose relation is an
+attestor-signed statement over the digest, the key hash, the verifier and the chain. It still
+makes no claim about the attestor. (ii) The GEN-1 SYSTEM RESIDUAL — "a verifier admitting a
+forgeable relation yields 2 → 1 under either kernel" — does not hold on a Generation-1 vault: no
+such verifier can be admitted at any edge (M2), and deleting the `setVerifier` check restores
+exactly that ECDSA-only spend (mutant M7-K2). (iii) SD-11B's "NOT EXCLUDED and NOT MEASURED" was
+superseded by lane SD-11's measurement; on a Generation-1 vault that mechanism — owner-controlled
+attestor storage — is refused at admission (M3), and the admitted class has no writing entry point
+and no SSTORE, DELEGATECALL, CALLCODE, CALL, CREATE, CREATE2 or SELFDESTRUCT instruction (M4).
+
+**Ledger: SD-11A and SD-11B are CONDITIONALLY REMEDIATED**, with the condition published beside
+the verdict in `stateful/defects.ts` and in the receipt:
+
+* **GENERATION BINDING** (both) — the closure holds on vaults whose clone args bind the
+  Generation-1 root. The kernel IMPLEMENTATION does not pin the root: the same bytes bound to
+  another root admit whatever that root approves. That is why suites testing other properties
+  can bind `UngatedVerifierAuthority` (the pre-lane code-length rule), and why the SD-11
+  reproduction still reproduces there on purpose. It is D8's generation-publisher residual
+  (H-32) — which factory is advertised — not a principal with authority over any existing
+  vault, and it is checkable offline from `genesisCommitments()` and the root's code.
+* **CLASS ASSURANCE** (SD-11A) — "one accepting relation" is established for ONE reviewed class,
+  not proven on chain for arbitrary bytecode; the kernel refuses arbitrary bytecode instead.
+* **SOURCE ATTRIBUTION** (SD-11B) — the class's single STATICCALL is attributed to the ecrecover
+  precompile by source; in the bytecode its target is stack-supplied.
+
+**Unchanged:** SD-2, SD-4 and SD-8 (key well-formedness and possession). `ZKMLDSAVerifier`
+remains NOT ESTABLISHED and is not admissible in Generation 1 — the root cannot create it.
+
+**Authority.** No owner, curator, mutable registry, admin upgrade path or kernel administrator
+is introduced, and no existing principal gains authority: admission is still the deployer at
+genesis (cut 0), the credential via `setVerifier` (cut 2 armed, cut 1 dormant) and the guardian
+quorum via recovery (cut `k`) — each now additionally constrained. The kernel gains one external
+call site (section 5, row 7), and it can only refuse.
+
+Measured: kernel runtime 17,695 → 17,964 B (+269) with storage layout, 46 selectors and 15
+events unchanged and errors 24 → 25; factory 2,445 → 2,551 B; root 4,196 B. Record:
+`SD11_VERIFIER_ADMISSION_PROVENANCE_RECORD.md`.
+
 
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,
@@ -322,7 +390,8 @@ through to the balance check.
 | **Anyone**                                           | `executeRecovery` (after maturity) · `egress` · `retire` (after delay)                                                             | **No discretion**: recipient and effect are pre-committed    |
 | **PQ verifier**                                      | none                                                                                                                               | Answers a query. Conjunctive barrier only                    |
 | **Policy plane**                                     | none                                                                                                                               | May only refuse                                              |
-| **Factory deployer**                                 | none                                                                                                                               | Choice consumed at construction (D8)                         |
+| **Verifier provenance root** (`ImmutableAttestationVerifierFactoryPrototype`) | none over any vault or verifier — `deployVerifier` creates one fixed immutable class and records only its own creations | Consulted at the three admission edges only (lane SD-11) |
+| **Factory deployer**                                 | none                                                                                                                               | Choice consumed at construction (D8) — the implementation and, since lane SD-11, the verifier provenance root |
 | **Generation publisher**                             | none on-chain                                                                                                                      | Discovery influence only (H-32)                              |
 | **KERNEL ADMIN**                                     | **DOES NOT EXIST**                                                                                                                 | No `owner`, no `pause`, no `upgrade`, no `transferOwnership` |
 
@@ -343,6 +412,7 @@ through to the balance check.
 | PQ verifier         | — (denial only; the ECDSA conjunct is unreachable to it)                                   | **No**                                                |
 | Policy plane        | — (subtractive)                                                                            | **No**                                                |
 | Factory deployer    | **EMPTY**                                                                                  | **No**                                                |
+| Verifier provenance root | — (a verifier it creates becomes active only through an authorised admission: genesis cut 0, `setVerifier` cut 2 armed / 1 dormant, recovery `k`) | **No** |
 | Kernel admin        | n/a — no such principal                                                                    | —                                                     |
 
 ## 3. Minimum compromise cuts — RECOMPUTED from the remediated implementation
@@ -405,7 +475,7 @@ what the transitive-closure pass exists to catch and what a green suite did not.
 
 ## 5. External-call inventory
 
-Every call the kernel can make, and why. There are **six**, and none is generic.
+Every call the kernel can make, and why. There are **seven** (six before lane SD-11), and none is generic.
 
 | #   | Site                                                   | Target             | Classification                         | Bound                                                                                                                                                                                         |
 | --- | ------------------------------------------------------ | ------------------ | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -415,6 +485,7 @@ Every call the kernel can make, and why. There are **six**, and none is generic.
 | 4   | `recipient.call{value}("")`                            | spend recipient    | **asset operation**                    | **Empty calldata** — value transfer only, never arbitrary execution                                                                                                                           |
 | 5   | `guardian.staticcall`                                  | committed guardian | **guardian attestation**               | `STATICCALL` + 30,000 gas cap + one-word returndata copy + non-bubbling                                                                                                                       |
 | 6   | `asset.call(transfer)` / `asset.staticcall(balanceOf)` | migration asset    | **asset operation**                    | **Fixed selectors** `0xa9059cbb` / `0x70a08231`, recipient from the binding                                                                                                                   |
+| 7   | `IKernelVerifierAuthority.isAdmissibleVerifier`        | verifier provenance root, read from the clone's own args | **admission provenance** (lane SD-11) | `view` STATICCALL at `initialize`, `setVerifier` and `initiateRecovery` only, before any gate or write; can only REFUSE an admission; never consulted on authorisation; a clone with no root fails closed |
 
 **No unexplained external calls.** Sites 4 and 6 are the only ones that move
 value, and in both the destination is fixed by the kernel — by the signed

@@ -643,6 +643,11 @@ export const REJECTED_INVARIANTS: readonly { name: string; whyRejected: string }
     whyRejected:
       "NOT CHECKABLE FROM STORAGE. The kernel stores a COMMITMENT, never the roster, so the harness cannot read the roster size back on chain. _requireCanonicalRoster enforces it on every supplied preimage; there is no post-state to assert it against.",
   },
+  {
+    name: "G-VERIFIER-ADMISSION-PROVENANCE (the active verifier was created by the vault's bound provenance root)",
+    whyRejected:
+      "ZERO POWER IN THIS CAMPAIGN, SO NOT ASSERTED HERE. Every campaign world binds the UngatedVerifierAuthority fixture — the pre-SD-11 code-length rule — so that its four mock verifier kinds stay admissible. Against that root the property is true in every reachable state and could never fire, and a kernel with its provenance check deleted would survive it. The invariant is carried where it has teeth: test/Sd11VerifierAdmissionProvenance.test.ts, against the Generation-1 root, with seven mutants each killed only on the observation that a hostile verifier becomes ACTIVE, plus an AST census of every writer of pqVerifier and of a recovery proposal.",
+  },
 ];
 
 /**

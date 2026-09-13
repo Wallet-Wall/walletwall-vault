@@ -134,7 +134,13 @@ export function build(): Repro {
   const contracts: Repro["contracts"] = {};
   for (const [file, names] of Object.entries(out.contracts as Record<string, Record<string, unknown>>)) {
     for (const [name, c] of Object.entries(names)) {
-      if (name !== "VaultKernelPrototype" && name !== "VaultKernelFactoryPrototype") continue;
+      if (
+        name !== "VaultKernelPrototype" &&
+        name !== "VaultKernelFactoryPrototype" &&
+        name !== "ImmutableAttestationVerifierFactoryPrototype"
+      ) {
+        continue;
+      }
       const cc = c as {
         evm: {
           bytecode: { object: string };
@@ -214,6 +220,11 @@ function sourcesWithRemappedImports(): Record<string, { content: string }> {
 
   visit(`project/${posix(SRC)}/VaultKernelPrototype.sol`, path.join(SRC, "VaultKernelPrototype.sol"));
   visit(`project/${posix(SRC)}/VaultKernelFactoryPrototype.sol`, path.join(SRC, "VaultKernelFactoryPrototype.sol"));
+  // Lane SD-11: the Generation-1 verifier provenance root, and through its import the class copy it creates.
+  visit(
+    `project/${posix(SRC)}/ImmutableAttestationVerifierFactoryPrototype.sol`,
+    path.join(SRC, "ImmutableAttestationVerifierFactoryPrototype.sol"),
+  );
   return sources;
 }
 

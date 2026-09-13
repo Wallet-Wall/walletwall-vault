@@ -191,6 +191,39 @@ so rather than improvising.
 > storage layout, ABI, selectors, events, errors and `securityFloor()`'s return
 > shape BYTE-IDENTICAL. Record: `SD5_A1R_ADVERSARIAL_CLOSURE.scratch.md`.
 
+> **K-14 / K-15 — LANE SD-11 DISCHARGES PART (b) OF THE OBLIGATION ABOVE, CONDITIONALLY.
+> The block above is retained as written.** Two of its sentences were true of `535be8a1` and
+> are false of this kernel: "Its only constraint at all three admission points … is a nonzero
+> code length", and SD-11B "recorded as NOT EXCLUDED and NOT MEASURED".
+>
+> The owner decision this implements: Generation 1 admits only verifiers whose accepting
+> relation is fixed after deployment and whose implementation provenance is mechanically
+> established; it does NOT promise safe admission of arbitrary verifier implementations. It is
+> carried by **`G-VERIFIER-ADMISSION-PROVENANCE`** — a verifier may become ACTIVE only if (1) it
+> belongs to a Generation-1-approved implementation class, (2) its accepting-relation
+> configuration is immutable after deployment, (3) that fact is mechanically attributable, and
+> (4) every path that can change the active verifier applies the same check.
+>
+> **(b) is discharged by CLASS, not by proof.** The kernel still cannot establish that
+> arbitrary bytecode exposes one relation, and no longer has to: at `initialize`,
+> `setVerifier` and `initiateRecovery` it asks the provenance root named in the clone's OWN
+> immutable args whether that root CREATED the candidate, and the Generation-1 root
+> (`ImmutableAttestationVerifierFactoryPrototype`) can create exactly one class,
+> `ImmutableAttestationPQCVerifier` — a byte-identical copy of the production contract, with an
+> immutable attestor and no storage writer. The root has no owner and no second writer; the
+> factory binds it once, at construction, exactly as D8 binds the implementation. **(a) is
+> unchanged**: FIPS 204 conformance is still necessary and still not the mitigation, and for this
+> class it is the ATTESTOR's off-chain duty.
+>
+> **Conditions, published beside the verdict** (`stateful/defects.ts`, SD-11A and SD-11B,
+> CONDITIONALLY REMEDIATED): the closure holds on vaults whose clone args bind the Generation-1
+> root — the kernel implementation does not pin the root, which is D8's generation-publisher
+> residual (H-32), checkable offline from `genesisCommitments()`; "one relation" is established
+> for one reviewed class; and the class's single STATICCALL is attributed to the ecrecover
+> precompile by source. SD-8 is untouched. `ZKMLDSAVerifier` remains NOT ESTABLISHED and is simply
+> not admissible: the root cannot create it. See `AUTHORITY.md` section 0 and
+> `SD11_VERIFIER_ADMISSION_PROVENANCE_RECORD.md`.
+
 ---
 
 ## 2. NOT KERNEL — excluded, with the exclusion argument
