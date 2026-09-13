@@ -371,8 +371,12 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       await raw.waitForDeployment();
 
       // POSITIVE CONTROL, and the demonstration of WHY atomicity is required:
-      // a bare clone IS claimable by anyone.
-      await (await raw.cloneOnly(await f.impl.getAddress(), ethers.id("bare"))).wait();
+      // a clone left uninitialised IS claimable by anyone. Since
+      // G-VERIFIER-ADMISSION-PROVENANCE a clone must carry a provenance root in its
+      // args to admit any verifier at all, so the claimable clone carries this
+      // fixture's root; a clone with NO root fails closed, asserted at the end.
+      const argsWithRoot = ethers.solidityPacked(["uint64", "address"], [1, f.verifierAuthorityAddress]);
+      await (await raw.cloneWithArgs(await f.impl.getAddress(), argsWithRoot, ethers.id("bare"))).wait();
       const bare = await ethers.getContractAt("VaultKernelPrototype", await raw.lastClone(), f.attacker);
       await (await bare.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).wait();
       expect(await bare.ecdsaSigner()).to.equal(f.attacker.address);
@@ -387,6 +391,12 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       await expect(
         f.vault.connect(f.attacker).initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "AlreadyInitialized");
+
+      // FAIL CLOSED: a clone whose args bind no provenance root admits no verifier,
+      // so nobody can initialise it.
+      await (await raw.cloneOnly(await f.impl.getAddress(), ethers.id("bare-no-root"))).wait();
+      const rootless = await ethers.getContractAt("VaultKernelPrototype", await raw.lastClone(), f.attacker);
+      await expect(rootless.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).to.be.revert(ethers);
     });
 
     it("M-K02 — initialize twice is refused", async function () {
