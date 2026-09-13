@@ -337,9 +337,12 @@ describe("scanner finding identity", () => {
 
     it("derives the external import closure rather than trusting a hand-written list", () => {
       const closure = externalImportClosure(".");
-      expect(closure).to.have.length(12);
+      // 12 -> 16 in lane SD-11 (G-VERIFIER-ADMISSION-PROVENANCE): the Generation-1 class copy imports
+      // EIP712, which the kernel never reached. Derived, so the count moved without anyone editing a list.
+      expect(closure).to.have.length(16);
       expect(closure).to.include("proxy/Clones.sol");
       expect(closure, "reached only transitively").to.include("utils/Bytes.sol");
+      expect(closure, "reached through the Generation-1 verifier class").to.include("utils/cryptography/EIP712.sol");
     });
 
     it("excludes output-only flags from the semantic config digest", () => {

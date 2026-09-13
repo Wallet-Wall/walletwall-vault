@@ -197,8 +197,15 @@ async function deployVaultWith(
   const Impl = await ethers.getContractFactory("VaultKernelPrototype", deployer);
   const impl = await Impl.deploy();
   await impl.waitForDeployment();
+  // THE UNGATED FIXTURE AUTHORITY, deliberately. This file reproduces what an admission rule of
+  // `code.length != 0` allows, and that rule is exactly what the fixture reinstates. The SAME
+  // artifacts are REFUSED under the Generation-1 root in Sd11VerifierAdmissionProvenance.test.ts,
+  // which is how closure is shown at admission without neutralising a single hostile fixture here.
+  const Ungated = await ethers.getContractFactory("UngatedVerifierAuthority", deployer);
+  const ungated = await Ungated.deploy();
+  await ungated.waitForDeployment();
   const Factory = await ethers.getContractFactory("VaultKernelFactoryPrototype", deployer);
-  const factory = await Factory.deploy(await impl.getAddress(), 1);
+  const factory = await Factory.deploy(await impl.getAddress(), 1, await ungated.getAddress());
   await factory.waitForDeployment();
 
   const genesis = {

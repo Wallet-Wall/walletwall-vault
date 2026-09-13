@@ -131,7 +131,7 @@
       "justification": "AUTHORITY.md section 1: 'Anyone: egress -- No discretion: recipient and effect are pre-committed'. Destination re-checked by codehash AT EXECUTION (DestinationMismatch), not merely at binding time."
     },
     "VaultKernelFactoryPrototype:constructor": {
-      "signature": "constructor(address,uint64)",
+      "signature": "constructor(address,uint64,address)",
       "outcomes": ["GENESIS_AUTHORITY_CREATION"],
       "expectedMechanisms": [],
       "expectedCut": "n/a -- runs once at factory deployment; the implementation target and generation become immutable and unreachable by every principal thereafter, including the deployer",

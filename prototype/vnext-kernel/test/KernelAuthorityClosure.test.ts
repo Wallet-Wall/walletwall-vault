@@ -122,8 +122,13 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
     const Impl = await ethers.getContractFactory("VaultKernelPrototype", deployer);
     const impl = await Impl.deploy();
     await impl.waitForDeployment();
+    // Bound to the UNGATED fixture authority (the pre-SD-11 admission rule): this review's
+    // EcdsaBackedVerifier is a mock. G-VERIFIER-ADMISSION-PROVENANCE has its own suite.
+    const Ungated = await ethers.getContractFactory("UngatedVerifierAuthority", deployer);
+    const ungated = await Ungated.deploy();
+    await ungated.waitForDeployment();
     const F = await ethers.getContractFactory("VaultKernelFactoryPrototype", deployer);
-    const factory = await F.deploy(await impl.getAddress(), 1);
+    const factory = await F.deploy(await impl.getAddress(), 1, await ungated.getAddress());
     await factory.waitForDeployment();
 
     const genesis: Genesis = {
@@ -209,8 +214,11 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
     const Impl = await ethers.getContractFactory("VaultKernelPrototype", deployer);
     const impl = await Impl.deploy();
     await impl.waitForDeployment();
+    const Ungated = await ethers.getContractFactory("UngatedVerifierAuthority", deployer);
+    const ungated = await Ungated.deploy();
+    await ungated.waitForDeployment();
     const F = await ethers.getContractFactory("VaultKernelFactoryPrototype", deployer);
-    const factory = await F.deploy(await impl.getAddress(), 1);
+    const factory = await F.deploy(await impl.getAddress(), 1, await ungated.getAddress());
     await factory.waitForDeployment();
     const V = await ethers.getContractFactory("EcdsaBackedVerifier", deployer);
     const v = await V.deploy();
@@ -1031,15 +1039,24 @@ describe("vNext kernel — INDEPENDENT AUTHORITY-CLOSURE REVIEW (M-K28..M-K37)",
       expect(fl2.pqSignatureLength).to.equal(65n);
     });
 
-    it("a factory cannot be bound to a codeless implementation or generation zero", async function () {
+    it("a factory cannot be bound to a codeless implementation, generation zero, or a codeless verifier root", async function () {
       const [deployer] = await ethers.getSigners();
       const F = await ethers.getContractFactory("VaultKernelFactoryPrototype", deployer);
-      await expect(F.deploy(deployer.address, 1)).to.be.revertedWithCustomError(F, "NoCode");
-      await expect(F.deploy(ZERO, 1)).to.be.revertedWithCustomError(F, "ZeroAddress");
+      const Ungated = await ethers.getContractFactory("UngatedVerifierAuthority", deployer);
+      const root = await Ungated.deploy();
+      await root.waitForDeployment();
+      const rootAddress = await root.getAddress();
+      await expect(F.deploy(deployer.address, 1, rootAddress)).to.be.revertedWithCustomError(F, "NoCode");
+      await expect(F.deploy(ZERO, 1, rootAddress)).to.be.revertedWithCustomError(F, "ZeroAddress");
       const Impl = await ethers.getContractFactory("VaultKernelPrototype", deployer);
       const impl = await Impl.deploy();
       await impl.waitForDeployment();
-      await expect(F.deploy(await impl.getAddress(), 0)).to.be.revertedWithCustomError(F, "ZeroGeneration");
+      await expect(F.deploy(await impl.getAddress(), 0, rootAddress)).to.be.revertedWithCustomError(F, "ZeroGeneration");
+      // G-VERIFIER-ADMISSION-PROVENANCE: the root is refused on the same terms as the implementation.
+      await expect(F.deploy(await impl.getAddress(), 1, ZERO)).to.be.revertedWithCustomError(F, "ZeroAddress");
+      await expect(F.deploy(await impl.getAddress(), 1, deployer.address)).to.be.revertedWithCustomError(F, "NoCode");
+      // POSITIVE CONTROL: identical arguments with a root that has code deploy.
+      await (await F.deploy(await impl.getAddress(), 1, rootAddress)).waitForDeployment();
     });
 
     it("effectiveSafeState() reports what the kernel ENFORCES, not a stale enum", async function () {
