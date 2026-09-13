@@ -563,7 +563,9 @@ contract VaultKernelPrototype {
      *      storage writer, and it records only what it created. So (1)-(3) are properties of that
      *      root's code and of the class's code, and (4) is the three call sites (`initialize`,
      *      `setVerifier`, `initiateRecovery`): the only places whose value can later be written to
-     *      `pqVerifier`.
+     *      `pqVerifier`. `executeRecovery` installs only the stored proposal, whose one writer is
+     *      `initiateRecovery`, so it needs no second check — and provenance cannot lapse in between,
+     *      because the root never clears a record and its class has no SELFDESTRUCT.
      *
      *      NOT CHECKED, stated so it is not over-read: which attestor a vault trusts (still an
      *      authorised admission decision) and key well-formedness (SD-8). Nor is this an EXTCODEHASH
@@ -1385,9 +1387,7 @@ contract VaultKernelPrototype {
         if (_recoveryIsLive()) revert BadState();
         if (proposedSigner == address(0) || proposedVerifier == address(0)) revert ZeroAddress();
         if (proposedVerifier.code.length == 0) revert ZeroAddress();
-        // `G-VERIFIER-ADMISSION-PROVENANCE`, edge 3 of 3. This is the ONLY writer of
-        // `recovery.proposedVerifier`, and `executeRecovery` installs exactly that stored value, so
-        // the recovery path's write is covered here without a second check at execution.
+        // `G-VERIFIER-ADMISSION-PROVENANCE`, edge 3 of 3 — the one writer of a proposal (see the helper).
         _requireAdmissibleVerifier(proposedVerifier);
 
         bytes32 digest = _digest(
