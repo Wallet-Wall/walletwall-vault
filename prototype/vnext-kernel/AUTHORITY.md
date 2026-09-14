@@ -418,6 +418,59 @@ byte-identical production class — an owner decision, not warranted on this evi
 bytes, the status quo, is kept. SD-8 remains SUSTAINED; SD-11's conditions are untouched.
 
 
+### SD-2 CLOSURE — `I-CONTAINMENT-BUDGET` enforced as a rolling budget; SUSTAINED → REMEDIATED
+
+**Append-only, on the precedent of the corrections above.** Lane SD-2 (2026-09-14) first
+re-derived the sustained entry from the executable kernel without trusting it
+(`SD2_CONTAINMENT_BUDGET_ADJUDICATION.md`, `test/Sd2ContainmentBudgetAdjudication.test.ts`, 43
+tests at `1d8c54c3`), then — on the owner's decision to keep the T0 invariant as written rather
+than re-declare it — remediated it RED-first (`test/Sd2RollingContainmentRemediation.test.ts`,
+9 passing / 5 failing on the tumbling kernel at `63443163`, 21 / 0 on the remediated kernel at
+`da3e84ed`). The "Still SUSTAINED after all of the above: SD-2 (tumbling containment window)"
+sentence above and the two "SD-2 … remain SUSTAINED" / "Unchanged: SD-2" lines are retained as
+written and are superseded by this section.
+
+| Claim as recorded | Measured |
+| --- | --- |
+| "9 CONTIGUOUS contained days" and "9.00 days inside a 30-day rolling window", quoted as one fact | Two observations with different reachability. CONTIGUOUS 9 d needs the second episode in the last `CONTAINMENT_MAX` of the epoch and zero-gap follow-ups at exact instants; 9 d inside ONE window follows from ANY second episode fired 3–27 days late. Both are now bounded at 6 d. |
+| root cause: "resets the origin to NOW rather than sliding it" | Mislocated. A grid-aligned origin is also tumbling and yields the same `B + MAX`. The cause was per-epoch accounting with a whole-budget reset, which no single counter and origin can avoid. |
+| contradicts: the kernel's own comment | The authoritative statement is the architecture's T0 invariant (`docs/Vault_vNext_Architecture.md` §6, §22 D5), restated in `Vault_vNext_Hazard_Register.md` H-30 and `KERNEL_ADMISSION.md` K-11. |
+| fix sketch: "a small ring of (start, duration) entries" | Over-specified. With `B == 2 · MAX` the ring is exactly two start timestamps in the two words already allocated; the duration field is dead weight. |
+
+**What was kept.** The verdict, `LIVENESS_DENIAL`, the guardian cut `k`, 9-versus-6 and 1.5× —
+as the historical defect evidence, now in the `REMEDIATED_DEFECTS` entry's title. Authority delta
+measured zero: four ordinary quorum acts, recovery initiated, challenged and executed under
+containment, migration bound under containment, every authority-bearing field byte-identical.
+
+**The mechanism (two-start rule).** Every episode is exactly `CONTAINMENT_MAX`, re-entry cannot
+extend it, and `CONTAINMENT_BUDGET == 2 · CONTAINMENT_MAX`; therefore "at most `B` contained in any
+rolling `W`" is exactly "fewer than two prior starts, or the second-most-recent start at least `W`
+old" (half-open: exactly `W` old is legal). The most recent start is `containedUntil − MAX`; the
+second-most-recent lives in the word that was the epoch origin, the one before it in the word that
+was the epoch counter — same slots, offsets and types, storage layout identical (17 entries / 11
+slots), selectors 46 → 46 with none added, removed or changed. The two public getters survive as
+views with the rolling meaning: `containmentWindowStart()` = `now − W` (no origin in storage;
+movable by no principal), `containmentUsedInWindow()` = contained seconds inside `[now − W, now)`
+from the three most recent starts (exact: a fourth episode can never intersect the window under
+the budget). The three algebraic preconditions are pinned by constructor asserts, so a constants
+change that breaks them makes the implementation undeployable. Runtime 17,964 → 18,331 B (+367),
+initcode +505 B, factory unchanged, constants unchanged (`RECOVERY_DELAY` 7 d > `B` 6 d is an
+accepted consequence, recorded, not worked).
+
+**The oracle.** The campaign's `G-CONTAINMENT-BUDGET-BOUNDED` read the kernel's own counter and
+therefore could not see SD-2 across 252 green campaigns. `G-CONTAINMENT-ROLLING-BUDGET` rebuilds
+episodes from block timestamps and consults neither getter; the new profile `containment-straddle`
+reaches the boundary shape, and mutants `M14` (fail-open), `M23` (the tumbling reset restored) and
+`M24` (tracks only the most recent start) die by it. Five further in-memory kernel mutants —
+tumbling restored, track-last-only, fail-open, `<=` at the exact `W` boundary, cooldown on the last
+start — are killed by named admission observations in the remediation suite.
+
+**Section 3's row "Permanent recovery veto … containment budgeted `B < W`"** now describes an
+enforced rolling bound rather than a per-epoch one; the row's text is unchanged because it was
+already the intended claim. **Still SUSTAINED: SD-4 and SD-8.** Their entries, conditions and
+residual pointers are untouched by this lane, as is SD-11.
+
+
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,
 using distinct guardians, deploying at a fresh salt. None asked what an attacker
