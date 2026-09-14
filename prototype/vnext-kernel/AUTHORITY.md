@@ -369,6 +369,54 @@ Measured: kernel runtime 17,695 → 17,964 B (+269) with storage layout, 46 sele
 events unchanged and errors 24 → 25; factory 2,445 → 2,551 B; root 4,196 B. Record:
 `SD11_VERIFIER_ADMISSION_PROVENANCE_RECORD.md`.
 
+---
+
+### SD-8 RE-CHARACTERISATION — measured at every credential-installation edge; SUSTAINED, not closed
+
+**Append-only, on the precedent of the corrections above.** Lane SD-8 (2026-09-14;
+`test/Sd8KeyWellFormednessAdjudication.test.ts`, 29 tests; record
+`SD8_KEY_WELLFORMEDNESS_ADJUDICATION.md`) re-derived SD-8 from the kernel's AST, the admitted
+Generation-1 class and the ML-DSA-65 library instead of trusting the ledger. The sentence in
+the "Still SUSTAINED" paragraph above — "the only party who could judge that is a verifier the
+admitting principal chooses in the same transaction" — is retained as written and is now
+false, as are three claims the ledger entry carried. The verdict stood; the characterisation
+did not.
+
+| Claim as recorded | Measured |
+| --- | --- |
+| the judge is a verifier the admitting principal chooses | Under the admitted Generation-1 relation NO verifier judges the bytes: `ImmutableAttestationPQCVerifier.verify` reads `publicKey` once, as `keccak256(publicKey)`, against a hash inside an attestor-signed statement. The judge is the relation's trusted OFF-CHAIN attestor, at attestation time (`src/verifier/ml-dsa-65.ts`), never at commitment time. An honest attestor refuses every malformed construction (`VerifierDenied`); a blind attestor, a constructed control on the same bytes and digest, admits all of them, the empty key included. |
+| "correct-length garbage" (ledger title) | Bytes of ANY length are admitted, ZERO included; for the empty string the exhibit is vacuous, because an omitted witness and an exhibited empty key are the same calldata. |
+| genesis (ledger id and title) | The identical on-chain gap is at FOUR sites: genesis, dormant rotation, dormant recovery and the arming edge (`setVerifier` `requirePq` false → true exhibits a preimage and asks no verifier). Armed rotation and armed recovery refuse malformed material only because the attestor sits inside the possession proof. |
+| 1,312 bytes of noise (ledger `rootCause`) | The ML-DSA-44 public-key length, a parameter set no admitted class implements. The Generation-1 class is ML-DSA-65, whose public key is 1,952 bytes; for it well-formedness is exactly `length == 1,952`, every 1,952-byte string decodes, and every other length throws. |
+
+Five properties are kept apart and none of them is "key validity": PREIMAGE KNOWLEDGE (the
+caller has bytes), HASH CONSISTENCY (`keccak256` equality — the kernel's only check, at five
+sites), OPAQUE-BYTE COMMITMENT (what the chain holds), ATTESTOR VERIFICATION (well-formedness
+and signature validity, off-chain, at attestation time) and SECRET-KEY POSSESSION (only the
+off-chain signature check ever sees it, and only where a possession proof is demanded).
+
+**Consequence and authority.** Roots 0 at every site; authority delta zero. Each malformed
+genesis lands at its own CREATE2 address (`I-COUNTERFACTUAL-IDENTITY-BINDING`), and the other
+three sites are exercised only by the principal that already holds them. Under an honest
+attestor the outcome is a self-inflicted liveness loss of the credential — `VerifierDenied`;
+no downgrade, since the ECDSA factor alone also fails; no false possession proof — escapable
+at `k` by guardian recovery, executed. Attestor compromise dominates everything SD-8 touches.
+**No row of section 3 moves.** The ledger classification stays `STATE_INCOHERENCE`: a
+commitment the floor declares mandatory is not a credential of the admitted relation and no
+on-chain layer can tell — the SD-6/SD-7/SD-11 family — with roots 0 and no bound overshot, so
+it is not a denial.
+
+**Candidates, none implemented** (record §5; the lane stopped on its brief's stop conditions).
+A kernel length gate proves a length and couples the scheme-agnostic kernel to one parameter
+set. A genesis, dormant-install or arming-edge possession proof is self-certifying on a
+different ground than before: the CLASS is now root-fixed, but the ATTESTOR is the deployer's
+choice (it is the root's CREATE2 salt), so the deployer's own attestor "proves possession" of
+the empty key, and it adds attestor liveness to genesis. An attestor-signed validity statement
+is dominated by the attestation every spend already carries. Class-supplied validation is the
+one on-chain control with no new principal; it proves a length only and changes the
+byte-identical production class — an owner decision, not warranted on this evidence. Opaque
+bytes, the status quo, is kept. SD-8 remains SUSTAINED; SD-11's conditions are untouched.
+
 
 **Why the existing suite missed all of them.** 55 tests passed throughout. Every
 one exercised a path where the attacker COOPERATES — supplying a PQ signature,

@@ -537,12 +537,15 @@ describe("SD-7 — REMEDIATED: initialize no longer admits a structurally unsati
   it("RESIDUAL, DECLARED: correct-length garbage still yields a vault BORN unable to authorise", async () => {
     // THE BOUNDARY OF THE GENESIS FIX, stated as an executable fact rather than
     // a caveat in prose. An exhibit proves knowledge of a preimage; it cannot
-    // prove the bytes are a well-formed key of the verifier's scheme, and the
-    // only party who could judge that is a verifier THE DEPLOYER CHOOSES in the
-    // same transaction — self-certification, rejected for the same reason
-    // `I-DECLARATION-EXHIBITED` has no signature leg. A deployer determined to
-    // build a dead vault still can; what is closed is the CONTRADICTORY genesis
-    // a well-intentioned deployer reaches by accident.
+    // prove the bytes are a well-formed key of the verifier's scheme, and no
+    // on-chain layer can: under the admitted Generation-1 relation the verifier
+    // reads the key only as a keccak256 preimage, and the only party that ever
+    // judges the bytes is the relation's OFF-CHAIN attestor, at attestation
+    // time. The 32-byte form here is one admitted length among all of them —
+    // zero included — and the same gap is at every install site, not genesis
+    // alone (lane SD-8, 2026-09-14, test/Sd8KeyWellFormednessAdjudication.test.ts).
+    // A deployer determined to build a dead vault still can; what is closed is
+    // the CONTRADICTORY genesis a well-intentioned deployer reaches by accident.
     const w = await deployWorld({ label: "sd7r-residual" });
     const garbage = bytesOfLength(32, "sd7r-garbage-not-a-real-key");
     const r = await deployGenesis(

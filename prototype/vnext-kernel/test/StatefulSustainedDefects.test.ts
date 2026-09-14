@@ -257,6 +257,85 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     }
   });
 
+  /**
+   * SD-8 WAS RE-CHARACTERISED BY MEASUREMENT (lane SD-8, 2026-09-14,
+   * test/Sd8KeyWellFormednessAdjudication.test.ts, 29 tests), NOT CLOSED. The
+   * entry's earlier wording was wrong in four respects while its verdict stood,
+   * and each wrong claim had already been copied into AUTHORITY.md, the SD-11
+   * record and an oracle comment. This block pins the corrected claims by TEXT
+   * so the refuted wording cannot come back through a later edit that nobody
+   * re-measures — the same reason the SD-4 block above asserts the absence of
+   * "No fifth family is known".
+   *
+   * The five properties are asserted PRESENT BY NAME because collapsing them
+   * into "key validity" is exactly how the previous wording went wrong: the
+   * kernel establishes HASH CONSISTENCY, the chain holds an OPAQUE-BYTE
+   * COMMITMENT, and only the relation's OFF-CHAIN attestor ever judges
+   * well-formedness or SECRET-KEY POSSESSION.
+   */
+  it("SD-8 — re-characterised, still SUSTAINED: the refuted wording cannot silently return", function () {
+    const SD8 = "SD-8-genesis-exhibit-cannot-prove-well-formedness";
+    const sd8 = SUSTAINED_DEFECTS.find((d) => d.id === SD8);
+    expect(sd8, "SD-8 stays in SUSTAINED_DEFECTS — re-characterised is not remediated").to.not.equal(undefined);
+    const text = Object.values(sd8!).join(" ");
+
+    // (1) JUDGING PARTY. Under the admitted Generation-1 relation NO verifier judges the bytes; the
+    // judge is the trusted OFF-CHAIN attestor, at attestation time. The refuted forms are asserted
+    // absent as they were written in the ledger and in AUTHORITY.md respectively.
+    expect(text, "the judging party must be named as the off-chain attestor").to.match(/off-chain attestor/i);
+    expect(text, "no verifier judges the bytes under the admitted relation").to.match(/no verifier judges the bytes/i);
+    expect(text, "refuted: the judge is not an on-chain verifier").to.not.match(/only party able to judge[^.]*is a verifier/i);
+    expect(text, "refuted: the judge is not a verifier the admitting principal chooses").to.not.match(
+      /verifier the admitting principal chooses/i,
+    );
+
+    // (2) LENGTH SCOPE. Any length is admitted, zero included; "correct-length" understated it.
+    expect(text, "any length is admitted").to.match(/ANY length/);
+    expect(text, "zero length is admitted").to.match(/ZERO included|EMPTY string/);
+    expect(text, "refuted: the garbage need not be of the correct length").to.not.match(/correct-length garbage/i);
+
+    // (3) EDGE SCOPE. Four sites, not genesis alone.
+    for (const site of ["genesis", "dormant rotation", "dormant recovery", "arming edge"]) {
+      expect(text, "the gap is recorded at the " + site).to.include(site);
+    }
+
+    // (4) THE FIGURE. 1,312 bytes is ML-DSA-44; the Generation-1 class is ML-DSA-65 at 1,952 bytes.
+    expect(text, "refuted: 1,312 bytes is not this class's key length").to.not.include("1,312");
+    expect(text, "the admitted class's key length").to.include("1,952");
+    expect(text, "the admitted class's scheme").to.include("ML-DSA-65");
+
+    // FIVE PROPERTIES, KEPT APART, and never collapsed into one term.
+    for (const property of [
+      "PREIMAGE KNOWLEDGE",
+      "HASH CONSISTENCY",
+      "OPAQUE-BYTE COMMITMENT",
+      "ATTESTOR VERIFICATION",
+      "SECRET-KEY POSSESSION",
+    ]) {
+      expect(text, "the entry must keep " + property + " distinct").to.include(property);
+    }
+    expect(text, "the five properties must not be collapsed into 'key validity'").to.not.match(/key validity/i);
+
+    // CLASSIFICATION, chosen after measurement and pinned: admitted state that is not what the
+    // published semantics say it is (the SD-6/SD-7/SD-11 family), with roots 0 and no bound
+    // overshot — so not a denial.
+    expect(sd8!.classification).to.equal("STATE_INCOHERENCE");
+    expect(sd8!.rootsRequired.trim().startsWith("0"), "roots required stays 0").to.equal(true);
+
+    // EVIDENCE. Both reproductions are named: the genesis form and the four-site adjudication.
+    expect(sd8!.reproducedBy ?? "", "the genesis reproduction").to.include("Sd67CommitmentAdmission.test.ts");
+    expect(sd8!.reproducedBy ?? "", "the four-site adjudication").to.include("Sd8KeyWellFormednessAdjudication.test.ts");
+
+    // The two remediations that declared SD-8 as their residual still point at it — re-characterising
+    // the residual moved nothing in the closures that name it.
+    for (const id of [
+      "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
+      "SD-7-genesis-admits-an-unsatisfiable-floor",
+    ]) {
+      expect(REMEDIATED_DEFECTS.find((r) => r.id === id)!.residual, id + " still names SD-8 as its residual").to.equal(SD8);
+    }
+  });
+
   // =====================================================================
   /**
    * REMEDIATED — and kept here, running, rather than deleted.
