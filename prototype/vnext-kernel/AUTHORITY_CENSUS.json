@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-authority-census.v1",
-  "head": "59e0837d04b22096d3fd00c07d9fca7d323f6cd1",
-  "tree": "ed4de5d6e39fc3346a9139fa15d1903c992ef07d",
+  "head": "492973bd7b5db022de9186075e75db71bfb0187b",
+  "tree": "233aa034e749601aa6a06f361064ed51abdf6465",
   "compiler": {
     "solcVersion": "0.8.24",
     "evmVersion": "cancun"
@@ -31,7 +31,7 @@
       "visibility": "public",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8310,
+      "astId": 9054,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -57,7 +57,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 8498,
+      "astId": 9233,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -69,7 +69,7 @@
           "GENESIS_AUTHORITY_CREATION"
         ],
         "expectedMechanisms": [],
-        "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
+        "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, verifier created by the provenance root bound in this clone's args (G-VERIFIER-ADMISSION-PROVENANCE, lane SD-11), canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
         "orderingExceptionReason": null,
         "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C). SELECTOR MOVED 09bbae89 -> 9d288286 by the SD-7 remediation, which added a `bytes pqKey` WITNESS parameter for I-COMMITMENT-EXHIBITED-AT-ADMISSION. The witness is a parameter and NOT a GenesisConfig member, so genesisSalt's enumerated field list is untouched and the configuration -> salt map is bit-identical to the parent build (asserted against a pinned constant in Sd67AdmissionInvariants.test.ts). That pins the SALT, not an address: clone addresses embed the implementation address and move with any bytecode change. The genesis exhibit consults NO verifier: the deployer chooses g.verifier in this same transaction, so a verifier leg would be self-certification -- the same reason I-DECLARATION-EXHIBITED has no signature leg."
       },
@@ -83,7 +83,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 8570,
+      "astId": 9279,
       "reasons": []
     },
     {
@@ -94,7 +94,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8585,
+      "astId": 9294,
       "reasons": []
     },
     {
@@ -105,7 +105,7 @@
       "visibility": "external",
       "stateMutability": "payable",
       "isStateChanging": true,
-      "astId": 8589,
+      "astId": 9298,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -129,7 +129,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8625,
+      "astId": 9334,
       "reasons": []
     },
     {
@@ -140,7 +140,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8695,
+      "astId": 9404,
       "reasons": []
     },
     {
@@ -151,7 +151,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8902,
+      "astId": 9629,
       "reasons": []
     },
     {
@@ -162,7 +162,7 @@
       "visibility": "public",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 8939,
+      "astId": 9666,
       "reasons": []
     },
     {
@@ -173,7 +173,7 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 9101,
+      "astId": 9810,
       "reasons": []
     },
     {
@@ -184,7 +184,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9285,
+      "astId": 9994,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); } is not the single-revert guard idiom check.ts's static ordering pass recognises (an if whose body is itself an IfStatement, not a bare RevertStatement), so it is reported UNRESOLVED rather than silently accepted. Manually verified: this call occurs AFTER _authorise and _consume in source order (VaultKernelPrototype.sol ~line 628, after ~613/614), the policy plane is SUBTRACTIVE-ONLY (can refuse, never grant -- AUTHORITY.md section 5 call site 3), and AuthorityCompletenessMutations.test.ts's ordering-mutation fixtures independently prove the checker still catches an actual gate-after-effect defect elsewhere in this same function (see PHASE 8 proof in the PR description). This is a declared, source-bound, minimal exception -- not a blanket ignore."
       ],
@@ -218,7 +218,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9371,
+      "astId": 10080,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID",
@@ -250,7 +250,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9504,
+      "astId": 10200,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -268,7 +268,7 @@
         ],
         "expectedCut": "min(2,k)",
         "orderingExceptionReason": null,
-        "justification": "AUTHORITY.md section 3 'Silent crypto downgrade' / section 1: HYBRID-authorised (fix for finding A2). The escape from a genuinely dead verifier is guardian recovery (initiateRecovery/executeRecovery), never a unilateral ECDSA-only swap."
+        "justification": "AUTHORITY.md section 3 'Silent crypto downgrade' / section 1: HYBRID-authorised (fix for finding A2). The escape from a genuinely dead verifier is guardian recovery (initiateRecovery/executeRecovery), never a unilateral ECDSA-only swap. Lane SD-11 adds a PRECONDITION, not a mechanism: the candidate must have been created by the vault's bound verifier provenance root (G-VERIFIER-ADMISSION-PROVENANCE), checked before _authorise through the internal view helper _requireAdmissibleVerifier, which the tracer classifies SAFE, so this entry's mechanism, cut and ordering are unchanged."
       },
       "verdict": "PASS"
     },
@@ -280,7 +280,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9561,
+      "astId": 10257,
       "reasons": [],
       "observedMechanisms": [
         "HYBRID"
@@ -310,7 +310,7 @@
       "visibility": "public",
       "stateMutability": "pure",
       "isStateChanging": false,
-      "astId": 9678,
+      "astId": 10374,
       "reasons": []
     },
     {
@@ -321,7 +321,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 9762,
+      "astId": 10458,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -351,7 +351,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10088,
+      "astId": 10788,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -369,7 +369,7 @@
         ],
         "expectedCut": "k",
         "orderingExceptionReason": null,
-        "justification": "AUTHORITY.md section 1/2: guardian quorum is the ACCEPTED TRUST ROOT (D1) for recovery. Establishes the pending RecoveryRequest a later executeRecovery merely finishes."
+        "justification": "AUTHORITY.md section 1/2: guardian quorum is the ACCEPTED TRUST ROOT (D1) for recovery. Establishes the pending RecoveryRequest a later executeRecovery merely finishes. Lane SD-11: the proposed verifier must have been created by the vault's bound verifier provenance root (G-VERIFIER-ADMISSION-PROVENANCE), checked before _requireQuorum through the internal view helper _requireAdmissibleVerifier (SAFE to the tracer). This is the ONLY writer of recovery.proposedVerifier, the value executeRecovery installs, so the recovery path is covered without a second check."
       },
       "verdict": "PASS"
     },
@@ -381,7 +381,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10163,
+      "astId": 10863,
       "reasons": [],
       "observedMechanisms": [
         "FLOOR_ONLY"
@@ -411,7 +411,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10220,
+      "astId": 10920,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM"
@@ -441,7 +441,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10299,
+      "astId": 10999,
       "reasons": [],
       "observedMechanisms": [
         "POSSESSION_PROOF"
@@ -473,18 +473,14 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10403,
-      "reasons": [
-        "unresolved statement(s) present, covered by declared exception: The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check."
-      ],
+      "astId": 11111,
+      "reasons": [],
       "observedMechanisms": [
         "QUORUM"
       ],
       "observedOrderOk": true,
-      "observedUnresolved": true,
-      "observedUnresolvedReasons": [
-        "IfStatement is not the recognised single-revert guard idiom (has an else, or a non-revert-only true body)"
-      ],
+      "observedUnresolved": false,
+      "observedUnresolvedReasons": [],
       "manifest": {
         "signature": "enterContainment(QuorumProof,uint256,uint64)",
         "outcomes": [
@@ -494,10 +490,32 @@
           "QUORUM"
         ],
         "expectedCut": "k",
-        "orderingExceptionReason": "The window-rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` has an effect-bearing true-body (two assignments), not a bare revert, so it is not the recognised guard idiom and is reported UNRESOLVED. Manually verified: this conditional occurs strictly AFTER _requireQuorum/_consume in source order (VaultKernelPrototype.sol, after line ~1081), and only resets a ROLLING WINDOW ORIGIN that no principal can move except by elapsed wall clock (AUTHORITY.md section 11 dissent notes) -- it does not grant, bypass, or precede any authority check.",
-        "justification": "AUTHORITY.md section 1/11: guardian quorum triggers emergency containment; budgeted B < W so denial is a bounded duty cycle, not a permanent state."
+        "orderingExceptionReason": null,
+        "justification": "AUTHORITY.md section 1/11: guardian quorum triggers emergency containment; budgeted B < W so denial is a bounded duty cycle, not a permanent state. LANE SD-2 REMEDIATION (two-start rolling rule): the accounting is now `if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget();` followed by plain assignments, which the static ordering pass resolves, so the exception this entry formerly declared -- for the tumbling rollover `if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }`, an effect-bearing true-body reported UNRESOLVED -- is RETIRED rather than left standing over code that no longer exists. Both budget words are private now; their getters containmentWindowStart() / containmentUsedInWindow() survive as views with the rolling meaning and are not state-changing, so they are outside this census. Manually verified, as before: the accounting occurs strictly AFTER _requireQuorum/_consume in source order and grants, bypasses or precedes no authority check."
       },
-      "verdict": "PASS_WITH_DECLARED_EXCEPTION"
+      "verdict": "PASS"
+    },
+    {
+      "key": "VaultKernelPrototype:16da6081",
+      "contract": "VaultKernelPrototype",
+      "signature": "containmentWindowStart()",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 11135,
+      "reasons": []
+    },
+    {
+      "key": "VaultKernelPrototype:2da3c42b",
+      "contract": "VaultKernelPrototype",
+      "signature": "containmentUsedInWindow()",
+      "kind": "function",
+      "visibility": "external",
+      "stateMutability": "view",
+      "isStateChanging": false,
+      "astId": 11198,
+      "reasons": []
     },
     {
       "key": "VaultKernelPrototype:bb0cea8a",
@@ -507,7 +525,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10538,
+      "astId": 11385,
       "reasons": [],
       "observedMechanisms": [
         "QUORUM",
@@ -539,7 +557,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10580,
+      "astId": 11427,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -565,7 +583,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 10709,
+      "astId": 11556,
       "reasons": [
         "unresolved statement(s) present, covered by declared exception: egress's asset-selection branches (`if (asset == address(0)) { native path } else { ERC-20 path }`) both contain effect-bearing statements, so the if/else is reported UNRESOLVED rather than analysed. Manually verified: neither branch contains any gate call at all (none is expected -- see expectedMechanisms), and I-EGRESS-INDEPENDENCE / I-NO-FALSE-SETTLEMENT (AUTHORITY.md section 1) are the properties this ordering exception is standing in for, not authorization."
       ],
@@ -595,19 +613,19 @@
       "visibility": "public",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 7853,
+      "astId": 8572,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
       "observedUnresolved": false,
       "observedUnresolvedReasons": [],
       "manifest": {
-        "signature": "constructor(address,uint64)",
+        "signature": "constructor(address,uint64,address)",
         "outcomes": [
           "GENESIS_AUTHORITY_CREATION"
         ],
         "expectedMechanisms": [],
-        "expectedCut": "n/a -- runs once at factory deployment; the implementation target and generation become immutable and unreachable by every principal thereafter, including the deployer",
+        "expectedCut": "n/a -- runs once at factory deployment; the implementation target, the generation and (lane SD-11) the verifier provenance root become immutable and unreachable by every principal thereafter, including the deployer; the root is copied into every clone's immutable args, where the kernel reads it at each verifier admission edge",
         "orderingExceptionReason": null,
         "justification": "VaultKernelFactoryPrototype.sol header: 'the choice is consumed at this factory's own construction and is thereafter unreachable by EVERY principal... this factory holds NO authority over any clone it has already produced'."
       },
@@ -621,7 +639,7 @@
       "visibility": "external",
       "stateMutability": "nonpayable",
       "isStateChanging": true,
-      "astId": 7907,
+      "astId": 8626,
       "reasons": [],
       "observedMechanisms": [],
       "observedOrderOk": true,
@@ -647,20 +665,20 @@
       "visibility": "external",
       "stateMutability": "view",
       "isStateChanging": false,
-      "astId": 7944,
+      "astId": 8663,
       "reasons": []
     }
   ],
   "summary": {
     "total": 18,
-    "pass": 15,
-    "passWithDeclaredException": 3,
+    "pass": 16,
+    "passWithDeclaredException": 2,
     "failed": 0,
     "byVerdict": {
-      "PASS": 15,
-      "PASS_WITH_DECLARED_EXCEPTION": 3
+      "PASS": 16,
+      "PASS_WITH_DECLARED_EXCEPTION": 2
     }
   },
-  "manifestHash": "f69fcafe4e400bc8c26f80022908ff2a42e52d3253a86b12a732d90b73e43291",
+  "manifestHash": "b0652eb2105fb2ebf6e006be653752bf65a63d5b13de74e8e70778c825e6a66c",
   "checkerHash": "79e45cb870db91d527c4e8f55692046ad72420870298a6f7acd2e0b48e875b7f"
 }

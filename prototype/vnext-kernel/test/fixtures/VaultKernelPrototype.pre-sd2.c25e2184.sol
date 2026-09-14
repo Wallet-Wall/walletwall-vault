@@ -69,21 +69,12 @@ contract VaultKernelPrototype {
     SafeState public safeState;
     /// @dev K-4. The ECDSA credential — the kernel-evaluated possession root (K-5).
     address public ecdsaSigner;
-    /// @dev K-11. Wall-clock expiry of CONTAINED. Never suspends, never extends. Every episode is
-    ///      exactly `CONTAINMENT_MAX`, so `containedUntil - CONTAINMENT_MAX` is the MOST RECENT start
-    ///      (0 = no episode yet).
+    /// @dev K-11. Wall-clock expiry of CONTAINED. Never suspends, never extends.
     uint64 public containedUntil;
-    /// @dev K-11. Start of the episode BEFORE the most recent one (0 = none). Together with
-    ///      `containedUntil` this is the TWO-START representation of `I-CONTAINMENT-BUDGET` (SD-2
-    ///      remediation): admission consults only this word, see `enterContainment`. Same slot, offset
-    ///      and type as the former per-epoch origin `containmentWindowStart`, whose getter survives as
-    ///      a view with its rolling meaning.
-    uint64 private _previousContainmentStart;
-    /// @dev K-11. Start of the episode before THAT (0 = none). Never consulted by admission; it exists
-    ///      so `containmentUsedInWindow()` reports the trailing window EXACTLY — under the budget three
-    ///      episodes can intersect one window, a fourth never can. Same slot, offset and type as the
-    ///      former per-epoch counter `containmentUsedInWindow`, whose getter survives as a view.
-    uint64 private _earlierContainmentStart;
+    /// @dev K-11. Rolling containment budget window origin (wall clock only).
+    uint64 public containmentWindowStart;
+    /// @dev K-11. Containment seconds consumed inside the current window.
+    uint64 public containmentUsedInWindow;
 
     /// @dev K-4. Commitment to the PQ public key. The bytes live in calldata.
     bytes32 public pqPublicKeyHash;
@@ -349,14 +340,6 @@ contract VaultKernelPrototype {
     ///      be initialised by a caller and can never become a usable vault.
     constructor() {
         _initialized = true;
-        // TWO-START REPRESENTATION PRECONDITIONS (SD-2 remediation). `enterContainment` enforces
-        // `I-CONTAINMENT-BUDGET` by tracking two episode starts, which is exact only because the
-        // budget is EXACTLY two indivisible episodes and both fit inside the window. Pinned here, at
-        // the implementation's own deployment, so a constants change that breaks the identity makes
-        // the kernel undeployable instead of silently over- or under-admitting.
-        assert(CONTAINMENT_BUDGET == 2 * CONTAINMENT_MAX);
-        assert(CONTAINMENT_BUDGET < CONTAINMENT_WINDOW);
-        assert(CONTAINMENT_MAX < CONTAINMENT_WINDOW);
     }
 
     /**
@@ -1614,63 +1597,19 @@ contract VaultKernelPrototype {
         _requireQuorum(digest, proof);
         _consume(DOMAIN_GUARDIAN, nonce, deadline);
 
-        // `I-CONTAINMENT-BUDGET`, ROLLING, in the two-start form (SD-2 remediation). Every episode is
-        // exactly CONTAINMENT_MAX and CONTAINMENT_BUDGET == 2 * CONTAINMENT_MAX (pinned in the
-        // constructor), so "at most B contained in any rolling W" is exactly: fewer than two prior
-        // starts, or the second-most-recent start at least W old. The most recent start is
-        // `containedUntil - CONTAINMENT_MAX`, and the effective-state gate above already placed it a
-        // whole episode ago, so only the start before it can refuse. Half-open at the boundary: a
-        // start exactly W old is legal, one second younger is not. The window keeps no origin in
-        // storage — it is `block.timestamp - CONTAINMENT_WINDOW`, advanced by the clock alone and
-        // movable by no principal; `containmentWindowStart()` reports exactly that.
+        // The window origin advances ONLY by elapsed wall clock and can be
+        // moved by no principal.
         uint64 nowTs = uint64(block.timestamp);
-        uint64 previous = _previousContainmentStart;
-        uint64 until = containedUntil;
-        if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget();
+        if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) {
+            containmentWindowStart = nowTs;
+            containmentUsedInWindow = 0;
+        }
+        if (containmentUsedInWindow + CONTAINMENT_MAX > CONTAINMENT_BUDGET) revert ContainmentBudget();
 
-        _earlierContainmentStart = previous;
-        _previousContainmentStart = until == 0 ? 0 : until - CONTAINMENT_MAX;
+        containmentUsedInWindow += CONTAINMENT_MAX;
         containedUntil = nowTs + CONTAINMENT_MAX;
         safeState = SafeState.CONTAINED;
         emit SafeStateChanged(SafeState.NORMAL, SafeState.CONTAINED);
-    }
-
-    /**
-     * @notice The origin of the rolling containment window: exactly `CONTAINMENT_WINDOW` behind the
-     *         block this is read in (0 while the chain is younger than one window). Under
-     *         `I-CONTAINMENT-BUDGET` the window is ROLLING, so its origin lives in no storage word: it
-     *         advances only by elapsed wall clock and can be moved by no principal. Same selector and
-     *         return type as the former per-epoch origin getter (SD-2 remediation).
-     */
-    function containmentWindowStart() external view returns (uint64) {
-        uint64 nowTs = uint64(block.timestamp);
-        return nowTs > CONTAINMENT_WINDOW ? nowTs - CONTAINMENT_WINDOW : 0;
-    }
-
-    /**
-     * @notice Contained seconds inside the current rolling window `[now - W, now)` — the quantity
-     *         `I-CONTAINMENT-BUDGET` bounds by `CONTAINMENT_BUDGET`. EXACT: the three most recent
-     *         starts are consulted, and under the budget a fourth episode can never intersect the
-     *         window. A live episode counts its elapsed part only. Same selector and return type as
-     *         the former per-epoch counter getter (SD-2 remediation).
-     */
-    function containmentUsedInWindow() external view returns (uint64) {
-        uint64 nowTs = uint64(block.timestamp);
-        uint64 from = nowTs > CONTAINMENT_WINDOW ? nowTs - CONTAINMENT_WINDOW : 0;
-        uint64 until = containedUntil;
-        uint64 total = until == 0 ? 0 : _containedWithin(until - CONTAINMENT_MAX, from, nowTs);
-        total += _containedWithin(_previousContainmentStart, from, nowTs);
-        total += _containedWithin(_earlierContainmentStart, from, nowTs);
-        return total;
-    }
-
-    /// @dev Seconds of the episode `[start, start + CONTAINMENT_MAX)` (0 = no episode) inside `[from, to)`.
-    function _containedWithin(uint64 start, uint64 from, uint64 to) private pure returns (uint64) {
-        if (start == 0) return 0;
-        uint64 end = start + CONTAINMENT_MAX;
-        uint64 lo = start > from ? start : from;
-        uint64 hi = end < to ? end : to;
-        return hi > lo ? hi - lo : 0;
     }
 
     // =====================================================================

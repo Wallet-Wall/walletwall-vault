@@ -273,6 +273,23 @@ describe("vNext kernel — STATEFUL MUTATION ADEQUACY", function () {
       expect(r!.killedBy?.property).to.equal(r!.expectedProperty);
     }
   });
+
+  /**
+   * LANE SD-2 REMEDIATION. The campaign's original containment oracle read the kernel's own
+   * budget counter and therefore inherited whatever accounting the kernel used — which is why
+   * 252 green campaigns never saw the 9-day straddle. These three mutants must die by the
+   * INDEPENDENT oracle, which rebuilds episodes from timestamps and reads no budget getter;
+   * a kill by the kernel-reported counter would prove only that the counter agrees with itself.
+   */
+  it("the SD-2 mutants are each killed BY THE INDEPENDENT ROLLING ORACLE, never by the kernel-reported counter", function () {
+    for (const id of ["M14-containment-budget-removed", "M23-tumbling-reset-restored", "M24-tracks-only-the-most-recent-start"]) {
+      const r = RESULTS.find((x) => x.id === id);
+      expect(r, id + " must be in the catalogue").to.not.equal(undefined);
+      expect(r!.verdict, id + " must be killed").to.equal("KILLED");
+      expect(r!.killedBy?.property, id + " must die by the observed rolling budget").to.equal("G-CONTAINMENT-ROLLING-BUDGET");
+      expect(r!.killedBy?.property).to.equal(r!.expectedProperty);
+    }
+  });
 });
 
 export { RESULTS as MUTATION_RESULTS };

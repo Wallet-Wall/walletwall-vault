@@ -89,7 +89,7 @@ export interface CampaignProfile {
    */
   fabricateCommitments?: boolean;
   /** Shifts the ADVANCE_TIME distribution into a pending recovery executable window. */
-  timeBias?: "default" | "maturation" | "duty-cycle";
+  timeBias?: "default" | "maturation" | "duty-cycle" | "straddle";
   /** Proposes a LIVE verifier and rarely a stale PoP, so the recovery seam is reachable. */
   honestRecoveryBias?: boolean;
 }
@@ -304,6 +304,33 @@ export const PROFILES: readonly CampaignProfile[] = [
       FACTORY_DEPLOY_TWIN: 0,
     },
     timeBias: "duty-cycle",
+  },
+  {
+    name: "containment-straddle",
+    description:
+      "ENTER_CONTAINMENT with time steps that place a second episode late in a 30-day span and further episodes right after it — the boundary-straddling shape under which a TUMBLING accounting held 9 contiguous contained days against a 6-day budget (SD-2, remediated by the two-start rolling rule). I-CONTAINMENT-BUDGET says the total in ANY 30-day window stays at 6 days; G-CONTAINMENT-ROLLING-BUDGET observes it from episode timestamps alone, without reading the kernel's budget getters.",
+    actors: [ALL_MATERIAL_ACTOR, TWO_GUARDIAN_ATTACKER, STRANGER],
+    actorWeights: [6, 3, 1],
+    weights: {
+      ...BROAD,
+      ENTER_CONTAINMENT: 30,
+      ADVANCE_TIME: 30,
+      SPEND: 6,
+      ROTATE_CREDENTIAL: 1,
+      SET_VERIFIER: 1,
+      SET_POLICY: 1,
+      SET_GUARDIANS: 2,
+      INITIATE_RECOVERY: 2,
+      CANCEL_RECOVERY: 1,
+      EXECUTE_RECOVERY: 1,
+      BIND_MIGRATION: 0,
+      RETIRE: 0,
+      EGRESS_NATIVE: 0,
+      EGRESS_TOKEN: 0,
+      REPLAY_PAST_CALL: 2,
+      FACTORY_DEPLOY_TWIN: 0,
+    },
+    timeBias: "straddle",
   },
   {
     name: "recovery-vs-roster",

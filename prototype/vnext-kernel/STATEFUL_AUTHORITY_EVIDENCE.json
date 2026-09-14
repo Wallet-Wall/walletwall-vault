@@ -1,7 +1,7 @@
 {
   "schema": "vnext-kernel-stateful-authority-evidence.v1",
-  "head": "d053264376c1572e55d50fa6dc2c3cb1ea0c0625",
-  "tree": "9cb3ac16abed4ce9010e1014055d29a4ef9b0275",
+  "head": "492973bd7b5db022de9186075e75db71bfb0187b",
+  "tree": "233aa034e749601aa6a06f361064ed51abdf6465",
   "lane": {
     "question": "Can individually-valid, individually-correctly-gated transitions be COMPOSED OVER TIME into an outcome below its declared authority cut?",
     "distinctFrom": {
@@ -221,6 +221,17 @@
         "ecdsaOnlyFloor": false
       },
       {
+        "name": "containment-straddle",
+        "description": "ENTER_CONTAINMENT with time steps that place a second episode late in a 30-day span and further episodes right after it — the boundary-straddling shape under which a TUMBLING accounting held 9 contiguous contained days against a 6-day budget (SD-2, remediated by the two-start rolling rule). I-CONTAINMENT-BUDGET says the total in ANY 30-day window stays at 6 days; G-CONTAINMENT-ROLLING-BUDGET observes it from episode timestamps alone, without reading the kernel's budget getters.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "verifierAtGenesis": "honest",
+        "ecdsaOnlyFloor": false
+      },
+      {
         "name": "recovery-vs-roster",
         "description": "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to compose a rotation with a maturing request end-to-end. Until Lane SD10-I that composition was policed by the harness's R1 rule, which asserted a rotation must VOID the request; that rule was implementation-derived, contradicted I-APPROVED-REQUEST-PRESERVATION and has been retired. The composition still matters — it is where the OLD roster's total loss of FRESH authority and the survival of its already-admitted effect have to hold at the same time.",
         "actors": [
@@ -306,8 +317,8 @@
       "medium": 65,
       "deep": 150
     },
-    "plannedCampaigns": 252,
-    "plannedTransitions": 13680,
+    "plannedCampaigns": 266,
+    "plannedTransitions": 14440,
     "randomnessInRequiredCI": "NONE — the required check runs exactly the fixed seeds above"
   },
   "properties": {
@@ -391,7 +402,11 @@
       },
       {
         "name": "G-CONTAINMENT-BUDGET-BOUNDED",
-        "source": "enterContainment reverts ContainmentBudget unless containmentUsedInWindow + CONTAINMENT_MAX <= CONTAINMENT_BUDGET (3d and 6d)"
+        "source": "containmentUsedInWindow() reports the contained seconds inside [now - CONTAINMENT_WINDOW, now) from the three most recent episode starts (SD-2 remediation); under I-CONTAINMENT-BUDGET it can never exceed CONTAINMENT_BUDGET (3d episodes, 6d budget, 30d window). KERNEL-REPORTED — it reads the kernel's own view; the independent observation is G-CONTAINMENT-ROLLING-BUDGET"
+      },
+      {
+        "name": "G-CONTAINMENT-ROLLING-BUDGET",
+        "source": "I-CONTAINMENT-BUDGET (docs/Vault_vNext_Architecture.md section 6, T0): in every rolling wall-clock interval of length CONTAINMENT_WINDOW the total CONTAINED time is at most CONTAINMENT_BUDGET. Enforced by enterContainment's two-start rule (SD-2 remediation). OBSERVED, NEVER READ BACK: episodes are reconstructed from the snapshot sequence — a new containedUntil while safeState is CONTAINED opens the episode [blockTimestamp, containedUntil) — and this oracle consults NEITHER budget getter, so an accounting that mis-tracks the window (the tumbling accounting SD-2 recorded, which held 9 contiguous days) is caught by wall-clock arithmetic alone"
       },
       {
         "name": "G-RECOVERY-ACTIVE-WELLFORMED",
@@ -569,12 +584,29 @@
       },
       {
         "id": "M14-containment-budget-removed",
-        "expectedProperty": "G-CONTAINMENT-BUDGET-BOUNDED",
+        "expectedProperty": "G-CONTAINMENT-ROLLING-BUDGET",
         "profiles": [
+          "containment-straddle",
           "containment-duty-cycle",
           "containment-composition"
         ],
-        "rationale": "PHASE 8. Removing the rolling budget check turns containment from a bounded DUTY CYCLE into an unbounded denial state, which is the permanent-recovery-veto shape AUTHORITY.md declares unreachable."
+        "rationale": "PHASE 8. Removing the rolling budget check turns containment from a bounded DUTY CYCLE into an unbounded denial state, which is the permanent-recovery-veto shape AUTHORITY.md declares unreachable. Since lane SD-2 the check is the two-start rule; deleting it is FAIL-OPEN with two recent starts."
+      },
+      {
+        "id": "M23-tumbling-reset-restored",
+        "expectedProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "profiles": [
+          "containment-straddle"
+        ],
+        "rationale": "LANE SD-2 REMEDIATION. THE DEFECT ITSELF, PUT BACK: the per-epoch accounting the ledger recorded as SD-2 — origin jumps to the first activation after the epoch expires, counter resets to zero — rebuilt over the two storage words, with no start history. It admits the boundary straddle (A1, A2 late in the epoch, A3 at the rollover, A4 right after) and holds 9 contiguous contained days against a 6-day budget. Only an oracle that measures wall-clock contained time from episode timestamps can see it; the kernel-reported counter cannot, which is exactly why 252 campaigns were green on the defective kernel."
+      },
+      {
+        "id": "M24-tracks-only-the-most-recent-start",
+        "expectedProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "profiles": [
+          "containment-straddle"
+        ],
+        "rationale": "LANE SD-2 REMEDIATION. The history shift is dropped, so the kernel knows only the most recent start (through containedUntil); the second-most-recent stays at its zero sentinel and the two-start rule never refuses. A one-start implementation of a two-episode budget is fail-open, and this mutant is the executable form of that sentence."
       },
       {
         "id": "M15-effective-state-ignores-expiry",
@@ -646,17 +678,6 @@
   },
   "sustainedDefects": [
     {
-      "id": "SD-2-containment-window-is-tumbling",
-      "title": "The containment budget window is TUMBLING, not rolling: containments straddling a rollover yield 9 CONTIGUOUS contained days against a declared 6-day budget",
-      "classification": "LIVENESS_DENIAL",
-      "rootsRequired": "k = 2 distinct guardian principals — exactly the declared guardian cut, and an accepted trust root (D1).",
-      "contradicts": "VaultKernelPrototype.sol's own comment 'Rolling containment budget window origin' and enterContainment's 'total contained time in any rolling window is capped at CONTAINMENT_BUDGET (I-CONTAINMENT-BUDGET), so denial is a duty cycle, not a state'. Measured worst case is 9.00 days inside a 30-day rolling window against a declared 6.00.",
-      "rootCause": "`if (nowTs >= containmentWindowStart + CONTAINMENT_WINDOW) { containmentWindowStart = nowTs; containmentUsedInWindow = 0; }` resets the origin to NOW rather than sliding it, so the accounting is per-epoch. Containments at W+27d and W+30d land in different epochs while being contiguous in wall-clock time. Each epoch's own accounting stays within budget; the ROLLING guarantee does not hold.",
-      "notAnEscalationBecause": "Containment withdraws SPENDING and never recovery — `_requireRecoveryOpen` admits CONTAINED — so the remedy path stays open throughout, and the overshoot is 1.5x a declared bound rather than an unbounded state. It reduces no cut: k guardians already hold this capability by design.",
-      "minimalFixSketch": "Either implement a true rolling window (a small ring of (start,duration) entries, as the production vault's rolling spend ledger already does), or restate I-CONTAINMENT-BUDGET as a TUMBLING-epoch bound and publish the real worst case as 2 x CONTAINMENT_MAX contiguous plus one epoch boundary. The second is a documentation change and costs zero bytes.",
-      "reproducedBy": "prototype/vnext-kernel/test/StatefulSustainedDefects.test.ts"
-    },
-    {
       "id": "SD-8-genesis-exhibit-cannot-prove-well-formedness",
       "title": "An exhibited preimage proves PREIMAGE KNOWLEDGE and HASH CONSISTENCY with the committed value, never that the bytes are a public key the admitted relation's OFF-CHAIN attestor will ever accept, so a principal can commit bytes of ANY length — ZERO included — at genesis, dormant rotation, dormant recovery and the arming edge, and hold a MANDATORY PQ commitment that cannot authorise under an honest attestor",
       "classification": "STATE_INCOHERENCE",
@@ -680,11 +701,11 @@
     }
   ],
   "solidityChanged": {
-    "bytes": 269,
+    "bytes": 367,
     "note": "The figure is read from MEASUREMENTS.json rather than hard-coded, so a receipt can no longer claim zero bytes on a commit that changed Solidity. Which defects are closed and which stand is carried by the `remediated` and `sustainedDefects` arrays in this same receipt, not by prose here.",
-    "beforeRuntimeBytes": 17695,
-    "kernelRuntimeBytes": 17964,
-    "kernelRuntimeHash": "7c2f2640f24b64ed5d8c34b2311ef7ed9c707fcf508a31fe36a51227721d422e"
+    "beforeRuntimeBytes": 17964,
+    "kernelRuntimeBytes": 18331,
+    "kernelRuntimeHash": "0f3579a1b5e3b90935a87e716e83d3deba42169feeeb771959b82062f98fbf27"
   },
   "remediated": [
     {
@@ -820,6 +841,17 @@
       "invertedReproduction": "prototype/vnext-kernel/test/Sd11VerifierAdmissionProvenance.test.ts — M3: the REAL contracts/verifiers/AttestationPQCVerifier.sol is REFUSED at genesis, setVerifier and initiateRecovery, including when it names the vault's own attestor and accepts that attestor's statement at the moment of refusal, and its owner then still rotates the attestor (the mechanism is untouched; admission is what moved); M4: a root-created ImmutableAttestationPQCVerifier is ADMITTED at all three edges end to end, is executable-code-identical to the production class, exposes no writing entry point, contains no SSTORE, DELEGATECALL, CALLCODE, CALL, CREATE, CREATE2 or SELFDESTRUCT instruction (a linear sweep whose controls flag the mutable verifier, a proxy and a destructible contract), and keeps its identity and relation across every root and kernel operation that is not an admission; M5-D: no admission transition rewrites the clone's code, so the root every check reads cannot move. prototype/vnext-kernel/test/Sd11VerifierAdmissionSemantics.test.ts section C runs unchanged under UngatedVerifierAuthority and still reproduces the in-place rotation, which is what an ungated admission rule allows.",
       "residual": null,
       "condition": "GENERATION BINDING — as in SD-11A's entry: the closure holds on vaults whose clone args bind the Generation-1 root, and the kernel implementation does not pin that root (D8's generation-publisher residual, H-32). SOURCE ATTRIBUTION — the admitted class's immutability is established mechanically except for its single STATICCALL, whose target is stack-supplied in the bytecode and is attributed to the ecrecover precompile (ECDSA.tryRecover) by source. ZKMLDSAVerifier remains NOT ESTABLISHED, because its relation forwards to an SP1 verifier this repository does not pin, and it is not admissible in Generation 1: the root cannot create it."
+    },
+    {
+      "id": "SD-2-containment-window-is-tumbling",
+      "verdict": "DEFECT_REMEDIATED",
+      "sustainedAt": "ec5adce91bf6956a655a637513102bd6613c04f8",
+      "remediatedOn": "da3e84edb74f2bd77c230afd23233cac155a0d63 (security/vnext-sd2-containment-budget-adjudication; adjudicated at 1d8c54c3ab48973dc4c5de9ed64ae49d49981f1c, RED suite committed at 63443163)",
+      "invariant": "I-CONTAINMENT-BUDGET (T0; docs/Vault_vNext_Architecture.md section 6 and section 22 D5, restated in Vault_vNext_Hazard_Register.md H-30 and KERNEL_ADMISSION.md K-11) — the authoritative statement the sustained entry cited only through a kernel comment — enforced LITERALLY and with its text unchanged: in every rolling wall-clock interval of length CONTAINMENT_WINDOW the total effective CONTAINED time is at most CONTAINMENT_BUDGET. Implemented in the two-start representation: because every episode is exactly CONTAINMENT_MAX, re-entry cannot extend it, and CONTAINMENT_BUDGET == 2 * CONTAINMENT_MAX, admission is legal iff fewer than two prior starts exist or the second-most-recent start is at least CONTAINMENT_WINDOW old (half-open: a start exactly W old is legal, one second younger is not). The three algebraic preconditions (B == 2 * MAX, B < W, MAX < W) are pinned by constructor asserts, so a constants change that breaks them makes the implementation undeployable instead of silently over- or under-admitting. CORRECTED ROOT CAUSE, replacing the sustained entry's story about the origin being reset to the activation instant: a grid-aligned origin is ALSO tumbling and yields the same B + MAX, so the cause was per-epoch accounting with a whole-budget reset — a shape no single counter and origin can escape. Observed independently by G-CONTAINMENT-ROLLING-BUDGET, which rebuilds episodes from block timestamps and reads neither budget getter; the earlier oracle read the kernel's own counter and could not see the defect.",
+      "sourceDelta": "One function body, two storage labels, two getters made explicit, three constructor asserts and one private pure helper; no new principal, no loop, no external call, no policy surface, no new storage word. enterContainment: `uint64 previous = _previousContainmentStart; uint64 until = containedUntil; if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget(); _earlierContainmentStart = previous; _previousContainmentStart = until == 0 ? 0 : until - CONTAINMENT_MAX;` replaces the epoch rollover, the counter check and the counter increment; the most recent start is containedUntil - CONTAINMENT_MAX. The former public words containmentWindowStart / containmentUsedInWindow become the private start words _previousContainmentStart / _earlierContainmentStart at the SAME slot, offset and type (storage 17 entries / 11 slots identical), and their public getters survive as views with the rolling meaning: containmentWindowStart() = now - W (the origin lives in no storage word, advances only by the clock and is movable by no principal); containmentUsedInWindow() = the contained seconds inside [now - W, now) from the three most recent starts, exact because under the budget a fourth episode can never intersect the window. MEASURED (reproduce.ts and measure.ts agree): runtime 17,964 -> 18,331 B (+367), initcode 18,005 -> 18,510 B (+505), selectors 46 -> 46 with none added, removed or changed, factory unchanged at 2,551 / 3,030; gas of enterContainment first 106,933 -> 86,398, back-to-back 72,532 -> 89,366, refused 64,345 -> 64,214, post-window 72,774 -> 72,405.",
+      "rejectedAlternatives": "Measured as pure reference models on the same 2,197-plan adversarial search BEFORE any implementation (SD2_CONTAINMENT_BUDGET_ADJUDICATION.md section 4). A TOKEN BUCKET refilling B per W caps continuous denial at 6 days but still admits 9 days inside one 30-day window (burst, then refill), so it does not satisfy the invariant either. A 12-DAY COOLDOWN after every expiry satisfies the window bound but refuses the legitimate back-to-back 6-day burst — over-strict, a policy change wearing a remediation's name. KEEPING THE TUMBLING KERNEL AND RE-DECLARING THE INVARIANT as 'per epoch <= B, hence any window <= B + MAX' was the zero-byte option; the owner rejected it because the T0 statement is the intended contract. The sustained entry's own fix sketch, 'a small ring of (start, duration) entries', is OVER-SPECIFIED: with B == 2 * MAX the duration field is dead weight and the ring is exactly two start timestamps, which fit the two words already allocated. A stored USED-IN-WINDOW COUNTER cannot support exact rolling admission at all: its value is lossy about where the earlier episode lies. Tracking a third start is unnecessary for admission (two suffice) and is kept only so the used-in-window getter is exact.",
+      "invertedReproduction": "test/StatefulSustainedDefects.test.ts carries the ORIGINAL straddle with its verdict moved — A1, A2 at +27d and A3 at +30d admitted, A4 at +33d REFUSED with no nonce burnt, contiguous denial 6 days, contained time in one 30-day window 6 days, the exact replacement instant +57d-1 refused and +57d admitted, recovery still open under containment. test/Sd2RollingContainmentRemediation.test.ts is the RED-first suite (9 passing / 5 failing on the tumbling kernel at 63443163, 21 / 0 on this one): algebraic pins, the straddle, the delay-grid agreement with the rolling model, back-to-back and exact-boundary positive controls, truthful getters, gas, five in-memory kernel mutants killed at named admission steps and the constructor pin. test/Sd2ContainmentBudgetAdjudication.test.ts is the pre-remediation adjudication (43 tests at 1d8c54c3), kept BYTE-IDENTICAL as the historical record; on the remediated kernel its defect assertions are red by design. Campaign: profile containment-straddle; mutants M14 (fail-open), M23 (tumbling reset restored) and M24 (tracks only the most recent start) are killed by G-CONTAINMENT-ROLLING-BUDGET.",
+      "residual": null
     }
   ],
   "whatThisDoesNotProve": [

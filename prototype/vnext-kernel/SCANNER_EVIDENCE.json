@@ -1,11 +1,11 @@
 {
   "schema": "vnext-kernel-scanner-evidence.v3",
-  "sourceSubject": "40ba7059a5aa475cf12c675480ca472fb9f9831c",
-  "sourceTree": "14da5fb988c184f2cd7ef28b8faa44f55a49296a",
-  "triageSubject": "c80ad64172bc15b7475b5d9280ae612f48f02d2d",
-  "triageTree": "0582020c21cf85403759de5ba82ac2a05e6f958b",
+  "sourceSubject": "6ecf0b584f720fd256da1aa916884e3419f8603f",
+  "sourceTree": "1a0ad79fa79cd2ad2cad30ca8271bf010b9a8180",
+  "triageSubject": "78156f4da212e49cb03406476fa8ad01b279878d",
+  "triageTree": "0c6dcd5d752fcb4d4a688ba990e31614dc9949dc",
   "scannerInputScope": {
-    "contractsTree": "553d70364fe063096dc0384d484ea4d128500303",
+    "contractsTree": "50b9484887c8399f843f3482d530a93eee008980",
     "externalImportClosureSha256": "356932a0effa025e317611038dd1b4fe770381bf90c6cb0350ce7f8f981b9f26",
     "scannerSemanticConfigSha256": "0c9a1a605f8fb2a3b1310151bcf28d69a55727bde29f8cec249b0b4127657e63",
     "openzeppelin": {
@@ -31,19 +31,19 @@
         "prototype/vnext-kernel/contracts"
       ],
       "platform": "solc (crytic-compile's hardhat platform cannot resolve this project's non-default sources path -- see the vNext Kernel workflow's Slither step comment)",
-      "canonicalAllFindingsSha256": "442361e5d75b73bd0a8e64ce68129a9441420306901149bbcf564954c60c5661",
-      "canonicalDistinctOwnFindingsSha256": "e4119528d48d5638fccf14348061fd5141dbb1435ee4e3f7d58d0b7b0a306bec",
-      "rawFindingCount": 285,
-      "ownCodeRawRowCount": 58,
-      "distinctOwnCodeFindingCount": 37,
-      "duplicateRowsFromPerEntryRecompile": 21,
+      "canonicalAllFindingsSha256": "1e8f35672972584638b488e3f06504f56cc43f73d66eb11da84701b4a6aed3d7",
+      "canonicalDistinctOwnFindingsSha256": "abf1a555fc0bc803af3609f94d3a9e55a5db6e193a1bf28974db02ecce1bfa5e",
+      "rawFindingCount": 295,
+      "ownCodeRawRowCount": 68,
+      "distinctOwnCodeFindingCount": 42,
+      "duplicateRowsFromPerEntryRecompile": 26,
       "relocatedSinceTriage": 0,
       "untriaged": 0,
       "stale": 0,
       "ambiguous": 0,
       "triagedByClassification": {
-        "ACCEPTED_DESIGN_TRADEOFF": 18,
-        "FALSE_POSITIVE": 9,
+        "ACCEPTED_DESIGN_TRADEOFF": 21,
+        "FALSE_POSITIVE": 11,
         "NON_SECURITY_STYLE": 5,
         "OUT_OF_SCOPE_DEPENDENCY": 5
       }
@@ -66,13 +66,13 @@
   "bytecode": [
     {
       "name": "VaultKernelPrototype",
-      "runtime": 17964,
-      "runtimeSha256": "7c2f2640f24b64ed5d8c34b2311ef7ed9c707fcf508a31fe36a51227721d422e"
+      "runtime": 18331,
+      "runtimeSha256": "0f3579a1b5e3b90935a87e716e83d3deba42169feeeb771959b82062f98fbf27"
     },
     {
       "name": "VaultKernelFactoryPrototype",
       "runtime": 2551,
-      "runtimeSha256": "db2bc7df950f006fd479813247396d2d1bf1e20a5e53faf2ec467478be6a5302"
+      "runtimeSha256": "1e15edb408a7ff8e87bb3f5f4faa0aa6c511649231c5c00ba26b07e9ccee0f32"
     }
   ],
   "scannerEvidenceDoesNotEstablish": [

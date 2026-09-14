@@ -327,17 +327,47 @@ export const MUTATIONS: readonly Mutation[] = [
   },
   {
     id: "M14-containment-budget-removed",
-    profiles: ["containment-duty-cycle","containment-composition"],
-    expectedProperty: "G-CONTAINMENT-BUDGET-BOUNDED",
+    profiles: ["containment-straddle", "containment-duty-cycle", "containment-composition"],
+    // LANE SD-2 REMEDIATION re-anchored this mutant on the two-start rolling check and moved its
+    // expected property to the INDEPENDENT oracle. Its former property, G-CONTAINMENT-BUDGET-BOUNDED,
+    // read the kernel's own budget counter and so inherited whatever accounting the kernel used; a
+    // kill by it proved only that the counter agreed with itself.
+    expectedProperty: "G-CONTAINMENT-ROLLING-BUDGET",
     rationale:
-      "PHASE 8. Removing the rolling budget check turns containment from a bounded DUTY CYCLE into an unbounded denial state, which is the permanent-recovery-veto shape AUTHORITY.md declares unreachable.",
+      "PHASE 8. Removing the rolling budget check turns containment from a bounded DUTY CYCLE into an unbounded denial state, which is the permanent-recovery-veto shape AUTHORITY.md declares unreachable. Since lane SD-2 the check is the two-start rule; deleting it is FAIL-OPEN with two recent starts.",
     apply: (s) =>
       replaceWithinFunction(
         s,
         "enterContainment",
-        "if (containmentUsedInWindow + CONTAINMENT_MAX > CONTAINMENT_BUDGET) revert ContainmentBudget();",
+        "if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget();",
         "",
       ),
+  },
+  {
+    id: "M23-tumbling-reset-restored",
+    profiles: ["containment-straddle"],
+    expectedProperty: "G-CONTAINMENT-ROLLING-BUDGET",
+    rationale:
+      "LANE SD-2 REMEDIATION. THE DEFECT ITSELF, PUT BACK: the per-epoch accounting the ledger recorded as SD-2 — origin jumps to the first activation after the epoch expires, counter resets to zero — rebuilt over the two storage words, with no start history. It admits the boundary straddle (A1, A2 late in the epoch, A3 at the rollover, A4 right after) and holds 9 contiguous contained days against a 6-day budget. Only an oracle that measures wall-clock contained time from episode timestamps can see it; the kernel-reported counter cannot, which is exactly why 252 campaigns were green on the defective kernel.",
+    apply: (s) => {
+      let m = replaceWithinFunction(
+        s,
+        "enterContainment",
+        "if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget();",
+        "if (nowTs >= _earlierContainmentStart + CONTAINMENT_WINDOW) { _earlierContainmentStart = nowTs; _previousContainmentStart = 0; } if (_previousContainmentStart + CONTAINMENT_MAX > CONTAINMENT_BUDGET) revert ContainmentBudget(); _previousContainmentStart += CONTAINMENT_MAX;",
+      );
+      m = replaceWithinFunction(m, "enterContainment", "_earlierContainmentStart = previous;", "");
+      return replaceWithinFunction(m, "enterContainment", "_previousContainmentStart = until == 0 ? 0 : until - CONTAINMENT_MAX;", "");
+    },
+  },
+  {
+    id: "M24-tracks-only-the-most-recent-start",
+    profiles: ["containment-straddle"],
+    expectedProperty: "G-CONTAINMENT-ROLLING-BUDGET",
+    rationale:
+      "LANE SD-2 REMEDIATION. The history shift is dropped, so the kernel knows only the most recent start (through containedUntil); the second-most-recent stays at its zero sentinel and the two-start rule never refuses. A one-start implementation of a two-episode budget is fail-open, and this mutant is the executable form of that sentence.",
+    apply: (s) =>
+      replaceWithinFunction(s, "enterContainment", "_previousContainmentStart = until == 0 ? 0 : until - CONTAINMENT_MAX;", ""),
   },
   {
     id: "M15-effective-state-ignores-expiry",

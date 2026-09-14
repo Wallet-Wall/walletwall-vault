@@ -94,7 +94,7 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-11A and SD-11B conditionally remediated; SD-2 reproduced here, SD-4 / SD-8 next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-2, SD-3, SD-5, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-11A and SD-11B conditionally remediated; SD-2 INVERTED here, SD-4 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
@@ -119,15 +119,17 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     // LANE SD-11 MOVED THOSE TWO OUT AGAIN — CONDITIONALLY. G-VERIFIER-ADMISSION-PROVENANCE refuses their
     // reproducers at every admission edge of a vault bound to the Generation-1 root, so they left this
     // list; the condition that verdict depends on travels with them (asserted below).
+    // LANE SD-2 MOVED SD-2 OUT: the two-start rolling rule enforces I-CONTAINMENT-BUDGET literally
+    // (da3e84ed), its reproduction below is inverted in place, and the entry carries its historical
+    // evidence — LIVENESS_DENIAL at cut k, 9 contiguous days against 6 — into REMEDIATED_DEFECTS.
     const SUSTAINED_IDS = [
-      "SD-2-containment-window-is-tumbling",
       "SD-4-ecdsa-only-shape-declaration-is-uncounted",
       "SD-8-genesis-exhibit-cannot-prove-well-formedness",
     ];
     expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
       [...SUSTAINED_IDS].sort(),
     );
-    expect(SUSTAINED_DEFECTS.length).to.equal(3);
+    expect(SUSTAINED_DEFECTS.length).to.equal(2);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -146,6 +148,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     // the "still reproducing" assertion covers it for the first time.
     const REMEDIATED_IDS = [
       "SD-1-floor-length-poisoning",
+      "SD-2-containment-window-is-tumbling",
       "SD-3-setverifier-skips-genesis-satisfiability",
       "SD-5-permanent-shape-capture-on-the-declaring-edge",
       "SD-6-unattested-commitment-install-on-an-ecdsa-only-floor",
@@ -167,7 +170,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
       [...REMEDIATED_IDS].sort(),
     );
-    expect(REMEDIATED_DEFECTS.length).to.equal(12);
+    expect(REMEDIATED_DEFECTS.length).to.equal(13);
     // A defect is sustained or remediated, never both, and never twice.
     const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
     expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
@@ -200,6 +203,30 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
       "Sd10ApprovedRequestPreservation.test.ts",
     );
     expect(sd10.residual, "SD-10 leaves no residual").to.equal(null);
+    // LANE SD-2 moved SD-2 to REMEDIATED with the two-start rolling rule. The entry must keep the
+    // historical evidence — LIVENESS_DENIAL at the guardian cut k, 9 CONTIGUOUS days against 6,
+    // 1.5 x — and carry the four corrections the adjudication made to the sustained wording:
+    // contiguous versus in-window, the root cause, the authoritative citation, the fix sketch.
+    const SD2_SUSTAINED_AT = "ec5adce91bf6956a655a637513102bd6613c04f8";
+    const SD2_COMMIT = "da3e84edb74f2bd77c230afd23233cac155a0d63";
+    const sd2 = REMEDIATED_DEFECTS.find((r) => r.id === "SD-2-containment-window-is-tumbling")!;
+    expect(sd2, "SD-2 is recorded as remediated").to.not.equal(undefined);
+    expect(sd2.sustainedAt, "SD-2 was first recorded by the stateful lane").to.equal(SD2_SUSTAINED_AT);
+    expect(sd2.remediatedOn.startsWith(SD2_COMMIT), "SD-2 names the GREEN commit as its source").to.equal(true);
+    expect(sd2.residual, "SD-2 leaves no residual").to.equal(null);
+    expect(sd2.condition, "SD-2's closure is unconditional beyond the constructor-pinned constants").to.equal(undefined);
+    for (const needle of ["LIVENESS_DENIAL", "guardian cut k", "9 CONTIGUOUS", "1.5 x"]) {
+      expect(sd2.title, "historical evidence preserved: " + needle).to.include(needle);
+    }
+    expect(sd2.title, "the two quantities are named apart").to.include("inside ONE rolling 30-day window");
+    expect(sd2.invariant, "the mechanism").to.include("two-start representation");
+    expect(sd2.invariant, "the corrected root cause").to.include("grid-aligned origin is ALSO tumbling");
+    expect(sd2.invariant, "the authoritative citation").to.include("docs/Vault_vNext_Architecture.md section 6");
+    expect(sd2.invariant, "the pins").to.include("constructor asserts");
+    expect(sd2.rejectedAlternatives, "the over-specified duration ring is named and rejected").to.include("(start, duration)");
+    for (const f of ["StatefulSustainedDefects.test.ts", "Sd2RollingContainmentRemediation.test.ts", "Sd2ContainmentBudgetAdjudication.test.ts"]) {
+      expect(sd2.invertedReproduction, "SD-2 names " + f).to.include(f);
+    }
     // The remediation must NOT overstate itself: generation binding survives.
     expect(sd10.invariant, "the entry must not claim generation binding was removed").to.include(
       "Guardian-generation binding was NOT removed",
@@ -447,10 +474,39 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
   });
 
   // =====================================================================
-  it("SD-2 — the containment budget window is TUMBLING: k guardians hold 9 CONTIGUOUS contained days from a declared 6", async function () {
+  /**
+   * REMEDIATED (lane SD-2, 2026-09-14), and inverted in place rather than deleted.
+   *
+   * This is the SAME straddle that sustained SD-2 at ec5adce9 — A1 at T0, A2 at T0+27d, A3 at
+   * T0+30d, A4 at T0+33d — with only the VERDICT moved: A4 is refused, the contiguous denial is
+   * the declared 6 days, and A4 becomes legal at exactly T0+57d, when the second-most-recent
+   * start (T0+27d) is one full window old. The two quantities the sustained wording conflated
+   * are asserted APART: contiguous contained time, and contained time inside ONE rolling window.
+   * Every probe is mined at an exact instant (explicit gas, so a refusal is mined too). The
+   * RED-first suite that drove the fix is test/Sd2RollingContainmentRemediation.test.ts; the
+   * pre-remediation reproduction stays byte-identical in
+   * test/Sd2ContainmentBudgetAdjudication.test.ts as the historical record.
+   */
+  it("SD-2 — REMEDIATED: the historical straddle stops at the declared 6 days; A4 is refused and becomes legal exactly one window after the second-most-recent start", async function () {
     const w = await deployWorld({ label: "sd2", verifier: "honest" });
-    const now = async (): Promise<number> => Number((await ethers.provider.getBlock("latest"))!.timestamp);
-    const contain = async (): Promise<boolean> => {
+    const MINED = { gasLimit: 2_000_000 };
+    const latest = async (): Promise<number> => Number((await ethers.provider.getBlock("latest"))!.timestamp);
+    const reasonOf = (e: unknown): string => {
+      const o = e as { revert?: { name?: string }; data?: unknown; message?: string };
+      if (o?.revert?.name) return o.revert.name;
+      if (typeof o?.data === "string") {
+        try {
+          const p = w.vault.interface.parseError(o.data);
+          if (p) return p.name;
+        } catch {
+          /* not one of ours */
+        }
+      }
+      const m = /custom error '([A-Za-z0-9_]+)/.exec(String(o?.message ?? e));
+      return m ? m[1]! : String(o?.message ?? e).slice(0, 120);
+    };
+    /** enterContainment in a block mined at EXACTLY `t`; a refusal is mined too, so its instant is proven. */
+    const containAt = async (t: number): Promise<{ ok: boolean; reason: string }> => {
       const gGen = (await w.vault.guardianGeneration()) as bigint;
       const n = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
       const d = digestOf({
@@ -458,60 +514,56 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
         actionType: ACTION.RECOVER, authorityGeneration: gGen, params: ethers.id("CONTAIN"),
         domain: DOMAIN.GUARDIAN, nonce: n, deadline: FAR_DEADLINE,
       });
+      await networkHelpers.time.setNextBlockTimestamp(t);
       try {
         await (
           await w.vault.enterContainment({
             members: w.guardians, isContract: w.guardianIsContract,
             attestingIndices: [0, 1], attestations: [sign(w.gKeys[0]!, d), sign(w.gKeys[1]!, d)],
-          }, n, FAR_DEADLINE)
+          }, n, FAR_DEADLINE, MINED)
         ).wait();
-        return true;
-      } catch { return false; }
+        return { ok: true, reason: "OK" };
+      } catch (e) {
+        expect(await latest(), "the refused probe was mined at its instant").to.equal(t);
+        return { ok: false, reason: reasonOf(e) };
+      }
     };
-    const advanceTo = async (t: number): Promise<void> => {
-      const d = t - (await now());
-      if (d > 0) await networkHelpers.time.increase(d);
-    };
 
-    // THE STRADDLE. Two containments at the END of an epoch, two more immediately
-    // after the rollover. Each epoch's own accounting stays within CONTAINMENT_BUDGET;
-    // the DENIAL is contiguous across the boundary.
-    expect(await contain(), "containment #1").to.equal(true);
-    const W = Number(await w.vault.containmentWindowStart());
-
-    await advanceTo(W + 27 * DAY);
-    expect(await contain(), "containment #2 at +27d, still inside the first epoch").to.equal(true);
-    expect(Number(await w.vault.containmentUsedInWindow()), "epoch 1 is now at the full budget").to.equal(6 * DAY);
-    const contiguousFrom = Number(await w.vault.containedUntil()) - 3 * DAY;
-
-    const containedUntilEpoch1 = Number(await w.vault.containedUntil());
-    await advanceTo(W + 30 * DAY);
-    const enteredAt3 = (await now()) + 1;
-    expect(await contain(), "containment #3 — the rollover resets the ORIGIN to now").to.equal(true);
+    const T0 = (await latest()) + DAY;
+    expect((await containAt(T0)).ok, "containment #1").to.equal(true);
+    expect((await containAt(T0 + 27 * DAY)).ok, "containment #2 at +27d").to.equal(true);
+    const contiguousFrom = T0 + 27 * DAY;
     expect(
-      enteredAt3 <= containedUntilEpoch1 + 1,
-      "the third containment must begin with NO GAP, or the denial is not contiguous",
+      (await containAt(T0 + 30 * DAY)).ok,
+      "containment #3 at +30d — the first start is exactly one window old, legal under the rolling rule too",
     ).to.equal(true);
-    expect(
-      Number(await w.vault.containmentWindowStart()) >= W + 30 * DAY,
-      "the origin JUMPED to now rather than sliding — this is a TUMBLING epoch",
-    ).to.equal(true);
-    expect(Number(await w.vault.containmentUsedInWindow()), "and the budget reset to zero, then took 3d").to.equal(3 * DAY);
 
-    await advanceTo(W + 33 * DAY);
-    expect(await contain(), "containment #4").to.equal(true);
+    // THE INVERSION. Under the tumbling accounting this fourth call was admitted and the denial ran
+    // to 9 contiguous days; under the rolling rule the start at +27d is only six days old.
+    const nonceBefore = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
+    const a4 = await containAt(T0 + 33 * DAY);
+    expect(a4.ok, "REMEDIATED: #4 at +33d is REFUSED").to.equal(false);
+    expect(a4.reason).to.equal("ContainmentBudget");
+    expect((await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint, "the refusal burns no guardian nonce").to.equal(nonceBefore);
     const contiguousTo = Number(await w.vault.containedUntil());
-
     const contiguousDays = (contiguousTo - contiguousFrom) / DAY;
-    console.log("      measured contiguous denial: " + contiguousDays.toFixed(4) + " days (declared budget 6.00)");
-    expect(
-      contiguousDays > 6,
-      "SUSTAINED: contiguous denial (" + contiguousDays.toFixed(4) + "d) exceeds the declared 6-day budget",
-    ).to.equal(true);
-    expect(Math.round(contiguousDays), "the straddle yields 3 x CONTAINMENT_MAX contiguous").to.equal(9);
+    console.log("      measured contiguous denial: " + contiguousDays.toFixed(4) + " days (declared budget 6.00; the sustained figure was 9.0000)");
+    expect(contiguousDays, "CONTIGUOUS denial stops at the declared budget").to.equal(6);
 
-    // THE BOUND ON THE CLAIM: containment withdraws SPENDING and never RECOVERY,
-    // so the remedy stays reachable throughout — this is denial, not capture.
+    // The quantity I-CONTAINMENT-BUDGET actually bounds — contained time inside ONE rolling window —
+    // read from the kernel's rolling getter at the instant the sustained entry's window was fullest.
+    await networkHelpers.time.increaseTo(T0 + 36 * DAY);
+    const bn = (await ethers.provider.getBlock("latest"))!.number;
+    expect(Number(await w.vault.containmentUsedInWindow({ blockTag: bn })), "contained time in [T0+6d, T0+36d)").to.equal(6 * DAY);
+
+    // THE EXACT REPLACEMENT INSTANT: one second early is refused, exactly one window after +27d is admitted.
+    const early = await containAt(T0 + 57 * DAY - 1);
+    expect(early.ok, "+57d-1").to.equal(false);
+    expect(early.reason).to.equal("ContainmentBudget");
+    expect((await containAt(T0 + 57 * DAY)).ok, "#4 at exactly +57d").to.equal(true);
+
+    // THE BOUND ON THE CLAIM, unchanged by the fix: containment withdraws SPENDING and never
+    // RECOVERY, so the remedy stays reachable throughout — this was denial, not capture.
     const gGen = (await w.vault.guardianGeneration()) as bigint;
     const n = (await w.vault.nonces(DOMAIN.GUARDIAN)) as bigint;
     const rd = digestOf({
