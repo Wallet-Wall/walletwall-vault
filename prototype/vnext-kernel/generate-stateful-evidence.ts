@@ -72,6 +72,7 @@ function main(): void {
     sd5MetadataDeauthorisation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd5PublicationIntegrity?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd11VerifierAdmissionProvenance?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd2RollingContainment?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     validation?: { measuredAtHead?: unknown; measuredAtTree?: unknown };
   };
 
@@ -124,7 +125,13 @@ function main(): void {
   // SD-11 VERIFIER ADMISSION PROVENANCE is newer still, and is registered for the same reason: without
   // it a receipt regenerated after its block lands would pair SD5-I's zero-byte delta with the larger
   // kernel G-VERIFIER-ADMISSION-PROVENANCE produced. Absent the block, the chain falls through unchanged.
+  //
+  // SD-2 ROLLING CONTAINMENT (the two-start rule enforcing I-CONTAINMENT-BUDGET literally) is the
+  // newest, registered in the SAME commit as its MEASUREMENTS.json block for the reason every
+  // paragraph above gives: unregistered, the chain would pair SD-11's +269 with the +367 kernel the
+  // remediation produced, and the receipt would misattribute the delta.
   const sd1 =
+    measurements.sd2RollingContainment ??
     measurements.sd11VerifierAdmissionProvenance ??
     measurements.sd5PublicationIntegrity ??
     measurements.sd5MetadataDeauthorisation ??

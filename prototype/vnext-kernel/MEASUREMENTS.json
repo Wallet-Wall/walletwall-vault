@@ -29,14 +29,14 @@
     "TARGET_KERNEL_CEILING": 21976
   },
   "kernel": {
-    "runtimeBytes": 17964,
-    "initcodeBytes": 18005,
+    "runtimeBytes": 18331,
+    "initcodeBytes": 18510,
     "immutableSlots": 0,
-    "runtimeSha256": "7c2f2640f24b64ed5d8c34b2311ef7ed9c707fcf508a31fe36a51227721d422e",
+    "runtimeSha256": "0f3579a1b5e3b90935a87e716e83d3deba42169feeeb771959b82062f98fbf27",
     "selectors": 46,
     "declaredStorageSlots": 11,
-    "headroomVsPortabilityBudget": 6612,
-    "headroomVsTargetCeiling": 4012,
+    "headroomVsPortabilityBudget": 6245,
+    "headroomVsTargetCeiling": 3645,
     "verdict": "TARGET PASS"
   },
   "factory": {
@@ -133,7 +133,7 @@
     "publicationIntegrityClosure": "CONTAINER CLOSURE (lane SD-8 reconciliation), measured on the evidence-container state — once this file declares measuredAtHead and STATEFUL_AUTHORITY_EVIDENCE.json has been regenerated against it (regenerated twice, byte-identical, sha256 4223310e5db2e3e77b5be3266262d4ebd423b4490357780c66cc7416e2337f63). Full prototype suite 914 passing, 0 failing on that state, run locally on Windows 11 (Node 24, pinned solc 0.8.24 native binary, 7 min): the evidence-currency assertion green, the new SD-8 ledger assertion in test/StatefulSustainedDefects.test.ts green, stateful mutants 19/19, campaign 252 / 13,680 / 0 violations / 1,470 of 1,470 controls. NO CONTAINER COMMIT ID AND NO CI RUN ID IS RECORDED HERE, deliberately: naming the commit that contains this file would embed that commit's identity in its own content and reintroduce the self-reference lane SD5-I removed. The container is identified by its RELATIONSHIP to the subject — the commit whose only delta from measuredAtHead is this file and the regenerated stateful receipt — which a reader can check."
   },
   "sourceDigests": {
-    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "a27ee47d89ba07739bfd87696a3236110934a20ccdd6e5ffd31c695086c94ff3",
+    "project/prototype/vnext-kernel/contracts/VaultKernelPrototype.sol": "d6161c3f87aa0d7891a2e4a4f658949bc5a6e539640553d81ab56cc34ef4423f",
     "npm/@openzeppelin/contracts@5.6.1/proxy/Clones.sol": "06c768a2b794ea59dd6d6c1bfe33cf5098a4a8921aec14cf066576a2bffafce6",
     "npm/@openzeppelin/contracts@5.6.1/utils/Create2.sol": "9623aa59745a23a72f313adc5adbf583968bf366a7cbf3fc43c1148d7d2c3c86",
     "npm/@openzeppelin/contracts@5.6.1/utils/Errors.sol": "0704b9d6c032cca8512a3bc3f30f49f86f1f03102d2896a3d23e794b82efea66",
@@ -305,5 +305,57 @@
     "abi": "kernel: 46 selectors and 15 events unchanged, errors 24 -> 25 (InadmissibleVerifier); factory: constructor (address,uint64) -> (address,uint64,address) and a verifierAuthority() getter; root (new): deployVerifier(address), isAdmissibleVerifier(address), event VerifierDeployed(address,address)",
     "storage": "kernel 17 entries / 11 slots, unchanged; factory none (3 immutables); root 1 slot (the provenance record)",
     "_note": "ADDITIVE ONLY: no statement removed. The kernel gains one error, two internal view helpers and one call at each of initialize, setVerifier and initiateRecovery; runtime 17695 -> 17964 B (+269), initcode 17736 -> 18005 B. beforeRuntimeSha256 is 88ee0c09's kernel, whose contracts tree (dcc42e76) is vulnerableHead's. The executable prefix is identical at remediatedOn and at its comment-only successor 40ba7059; only the metadata tail differs. Measured on a CLEAN checkout of validation.measuredAtHead with the pinned solc (0.8.24, cancun, optimizer runs 200); measure.ts (Hardhat artifact) and reproduce.ts (independent solc rebuild) agree byte-for-byte for the kernel, the factory and the root. Gas was not measured."
+  },
+  "sd2RollingContainment": {
+    "invariant": "I-CONTAINMENT-BUDGET (T0) enforced literally as a ROLLING budget in the two-start representation",
+    "closes": "SD-2 (stateful/defects.ts, moved to REMEDIATED_DEFECTS under its historical id). In every rolling wall-clock interval of length CONTAINMENT_WINDOW the total CONTAINED time is at most CONTAINMENT_BUDGET; the tumbling accounting that held 9 contiguous days against 6 is gone.",
+    "vulnerableHead": "1d8c54c3ab48973dc4c5de9ed64ae49d49981f1c",
+    "remediatedOn": "da3e84edb74f2bd77c230afd23233cac155a0d63",
+    "redSuiteAt": "6344316359213bc09c21b492db4117f67911b081",
+    "ledgerClosureAt": "6ecf0b584f720fd256da1aa916884e3419f8603f",
+    "beforeRuntime": 17964,
+    "afterRuntime": 18331,
+    "totalDelta": 367,
+    "beforeInitcode": 18005,
+    "afterInitcode": 18510,
+    "beforeRuntimeSha256": "7c2f2640f24b64ed5d8c34b2311ef7ed9c707fcf508a31fe36a51227721d422e",
+    "afterRuntimeSha256": "0f3579a1b5e3b90935a87e716e83d3deba42169feeeb771959b82062f98fbf27",
+    "factoryRuntime": {
+      "before": 2551,
+      "after": 2551
+    },
+    "factoryInitcode": {
+      "before": 3030,
+      "after": 3030
+    },
+    "abi": "kernel: 46 selectors before and after, none added, removed or changed; containmentWindowStart() and containmentUsedInWindow() keep their selectors and uint64 view signatures and become explicit views with the rolling meaning; events and errors unchanged; factory and provenance root untouched",
+    "storage": "kernel 17 entries / 11 slots, every slot, offset and type identical; two LABELS change — slot 1 offset 0 containmentWindowStart -> _previousContainmentStart, slot 1 offset 8 containmentUsedInWindow -> _earlierContainmentStart (both uint64, both private); no word added",
+    "gas": {
+      "enterContainmentFirst": {
+        "before": 106933,
+        "after": 86398
+      },
+      "enterContainmentBackToBack": {
+        "before": 72532,
+        "after": 89366
+      },
+      "enterContainmentRefused": {
+        "before": 64345,
+        "after": 64214
+      },
+      "enterContainmentAfterWindow": {
+        "before": 72774,
+        "after": 72405
+      },
+      "note": "Hardhat receipts from test/Sd2RollingContainmentRemediation.test.ts section 4 on the tumbling kernel (63443163) and on the remediated kernel (da3e84ed). The first entry is cheaper because the old code wrote two fresh words (origin and counter) on the epoch's first activation; the back-to-back entry is dearer because the shift now writes a zero-to-nonzero start word."
+    },
+    "constants": {
+      "CONTAINMENT_MAX": 259200,
+      "CONTAINMENT_BUDGET": 518400,
+      "CONTAINMENT_WINDOW": 2592000,
+      "RECOVERY_DELAY": 604800,
+      "pinned": "constructor asserts CONTAINMENT_BUDGET == 2 * CONTAINMENT_MAX, CONTAINMENT_BUDGET < CONTAINMENT_WINDOW, CONTAINMENT_MAX < CONTAINMENT_WINDOW; a constants change that breaks them makes the implementation undeployable (test/Sd2RollingContainmentRemediation.test.ts 5.pin: CONTAINMENT_BUDGET = 9 days does not deploy). Unchanged values. RECOVERY_DELAY (7 d) > CONTAINMENT_BUDGET (6 d) is an accepted consequence recorded by the owner, not worked here."
+    },
+    "_note": "ONE FUNCTION BODY, TWO STORAGE LABELS, TWO GETTERS MADE EXPLICIT, THREE CONSTRUCTOR ASSERTS, ONE PRIVATE PURE HELPER. enterContainment admits iff fewer than two prior starts exist or the second-most-recent start is at least CONTAINMENT_WINDOW old; the most recent start is containedUntil - CONTAINMENT_MAX. No loop, no ring, no external call, no principal, no policy surface, no new storage word. Measured on a clean compile of the GREEN commit with the pinned solc (0.8.24, cancun, optimizer runs 200); measure.ts (Hardhat artifact) and reproduce.ts (independent solc rebuild, storage layout requested) agree byte-for-byte. Independent oracle G-CONTAINMENT-ROLLING-BUDGET and profile containment-straddle added to stateful/; campaign mutants M14 re-anchored, M23 (tumbling reset restored) and M24 (tracks only the most recent start) added and killed by that oracle. The pre-remediation adjudication test/Sd2ContainmentBudgetAdjudication.test.ts (43 tests at 1d8c54c3) is kept byte-identical by owner instruction and is red by design on this kernel."
   }
 }
