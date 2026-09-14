@@ -14,7 +14,7 @@
       "signature": "initialize(GenesisConfig,bytes)",
       "outcomes": ["GENESIS_AUTHORITY_CREATION"],
       "expectedMechanisms": [],
-      "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
+      "expectedCut": "n/a -- not a K-cut; gated by one-shot replay guard (_initialized) plus structural genesis validation (non-zero signer/verifier, verifier has code, verifier created by the provenance root bound in this clone's args (G-VERIFIER-ADMISSION-PROVENANCE, lane SD-11), canonical roster, sane floor), all checked against the arguments THIS call supplies, not against any existing authority",
       "orderingExceptionReason": null,
       "justification": "Called atomically by the factory in the same transaction as clone deployment (README.md 'dissent D3'), so an uninitialized clone never exists between transactions. A stranger calling initialize on their OWN raw clone only ever creates their OWN vault at their OWN address -- never a takeover of someone else's, per I-COUNTERFACTUAL-IDENTITY-BINDING (finding C). SELECTOR MOVED 09bbae89 -> 9d288286 by the SD-7 remediation, which added a `bytes pqKey` WITNESS parameter for I-COMMITMENT-EXHIBITED-AT-ADMISSION. The witness is a parameter and NOT a GenesisConfig member, so genesisSalt's enumerated field list is untouched and the configuration -> salt map is bit-identical to the parent build (asserted against a pinned constant in Sd67AdmissionInvariants.test.ts). That pins the SALT, not an address: clone addresses embed the implementation address and move with any bytecode change. The genesis exhibit consults NO verifier: the deployer chooses g.verifier in this same transaction, so a verifier leg would be self-certification -- the same reason I-DECLARATION-EXHIBITED has no signature leg."
     },
@@ -48,7 +48,7 @@
       "expectedMechanisms": ["HYBRID"],
       "expectedCut": "min(2,k)",
       "orderingExceptionReason": null,
-      "justification": "AUTHORITY.md section 3 'Silent crypto downgrade' / section 1: HYBRID-authorised (fix for finding A2). The escape from a genuinely dead verifier is guardian recovery (initiateRecovery/executeRecovery), never a unilateral ECDSA-only swap."
+      "justification": "AUTHORITY.md section 3 'Silent crypto downgrade' / section 1: HYBRID-authorised (fix for finding A2). The escape from a genuinely dead verifier is guardian recovery (initiateRecovery/executeRecovery), never a unilateral ECDSA-only swap. Lane SD-11 adds a PRECONDITION, not a mechanism: the candidate must have been created by the vault's bound verifier provenance root (G-VERIFIER-ADMISSION-PROVENANCE), checked before _authorise through the internal view helper _requireAdmissibleVerifier, which the tracer classifies SAFE, so this entry's mechanism, cut and ordering are unchanged."
     },
     "VaultKernelPrototype:5b704804": {
       "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
@@ -72,7 +72,7 @@
       "expectedMechanisms": ["QUORUM"],
       "expectedCut": "k",
       "orderingExceptionReason": null,
-      "justification": "AUTHORITY.md section 1/2: guardian quorum is the ACCEPTED TRUST ROOT (D1) for recovery. Establishes the pending RecoveryRequest a later executeRecovery merely finishes."
+      "justification": "AUTHORITY.md section 1/2: guardian quorum is the ACCEPTED TRUST ROOT (D1) for recovery. Establishes the pending RecoveryRequest a later executeRecovery merely finishes. Lane SD-11: the proposed verifier must have been created by the vault's bound verifier provenance root (G-VERIFIER-ADMISSION-PROVENANCE), checked before _requireQuorum through the internal view helper _requireAdmissibleVerifier (SAFE to the tracer). This is the ONLY writer of recovery.proposedVerifier, the value executeRecovery installs, so the recovery path is covered without a second check."
     },
     "VaultKernelPrototype:1271666a": {
       "signature": "cancelRecovery(uint256,uint64,bytes)",
@@ -131,10 +131,10 @@
       "justification": "AUTHORITY.md section 1: 'Anyone: egress -- No discretion: recipient and effect are pre-committed'. Destination re-checked by codehash AT EXECUTION (DestinationMismatch), not merely at binding time."
     },
     "VaultKernelFactoryPrototype:constructor": {
-      "signature": "constructor(address,uint64)",
+      "signature": "constructor(address,uint64,address)",
       "outcomes": ["GENESIS_AUTHORITY_CREATION"],
       "expectedMechanisms": [],
-      "expectedCut": "n/a -- runs once at factory deployment; the implementation target and generation become immutable and unreachable by every principal thereafter, including the deployer",
+      "expectedCut": "n/a -- runs once at factory deployment; the implementation target, the generation and (lane SD-11) the verifier provenance root become immutable and unreachable by every principal thereafter, including the deployer; the root is copied into every clone's immutable args, where the kernel reads it at each verifier admission edge",
       "orderingExceptionReason": null,
       "justification": "VaultKernelFactoryPrototype.sol header: 'the choice is consumed at this factory's own construction and is thereafter unreachable by EVERY principal... this factory holds NO authority over any clone it has already produced'."
     },

@@ -21,12 +21,24 @@ import "./VaultKernelPrototype.sol";
  * Registering a new generation IS deploying a new factory. This factory holds
  * NO authority over any clone it has already produced, so its authority closure
  * is EMPTY rather than merely bounded.
+ *
+ * THE GENERATION'S VERIFIER PROVENANCE ROOT IS BOUND THE SAME WAY
+ * (`G-VERIFIER-ADMISSION-PROVENANCE`). `verifierAuthority` is consumed at
+ * construction exactly like the implementation, copied into every clone's
+ * immutable args beside the generation, and unreachable by every principal
+ * afterwards. The kernel reads it from its OWN code at each verifier admission
+ * edge, so no clone produced here can adopt a verifier its root did not create,
+ * and no later act can change which root that is. Which root a factory binds is
+ * the same one-shot construction choice D8 already makes for the implementation:
+ * a Generation-1 factory binds `ImmutableAttestationVerifierFactoryPrototype`.
  */
 contract VaultKernelFactoryPrototype {
     /// @notice The kernel implementation every clone from this factory delegates to.
     address public immutable implementation;
     /// @notice The generation this factory is permanently bound to.
     uint64 public immutable generation;
+    /// @notice The verifier provenance root every clone from this factory consults at admission.
+    address public immutable verifierAuthority;
 
     error ZeroAddress();
     error NoCode();
@@ -34,7 +46,7 @@ contract VaultKernelFactoryPrototype {
 
     event VaultDeployed(address indexed vault, bytes32 indexed genesisSalt, uint64 generation);
 
-    constructor(address implementation_, uint64 generation_) {
+    constructor(address implementation_, uint64 generation_, address verifierAuthority_) {
         if (implementation_ == address(0)) revert ZeroAddress();
         // A factory bound to a codeless implementation would emit VaultDeployed
         // for clones that delegate into nothing — every call succeeding with
@@ -42,8 +54,13 @@ contract VaultKernelFactoryPrototype {
         if (implementation_.code.length == 0) revert NoCode();
         // Generations are positive; zero is the uninitialised sentinel.
         if (generation_ == 0) revert ZeroGeneration();
+        // A codeless root would make every clone refuse every verifier: fail
+        // closed, but a factory that can only produce dead vaults is refused here.
+        if (verifierAuthority_ == address(0)) revert ZeroAddress();
+        if (verifierAuthority_.code.length == 0) revert NoCode();
         implementation = implementation_;
         generation = generation_;
+        verifierAuthority = verifierAuthority_;
     }
 
     /**
@@ -99,7 +116,9 @@ contract VaultKernelFactoryPrototype {
         return Clones.predictDeterministicAddressWithImmutableArgs(implementation, _args(), salt, address(this));
     }
 
+    /// @dev generation (8 bytes) || verifierAuthority (20 bytes). The kernel reads both back from
+    ///      its OWN runtime code, never from storage and never from this factory.
     function _args() internal view returns (bytes memory) {
-        return abi.encodePacked(generation);
+        return abi.encodePacked(generation, verifierAuthority);
     }
 }

@@ -207,3 +207,18 @@ contract StatefulPolicy is IKernelPolicy {
         return true;
     }
 }
+
+/**
+ * @notice THE PRE-SD-11 ADMISSION RULE, AS A FIXTURE — never a Generation-1 authority.
+ *
+ *         It answers yes for every address, so a vault whose factory binds it admits any verifier
+ *         with code: exactly the kernel's behaviour before `G-VERIFIER-ADMISSION-PROVENANCE`. It
+ *         exists so suites testing OTHER properties keep their mock verifiers, and so the SD-11
+ *         reproduction can keep showing what ungated admission allows. A factory binding it is not a
+ *         Generation-1 factory (test/Sd11VerifierAdmissionProvenance.test.ts, M6).
+ */
+contract UngatedVerifierAuthority is IKernelVerifierAuthority {
+    function isAdmissibleVerifier(address) external pure returns (bool) {
+        return true;
+    }
+}

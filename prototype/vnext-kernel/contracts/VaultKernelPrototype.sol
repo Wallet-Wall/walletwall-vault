@@ -305,6 +305,8 @@ contract VaultKernelPrototype {
     error TransferFailed();
     error ContainmentBudget();
     error Downgrade();
+    /// @dev `G-VERIFIER-ADMISSION-PROVENANCE`: the candidate was not created by this vault's bound root.
+    error InadmissibleVerifier();
 
     // =====================================================================
     // Events — K-1..K-14 observability. OBSERVATORY reads these; it holds
@@ -378,6 +380,9 @@ contract VaultKernelPrototype {
         if (g.signer == address(0) || g.verifier == address(0)) revert ZeroAddress();
         // A verifier with no code would STATICCALL into nothing.
         if (g.verifier.code.length == 0) revert ZeroAddress();
+        // `G-VERIFIER-ADMISSION-PROVENANCE`, edge 1 of 3. Having code is not admissibility: the
+        // verifier must have been CREATED by the Generation's root named in this clone's own code.
+        _requireAdmissibleVerifier(g.verifier);
         // I-QUORUM-PRINCIPAL-DISTINCTNESS at admission: a vault can never be
         // created with a roster that could not reach an honest quorum.
         _requireCanonicalRoster(g.threshold, g.guardians, g.guardianIsContract);
@@ -542,6 +547,43 @@ contract VaultKernelPrototype {
         bytes memory args = Clones.fetchCloneArgs(address(this));
         if (args.length < 8) return 1;
         return uint64(bytes8(args));
+    }
+
+    /**
+     * @dev `G-VERIFIER-ADMISSION-PROVENANCE` — a verifier may become ACTIVE only if (1) it belongs to
+     *      a Generation-1-approved implementation class, (2) its accepting-relation configuration is
+     *      immutable after deployment, (3) that fact is mechanically attributable rather than
+     *      documentary, and (4) every path that can change the active verifier applies this check.
+     *
+     *      PROVENANCE BY CONSTRUCTION, NOT APPROVAL BY AN ADMINISTRATOR. The question goes to the root
+     *      bound in THIS CLONE'S OWN runtime code (`_verifierAuthority`), never to the candidate: a
+     *      verifier that vouches for itself proves nothing. The Generation-1 root
+     *      (`ImmutableAttestationVerifierFactoryPrototype`) can create exactly one class,
+     *      `ImmutableAttestationPQCVerifier`, whose attestor is immutable and whose runtime has no
+     *      storage writer, and it records only what it created. So (1)-(3) are properties of that
+     *      root's code and of the class's code, and (4) is the three call sites (`initialize`,
+     *      `setVerifier`, `initiateRecovery`): the only places whose value can later be written to
+     *      `pqVerifier`. `executeRecovery` installs only the stored proposal, whose one writer is
+     *      `initiateRecovery`, so it needs no second check — and provenance cannot lapse in between,
+     *      because the root never clears a record and its class has no SELFDESTRUCT.
+     *
+     *      NOT CHECKED, stated so it is not over-read: which attestor a vault trusts (still an
+     *      authorised admission decision) and key well-formedness (SD-8). Nor is this an EXTCODEHASH
+     *      pin: a byte-identical copy deployed outside the root is refused.
+     *
+     *      FAIL CLOSED: with no root in the args the call goes to address(0), whose empty return data
+     *      the ABI decoder rejects, so nothing is admitted.
+     */
+    function _requireAdmissibleVerifier(address verifier) internal view {
+        if (!IKernelVerifierAuthority(_verifierAuthority()).isAdmissibleVerifier(verifier)) revert InadmissibleVerifier();
+    }
+
+    /// @dev The root the factory bound: bytes 8..28 of this clone's immutable args, after the 8-byte
+    ///      generation. Read from CODE, so no transaction of this vault can move it.
+    function _verifierAuthority() internal view returns (address) {
+        bytes memory args = Clones.fetchCloneArgs(address(this));
+        if (args.length < 28) return address(0);
+        return address(uint160(uint256(bytes32(args)) >> 32));
     }
 
     bytes32 private constant POP_TAG = keccak256("INCOMING_CREDENTIAL_POSSESSION");
@@ -996,6 +1038,9 @@ contract VaultKernelPrototype {
         _requireNormal();
         if (verifier == address(0)) revert ZeroAddress();
         if (verifier.code.length == 0) revert ZeroAddress();
+        // `G-VERIFIER-ADMISSION-PROVENANCE`, edge 2 of 3. Checked BEFORE `_authorise`, like the
+        // code-length rule it strengthens, so a refused artifact consumes nothing.
+        _requireAdmissibleVerifier(verifier);
         bytes32 digest = _digest(
             ACTION_SET_VERIFIER,
             credentialGeneration,
@@ -1342,6 +1387,8 @@ contract VaultKernelPrototype {
         if (_recoveryIsLive()) revert BadState();
         if (proposedSigner == address(0) || proposedVerifier == address(0)) revert ZeroAddress();
         if (proposedVerifier.code.length == 0) revert ZeroAddress();
+        // `G-VERIFIER-ADMISSION-PROVENANCE`, edge 3 of 3 — the one writer of a proposal (see the helper).
+        _requireAdmissibleVerifier(proposedVerifier);
 
         bytes32 digest = _digest(
             ACTION_RECOVER,

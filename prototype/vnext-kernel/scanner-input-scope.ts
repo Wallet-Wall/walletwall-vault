@@ -4,7 +4,7 @@
  * THE SCANNER-INPUT SCOPE: what must be byte-equal for two commits to share a scanner result.
  *
  * WHY NOT `MEASUREMENTS.json.sourceDigests`. That block is the MEASURED scope — the contracts
- * `measure.ts` weighs and `reproduce.ts` rebuilds. It lists three project files and omits
+ * `measure.ts` weighs and `reproduce.ts` rebuilds. It lists only the measured project files and omits
  * `PrototypeMocks.sol`, because the mocks are never deployed or measured. But Slither DOES analyze
  * the mocks: 12 of the 33 distinct own-code findings live in them. Reusing `sourceDigests` as the
  * scanner scope would silently under-cover by exactly the file with the most findings, which is

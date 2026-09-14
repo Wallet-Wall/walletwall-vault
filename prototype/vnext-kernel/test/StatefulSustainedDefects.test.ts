@@ -94,7 +94,7 @@ async function setVerifierAs(
  * the quorum's escape — lives in test/Sd1RecoveryFloorBinding.test.ts, which is
  * what its ledger entry's `reproducedBy` names and what the receipt publishes.
  */
-describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-2 reproduced here, SD-4 / SD-8 / SD-11A / SD-11B next door)", function () {
+describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD-7, SD-9b/c/d/e and SD-10 remediated; SD-11A and SD-11B conditionally remediated; SD-2 reproduced here, SD-4 / SD-8 next door)", function () {
   this.timeout(600_000);
 
   it("the ledger is complete and every entry is classified as denial or incoherence, never escalation", function () {
@@ -115,17 +115,19 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     //   SD-11B — the kernel pins no code identity for an admitted verifier, so
     //            in-place semantic change is NOT EXCLUDED. Deliberately recorded
     //            as UNMEASURED rather than dressed up as a demonstrated capability.
+    //
+    // LANE SD-11 MOVED THOSE TWO OUT AGAIN — CONDITIONALLY. G-VERIFIER-ADMISSION-PROVENANCE refuses their
+    // reproducers at every admission edge of a vault bound to the Generation-1 root, so they left this
+    // list; the condition that verdict depends on travels with them (asserted below).
     const SUSTAINED_IDS = [
       "SD-2-containment-window-is-tumbling",
       "SD-4-ecdsa-only-shape-declaration-is-uncounted",
       "SD-8-genesis-exhibit-cannot-prove-well-formedness",
-      "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
-      "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
     ];
     expect([...SUSTAINED_DEFECTS.map((d) => d.id)].sort(), "the sustained set, by id").to.deep.equal(
       [...SUSTAINED_IDS].sort(),
     );
-    expect(SUSTAINED_DEFECTS.length).to.equal(5);
+    expect(SUSTAINED_DEFECTS.length).to.equal(3);
     for (const d of SUSTAINED_DEFECTS) {
       expect(d.classification, d.id).to.be.oneOf(["LIVENESS_DENIAL", "STATE_INCOHERENCE"]);
       expect(d.contradicts.length, d.id + " must name the published claim it falsifies").to.be.greaterThan(40);
@@ -153,6 +155,8 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
       "SD-9d-live-request-overwrite",
       "SD-9e-expiry-equality-boundary",
       "SD-10-approved-request-stranded-by-guardian-rotation",
+      "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+      "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
     ];
     for (const closed of REMEDIATED_IDS) {
       expect(SUSTAINED_DEFECTS.map((d) => d.id), closed + " must not be listed as sustained any more").to.not.include(
@@ -163,7 +167,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     expect([...REMEDIATED_DEFECTS.map((r) => r.id)].sort(), "the remediated set, by id").to.deep.equal(
       [...REMEDIATED_IDS].sort(),
     );
-    expect(REMEDIATED_DEFECTS.length).to.equal(10);
+    expect(REMEDIATED_DEFECTS.length).to.equal(12);
     // A defect is sustained or remediated, never both, and never twice.
     const everyId = [...SUSTAINED_DEFECTS.map((d) => d.id), ...REMEDIATED_DEFECTS.map((r) => r.id)];
     expect(new Set(everyId).size, "ids are unique across both arrays").to.equal(everyId.length);
@@ -200,6 +204,33 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
     expect(sd10.invariant, "the entry must not claim generation binding was removed").to.include(
       "Guardian-generation binding was NOT removed",
     );
+    // LANE SD-11 moved SD-11A and SD-11B as CONDITIONAL closures. A conditional verdict is only as honest
+    // as its condition, so the condition must exist, must name the generation binding, and must be the
+    // only place any closure carries one; an entry that dropped it would republish a conditional closure
+    // as an unconditional one.
+    const SD11_SUSTAINED_AT = "be1789f42b4b4abb6aa071f3f15a22333059e60b";
+    const SD11_COMMIT = "b058715b612be5ac70e44dfe5b8d4db1766ee571";
+    for (const id of [
+      "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+      "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
+    ]) {
+      const r = REMEDIATED_DEFECTS.find((x) => x.id === id)!;
+      expect(r.sustainedAt, id + " was recorded as sustained by lane SD5-I").to.equal(SD11_SUSTAINED_AT);
+      expect(r.remediatedOn.startsWith(SD11_COMMIT), id + " names lane SD-11's enforcement commit").to.equal(true);
+      expect(r.invariant, id).to.include("G-VERIFIER-ADMISSION-PROVENANCE");
+      expect(r.condition, id + " is CONDITIONAL and must say so").to.be.a("string");
+      expect(r.condition!, id + " names the generation binding").to.include("GENERATION BINDING");
+      expect(r.invertedReproduction, id + " points at the provenance suite").to.include(
+        "Sd11VerifierAdmissionProvenance.test.ts",
+      );
+      expect(r.invertedReproduction, id + " keeps the original reproduction running").to.include(
+        "Sd11VerifierAdmissionSemantics.test.ts",
+      );
+      expect(r.residual, id + " names no sustained residual; its limits are its condition").to.equal(null);
+    }
+    for (const r of REMEDIATED_DEFECTS.filter((x) => !x.id.startsWith("SD-11"))) {
+      expect(r.condition, r.id + " is an unconditional closure").to.equal(undefined);
+    }
     // SD-4 stays sustained on its campaign property, and its entry carries the
     // canonical disposition rather than the refuted general claims.
     const sd4 = SUSTAINED_DEFECTS.find((d) => d.id === "SD-4-ecdsa-only-shape-declaration-is-uncounted")!;
@@ -601,6 +632,7 @@ describe("vNext kernel — COMPOSITION DEFECT LEDGER (SD-1, SD-3, SD-5, SD-6, SD
       console.log("    DEFECT_REMEDIATED_ON  " + r.remediatedOn);
       console.log("    invariant   : " + r.invariant.slice(0, 150) + "...");
       console.log("    residual    : " + (r.residual ?? "none"));
+      console.log("    condition   : " + (r.condition ? r.condition.slice(0, 150) + "..." : "none (unconditional)"));
     }
     console.log("\n  SUSTAINED COMPOSITION DEFECTS (still open)");
     for (const d of SUSTAINED_DEFECTS) {

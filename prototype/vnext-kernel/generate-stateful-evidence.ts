@@ -71,6 +71,7 @@ function main(): void {
     sd10Preservation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd5MetadataDeauthorisation?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     sd5PublicationIntegrity?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
+    sd11VerifierAdmissionProvenance?: { beforeRuntime: number; afterRuntime: number; totalDelta: number };
     validation?: { measuredAtHead?: unknown; measuredAtTree?: unknown };
   };
 
@@ -119,7 +120,12 @@ function main(): void {
   // moves the CBOR metadata tail (and therefore the whole-runtime hash) while leaving the
   // executable prefix byte-identical. Left unregistered, the chain would fall through and pair
   // SD5-I's -672 with a runtime hash SD5-I did not produce.
+  //
+  // SD-11 VERIFIER ADMISSION PROVENANCE is newer still, and is registered for the same reason: without
+  // it a receipt regenerated after its block lands would pair SD5-I's zero-byte delta with the larger
+  // kernel G-VERIFIER-ADMISSION-PROVENANCE produced. Absent the block, the chain falls through unchanged.
   const sd1 =
+    measurements.sd11VerifierAdmissionProvenance ??
     measurements.sd5PublicationIntegrity ??
     measurements.sd5MetadataDeauthorisation ??
     measurements.sd10Preservation ??
@@ -274,7 +280,9 @@ function main(): void {
     },
     remediated: REMEDIATED_DEFECTS.map((r) => ({
       id: r.id,
-      verdict: "DEFECT_REMEDIATED",
+      // A closure that holds only under a NAMED deployment condition is published as conditional, with
+      // the condition beside it — never as a bare DEFECT_REMEDIATED (lane SD-11).
+      verdict: r.condition ? "DEFECT_CONDITIONALLY_REMEDIATED" : "DEFECT_REMEDIATED",
       sustainedAt: r.sustainedAt,
       remediatedOn: r.remediatedOn,
       invariant: r.invariant,
@@ -282,6 +290,7 @@ function main(): void {
       rejectedAlternatives: r.rejectedAlternatives,
       invertedReproduction: r.invertedReproduction,
       residual: r.residual,
+      ...(r.condition ? { condition: r.condition } : {}),
     })),
 
     whatThisDoesNotProve: [

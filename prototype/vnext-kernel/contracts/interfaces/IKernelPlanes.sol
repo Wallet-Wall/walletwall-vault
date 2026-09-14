@@ -32,6 +32,19 @@ interface IKernelPolicy {
     function admit(address vault, address recipient, uint256 amount) external returns (bool allowed);
 }
 
+/**
+ * @notice The Generation's verifier ADMISSION provenance root (`G-VERIFIER-ADMISSION-PROVENANCE`).
+ *
+ * @dev NOT A PLANE, and never consulted on authorisation. The kernel asks it one question, at the
+ *      three edges whose value can later become `pqVerifier` (initialize, setVerifier,
+ *      initiateRecovery): did the Generation's root create this verifier? The root consulted is the
+ *      one named in the vault's OWN clone code — never the candidate, because a candidate that
+ *      vouches for itself proves nothing.
+ */
+interface IKernelVerifierAuthority {
+    function isAdmissibleVerifier(address verifier) external view returns (bool);
+}
+
 /// @notice ERC-1271, for guardian seats that authenticate by contract (section 9).
 interface IERC1271Guardian {
     function isValidSignature(bytes32 hash, bytes calldata signature) external view returns (bytes4);

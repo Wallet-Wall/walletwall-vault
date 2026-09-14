@@ -224,8 +224,13 @@ describe("vNext minimal trust kernel — prototype v0", function () {
     const impl = await Impl.deploy();
     await impl.waitForDeployment();
 
+    // Bound to the UNGATED fixture authority (the pre-SD-11 admission rule) so this suite's
+    // ConfigurableVerifier keeps its meaning. G-VERIFIER-ADMISSION-PROVENANCE has its own suite.
+    const Ungated = await ethers.getContractFactory("UngatedVerifierAuthority", deployer);
+    const verifierAuthority = await Ungated.deploy();
+    await verifierAuthority.waitForDeployment();
     const Factory = await ethers.getContractFactory("VaultKernelFactoryPrototype", deployer);
-    const factory = await Factory.deploy(await impl.getAddress(), 1);
+    const factory = await Factory.deploy(await impl.getAddress(), 1, await verifierAuthority.getAddress());
     await factory.waitForDeployment();
 
     const threshold = 2n;
@@ -264,6 +269,7 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       verifier,
       impl,
       factory,
+      verifierAuthorityAddress: await verifierAuthority.getAddress(),
       vault,
       vaultAddress: predicted,
       salt,
@@ -365,8 +371,12 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       await raw.waitForDeployment();
 
       // POSITIVE CONTROL, and the demonstration of WHY atomicity is required:
-      // a bare clone IS claimable by anyone.
-      await (await raw.cloneOnly(await f.impl.getAddress(), ethers.id("bare"))).wait();
+      // a clone left uninitialised IS claimable by anyone. Since
+      // G-VERIFIER-ADMISSION-PROVENANCE a clone must carry a provenance root in its
+      // args to admit any verifier at all, so the claimable clone carries this
+      // fixture's root; a clone with NO root fails closed, asserted at the end.
+      const argsWithRoot = ethers.solidityPacked(["uint64", "address"], [1, f.verifierAuthorityAddress]);
+      await (await raw.cloneWithArgs(await f.impl.getAddress(), argsWithRoot, ethers.id("bare"))).wait();
       const bare = await ethers.getContractAt("VaultKernelPrototype", await raw.lastClone(), f.attacker);
       await (await bare.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).wait();
       expect(await bare.ecdsaSigner()).to.equal(f.attacker.address);
@@ -381,6 +391,12 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       await expect(
         f.vault.connect(f.attacker).initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY),
       ).to.be.revertedWithCustomError(f.vault, "AlreadyInitialized");
+
+      // FAIL CLOSED: a clone whose args bind no provenance root admits no verifier,
+      // so nobody can initialise it.
+      await (await raw.cloneOnly(await f.impl.getAddress(), ethers.id("bare-no-root"))).wait();
+      const rootless = await ethers.getContractAt("VaultKernelPrototype", await raw.lastClone(), f.attacker);
+      await expect(rootless.initialize({ ...f.genesis, signer: f.attacker.address }, PQ_KEY)).to.be.revert(ethers);
     });
 
     it("M-K02 — initialize twice is refused", async function () {
@@ -432,13 +448,15 @@ describe("vNext minimal trust kernel — prototype v0", function () {
     it("M-K05 — immutable args live in clone CODE and cannot be forged by storage", async function () {
       const f = await deploy();
       const args = await f.vault.genesisCommitments();
-      expect(args).to.equal("0x0000000000000001"); // uint64 generation = 1
+      // uint64 generation = 1, then the verifier provenance root the factory bound
+      // (G-VERIFIER-ADMISSION-PROVENANCE): 8 + 20 bytes, both in CODE.
+      expect(args).to.equal(ethers.solidityPacked(["uint64", "address"], [1, f.verifierAuthorityAddress]));
       expect(await f.vault.kernelGeneration()).to.equal(1n);
 
-      // The args are part of the clone's own runtime code: 45-byte template + 8.
+      // The args are part of the clone's own runtime code: 45-byte template + 28.
       const code = await ethers.provider.getCode(f.vaultAddress);
-      expect(ethers.dataLength(code)).to.equal(45 + 8);
-      expect(code.endsWith("0000000000000001")).to.equal(true);
+      expect(ethers.dataLength(code)).to.equal(45 + 28);
+      expect(code.toLowerCase().endsWith(args.slice(2).toLowerCase())).to.equal(true);
 
       // A clone with DIFFERENT args has different code and a different address,
       // so args cannot be swapped under a fixed identity.
@@ -1814,8 +1832,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
     it("clone bytes -> implementation address -> implementation code -> generation", async function () {
       const f = await deploy(0);
       const cloneCode = await ethers.provider.getCode(f.vaultAddress);
-      // Link 1: the clone is byte-exactly the canonical template + args.
-      expect(ethers.dataLength(cloneCode)).to.equal(53);
+      // Link 1: the clone is byte-exactly the canonical template + args:
+      // 45-byte template + 8-byte generation + 20-byte verifier provenance root.
+      expect(ethers.dataLength(cloneCode)).to.equal(73);
       // Link 2: the implementation ADDRESS is read out of the OBSERVED bytes,
       // never from the factory or a registry.
       const decoded = ethers.getAddress("0x" + cloneCode.slice(22, 62));
@@ -1825,6 +1844,9 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       expect(implCode).to.not.equal("0x");
       // Link 4: the generation, from the clone's own immutable args.
       expect(await f.vault.kernelGeneration()).to.equal(1n);
+      // Link 4b (G-VERIFIER-ADMISSION-PROVENANCE): the root every admission consults, read out of the
+      // same OBSERVED bytes — the final 20 — and never from storage or the factory.
+      expect(ethers.getAddress("0x" + cloneCode.slice(108, 148))).to.equal(f.verifierAuthorityAddress);
       // Link 5: configuration is OBSERVATION, read from storage, timestamped.
       expect(await f.vault.credentialGeneration()).to.equal(1n);
     });
@@ -1845,7 +1867,8 @@ describe("vNext minimal trust kernel — prototype v0", function () {
       const names = f.factory.interface.fragments
         .filter((x) => x.type === "function")
         .map((x) => (x as ethers.FunctionFragment).name);
-      // The forbidden vocabulary of D8, checked by absence.
+      // The forbidden vocabulary of D8, checked by absence — extended in lane SD-11 to the verifier
+      // provenance root, which the factory binds the same way (G-VERIFIER-ADMISSION-PROVENANCE).
       for (const forbidden of [
         "setImplementation",
         "upgradeFactory",
@@ -1853,10 +1876,15 @@ describe("vNext minimal trust kernel — prototype v0", function () {
         "upgradeTo",
         "transferOwnership",
         "owner",
+        "setVerifierAuthority",
+        "setAuthority",
+        "registerVerifier",
       ]) {
         expect(names, forbidden).to.not.include(forbidden);
       }
-      expect(names.sort()).to.deep.equal(["deployVault", "generation", "implementation", "predictVault"]);
+      expect(names.sort()).to.deep.equal(["deployVault", "generation", "implementation", "predictVault", "verifierAuthority"]);
+      // The root is exposed only as an immutable-backed getter: observable, never writable.
+      expect(f.factory.interface.getFunction("verifierAuthority")!.stateMutability).to.equal("view");
     });
   });
 });

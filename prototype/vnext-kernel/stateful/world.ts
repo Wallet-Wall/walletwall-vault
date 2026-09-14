@@ -364,8 +364,14 @@ export async function deployWorld(partial: Partial<WorldOptions> = {}): Promise<
     : await ethers.getContractFactory("VaultKernelPrototype", deployer);
   const impl = await Impl.deploy();
   await impl.waitForDeployment();
+  // The campaign binds the UNGATED fixture authority — the pre-SD-11 admission rule — so its four
+  // mock verifier kinds stay admissible. The campaign therefore has NO power over
+  // G-VERIFIER-ADMISSION-PROVENANCE; that invariant is carried by Sd11VerifierAdmissionProvenance.test.ts.
+  const Ungated = await ethers.getContractFactory("UngatedVerifierAuthority", deployer);
+  const ungated = await Ungated.deploy();
+  await ungated.waitForDeployment();
   const Factory = await ethers.getContractFactory("VaultKernelFactoryPrototype", deployer);
-  const factory = await Factory.deploy(await impl.getAddress(), 1);
+  const factory = await Factory.deploy(await impl.getAddress(), 1, await ungated.getAddress());
   await factory.waitForDeployment();
 
   const Dest = await ethers.getContractFactory("DestinationStub", deployer);
