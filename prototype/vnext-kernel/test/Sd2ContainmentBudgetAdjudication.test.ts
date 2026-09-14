@@ -42,18 +42,19 @@
  *   - Anything about the numeric constants beyond what they are (D5 leaves them OPEN).
  */
 import { expect } from "chai";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { ethers, networkHelpers } from "./connection.js";
 import { compileDeployable } from "../stateful/mutants.js";
-import { replaceWithinFunction } from "../authority/mutation-harness.js";
-import { findContract, loadCompiledSources, type AstNode } from "../authority/ast.js";
+import { compileMutatedKernel, replaceWithinFunction } from "../authority/mutation-harness.js";
+import { findContract, type AstNode } from "../authority/ast.js";
 import {
   ACTION,
   DOMAIN,
   FAR_DEADLINE,
   addrOf,
-  deployWorld,
+  deployWorld as deployCurrentWorld,
   digestOf,
   migrationParams,
   pqHash,
@@ -63,6 +64,7 @@ import {
   sign,
   spendParams,
   type World,
+  type WorldOptions,
 } from "../stateful/world.js";
 
 const abi = ethers.AbiCoder.defaultAbiCoder();
@@ -73,9 +75,56 @@ const WINDOW = 30 * DAY;
 const BUDGET = 6 * DAY;
 /** An explicit gas limit so a REFUSED probe is still mined at its pinned instant (see W2RecoveryLifecycle). */
 const MINED = { gasLimit: 2_000_000 };
-const BUILD_INFO = path.join("prototype", "vnext-kernel", "artifacts", "build-info");
-const KERNEL_SRC = path.join("prototype", "vnext-kernel", "contracts", "VaultKernelPrototype.sol");
 const SAFE = { NORMAL: 0, CONTAINED: 1, RECOVERY_ONLY: 2, MIGRATION_ONLY: 3, RETIRED: 4 } as const;
+
+/**
+ * HISTORICAL HARNESS PIN (owner-approved, after remediation lane SD-2).
+ *
+ * This file is evidence about the TUMBLING kernel that existed at the adjudication subject
+ * `1d8c54c3` — blob `c25e2184`, byte-identical at base `03ce978b` and at the RED commit
+ * `63443163`. Since `da3e84ed` the kernel on disk enforces the rolling rule, so every kernel this
+ * file compiles or deploys comes from a byte-exact copy of that historical blob, compiled IN
+ * MEMORY and deployed through `deployWorld({ implOverride })` — the mechanism the SD-4 candidate
+ * kernels already use. Nothing about WHAT is asserted changed; only WHICH kernel it is asserted
+ * about. The remediated kernel is covered by test/Sd2RollingContainmentRemediation.test.ts against
+ * the real artifact. The fixture's identity is asserted before anything runs, so an edit to it
+ * fails this whole file loudly.
+ */
+const PRE_SD2_KERNEL_FIXTURE = path.join("prototype", "vnext-kernel", "test", "fixtures", "VaultKernelPrototype.pre-sd2.c25e2184.sol");
+/** git blob id of prototype/vnext-kernel/contracts/VaultKernelPrototype.sol at 1d8c54c3 (== 03ce978b == 63443163). */
+const PRE_SD2_KERNEL_BLOB = "c25e2184fc706bf3d67aafc0d0e54a34ed3ed51a";
+/** sha256 of the same bytes — also the pre-remediation kernel digest MEASUREMENTS.json sourceDigests carried. */
+const PRE_SD2_KERNEL_SHA256 = "a27ee47d89ba07739bfd87696a3236110934a20ccdd6e5ffd31c695086c94ff3";
+
+/** Reads the frozen source and refuses to proceed unless BOTH identities match the pins. */
+function assertPreSd2FixtureIdentity(): Buffer {
+  const bytes = fs.readFileSync(PRE_SD2_KERNEL_FIXTURE);
+  const sha256 = createHash("sha256").update(bytes).digest("hex");
+  // git's blob id: sha1 over "blob <length>", a NUL byte, then the content.
+  const blob = createHash("sha1").update(Buffer.from("blob " + bytes.length, "utf8")).update(Buffer.from([0])).update(bytes).digest("hex");
+  if (sha256 !== PRE_SD2_KERNEL_SHA256 || blob !== PRE_SD2_KERNEL_BLOB) {
+    throw new Error(
+      "FROZEN KERNEL FIXTURE DOES NOT MATCH ITS PIN: " + PRE_SD2_KERNEL_FIXTURE + " has blob " + blob + " / sha256 " + sha256 +
+        ", expected blob " + PRE_SD2_KERNEL_BLOB + " / sha256 " + PRE_SD2_KERNEL_SHA256 + ". Restore it with `git show 1d8c54c3:prototype/vnext-kernel/contracts/VaultKernelPrototype.sol`.",
+    );
+  }
+  return bytes;
+}
+const preSd2Source = (): string => assertPreSd2FixtureIdentity().toString("utf8");
+
+let preSd2Deployable: { abi: unknown[]; bytecode: string } | null = null;
+/** The frozen kernel, compiled once per run with the pinned solc and the production settings. */
+function preSd2Kernel(): { abi: unknown[]; bytecode: string } {
+  if (preSd2Deployable === null) {
+    const out = compileDeployable({ "VaultKernelPrototype.sol": preSd2Source() });
+    if (!out.ok) throw new Error("the frozen pre-SD-2 kernel failed to compile: " + out.errors.join(";"));
+    preSd2Deployable = out.kernel;
+  }
+  return preSd2Deployable;
+}
+/** Every world in this file runs the FROZEN kernel unless a mutant of it is supplied explicitly. */
+const deployWorld = (partial: Partial<WorldOptions> = {}): Promise<World> =>
+  deployCurrentWorld({ ...partial, implOverride: partial.implOverride ?? preSd2Kernel() });
 
 // ---------------------------------------------------------------------------
 // Probes: one transaction, pinned to one instant, with its verdict and reason.
@@ -722,14 +771,20 @@ const isExternalMutator = (fn: AstNode): boolean =>
 describe("vNext kernel — SD-2 ADJUDICATION: containment-budget accounting re-derived from the executable kernel", function () {
   this.timeout(1_800_000);
 
+  before(function () {
+    const bytes = assertPreSd2FixtureIdentity();
+    console.log("      frozen pre-remediation kernel: blob " + PRE_SD2_KERNEL_BLOB + ", sha256 " + PRE_SD2_KERNEL_SHA256 + ", " + bytes.length + " bytes");
+  });
+
   // -------------------------------------------------------------------------
   describe("A. MECHANISM — the containment state machine from the compiler's AST and the deployed constants", function () {
     let kernel: AstNode;
     let byName: Record<string, AstNode>;
 
     before(function () {
-      const compiled = loadCompiledSources(BUILD_INFO);
-      kernel = findContract(compiled, "VaultKernelPrototype");
+      const out = compileMutatedKernel({ "VaultKernelPrototype.sol": preSd2Source() });
+      if (!out.ok) throw new Error("frozen kernel AST compile failed: " + out.errors.join(";"));
+      kernel = findContract(out.compiled, "VaultKernelPrototype");
       byName = Object.fromEntries(functionsOf(kernel).map((f) => [f.name, f]));
     });
 
@@ -1718,7 +1773,7 @@ describe("vNext kernel — SD-2 ADJUDICATION: containment-budget accounting re-d
       /** The transcript and step whose verdict must FLIP relative to the real kernel, and the direction. */
       killAt: { transcript: TranscriptName; step: number; real: string; mutant: string };
     }
-    const kernelSource = (): string => fs.readFileSync(KERNEL_SRC, "utf8");
+    const kernelSource = preSd2Source;
     const replaceOnce = (src: string, oldText: string, newText: string): string => {
       const n = src.split(oldText).length - 1;
       if (n !== 1) throw new Error("anchor matched " + n + " times: " + oldText);

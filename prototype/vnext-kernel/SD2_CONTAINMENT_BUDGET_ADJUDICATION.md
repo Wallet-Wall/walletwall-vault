@@ -500,3 +500,36 @@ subject only, the two evidence guards that the evidence commit closes.
 
 **Boundary.** Production `contracts/`, SD-4, SD-8, SD-11 and `docs/` untouched; no version bump,
 no push, no PR, no deployment; the shared checkout never branch-switched.
+
+## 11. Historical harness pin — the adjudication suite runs against the frozen pre-remediation kernel
+
+**Owner decision (2026-09-14):** close the one remaining CI blocker by pinning, not by inverting.
+Nothing in §§0–10 is rewritten.
+
+- `test/Sd2ContainmentBudgetAdjudication.test.ts` now compiles and deploys **an exact frozen copy of
+  the pre-remediation `VaultKernelPrototype.sol`** — `test/fixtures/VaultKernelPrototype.pre-sd2.c25e2184.sol`,
+  git blob `c25e2184fc706bf3d67aafc0d0e54a34ed3ed51a`, sha256
+  `a27ee47d89ba07739bfd87696a3236110934a20ccdd6e5ffd31c695086c94ff3` (86,550 bytes). That blob is
+  byte-identical at base `03ce978b`, at the adjudication commit `1d8c54c3` and at the RED commit
+  `63443163`; the fixture was emitted from the blob, never reconstructed, and both identities are
+  asserted in a `before` hook so an edit to the fixture fails the whole file.
+- **Its assertions are unchanged in meaning.** All 43 cases, every expected tumbling observation
+  (9 contiguous days, the boundary controls, the model searches, the mutant kills, the historical
+  conclusions) run exactly as written and pass against the frozen kernel: 43 / 0. The harness edit is
+  confined to how the kernel is obtained: the AST comes from an in-memory compile of the fixture,
+  every world deploys it through the existing `implOverride` mechanism (the SD-4 candidate-kernel
+  precedent), and the in-memory mutants are applied to the fixture text. No shared compilation
+  semantics changed.
+- **`test/Sd2RollingContainmentRemediation.test.ts` executes against current HEAD** — the real
+  artifact of the remediated kernel — and is the authority for the rolling implementation (21 / 0).
+- This separation preserves both: the historical defect evidence about the kernel that existed at
+  the adjudication subject, and the current regression coverage of the rolling rule.
+- **Evidence currency, determined mechanically before anything was regenerated:** the pin changes
+  only `test/` (a fixture and one test file) and this record. The declared evidence subject
+  `492973bd` still has the same `prototype/vnext-kernel/contracts` and `stateful/` trees as HEAD; the
+  scanner scope (`contractsTree` 50b94848) is unchanged and `generate-scanner-evidence.ts --check`
+  reports the receipt byte-identical; the authority census reads the Hardhat build, whose sources
+  path excludes `test/fixtures`; the stateful generator, run in place, produced no diff (sha256
+  `0e0a9fdf…`). No receipt was regenerated into this commit. The `MEASUREMENTS.json` validation
+  prose still describes the pre-pin container state (974 / 21, "red by design"); that remains a true
+  statement about that state, and the pin's own figures are recorded here and in the commit message.
