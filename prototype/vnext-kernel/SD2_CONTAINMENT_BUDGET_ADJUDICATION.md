@@ -432,3 +432,71 @@ npx hardhat --config prototype/vnext-kernel/hardhat.config.ts test prototype/vne
   commit: exactly two untracked files, this record and the test.
 - Nothing pushed: the branch has **no upstream** (`git rev-parse @{u}` fails), `origin/main` is still
   `03ce978b` in the local refs, no PR opened, no deployment, no version bump.
+
+## 10. Remediation — applied after this record was frozen, on the owner's decision
+
+**Owner decision (2026-09-14):** preserve the T0 rolling invariant as written and remediate with
+the minimal two-start construction of §4 candidate 5. Candidate 4 (re-declaring the bound) was
+rejected. Constants unchanged; `RECOVERY_DELAY` 7 d > `B` 6 d accepted as a consequence, not
+worked. Sections 0–9 above and `test/Sd2ContainmentBudgetAdjudication.test.ts` are unchanged; the
+latter is the pre-remediation reproduction and is **red by design on the remediated kernel**
+(21 of its 43 cases assert the tumbling behaviour or read the two former storage words by name).
+
+| Commit | Role | Content |
+| --- | --- | --- |
+| `1d8c54c3` | adjudication | this record and the 43-test reproduction (untouched) |
+| `63443163` | **RED** | `test/Sd2RollingContainmentRemediation.test.ts`, 9 passing / 5 failing on the tumbling kernel: A4 of the straddle admitted; T0+57d−1 admitted; the delay-grid plans disagree with the rolling model; both getters report the epoch counter |
+| `da3e84ed` | **GREEN** | kernel two-start rule, truthful getters, constructor pins; independent oracle `G-CONTAINMENT-ROLLING-BUDGET`; profile `containment-straddle`; mutants M14 (re-anchored), M23, M24; manifest exception retired; suite 21 / 0 |
+| `6ecf0b58` | closure | SD-2 moved to `REMEDIATED_DEFECTS` with the §6 corrections; reproduction inverted in place; AUTHORITY.md append-only closure |
+| `3ed420a6` | measurements + triage | `MEASUREMENTS.json` lane block and kernel block; generator chain entry; Slither triage re-keyed (16 unchanged, 20 relocated, 1 retired, 6 added) |
+| `492973bd` | scanner receipt | `SCANNER_EVIDENCE.json` only; publication container verified 7/7 |
+| `f529054e` | evidence | subject re-declared to `492973bd`; `STATEFUL_AUTHORITY_EVIDENCE.json` regenerated twice byte-identical; `AUTHORITY_CENSUS.json` regenerated; `MEASUREMENTS.json` validation and scanner-coverage figures |
+
+**The algorithm.** In `enterContainment`, after the effective-NORMAL gate, the quorum and the
+nonce:
+
+```
+uint64 previous = _previousContainmentStart;         // second-most-recent start, 0 = none
+uint64 until    = containedUntil;                    // most recent start = until - MAX, 0 = none
+if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget();
+_earlierContainmentStart  = previous;                // kept only so the used-in-window view is exact
+_previousContainmentStart = until == 0 ? 0 : until - CONTAINMENT_MAX;
+containedUntil = nowTs + CONTAINMENT_MAX; safeState = CONTAINED;
+```
+
+Admission is legal iff fewer than two prior starts exist or the second-most-recent start is at
+least `W` old; the boundary is half-open (exactly `W` old is legal, one second younger is not).
+The constructor asserts `B == 2·MAX`, `B < W`, `MAX < W`, so a constants change that breaks the
+representation makes the implementation undeployable (`5.pin`: `B = 9 days` does not deploy).
+
+**Exact boundary behaviour (measured at pinned instants).** Straddle `A1@T0, A2@T0+27d, A3@T0+30d`
+legal; `A4@T0+33d` refused `ContainmentBudget`, no nonce burnt, no history moved; earliest legal
+replacement refused at `T0+57d−1`, admitted at `T0+57d` (= `T0+27d + W`). Back-to-back
+`A1@T0, A2@T0+3d` legal (6 d burst); third at `T0+6d` refused; `A3` refused at `T0+30d−1`,
+admitted at `T0+30d`; `A4` refused at `T0+33d−1`, admitted at `T0+33d` (a second 6 d burst).
+`containmentWindowStart()` = `now − W`; `containmentUsedInWindow()` equals the observed total in
+`[now − W, now)` at every probed instant, including `T0+31d` where three episodes intersect (6 d).
+
+**Deltas.** Runtime 17,964 → 18,331 B (+367); initcode 18,005 → 18,510 B (+505); selectors
+46 → 46, none added, removed or changed; storage 17 entries / 11 slots with every slot, offset and
+type identical and two labels renamed (`containmentWindowStart → _previousContainmentStart`,
+`containmentUsedInWindow → _earlierContainmentStart`); factory unchanged. Gas `enterContainment`
+(tumbling → rolling): first 106,933 → 86,398; back-to-back 72,532 → 89,366; refused 64,345 →
+64,214; post-window 72,774 → 72,405. Solhint 41 → 40 (kernel 30 → 29). Slither 285 → 295 raw,
+37 → 42 distinct own-code findings (+6 in the new code, all adjudicated; 1 retired).
+
+**Mutants.** Remediation suite: tumbling restored, track-last-only, fail-open, `<=` at the exact
+`W` boundary, cooldown-on-last — 5 / 5 killed at named admission steps, each agreeing with the
+kernel on every earlier step. Campaign: M14, M23, M24 killed by `G-CONTAINMENT-ROLLING-BUDGET`
+(M23 by `containment-straddle` seed 251); kill matrix 21 / 21.
+
+**Identity sets.** Sustained `{SD-4, SD-8}` (was `{SD-2, SD-4, SD-8}`); remediated 13 (was 12),
+SD-2 under its historical id with `residual: null` and no condition beyond the pinned constants;
+receipt verdict `DEFECT_REMEDIATED`.
+
+**Suites.** Subject (clean checkout of `492973bd`): 972 passing / 23 failing. Container (evidence state):
+974 passing / 21 failing; the only failures in both are the byte-identical adjudication file, plus, at the
+subject only, the two evidence guards that the evidence commit closes.
+
+**Boundary.** Production `contracts/`, SD-4, SD-8, SD-11 and `docs/` untouched; no version bump,
+no push, no PR, no deployment; the shared checkout never branch-switched.
