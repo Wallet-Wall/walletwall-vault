@@ -1658,7 +1658,7 @@
     },
     "f1d14a042240dc7260159b3d84d1daefad17e5d2350b3e08cf36acd75c10977b": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "Pure interval arithmetic: the seconds of the episode [start, start + CONTAINMENT_MAX) that fall inside [from, to), plus the `start == 0` no-episode sentinel. The detector taints every comparison because `to` is the caller's block.timestamp. Private, pure, reachable only from the containmentUsedInWindow view; on no authorization path (SD-2 remediation).",
+      "rationale": "A view. containmentUsedInWindow() reports the contained seconds inside [now - CONTAINMENT_WINDOW, now) from the three most recent episode starts; the flagged comparisons are the same underflow clamp and the `containedUntil == 0` no-episode sentinel (containedUntil is only ever written as block.timestamp + CONTAINMENT_MAX, so 0 is unreachable as a real expiry). No authorization path reads it; it exists so the ABI's former per-epoch counter keeps a truthful rolling meaning (SD-2 remediation). Its value is pinned against the observed episode list in test/Sd2RollingContainmentRemediation.test.ts 3.3.",
       "locators": {
         "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1657,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1659,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1661"
       },
@@ -1674,7 +1674,7 @@
     },
     "63e308eaf4627d8e9eaf7c20bb0e10871c3e235919af22628318184bd261bfe9": {
       "classification": "ACCEPTED_DESIGN_TRADEOFF",
-      "rationale": "A view. containmentUsedInWindow() reports the contained seconds inside [now - CONTAINMENT_WINDOW, now) from the three most recent episode starts; the flagged comparisons are the same underflow clamp and the `containedUntil == 0` no-episode sentinel (containedUntil is only ever written as block.timestamp + CONTAINMENT_MAX, so 0 is unreachable as a real expiry). No authorization path reads it; it exists so the ABI's former per-epoch counter keeps a truthful rolling meaning (SD-2 remediation). Its value is pinned against the observed episode list in test/Sd2RollingContainmentRemediation.test.ts 3.3.",
+      "rationale": "Pure interval arithmetic: the seconds of the episode [start, start + CONTAINMENT_MAX) that fall inside [from, to), plus the `start == 0` no-episode sentinel. The detector taints every comparison because `to` is the caller's block.timestamp. Private, pure, reachable only from the containmentUsedInWindow view; on no authorization path (SD-2 remediation).",
       "locators": {
         "current": "timestamp|prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1668,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1669,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1671,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1672,prototype/vnext-kernel/contracts/VaultKernelPrototype.sol:1673"
       },
