@@ -217,6 +217,13 @@ const TIME_DEFAULT = [3600, 86400, 3 * 86400, 7 * 86400 + 1, 15 * 86400, 22 * 86
 const TIME_MATURATION = [7 * 86400 + 1, 7 * 86400 + 1, 8 * 86400, 10 * 86400, 3600, 15 * 86400, 22 * 86400, 31 * 86400];
 /** CONTAINMENT_MAX-dominant, so repeated containments land inside ONE budget window. */
 const TIME_DUTY_CYCLE = [3 * 86400, 3 * 86400, 3 * 86400 + 1, 86400, 7 * 86400 + 1, 31 * 86400];
+/**
+ * Boundary-straddling (SD-2): steps that put a SECOND episode 6-27 days after the first and
+ * further episodes at the 30-day mark and CONTAINMENT_MAX later. Under a tumbling accounting
+ * that shape holds 9 contiguous days; under I-CONTAINMENT-BUDGET no 30-day window may hold
+ * more than 6. G-CONTAINMENT-ROLLING-BUDGET is the oracle that sees the difference.
+ */
+const TIME_STRADDLE = [3 * 86400, 3 * 86400, 6 * 86400, 12 * 86400, 21 * 86400, 24 * 86400, 27 * 86400];
 
 function genParams(
   kind: ActionKind,
@@ -248,7 +255,13 @@ function genParams(
     case "ADVANCE_TIME":
       return {
         seconds: prng.pick(
-          timeBias === "maturation" ? TIME_MATURATION : timeBias === "duty-cycle" ? TIME_DUTY_CYCLE : TIME_DEFAULT,
+          timeBias === "maturation"
+            ? TIME_MATURATION
+            : timeBias === "duty-cycle"
+              ? TIME_DUTY_CYCLE
+              : timeBias === "straddle"
+                ? TIME_STRADDLE
+                : TIME_DEFAULT,
         ),
       };
     case "SPEND":

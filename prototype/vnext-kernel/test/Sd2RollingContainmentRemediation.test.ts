@@ -29,7 +29,11 @@
  * byte-identical as the historical reproduction of the defect.
  */
 import { expect } from "chai";
+import fs from "node:fs";
+import path from "node:path";
 import { ethers, networkHelpers } from "./connection.js";
+import { compileDeployable } from "../stateful/mutants.js";
+import { replaceWithinFunction } from "../authority/mutation-harness.js";
 import {
   ACTION,
   DOMAIN,
@@ -556,6 +560,181 @@ describe("vNext kernel — SD-2 REMEDIATION: I-CONTAINMENT-BUDGET enforced as a 
       console.log("      gas enterContainment: first " + a1.gasUsed + ", back-to-back " + a2.gasUsed + ", refused (" + a3.reason + ") " + a3.gasUsed + ", after the window " + a4.gasUsed);
       expect(a1.ok && a2.ok && a4.ok).to.equal(true);
       expect(a3.ok).to.equal(false);
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  describe("5. MUTANTS — every SD-2-specific weakening of the two-start rule is killed by a NAMED admission observation, never by a setup revert", function () {
+    const KERNEL_SRC = path.join("prototype", "vnext-kernel", "contracts", "VaultKernelPrototype.sol");
+    const kernelSource = (): string => fs.readFileSync(KERNEL_SRC, "utf8");
+    /** The exact rolling check and the exact history shift in enterContainment; a mutant that cannot find them fails loudly. */
+    const CHECK = "if (previous != 0 && nowTs < previous + CONTAINMENT_WINDOW) revert ContainmentBudget();";
+    const SHIFT = "_previousContainmentStart = until == 0 ? 0 : until - CONTAINMENT_MAX;";
+    const replaceOnce = (src: string, oldText: string, newText: string): string => {
+      const n = src.split(oldText).length - 1;
+      if (n !== 1) throw new Error("anchor matched " + n + " times: " + oldText);
+      return src.replace(oldText, newText);
+    };
+
+    /** Attempt instants relative to T0. Each transcript exists to make ONE step's verdict flip. */
+    const TRANSCRIPTS = {
+      /** The historical straddle: step 3 (A4) is the SD-2 observation. */
+      STRADDLE: [0, 27 * DAY, 30 * DAY, 33 * DAY],
+      /** The exact W-old boundary: step 2 (A3 at T0+30d) is legal only with `>=` semantics. */
+      BOUNDARY: [0, 3 * DAY, 30 * DAY],
+      /** The legitimate back-to-back burst: step 1 (A2 at T0+3d) is legal; a cooldown refuses it. */
+      BURST: [0, 3 * DAY, 6 * DAY],
+    } as const;
+    type TranscriptName = keyof typeof TRANSCRIPTS;
+
+    interface Sd2Mutant {
+      id: string;
+      shape: "permissive" | "over-strict" | "boundary";
+      apply: (src: string) => string;
+      transcript: TranscriptName;
+      /** The step whose verdict must flip, and the direction. */
+      step: number;
+      real: string;
+      mutant: string;
+    }
+
+    const MUTANTS: readonly Sd2Mutant[] = [
+      {
+        id: "M-SD2R-TUMBLING-RESTORED",
+        shape: "permissive",
+        // The old per-epoch accounting, rebuilt over the two words: origin in the earlier word,
+        // counter in the previous word, no start history at all.
+        apply: (s) => {
+          let m = replaceWithinFunction(
+            s,
+            "enterContainment",
+            CHECK,
+            "if (nowTs >= _earlierContainmentStart + CONTAINMENT_WINDOW) { _earlierContainmentStart = nowTs; _previousContainmentStart = 0; } if (_previousContainmentStart + CONTAINMENT_MAX > CONTAINMENT_BUDGET) revert ContainmentBudget(); _previousContainmentStart += CONTAINMENT_MAX;",
+          );
+          m = replaceWithinFunction(m, "enterContainment", "_earlierContainmentStart = previous;", "");
+          return replaceWithinFunction(m, "enterContainment", SHIFT, "");
+        },
+        transcript: "STRADDLE",
+        step: 3,
+        real: "ContainmentBudget",
+        mutant: "OK",
+      },
+      {
+        id: "M-SD2R-TRACK-LAST-ONLY",
+        shape: "permissive",
+        // The shift is dropped: only the most recent start (containedUntil) is ever known, the
+        // second-most-recent stays at its zero sentinel, and the rule never refuses.
+        apply: (s) => replaceWithinFunction(s, "enterContainment", SHIFT, ""),
+        transcript: "STRADDLE",
+        step: 3,
+        real: "ContainmentBudget",
+        mutant: "OK",
+      },
+      {
+        id: "M-SD2R-FAIL-OPEN",
+        shape: "permissive",
+        // Two recent starts exist and the check is simply gone.
+        apply: (s) => replaceWithinFunction(s, "enterContainment", CHECK, ""),
+        transcript: "STRADDLE",
+        step: 3,
+        real: "ContainmentBudget",
+        mutant: "OK",
+      },
+      {
+        id: "M-SD2R-BOUNDARY-STRICT",
+        shape: "boundary",
+        // `<` becomes `<=`: a start exactly W old is refused.
+        apply: (s) => replaceWithinFunction(s, "enterContainment", "nowTs < previous + CONTAINMENT_WINDOW", "nowTs <= previous + CONTAINMENT_WINDOW"),
+        transcript: "BOUNDARY",
+        step: 2,
+        real: "OK",
+        mutant: "ContainmentBudget",
+      },
+      {
+        id: "M-SD2R-COOLDOWN-ON-LAST",
+        shape: "over-strict",
+        // The rule is applied to the MOST RECENT start instead of the second-most-recent: a W
+        // cooldown after every episode, which forbids the legitimate 6-day burst.
+        apply: (s) =>
+          replaceWithinFunction(
+            s,
+            "enterContainment",
+            "previous != 0 && nowTs < previous + CONTAINMENT_WINDOW",
+            "until != 0 && nowTs < until - CONTAINMENT_MAX + CONTAINMENT_WINDOW",
+          ),
+        transcript: "BURST",
+        step: 1,
+        real: "OK",
+        mutant: "ContainmentBudget",
+      },
+    ];
+
+    async function trace(wk: World, name: TranscriptName, t0: number): Promise<{ reasons: string[]; starts: number[] }> {
+      const reasons: string[] = [];
+      const starts: number[] = [];
+      for (const rel of TRANSCRIPTS[name]) {
+        const p = await containAt(wk, t0 + rel);
+        reasons.push(p.reason);
+        if (p.ok) starts.push(t0 + rel);
+      }
+      return { reasons, starts };
+    }
+
+    const real: Record<TranscriptName, string[]> = { STRADDLE: [], BOUNDARY: [], BURST: [] };
+
+    before(async function () {
+      for (const name of Object.keys(TRANSCRIPTS) as TranscriptName[]) {
+        await branch(async () => {
+          const wr = await deployWorld({ label: "sd2r-real-" + name.toLowerCase() });
+          real[name] = (await trace(wr, name, (await latest()) + DAY)).reasons;
+        });
+      }
+      expect(real.STRADDLE, "real kernel on STRADDLE").to.deep.equal(["OK", "OK", "OK", "ContainmentBudget"]);
+      expect(real.BOUNDARY, "real kernel on BOUNDARY").to.deep.equal(["OK", "OK", "OK"]);
+      expect(real.BURST, "real kernel on BURST").to.deep.equal(["OK", "OK", "ContainmentBudget"]);
+    });
+
+    it("5.0 — the mutant set is closed: five distinct ids, each naming a transcript step", function () {
+      expect(MUTANTS).to.have.length(5);
+      expect(new Set(MUTANTS.map((m) => m.id)).size).to.equal(5);
+      for (const m of MUTANTS) expect(m.step).to.be.within(0, TRANSCRIPTS[m.transcript].length - 1);
+    });
+
+    for (const m of MUTANTS) {
+      it("5.x — " + m.id + " (" + m.shape + ") flips " + m.transcript + " step " + m.step + " from " + m.real + " to " + m.mutant + " and agrees with the kernel on every earlier step", async function () {
+        const built = compileDeployable({ "VaultKernelPrototype.sol": m.apply(kernelSource()) });
+        if (!built.ok) throw new Error(m.id + " failed to compile: " + built.errors.join(";"));
+        await branch(async () => {
+          const wm = await deployWorld({ label: "sd2r-" + m.id.toLowerCase(), implOverride: built.kernel });
+          const t0 = (await latest()) + DAY;
+          const control = await branch(() => containAt(wm, t0));
+          expect(control.ok, "INCONCLUSIVE: " + m.id + " cannot contain at all: " + control.reason).to.equal(true);
+          const r = await trace(wm, m.transcript, t0);
+          for (let i = 0; i < m.step; i += 1) expect(r.reasons[i], m.id + " step " + i + " must match the real kernel").to.equal(real[m.transcript][i]);
+          expect(real[m.transcript][m.step], "real kernel at the kill step").to.equal(m.real);
+          expect(r.reasons[m.step], m.id + " at the kill step").to.equal(m.mutant);
+          if (m.shape === "permissive") expect(maxInAnyWindow(r.starts), m.id + " breaks the any-window bound").to.be.greaterThan(BUDGET);
+          else expect(r.starts.length, m.id + " admits fewer episodes than the kernel").to.be.lessThan(real[m.transcript].filter((x) => x === "OK").length);
+          console.log("      " + m.id.padEnd(26) + " " + m.transcript.padEnd(9) + " " + r.reasons.join(" "));
+        });
+      });
+    }
+
+    it("5.pin — a constants change that breaks BUDGET == 2 * MAX makes the IMPLEMENTATION undeployable (the constructor pin), so the representation cannot be silently invalidated", async function () {
+      const built = compileDeployable({
+        "VaultKernelPrototype.sol": replaceOnce(kernelSource(), "uint64 public constant CONTAINMENT_BUDGET = 6 days;", "uint64 public constant CONTAINMENT_BUDGET = 9 days;"),
+      });
+      if (!built.ok) throw new Error("pin mutant failed to compile: " + built.errors.join(";"));
+      let deployed = false;
+      let failure = "";
+      try {
+        await branch(() => deployWorld({ label: "sd2r-pin", implOverride: built.kernel }));
+        deployed = true;
+      } catch (e) {
+        failure = e instanceof Error ? e.message : String(e);
+      }
+      expect(deployed, "the implementation with B = 3 * MAX must not deploy: " + failure.slice(0, 160)).to.equal(false);
+      // And the real constants deploy (every other section proves it); the pin bites only the identity.
     });
   });
 });

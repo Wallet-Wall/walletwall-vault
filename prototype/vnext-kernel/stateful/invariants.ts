@@ -252,6 +252,53 @@ interface Invariant {
  */
 export const SAFE_STATE = { NORMAL: 0, CONTAINED: 1, RECOVERY_ONLY: 2, MIGRATION_ONLY: 3, RETIRED: 4 } as const;
 
+/**
+ * Observed containment episodes, per world, for G-CONTAINMENT-ROLLING-BUDGET.
+ *
+ * The oracle is deliberately NOT a function of the kernel's budget words: it rebuilds
+ * the episode list from what any observer sees — the block a containment was mined in
+ * and the expiry it committed to — and measures the invariant with wall-clock arithmetic.
+ * A plan's first step arrives with `prev === null`, which is where the history resets, so
+ * a replay of a shrunken sequence on a restored world starts from an empty list.
+ */
+interface ContainmentEpisode {
+  start: bigint;
+  end: bigint;
+}
+const ROLLING_HISTORY = new WeakMap<World, ContainmentEpisode[]>();
+
+function rollingHistory(world: World, prev: KernelSnapshot | null): ContainmentEpisode[] {
+  const existing = ROLLING_HISTORY.get(world);
+  if (prev === null || existing === undefined) {
+    const fresh: ContainmentEpisode[] = [];
+    ROLLING_HISTORY.set(world, fresh);
+    return fresh;
+  }
+  return existing;
+}
+
+/**
+ * The window of length CONTAINMENT_WINDOW holding the MOST contained time. The overlap
+ * total is piecewise linear in the window's origin, so its maximum sits at a breakpoint:
+ * an episode edge, or an episode edge minus the window length.
+ */
+function worstRollingWindow(episodes: readonly ContainmentEpisode[]): { from: bigint; total: bigint } {
+  const W = 30n * 86400n;
+  let best = { from: 0n, total: 0n };
+  const origins = new Set<bigint>();
+  for (const e of episodes) for (const b of [e.start, e.end, e.start - W, e.end - W]) origins.add(b);
+  for (const a of origins) {
+    let total = 0n;
+    for (const e of episodes) {
+      const lo = e.start > a ? e.start : a;
+      const hi = e.end < a + W ? e.end : a + W;
+      if (hi > lo) total += hi - lo;
+    }
+    if (total > best.total) best = { from: a, total };
+  }
+  return best;
+}
+
 export const GLOBAL_INVARIANTS: readonly Invariant[] = [
   {
     name: "G-SIGNER-NONZERO",
@@ -433,11 +480,27 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
   {
     name: "G-CONTAINMENT-BUDGET-BOUNDED",
     source:
-      "enterContainment reverts ContainmentBudget unless containmentUsedInWindow + CONTAINMENT_MAX <= CONTAINMENT_BUDGET (3d and 6d)",
+      "containmentUsedInWindow() reports the contained seconds inside [now - CONTAINMENT_WINDOW, now) from the three most recent episode starts (SD-2 remediation); under I-CONTAINMENT-BUDGET it can never exceed CONTAINMENT_BUDGET (3d episodes, 6d budget, 30d window). KERNEL-REPORTED — it reads the kernel's own view; the independent observation is G-CONTAINMENT-ROLLING-BUDGET",
     check: (s) =>
       s.containmentUsedInWindow > 6n * 86400n
         ? "containmentUsedInWindow " + s.containmentUsedInWindow + " exceeds the 6-day budget"
         : null,
+  },
+  {
+    name: "G-CONTAINMENT-ROLLING-BUDGET",
+    source:
+      "I-CONTAINMENT-BUDGET (docs/Vault_vNext_Architecture.md section 6, T0): in every rolling wall-clock interval of length CONTAINMENT_WINDOW the total CONTAINED time is at most CONTAINMENT_BUDGET. Enforced by enterContainment's two-start rule (SD-2 remediation). OBSERVED, NEVER READ BACK: episodes are reconstructed from the snapshot sequence — a new containedUntil while safeState is CONTAINED opens the episode [blockTimestamp, containedUntil) — and this oracle consults NEITHER budget getter, so an accounting that mis-tracks the window (the tumbling accounting SD-2 recorded, which held 9 contiguous days) is caught by wall-clock arithmetic alone",
+    check: (s, p, world) => {
+      const episodes = rollingHistory(world, p);
+      if (s.safeStateStored === SAFE_STATE.CONTAINED && (p === null || s.containedUntil !== p.containedUntil)) {
+        episodes.push({ start: s.blockTimestamp, end: s.containedUntil });
+      }
+      const worst = worstRollingWindow(episodes);
+      return worst.total > 6n * 86400n
+        ? "the rolling window [" + worst.from + ", " + (worst.from + 30n * 86400n) + ") holds " + worst.total / 86400n + "d " +
+            (worst.total % 86400n) + "s of CONTAINED time against a 6-day budget; episode starts " + episodes.map((e) => e.start).join(",")
+        : null;
+    },
   },
   {
     name: "G-RECOVERY-ACTIVE-WELLFORMED",
