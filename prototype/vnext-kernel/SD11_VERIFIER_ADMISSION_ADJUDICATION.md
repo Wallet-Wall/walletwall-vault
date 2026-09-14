@@ -222,6 +222,25 @@ verifier in the same transaction.
 SD-11A, and folding it would lose the preimage-versus-possession distinction that
 is the whole content of the entry.
 
+**Append-only correction (lane SD-8, 2026-09-14,
+`test/Sd8KeyWellFormednessAdjudication.test.ts`).** Two statements in this section
+name the wrong judge and are corrected here rather than rewritten. The row "key
+STRUCTURAL validity — only a scheme-aware verifier" and the sentence "a verifier
+leg at genesis is self-certification because the deployer chooses the verifier"
+both assume an on-chain verifier could judge the bytes. Under the admitted
+Generation-1 relation NO verifier does: `ImmutableAttestationPQCVerifier.verify`
+reads `publicKey` once, as `keccak256(publicKey)`. The judge is the relation's
+trusted OFF-CHAIN attestor, at attestation time, and what it judges for ML-DSA-65
+is exactly `length == 1,952` plus signature validity. Self-certification at
+genesis survives on a different ground: after this lane the CLASS is root-fixed,
+but the ATTESTOR is the deployer's choice (it is the root's CREATE2 salt), so a
+genesis possession proof under the deployer's own attestor proves nothing —
+measured: the empty key "proves possession". The verdict of this section —
+independent defect, shared root cause, not subsumed — stands. SD-8's ledger entry
+now records the gap at four sites (genesis, dormant rotation, dormant recovery,
+the arming edge), for bytes of any length, zero included; the "three candidate
+fixes" above are re-adjudicated in that entry's `minimalFixSketch`.
+
 ---
 
 ## 5. Phase A1 — candidate control matrix

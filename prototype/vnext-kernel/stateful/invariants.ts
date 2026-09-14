@@ -535,9 +535,13 @@ export const GLOBAL_INVARIANTS: readonly Invariant[] = [
      *
      * WHAT IT DOES NOT SEE, stated so the greenness is not over-read: an
      * exhibited preimage need not be a WELL-FORMED KEY of any scheme. No oracle
-     * over storage can see that, and no admission check can either — the only
-     * party who could judge it is a verifier the admitting principal chooses.
-     * That residue is carried as SD-8.
+     * over storage can see that, and no on-chain admission check can either:
+     * under the admitted Generation-1 relation the verifier reads the key only
+     * as a keccak256 preimage, so the only party that ever judges the bytes is
+     * the relation's OFF-CHAIN attestor, at attestation time — and at every
+     * install site, not genesis alone (lane SD-8, 2026-09-14,
+     * test/Sd8KeyWellFormednessAdjudication.test.ts). That residue is carried
+     * as SD-8.
      */
     name: "G-COMMITMENT-ATTESTED",
     source:

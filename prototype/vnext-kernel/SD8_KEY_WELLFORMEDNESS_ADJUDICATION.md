@@ -277,3 +277,36 @@ an SD-11 re-establishment. That trade is the owner's to make, not this lane's.
 | edges measured | genesis, rotation (armed, dormant), arming edge, recovery (armed, dormant) |
 | ML-DSA-65 library | `@noble/post-quantum` 0.7.0, lengths `{publicKey: 1952, signature: 3309, seed: 32}` |
 | network writes | none; no push, no PR, no deployment, no version bump |
+
+---
+
+## 9. Reconciliation — applied in the second local commit, after this record was frozen
+
+This record and its test are the FINDING commit (`e77ef423`) and are unchanged by what
+follows except for this section. The reconciliation commit that follows it applies the
+corrections §6 listed as "owed, not applied", and nothing else:
+
+| Site | What changed |
+|---|---|
+| `stateful/defects.ts`, SD-8 entry | title, `rootsRequired`, `contradicts`, `rootCause`, `notAnEscalationBecause`, `minimalFixSketch` and `reproducedBy` rewritten to the measured characterisation: judging party = the relation's OFF-CHAIN attestor; ANY length, zero included; FOUR sites; ML-DSA-65 at 1,952 bytes. The five properties (PREIMAGE KNOWLEDGE, HASH CONSISTENCY, OPAQUE-BYTE COMMITMENT, ATTESTOR VERIFICATION, SECRET-KEY POSSESSION) are named and kept apart. The id is retained, deliberately: SD-6 and SD-7 name it as their residual, and the entry is corrected in place on the SD-1 precedent. |
+| `test/StatefulSustainedDefects.test.ts` | one new ledger assertion pins the corrected claims by text and asserts the refuted forms absent, so the earlier wording cannot return through an edit nobody re-measures. |
+| `stateful/invariants.ts` (`G-COMMITMENT-ATTESTED` comment), `test/Sd67CommitmentAdmission.test.ts` (residual-test comment) | the same judging-party sentence corrected; no predicate and no assertion changed. |
+| `AUTHORITY.md`, `SD11_VERIFIER_ADMISSION_ADJUDICATION.md` §4 | append-only corrections on the precedent of the earlier ones; the original sentences are retained as written. |
+
+**Classification chosen: `STATE_INCOHERENCE`, retained** — and §7's open question is thereby
+closed. The ledger's two values divide by MECHANISM, not by outcome (every entry is a liveness
+outcome by the ledger's own header): `LIVENESS_DENIAL` entries (SD-1, SD-2, SD-4, SD-5) each
+have a principal depriving another beyond a declared bound; `STATE_INCOHERENCE` entries (SD-6,
+SD-7, SD-11A, SD-11B) each admit state that does not carry the property the published
+semantics attribute to it. SD-8 measured is the second kind: a commitment the floor declares
+mandatory is not a credential of the admitted relation, and no on-chain layer can tell (§1).
+It has roots 0 and overshoots no bound, so `LIVENESS_DENIAL` would assert a denier the evidence
+does not contain — a classification may not assert more than its trigger proves. A third value
+was considered and rejected: it would widen the receipt vocabulary for a distinction the pair
+already carries. The liveness manifestation (§3) is recorded in `notAnEscalationBecause`,
+exactly as SD-7 recorded its own.
+
+**Not changed:** `contracts/`, `prototype/vnext-kernel/contracts/`, the verifier class, the
+root, the factory, any SD-11 entry or condition, any assertion in this lane's 29 tests. The
+stateful receipt is regenerated in a following evidence commit against this reconciliation
+commit as its declared subject, per `evidence-subject.ts`.
