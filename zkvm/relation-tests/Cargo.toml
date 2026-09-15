@@ -1,0 +1,28 @@
+# Native relation tests for the SP1 ML-DSA-65 guest programs (zkvm/guest).
+#
+# Compiles each guest program's own source for the host target against a minimal stand-in for the
+# three `sp1_zkvm` items the programs use, then drives the programs with stdin chosen the way a
+# prover may choose it. Stable Rust only: no SP1 toolchain, no proving, no network at test time.
+# See src/lib.rs for what this does and does not establish.
+[package]
+name = "mldsa65-relation-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+# Renamed so the guest programs' own `sp1_zkvm::...` paths resolve to the host stand-in.
+sp1-zkvm = { package = "sp1-zkvm-host-shim", path = "sp1-zkvm-host-shim" }
+# The guest's exact pins; a test checks the resolved versions against zkvm/guest/Cargo.lock.
+ml-dsa = "=0.1.1"
+sha3 = "=0.12.0"
+serde = { version = "1.0", features = ["derive"] }
+bincode = "=1.3.3"
+serde_json = "1.0"
+hex = "0.4"
+
+[build-dependencies]
+serde_json = "1.0"
+
+[workspace]
+members = ["sp1-zkvm-host-shim"]

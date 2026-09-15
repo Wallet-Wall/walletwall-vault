@@ -93,13 +93,23 @@ describe("SP1 ML-DSA-65 proof-input scaffold", function () {
       expect(res.errors.join(" ")).to.match(/unexpected key in proof input/);
     });
 
-    it("rejects a non-empty message (not the withdrawal path)", function () {
-      const i = freshInputs() as unknown as Record<string, unknown>;
-      i.message = "0xdeadbeef";
-      const res = validateProofInputs(i);
-      expect(res.valid).to.equal(false);
-      expect(res.errors.join(" ")).to.match(/message must be empty/);
-    });
+    // The withdrawal program's input holds no message and no context, so neither key may appear,
+    // not even empty: an empty placeholder is exactly the optional field that let a prover pick
+    // another signed message.
+    for (const [key, value] of [
+      ["message", "0xdeadbeef"],
+      ["message", "0x"],
+      ["context", "0x0102"],
+      ["context", ""],
+    ] as const) {
+      it(`rejects a ${key} key set to "${value}" (the withdrawal input has no ${key})`, function () {
+        const i = freshInputs() as unknown as Record<string, unknown>;
+        i[key] = value;
+        const res = validateProofInputs(i);
+        expect(res.valid).to.equal(false);
+        expect(res.errors).to.include(`unexpected key in proof input: ${key}`);
+      });
+    }
 
     it("rejects a bad verifier address", function () {
       const i = freshInputs();

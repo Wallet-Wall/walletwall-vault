@@ -18,8 +18,8 @@ that keeps that input in lock-step with the
 The fixture is the flat guest `inputs.json` shape the SP1 host consumes
 (`withdrawalDigest`, `publicKey`, `signature`, `chainId`, `verifierAddress`),
 mirroring the Rust `InputsFile`/`GuestInputs` in
-[`zkvm/host/src/main.rs`](../zkvm/host/src/main.rs) and
-[`zkvm/guest/src/main.rs`](../zkvm/guest/src/main.rs). It is **byte-identical** to
+[`zkvm/host/src/main.rs`](../zkvm/host/src/main.rs) and the withdrawal program
+[`zkvm/guest/src/bin/withdrawal.rs`](../zkvm/guest/src/bin/withdrawal.rs). It is **byte-identical** to
 what [`scripts/sp1-smoke.ts`](../scripts/sp1-smoke.ts) already feeds the guest, so
 no guest, host, or smoke-lane behavior changes. When the SP1 host is built, it is
 directly consumable:

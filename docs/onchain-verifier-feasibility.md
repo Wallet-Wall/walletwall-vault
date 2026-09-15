@@ -40,8 +40,9 @@ exist on the target chain:
 
 1. **A verified succinct proof.** An off-chain prover runs ML-DSA-65 verification
    inside a zkVM/circuit and produces a proof; an on-chain verifier contract checks
-   that proof plus a public journal binding `(withdrawalDigest, keccak256(pubKey),
-keccak256(sig))`. This is the SP1/RISC Zero/Noir/Circom family — see
+   that proof plus a public journal committing `(withdrawalDigest, keccak256(pubKey),
+keccak256(sig))`, where the proven program verified the signature over that exact
+   `withdrawalDigest`. This is the SP1/RISC Zero/Noir/Circom family — see
    [ZK_Verifier_Feasibility.md](ZK_Verifier_Feasibility.md). It removes the attestor
    key but introduces trust in the prover, the proving system, and the
    circuit/guest correctness (which is **unaudited and does not exist** for ML-DSA-65
@@ -55,9 +56,11 @@ Either path must, at minimum:
 
 - bind the proof/precompile result to the exact withdrawal digest and the
   `keccak256` of the public key and signature (the journal the SP1 lane already
-  pins; see [PQ_Proof_Artifact.md](PQ_Proof_Artifact.md));
+  pins; see [PQ_Proof_Artifact.md](PQ_Proof_Artifact.md)), with the signature verified
+  over that digest itself, never over a separately supplied message or context;
 - pin the program/circuit identity (SP1 program vKey, RISC Zero image ID, or the
-  precompile address) so the verifier cannot be silently swapped for a weaker one;
+  precompile address) so the verifier cannot be silently swapped for a weaker one
+  (for SP1, the withdrawal program's vKey, never the ACVP conformance program's);
 - preserve the existing `IPQCVerifier` interface so the vault can adopt it through
   governance without redeploying;
 - carry conformance coverage against the NIST ACVP ML-DSA-65 sigVer vectors

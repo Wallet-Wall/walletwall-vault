@@ -14,9 +14,9 @@ proving and end-to-end differential tests behind an explicit env flag.
 
 | Lane | Command | Needs SP1 toolchain? | Runs in CI? | What it does |
 | --- | --- | --- | --- | --- |
-| **Normal CI** | `npm run compile` · `npm test` · `npm run sp1:smoke` · `cargo check` (guest) · `cargo metadata --locked` (host lockfile) | No | Yes | Compiles the guest, validates the host lockfile, and runs the mock-backed Solidity ZK tests plus the pure smoke check below. |
+| **Normal CI** | `npm run compile` · `npm test` · `npm run sp1:smoke` · `cargo check` (guest) · `cargo test --locked` (`zkvm/relation-tests`) · `cargo metadata --locked` (host lockfile) | No | Yes | Compiles the guest, validates the host lockfile, runs the native relation tests of the withdrawal and ACVP program sources, and runs the mock-backed Solidity ZK tests plus the pure smoke check below. |
 | **Smoke** | `npm run sp1:smoke` | Optional | Yes (pure part) | Always: derives the guest journal for a fixture and asserts its shape/decoding (no proving). Additionally, **if** a built `mldsa65-host` binary is present, runs the guest in SP1 **execute** mode and checks the host's journal matches. |
-| **Gated e2e / proving** | `RUN_SP1_E2E=1 npx hardhat test test/ZKRealProof.e2e.test.ts` · `… test/ZKAcvpGuest.e2e.test.ts` · `cargo run … -- prove inputs.json` | Yes | No | Real guest execution / Groth16 proof generation and TS↔guest + NIST ACVP differential conformance. See [ZK_Prover_Runbook.md](ZK_Prover_Runbook.md). |
+| **Gated e2e / proving** | `RUN_SP1_E2E=1 npx hardhat test test/ZKRealProof.e2e.test.ts` · `… test/ZKAcvpGuest.e2e.test.ts` · `cargo run … -- prove inputs.json` | Yes | No | Real program execution / Groth16 proof generation, TS↔withdrawal-program and NIST ACVP (separate ACVP program) differential conformance. See [ZK_Prover_Runbook.md](ZK_Prover_Runbook.md). |
 
 ## Smoke lane details (`npm run sp1:smoke`)
 
@@ -49,7 +49,7 @@ The command prints a deterministic JSON summary and exits non-zero on any mismat
 | Journal encoding is well-formed & deterministic | ✅ | ✅ | ✅ |
 | Rust guest commits the same journal for a valid signature | — | ✅ (execute) | ✅ |
 | Guest **rejects** tampered/invalid signatures | — | — | ✅ |
-| NIST ACVP vectors pass through the guest | — | — | ✅ (subset) |
+| NIST ACVP vectors pass through the separate ACVP program | — | — | ✅ (subset) |
 | A real Groth16 **proof** is generated and verifies | — | — | ✅ |
 | On-chain ML-DSA verification | ❌ never (mock path on-chain) | ❌ | ❌ |
 | Production custody / mainnet fund flow | ❌ | ❌ | ❌ |
@@ -57,9 +57,16 @@ The command prints a deterministic JSON summary and exits non-zero on any mismat
 "Executed" means the guest ran in SP1 execute mode (cycle-counted, no proof). "Proven" means
 a succinct proof was generated. The smoke lane never proves.
 
+Normal CI also runs the native relation tests (`zkvm/relation-tests`). They compile the
+withdrawal and ACVP program sources for the host and drive them with prover-chosen inputs, and
+the Solidity consumer tests replay the journals those runs commit through a program-bound mock
+SP1 verifier. That checks the withdrawal relation (the signature must verify over exactly the
+committed digest, under the empty context) without SP1 execution and without a proof.
+
 ## Requirements
 
-- **Pure smoke + normal CI:** Node 20 + `npm ci`. No Rust, no SP1.
+- **Pure smoke:** Node 20 + `npm ci`. No Rust, no SP1. **Normal CI** also uses stable Rust (guest
+  `cargo check`, the native relation tests and the consumer-test executor), still without SP1.
 - **Execute-only smoke:** the SP1 toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`;
   Linux-first, use WSL2 on Windows) and a built `mldsa65-host`.
 - **Gated e2e / proving:** as above, plus a configured prover (local CPU/GPU or the Succinct
