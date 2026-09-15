@@ -18,10 +18,11 @@
 
 use anyhow::{anyhow, Context, Result};
 use serde::{Deserialize, Serialize};
-use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
+use sp1_sdk::blocking::{ProveRequest, Prover, ProverClient};
+use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1Stdin};
 
 /// ELF of the compiled ML-DSA-65 guest (package name `mldsa65-guest`).
-pub const MLDSA_ELF: &[u8] = include_elf!("mldsa65-guest");
+pub const MLDSA_ELF: Elf = include_elf!("mldsa65-guest");
 
 /// Mirror of the guest's `GuestInputs`. Field order and types MUST match
 /// zkvm/guest/src/main.rs exactly, or serde deserialization in the guest fails.
@@ -114,9 +115,17 @@ fn cmd_execute(path: &str) -> Result<()> {
 
     let client = ProverClient::from_env();
     let (public_values, report) = client
-        .execute(MLDSA_ELF, &stdin)
+        .execute(MLDSA_ELF, stdin)
         .run()
         .map_err(|e| anyhow!("guest execution failed (invalid signature or bad inputs): {e}"))?;
+    // sp1-sdk 6.x reports a guest panic (e.g. an invalid signature) as a non-zero exit code in the
+    // execution report rather than as an error, so check it to keep rejections a failing command.
+    if report.exit_code != 0 {
+        return Err(anyhow!(
+            "guest execution failed (invalid signature or bad inputs): exit code {}",
+            report.exit_code
+        ));
+    }
 
     let cycles = report.total_instruction_count();
     let out = serde_json::json!({
@@ -129,8 +138,8 @@ fn cmd_execute(path: &str) -> Result<()> {
 
 fn cmd_vkey() -> Result<()> {
     let client = ProverClient::from_env();
-    let (_pk, vk) = client.setup(MLDSA_ELF);
-    let out = serde_json::json!({ "vkey": vk.bytes32() });
+    let pk = client.setup(MLDSA_ELF)?;
+    let out = serde_json::json!({ "vkey": pk.verifying_key().bytes32() });
     println!("{out}");
     Ok(())
 }
@@ -140,16 +149,17 @@ fn cmd_prove(path: &str) -> Result<()> {
     let stdin = stdin_for(&inputs);
 
     let client = ProverClient::from_env();
-    let (pk, vk) = client.setup(MLDSA_ELF);
+    let pk = client.setup(MLDSA_ELF)?;
+    let vk = pk.verifying_key();
 
     let proof = client
-        .prove(&pk, &stdin)
+        .prove(&pk, stdin)
         .groth16()
         .run()
         .context("generating Groth16 proof")?;
 
     // Sanity-check the proof locally before emitting it.
-    client.verify(&proof, &vk).context("verifying generated proof")?;
+    client.verify(&proof, vk, None).context("verifying generated proof")?;
 
     let out = serde_json::json!({
         "vkey": vk.bytes32(),
