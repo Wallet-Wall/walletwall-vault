@@ -7,7 +7,7 @@ This code is an unaudited testnet scaffold for verifying ML-DSA-65 proofs with S
 
 ### 1. ZKVM Guest Program (`zkvm/guest`)
 The Rust-based guest program implements the FIPS 204 (ML-DSA-65) verification logic.
-- **Security**: Ensures every private witness (raw signature, public key) is bound to the public inputs (hashes) to prevent under-constrained witness vulnerabilities.
+- **Relation (unaudited)**: The withdrawal program (`mldsa65-withdrawal`) accepts only when the ML-DSA-65 signature verifies over exactly the withdrawal digest it commits, under the empty FIPS 204 context, and it commits keccak256 of the public key and signature. NIST ACVP vectors run in the separate `mldsa65-acvp` program, whose vkey a verifier must never pin. This is checked by native relation tests, not by a proof.
 - **Optimization**: Designed to run efficiently within the SP1 zkVM, utilizing optimized hash precompiles.
 
 ### 2. Prover Client (`scripts/prover-client.ts`)

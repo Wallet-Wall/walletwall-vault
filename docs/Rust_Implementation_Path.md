@@ -125,7 +125,7 @@ Rust must never, in this repository, be used for:
   the Solidity contracts, their ABIs, or any deployed contract address.
 
 - **ABI encoding or decoding outside the existing guest journal.** The 160-byte
-  SP1 journal ABI encoding already defined in `zkvm/guest/src/main.rs` is the
+  SP1 journal ABI encoding already defined in `zkvm/guest/src/bin/withdrawal.rs` is the
   canonical Rust ABI surface. No new on-chain ABI surface may be added.
 
 ## TypeScript / Rust split
