@@ -1,18 +1,25 @@
-//! SP1 host / prover for the ML-DSA-65 guest.
+//! SP1 host / prover for the ML-DSA-65 guest programs.
 //!
-//! Subcommands:
-//!   execute <inputs.json>  Run the guest in SP1 execute mode (no proving) and
+//! zkvm/guest builds two SP1 programs with separate ELFs and program vkeys:
+//!   mldsa65-withdrawal     Withdrawal authorization: the program ZKMLDSAVerifier.PROGRAM_VKEY pins.
+//!   mldsa65-acvp           NIST ACVP sigVer conformance only. Never a verifier's program.
+//!
+//! Subcommands for the withdrawal program:
+//!   execute <inputs.json>  Run the withdrawal program in SP1 execute mode (no proving) and
 //!                          report the RISC-V cycle count. This is the feasibility
 //!                          benchmark from docs/ZK_Verifier_Feasibility.md and needs
 //!                          only the SP1 toolchain — no prover network credentials.
-//!   vkey                   Print the program verification key (bytes32) for the
-//!                          compiled guest. This is the value to deploy as
-//!                          ZKMLDSAVerifier.PROGRAM_VKEY.
+//!   vkey                   Print the withdrawal program's verification key (bytes32).
+//!                          This is the value to deploy as ZKMLDSAVerifier.PROGRAM_VKEY.
 //!   prove <inputs.json>    Generate a real Groth16 proof and emit JSON with the
 //!                          vkey, public values, and proof bytes for on-chain
 //!                          verification. Requires a configured SP1 prover (local
 //!                          GPU/CPU or the Succinct Prover Network via SP1_PROVER /
 //!                          NETWORK_PRIVATE_KEY).
+//!
+//! Subcommands for the ACVP conformance program:
+//!   acvp-execute <inputs.json>  Run the ACVP program in SP1 execute mode on one sigVer case.
+//!   acvp-vkey                   Print the ACVP program's verification key, for comparison only.
 //!
 //! This crate is NOT part of CI. See docs/ZK_Prover_Runbook.md.
 
@@ -21,11 +28,14 @@ use serde::{Deserialize, Serialize};
 use sp1_sdk::blocking::{ProveRequest, Prover, ProverClient};
 use sp1_sdk::{include_elf, Elf, HashableKey, ProvingKey, SP1Stdin};
 
-/// ELF of the compiled ML-DSA-65 guest (package name `mldsa65-guest`).
-pub const MLDSA_ELF: Elf = include_elf!("mldsa65-guest");
+/// ELF of the withdrawal program (bin target `mldsa65-withdrawal` of zkvm/guest).
+pub const WITHDRAWAL_ELF: Elf = include_elf!("mldsa65-withdrawal");
 
-/// Mirror of the guest's `GuestInputs`. Field order and types MUST match
-/// zkvm/guest/src/main.rs exactly, or serde deserialization in the guest fails.
+/// ELF of the ACVP conformance program (bin target `mldsa65-acvp` of zkvm/guest).
+pub const ACVP_ELF: Elf = include_elf!("mldsa65-acvp");
+
+/// Mirror of the withdrawal program's `GuestInputs`. Field order and types MUST match
+/// zkvm/guest/src/bin/withdrawal.rs exactly, or serde deserialization in the guest fails.
 #[derive(Serialize, Deserialize)]
 struct GuestInputs {
     pub withdrawal_digest: [u8; 32],
@@ -33,20 +43,12 @@ struct GuestInputs {
     pub signature: Vec<u8>,
     pub chain_id: u64,
     pub verifier_address: [u8; 20],
-    /// Raw signed message for FIPS 204 external/pure verification. Empty on the
-    /// withdrawal path (the digest is the message); set only for ACVP conformance.
-    pub message: Vec<u8>,
-    /// FIPS 204 context string. Empty on the withdrawal path; ACVP vectors carry one.
-    pub context: Vec<u8>,
 }
 
-/// JSON shape accepted on disk for `execute` / `prove`.
-///
-/// `message` and `context` are optional and default to empty: a withdrawal
-/// `inputs.json` omits them and the guest verifies the 32-byte `withdrawalDigest`
-/// under the empty context. NIST ACVP conformance inputs set both to route the
-/// vector's arbitrary-length message and domain-separation context through the guest.
+/// JSON shape accepted on disk for `execute` / `prove`: exactly the withdrawal fields. Any other
+/// key (an ACVP `message` or `context`, say) is refused instead of silently ignored.
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct InputsFile {
     #[serde(rename = "withdrawalDigest")]
     withdrawal_digest: String,
@@ -57,10 +59,27 @@ struct InputsFile {
     chain_id: u64,
     #[serde(rename = "verifierAddress")]
     verifier_address: String,
-    #[serde(default)]
+}
+
+/// Mirror of the ACVP program's `AcvpInputs`. Field order and types MUST match
+/// zkvm/guest/src/bin/acvp.rs exactly.
+#[derive(Serialize, Deserialize)]
+struct AcvpInputs {
+    pub public_key: Vec<u8>,
+    pub message: Vec<u8>,
+    pub context: Vec<u8>,
+    pub signature: Vec<u8>,
+}
+
+/// JSON shape accepted on disk for `acvp-execute`: one ACVP sigVer case, hex-encoded.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AcvpInputsFile {
+    #[serde(rename = "publicKey")]
+    public_key: String,
     message: String,
-    #[serde(default)]
     context: String,
+    signature: String,
 }
 
 fn strip0x(s: &str) -> &str {
@@ -75,10 +94,6 @@ fn load_inputs(path: &str) -> Result<GuestInputs> {
     let verifier = hex::decode(strip0x(&file.verifier_address)).context("decoding verifierAddress")?;
     let public_key = hex::decode(strip0x(&file.public_key)).context("decoding publicKey")?;
     let signature = hex::decode(strip0x(&file.signature)).context("decoding signature")?;
-    // Empty strings decode to empty vectors -> the withdrawal path. ACVP inputs
-    // supply hex-encoded message/context that the guest verifies via verify_with_context.
-    let message = hex::decode(strip0x(&file.message)).context("decoding message")?;
-    let context = hex::decode(strip0x(&file.context)).context("decoding context")?;
 
     if digest.len() != 32 {
         return Err(anyhow!("withdrawalDigest must be 32 bytes, got {}", digest.len()));
@@ -98,24 +113,31 @@ fn load_inputs(path: &str) -> Result<GuestInputs> {
         signature,
         chain_id: file.chain_id,
         verifier_address,
-        message,
-        context,
     })
 }
 
-fn stdin_for(inputs: &GuestInputs) -> SP1Stdin {
+fn load_acvp_inputs(path: &str) -> Result<AcvpInputs> {
+    let raw = std::fs::read_to_string(path).with_context(|| format!("reading ACVP inputs file {path}"))?;
+    let file: AcvpInputsFile = serde_json::from_str(&raw).context("parsing ACVP inputs JSON")?;
+    Ok(AcvpInputs {
+        public_key: hex::decode(strip0x(&file.public_key)).context("decoding publicKey")?,
+        message: hex::decode(strip0x(&file.message)).context("decoding message")?,
+        context: hex::decode(strip0x(&file.context)).context("decoding context")?,
+        signature: hex::decode(strip0x(&file.signature)).context("decoding signature")?,
+    })
+}
+
+fn stdin_for<T: Serialize>(inputs: &T) -> SP1Stdin {
     let mut stdin = SP1Stdin::new();
     stdin.write(inputs);
     stdin
 }
 
-fn cmd_execute(path: &str) -> Result<()> {
-    let inputs = load_inputs(path)?;
-    let stdin = stdin_for(&inputs);
-
+/// Executes `elf` on `stdin` (no proving) and prints the cycle count and public values.
+fn execute_and_report(elf: Elf, stdin: SP1Stdin) -> Result<()> {
     let client = ProverClient::from_env();
     let (public_values, report) = client
-        .execute(MLDSA_ELF, stdin)
+        .execute(elf, stdin)
         .run()
         .map_err(|e| anyhow!("guest execution failed (invalid signature or bad inputs): {e}"))?;
     // sp1-sdk 6.x reports a guest panic (e.g. an invalid signature) as a non-zero exit code in the
@@ -136,12 +158,31 @@ fn cmd_execute(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn cmd_vkey() -> Result<()> {
+/// Prints the program verification key (bytes32) of `elf`.
+fn print_vkey(elf: Elf) -> Result<()> {
     let client = ProverClient::from_env();
-    let pk = client.setup(MLDSA_ELF)?;
+    let pk = client.setup(elf)?;
     let out = serde_json::json!({ "vkey": pk.verifying_key().bytes32() });
     println!("{out}");
     Ok(())
+}
+
+fn cmd_execute(path: &str) -> Result<()> {
+    let inputs = load_inputs(path)?;
+    execute_and_report(WITHDRAWAL_ELF, stdin_for(&inputs))
+}
+
+fn cmd_acvp_execute(path: &str) -> Result<()> {
+    let inputs = load_acvp_inputs(path)?;
+    execute_and_report(ACVP_ELF, stdin_for(&inputs))
+}
+
+fn cmd_vkey() -> Result<()> {
+    print_vkey(WITHDRAWAL_ELF)
+}
+
+fn cmd_acvp_vkey() -> Result<()> {
+    print_vkey(ACVP_ELF)
 }
 
 fn cmd_prove(path: &str) -> Result<()> {
@@ -149,7 +190,7 @@ fn cmd_prove(path: &str) -> Result<()> {
     let stdin = stdin_for(&inputs);
 
     let client = ProverClient::from_env();
-    let pk = client.setup(MLDSA_ELF)?;
+    let pk = client.setup(WITHDRAWAL_ELF)?;
     let vk = pk.verifying_key();
 
     let proof = client
@@ -185,8 +226,15 @@ fn main() -> Result<()> {
             let path = args.get(2).ok_or_else(|| anyhow!("usage: mldsa65-host prove <inputs.json>"))?;
             cmd_prove(path)
         }
+        "acvp-execute" => {
+            let path = args
+                .get(2)
+                .ok_or_else(|| anyhow!("usage: mldsa65-host acvp-execute <inputs.json>"))?;
+            cmd_acvp_execute(path)
+        }
+        "acvp-vkey" => cmd_acvp_vkey(),
         other => Err(anyhow!(
-            "unknown command {other:?}; expected one of: execute, vkey, prove"
+            "unknown command {other:?}; expected one of: execute, vkey, prove, acvp-execute, acvp-vkey"
         )),
     }
 }

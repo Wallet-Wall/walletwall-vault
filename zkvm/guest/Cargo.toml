@@ -2,6 +2,21 @@
 name = "mldsa65-guest"
 version = "0.1.0"
 edition = "2021"
+# Build only the programs declared below (no implicit src/main.rs target).
+autobins = false
+
+# Two SP1 programs with separate entry points, ELFs and program vkeys.
+# - mldsa65-withdrawal is the program a ZKMLDSAVerifier pins as PROGRAM_VKEY: it verifies an
+#   ML-DSA-65 signature over exactly the committed withdrawal digest, under the empty context.
+# - mldsa65-acvp runs NIST ACVP sigVer vectors (arbitrary message and context). Conformance
+#   tooling only; a verifier must never pin it.
+[[bin]]
+name = "mldsa65-withdrawal"
+path = "src/bin/withdrawal.rs"
+
+[[bin]]
+name = "mldsa65-acvp"
+path = "src/bin/acvp.rs"
 
 [dependencies]
 sp1-zkvm = "=6.3.1"

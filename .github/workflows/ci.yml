@@ -88,6 +88,23 @@ jobs:
       - name: Lint contracts
         run: npm run lint
 
+      - name: Install stable Rust (native guest executor)
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Build the native guest executor for the relation consumer tests (no SP1 toolchain)
+        run: |
+          set -euo pipefail
+          # test/ZKMLDSAWithdrawalRelationConsumers.test.ts runs the guest programs' own
+          # sources natively (zkvm/relation-tests, bin guest-native-execute) to learn which
+          # journals a program can commit, then drives the vault, MultiSig and policy-control
+          # consumers with exactly those proofs. Under CI it fails instead of skipping when
+          # SP1_RELATION_EXECUTOR is unset; the Coverage step below reuses the same binary.
+          # Stable Rust only: no SP1 toolchain, no proving.
+          cargo build --locked --manifest-path zkvm/relation-tests/Cargo.toml --bin guest-native-execute
+          echo "SP1_RELATION_EXECUTOR=$GITHUB_WORKSPACE/zkvm/relation-tests/target/debug/guest-native-execute" >> "$GITHUB_ENV"
+
       - name: Run tests
         run: npm test
 
@@ -209,6 +226,32 @@ jobs:
 
       - name: Compile guest
         run: cargo check --manifest-path zkvm/guest/Cargo.toml
+
+  zkvm-relation-tests:
+    name: Native guest relation tests (no SP1 toolchain)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust (with rustfmt)
+        # The guest programs' own sources (zkvm/guest/src/bin) compiled for the host target
+        # against a stand-in for the three sp1_zkvm items they use: no SP1 toolchain, no
+        # prover, no network at test time. Cargo fetches the relation-test crate's locked
+        # dependencies at build time.
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+
+      - name: Format check
+        run: cargo fmt --check --all --manifest-path zkvm/relation-tests/Cargo.toml
+
+      - name: Relation tests — locked
+        # The withdrawal program must verify exactly the digest it commits, under the empty
+        # ML-DSA context, for every stdin layout a prover may choose; the ACVP conformance
+        # program must remain a separate program. See zkvm/relation-tests/src/lib.rs.
+        run: cargo test --locked --manifest-path zkvm/relation-tests/Cargo.toml
 
   zkvm-host-lockfile:
     name: Validate SP1 host Cargo.lock

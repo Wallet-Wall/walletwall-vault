@@ -1,10 +1,20 @@
 #![no_main]
 sp1_zkvm::entrypoint!(main);
 
+// SP1 program `mldsa65-withdrawal`: the program a ZKMLDSAVerifier pins as PROGRAM_VKEY.
+//
+// Accepting relation: ML-DSA-65.Verify(public_key, withdrawal_digest, empty context, signature)
+// holds, and the program commits that same withdrawal_digest together with keccak256(public_key),
+// keccak256(signature), chain_id and verifier_address. The input holds only those five values: no
+// separate message, no context and no mode, so no stdin a prover supplies can make the program
+// verify one value and commit another. NIST ACVP conformance runs use the separate `mldsa65-acvp`
+// program (src/bin/acvp.rs), which has its own ELF and program vkey.
+
 use ml_dsa::{MlDsa65, Signature, VerifyingKey};
 use sha3::{Digest, Keccak256};
 use serde::{Deserialize, Serialize};
 
+/// The withdrawal proof input. zkvm/host/src/main.rs mirrors it field for field.
 #[derive(Serialize, Deserialize)]
 struct GuestInputs {
     pub withdrawal_digest: [u8; 32],
@@ -12,15 +22,6 @@ struct GuestInputs {
     pub signature: Vec<u8>,
     pub chain_id: u64,
     pub verifier_address: [u8; 20],
-    /// Raw message that was signed, for FIPS 204 external/pure verification.
-    /// Empty for the production withdrawal path, where the 32-byte
-    /// `withdrawal_digest` is itself the signed message and the context is empty.
-    /// Non-empty only for NIST ACVP differential-conformance runs, which sign
-    /// arbitrary-length messages under an explicit domain-separation context.
-    pub message: Vec<u8>,
-    /// FIPS 204 context string. Empty for the withdrawal path; carries the ACVP
-    /// vector's `context` field for conformance runs.
-    pub context: Vec<u8>,
 }
 
 pub fn main() {
@@ -44,19 +45,9 @@ pub fn main() {
     let signature =
         Signature::<MlDsa65>::try_from(inputs.signature.as_slice()).expect("Invalid ML-DSA-65 signature encoding");
 
-    // The signed message is the 32-byte withdrawal digest on the production path
-    // (empty `message`), or the raw ACVP message on a conformance run. Either way
-    // we go through FIPS 204 Algorithm 3 (ML-DSA.Verify) with explicit context
-    // separation: `verify_with_context(M, ctx, sig)`. For the withdrawal path both
-    // `message` and `context` are empty, so this is identical to verifying the
-    // digest under the empty context — the prior behavior.
-    let signed_message: &[u8] = if inputs.message.is_empty() {
-        &inputs.withdrawal_digest[..]
-    } else {
-        &inputs.message[..]
-    };
-
-    if !verifying_key.verify_with_context(signed_message, &inputs.context, &signature) {
+    // The signed message is exactly the 32-byte withdrawal digest committed below, under the empty
+    // context the withdrawal signer uses: FIPS 204 Algorithm 3, `verify_with_context(M, ctx, sig)`.
+    if !verifying_key.verify_with_context(&inputs.withdrawal_digest, &[], &signature) {
         panic!("Invalid ML-DSA-65 signature");
     }
 
@@ -64,7 +55,7 @@ pub fn main() {
     // To match Solidity's abi.decode(publicValues, (bytes32, bytes32, bytes32, uint64, address)),
     // we must commit each value as a 32-byte word.
 
-    // 1. withdrawal_digest (32 bytes)
+    // 1. withdrawal_digest (32 bytes): the digest verified above
     sp1_zkvm::io::commit_slice(&inputs.withdrawal_digest);
 
     // 2. pk_hash (32 bytes)

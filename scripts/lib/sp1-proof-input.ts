@@ -53,8 +53,9 @@ const FORBIDDEN_CHAIN_IDS = new Set([1, 8453, 137, 10, 42161, 56, 43114]);
 
 /**
  * The flat guest `inputs.json` shape consumed by `mldsa65-host execute`. Mirrors
- * the Rust `InputsFile` in zkvm/host/src/main.rs. `message`/`context` are empty
- * for the withdrawal path (the 32-byte digest is itself the signed message).
+ * the Rust `InputsFile` in zkvm/host/src/main.rs: exactly these five fields. The
+ * withdrawal program has no message or context input; the 32-byte digest is itself
+ * the signed message, under the empty ML-DSA context.
  */
 export interface SP1ProofInputs {
   withdrawalDigest: string;
@@ -79,24 +80,16 @@ export interface ProofInputValidation {
 }
 
 const BYTES32_RE = /^0x[0-9a-fA-F]{64}$/;
-const ALLOWED_KEYS = new Set([
-  "withdrawalDigest",
-  "publicKey",
-  "signature",
-  "chainId",
-  "verifierAddress",
-  "message",
-  "context",
-]);
+const ALLOWED_KEYS = new Set(["withdrawalDigest", "publicKey", "signature", "chainId", "verifierAddress"]);
 const REQUIRED_KEYS = ["withdrawalDigest", "publicKey", "signature", "chainId", "verifierAddress"] as const;
 
 /**
  * Validate the proof input's SHAPE (pure; no manifest, no filesystem).
  *
  * Checks the flat host shape: a bytes32 withdrawal digest, an ML-DSA-65-sized
- * public key and signature, a uint64 testnet (non-mainnet) chain id, a valid
- * verifier address, and — for the withdrawal path — empty/omitted message and
- * context. Unknown keys are rejected.
+ * public key and signature, a uint64 testnet (non-mainnet) chain id and a valid
+ * verifier address. Every other key is rejected, `message` and `context` included:
+ * the withdrawal program has no such inputs.
  */
 export function validateProofInputs(value: unknown): ProofInputValidation {
   const errors: string[] = [];
@@ -136,12 +129,6 @@ export function validateProofInputs(value: unknown): ProofInputValidation {
   }
   if (typeof v.verifierAddress !== "string" || !isAddress(v.verifierAddress)) {
     errors.push("verifierAddress must be a valid EVM address");
-  }
-  // Withdrawal path: message/context, if present, must be empty.
-  for (const k of ["message", "context"] as const) {
-    if (k in v && v[k] !== "" && v[k] !== "0x") {
-      errors.push(`${k} must be empty for the withdrawal path`);
-    }
   }
 
   return { valid: errors.length === 0, errors };
