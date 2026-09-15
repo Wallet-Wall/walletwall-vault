@@ -174,7 +174,7 @@ jobs:
       # why its whole-file hash is unfit for a committed receipt.
       - name: Upload raw Slither JSON (diagnostic)
         if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-slither-raw
           path: prototype/vnext-kernel/slither-raw.json
@@ -288,7 +288,7 @@ jobs:
 
       - name: Upload authority census
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-authority-census
           path: prototype/vnext-kernel/AUTHORITY_CENSUS.json
@@ -389,7 +389,7 @@ jobs:
 
       - name: Upload the stateful evidence receipt
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-stateful-authority-evidence
           path: prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
