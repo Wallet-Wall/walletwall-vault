@@ -9,6 +9,7 @@ dist
 zkvm/guest/target/
 zkvm/host/target/
 zkvm/evidence-validator/target/
+zkvm/relation-tests/target/
 
 # IDEs and Editors
 .idea/

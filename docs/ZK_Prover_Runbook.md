@@ -13,15 +13,15 @@ still uses `MockSP1Verifier` and a mock vKey — none of this runs in CI.
 
 ## Components
 
-- `zkvm/guest/` — the SP1 RISC-V guest that verifies ML-DSA-65 (pinned crates).
-- `zkvm/host/` — the SP1 host/prover (`mldsa65-host`), with `execute`, `vkey`, and
-  `prove` subcommands. **Not** part of CI; depends on the SP1 toolchain.
+- `zkvm/guest/` — two SP1 programs (pinned crates): `mldsa65-withdrawal`, the program a `ZKMLDSAVerifier` pins, and `mldsa65-acvp`, ACVP conformance only.
+- `zkvm/host/` — the SP1 host/prover (`mldsa65-host`): `execute`, `vkey`, `prove` (withdrawal
+  program) and `acvp-execute`, `acvp-vkey` (ACVP program). **Not** part of CI; needs the SP1 toolchain.
 - `scripts/prover-client.ts` — `ProverClient.generateProof()` shells out to the host
   and reuses `encodeProof()`; `encodeProof()` remains the mock/encode-only path.
 - `test/ZKRealProof.e2e.test.ts` — gated end-to-end TS↔Rust differential test
   (`RUN_SP1_E2E=1`).
 - `test/ZKAcvpGuest.e2e.test.ts` — gated NIST ACVP differential-conformance test
-  that routes the official sigVer vectors through the guest (`RUN_SP1_E2E=1`). See
+  that routes the official sigVer vectors through the ACVP program (`RUN_SP1_E2E=1`). See
   [ACVP_Guest_Results.md](ACVP_Guest_Results.md).
 - `scripts/sp1-smoke.ts` — the cheap, deterministic **smoke lane** (`npm run sp1:smoke`).
   Runs in CI with no toolchain (journal-encoding check) and optionally runs the guest in
@@ -69,11 +69,11 @@ for ML-DSA-65 here.
 
 ```bash
 # inputs.json: { withdrawalDigest, publicKey, signature, chainId, verifierAddress }
-# (hex strings; digest 32 bytes, verifierAddress 20 bytes)
-# Optional: message, context (hex). Omitted/empty => verify the 32-byte
-# withdrawalDigest under the empty FIPS 204 context (the withdrawal path). Set both
-# to verify an arbitrary-length message under a domain-separation context, as the
-# NIST ACVP external/pure vectors require (see ACVP_Guest_Results.md).
+# (hex strings; digest 32 bytes, verifierAddress 20 bytes) and no other key: the
+# withdrawal program verifies the signature over withdrawalDigest itself, under the
+# empty FIPS 204 context. NIST ACVP vectors (arbitrary message + context) run in the
+# separate ACVP program instead: `-- acvp-execute acvp-inputs.json` with
+# { publicKey, message, context, signature } (see ACVP_Guest_Results.md).
 cargo run --release --manifest-path zkvm/host/Cargo.toml -- execute inputs.json
 # -> {"cycles": <N>, "publicValues": "0x..."}
 ```
@@ -92,8 +92,8 @@ cargo run --release --manifest-path zkvm/host/Cargo.toml -- vkey
 # -> {"vkey": "0x..."}
 ```
 
-This bytes32 is what you deploy as `ZKMLDSAVerifier.PROGRAM_VKEY`. It changes whenever
-the guest or the SP1 version changes.
+This bytes32 is the withdrawal program's vkey, the only value `ZKMLDSAVerifier.PROGRAM_VKEY` may
+pin (never `acvp-vkey`). It changes whenever the withdrawal program or the SP1 version changes.
 
 ## 3. Generate a real proof
 
@@ -141,17 +141,19 @@ The negative case asserts a tampered signature makes the guest revert.
 
 ### ACVP differential conformance (issue #29)
 
-The official NIST ACVP sigVer vectors are routed through the guest by
-`test/ZKAcvpGuest.e2e.test.ts`:
+The official NIST ACVP sigVer vectors run through the separate ACVP program
+(`mldsa65-acvp`, via `mldsa65-host acvp-execute`) in `test/ZKAcvpGuest.e2e.test.ts`:
 
 ```bash
 cargo build --release --manifest-path zkvm/host/Cargo.toml
 RUN_SP1_E2E=1 npx hardhat test test/ZKAcvpGuest.e2e.test.ts
 ```
 
-Valid vectors must be accepted by the guest; invalid vectors and a tampered
-signature must make it revert. This checks the guest against FIPS 204 itself, not
-only against the TS implementation. Scope and limits: [ACVP_Guest_Results.md](ACVP_Guest_Results.md).
+Valid vectors must be accepted by the ACVP program; invalid vectors and a tampered
+signature must make it revert. The test also checks that the withdrawal and ACVP
+programs report different vkeys and that the withdrawal path rejects ACVP inputs. This
+checks the `ml-dsa` verification against FIPS 204 itself, not only against the TS
+implementation. Scope and limits: [ACVP_Guest_Results.md](ACVP_Guest_Results.md).
 
 ## What this still does not establish
 

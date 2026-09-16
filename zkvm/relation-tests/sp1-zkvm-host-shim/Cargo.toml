@@ -1,0 +1,11 @@
+# Host-target stand-in for the three sp1_zkvm items the SP1 ML-DSA-65 guest programs use (see
+# src/lib.rs). A dependency of mldsa65-relation-tests only; never a dependency of a guest program.
+[package]
+name = "sp1-zkvm-host-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+bincode = "=1.3.3"
+serde = "1.0"
