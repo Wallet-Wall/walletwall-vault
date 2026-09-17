@@ -11,7 +11,7 @@
   "observedRuntimeBytes": 1994,
   "reportedCommitRuntimeBytes": 1994,
   "publicHeadRuntimeBytes": 1994,
-  "publicHeadCommit": "c98bb7b97e75c2ee4f4fdb37f35bfb5036cc0918",
+  "publicHeadCommit": "e09b27064a4379b3c97b585673056a101843af30",
   "reproducibilityStatus": "reproducible",
   "lastChecked": "2026-08-27",
   "evidenceFile": "deployments/reproducibility/evidence/mock-usdc-sepolia.json",
