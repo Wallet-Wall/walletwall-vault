@@ -31,8 +31,8 @@
  * exercising real state on the mutant, not asserted by a fixture.
  *
  * It does NOT claim the pause surface is otherwise safe, and it deliberately does
- * not change it. The one-sided `deposit()` divergence recorded below is evidence
- * only; closing it is a separate lane.
+ * not change it. The one-sided `deposit()` divergence it recorded below as
+ * evidence was closed by the separate H-22 lane (test/DepositPauseGate.test.ts).
  */
 
 import { readFileSync } from "node:fs";
@@ -430,27 +430,27 @@ describe("ownership renunciation is disabled (T0)", function () {
       expect(await vault.paused()).to.equal(false);
     });
 
-    // EVIDENCE ONLY — deliberately NOT changed by this lane.
+    // EVIDENCE — recorded here by #180, CLOSED by the H-22 lane.
     //
-    // While paused, WalletWallVault still accepts ETH: `deposit()`/`depositFor()`
-    // carry no `whenNotPaused`, whereas every payout path does. So a frozen vault
-    // keeps taking in funds it cannot pay out. The sibling simulator does NOT
-    // share this shape — its `deposit`/`depositFor` ARE `whenNotPaused` — which
-    // makes this a genuine one-sided divergence between two contracts that
-    // otherwise implement the same semantics.
+    // #180 left this unchanged on purpose and pinned it so the asymmetry was
+    // recorded rather than rediscovered: while paused, WalletWallVault still
+    // accepted ETH, because `deposit()`/`depositFor()` carried no
+    // `whenNotPaused` whereas every payout path did, while the sibling
+    // simulator's `deposit`/`depositFor` ARE `whenNotPaused`. It compounded the
+    // T0 hazard but was a SEPARATE defect, so it stayed out of a remediation
+    // that otherwise had no behavioural change.
     //
-    // It compounds the T0 hazard (a permanently frozen vault would go on
-    // accepting deposits) but it is a SEPARATE defect: closing it is not required
-    // to make renunciation unreachable, and widening this PR to change an inflow
-    // path would put a behavioural change in a remediation that otherwise has
-    // none. Pinned here so the asymmetry is recorded rather than rediscovered.
-    it("EVIDENCE: the vault still accepts deposits while paused; the simulator does not", async function () {
+    // The H-22 lane gates both vault deposit paths, so this test now pins the
+    // parity instead: a paused vault books no inflow, exactly like the
+    // simulator. test/DepositPauseGate.test.ts carries the full discriminators,
+    // including `depositFor` and the forced-ETH boundary.
+    it("EVIDENCE (closed by H-22): the vault refuses deposits while paused, exactly as the simulator does", async function () {
       await vault.connect(owner).createVault(owner.address, PQ_KEY, 2);
       await vault.connect(owner).pause();
 
-      // Vault: inflow succeeds while every payout path is frozen.
-      await vault.connect(owner).deposit({ value: 1n });
-      expect((await vault.getVault(owner.address)).balance).to.equal(1n);
+      // Vault: inflow is refused while every payout path is frozen.
+      await expect(vault.connect(owner).deposit({ value: 1n })).to.be.revertedWithCustomError(vault, "EnforcedPause");
+      expect((await vault.getVault(owner.address)).balance).to.equal(0n);
 
       // Simulator: inflow is refused while paused.
       await sim.connect(owner).pause();

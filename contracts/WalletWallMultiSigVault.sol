@@ -64,6 +64,7 @@ contract WalletWallMultiSigVault is ReentrancyGuard, Pausable, Ownable2Step, EIP
     error InvalidSignature();
     error InsufficientSignatures();
     error TransferFailed();
+    error OwnershipRenunciationDisabled();
 
     constructor(address _pqVerifier) Ownable(msg.sender) EIP712("WalletWallMultiSigVault", "1") {
         if (_pqVerifier == address(0)) revert ZeroAddress();
@@ -109,11 +110,16 @@ contract WalletWallMultiSigVault is ReentrancyGuard, Pausable, Ownable2Step, EIP
         emit VaultCreated(msg.sender, ecdsaSigners, ecdsaThreshold, pqPublicKeys, pqThreshold);
     }
 
-    function deposit() external payable {
+    /// @notice Deposits ETH into the caller's own vault. Refused while paused; ETH that arrives
+    ///         without a call (a `selfdestruct` beneficiary, a block's fee recipient) cannot be
+    ///         refused by any modifier and is never credited.
+    function deposit() external payable whenNotPaused {
         _deposit(msg.sender);
     }
 
-    function depositFor(address vaultOwner) external payable {
+    /// @notice Deposits ETH into the vault owned by `vaultOwner`. Refused while paused, exactly
+    ///         like {deposit}.
+    function depositFor(address vaultOwner) external payable whenNotPaused {
         _deposit(vaultOwner);
     }
 
@@ -219,7 +225,7 @@ contract WalletWallMultiSigVault is ReentrancyGuard, Pausable, Ownable2Step, EIP
         return vaults[owner];
     }
 
-    /// @notice Pauses createVault and withdraw. Admin-only.
+    /// @notice Pauses deposits, vault creation and withdrawal. Admin-only.
     function pause() external onlyOwner {
         _pause();
     }
@@ -227,5 +233,20 @@ contract WalletWallMultiSigVault is ReentrancyGuard, Pausable, Ownable2Step, EIP
     /// @notice Unpauses the vault. Admin-only.
     function unpause() external onlyOwner {
         _unpause();
+    }
+
+    /**
+     * @notice Ownership renunciation is permanently disabled. Always reverts.
+     * @dev The inherited {Ownable.renounceOwnership} would set `owner()` to `address(0)`. {pause}
+     *      and {unpause} are `onlyOwner` while {withdraw}, {deposit}, {depositFor} and
+     *      {createVault} are `whenNotPaused`, so renouncing while paused would leave {unpause}
+     *      uncallable forever — and this contract has no recovery path of any kind, so every
+     *      tenant's withdrawal would be frozen permanently. Mirrors the override in
+     *      {WalletWallVault} and {StablecoinVaultSimulator}. Declared `pure`, so an ABI that
+     *      reports `nonpayable` for this selector shows the override has been removed. Ownership
+     *      still moves through {transferOwnership} and {acceptOwnership}.
+     */
+    function renounceOwnership() public pure override {
+        revert OwnershipRenunciationDisabled();
     }
 }
