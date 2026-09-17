@@ -790,16 +790,21 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
 
     /**
      * @notice Deposits ETH into the caller's own vault.
+     * @dev Refused while paused, like every other path that books value ({createVault}
+     *      included): a vault that cannot pay out must not credit an inflow. ETH that arrives
+     *      without a call (a `selfdestruct` beneficiary, a block's fee recipient) cannot be
+     *      refused by any modifier and is never credited.
      */
-    function deposit() external payable {
+    function deposit() external payable whenNotPaused {
         _deposit(msg.sender);
     }
 
     /**
      * @notice Deposits ETH into the vault owned by `vaultOwner`.
-     * @dev Lets a third party (or relayer) fund an existing vault.
+     * @dev Lets a third party (or relayer) fund an existing vault. Refused while paused,
+     *      exactly like {deposit}.
      */
-    function depositFor(address vaultOwner) external payable {
+    function depositFor(address vaultOwner) external payable whenNotPaused {
         _deposit(vaultOwner);
     }
 
@@ -1421,7 +1426,8 @@ contract WalletWallVault is ReentrancyGuard, Pausable, Ownable2Step, EIP712 {
         }
     }
 
-    /// @notice Pauses vault creation, immediate/queued withdrawal, finalization, and recovery execution. Admin-only.
+    /// @notice Pauses deposits and vault creation, immediate/queued withdrawal and finalization,
+    ///         credential rotation, and recovery initiation and execution. Admin-only.
     function pause() external onlyOwner {
         _pause();
     }
