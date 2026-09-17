@@ -18,9 +18,6 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
-    # Default setup is currently active. After this workflow reaches main,
-    # disable default setup and set CODEQL_ENABLED=true to activate the matrix.
-    if: ${{ vars.CODEQL_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
