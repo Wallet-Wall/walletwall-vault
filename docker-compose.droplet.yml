@@ -11,8 +11,11 @@
 #   Deploy to Sepolia (one-shot, exits when done):
 #     docker compose -f docker-compose.droplet.yml --profile deploy run --rm vault-deploy
 #
-#   Run a persistent Hardhat node:
+#   Run a persistent Hardhat node (JSON-RPC on the Droplet's 127.0.0.1:8545 only):
 #     docker compose -f docker-compose.droplet.yml --profile node up -d walletwall-node
+#
+#   Reach that node from your own machine through an SSH tunnel:
+#     ssh -N -L 8545:127.0.0.1:8545 root@<DROPLET_IP>
 #
 #   Stop everything:
 #     docker compose -f docker-compose.droplet.yml down
@@ -33,22 +36,24 @@ services:
     command: /bin/sh /app/scripts/deploy-entrypoint.sh
 
   # ── Optional: persistent Hardhat JSON-RPC node ──────────────
-  # Useful for pointing a frontend or testing tool at the Droplet.
+  # Useful for pointing a frontend or testing tool at the Droplet during
+  # development, through the SSH tunnel shown above.
   # Note: this is an in-memory Hardhat node (chain 31337), not Sepolia.
+  #
+  # It reads no deployment credential, so it receives neither the Droplet's
+  # .env nor any deployment variable; only vault-deploy does. Public JSON-RPC
+  # exposure is an explicit opt-in, unsafe unless access is restricted:
+  #   docker compose -f docker-compose.droplet.yml -f docker-compose.public-rpc.yml \
+  #     --profile node up -d walletwall-node
   walletwall-node:
     image: walletwall-vault:latest
     profiles: [node]
     container_name: walletwall-node
     restart: unless-stopped
     ports:
-      - "8545:8545"
-    env_file: .env
-    environment:
-      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY:-}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
-      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
-      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
-      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+      # Host loopback only. Inside the container Hardhat listens on 0.0.0.0,
+      # which Docker needs in order to forward this port to it.
+      - "127.0.0.1:8545:8545"
     command: npx hardhat node --hostname 0.0.0.0
     healthcheck:
       test:

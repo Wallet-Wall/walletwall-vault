@@ -69,7 +69,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
 
 # ── Default command ──────────────────────────────────────────
 # Runs a persistent Hardhat in-memory node bound to all
-# interfaces. Override with `docker compose exec` / `docker run`
+# interfaces inside the container, which Docker needs in order to
+# forward a published port to it. EXPOSE publishes nothing by itself;
+# publish the port on the host's loopback interface only:
+#   docker run --rm -p 127.0.0.1:8545:8545 walletwall-vault:latest
+# Override with `docker compose exec` / `docker run`
 # to run deploy or test scripts instead.
 #
 # For Sepolia deployment, use the entrypoint script:
