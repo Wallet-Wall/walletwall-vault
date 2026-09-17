@@ -32,7 +32,6 @@ services:
       - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
       - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
       - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
-      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
     command: /bin/sh /app/scripts/deploy-entrypoint.sh
 
   # ── Optional: persistent Hardhat JSON-RPC node ──────────────

@@ -15,7 +15,11 @@
  *       pointed away from the mounted .env (hardhat.config.ts imports dotenv/config, which reads <cwd>/.env);
  *     - uses no anchor, alias, merge key, extends, secrets or configs, which move injection out of the reader's sight.
  *     The deployment job keeps its credentials only while it stays what makes that acceptable: profile-gated (a plain
- *     `docker compose up` never deploys), one-shot (no restart policy) and publishing nothing.
+ *     `docker compose up` never deploys), one-shot (no restart policy) and publishing nothing — and only credentials a
+ *     process in the image actually reads, so being the deployer does not entitle it to values nothing consumes.
+ *     LIMIT: the Droplet deployer declares `env_file: .env`, which injects every key of the operator's own file. This
+ *     guard governs what the compose files declare; it cannot see, and does not claim anything about, the contents of a
+ *     file on the server. Removing a declaration stops Compose passing a value, not an operator from putting it back.
  *
  * B2. A port published without a host IP binds every host interface, and Docker writes its own iptables rules for it,
  *     ahead of host firewalls such as ufw, so a firewall is no substitute for the binding. Every port a base compose
@@ -66,6 +70,49 @@ const DEPLOYMENT_VARIABLES = [
 
 /** A variable name shaped like a credential, whatever its prefix. */
 const SECRET_SHAPED = /\b[A-Z0-9_]*(?:PRIVATE_KEY|MNEMONIC|SECRET|PASSWORD|API_KEY|TOKEN)[A-Z0-9_]*\b/g;
+
+/**
+ * Dotenv file names that hold secrets as soon as an operator populates them. `.dockerignore` decides build-context
+ * membership on its own, and the Dockerfile copies the whole context twice (`COPY . .` in builder and in runner), so a
+ * variant left in the context lands in the published image, not only in a discarded build stage. Two Docker pattern
+ * rules make the naive spelling insufficient: a pattern without a wildcard matches one literal name, so `.env` alone
+ * leaves every sibling in; and a pattern carrying no double-star directory prefix is anchored at the context root, so it
+ * never reaches a subdirectory. A nested variant was measured entering a real build context with a root-only rule.
+ */
+const SECRET_DOTENV_FILES = [
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.production.local",
+  ".env.development",
+  ".env.development.local",
+  ".env.test",
+  ".env.sepolia",
+  ".env.droplet",
+  ".env.2026",
+  ".env.a",
+  ".envrc",
+  "scripts/.env",
+  "scripts/.env.local",
+  "src/.env.production",
+  "pqc/.envrc",
+  "zkvm/host/.env.local",
+];
+
+/** The one dotenv file the repository ships on purpose: a public template, which every populated variant is copied from. */
+const PUBLIC_DOTENV_TEMPLATE = ".env.example";
+
+/**
+ * Where a variable may acquire a consumer: production code that runs in the image. Compose files, documentation and this
+ * guard are excluded on purpose — a name being passed to a container, described in a runbook or listed here is not a
+ * process reading it, and letting any of them count would make the invariant satisfy itself.
+ */
+const CONSUMER_SOURCES = ["hardhat.config.ts", "pqc", "scripts", "src"];
+
+/** The Droplet install directory, which marks a documented command as running on the server rather than a workstation. */
+const DROPLET_DIRECTORY = "/opt/walletwall-vault";
+/** The compose file the Droplet runs. Without `-f`, Compose loads docker-compose.yml, which builds from absent sources. */
+const DROPLET_COMPOSE_FILE = "docker-compose.droplet.yml";
 
 /**
  * The environment variables a long-running service may set, each with the process that reads it. Extending this list
@@ -368,6 +415,28 @@ function deploymentJobGaps(service: Service): string[] {
   return gaps;
 }
 
+/**
+ * Credentials a deployment job declares that nothing in the image reads. Being profile-gated earns the job the
+ * credentials its deployment needs, not every value that once lived in the deployment environment: an unread secret is
+ * reachable from the container and from `docker inspect` while buying no capability. Re-admitting one is deliberate —
+ * add its reader, and this returns empty again.
+ */
+function unconsumedCredentials(service: Service, sources: string[] = CONSUMER_SOURCES): string[] {
+  const environment = environmentOf(service);
+  if (environment === null) return ["environment: in a form the reader does not model"];
+  const text = service.body.join("\n");
+  const declared = new Set([
+    ...environment.keys(),
+    ...DEPLOYMENT_VARIABLES.filter((name) => new RegExp(`\\b${name}\\b`).test(text)),
+    ...(text.match(SECRET_SHAPED) ?? []),
+  ]);
+  return [...declared]
+    .filter((name) => DEPLOYMENT_VARIABLES.includes(name) || new RegExp(SECRET_SHAPED.source).test(name))
+    .filter((name) => consumersOf(name, sources).length === 0)
+    .sort()
+    .map((name) => `receives ${name}, which no file under ${sources.join(", ")} reads`);
+}
+
 /** Why a long-running service might hold a deployment credential or load a .env; empty when nothing can. */
 function credentialFindings(service: Service, role: string): string[] {
   const findings: string[] = [];
@@ -505,6 +574,81 @@ function markdownUnder(dir: string): string[] {
   });
 }
 
+/** Files under `dir` (or the file `dir` itself), as repository-relative paths. */
+function filesUnder(dir: string): string[] {
+  if (!existsSync(resolve(dir))) return [];
+  const entries = (() => {
+    try {
+      return readdirSync(resolve(dir), { withFileTypes: true });
+    } catch {
+      return null;
+    }
+  })();
+  if (entries === null) return [dir];
+  return entries.flatMap((entry) => filesUnder(`${dir}/${entry.name}`));
+}
+
+/**
+ * Whether `text`, a file at `path`, reads the environment variable `name`. A read is an explicit one: `process.env.NAME`,
+ * `process.env["NAME"]`, or Hardhat's `configVariable("NAME")`. A shell expansion counts only in a `.sh` file, where
+ * `${NAME}` can mean nothing else — in TypeScript it would also match a template literal holding a same-named local.
+ */
+function readsVariable(path: string, text: string, name: string): boolean {
+  const patterns = [
+    new RegExp(`process\\.env\\.${name}\\b`),
+    new RegExp(`process\\.env\\[\\s*["']${name}["']\\s*\\]`),
+    new RegExp(`configVariable\\(\\s*["']${name}["']\\s*\\)`),
+  ];
+  if (path.endsWith(".sh")) patterns.push(new RegExp(`\\$\\{${name}\\b[^}]*\\}`), new RegExp(`\\$${name}\\b`));
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+/** The production files that read `name`, as repository-relative paths. */
+function consumersOf(name: string, sources: string[] = CONSUMER_SOURCES): string[] {
+  return sources
+    .flatMap((source) => filesUnder(source))
+    .filter((path) => {
+      try {
+        return readsVariable(path, readFileSync(resolve(path), "utf8"), name);
+      } catch {
+        return false;
+      }
+    })
+    .sort();
+}
+
+/** Fenced code blocks of a markdown file: the lines between a pair of ``` fences, each with its 1-based file line. */
+function fencedBlocks(text: string): { line: number; text: string }[][] {
+  const blocks: { line: number; text: string }[][] = [];
+  let open: { line: number; text: string }[] | null = null;
+  text.split(/\r?\n/).forEach((line, i) => {
+    if (/^\s*```/.test(line)) {
+      if (open === null) open = [];
+      else {
+        blocks.push(open);
+        open = null;
+      }
+    } else if (open !== null) {
+      open.push({ line: i + 1, text: line });
+    }
+  });
+  return blocks;
+}
+
+/** Every `docker compose` invocation of a fenced block, joined across backslash-continued lines. */
+function composeCommands(block: { line: number; text: string }[]): { line: number; command: string }[] {
+  const found: { line: number; command: string }[] = [];
+  for (let i = 0; i < block.length; i++) {
+    if (!/\bdocker compose\b/.test(block[i].text)) continue;
+    let command = block[i].text;
+    for (let j = i; j + 1 < block.length && /\\\s*$/.test(block[j].text); j++) {
+      command = `${command.replace(/\\\s*$/, " ")}${block[j + 1].text}`;
+    }
+    found.push({ line: block[i].line, command: command.trim().replace(/\s+/g, " ") });
+  }
+  return found;
+}
+
 describe("Compose guard — deployment credentials stay in the deployment job, JSON-RPC stays on loopback", function () {
   const dockerfileCmd = dockerfileCommand(readFileSync(resolve("Dockerfile"), "utf8"));
   const discovered = readdirSync(resolve("."))
@@ -537,6 +681,10 @@ describe("Compose guard — deployment credentials stay in the deployment job, J
       if (role === "deployment job") {
         it("stays a profile-gated one-shot job, the only kind of service that may hold deployment credentials", function () {
           expect(deploymentJobGaps(service)).to.deep.equal([]);
+        });
+
+        it("receives only credentials a process in the image actually reads (B1)", function () {
+          expect(unconsumedCredentials(service)).to.deep.equal([]);
         });
         return;
       }
@@ -592,8 +740,56 @@ describe("Compose guard — deployment credentials stay in the deployment job, J
     }
   });
 
-  it(".dockerignore keeps .env out of the image, so a service running the image has no .env for dotenv to load", function () {
-    expect(dockerignoreExcludes(readFileSync(resolve(".dockerignore"), "utf8"), ".env")).to.equal(true);
+  describe(".dockerignore keeps dotenv secrets out of the build context, and so out of the image (B1)", function () {
+    const dockerignore = readFileSync(resolve(".dockerignore"), "utf8");
+
+    it("excludes every secret-bearing dotenv variant, not only the bare .env", function () {
+      const admitted = SECRET_DOTENV_FILES.filter((name) => !dockerignoreExcludes(dockerignore, name));
+      expect(admitted, "these dotenv files can still enter the build context").to.deep.equal([]);
+    });
+
+    it("excludes an arbitrary .env suffix, at the root and in a subdirectory, so the rule generalizes", function () {
+      // A drawn suffix, not a listed one: a rule that enumerates the names known today cannot satisfy this.
+      const suffix = Math.random().toString(36).slice(2, 10);
+      for (const name of [`.env.${suffix}`, `scripts/.env.${suffix}`, `a/b/c/.env.${suffix}`]) {
+        expect(dockerignoreExcludes(dockerignore, name), `${name} can enter the build context`).to.equal(true);
+      }
+    });
+
+    it(`keeps ${PUBLIC_DOTENV_TEMPLATE} in the context, and that template carries no populated secret`, function () {
+      // Positive control: the exclusion must be a dotenv-secret rule, not a blanket sweep that also drops the template
+      // the repository ships and documents (`cp .env.example .env`). The exception holds only while the template stays
+      // a template: a secret-shaped name in it must have no value.
+      expect(dockerignoreExcludes(dockerignore, PUBLIC_DOTENV_TEMPLATE)).to.equal(false);
+      const populated = readFileSync(resolve(PUBLIC_DOTENV_TEMPLATE), "utf8")
+        .split(/\r?\n/)
+        .filter((line) => !line.trimStart().startsWith("#"))
+        .flatMap((line) => {
+          const [name, ...rest] = line.split("=");
+          return new RegExp(SECRET_SHAPED.source).test(name.trim()) && rest.join("=").trim() !== ""
+            ? [`${name.trim()} has a value`]
+            : [];
+        });
+      expect(populated, `${PUBLIC_DOTENV_TEMPLATE} may only hold empty or public values`).to.deep.equal([]);
+    });
+  });
+
+  it("every documented Droplet compose command names the Droplet compose file", function () {
+    // Compose loads docker-compose.yml when no -f is given. On the Droplet that file is the wrong one: its vault-deploy
+    // builds from a source tree the server does not have, and it carries no env_file, so the Droplet's populated .env is
+    // never read. A block that names the Droplet install directory is a command run on the server, and must pass -f.
+    expect(Object.keys(COMPOSE_FILES)).to.include(DROPLET_COMPOSE_FILE);
+    const docs = ["README.md", ...markdownUnder("docs")];
+    const onDroplet = docs.flatMap((file) =>
+      fencedBlocks(readFileSync(resolve(file), "utf8"))
+        .filter((block) => block.some(({ text }) => text.includes(DROPLET_DIRECTORY)))
+        .flatMap((block) => composeCommands(block).map(({ line, command }) => ({ where: `${file}:${line}`, command }))),
+    );
+    expect(onDroplet, "no documented command runs compose on the Droplet; the scan saw nothing").to.not.be.empty;
+    const missing = onDroplet
+      .filter(({ command }) => !command.includes(DROPLET_COMPOSE_FILE))
+      .map(({ where, command }) => `${where}: ${command}`);
+    expect(missing, `these run on the Droplet without -f ${DROPLET_COMPOSE_FILE}`).to.deep.equal([]);
   });
 
   it("every documented `docker run` port publication binds the host loopback interface (B2)", function () {
@@ -797,6 +993,81 @@ describe("Compose guard — deployment credentials stay in the deployment job, J
       expect(dockerignoreExcludes("**/.env", ".env")).to.equal(true);
       expect(dockerignoreExcludes(".env\n!.env", ".env")).to.equal(false);
       expect(dockerignoreExcludes(".env.local\nnode_modules", ".env")).to.equal(false);
+      // A pattern is a literal unless it wildcards: this is why `.env` alone leaves every sibling in the context.
+      expect(dockerignoreExcludes(".env", ".env.local")).to.equal(false);
+      expect(dockerignoreExcludes(".env*", ".env.local")).to.equal(true);
+      expect(dockerignoreExcludes(".env*", ".env.example")).to.equal(true);
+      // ...and why re-including the template has to come after the sweep, never before it.
+      expect(dockerignoreExcludes(".env*\n!.env.example", ".env.example")).to.equal(false);
+      expect(dockerignoreExcludes(".env*\n!.env.example", ".env.local")).to.equal(true);
+      expect(dockerignoreExcludes("!.env.example\n.env*", ".env.example")).to.equal(true);
+    });
+
+    it("counts an environment read in each shape it is written, and a shell expansion only in a shell script", function () {
+      for (const source of [
+        'process.env.SEPOLIA_RPC_URL ?? "https://x"',
+        'process.env["SEPOLIA_RPC_URL"]',
+        "process.env[ 'SEPOLIA_RPC_URL' ]",
+        'configVariable("SEPOLIA_RPC_URL")',
+      ]) {
+        expect(readsVariable("a.ts", source, "SEPOLIA_RPC_URL"), source).to.equal(true);
+      }
+      // A near miss must not count: a longer name that merely starts with this one, or a bare mention.
+      expect(readsVariable("a.ts", "process.env.SEPOLIA_RPC_URL_FALLBACK", "SEPOLIA_RPC_URL")).to.equal(false);
+      expect(readsVariable("a.ts", "// set SEPOLIA_RPC_URL in .env", "SEPOLIA_RPC_URL")).to.equal(false);
+      // Shell expansion: honoured in .sh, ignored in .ts where it would match a template literal.
+      for (const shell of ['RPC="${SEPOLIA_RPC_URL:-https://x}"', "echo $SEPOLIA_RPC_URL"]) {
+        expect(readsVariable("a.sh", shell, "SEPOLIA_RPC_URL"), shell).to.equal(true);
+        expect(readsVariable("a.ts", shell, "SEPOLIA_RPC_URL"), shell).to.equal(false);
+      }
+    });
+
+    it("reports a deployment credential nothing reads, and stays silent about one a named source reads", function () {
+      const deploy = (...environment: string[]): Service =>
+        service(
+          "    profiles: [deploy]",
+          "    command: /bin/sh /app/scripts/deploy-entrypoint.sh",
+          "    environment:",
+          ...environment,
+        );
+      // hardhat.config.ts reads DEPLOYER_PRIVATE_KEY and the RPC URLs; nothing anywhere reads ETHERSCAN_API_KEY.
+      expect(
+        unconsumedCredentials(deploy("      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY}"), ["hardhat.config.ts"]),
+      ).to.deep.equal([]);
+      expect(
+        unconsumedCredentials(deploy("      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}"), ["hardhat.config.ts"]),
+      ).to.have.lengthOf(1);
+      // A name shaped like a credential counts even when it is not on the deployment list.
+      expect(unconsumedCredentials(deploy("      - PINATA_API_KEY=x"), ["hardhat.config.ts"])).to.have.lengthOf(1);
+      // An address the deploy script reads is fine; an unmodeled environment: fails closed.
+      expect(
+        unconsumedCredentials(deploy("      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}"), ["scripts"]),
+      ).to.deep.equal([]);
+      expect(
+        unconsumedCredentials(service("    profiles: [deploy]", "    environment: ${INJECTED}"), ["hardhat.config.ts"]),
+      ).to.have.lengthOf(1);
+    });
+
+    it("reads fenced blocks and joins a compose command continued across lines, ignoring prose between blocks", function () {
+      const text = [
+        "Run it:",
+        "```bash",
+        "cd /opt/walletwall-vault",
+        "docker compose -f docker-compose.droplet.yml \\",
+        "  --profile node up -d walletwall-node",
+        "```",
+        "docker compose up -d",
+        "```bash",
+        "docker compose down",
+        "```",
+      ].join("\n");
+      const blocks = fencedBlocks(text);
+      expect(blocks.map((block) => block.length)).to.deep.equal([3, 1]);
+      expect(blocks[0].some(({ text: line }) => line.includes(DROPLET_DIRECTORY))).to.equal(true);
+      expect(composeCommands(blocks[0])).to.deep.equal([
+        { line: 4, command: "docker compose -f docker-compose.droplet.yml --profile node up -d walletwall-node" },
+      ]);
+      expect(composeCommands(blocks[1])).to.deep.equal([{ line: 9, command: "docker compose down" }]);
     });
 
     it("parses documented `docker run` publications across continued lines, without mistaking look-alike flags", function () {

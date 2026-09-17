@@ -3,7 +3,13 @@ artifacts
 cache
 coverage
 coverage.json
-.env
+# Dotenv files carry secrets once populated. A pattern without a wildcard matches one literal name, so a bare
+# `.env` would leave every sibling (.env.local, .env.production, ...) in the context, and the Dockerfile copies the
+# whole context into both stages. A pattern is also root-anchored unless it starts with a double-star directory
+# prefix, so the sweep is spelled twice; then re-include the public template (order matters: last match wins).
+.env*
+**/.env*
+!.env.example
 typechain-types
 dist
 zkvm/guest/target/

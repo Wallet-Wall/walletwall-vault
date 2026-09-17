@@ -341,9 +341,6 @@ BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 # If you already deployed MockMLDSAVerifier and just want to redeploy
 # the vault pointing at it, set this to skip re-deploying the verifier:
 PQC_VERIFIER_ADDRESS=
-
-# Optional: Etherscan API key for contract source verification
-ETHERSCAN_API_KEY=
 EOF
 
 # Restrict file permissions — only root can read it

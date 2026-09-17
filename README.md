@@ -216,7 +216,10 @@ scp walletwall-vault.tar.gz root@<DROPLET_IP>:/root/
 ssh root@<DROPLET_IP>
 docker load < /root/walletwall-vault.tar.gz
 # Populate /opt/walletwall-vault/.env with DEPLOYER_PRIVATE_KEY etc.
-docker compose --profile deploy run --rm vault-deploy
+cd /opt/walletwall-vault
+# -f is required on the Droplet: without it Compose reads docker-compose.yml,
+# which builds from a source tree the server does not have.
+docker compose -f docker-compose.droplet.yml --profile deploy run --rm vault-deploy
 ```
 
 ### Verify ML-DSA and build an attestation
