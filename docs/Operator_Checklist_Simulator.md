@@ -40,7 +40,7 @@ Read and confirm each statement before proceeding:
 
 ### 1a. Environment setup
 
-- [ ] Confirm Node.js ≥ 18 and npm ≥ 9 are installed.
+- [ ] Confirm Node.js 22 and npm ≥ 9 are installed.
 - [ ] Clone the repository (or pull the latest `main`).
 - [ ] Run `npm install` to install dependencies.
 - [ ] Confirm the repo builds cleanly: `npm run compile`.

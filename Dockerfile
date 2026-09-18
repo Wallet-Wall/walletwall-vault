@@ -1,3 +1,8 @@
+# Node release for every stage (the runner executes the node_modules the builder installs). It must meet
+# package.json `engines.node` and the floor the installed Hardhat CLI enforces; test/DockerNodeRuntime.test.ts checks
+# this default, not a --build-arg override.
+ARG NODE_VERSION=22.23.2
+
 # ─────────────────────────────────────────────────────────────
 # Stage 1 — builder
 #   Installs all dev-dependencies, compiles Solidity contracts,
@@ -5,7 +10,7 @@
 #   needed at runtime on DigitalOcean — only the compiled
 #   artifacts and the node_modules are carried over.
 # ─────────────────────────────────────────────────────────────
-FROM node:20-slim AS builder
+FROM node:${NODE_VERSION}-bookworm-slim AS builder
 
 WORKDIR /app
 
@@ -33,7 +38,7 @@ RUN npm run compile
 #   they are only needed for local zkVM development, not for
 #   Sepolia testnet interaction.
 # ─────────────────────────────────────────────────────────────
-FROM node:20-slim AS runner
+FROM node:${NODE_VERSION}-bookworm-slim AS runner
 
 LABEL org.opencontainers.image.title="walletwall-vault" \
       org.opencontainers.image.description="WalletWall hybrid PQ vault — Hardhat node + Sepolia deployer" \

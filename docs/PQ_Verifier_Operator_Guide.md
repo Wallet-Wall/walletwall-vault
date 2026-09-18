@@ -29,8 +29,8 @@ input bytes and compare the structured result.
 
 ## Prerequisites
 
-- **Node.js v18+ and npm** (the repository's stated baseline; CI and the optional
-  Docker image use Node 20). The verifier CLI runs under CommonJS, so no `--esm` flag
+- **Node.js 22 and npm** (the repository's stated baseline; CI and the optional
+  Docker image use Node 22). The verifier CLI runs under CommonJS, so no `--esm` flag
   or Node-version gymnastics are required.
 - `npm install` once in the repository root.
 - **No wallet or EVM private key.** The verifier CLI never reads `ATTESTOR_PRIVATE_KEY`.
@@ -98,7 +98,7 @@ npm run verifier:verify -- \
 
 ### Optional: run inside the existing Docker image
 
-The repository already ships a Node 20 Docker image (see **Docker Support** in
+The repository already ships a Node 22 Docker image (see **Docker Support** in
 [README.md](../README.md)). Because the verifier CLI is CommonJS, you can run it inside
 that image by overriding the default command — no Docker changes are required:
 
