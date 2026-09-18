@@ -1,0 +1,32 @@
+# WalletWall Vault — OPT-IN public JSON-RPC override for walletwall-node
+#
+# ⚠️  UNSAFE unless access to port 8545 is restricted by other means.
+#
+# The base compose files publish walletwall-node's Hardhat JSON-RPC on the
+# host's loopback interface (127.0.0.1:8545) only. This file replaces that
+# binding with one on every IPv4 host interface. Compose never reads it on its
+# own: it applies only when passed with -f after a base file, e.g. on the
+# Droplet:
+#
+#   docker compose -f docker-compose.droplet.yml -f docker-compose.public-rpc.yml \
+#     --profile node up -d walletwall-node
+#
+# (or after docker-compose.yml, with --profile dodev). Compose merges ports:
+# lists by appending, so the !override tag is what replaces the loopback
+# binding instead of adding a second, conflicting one.
+#
+# A Hardhat node is an unauthenticated development server: anyone who can reach
+# the port can send transactions from its funded default accounts, whose
+# private keys are public, and call its hardhat_* methods. Prefer an SSH tunnel:
+#
+#   ssh -N -L 8545:127.0.0.1:8545 root@<DROPLET_IP>
+#
+# If you do use this file, restrict port 8545 to known source addresses with a
+# provider firewall such as a DigitalOcean Cloud Firewall. A host firewall such
+# as ufw does not reliably filter it: Docker writes its own iptables rules for
+# published ports.
+
+services:
+  walletwall-node:
+    ports: !override
+      - "0.0.0.0:8545:8545"

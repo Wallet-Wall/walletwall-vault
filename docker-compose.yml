@@ -13,6 +13,11 @@
 #
 #   3. DigitalOcean dodev (on the Droplet):
 #        docker compose --profile dodev up -d walletwall-node
+#
+# Only vault-deploy receives deployment credentials. walletwall-node publishes
+# its JSON-RPC port on the host's loopback interface (127.0.0.1) only, and
+# walletwall-vault publishes no port. Public JSON-RPC exposure is an explicit
+# opt-in: see docker-compose.public-rpc.yml.
 
 services:
   # ── Local / dev: keep-alive container for exec commands ──────
@@ -24,8 +29,14 @@ services:
   #     container's Linux node_modules. Running hardhat node as the entrypoint
   #     would crash immediately with MODULE_NOT_FOUND. Using tail keeps the
   #     container alive without touching node_modules at startup.
-  #   - To run a local Hardhat node use: docker compose exec walletwall-vault
-  #     npx hardhat node --hostname 0.0.0.0
+  #   - This service publishes no port. A Hardhat node started inside it with
+  #     `docker compose exec walletwall-vault npx hardhat node` is not published
+  #     to the host; use it from another exec session in the same container.
+  #
+  # No deployment credentials: Sepolia deploys run in vault-deploy. The source
+  # mount still exposes a local .env at /app/.env, and hardhat.config.ts loads
+  # .env through dotenv/config, so DOTENV_CONFIG_PATH points dotenv at
+  # /dev/null instead.
   walletwall-vault:
     build:
       context: .
@@ -33,8 +44,6 @@ services:
     image: walletwall-vault:local
     container_name: walletwall-vault
     restart: unless-stopped
-    ports:
-      - "8545:8545"
     volumes:
       # Mount source so edits don't require a rebuild during dev.
       # Named volumes protect Linux node_modules / artifacts / cache
@@ -45,11 +54,7 @@ services:
       - vault_cache:/app/cache
       - vault_typechain:/app/typechain-types
     environment:
-      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY:-}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
-      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
-      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
-      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+      - DOTENV_CONFIG_PATH=/dev/null
     # Keep the container alive without binding any port or crashing.
     # Use `docker compose exec walletwall-vault <cmd>` to run anything inside.
     command: tail -f /dev/null
@@ -67,25 +72,25 @@ services:
       - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
       - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
       - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
-      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
     command: /bin/sh /app/scripts/deploy-entrypoint.sh
 
   # ── DigitalOcean dodev node (no source mounts) ─────────
   # Pull the pre-built image from DOCR and run a persistent node.
   # Usage: docker compose --profile dodev up -d walletwall-node
+  #
+  # The node serves Hardhat's in-memory chain (31337) and reads no deployment
+  # credential, so it receives none. JSON-RPC is published on the host's
+  # loopback interface only: reach it remotely through an SSH tunnel, or opt in
+  # to public exposure with docker-compose.public-rpc.yml.
   walletwall-node:
     image: ${DO_REGISTRY:-walletwall-vault}:latest
     profiles: [dodev]
     container_name: walletwall-node
     restart: unless-stopped
     ports:
-      - "8545:8545"
-    environment:
-      - DEPLOYER_PRIVATE_KEY=${DEPLOYER_PRIVATE_KEY:-}
-      - SEPOLIA_RPC_URL=${SEPOLIA_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}
-      - BASE_SEPOLIA_RPC_URL=${BASE_SEPOLIA_RPC_URL:-https://sepolia.base.org}
-      - PQC_VERIFIER_ADDRESS=${PQC_VERIFIER_ADDRESS:-}
-      - ETHERSCAN_API_KEY=${ETHERSCAN_API_KEY:-}
+      # Host loopback only. Inside the container Hardhat listens on 0.0.0.0,
+      # which Docker needs in order to forward this port to it.
+      - "127.0.0.1:8545:8545"
     # dodev: no source mounts, image is fully self-contained.
     command: npx hardhat node --hostname 0.0.0.0
     healthcheck:

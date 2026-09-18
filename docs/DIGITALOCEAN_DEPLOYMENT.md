@@ -37,7 +37,7 @@ After completing this guide you will have:
 | What | Where |
 |---|---|
 | A **Docker image** containing the compiled vault contracts + Hardhat CLI | Built locally, pushed to Droplet |
-| A **persistent Hardhat node** on `<droplet-ip>:8545` (in-memory, for local dev use) | DigitalOcean Droplet |
+| A **persistent Hardhat node** on the Droplet's loopback `127.0.0.1:8545` (in-memory, for dev use; reach it over an SSH tunnel) | DigitalOcean Droplet |
 | **Sepolia-deployed contracts** (MockMLDSAVerifier + WalletWallVault) | Ethereum Sepolia testnet |
 | Deployment addresses written to `deployments/sepolia/` | Your local repo + Droplet |
 
@@ -91,9 +91,10 @@ docker build -t walletwall-vault:latest .
 docker run --rm walletwall-vault:latest npm test
 
 # 4. Start a local Hardhat node and confirm JSON-RPC responds
-docker run --rm -p 8545:8545 walletwall-vault:latest &
+#    (published on this machine's loopback interface only)
+docker run --rm -p 127.0.0.1:8545:8545 walletwall-vault:latest &
 sleep 5
-curl -s -X POST http://localhost:8545 \
+curl -s -X POST http://127.0.0.1:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
 # Expected: {"jsonrpc":"2.0","id":1,"result":"0x7a69"}   (31337 = Hardhat's chain ID)
@@ -107,14 +108,15 @@ curl -s -X POST http://localhost:8545 \
 > the next `up`.
 
 ```bash
-# Start local keep-alive container (does NOT bind port — uses tail -f /dev/null)
+# Start local keep-alive container (publishes no port — uses tail -f /dev/null)
 docker compose up -d
 
 # Run tests inside the container
 docker compose exec walletwall-vault npm test
 
-# Run a Hardhat JSON-RPC node inside the running container
-docker compose exec walletwall-vault npx hardhat node --hostname 0.0.0.0
+# Run a Hardhat JSON-RPC node inside the running container. It is not published
+# to the host; use it from another `docker compose exec` session.
+docker compose exec walletwall-vault npx hardhat node
 
 # Stop
 docker compose down
@@ -339,9 +341,6 @@ BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
 # If you already deployed MockMLDSAVerifier and just want to redeploy
 # the vault pointing at it, set this to skip re-deploying the verifier:
 PQC_VERIFIER_ADDRESS=
-
-# Optional: Etherscan API key for contract source verification
-ETHERSCAN_API_KEY=
 EOF
 
 # Restrict file permissions — only root can read it
@@ -351,6 +350,11 @@ chmod 600 /opt/walletwall-vault/.env
 > **Security note:** On a shared server, consider using Docker secrets or a secrets
 > manager instead of a plain `.env` file. For a personal research droplet, `chmod 600`
 > is adequate.
+
+> **Only the deployer reads this file.** The one-shot `vault-deploy` container loads it.
+> The persistent Hardhat node (`walletwall-node`, [Step 8](#8-run-the-persistent-hardhat-node))
+> receives neither this file nor any deployment variable: it serves an in-memory chain and
+> needs no deployment credentials.
 
 ---
 
@@ -426,13 +430,18 @@ docker compose -f /opt/walletwall-vault/docker-compose.droplet.yml --profile dep
 
 ## 8. Run the persistent Hardhat node
 
-The **Hardhat node** is useful for local testing against the Sepolia testnet, or
-for exposing a JSON-RPC endpoint from the Droplet (e.g., for a frontend to connect
-to during development).
+The **Hardhat node** is an in-memory JSON-RPC endpoint for development and testing, for
+example for a frontend or test tool to connect to during development.
 
 > **Note:** This is an in-memory Hardhat node (chain ID 31337), NOT Sepolia itself.
 > It resets on container restart. For reading from Sepolia, configure your frontend
 > to use the Sepolia RPC URL directly.
+
+**Local-only by default.** The node publishes JSON-RPC on the Droplet's loopback interface
+(`127.0.0.1:8545`), not on its public IP, and it receives no deployment credentials: only the
+one-shot `vault-deploy` container reads `.env`. Inside the container Hardhat listens on
+`0.0.0.0`; that is what lets Docker forward the loopback port to it, and it exposes nothing
+beyond that port mapping.
 
 ```bash
 cd /opt/walletwall-vault
@@ -443,14 +452,33 @@ docker compose -f docker-compose.droplet.yml --profile node up -d walletwall-nod
 # Check it's running
 docker compose -f docker-compose.droplet.yml ps
 
-# Check the JSON-RPC endpoint responds
-curl -s -X POST http://localhost:8545 \
+# Check the JSON-RPC endpoint responds (on the Droplet)
+curl -s -X POST http://127.0.0.1:8545 \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","method":"eth_chainId","params":[],"id":1}'
 # Expected: {"jsonrpc":"2.0","id":1,"result":"0x7a69"}
 ```
 
 The container restarts automatically on Droplet reboot (`restart: unless-stopped`).
+
+**Reach it from your own machine through an SSH tunnel** rather than opening the port:
+
+```bash
+# On your local machine; then use http://127.0.0.1:8545 locally
+ssh -N -L 8545:127.0.0.1:8545 root@<DROPLET_IP>
+```
+
+**Public exposure is an explicit opt-in, and unsafe unless protected.** A Hardhat node is an
+unauthenticated development server: anyone who can reach it can send transactions from its
+funded default accounts, whose private keys are public. Only if you intentionally need a public
+endpoint, copy `docker-compose.public-rpc.yml` next to the droplet compose file, restrict
+inbound port 8545 to known source addresses with a Cloud Firewall
+([Step 10](#10-firewall--security)), and start the node with both files:
+
+```bash
+docker compose -f docker-compose.droplet.yml -f docker-compose.public-rpc.yml \
+  --profile node up -d walletwall-node
+```
 
 **View logs:**
 ```bash
@@ -507,12 +535,16 @@ git push
 ## 10. Firewall & Security
 
 By default, DigitalOcean Droplets have **all ports open** unless you add a Cloud
-Firewall. Here's the recommended firewall configuration:
+Firewall. A firewall is **defense in depth**, not the control that keeps the Hardhat node
+private: that control is the node's default `127.0.0.1` port binding
+([Step 8](#8-run-the-persistent-hardhat-node)). A host firewall such as `ufw` does not
+reliably filter Docker-published ports, because Docker writes its own iptables rules for
+them; a DigitalOcean Cloud Firewall filters traffic before it reaches the Droplet. Here's
+the recommended firewall configuration:
 
 | Direction | Protocol | Port | Source | Purpose |
 |---|---|---|---|---|
-| Inbound | TCP | 22 | Your IP only | SSH admin access |
-| Inbound | TCP | 8545 | Your IP / frontend server | Hardhat JSON-RPC (optional) |
+| Inbound | TCP | 22 | Your IP only | SSH admin access (also carries the JSON-RPC tunnel) |
 | Outbound | TCP | 443 | All | HTTPS to Sepolia RPC, npm, etc. |
 | Outbound | TCP | 80 | All | HTTP (apt-get, etc.) |
 
@@ -521,10 +553,10 @@ To create the firewall:
 2. Add the rules above
 3. Assign the firewall to your Droplet
 
-> **Port 8545:** Only expose this publicly if you intentionally want the Hardhat
-> node to be accessible from the internet. For a research prototype, restrict it
-> to your own IP or keep it closed — Sepolia deployments don't require an inbound
-> node port to work.
+> **Port 8545:** Keep it closed. The node is not published on the Droplet's public
+> interface, and Sepolia deployments don't require an inbound node port to work. Only
+> if you opted in with `docker-compose.public-rpc.yml`, add an inbound TCP 8545 rule
+> restricted to your own IP or frontend server.
 
 ---
 
@@ -558,7 +590,8 @@ docker pull registry.digitalocean.com/<registry>/walletwall-vault:latest
 # Option B: Load from tar
 docker load < /root/walletwall-vault.tar.gz
 
-# Restart the node with the new image
+# Restart the node with the new image (add -f docker-compose.public-rpc.yml after the
+# droplet file only if you opted in to public exposure in Step 8)
 docker compose -f /opt/walletwall-vault/docker-compose.droplet.yml down
 docker compose -f /opt/walletwall-vault/docker-compose.droplet.yml --profile node up -d walletwall-node
 ```
@@ -613,7 +646,9 @@ docker stop <container-id>
 ```
 
 ### `connection refused` on port 8545
-The Hardhat node container isn't running. Check:
+From another machine this is expected: the node is published on the Droplet's loopback
+interface only, so connect through the SSH tunnel from [Step 8](#8-run-the-persistent-hardhat-node).
+On the Droplet itself, the Hardhat node container isn't running. Check:
 ```bash
 docker ps
 docker compose -f /opt/walletwall-vault/docker-compose.droplet.yml logs walletwall-node
