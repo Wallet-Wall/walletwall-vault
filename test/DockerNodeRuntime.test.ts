@@ -5,7 +5,7 @@
  * The image builds in two stages. The builder runs `npm ci --include=dev` and `npm run compile` (`hardhat compile`); the
  * runner copies the builder's node_modules and compiled artifacts and serves `npx hardhat node`. Two authorities bound
  * the Node release those stages may run:
- *   - the repository: `engines.node` in package.json;
+ *   - the repository: `engines.node` in package.json, which package-lock.json must record verbatim for the root package;
  *   - the toolchain: the Hardhat CLI exits when Node is below the floor it enforces (MIN_SUPPORTED_NODE_VERSION, checked
  *     by its bin entry point before anything else loads), and Hardhat and EDR, the runtime `hardhat node` executes on,
  *     may declare an `engines.node` of their own. EDR's is not advisory: below it npm silently skips EDR's native binary
@@ -17,8 +17,9 @@
  *
  * The toolchain floor is read from the INSTALLED packages, never copied here, so a dependency bump that raises it fails
  * this guard instead of the next image build; and the installed versions must be the ones package-lock.json pins,
- * because the image installs from the lockfile. A stage must meet EVERY authority: package.json alone admits 22.10.0,
- * which the Hardhat CLI refuses.
+ * because the image installs from the lockfile. A stage must meet EVERY authority. The repository must also not
+ * advertise a release its own toolchain rejects, so its declared floor must meet every toolchain floor: package.json once
+ * declared >=22.10.0 while the Hardhat CLI refused anything below 22.13.0.
  *
  * Every stage must also run the same image: the runner executes the node_modules the builder installed, including EDR's
  * native addon, which npm selects for the builder's platform and C library.
@@ -105,7 +106,7 @@ function compareVersions(a: Version, b: Version): number {
 
 /**
  * The lower bound of an `engines.node` range. Only the shape this repository and its toolchain use is modeled, a single
- * `>=` comparator with one to three numeric components (`>=22.10.0`, `>= 22`); anything else (`^22`, `22.x`,
+ * `>=` comparator with one to three numeric components (`>=22.13.0`, `>= 22`); anything else (`^22`, `22.x`,
  * `>=22 <24`, `20 || >=22`, a pre-release) throws, so a range this reader cannot evaluate fails the guard instead of
  * passing it. Missing components are zero, as semver reads them.
  */
@@ -381,6 +382,25 @@ async function repositoryFloors(): Promise<Floor[]> {
   return floors;
 }
 
+/**
+ * The repository's Node engine as package.json declares it and as package-lock.json records it for the root package.
+ * npm copies the declaration into the lockfile verbatim, so the two must be the same string: a lockfile that records
+ * another range is a second, contradicting authority.
+ */
+function repositoryEngines(): { manifest: unknown; lockRoot: unknown } {
+  const manifest = readJson("package.json") as { engines?: { node?: unknown } };
+  const lock = readJson("package-lock.json") as { packages?: Record<string, { engines?: { node?: unknown } }> };
+  return { manifest: manifest.engines?.node, lockRoot: lock.packages?.[""]?.engines?.node };
+}
+
+/**
+ * The toolchain floors a repository floor falls below. Each one marks releases the repository advertises as supported
+ * and its own toolchain rejects. A repository floor above a toolchain floor is stricter, never contradictory.
+ */
+function advertisedBelow(repository: Floor, toolchain: Floor[]): Floor[] {
+  return toolchain.filter(({ floor }) => compareVersions(repository.floor, floor) < 0);
+}
+
 const messages = (findings: Finding[]): string[] => findings.map((finding) => finding.message);
 
 describe("Docker runtime guard — every stage runs one Node release the repository and its toolchain admit (B3)", function () {
@@ -405,6 +425,22 @@ describe("Docker runtime guard — every stage runs one Node release the reposit
       sources.filter((source) => /^the hardhat@\S+ CLI /.test(source)),
       sources.join("; "),
     ).to.have.length(1);
+  });
+
+  it("declares one repository Node engine: package-lock.json records exactly what package.json declares", function () {
+    const { manifest, lockRoot } = repositoryEngines();
+    expect(manifest, "package.json engines.node").to.be.a("string");
+    expect(lockRoot, 'package-lock.json packages[""].engines.node').to.equal(manifest);
+  });
+
+  it("advertises no Node release the installed toolchain rejects: the declared floor meets every toolchain floor", function () {
+    const repository = floors.filter(isRepository);
+    expect(repository, "the repository floor").to.have.length(1);
+    const contradictions = advertisedBelow(
+      repository[0],
+      floors.filter((floor) => !isRepository(floor)),
+    ).map(({ source, floor }) => `${repository[0].source} admits Node below ${show(floor)}, which ${source} rejects`);
+    expect(contradictions).to.deep.equal([]);
   });
 
   it("reads every FROM of the shipped Dockerfile as a stage, so none escapes the checks below", function () {
@@ -438,6 +474,7 @@ describe("Docker runtime guard — every stage runs one Node release the reposit
   });
 
   describe("reader self-check on synthetic Dockerfiles (a parsing regression must not pass silently)", function () {
+    // A repository floor deliberately looser than the toolchain's, so each check below exercises the maximum of the two.
     const FLOORS: Floor[] = [
       { source: "package.json", floor: { major: 22, minor: 10, patch: 0 } },
       { source: "the Hardhat CLI", floor: { major: 22, minor: 13, patch: 0 } },
@@ -574,6 +611,25 @@ describe("Docker runtime guard — every stage runs one Node release the reposit
         "builder:below-floor:package.json",
         "runner:below-floor:package.json",
       ]);
+    });
+
+    it("finds a repository floor looser than a toolchain floor, and never one that is stricter", function () {
+      const toolchain: Floor[] = [
+        { source: "EDR", floor: { major: 22, minor: 0, patch: 0 } },
+        { source: "the Hardhat CLI", floor: { major: 22, minor: 13, patch: 0 } },
+      ];
+      const repository = (major: number, minor: number): Floor => ({
+        source: "package.json",
+        floor: { major, minor, patch: 0 },
+      });
+      const below = (major: number, minor: number): string[] =>
+        advertisedBelow(repository(major, minor), toolchain).map((floor) => floor.source);
+      expect(below(22, 10), ">=22.10.0 admits 22.10-22.12, which the Hardhat CLI rejects").to.deep.equal([
+        "the Hardhat CLI",
+      ]);
+      expect(below(22, 13), "exactly the Hardhat floor").to.deep.equal([]);
+      expect(below(24, 0), "stricter than the toolchain").to.deep.equal([]);
+      expect(below(20, 0), "below both").to.deep.equal(["EDR", "the Hardhat CLI"]);
     });
 
     it("reads every stage, not just the first and last", function () {
