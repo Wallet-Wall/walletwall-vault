@@ -635,11 +635,14 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       expect(report.failure.code).to.equal("TRIAGE_BIJECTION_FAILED");
     });
 
-    it("refuses to run over a pre-existing output, leaving it untouched", () => {
+    it("refuses to run over a pre-existing output (exclusive create, no check-then-write race), leaving it untouched", () => {
       const d = inputs(baseline());
       fs.writeFileSync(path.join(d, "out.sarif"), "stale");
       expect(quiet(() => main(argv(d)))).to.equal(1);
       expect(fs.readFileSync(path.join(d, "out.sarif"), "utf8")).to.equal("stale");
+      const report = JSON.parse(fs.readFileSync(path.join(d, "report.json"), "utf8"));
+      expect(report.ok).to.equal(false);
+      expect(report.failure.code).to.equal("PRE_EXISTING_OUTPUT");
     });
   });
 

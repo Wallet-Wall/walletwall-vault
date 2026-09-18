@@ -813,8 +813,6 @@ export function main(argv: string[]): number {
   const reportPath = args["report"];
   const report: Record<string, unknown> = { schema: REPORT_SCHEMA, ok: false };
   try {
-    if (fs.existsSync(outPath))
-      fail("PRE_EXISTING_OUTPUT", `${outPath} already exists; refusing to leave a stale projection uploadable`);
     const rawSarifText = fs.readFileSync(rawSarifPath, "utf8");
     const rawScanText = fs.readFileSync(rawScanPath, "utf8");
     const triageText = fs.readFileSync(triagePath, "utf8");
@@ -829,8 +827,17 @@ export function main(argv: string[]): number {
     report.excludedMixed = projection.excludedMixed;
     const bijection = assertTriageBijection(projection.projected, loadTriageIdentities(triageText));
     report.bijection = bijection;
+    // EXCLUSIVE CREATE ("wx"): refusing a pre-existing output is atomic with the write itself. A
+    // separate existence check followed by a write is a check-then-use race (js/file-system-race).
+    try {
+      fs.writeFileSync(outPath, JSON.stringify(projection.log, null, 2), { flag: "wx" });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "EEXIST") {
+        fail("PRE_EXISTING_OUTPUT", `${outPath} already exists; refusing to leave a stale projection uploadable`);
+      }
+      throw e;
+    }
     report.ok = true;
-    fs.writeFileSync(outPath, JSON.stringify(projection.log, null, 2));
     const c = projection.counts;
     console.log(
       `SARIF projection: ${c.rawSarifResults} raw result(s) = ${c.ownInstances} project-owned instance(s) ` +
