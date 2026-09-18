@@ -101,7 +101,7 @@ EIP-712 Withdrawal(vaultOwner, recipient, amount, nonce, deadline, vaultMode)
 
 ### Prerequisites
 
-- Node.js (v18+) and npm
+- Node.js 22 and npm (the Node line CI and the Docker image use)
 
 ### Install
 

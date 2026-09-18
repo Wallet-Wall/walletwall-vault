@@ -65,7 +65,7 @@ committed digest, under the empty context) without SP1 execution and without a p
 
 ## Requirements
 
-- **Pure smoke:** Node 20 + `npm ci`. No Rust, no SP1. **Normal CI** also uses stable Rust (guest
+- **Pure smoke:** Node 22 + `npm ci`. No Rust, no SP1. **Normal CI** also uses stable Rust (guest
   `cargo check`, the native relation tests and the consumer-test executor), still without SP1.
 - **Execute-only smoke:** the SP1 toolchain (`curl -L https://sp1.succinct.xyz | bash && sp1up`;
   Linux-first, use WSL2 on Windows) and a built `mldsa65-host`.
