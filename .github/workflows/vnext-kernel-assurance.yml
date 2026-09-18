@@ -51,7 +51,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          # Hardhat 3 requires Node >= 22.10.0.
+          # The Hardhat 3 CLI requires Node >= 22.13.0 (its MIN_SUPPORTED_NODE_VERSION).
           node-version: "22"
           cache: npm
 
