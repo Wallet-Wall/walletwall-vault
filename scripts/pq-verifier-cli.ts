@@ -18,12 +18,12 @@
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-// Run under CommonJS ts-node (the `verifier:verify` script intentionally omits
-// `--esm`). ts-node's ESM loader cannot resolve `.ts` extensions on Node 20
-// (ERR_UNKNOWN_FILE_EXTENSION), the version this project's CI pins; CommonJS
-// resolves both extensionless `.ts` imports and the CJS build of
-// `@noble/post-quantum`, so it works across Node versions. The verifier module
-// itself (src/verifier) stays runtime-agnostic and ESM-importable.
+// Runs under tsx: the `verifier:verify` script is `tsx scripts/pq-verifier-cli.ts
+// verify`, which executes this file as ESM TypeScript (the package is
+// "type": "module") on the Node 22 line CI pins. tsx resolves the extensionless
+// imports below, so no build step or loader flag is needed; ts-node and its
+// CommonJS workaround left with the Hardhat 3 migration (#132). The verifier
+// module itself (src/verifier) stays runtime-agnostic and ESM-importable.
 import type { PQVerificationResult } from "../src/verifier/ml-dsa-65";
 import { verifyMLDSA65Detailed } from "../src/verifier/ml-dsa-65";
 import { readBytesInput } from "./lib/attestation";
@@ -101,8 +101,8 @@ export function main(args = process.argv.slice(2)): PQVerificationResult {
 }
 
 // Only execute when invoked directly (e.g. `npm run verifier:verify`), not when
-// imported by tests. This guard works under both the ESM CLI runtime and the
-// CommonJS test runtime without relying on import.meta or require.main.
+// imported by tests. The argv check needs neither import.meta nor require.main,
+// so it holds for the tsx CLI run and for the test suite's import alike.
 if (process.argv[1]?.includes("pq-verifier-cli")) {
   try {
     main();

@@ -31,7 +31,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
-          # Hardhat 3 requires Node >= 22.10.0.
+          # The Hardhat 3 CLI requires Node >= 22.13.0 (its MIN_SUPPORTED_NODE_VERSION).
           node-version: "22"
           cache: "npm"
 
@@ -120,7 +120,7 @@ jobs:
           echo "$out"
           echo "$out" | grep -q '"reason": "ML_DSA_65_VALID"'
           # Attestor demo: exercises the off-chain verify + EIP-712 signing path.
-          # Both CLIs run under CommonJS ts-node so they work on the pinned Node 20.
+          # Both CLIs are TypeScript run through tsx (see their npm scripts) on the pinned Node 22.
           npm run attestor:demo
 
       - name: SP1 smoke (execute-only journal check; no SP1 toolchain)
