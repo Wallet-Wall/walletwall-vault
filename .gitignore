@@ -3,7 +3,13 @@ artifacts
 cache
 coverage
 coverage.json
-.env
+# Dotenv files carry secrets once populated. A pattern without a wildcard matches one literal name, so a bare
+# `.env` would leave every sibling (.env.local, .env.production, .envrc, ...) untracked but stageable by
+# `git add -A`, in a PUBLIC repository. A slash-free pattern matches at any depth, so this one rule also covers
+# subdirectories - unlike .dockerignore, which is root-anchored and needs a second, `**/`-prefixed line.
+# Re-include the public template last: the last matching pattern wins.
+.env*
+!.env.example
 typechain-types
 dist
 zkvm/guest/target/
