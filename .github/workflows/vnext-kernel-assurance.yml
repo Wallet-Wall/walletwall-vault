@@ -159,7 +159,13 @@ jobs:
           # firsthand in the PR description; hard-gating CI on Slither's
           # detector severity here would manufacture exactly the
           # "scanner-green implies safe" signal this whole lane exists to
-          # avoid. SARIF is still uploaded in full, so nothing is hidden.
+          # avoid. Nothing is hidden: the COMPLETE raw SARIF and raw JSON
+          # are kept as workflow artifacts and feed the triage and receipt
+          # gates below. GitHub Code Scanning receives a lossless PROJECTION
+          # of the distinct project-owned findings (the projection steps
+          # after the raw artifacts): dependency-only results and repeated
+          # compilation-unit copies are presentation noise there, never
+          # evidence here. Presentation never waits on adjudication.
           fail-on: none
           sarif: slither-vnext-kernel-results.sarif
 
@@ -180,22 +186,75 @@ jobs:
           path: prototype/vnext-kernel/slither-raw.json
           if-no-files-found: warn
 
-      - name: Upload Slither SARIF
+      # THE COMPLETE SCANNER OUTPUT, PRESERVED BEFORE ANY GATE. Slither's own SARIF, byte-for-byte as
+      # it wrote it -- all of its results, dependency findings and compilation-unit copies included.
+      # A workflow artifact for audit and diffing, NOT code-scanning input: that role belongs to the
+      # projection at the end of this job. `always()` for the same reason as the raw JSON above, so
+      # a failing gate below can never suppress the scanner output.
+      - name: Upload raw Slither SARIF (complete, diagnostic)
         if: ${{ always() && hashFiles('slither-vnext-kernel-results.sarif') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-slither-sarif-raw
+          path: slither-vnext-kernel-results.sarif
+          if-no-files-found: warn
+
+      # THE GITHUB PROJECTION -- PRESENTATION, NEVER AUTHORITY, AND NEVER GATED BY ADJUDICATION.
+      # Code scanning turns every SARIF result into its own alert and does not collapse identical
+      # ones, so uploading Slither's SARIF as-is opened 295 alerts on 17d55934: 222 OpenZeppelin-only
+      # (crytic-compile's plain solc platform hard-codes is_dependency() to False, so the dependency
+      # flag above cannot remove them) and 165 exact compilation-unit copies.
+      # scanner-sarif-projection.ts derives the distinct project-owned findings from the RAW JSON and
+      # raw SARIF of the SAME execution -- dependency-only results dropped, exact copies collapsed --
+      # and writes a file only when PROJECTION INTEGRITY holds (every other shape fails closed, see
+      # its header). It does not read the triage: GitHub Code Scanning visibility is independent from
+      # adjudication completeness, so a new, structurally valid, untriaged own-code finding is
+      # uploaded here while the triage gate below fails CI naming it. Nothing here feeds that gate.
+      - name: Project SARIF to distinct project-owned findings
+        id: sarif-projection
+        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' && hashFiles('slither-vnext-kernel-results.sarif') != '' }}
+        run: |
+          npx tsx prototype/vnext-kernel/scanner-sarif-projection.ts \
+            --raw-sarif slither-vnext-kernel-results.sarif \
+            --raw-scan prototype/vnext-kernel/slither-raw.json \
+            --out slither-vnext-kernel-results.github.sarif \
+            --report slither-vnext-kernel-projection-report.json
+
+      # The projection's own record: counts, each projected identity, each excluded dependency-
+      # anchored version lint by name, and the integrity checks -- or, on failure, the failure code.
+      - name: Upload SARIF projection report (diagnostic)
+        if: ${{ always() && hashFiles('slither-vnext-kernel-projection-report.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: vnext-kernel-slither-sarif-projection
+          path: |
+            slither-vnext-kernel-projection-report.json
+            slither-vnext-kernel-results.github.sarif
+          if-no-files-found: warn
+
+      # The ONLY SARIF code scanning receives from this job. Conditioned on the projection step
+      # ALONE (always(), so no earlier failure can skip it) and placed BEFORE the triage gate, so an
+      # adjudication failure can never suppress what GitHub shows. Same category as before, so
+      # GitHub treats it as the same configuration and closes the alerts it no longer reports.
+      - name: Upload projected SARIF to GitHub Code Scanning
+        if: ${{ always() && steps.sarif-projection.outcome == 'success' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: slither-vnext-kernel-results.sarif
+          sarif_file: slither-vnext-kernel-results.github.sarif
           category: slither-vnext-kernel
 
-      # THE GATE THAT WAS MISSING. Slither itself stays `fail-on: none` and the complete SARIF is
-      # still uploaded, because scanner-green is not this kernel's security claim (see the Slither
-      # step above). What IS a claim is that every own-code finding has been adjudicated firsthand
-      # -- and until now nothing enforced it: MEASUREMENTS.json asserted that "the --validate gate
-      # fails CI on any untriaged finding" while no workflow ran --validate at all. That is how 21
-      # of 33 adjudicated findings silently lost their triage entries to a line shift.
+      # THE GATE THAT WAS MISSING. Slither itself stays `fail-on: none` and its complete output is
+      # still preserved (both raw artifacts above), because scanner-green is not this kernel's
+      # security claim (see the Slither step). What IS a claim is that every own-code finding has
+      # been adjudicated firsthand -- and until now nothing enforced it: MEASUREMENTS.json asserted
+      # that "the --validate gate fails CI on any untriaged finding" while no workflow ran --validate
+      # at all. That is how 21 of 33 adjudicated findings silently lost their triage entries to a
+      # line shift.
       #
-      # Runs in THIS job so it consumes the raw JSON from the SAME scan, and AFTER the SARIF
-      # upload so a validation failure can never suppress the scanner output.
+      # Runs in THIS job so it consumes the raw JSON from the SAME scan, and AFTER both raw
+      # artifacts are preserved AND the GitHub projection is uploaded, so a validation failure can
+      # never suppress the scanner output or its presentation. This is the ADJUDICATION authority
+      # and nothing else: an untriaged finding turns CI red here, named, while Code Scanning shows it.
       #
       # The subjects are read from the receipt rather than from HEAD. In a `pull_request` run HEAD
       # is a synthetic refs/pull/N/merge commit that exists on no branch; deriving provenance from
@@ -247,7 +306,6 @@ jobs:
         run: |
           echo "event=${{ github.event_name }} container=$CONTAINER_SHA github.sha=${{ github.sha }}"
           npx tsx prototype/vnext-kernel/verify-receipt-container.ts "$CONTAINER_SHA"
-
 
   authority-completeness:
     name: Authority Completeness
