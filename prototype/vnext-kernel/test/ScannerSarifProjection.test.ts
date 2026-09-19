@@ -8,9 +8,14 @@
  * fixture byte-for-byte, and the UNMODIFIED triage validator accepts the fixture's raw scan with the
  * same census it gave the real one.
  *
- *   A. fixture fidelity           B. 295 -> 42 and the 42 <-> 42 triage bijection
- *   C. required mutations 1-12    D. further adversarial shapes
- *   E. CLI fail-closed behaviour  F. workflow wiring: only the projection reaches code scanning
+ * TWO AUTHORITIES (owner ruling on #207): PROJECTION INTEGRITY gates the GitHub upload;
+ * ADJUDICATION COMPLETENESS is a separate CI gate that must never suppress it. The central
+ * regression test (C.12) models the state this split exists for: 43 distinct own-code findings,
+ * 43 projected and uploaded, 42 triaged -- Code Scanning shows the new finding, CI is red naming it.
+ *
+ *   A. fixture fidelity           B. 295 -> 42 and the current 42 <-> 42 triage agreement
+ *   C. required mutations 1-12    D. further adversarial shapes, integrity post-conditions
+ *   E. CLI behaviour              F. workflow wiring: upload gated by integrity, never by triage
  */
 import { expect } from "chai";
 import { spawnSync } from "node:child_process";
@@ -26,14 +31,17 @@ import {
   VERSION_LINT_DETECTORS,
   WORKFLOW_PATH,
   ProjectionError,
+  assertProjectionAgainstTriage,
   assertProjectionIsSubset,
-  assertTriageBijection,
   assertWorkflowSarifProjectionContract,
+  buildGitHubProjection,
   classifyOwnership,
   loadTriageIdentities,
   main,
   parseRawSarif,
-  projectSarif,
+  projectDistinctOwnCode,
+  validateProjectionAgainstTriage,
+  validateProjectionIntegrity,
   type FailureCode,
   type Projection,
   type SarifLog,
@@ -121,8 +129,19 @@ const toResult = (f: F): SarifResult => {
 const scanText = (findings: F[]) => JSON.stringify({ success: true, error: null, results: { detectors: findings } });
 const sarifText = (results: SarifResult[], header: SarifLog = HEADER) =>
   JSON.stringify({ ...header, runs: [{ ...header.runs[0], results }] }, null, 2);
+/** The upload-gating path: compute AND independently validate integrity. Never consults triage. */
 const project = (findings: F[], results: SarifResult[] = findings.map(toResult)): Projection =>
-  projectSarif(scanText(findings), sarifText(results));
+  buildGitHubProjection(scanText(findings), sarifText(results)).projection;
+/** A structurally valid own-code finding the triage has never seen: same code, new message. */
+const untriagedMutant = (fs_: F[], tag: string): F => {
+  const f = fs_[firstOf(fs_, SINGLE)];
+  return {
+    ...clone(f),
+    description: `${f.description} (${tag})`,
+    markdown: `${f.markdown} (${tag})`,
+    id: sha256(tag),
+  };
+};
 
 function expectFailure(fn: () => unknown, code: FailureCode): ProjectionError {
   try {
@@ -200,7 +219,7 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
     });
   });
 
-  describe("B. 295 -> 42, and a bijection with the 42 triaged identities", () => {
+  describe("B. 295 -> 42, and today's 42 <-> 42 agreement with the triage (an adjudication fact, never an upload condition)", () => {
     let P: Projection;
     before(() => {
       P = project(baseline());
@@ -213,11 +232,34 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       ).to.equal(P.counts.rawSarifResults);
     });
 
-    it("BIJECTION: every triaged identity projects to exactly one result, and nothing else is projected", () => {
-      const b = assertTriageBijection(P.projected, TRIAGE_IDS);
-      expect(b).to.deep.equal({ triageEntries: 42, projected: 42, matched: 42, missing: [], extra: [] });
+    it("TODAY'S 42 <-> 42: every triaged identity projects to exactly one result, and nothing else is projected", () => {
+      const t = validateProjectionAgainstTriage(P.projected, TRIAGE_IDS);
+      expect(t).to.deep.equal({
+        complete: true,
+        triageEntries: 42,
+        projected: 42,
+        matched: 42,
+        untriaged: [],
+        stale: [],
+      });
+      expect(() => assertProjectionAgainstTriage(P.projected, TRIAGE_IDS)).to.not.throw();
       expect(new Set(P.projected.map((p) => p.semanticId)).size).to.equal(42);
       expect(P.log.runs[0].results).to.have.length(42);
+    });
+
+    it("PROJECTION INTEGRITY on the frozen scan: all six post-conditions re-derived from the raw texts", () => {
+      const { integrity } = buildGitHubProjection(scanText(B), sarifText(B.map(toResult)));
+      expect(integrity).to.deep.equal({
+        checks: [
+          "subset",
+          "non-empty",
+          "one-result-per-identity",
+          "own-set",
+          "no-silent-collapse",
+          "count-conservation",
+        ],
+        projectedIdentities: 42,
+      });
     });
 
     it("the projected set is the triage machinery's own set, computed independently by indexFindings", () => {
@@ -287,7 +329,7 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       fs_.splice(firstOf(fs_, DOUBLED), 1);
       const P = project(fs_);
       expect(P.counts.projectedResults).to.equal(42);
-      expect(() => assertTriageBijection(P.projected, TRIAGE_IDS)).to.not.throw();
+      expect(() => assertProjectionAgainstTriage(P.projected, TRIAGE_IDS)).to.not.throw();
     });
 
     it("2. a dependency-only result deleted -> projection still valid", () => {
@@ -299,7 +341,7 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       const P = project(fs_);
       expect(P.counts.dependencyOnlyInstances).to.equal(221);
       expect(P.counts.projectedResults).to.equal(42);
-      expect(() => assertTriageBijection(P.projected, TRIAGE_IDS)).to.not.throw();
+      expect(() => assertProjectionAgainstTriage(P.projected, TRIAGE_IDS)).to.not.throw();
     });
 
     it("3. an exact own-code duplicate added -> still one projected identity", () => {
@@ -314,7 +356,7 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
     it("4. a semantically distinct finding on the SAME line (different detector) -> both survive", () => {
       const fs_ = baseline();
       const f = fs_[firstOf(fs_, SINGLE)];
-      const g = {
+      const g: F = {
         ...clone(f),
         check: f.check === "timestamp" ? "incorrect-equality" : "timestamp",
         id: sha256("mutant-4"),
@@ -328,7 +370,11 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
           p.startLine === toResult(f).locations[0].physicalLocation.region.startLine,
       );
       expect(same.length).to.be.greaterThanOrEqual(2);
-      expectFailure(() => assertTriageBijection(P.projected, TRIAGE_IDS), "TRIAGE_BIJECTION_FAILED");
+      // Presentation succeeded; ADJUDICATION separately reports the new identity as untriaged.
+      expect(validateProjectionAgainstTriage(P.projected, TRIAGE_IDS).untriaged).to.deep.equal([
+        semanticId(g as SlitherFinding),
+      ]);
+      expectFailure(() => assertProjectionAgainstTriage(P.projected, TRIAGE_IDS), "TRIAGE_COMPLETENESS_FAILED");
     });
 
     it("5. same detector and path, different message -> both survive as distinct identities", () => {
@@ -371,11 +417,18 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       expectFailure(() => project(fs_, results), "UNRECOGNIZED_SARIF_SHAPE");
       const fs2 = baseline();
       delete fs2[0].elements[0].source_mapping.filename_relative;
-      expectFailure(() => projectSarif(scanText(fs2), sarifText(baseline().map(toResult))), "MALFORMED_RAW_SCAN");
-      expectFailure(() => projectSarif("{not json", sarifText(B.map(toResult))), "MALFORMED_RAW_SCAN");
-      expectFailure(() => projectSarif(scanText(B), "{not json"), "MALFORMED_SARIF");
       expectFailure(
-        () => projectSarif(JSON.stringify({ success: false, error: "compile failed", results: {} }), sarifText([])),
+        () => projectDistinctOwnCode(scanText(fs2), sarifText(baseline().map(toResult))),
+        "MALFORMED_RAW_SCAN",
+      );
+      expectFailure(() => projectDistinctOwnCode("{not json", sarifText(B.map(toResult))), "MALFORMED_RAW_SCAN");
+      expectFailure(() => projectDistinctOwnCode(scanText(B), "{not json"), "MALFORMED_SARIF");
+      expectFailure(
+        () =>
+          projectDistinctOwnCode(
+            JSON.stringify({ success: false, error: "compile failed", results: {} }),
+            sarifText([]),
+          ),
         "MALFORMED_RAW_SCAN",
       );
       const results3 = baseline().map(toResult);
@@ -416,45 +469,103 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       );
       const twoRuns = JSON.parse(sarifText(B.map(toResult)));
       twoRuns.runs.push(clone(twoRuns.runs[0]));
-      expectFailure(() => projectSarif(scanText(B), JSON.stringify(twoRuns)), "UNRECOGNIZED_SARIF_SHAPE");
+      expectFailure(() => projectDistinctOwnCode(scanText(B), JSON.stringify(twoRuns)), "UNRECOGNIZED_SARIF_SHAPE");
       const newRunKey = JSON.parse(sarifText(B.map(toResult)));
       newRunKey.runs[0].invocations = [];
-      expectFailure(() => projectSarif(scanText(B), JSON.stringify(newRunKey)), "UNRECOGNIZED_SARIF_SHAPE");
+      expectFailure(() => projectDistinctOwnCode(scanText(B), JSON.stringify(newRunKey)), "UNRECOGNIZED_SARIF_SHAPE");
       const v22 = JSON.parse(sarifText(B.map(toResult)));
       v22.version = "2.2.0";
-      expectFailure(() => projectSarif(scanText(B), JSON.stringify(v22)), "UNRECOGNIZED_SARIF_SHAPE");
+      expectFailure(() => projectDistinctOwnCode(scanText(B), JSON.stringify(v22)), "UNRECOGNIZED_SARIF_SHAPE");
     });
 
-    it("10. KILL: nothing but node_modules findings -> a zero own-code projection is rejected", () => {
+    it("10. KILL: nothing but node_modules findings -> computed, but INTEGRITY rejects a zero own-code projection", () => {
       const fs_ = baseline().filter((f) => !isOwnFinding(f as SlitherFinding));
+      const bare = projectDistinctOwnCode(scanText(fs_), sarifText(fs_.map(toResult)));
+      expect(bare.log.runs[0].results).to.have.length(0);
+      expectFailure(
+        () => validateProjectionIntegrity(scanText(fs_), sarifText(fs_.map(toResult)), bare),
+        "EMPTY_PROJECTION",
+      );
       expectFailure(() => project(fs_), "EMPTY_PROJECTION");
     });
 
-    it("11. KILL: one of the current 42 triaged findings missing from the scan -> FAIL", () => {
+    it("11. one of the current 42 triaged findings missing: presentation shows the 41, the TRIAGE gate fails naming the stale entry", () => {
       const fs_ = baseline().filter(
         (f) => !(isOwnFinding(f as SlitherFinding) && semanticId(f as SlitherFinding) === DOUBLED),
       );
       const P = project(fs_);
       expect(P.counts.projectedResults).to.equal(41);
-      const e = expectFailure(() => assertTriageBijection(P.projected, TRIAGE_IDS), "TRIAGE_BIJECTION_FAILED");
+      expect(validateProjectionAgainstTriage(P.projected, TRIAGE_IDS).stale).to.deep.equal([DOUBLED]);
+      const e = expectFailure(
+        () => assertProjectionAgainstTriage(P.projected, TRIAGE_IDS),
+        "TRIAGE_COMPLETENESS_FAILED",
+      );
       expect(e.message).to.contain(DOUBLED);
     });
 
-    it("12. an untriaged project-owned finding: the projection refuses AND the existing triage gate still FAILS", function () {
+    it("12. CENTRAL REGRESSION -- 43 distinct own-code findings, 43 projected and UPLOADED, 42 triaged: the triage gate fails naming the 43rd", function () {
       this.timeout(180_000);
       const fs_ = baseline();
-      const f = fs_[firstOf(fs_, SINGLE)];
-      fs_.push({
-        ...clone(f),
-        description: `${f.description} (untriaged mutant)`,
-        markdown: `${f.markdown} (untriaged)`,
-        id: sha256("mutant-12"),
-      });
-      const P = project(fs_);
-      expectFailure(() => assertTriageBijection(P.projected, TRIAGE_IDS), "TRIAGE_BIJECTION_FAILED");
+      const mutant = untriagedMutant(fs_, "untriaged-43rd");
+      const newId = semanticId(mutant as SlitherFinding);
+      fs_.push(mutant);
+      expect(TRIAGE_IDS.has(newId), "the 43rd identity must be genuinely unadjudicated").to.equal(false);
+
+      // (1) the raw set: 43 distinct project-owned identities.
+      expect(new Set(ownOf(fs_).map((f) => semanticId(f as SlitherFinding))).size).to.equal(43);
+
+      // (2)+(3) PROJECTION INTEGRITY succeeds and the projected SARIF carries 43 results.
+      const { projection, integrity } = buildGitHubProjection(scanText(fs_), sarifText(fs_.map(toResult)));
+      expect(projection.log.runs[0].results).to.have.length(43);
+      expect(integrity.projectedIdentities).to.equal(43);
+      expect(projection.projected.map((p) => p.semanticId)).to.include(newId);
+
+      // (4) The GitHub-upload contract ADMITS it: the real CLI writes the 43-result file and exits 0,
+      // i.e. the projection step's outcome is success; and the upload condition depends on that
+      // outcome ALONE, under always(), in a step that runs BEFORE the triage gate exists in the run.
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), "proj-43-"));
+      fs.writeFileSync(path.join(d, "raw.sarif"), sarifText(fs_.map(toResult)));
+      fs.writeFileSync(path.join(d, "raw.json"), scanText(fs_));
+      const [log, err] = [console.log, console.error];
+      console.log = () => undefined;
+      console.error = () => undefined;
+      let rc: number;
+      try {
+        rc = main([
+          "--raw-sarif",
+          path.join(d, "raw.sarif"),
+          "--raw-scan",
+          path.join(d, "raw.json"),
+          "--out",
+          path.join(d, "out.sarif"),
+          "--report",
+          path.join(d, "report.json"),
+        ]);
+      } finally {
+        console.log = log;
+        console.error = err;
+      }
+      expect(rc, "the projection step must SUCCEED for an unadjudicated but structurally valid finding").to.equal(0);
+      expect(parseRawSarif(fs.readFileSync(path.join(d, "out.sarif"), "utf8")).runs[0].results).to.have.length(43);
+      const gate = assertWorkflowSarifProjectionContract();
+      expect(gate.conditionStepRefs).to.deep.equal([gate.projectionStepId]);
+      expect(gate.usesAlways).to.equal(true);
+      expect(gate.precedesTriageGate).to.equal(true);
+
+      // (5) ADJUDICATION COMPLETENESS fails and names the 43rd identity -- on the projection ...
+      const t = validateProjectionAgainstTriage(projection.projected, TRIAGE_IDS);
+      expect(t).to.deep.include({ complete: false, triageEntries: 42, projected: 43, matched: 42, stale: [] });
+      expect(t.untriaged).to.deep.equal([newId]);
+      const e = expectFailure(
+        () => assertProjectionAgainstTriage(projection.projected, TRIAGE_IDS),
+        "TRIAGE_COMPLETENESS_FAILED",
+      );
+      expect(e.message).to.contain(newId);
+      // ... and in the CI authority itself: the UNMODIFIED triage gate exits 1 and names it.
       const r = runValidator(fs_);
       expect(r.status, r.out).to.equal(1);
       expect(r.out).to.contain("have no triage entry");
+      expect(r.out).to.contain(newId);
     });
 
     it("12'. PROJECTION IS NEVER AUTHORITY: handing the validator a projected SARIF cannot turn it green", function () {
@@ -487,6 +598,21 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       g.id = sha256("mutant-collapse");
       expect(semanticId(g as SlitherFinding)).to.equal(SINGLE);
       fs_.push(g);
+      const [scan, sarif] = [scanText(fs_), sarifText(fs_.map(toResult))];
+      // EACH layer refuses on its own, so neither can regress behind the other. The computation:
+      expectFailure(() => projectDistinctOwnCode(scan, sarif), "DISTINCT_FINDINGS_WOULD_COLLAPSE");
+      // ...the integrity re-derivation, handed exactly the silently merged projection (42 results,
+      // counts conserved) that a regressed computation would produce:
+      const merged = projectDistinctOwnCode(scanText(B), sarifText(B.map(toResult)));
+      merged.counts = {
+        ...merged.counts,
+        rawSarifResults: merged.counts.rawSarifResults + 1,
+        rawScanFindings: merged.counts.rawScanFindings + 1,
+        ownInstances: merged.counts.ownInstances + 1,
+        ownCopiesCollapsed: merged.counts.ownCopiesCollapsed + 1,
+      };
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, merged), "DISTINCT_FINDINGS_WOULD_COLLAPSE");
+      // ...and the composed upload path.
       expectFailure(() => project(fs_), "DISTINCT_FINDINGS_WOULD_COLLAPSE");
     });
 
@@ -552,7 +678,10 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       const rule = clone(header.runs[0].tool.driver.rules[0]);
       rule.id = `9-9-${rule.name}`;
       header.runs[0].tool.driver.rules.push(rule);
-      expectFailure(() => projectSarif(scanText(B), sarifText(B.map(toResult), header)), "UNRECOGNIZED_SARIF_SHAPE");
+      expectFailure(
+        () => projectDistinctOwnCode(scanText(B), sarifText(B.map(toResult), header)),
+        "UNRECOGNIZED_SARIF_SHAPE",
+      );
     });
 
     it("KILL: the subset guard rejects a changed header or a foreign result", () => {
@@ -575,13 +704,48 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       );
       const P = project(baseline());
       expectFailure(
-        () => assertTriageBijection([...P.projected, P.projected[0]], TRIAGE_IDS),
-        "TRIAGE_BIJECTION_FAILED",
+        () => validateProjectionAgainstTriage([...P.projected, P.projected[0]], TRIAGE_IDS),
+        "DUPLICATE_PROJECTED_IDENTITY",
       );
+    });
+
+    it("INTEGRITY is re-derived independently: doctored projections are refused even when the computation was bypassed", () => {
+      const scan = scanText(B);
+      const sarif = sarifText(B.map(toResult));
+      const good = projectDistinctOwnCode(scan, sarif);
+      expect(() => validateProjectionIntegrity(scan, sarif, good)).to.not.throw();
+
+      const dropped = clone(good); // one own identity silently missing from the presentation
+      dropped.log.runs[0].results.pop();
+      dropped.projected.pop();
+      dropped.counts.projectedResults = 41;
+      dropped.counts.ownDistinct = 41;
+      dropped.counts.ownCopiesCollapsed = 27;
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, dropped), "OWN_SCOPE_DISAGREEMENT");
+
+      const listedTwice = clone(good); // one identity claimed twice for 42 results
+      listedTwice.projected.push(clone(listedTwice.projected[0]));
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, listedTwice), "DUPLICATE_PROJECTED_IDENTITY");
+
+      const renamed = clone(good); // two results under one identity
+      renamed.projected[0].semanticId = renamed.projected[1].semanticId;
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, renamed), "DUPLICATE_PROJECTED_IDENTITY");
+
+      const swapped = clone(good); // identities attached to the wrong results
+      [swapped.projected[0], swapped.projected[1]] = [swapped.projected[1], swapped.projected[0]];
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, swapped), "DISTINCT_FINDINGS_WOULD_COLLAPSE");
+
+      const edited = clone(good); // a result that is not the scanner's
+      edited.log.runs[0].results[0].message.text += " edited";
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, edited), "PROJECTION_NOT_A_SUBSET");
+
+      const miscounted = clone(good);
+      miscounted.counts.dependencyOnlyInstances += 1;
+      expectFailure(() => validateProjectionIntegrity(scan, sarif, miscounted), "INCONSISTENT_COUNTS");
     });
   });
 
-  describe("E. the CLI writes a projection only when every check passes", () => {
+  describe("E. the CLI writes a projection exactly when PROJECTION INTEGRITY holds (adjudication is never consulted)", () => {
     const quiet = <T>(fn: () => T): T => {
       const [log, err] = [console.log, console.error];
       console.log = () => undefined;
@@ -604,15 +768,13 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       path.join(d, "raw.sarif"),
       "--raw-scan",
       path.join(d, "raw.json"),
-      "--triage",
-      TRIAGE,
       "--out",
       path.join(d, "out.sarif"),
       "--report",
       path.join(d, "report.json"),
     ];
 
-    it("success: 42 results written, report ok, and the output is itself a well-formed Slither SARIF", () => {
+    it("success: 42 results written, report ok with its integrity checks, and the output is itself a well-formed Slither SARIF", () => {
       const d = inputs(baseline());
       expect(quiet(() => main(argv(d)))).to.equal(0);
       const out = fs.readFileSync(path.join(d, "out.sarif"), "utf8");
@@ -620,19 +782,38 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       const report = JSON.parse(fs.readFileSync(path.join(d, "report.json"), "utf8"));
       expect(report.ok).to.equal(true);
       expect(report.counts).to.deep.equal(EXPECTED);
-      expect(report.bijection.matched).to.equal(42);
+      expect(report.integrity.checks).to.have.length(6);
+      expect(report.adjudication).to.match(/^NOT CONSULTED/);
+      expect(report).to.not.have.property("bijection");
     });
 
-    it("failure: NO output file, and a report naming the failure", () => {
-      const fs_ = baseline().filter(
-        (f) => !(isOwnFinding(f as SlitherFinding) && semanticId(f as SlitherFinding) === DOUBLED),
-      );
+    it("an INTEGRITY failure (ambiguous mapping): NO output file, exit 1, and a report naming the failure", () => {
+      const fs_ = baseline();
+      const g = clone(fs_[firstOf(fs_, SINGLE)]);
+      const last = g.elements[g.elements.length - 1].source_mapping;
+      last.lines = last.lines.map((n: number) => n + 1000);
+      fs_.push(g);
       const d = inputs(fs_);
       expect(quiet(() => main(argv(d)))).to.equal(1);
       expect(fs.existsSync(path.join(d, "out.sarif"))).to.equal(false);
       const report = JSON.parse(fs.readFileSync(path.join(d, "report.json"), "utf8"));
       expect(report.ok).to.equal(false);
-      expect(report.failure.code).to.equal("TRIAGE_BIJECTION_FAILED");
+      expect(report.failure.code).to.equal("AMBIGUOUS_MAPPING");
+    });
+
+    it("a TRIAGE-ONLY divergence is not a projection failure: the 41 still present are written (exit 0)", () => {
+      const fs_ = baseline().filter(
+        (f) => !(isOwnFinding(f as SlitherFinding) && semanticId(f as SlitherFinding) === DOUBLED),
+      );
+      const d = inputs(fs_);
+      expect(quiet(() => main(argv(d)))).to.equal(0);
+      expect(parseRawSarif(fs.readFileSync(path.join(d, "out.sarif"), "utf8")).runs[0].results).to.have.length(41);
+    });
+
+    it("refuses --triage: presentation never consults adjudication (usage error, nothing written)", () => {
+      const d = inputs(baseline());
+      expect(quiet(() => main([...argv(d), "--triage", TRIAGE]))).to.equal(2);
+      expect(fs.existsSync(path.join(d, "out.sarif"))).to.equal(false);
     });
 
     it("refuses to run over a pre-existing output (exclusive create, no check-then-write race), leaving it untouched", () => {
@@ -646,7 +827,7 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
     });
   });
 
-  describe("F. workflow wiring: complete raw output preserved, only the validated projection reaches code scanning", () => {
+  describe("F. workflow wiring: raw output preserved; upload gated by projection integrity ONLY; triage still fails the job", () => {
     function workflowWith(replace: [string, string]): string {
       const original = fs.readFileSync(WORKFLOW_PATH, "utf8");
       expect(original, `mutation anchor absent: ${replace[0]}`).to.contain(replace[0]);
@@ -671,10 +852,96 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       return file;
     }
 
-    it("the real workflow satisfies the projection contract, and still matches the pinned Slither semantics", () => {
-      expect(() => assertWorkflowSarifProjectionContract()).to.not.throw();
+    const UPLOAD_IF = "if: ${{ always() && steps.sarif-projection.outcome == 'success' }}";
+    const TRIAGE_STEP = "      - name: Validate scanner triage completeness\n";
+    const TRIAGE_IF = "        if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}";
+
+    it("the real workflow satisfies the contract: upload depends on the projection ALONE and precedes the triage gate", () => {
+      const gate = assertWorkflowSarifProjectionContract();
+      expect(gate).to.deep.equal({
+        projectionStepId: "sarif-projection",
+        conditionStepRefs: ["sarif-projection"],
+        usesAlways: true,
+        precedesTriageGate: true,
+      });
       expect(() => assertWorkflowMatchesPinnedConfig()).to.not.throw();
       expect(() => assertWorkflowOutputContract()).to.not.throw();
+    });
+
+    it("KILL: the upload conditioned on triage success, via a step reference or via success()", () => {
+      const onTriage = workflowWith([
+        UPLOAD_IF,
+        "if: ${{ always() && steps.sarif-projection.outcome == 'success' && steps.triage.outcome == 'success' }}",
+      ]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(onTriage), "WORKFLOW_CONTRACT");
+      const viaSuccess = workflowWith([
+        UPLOAD_IF,
+        "if: ${{ success() && steps.sarif-projection.outcome == 'success' }}",
+      ]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(viaSuccess), "WORKFLOW_CONTRACT");
+      const noAlways = workflowWith([UPLOAD_IF, "if: ${{ steps.sarif-projection.outcome == 'success' }}"]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(noAlways), "WORKFLOW_CONTRACT");
+    });
+
+    it("KILL: the upload moved AFTER the triage gate", () => {
+      const late = workflowMovingStepBefore(
+        "Upload projected SARIF to GitHub Code Scanning",
+        "Verify scanner receipt byte identity",
+      );
+      expectFailure(() => assertWorkflowSarifProjectionContract(late), "WORKFLOW_CONTRACT");
+    });
+
+    it("KILL: a failed projection allowed to pass the job (continue-on-error on the projection step)", () => {
+      const wf = workflowWith([
+        "        id: sarif-projection\n",
+        "        id: sarif-projection\n        continue-on-error: true\n",
+      ]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(wf), "WORKFLOW_CONTRACT");
+    });
+
+    it("KILL: the projection handed the triage (presentation must never read adjudication)", () => {
+      const wf = workflowWith([
+        "--raw-scan prototype/vnext-kernel/slither-raw.json \\",
+        "--raw-scan prototype/vnext-kernel/slither-raw.json --triage prototype/vnext-kernel/slither-triage.json \\",
+      ]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(wf), "WORKFLOW_CONTRACT");
+    });
+
+    it("KILL: the triage gate made conditional on the projection, or allowed to pass on failure", () => {
+      const conditional = workflowWith([
+        `${TRIAGE_STEP}${TRIAGE_IF}`,
+        `${TRIAGE_STEP}        if: \${{ always() && steps.sarif-projection.outcome == 'success' }}`,
+      ]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(conditional), "WORKFLOW_CONTRACT");
+      const soft = workflowWith([TRIAGE_STEP, `${TRIAGE_STEP}        continue-on-error: true\n`]);
+      expectFailure(() => assertWorkflowSarifProjectionContract(soft), "WORKFLOW_CONTRACT");
+    });
+
+    it("a malformed or ambiguous projection cannot upload: its step fails with NO file, and the upload requires that step's success", () => {
+      const gate = assertWorkflowSarifProjectionContract();
+      expect(gate.conditionStepRefs).to.deep.equal([gate.projectionStepId]);
+      const d = fs.mkdtempSync(path.join(os.tmpdir(), "proj-bad-"));
+      fs.writeFileSync(path.join(d, "raw.sarif"), "{not json");
+      fs.writeFileSync(path.join(d, "raw.json"), scanText(B));
+      const [log, err] = [console.log, console.error];
+      console.log = () => undefined;
+      console.error = () => undefined;
+      let rc: number;
+      try {
+        rc = main([
+          "--raw-sarif",
+          path.join(d, "raw.sarif"),
+          "--raw-scan",
+          path.join(d, "raw.json"),
+          "--out",
+          path.join(d, "out.sarif"),
+        ]);
+      } finally {
+        console.log = log;
+        console.error = err;
+      }
+      expect(rc).to.equal(1);
+      expect(fs.existsSync(path.join(d, "out.sarif"))).to.equal(false);
     });
 
     it("KILL: upload-sarif pointed back at the raw SARIF", () => {
@@ -707,17 +974,17 @@ describe("GitHub SARIF projection of the vNext Slither run", () => {
       expectFailure(() => assertWorkflowSarifProjectionContract(wf), "WORKFLOW_CONTRACT");
     });
 
-    it("KILL: projecting before the triage gate, or preserving raw output only after it", () => {
-      const early = workflowMovingStepBefore(
+    it("KILL: projecting only after the triage gate, or preserving raw output only after the projection", () => {
+      const lateProjection = workflowMovingStepBefore(
         "Project SARIF to distinct project-owned findings",
-        "Validate scanner triage completeness",
+        "Verify scanner receipt byte identity",
       );
-      expectFailure(() => assertWorkflowSarifProjectionContract(early), "WORKFLOW_CONTRACT");
-      const late = workflowMovingStepBefore(
+      expectFailure(() => assertWorkflowSarifProjectionContract(lateProjection), "WORKFLOW_CONTRACT");
+      const lateRaw = workflowMovingStepBefore(
         "Upload raw Slither SARIF (complete, diagnostic)",
         "Verify publication container",
       );
-      expectFailure(() => assertWorkflowSarifProjectionContract(late), "WORKFLOW_CONTRACT");
+      expectFailure(() => assertWorkflowSarifProjectionContract(lateRaw), "WORKFLOW_CONTRACT");
     });
   });
 });

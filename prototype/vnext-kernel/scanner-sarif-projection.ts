@@ -58,18 +58,28 @@
  * be equal, so a SARIF result with no raw finding, or a raw finding the SARIF does not represent,
  * fails. A signature whose raw findings disagree on anything is AMBIGUOUS and fails.
  *
- * FAIL-CLOSED CONTRACT. No output file is written on any failure, and the workflow uploads only
- * after this step succeeds: malformed raw JSON or SARIF; an unrecognised SARIF shape (exact key
- * sets, measured from the pinned Slither); an unmapped or unrepresented result; an ambiguous
- * mapping; a project finding that references a dependency; project code inside a dependency
- * finding; two distinct project findings that would collapse; a projected set that differs from
- * the isOwnFinding set; an empty projection; and a projected set that is not a BIJECTION with the
- * triage identities in slither-triage.json.
+ * TWO AUTHORITIES, KEPT APART (owner ruling on #207):
+ *
+ *   PROJECTION INTEGRITY -- "can the raw output be safely reduced to exactly one SARIF result per
+ *   distinct project-owned finding?" -- GATES THE GITHUB UPLOAD. `projectDistinctOwnCode` computes
+ *   the projection and fails closed on: malformed raw JSON or SARIF; an unrecognised SARIF shape
+ *   (exact key sets, measured from the pinned Slither); an unmapped or unrepresented result; an
+ *   ambiguous mapping; a project finding that references a dependency; project code inside a
+ *   dependency finding; two distinct project findings that would collapse. `validateProjectionIntegrity`
+ *   then re-derives, from the raw texts, the post-conditions: an in-order byte-identical subset, a
+ *   non-empty own-code set, one result per identity, the isOwnFinding set exactly, no silent
+ *   collapse, conserved counts. The CLI writes the output (exclusive create) ONLY when both pass.
+ *
+ *   ADJUDICATION COMPLETENESS -- "has every distinct project-owned finding been triaged?" -- is a
+ *   SEPARATE CI gate that must never suppress presentation. Its CI authority is the unmodified
+ *   `generate-scanner-evidence.ts --validate` step on the raw JSON; `validateProjectionAgainstTriage`
+ *   states the same property on the projection's identities and names every untriaged and stale
+ *   identity. The CLI does not read the triage at all, so a NEW, structurally valid, untriaged
+ *   own-code finding is uploaded (visible in Code Scanning) while the triage gate turns CI red.
  *
  *   npx tsx prototype/vnext-kernel/scanner-sarif-projection.ts \
  *     --raw-sarif slither-vnext-kernel-results.sarif \
  *     --raw-scan prototype/vnext-kernel/slither-raw.json \
- *     --triage prototype/vnext-kernel/slither-triage.json \
  *     --out slither-vnext-kernel-results.github.sarif \
  *     --report slither-vnext-kernel-projection-report.json
  */
@@ -85,7 +95,7 @@ export const RAW_SCAN_PATH = "prototype/vnext-kernel/slither-raw.json";
 export const TRIAGE_PATH = "prototype/vnext-kernel/slither-triage.json";
 export const PROJECTION_REPORT_PATH = "slither-vnext-kernel-projection-report.json";
 export const SARIF_CATEGORY = "slither-vnext-kernel";
-export const REPORT_SCHEMA = "vnext-kernel-sarif-projection-report.v1";
+export const REPORT_SCHEMA = "vnext-kernel-sarif-projection-report.v2";
 
 export const DEPENDENCY_SEGMENT = "node_modules";
 /** The only detectors whose dependency-primary findings may carry project elements and be dropped. */
@@ -102,12 +112,16 @@ export type FailureCode =
   | "PROJECT_FINDING_REFERENCES_DEPENDENCY"
   | "PROJECT_CODE_IN_DEPENDENCY_FINDING"
   | "DISTINCT_FINDINGS_WOULD_COLLAPSE"
-  | "TRIAGE_SCOPE_DISAGREEMENT"
+  | "OWN_SCOPE_DISAGREEMENT"
   | "EMPTY_PROJECTION"
+  | "DUPLICATE_PROJECTED_IDENTITY"
+  | "INCONSISTENT_COUNTS"
   | "PROJECTION_NOT_A_SUBSET"
-  | "MALFORMED_TRIAGE"
-  | "TRIAGE_BIJECTION_FAILED"
   | "PRE_EXISTING_OUTPUT"
+  | "USAGE"
+  // Adjudication completeness -- NEVER gates the upload.
+  | "MALFORMED_TRIAGE"
+  | "TRIAGE_COMPLETENESS_FAILED"
   | "WORKFLOW_CONTRACT";
 
 export class ProjectionError extends Error {
@@ -402,10 +416,13 @@ export interface Projection {
 }
 
 /**
- * Builds the GitHub projection from the two raw outputs of ONE Slither execution. Pure: reads no
- * files and no git, so the same inputs give the same answer anywhere. Throws ProjectionError.
+ * PRESENTATION, step 1 of 2: computes the one-result-per-distinct-project-owned-finding projection
+ * from the two raw outputs of ONE Slither execution. Pure (no files, no git, no triage), and fails
+ * closed on every mapping, classification and collapse violation it meets while computing. Its
+ * post-conditions are re-derived independently by `validateProjectionIntegrity`; use
+ * `buildGitHubProjection` for both. Never consults adjudication.
  */
-export function projectSarif(rawScanText: string, rawSarifText: string): Projection {
+export function projectDistinctOwnCode(rawScanText: string, rawSarifText: string): Projection {
   const findings = parseRawScan(rawScanText);
   const log = parseRawSarif(rawSarifText);
   const results = log.runs[0].results;
@@ -451,7 +468,7 @@ export function projectSarif(rawScanText: string, rawSarifText: string): Project
     const o = classifyOwnership(f);
     if ((o === "OWN") !== isOwnFinding(f)) {
       fail(
-        "TRIAGE_SCOPE_DISAGREEMENT",
+        "OWN_SCOPE_DISAGREEMENT",
         `${f.check} at ${canonicalLocator(f)}: projection says ${o}, isOwnFinding says ${String(isOwnFinding(f))}`,
       );
     }
@@ -549,24 +566,7 @@ export function projectSarif(rawScanText: string, rawSarifText: string): Project
     projectedResults.push(r);
   }
 
-  // 5. INDEPENDENT CROSS-CHECKS.
-  const ownIds = new Set(findings.filter((f) => isOwnFinding(f)).map((f) => semanticId(f)));
-  const projectedIds = [...emitted.keys()];
-  if (projectedIds.length !== ownIds.size || projectedIds.some((id) => !ownIds.has(id))) {
-    fail(
-      "TRIAGE_SCOPE_DISAGREEMENT",
-      `projected ${projectedIds.length} identities; the isOwnFinding set has ${ownIds.size}`,
-    );
-  }
-  if (projectedResults.length === 0) {
-    fail(
-      "EMPTY_PROJECTION",
-      "no project-owned finding would be uploaded; for this governed lane an empty projection is not credible",
-    );
-  }
   const projectedLog: SarifLog = { ...log, runs: [{ ...log.runs[0], results: projectedResults }] };
-  assertProjectionIsSubset(log, projectedLog);
-
   const ownInstances = findings.filter((f) => ownership.get(f) === "OWN").length;
   return {
     log: projectedLog,
@@ -604,8 +604,97 @@ export function assertProjectionIsSubset(raw: SarifLog, projected: SarifLog): vo
   }
 }
 
+export interface IntegrityReport {
+  checks: string[];
+  projectedIdentities: number;
+}
+
+/**
+ * PRESENTATION, step 2 of 2: re-derives the projection's post-conditions from the RAW TEXTS,
+ * independently of how `projectDistinctOwnCode` computed them. Everything here gates the upload;
+ * nothing here consults the triage.
+ */
+export function validateProjectionIntegrity(rawScanText: string, rawSarifText: string, p: Projection): IntegrityReport {
+  const findings = parseRawScan(rawScanText);
+  const raw = parseRawSarif(rawSarifText);
+  const results = p.log.runs[0].results;
+  const checks: string[] = [];
+
+  // Exactly two transformations: every byte outside the results is carried; the results are an
+  // in-order, byte-identical subset of the raw ones.
+  assertProjectionIsSubset(raw, p.log);
+  checks.push("subset");
+
+  if (results.length === 0) {
+    fail(
+      "EMPTY_PROJECTION",
+      "no project-owned finding would be uploaded; for this governed lane an empty projection is not credible",
+    );
+  }
+  checks.push("non-empty");
+
+  const ids = p.projected.map((x) => x.semanticId);
+  if (new Set(ids).size !== ids.length || ids.length !== results.length) {
+    fail("DUPLICATE_PROJECTED_IDENTITY", `${results.length} result(s) for ${new Set(ids).size} distinct identit(ies)`);
+  }
+  checks.push("one-result-per-identity");
+
+  // The own set, recomputed with the triage MACHINERY's scope predicate and identity (not its
+  // register): presentation must show every project-owned identity the scanner reported.
+  const own = findings.filter((f) => isOwnFinding(f));
+  const ownIds = new Set(own.map((f) => semanticId(f)));
+  if (ids.length !== ownIds.size || ids.some((id) => !ownIds.has(id))) {
+    fail("OWN_SCOPE_DISAGREEMENT", `projected ${ids.length} identities; the isOwnFinding set has ${ownIds.size}`);
+  }
+  checks.push("own-set");
+
+  // No silent collapse: every raw SARIF result of every own finding is byte-identical to the one
+  // result projected for its identity.
+  const projectedById = new Map(ids.map((id, i) => [id, JSON.stringify(results[i])]));
+  const rawBySig = new Map<string, string[]>();
+  for (const r of raw.runs[0].results) {
+    const k = resultSignature(r);
+    (rawBySig.get(k) || rawBySig.set(k, []).get(k)!).push(JSON.stringify(r));
+  }
+  for (const f of own) {
+    const expected = projectedById.get(semanticId(f));
+    const actual = rawBySig.get(findingSignature(f)) || [];
+    if (actual.length === 0 || actual.some((s) => s !== expected)) {
+      fail(
+        "DISTINCT_FINDINGS_WOULD_COLLAPSE",
+        `${f.check} at ${canonicalLocator(f)} is not represented by its identity's result`,
+      );
+    }
+  }
+  checks.push("no-silent-collapse");
+
+  const c = p.counts;
+  if (
+    c.rawSarifResults !== raw.runs[0].results.length ||
+    c.rawScanFindings !== findings.length ||
+    c.ownInstances !== own.length ||
+    c.ownInstances + c.dependencyOnlyInstances + c.mixedDependencyPrimaryExcludedInstances !== c.rawSarifResults ||
+    c.ownDistinct + c.ownCopiesCollapsed !== c.ownInstances ||
+    c.projectedResults !== results.length ||
+    c.ownDistinct !== ids.length
+  ) {
+    fail("INCONSISTENT_COUNTS", `counts do not conserve: ${JSON.stringify(c)}`);
+  }
+  checks.push("count-conservation");
+  return { checks, projectedIdentities: ids.length };
+}
+
+/** The ONLY upload-gating entry point: compute, then independently validate. Never reads triage. */
+export function buildGitHubProjection(
+  rawScanText: string,
+  rawSarifText: string,
+): { projection: Projection; integrity: IntegrityReport } {
+  const projection = projectDistinctOwnCode(rawScanText, rawSarifText);
+  return { projection, integrity: validateProjectionIntegrity(rawScanText, rawSarifText, projection) };
+}
+
 // ---------------------------------------------------------------------------------------------
-// Triage bijection
+// Adjudication completeness -- a SEPARATE authority. Never gates the GitHub upload.
 // ---------------------------------------------------------------------------------------------
 
 export function loadTriageIdentities(text: string): Set<string> {
@@ -623,36 +712,51 @@ export function loadTriageIdentities(text: string): Set<string> {
   return new Set(ids);
 }
 
-export interface Bijection {
+export interface TriageComparison {
+  /** True exactly when the projected identities and the triage register are a bijection. */
+  complete: boolean;
   triageEntries: number;
   projected: number;
   matched: number;
-  missing: string[];
-  extra: string[];
+  /** Projected (scanner-reported, presented) identities with NO triage entry: new, unadjudicated. */
+  untriaged: string[];
+  /** Triage entries that match NO projected identity: adjudications of findings no longer reported. */
+  stale: string[];
 }
 
-/** Every triaged identity projects to exactly one result, and nothing else is projected. */
-export function assertTriageBijection(projected: ProjectedIdentity[], triage: Set<string>): Bijection {
+/**
+ * ADJUDICATION COMPLETENESS on the projection's identities. Pure and NON-THROWING on an incomplete
+ * register: it reports, it does not decide presentation. (A duplicated projected identity is a
+ * presentation defect, not an adjudication one, and is refused as such.)
+ */
+export function validateProjectionAgainstTriage(projected: ProjectedIdentity[], triage: Set<string>): TriageComparison {
   const ids = projected.map((p) => p.semanticId);
-  if (new Set(ids).size !== ids.length)
-    fail("TRIAGE_BIJECTION_FAILED", "a semantic identity is projected more than once");
-  const missing = [...triage].filter((id) => !ids.includes(id)).sort();
-  const extra = ids.filter((id) => !triage.has(id)).sort();
-  const b: Bijection = {
+  if (new Set(ids).size !== ids.length) {
+    fail("DUPLICATE_PROJECTED_IDENTITY", "a semantic identity is projected more than once");
+  }
+  const untriaged = ids.filter((id) => !triage.has(id)).sort();
+  const stale = [...triage].filter((id) => !ids.includes(id)).sort();
+  return {
+    complete: untriaged.length === 0 && stale.length === 0,
     triageEntries: triage.size,
     projected: ids.length,
-    matched: ids.length - extra.length,
-    missing,
-    extra,
+    matched: ids.length - untriaged.length,
+    untriaged,
+    stale,
   };
-  if (missing.length > 0 || extra.length > 0) {
+}
+
+/** Throws TRIAGE_COMPLETENESS_FAILED naming every untriaged and stale identity. */
+export function assertProjectionAgainstTriage(projected: ProjectedIdentity[], triage: Set<string>): TriageComparison {
+  const t = validateProjectionAgainstTriage(projected, triage);
+  if (!t.complete) {
     fail(
-      "TRIAGE_BIJECTION_FAILED",
-      `triage ${triage.size} <-> projected ${ids.length}: ${missing.length} triaged identit(ies) not projected ` +
-        `[${missing.join(", ")}], ${extra.length} projected identit(ies) not triaged [${extra.join(", ")}]`,
+      "TRIAGE_COMPLETENESS_FAILED",
+      `triage ${t.triageEntries} <-> projected ${t.projected}: ${t.untriaged.length} untriaged identit(ies) ` +
+        `[${t.untriaged.join(", ")}], ${t.stale.length} stale triage entr(ies) [${t.stale.join(", ")}]`,
     );
   }
-  return b;
+  return t;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -704,12 +808,28 @@ function slitherJobSteps(text: string): WorkflowStep[] {
   return steps;
 }
 
+/** The facts that decide whether code scanning receives the projection, parsed from the workflow. */
+export interface UploadGate {
+  projectionStepId: string;
+  /** Every `steps.<id>` the upload condition references. Must be exactly the projection step. */
+  conditionStepRefs: string[];
+  usesAlways: boolean;
+  /** True when the upload step runs BEFORE the triage gate, which then cannot influence it at all. */
+  precedesTriageGate: boolean;
+}
+
 /**
- * Throws unless the vNext Slither job preserves the complete raw output as artifacts BEFORE any
- * gate, validates triage and receipt against the RAW JSON, projects only after that, and hands
- * code scanning the projection -- and only a projection whose step succeeded.
+ * Throws unless the vNext Slither job:
+ *   - preserves the complete raw JSON and raw SARIF as artifacts under always(), before any gate;
+ *   - projects WITHOUT consulting the triage (a failed projection fails the job: no
+ *     continue-on-error), and uploads ONLY that projection, conditioned solely on the projection
+ *     step's success (always() + steps.<projection>.outcome == 'success');
+ *   - uploads BEFORE the triage gate, so adjudication can never suppress presentation;
+ *   - keeps the triage gate independent (always(), no step condition) and failing
+ *     (no continue-on-error), and the receipt byte-identity check after it.
+ * Returns the parsed upload gate for callers that want to reason about it.
  */
-export function assertWorkflowSarifProjectionContract(path: string = WORKFLOW_PATH): void {
+export function assertWorkflowSarifProjectionContract(path: string = WORKFLOW_PATH): UploadGate {
   const steps = slitherJobSteps(fs.readFileSync(path, "utf8"));
   const idx = (pred: (s: WorkflowStep) => boolean, what: string) => {
     const hits = steps.map((s, i) => (pred(s) ? i : -1)).filter((i) => i >= 0);
@@ -750,19 +870,30 @@ export function assertWorkflowSarifProjectionContract(path: string = WORKFLOW_PA
 
   const p = steps[projection];
   const projectionId = p.field("id");
-  if (!projectionId) fail("WORKFLOW_CONTRACT", `${path}: the projection step needs an id`);
+  if (!projectionId) return fail("WORKFLOW_CONTRACT", `${path}: the projection step needs an id`);
+  if (!(p.field("if") || "").includes("always()")) {
+    fail("WORKFLOW_CONTRACT", `${path}: the projection step must run under always()`);
+  }
+  // An integrity failure must fail the job, not only withhold the upload.
+  if (p.field("continue-on-error") !== undefined && p.field("continue-on-error") !== "false") {
+    fail("WORKFLOW_CONTRACT", `${path}: a failed projection must fail the job; continue-on-error is not allowed on it`);
+  }
+  // Token adjacency, not a pattern built from the value: `flag` immediately followed by `value`.
+  const tokens = p.body.split(/\s+/);
   for (const [flag, value] of [
     ["--raw-sarif", RAW_SARIF_PATH],
     ["--raw-scan", RAW_SCAN_PATH],
-    ["--triage", TRIAGE_PATH],
     ["--out", PROJECTED_SARIF_PATH],
   ]) {
-    // Token adjacency, not a pattern built from the value: `flag` immediately followed by `value`.
-    const tokens = p.body.split(/\s+/);
     if (!tokens.some((t, i) => t === flag && tokens[i + 1] === value)) {
       fail("WORKFLOW_CONTRACT", `${path}: the projection step must pass ${flag} ${value}`);
     }
   }
+  // PRESENTATION NEVER READS ADJUDICATION.
+  if (tokens.includes("--triage") || p.body.includes(TRIAGE_PATH)) {
+    fail("WORKFLOW_CONTRACT", `${path}: the projection step must not consult the triage (${TRIAGE_PATH})`);
+  }
+
   const u = steps[upload];
   if (u.field("sarif_file") !== PROJECTED_SARIF_PATH) {
     fail(
@@ -773,60 +904,107 @@ export function assertWorkflowSarifProjectionContract(path: string = WORKFLOW_PA
   if (u.field("category") !== SARIF_CATEGORY)
     fail("WORKFLOW_CONTRACT", `${path}: upload-sarif category must stay ${SARIF_CATEGORY}`);
   const uploadCondition = (u.field("if") || "").replace(/\s+/g, " ");
-  if (!uploadCondition.includes(`steps.${String(projectionId)}.outcome == 'success'`)) {
+  if (!uploadCondition.includes(`steps.${projectionId}.outcome == 'success'`)) {
     fail(
       "WORKFLOW_CONTRACT",
-      `${path}: upload-sarif must be conditioned on steps.${String(projectionId)}.outcome == 'success'`,
+      `${path}: upload-sarif must be conditioned on steps.${projectionId}.outcome == 'success'`,
     );
   }
+  // Conditioned on the projection ALONE: no other step reference, always() so no earlier failure
+  // can skip it by default sequencing, and no success(), which would depend on EVERY earlier step.
+  const conditionStepRefs = uploadCondition
+    .split("steps.")
+    .slice(1)
+    .map((s) => s.split(".")[0]);
+  if (conditionStepRefs.some((r) => r !== projectionId)) {
+    fail(
+      "WORKFLOW_CONTRACT",
+      `${path}: upload-sarif may depend on the projection step only, not on [${conditionStepRefs.join(", ")}]`,
+    );
+  }
+  if (!uploadCondition.includes("always()") || uploadCondition.includes("success()")) {
+    fail("WORKFLOW_CONTRACT", `${path}: upload-sarif must run under always() and must not use success()`);
+  }
+
+  // THE TRIAGE GATE: independent of the projection, and it must still fail the job.
+  const v = steps[validate];
+  const validateCondition = (v.field("if") || "").replace(/\s+/g, " ");
+  if (!validateCondition.includes("always()") || validateCondition.includes("steps.")) {
+    fail("WORKFLOW_CONTRACT", `${path}: the triage gate must run under always() and depend on no step's outcome`);
+  }
+  if (v.field("continue-on-error") !== undefined && v.field("continue-on-error") !== "false") {
+    fail("WORKFLOW_CONTRACT", `${path}: the triage gate must fail the job; continue-on-error is not allowed on it`);
+  }
+
   const order: Array<[number, number, string]> = [
     [slither, rawJsonArtifact, "Slither before the raw JSON artifact"],
-    [rawJsonArtifact, validate, "raw JSON artifact before triage validation"],
-    [rawSarifArtifact, validate, "raw SARIF artifact before triage validation"],
-    [validate, projection, "triage validation before projection"],
-    [receipt, projection, "receipt byte identity before projection"],
+    [rawJsonArtifact, projection, "raw JSON artifact before the projection"],
+    [rawSarifArtifact, projection, "raw SARIF artifact before the projection"],
     [projection, upload, "projection before upload-sarif"],
+    [upload, validate, "upload-sarif before the triage gate (adjudication can never suppress presentation)"],
+    [validate, receipt, "triage gate before the receipt byte-identity check"],
   ];
   for (const [a, b, what] of order) if (!(a < b)) fail("WORKFLOW_CONTRACT", `${path}: ordering violated: ${what}`);
+  return { projectionStepId: projectionId, conditionStepRefs, usesAlways: true, precedesTriageGate: upload < validate };
 }
 
 // ---------------------------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------------------------
 
+const CLI_FLAGS = new Set(["raw-sarif", "raw-scan", "out", "report"]);
+
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (let i = 0; i < argv.length; i++) {
     const tok = argv[i];
-    if (!tok.startsWith("--") || i + 1 >= argv.length) throw new Error(`unexpected argument ${tok}`);
-    out[tok.slice(2)] = argv[++i];
+    if (!tok.startsWith("--") || i + 1 >= argv.length) fail("USAGE", `unexpected argument ${tok}`);
+    const flag = tok.slice(2);
+    if (!CLI_FLAGS.has(flag)) {
+      fail(
+        "USAGE",
+        `unknown flag --${flag}. The GitHub projection takes only --raw-sarif, --raw-scan, --out and --report: ` +
+          `presentation never consults adjudication (the triage gate is a separate CI step).`,
+      );
+    }
+    out[flag] = argv[++i];
   }
   return out;
 }
 
+/**
+ * Writes the projection only when PROJECTION INTEGRITY holds; exits 1 (nothing written) otherwise.
+ * Adjudication completeness is deliberately not consulted: it is the separate triage gate.
+ */
 export function main(argv: string[]): number {
-  const args = parseArgs(argv);
+  let args: Record<string, string>;
+  try {
+    args = parseArgs(argv);
+  } catch (e) {
+    console.error(`SARIF projection usage error; nothing will be uploaded. ${(e as Error).message}`);
+    return 2;
+  }
   const rawSarifPath = args["raw-sarif"] ?? RAW_SARIF_PATH;
   const rawScanPath = args["raw-scan"] ?? RAW_SCAN_PATH;
-  const triagePath = args["triage"] ?? TRIAGE_PATH;
   const outPath = args["out"] ?? PROJECTED_SARIF_PATH;
   const reportPath = args["report"];
-  const report: Record<string, unknown> = { schema: REPORT_SCHEMA, ok: false };
+  const report: Record<string, unknown> = {
+    schema: REPORT_SCHEMA,
+    ok: false,
+    adjudication: "NOT CONSULTED: completeness is the separate triage gate (generate-scanner-evidence.ts --validate)",
+  };
   try {
     const rawSarifText = fs.readFileSync(rawSarifPath, "utf8");
     const rawScanText = fs.readFileSync(rawScanPath, "utf8");
-    const triageText = fs.readFileSync(triagePath, "utf8");
     report.inputs = {
       rawSarif: { path: rawSarifPath, sha256: sha256(rawSarifText) },
       rawScan: { path: rawScanPath, sha256: sha256(rawScanText) },
-      triage: { path: triagePath, sha256: sha256(triageText) },
     };
-    const projection = projectSarif(rawScanText, rawSarifText);
+    const { projection, integrity } = buildGitHubProjection(rawScanText, rawSarifText);
     report.counts = projection.counts;
     report.projected = projection.projected;
     report.excludedMixed = projection.excludedMixed;
-    const bijection = assertTriageBijection(projection.projected, loadTriageIdentities(triageText));
-    report.bijection = bijection;
+    report.integrity = integrity;
     // EXCLUSIVE CREATE ("wx"): refusing a pre-existing output is atomic with the write itself. A
     // separate existence check followed by a write is a check-then-use race (js/file-system-race).
     try {
@@ -850,7 +1028,8 @@ export function main(argv: string[]): number {
       );
     }
     console.log(
-      `Triage bijection: ${bijection.triageEntries} triaged <-> ${bijection.projected} projected, ${bijection.matched} matched. OK.`,
+      `Projection integrity: ${integrity.checks.join(", ")} -- OK for ${integrity.projectedIdentities} identit(ies). ` +
+        `Adjudication completeness is not consulted here; the triage gate decides it separately.`,
     );
     return 0;
   } catch (e) {
