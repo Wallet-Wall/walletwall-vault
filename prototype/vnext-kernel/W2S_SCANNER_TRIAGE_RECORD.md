@@ -320,7 +320,7 @@ Every one of the 29 carried-forward entries was re-read against `77ea92cf`
 with the question "does the rationale still hold on *this* kernel?" — not
 "was it accepted before?".
 
-### 6.1 `reentrancy-events | VaultKernelFactoryPrototype.deployVault` — SEMANTICALLY_CHANGED — `FALSE_POSITIVE`
+### 6.1 `reentrancy-events | VaultKernelFactoryPrototype.deployVault` — SEMANTICALLY_CHANGED — `FALSE_POSITIVE` — *HISTORICAL: accurate for `77ea92cf` only; its premise that `initialize` makes no external call is false since SD-11 (`b058715b`). See §11.*
 
 The construct changed *before* W2, in #187 (`3d2aede8`, SD-6/SD-7): `pqKey`
 became a forwarded parameter of `deployVault` and `initialize`, so the
@@ -444,3 +444,22 @@ misstated the solhint total of the tree it names would not be evidence.
   change, outside an evidence-only lane.
 - CI does not run `--validate` (the action emits SARIF, not `--json`); the
   gate is local. Adding it means touching the pinned action's arguments.
+
+## 11. Post-record correction (scanner-premise correction lane)
+
+§6.1 above is kept verbatim as the record of what was true at this lane's base
+`77ea92cf`. Its load-bearing premise, that the clone's `initialize` makes no
+external call, stopped being true at SD-11 (`b058715b`), when `initialize` began
+calling `_requireAdmissibleVerifier`: one STATICCALL to the verifier authority the
+factory binds immutably. Slither's message names only the outer `initialize(g,pqKey)`
+call, so the finding never changed and the entry was carried forward without its
+prose being re-read.
+
+The classification is unchanged (`FALSE_POSITIVE`). The current rationale lives
+in `slither-triage.json` (semanticId `951fd542…`). It rests on the static context
+propagating into the authority's callbacks, so a callback cannot CREATE2, SSTORE
+or LOG. It also rests on `_initialized` being set before the call, and on the
+factory holding no mutable state. `test/ScannerAdjudicationPremises.test.ts` P-349
+pins those premises by execution. The same lane corrected the `uninitialized-local`
+rationale for `egress`'s `moved` (semanticId `6e4c498d…`, pinned by P-148), which
+this record does not discuss.
