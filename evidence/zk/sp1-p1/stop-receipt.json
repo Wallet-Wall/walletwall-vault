@@ -1,0 +1,563 @@
+{
+  "schema": "walletwall.sp1-p1-stop-receipt.v1",
+  "artifactType": "sp1-p1-assurance-stop-receipt",
+  "lane": "SP1-P1 real proof + verifier gateway provenance closure",
+  "verdict": "STOP_DESIGN_ISSUE",
+  "generatedAt": "2026-10-15T00:00:00.000Z",
+  "subject": {
+    "repository": "Wallet-Wall/walletwall-vault",
+    "measuredCommit": "6463caee352beda7a27009d29f1a48b42b063fd8",
+    "measuredTree": "6fea1db98b3404bb1def8aa5621538a6088efd56",
+    "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+    "sp1Pins": {
+      "sp1-zkvm": "=6.3.1",
+      "sp1-sdk": "=6.3.1",
+      "sp1-build": "=6.3.1"
+    },
+    "circuitVersion": "v6.1.0",
+    "sourceManifestSha256": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c"
+  },
+  "repositoryBindings": {
+    "sourceFiles": [
+      {
+        "path": "zkvm/guest/Cargo.lock",
+        "sha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48"
+      },
+      {
+        "path": "zkvm/guest/Cargo.toml",
+        "sha256": "e53c6d38fb597c4caa2f20c66433fddc6fb8fec98d458a62b375f76456ba6f3e"
+      },
+      {
+        "path": "zkvm/guest/src/bin/acvp.rs",
+        "sha256": "cbfcb5e980b2bdad724325621fd78deef0a4e65ca8c5f742e5c290fbb8c16c9c"
+      },
+      {
+        "path": "zkvm/guest/src/bin/withdrawal.rs",
+        "sha256": "5ce07f53dc61a23f2cc7d78b58169e95f42f14406dfb5b1b5346b235ecdb3c75"
+      },
+      {
+        "path": "zkvm/host/Cargo.lock",
+        "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+      },
+      {
+        "path": "zkvm/host/Cargo.toml",
+        "sha256": "089135867c60e92702dc25c337f5c166eeadb4df8d43cc6222868e9d4b269189"
+      },
+      {
+        "path": "zkvm/host/build.rs",
+        "sha256": "2e2a657ab94d9ba021af0a19879f74467b32b9041b429bcd9cc86e1e53451094"
+      },
+      {
+        "path": "zkvm/host/src/main.rs",
+        "sha256": "cc33889d7ce20774b9ba1e837014db47094086b75cd4c18646078f7d6b083ccd"
+      }
+    ],
+    "zkMldsaVerifierSha256": "2dfbebc00d2c6ab60c8cbd97c3ff28877084be0cbd2d6f16974c609afcdef53c",
+    "proverRunbookDirectsToGateway": true
+  },
+  "observations": [
+    {
+      "path": "evidence/zk/sp1-p1/observations/program-identity.raw.json",
+      "sha256": "19fe2cec6fbd5bc3edda5db0943e9101dd9a41d8ae32646a43d8fabb63e853dc"
+    },
+    {
+      "path": "evidence/zk/sp1-p1/observations/verifier-gateway.raw.json",
+      "sha256": "b23c37c8c3c3c2733a21ae26fad4fb305580f7dde823c0070970e00e70dfc5cf"
+    }
+  ],
+  "programIdentity": {
+    "environments": [
+      {
+        "id": "A",
+        "hostId": "developer-workstation",
+        "procedure": "repository-host-flow-local",
+        "embeddedCargoHome": "/home/sirmrdrgod/.cargo",
+        "image": null,
+        "withdrawal": {
+          "elfSha256": "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a",
+          "elfBytes": 206600,
+          "vkey": "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+        },
+        "acvp": {
+          "elfSha256": "c29e31fbf572d4c7c38f0bfaa16515ad407e76aabf7e7f10c922076149c04a89",
+          "elfBytes": 195792,
+          "vkey": "0x00217f15120057e91d1de1cf672a9c3588aecd098690d96899ee1e09a77f17d5"
+        }
+      },
+      {
+        "id": "B-host",
+        "hostId": "developer-workstation",
+        "procedure": "vendor-image-host-flow",
+        "embeddedCargoHome": "/root/.cargo",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      },
+      {
+        "id": "B-docker",
+        "hostId": "developer-workstation",
+        "procedure": "vendor-image-docker-mode",
+        "embeddedCargoHome": "/root/.cargo",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": null
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": null
+        }
+      },
+      {
+        "id": "C-host",
+        "hostId": "github-hosted-runner",
+        "procedure": "vendor-image-host-flow",
+        "embeddedCargoHome": "/root/.cargo",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      },
+      {
+        "id": "C-docker",
+        "hostId": "github-hosted-runner",
+        "procedure": "vendor-image-docker-mode",
+        "embeddedCargoHome": "/root/.cargo",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": null
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": null
+        }
+      }
+    ],
+    "withdrawal": {
+      "program": "mldsa65-withdrawal",
+      "groups": [
+        {
+          "elfSha256": "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a",
+          "vkeys": [
+            "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+          ],
+          "environments": [
+            "A"
+          ],
+          "hosts": [
+            "developer-workstation"
+          ],
+          "families": [
+            "repository-local"
+          ],
+          "vkeyCrossChecked": true
+        },
+        {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "vkeys": [
+            "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+          ],
+          "environments": [
+            "B-host",
+            "B-docker",
+            "C-host",
+            "C-docker"
+          ],
+          "hosts": [
+            "developer-workstation",
+            "github-hosted-runner"
+          ],
+          "families": [
+            "vendor-image"
+          ],
+          "vkeyCrossChecked": true
+        }
+      ],
+      "families": {
+        "repository-local": {
+          "hosts": [
+            "developer-workstation"
+          ],
+          "environments": [
+            "A"
+          ],
+          "identities": 1,
+          "reproducedAcrossIndependentHosts": false
+        },
+        "vendor-image": {
+          "hosts": [
+            "developer-workstation",
+            "github-hosted-runner"
+          ],
+          "environments": [
+            "B-host",
+            "B-docker",
+            "C-host",
+            "C-docker"
+          ],
+          "identities": 1,
+          "reproducedAcrossIndependentHosts": true
+        }
+      },
+      "contradictions": [],
+      "status": "PARTIALLY_ESTABLISHED",
+      "reason": "procedure family vendor-image reproduces one mldsa65-withdrawal identity on >= 2 independent hosts, but the observations hold 2 distinct identities (unresolved identity conflict; no canonical designation)"
+    },
+    "acvp": {
+      "program": "mldsa65-acvp",
+      "groups": [
+        {
+          "elfSha256": "c29e31fbf572d4c7c38f0bfaa16515ad407e76aabf7e7f10c922076149c04a89",
+          "vkeys": [
+            "0x00217f15120057e91d1de1cf672a9c3588aecd098690d96899ee1e09a77f17d5"
+          ],
+          "environments": [
+            "A"
+          ],
+          "hosts": [
+            "developer-workstation"
+          ],
+          "families": [
+            "repository-local"
+          ],
+          "vkeyCrossChecked": true
+        },
+        {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkeys": [
+            "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+          ],
+          "environments": [
+            "B-host",
+            "B-docker",
+            "C-host",
+            "C-docker"
+          ],
+          "hosts": [
+            "developer-workstation",
+            "github-hosted-runner"
+          ],
+          "families": [
+            "vendor-image"
+          ],
+          "vkeyCrossChecked": true
+        }
+      ],
+      "families": {
+        "repository-local": {
+          "hosts": [
+            "developer-workstation"
+          ],
+          "environments": [
+            "A"
+          ],
+          "identities": 1,
+          "reproducedAcrossIndependentHosts": false
+        },
+        "vendor-image": {
+          "hosts": [
+            "developer-workstation",
+            "github-hosted-runner"
+          ],
+          "environments": [
+            "B-host",
+            "B-docker",
+            "C-host",
+            "C-docker"
+          ],
+          "identities": 1,
+          "reproducedAcrossIndependentHosts": true
+        }
+      },
+      "contradictions": [],
+      "status": "PARTIALLY_ESTABLISHED",
+      "reason": "procedure family vendor-image reproduces one mldsa65-acvp identity on >= 2 independent hosts, but the observations hold 2 distinct identities (unresolved identity conflict; no canonical designation)"
+    },
+    "isolation": {
+      "holds": true,
+      "violations": []
+    },
+    "vkeyCrossCheck": {
+      "tool": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z)",
+      "purpose": "common-mode review: recompute each ELF's sha256 and its vkey outside the build environment, with Succinct's released cargo-prove binary instead of the repository's mldsa65-host (same upstream sp1-prover library; not an algorithm-level independent implementation)",
+      "ranOn": "developer workstation, WSL2 Ubuntu 26.04 (C ELFs taken from the run 38682655131 artifact)",
+      "results": 8
+    },
+    "mismatchCause": "Same sources and succinct toolchain (rustc 1.94.0-dev, LLVM 21.1.8); each ELF embeds the same 10 crate-registry source paths in panic Location strings, differing only in the builder's $CARGO_HOME prefix (sp1-build 6.3.1 passes no remap/trim-paths flag). The repository's local build is therefore bound to the builder's home directory."
+  },
+  "verifierGateway": {
+    "intendedTarget": "docs/ZK_Prover_Runbook.md §4: SP1_VERIFIER_ADDRESS = the canonical SP1 Groth16 verifier gateway (SP1VerifierGateway 0x397A5f7f3dBd538f23DE225B51f532c34448dA9B)",
+    "chains": [
+      {
+        "chainId": "1",
+        "block": 26195421,
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "proxySlotsSet": false,
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "ownerKind": "Safe 1.3.0 2-of-3 (modules: 0, guard: none)",
+        "ownerCanAddRoutes": true,
+        "liveRoutes": [
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "version": "v6.1.0"
+          }
+        ],
+        "frozenRoutes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "version": "v5.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "version": "v6.0.0"
+          }
+        ],
+        "routeEnumerationAgrees": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11917946,
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "proxySlotsSet": false,
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "ownerKind": "EOA (single key)",
+        "ownerCanAddRoutes": true,
+        "liveRoutes": [
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "version": "v6.1.0"
+          }
+        ],
+        "frozenRoutes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "version": "v5.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x2b4aeaf7",
+            "verifier": "0xf0f70E15e9259970481c4F33bD87C3e47f161dec",
+            "version": "v6.1.0"
+          }
+        ],
+        "routeEnumerationAgrees": true
+      }
+    ],
+    "bytesAttributed": {
+      "gateway": true,
+      "sp1VerifierGroth16V610": true,
+      "vkConstantsJoined": true
+    },
+    "stateReadsCorroborated": true,
+    "ownerMutable": true,
+    "status": "NOT_ESTABLISHED",
+    "reason": "the gateway's accepting relation is owner-mutable on chain 1 (Safe 1.3.0 2-of-3 (modules: 0, guard: none)) and chain 11155111 (EOA (single key)): addRoute widens it for every program vkey and freezeRoute removes it, with no WalletWall action; byte attribution does not change that",
+    "authoritySurface": [
+      "Who: the gateway owner (Ownable). Measured owner per chain is listed in `chains[].owner` / `ownerKind`.",
+      "addRoute(verifier): registers a new verifier under bytes4(VERIFIER_HASH); takes effect immediately for every caller and every program vkey (the proof's first 4 bytes select the route), so it can only widen the accepting relation.",
+      "freezeRoute(selector): permanently disables a route; proofs for it revert (a liveness lever over every ZKMLDSAVerifier pinned to the gateway).",
+      "Cannot: replace or remove an existing route's verifier, unfreeze a route, or upgrade the gateway's own code (no proxy, EIP-1967 slots empty).",
+      "Accepting relation today = union of the live routes on that chain; the prover, not WalletWall, chooses the route.",
+      "WalletWall control over the above: none. ZKMLDSAVerifier pins only the gateway address; the vault's own pqVerifier rotation is timelocked but does not observe gateway route changes."
+    ]
+  },
+  "proof": null,
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "low (construction)",
+      "summary": "ZKMLDSAVerifier.verify compares committedChainId != uint64(block.chainid): the cast truncates, so the verifier's own chain binding holds only for chain IDs below 2^64. The vault's EIP-712 domain still carries the full chainid."
+    },
+    {
+      "id": "F-2",
+      "severity": "informational",
+      "summary": "The journal's sigHash is never checked on chain. Not a defect (the signature is not an on-chain input; any valid ML-DSA signature over the digest authorizes), but it is not a binding."
+    },
+    {
+      "id": "F-3",
+      "severity": "design (trust model)",
+      "summary": "docs/ZK_Verifier_Production.md calls the SP1 verifier address an immutable trust root, and the runbook directs it at the owner-mutable gateway: address immutability is not relation immutability."
+    },
+    {
+      "id": "F-4",
+      "severity": "design (testnet)",
+      "summary": "On Sepolia the gateway owner is a single EOA and a release-candidate route (v4.0.0-rc.3, frozen on mainnet) is still live next to v6.1.0."
+    }
+  ],
+  "stopConditions": [
+    {
+      "condition": "two clean environments produce different withdrawal vkeys",
+      "phase": "1",
+      "triggered": true,
+      "evidence": "ce057748f2f2… 0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597 [A] vs 2adddae75301… 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc [B-host,B-docker,C-host,C-docker]"
+    },
+    {
+      "condition": "program identity depends on unpinned mutable external state",
+      "phase": "1",
+      "triggered": true,
+      "evidence": "embedded $CARGO_HOME prefixes differ across procedures: /home/sirmrdrgod/.cargo vs /root/.cargo"
+    },
+    {
+      "condition": "the actual verifier gateway cannot be independently attributed",
+      "phase": "2",
+      "triggered": false,
+      "evidence": "gateway bytes attributed: true"
+    },
+    {
+      "condition": "the gateway is mutable in a way the current trust model does not account for",
+      "phase": "2",
+      "triggered": true,
+      "evidence": "chain 1: owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (modules: 0, guard: none)), live routes 0x4388a21c=v6.1.0; chain 11155111: owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)), live routes 0x11b6a09d=v4.0.0-rc.3+0x4388a21c=v6.1.0"
+    }
+  ],
+  "claims": {
+    "WITHDRAWAL_PROGRAM_RELATION": {
+      "status": "PARTIALLY_ESTABLISHED",
+      "basis": "Source-level relation only: the native relation tests (zkvm/relation-tests, 3+2+14) pass on the subject sources; it is not bound to a canonical ELF/vkey (identity unresolved) and no proof of it exists."
+    },
+    "CROSS_ENVIRONMENT_PROGRAM_REPRODUCIBILITY": {
+      "status": "PARTIALLY_ESTABLISHED",
+      "basis": "procedure family vendor-image reproduces one mldsa65-withdrawal identity on >= 2 independent hosts, but the observations hold 2 distinct identities (unresolved identity conflict; no canonical designation)"
+    },
+    "REAL_SP1_PROOF_GENERATED": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "Not attempted: proof generation was stopped by the owner after the Phase 2 trust-root STOP (no circuit-artifact download, no prover run)."
+    },
+    "REAL_SP1_PROOF_VERIFIED": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "Not attempted: no real proof exists; no verifier (gateway, direct or mock) was exercised with one in this lane."
+    },
+    "SP1_VERIFIER_GATEWAY_PROVENANCE": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "the gateway's accepting relation is owner-mutable on chain 1 (Safe 1.3.0 2-of-3 (modules: 0, guard: none)) and chain 11155111 (EOA (single key)): addRoute widens it for every program vkey and freezeRoute removes it, with no WalletWall action; byte attribution does not change that"
+    },
+    "ACVP_WITHDRAWAL_PROGRAM_ISOLATION": {
+      "status": "PARTIALLY_ESTABLISHED",
+      "basis": "Distinct withdrawal and ACVP ELFs and vkeys in every measured environment and across environments, plus the native program-isolation tests; routing an ACVP proof into the withdrawal verifier was NOT_TESTED (no real proofs)."
+    },
+    "CROSS_VAULT_REPLAY_RESISTANCE": {
+      "status": "NOT_TESTED",
+      "basis": "Construction present (EIP-712 verifyingContract in the vault digest; verifier_address in the journal checked against address(this)); not executed with a real proof in this lane."
+    },
+    "CROSS_CHAIN_REPLAY_RESISTANCE": {
+      "status": "NOT_TESTED",
+      "basis": "Construction present (EIP-712 chainId; journal chain_id) but not executed with a real proof; finding F-1: ZKMLDSAVerifier compares uint64(block.chainid), so its own chain binding holds only below 2^64."
+    },
+    "PRODUCTION_READINESS": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "Unaudited research prototype; no real proof; gateway trust root unresolved; no deployment authorized."
+    },
+    "NIST_CONFORMANCE": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "Only the six-vector ACVP subset exists; this lane produced no conformance evidence."
+    }
+  },
+  "notAttempted": [
+    "Phase 3 real proof (owner: no 6.21 GB circuit download, no Docker/WSL change)",
+    "Phase 4 EVM verification through any verifier",
+    "Phase 5 adversarial negative matrix with a real proof",
+    "Phase 6 replay tests with a real proof",
+    "Phase 8 mutation campaign against proof-path code (the receipt validator itself is mutation-tested)"
+  ],
+  "unresolved": [
+    "Program identity: the repository's default local build and the pinned vendor procedure yield different withdrawal identities; neither is designated canonical (owner decision).",
+    "Gateway trust model: whether WalletWall binds to an immutable verifier, a WalletWall-governed gateway, or accounts for Succinct gateway mutability is a design decision for a follow-up lane.",
+    "The prover's S3 circuit artifacts (v6.1.0-groth16) are joined to the on-chain verifying key only by a real proof that verifies; none exists.",
+    "sp1-contracts tags are lightweight (unsigned); provenance rests on byte equality, not on a signed release.",
+    "Every vkey here (mldsa65-host in each environment, and the cargo-prove cross-check) comes from the same upstream sp1-prover implementation: binary-level, not algorithm-level, independence."
+  ],
+  "independentAuthorities": [
+    {
+      "authority": "succinctlabs/sp1-contracts git (tags v6.0.0/v6.1.0/v6.1.1)",
+      "establishes": "verifier and gateway source; deployments JSON; upstream incident history"
+    },
+    {
+      "authority": "Official solc 0.8.20 (binaries.soliditylang.org, sha256-checked against list.json)",
+      "establishes": "recompiled runtime and initcode bytes"
+    },
+    {
+      "authority": "Ethereum mainnet + Sepolia state (public RPC, pinned block numbers/hashes)",
+      "establishes": "runtime code hashes, owners, Safe configuration, routes, deploy transactions"
+    },
+    {
+      "authority": "CREATE2 derivation (EIP-1014) over recompiled initcode",
+      "establishes": "address <-> initcode commitment for the gateway and the v6.1.0 verifier"
+    },
+    {
+      "authority": "Sourcify v2 API",
+      "establishes": "independent exact match (runtime + creation) of the mainnet gateway and v6.1.0 verifier"
+    },
+    {
+      "authority": "Blockscout logs API",
+      "establishes": "complete RouteAdded/RouteFrozen/OwnershipTransferred history, cross-checked by direct routes() probes of every upstream selector"
+    },
+    {
+      "authority": "crates.io sp1-verifier 6.3.1 groth16_vk.bin decoded by arkworks",
+      "establishes": "the verifying key the Solidity constants must equal; its sha256 equals VERIFIER_HASH"
+    },
+    {
+      "authority": "Vendor image ghcr.io/succinctlabs/sp1@sha256:0942a27d… and a GitHub-hosted runner",
+      "establishes": "program identity outside the developer workstation"
+    },
+    {
+      "authority": "Succinct's released cargo-prove binary (sp1up 8252c29), run outside every build environment",
+      "establishes": "each recorded ELF's sha256 and vkey recomputed from the ELF file itself, not by mldsa65-host"
+    },
+    {
+      "authority": "A second, independent RPC provider (dRPC) at the same pinned blocks",
+      "establishes": "the decisive chain state (block hashes, gateway code, owner, Safe threshold, every route) a second time"
+    }
+  ]
+}
