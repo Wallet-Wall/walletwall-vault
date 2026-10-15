@@ -1,0 +1,367 @@
+{
+  "schema": "walletwall.sp1-td1-decision-inputs.v1",
+  "lane": "SP1-TD1 verifier trust target + canonical program identity",
+  "subject": {
+    "repository": "Wallet-Wall/walletwall-vault",
+    "baseCommit": "72b6554632335bfc7487f7dc7e9b3f44cdde0c0b",
+    "baseTree": "e83e83d6de28b5e66897f0244645e2ee288473c8",
+    "mergedPredecessor": {
+      "pr": 212,
+      "lane": "SP1-P1",
+      "mergeCommit": "72b6554632335bfc7487f7dc7e9b3f44cdde0c0b",
+      "head": "4cd5cfb45b8b0bee28599fc166a7e26b58696757"
+    },
+    "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3"
+  },
+  "evidence": {
+    "sp1p1Receipt": {
+      "path": "evidence/zk/sp1-p1/stop-receipt.json",
+      "sha256": "736de05c80062190def543de267630e7c36ed04fba383d3620c782bfd47ec124"
+    },
+    "sp1p1Observations": [
+      {
+        "path": "evidence/zk/sp1-p1/observations/program-identity.raw.json",
+        "sha256": "19fe2cec6fbd5bc3edda5db0943e9101dd9a41d8ae32646a43d8fabb63e853dc"
+      },
+      {
+        "path": "evidence/zk/sp1-p1/observations/verifier-gateway.raw.json",
+        "sha256": "b23c37c8c3c3c2733a21ae26fad4fb305580f7dde823c0070970e00e70dfc5cf"
+      }
+    ],
+    "td1Observations": [
+      {
+        "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
+        "sha256": "5db307e574f5f1a86214cfc2de9b5627e9e048cb8f716e961fa370a40c153275"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/deployment-bytecode.raw.json",
+        "sha256": "79ea2bac9ac8311578e8c0644c658db9309cf5f7068bd075eff5737ff723fce1"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
+        "sha256": "451e0720d4ba92eb72b4e9037bad8adbabb68a91878ff44b46a4809dfb958832"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/route-timeline.raw.json",
+        "sha256": "8ed81f6c14677184429584e47e700bb3b1ac814910b1084ab6f5d94cedecfda6"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/upstream-proof-fixture.raw.json",
+        "sha256": "4f7cd9ea2e1215710651c24e9f396f8905338f9edd0a2f0255a12a8f3e5b5118"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/vendor-image.raw.json",
+        "sha256": "0758d47141036a3a34ee4c710455c056da037b30695a51a9f2788f58fe9e5103"
+      }
+    ],
+    "canonicalProcedureScripts": [
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/host-build-in-container.sh",
+        "sha256": "dd0384751156b5e61d59c166ff09a80b3abdfcab576080b9f7be3603ac520f2d",
+        "sourceCommit": "ad6211c8a20779c984b9ec13adc34adc543b068e",
+        "sourcePath": ".github/sp1-p1-observation/host-build-in-container.sh"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/observe.sh",
+        "sha256": "cf650fd0b4890751f65ea43260c15cf68c5ce8a99ea9faf4723a62050d7252b1",
+        "sourceCommit": "ad6211c8a20779c984b9ec13adc34adc543b068e",
+        "sourcePath": ".github/sp1-p1-observation/observe.sh"
+      }
+    ],
+    "probeSuite": "test/Sp1Td1TrustTargetProbes.test.ts"
+  },
+  "trustTargetSelection": {
+    "version": "v6.1.0",
+    "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+    "selector": "0x4388a21c",
+    "requiredChains": ["1", "8453", "11155111", "84532"]
+  },
+  "options": [
+    {
+      "id": "A",
+      "decisionValue": "DIRECT_IMMUTABLE_VERIFIER",
+      "label": "ZKMLDSAVerifier bound directly to the immutable SP1Verifier v6.1.0, pinned by runtime code hash",
+      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "SP1Verifier v6.1.0"],
+      "components": ["sp1Verifier"],
+      "pins": ["verifierCode"],
+      "probeFactsKey": "A_directCodePinned",
+      "newAttackSurface": "none added: the consumer already calls ISP1Verifier; the pin is one EXTCODEHASH comparison at construction",
+      "operationalComplexity": "a new wrapper per SP1 circuit release, applied through the vault's timelocked pqVerifier rotation; WalletWall watches upstream advisories and gateway freezes as signals"
+    },
+    {
+      "id": "B",
+      "decisionValue": "SELECTOR_PINNED_GATEWAY",
+      "label": "Succinct's gateway, with WalletWall pinning the selector, the route's verifier and both code hashes",
+      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "route-pinning check", "SP1VerifierGateway", "SP1Verifier v6.1.0"],
+      "components": ["upstreamGateway", "sp1Verifier"],
+      "pins": ["selector", "routeVerifier", "gatewayCode", "verifierCode"],
+      "probeFactsKey": "B_selectorRouteCodePinned",
+      "newAttackSurface": "a pinning layer plus the gateway's routing code in the accepted path; per-chain gateway addresses",
+      "operationalComplexity": "per-chain gateway address and route check at deployment; the same per-release redeploy as A"
+    },
+    {
+      "id": "B0",
+      "decisionValue": "SELECTOR_PINNED_GATEWAY",
+      "label": "Succinct's gateway with a selector-only pin (the naive variant)",
+      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "selector check", "SP1VerifierGateway", "selector's route"],
+      "components": ["upstreamGateway", "sp1Verifier"],
+      "pins": ["selector"],
+      "probeFactsKey": "B0_selectorOnlyPin",
+      "newAttackSurface": "fails open on any chain where the pinned selector is not yet routed: the owner registers any verifier under it",
+      "operationalComplexity": "as B, without the checks that make it safe"
+    },
+    {
+      "id": "C",
+      "decisionValue": "WALLETWALL_GOVERNED_GATEWAY",
+      "label": "A WalletWall-owned instance of the gateway code",
+      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "WalletWall SP1VerifierGateway", "any route its admin adds"],
+      "components": ["walletwallGateway", "sp1Verifier"],
+      "pins": [],
+      "probeFactsKey": "C_walletwallGateway",
+      "newAttackSurface": "a second, instant verifier-replacement path that bypasses PQ_VERIFIER_UPDATE_DELAY and GOVERNANCE_GRACE_PERIOD",
+      "operationalComplexity": "a new privileged key or Safe to operate and monitor; route hygiene per chain"
+    },
+    {
+      "id": "D",
+      "decisionValue": "UPSTREAM_GATEWAY_OWNER_ACCEPTED",
+      "label": "Succinct's gateway, unpinned (what docs/ZK_Prover_Runbook.md section 4 directs today)",
+      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "SP1VerifierGateway", "any live route the prover selects"],
+      "components": ["upstreamGateway", "sp1Verifier"],
+      "pins": [],
+      "probeFactsKey": "D_upstreamGatewayUnpinned",
+      "newAttackSurface": "every live route on every chain is in the accepted relation, including deprecated or release-candidate verifiers",
+      "operationalComplexity": "lowest: one address per chain, upgrades without WalletWall action"
+    }
+  ],
+  "probeFacts": {
+    "bytes": {
+      "gatewayRuntimeEqualsMainnet": true,
+      "v610RuntimeEqualsMainnet": true,
+      "v600RuntimeEqualsMainnet": true
+    },
+    "semantics": {
+      "gatewayForwardsConsumerTupleUnchanged": true,
+      "realProofAcceptedDirect": true,
+      "realProofAcceptedViaGateway": true,
+      "tamperedProofRejectedDirectAndViaGateway": true,
+      "v610PreCheckRevertDataIdenticalDirectAndViaGateway": true,
+      "unroutedSelectorRejectedDirectAndViaGateway": true
+    },
+    "verifierRuntime": {
+      "v610ForbiddenOpcodes": [],
+      "gatewayHasSstore": true
+    },
+    "D_upstreamGatewayUnpinned": {
+      "ownerAddRouteWidensAcceptedRelation": true,
+      "ownerAddRouteDrainsPqOnlyVault": true,
+      "ownerFreezeRejectsValidProof": true,
+      "freezeAcceptsNoPreviouslyRejectedInput": true,
+      "ownerCanReplaceExistingRoute": false,
+      "nonOwnerCanAddRoute": false
+    },
+    "C_walletwallGateway": {
+      "adminAddRouteWidensAcceptedRelation": true,
+      "adminWidensWithoutDelay": true,
+      "vaultVerifierRotationDelaySeconds": 172800
+    },
+    "B0_selectorOnlyPin": {
+      "routeSquatOnUnroutedChainAccepted": true
+    },
+    "B_selectorRouteCodePinned": {
+      "squattedRouteRejectedAtConstruction": true,
+      "realProofAcceptedThroughPin": true,
+      "otherSelectorRouteRejected": true,
+      "pinnedRouteReplaceable": false,
+      "ownerFreezeRejectsValidProof": true
+    },
+    "A_directCodePinned": {
+      "acceptsCanonicalCode": true,
+      "acceptsSameCodeAtAnotherAddress": true,
+      "rejectsGateway": true,
+      "rejectsOtherVerifierVersion": true,
+      "rejectsAcceptAllVerifier": true,
+      "unmodifiedConsumerRejectsForgedRouteProof": true,
+      "noPrincipalCanAlterAcceptedRelation": true
+    }
+  },
+  "programIdentitySelection": {
+    "minimumIndependentHosts": 2,
+    "candidates": [
+      {
+        "decisionValue": "PINNED_VENDOR_BUILD",
+        "family": "vendor-image",
+        "role": "canonical candidate"
+      },
+      {
+        "decisionValue": "REPRODUCIBLE_REPO_BUILD",
+        "family": "repository-local",
+        "role": "canonical candidate"
+      },
+      {
+        "decisionValue": "OTHER_ESTABLISHED_PROCEDURE",
+        "family": "repository-local-remapped",
+        "role": "cross-check only (pre-registered: depends on a separately installed toolchain and the builder's own path)"
+      }
+    ],
+    "canonicalProcedure": {
+      "id": "vendor-image-host-flow",
+      "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+      "platform": "linux/amd64",
+      "entrypoint": "evidence/zk/sp1-td1/canonical-procedure/host-build-in-container.sh",
+      "driver": "evidence/zk/sp1-td1/canonical-procedure/observe.sh",
+      "commands": [
+        "git archive --format=tar HEAD zkvm/guest zkvm/host (the subject; no other files)",
+        "docker create --platform linux/amd64 <image@digest>; docker cp the archive and the entrypoint in; no bind mounts, no cache volumes",
+        "in the container: cargo build --release --locked in /root/program/zkvm/host (build.rs -> sp1_build::build_program, local mode inside the image)",
+        "in the container: the host's own `vkey` / `acvp-vkey` on the ELFs it embedded",
+        "outside every build environment: cargo-prove vkey --elf on each ELF file (vkey cross-check)"
+      ],
+      "environment": {
+        "CARGO_HOME": "/root/.cargo (image default; never a developer's home)",
+        "RUSTFLAGS": "unset (sp1-build 6.3.1 supplies its own CARGO_ENCODED_RUSTFLAGS)",
+        "CARGO_TARGET_DIR": "unset (fresh target directories)",
+        "network": "crates.io for the --locked crate set (checksums from Cargo.lock)"
+      },
+      "target": "riscv64im-succinct-zkvm-elf",
+      "features": [],
+      "sp1": {
+        "sp1-zkvm": "=6.3.1",
+        "sp1-sdk": "=6.3.1",
+        "sp1-build": "=6.3.1",
+        "circuitVersion": "v6.1.0"
+      },
+      "forbidden": [
+        "a mutable image tag (sp1-build --docker --tag pulls by tag)",
+        "a developer CARGO_HOME, RUSTFLAGS or CARGO_TARGET_DIR",
+        "post-hoc ELF rewriting",
+        "a hand-entered vkey"
+      ]
+    }
+  },
+  "offChainLivenessDependencies": [
+    "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's.",
+    "Rebuilding the canonical ELF needs the vendor image (ghcr.io, by digest) and crates.io for the locked crate set; the digest and Cargo.lock checksums protect integrity, not availability."
+  ],
+  "findings": [
+    {
+      "id": "F-1",
+      "source": "SP1-P1",
+      "title": "uint64(block.chainid) truncation in ZKMLDSAVerifier.verify",
+      "disposition": "NO_AUTHORIZATION_IMPACT",
+      "practicalImpact": "none: every measured or targeted chain id is far below 2^64, and every consumer's EIP-712 digest binds the full 256-bit chainid",
+      "securityImpact": "the journal chain_id is prover-chosen stdin the guest never checks, so it is a proof-routing tag, not a binding; authorization binds chain identity only through the digest. The truncation makes the verifier's own tag compare modulo 2^64.",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "implementation lane: compare uint256(committedChainId) with block.chainid (fail closed at or above 2^64); a contract-only change, no guest, ELF or vkey change"
+    },
+    {
+      "id": "F-2",
+      "source": "SP1-P1",
+      "title": "journal sigHash not checked on chain",
+      "disposition": "NON_AUTHORITATIVE_INFORMATIONAL",
+      "practicalImpact": "none",
+      "securityImpact": "authorization is 'the key behind pkHash signed exactly this digest'; any valid signature over the digest authorizes, and replay is prevented by the digest's nonce and deadline, so no authorization fact depends on which signature was used. No document claims the ZK path binds the signature hash (those claims describe AttestationPQCVerifier).",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "document sigHash as non-authoritative in the implementation lane; removing it would change the guest, ELF, vkey and journal ABI for no security gain"
+    },
+    {
+      "id": "F-3",
+      "source": "SP1-P1",
+      "title": "'immutable trust root' conflates address and relation immutability",
+      "disposition": "RESOLVED_BY_DEFINITION",
+      "practicalImpact": "misleading operator guidance while the runbook points at the gateway",
+      "securityImpact": "the accepted relation is immutable only if no principal other than WalletWall's timelocked rotation can widen it; an immutable address in front of a mutable route table is not",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "implementation lane rewrites docs/ZK_Verifier_Production.md and the runbook section 4 in these terms (both are bytes the SP1-P1 STOP receipt binds; see TD1-N4)"
+    },
+    {
+      "id": "F-4",
+      "source": "SP1-P1",
+      "title": "testnet gateway owned by one EOA with a live release-candidate route",
+      "disposition": "TESTNET_POSTURE_NOT_PRODUCTION",
+      "practicalImpact": "on Sepolia and Base Sepolia (TD1-N5) one key controls the route table and v4.0.0-rc.3 is live",
+      "securityImpact": "a single key can widen every unpinned consumer on both testnets; acceptable only for no-value experiments that name that key as an authority, and unnecessary because the same immutable v6.1.0 code is deployed at the same address there",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "testnet deployments bind directly to v6.1.0 like production; no testnet exception"
+    },
+    {
+      "id": "TD1-N1",
+      "source": "SP1-TD1",
+      "title": "SP1-P1's route history from the Blockscout indexer was incomplete",
+      "disposition": "EVIDENCE_QUALITY_CORRECTION",
+      "practicalImpact": "the Sepolia RouteFrozen for v5.0.0 (block 11874717) is in the RPC receipt but absent from Blockscout's logs for that transaction",
+      "securityImpact": "enumerating a mutable route table from an indexer is not a completeness proof; under the TD1 design no route outside the pinned code identity matters",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "none needed beyond recording it; SP1-P1's frozen receipt is not rewritten"
+    },
+    {
+      "id": "TD1-N2",
+      "source": "SP1-TD1",
+      "title": "SP1-P1 recorded the v6.1.1 tag as lightweight",
+      "disposition": "EVIDENCE_QUALITY_CORRECTION",
+      "practicalImpact": "v6.1.1 is an annotated tag carrying a PGP signature block (unverified here); v6.0.0 and v6.1.0 are lightweight",
+      "securityImpact": "none on the decision: provenance rests on byte equality, CREATE2 and code-hash measurements, not on tag signatures",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "none"
+    },
+    {
+      "id": "TD1-N3",
+      "source": "SP1-TD1",
+      "title": "one key spans testnet sole ownership and a mainnet Safe seat",
+      "disposition": "COMMON_MODE_NOTED",
+      "practicalImpact": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 is the sole owner on Sepolia and Base Sepolia and one of the three signers of the 2-of-3 Safe on Ethereum and Base",
+      "securityImpact": "its compromise grants full testnet route control and half of the mainnet threshold; relevant only to options that leave the gateway owner in the accepted path",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "none for WalletWall under the TD1 design"
+    },
+    {
+      "id": "TD1-N4",
+      "source": "SP1-TD1",
+      "title": "the SP1-P1 STOP validator is a live tripwire on the files the next lane must change",
+      "disposition": "PROCESS_CONSTRAINT",
+      "practicalImpact": "validate:sp1-p1-receipt binds the sha256 of contracts/verifiers/ZKMLDSAVerifier.sol and requires the runbook to direct SP1_VERIFIER_ADDRESS at the gateway",
+      "securityImpact": "none; but restamping a spent STOP receipt would erase what it proved",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "implementation lane marks the SP1-P1 receipt superseded (historical bindings) instead of restamping it"
+    },
+    {
+      "id": "TD1-N5",
+      "source": "SP1-TD1",
+      "title": "Base Sepolia mirrors Sepolia's posture",
+      "disposition": "TESTNET_POSTURE_NOT_PRODUCTION",
+      "practicalImpact": "the gateway on WalletWall's second testnet is owned by the same single EOA and also routes v4.0.0-rc.3 live",
+      "securityImpact": "as F-4",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "as F-4"
+    },
+    {
+      "id": "TD1-N6",
+      "source": "SP1-TD1",
+      "title": "upstream froze the vulnerable v6.0.0 route 181 days after its advisory",
+      "disposition": "UPSTREAM_BRAKE_NOT_RELIABLE",
+      "practicalImpact": "GHSA-63x8-x938-vx33 (High, SP1 6.0.0-6.0.2, fixed in 6.1.0) was published 2026-04-11; the mainnet gateway froze the v6.0.0 route on 2026-10-09",
+      "securityImpact": "an unpinned consumer's accepted relation kept a route from an advised-against version for six months; the gateway owner's freeze lever cannot be counted as a safety control. TD1 claims no exploitability of the on-chain v6.0.0 verifier; the advisory does not state on-chain impact.",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "WalletWall watches upstream advisories and RouteFrozen events itself and answers with the vault's own pause and timelocked rotation"
+    }
+  ],
+  "implementationPlan": [
+    "ZKMLDSAVerifier: pin the SP1 verifier's runtime code hash (and record VERIFIER_HASH, VK_ROOT, VERSION) as compile-time constants checked in the constructor; keep the verify() logic unchanged",
+    "ZKMLDSAVerifier: compare uint256(committedChainId) with block.chainid (F-1); document sigHash as non-authoritative (F-2)",
+    "Designation file for mldsa65-withdrawal (generated from build observations, never typed) plus a CI check that fails when the zkvm subject no longer matches it",
+    "A gated canonical-build workflow (vendor image by digest) and a second-host release rebuild; both ELF and vkey must equal the designation, vkey recomputed by cargo-prove outside the build",
+    "scripts/deploy-zk-verifier.ts: take PROGRAM_VKEY only from the designation and the SP1 verifier only from the trust-target designation, check EXTCODEHASH on the target chain, refuse overrides on non-local chains, read back after deployment",
+    "Docs: rewrite the runbook section 4 and ZK_Verifier_Production.md in the TD1 terms (F-3); mark the SP1-P1 STOP receipt superseded rather than restamped (TD1-N4)",
+    "Ops: a watcher for upstream SP1 advisories and gateway RouteFrozen events that pages the vault owner (pause, then timelocked rotation)"
+  ]
+}
