@@ -329,6 +329,24 @@
       "realProofAcceptedThroughCoupling": true,
       "upstreamFreezeFailsClosed": true,
       "otherSelectorRouteGrantsNothing": true
+    },
+    "verifierConsumers": {
+      "pqVerifierConsumers": [
+        "PolicyControlBridge",
+        "StablecoinVaultSimulator",
+        "WalletWallMultiSigVault",
+        "WalletWallVault"
+      ],
+      "consumersWithTimelockedRotation": [
+        "StablecoinVaultSimulator",
+        "WalletWallVault"
+      ],
+      "consumersFollowingTheirConsumer": [
+        "PolicyControlBridge"
+      ],
+      "consumersWithFixedVerifier": [
+        "WalletWallMultiSigVault"
+      ]
     }
   },
   "programIdentitySelection": {
@@ -500,7 +518,7 @@
       "securityImpact": "a freeze is dual-use: it stops valid proofs (liveness) and, when the verifier itself is unsound, forged ones (protection). Its timing is upstream's choice, and a routine deprecation freeze is near-certain over a deployment's life. Whether WalletWall couples to it is an explicit owner decision (DEFECT_RESPONSE_COUPLING), not a property this lane can settle. TD1 claims no exploitability of the on-chain v6.0.0 verifier.",
       "repairBeforeRealProof": false,
       "guestOrVkeyChange": false,
-      "plan": "owner decision DEFECT_RESPONSE_COUPLING before real value: WalletWall-operated detection with a single fail-closed switch or a tested runbook across every consumer (A), or fail closed on upstream's freeze of the pinned selector (AF)"
+      "plan": "decided 2026-10-15: WALLETWALL_DETECT_AND_FAIL_CLOSED, as a local one-way halt at the verifier wrapper; upstream signals are detection evidence only and never a WalletWall authority"
     },
     {
       "id": "TD1-N7",
@@ -544,13 +562,24 @@
       "securityImpact": "a soundness defect in the pinned verifier stays exploitable through any consumer whose holder has not acted",
       "repairBeforeRealProof": false,
       "guestOrVkeyChange": false,
-      "plan": "part of DEFECT_RESPONSE_COUPLING: a single WalletWall-held fail-closed switch at the verifier wrapper, or a tested runbook covering every consumer, before real value"
+      "plan": "decided: one local, one-way halt at the verifier wrapper fails all four consumers closed through the same mechanism (built and tested through every consumer in TD2)"
+    },
+    {
+      "id": "TD1-N11",
+      "source": "TD1 owner-decision review (contracts/WalletWallMultiSigVault.sol)",
+      "title": "WalletWallMultiSigVault has no verifier rotation and no exit that avoids PQ verification",
+      "disposition": "RECOVERY_PATH_MISSING_FOR_ONE_CONSUMER",
+      "practicalImpact": "its pqVerifier is set once in the constructor and withdraw() needs at least one PQ signature through it, so a one-way halt of its wrapper would lock its funds: the decided recovery (a new wrapper and the timelocked rotation) does not exist for it",
+      "securityImpact": "none for authorization; a permanent liveness loss for that consumer if its wrapper is halted",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "TD2: give WalletWallMultiSigVault the decided recovery path (the timelocked pqVerifier rotation the other vaults have) before it may use a haltable wrapper, or keep it off the haltable wrapper and away from real value until it has one"
     }
   ],
   "implementationPlan": [
     "ZKMLDSAVerifier: compile-time pin of the SP1 verifier's runtime code hash (and record VERIFIER_HASH, VK_ROOT, VERSION) checked in the constructor; keep the verify() logic unchanged",
     "ZKMLDSAVerifier: compare uint256(committedChainId) with block.chainid (F-1); document sigHash as non-authoritative (F-2)",
-    "Defect response (owner decision DEFECT_RESPONSE_COUPLING): either WalletWall detection with a single fail-closed switch at the verifier wrapper (or a tested runbook covering all four consumers: three vault types' owner pause() and the policy bridge's one-way EMERGENCY_PAUSER pause()) with a stated response bound and no dependence on an online owner key (A), or the fail-closed freeze-bit coupling (AF)",
+    "Defect response (decided 2026-10-15: WALLETWALL_DETECT_AND_FAIL_CLOSED via LOCAL_ONE_WAY_VERIFIER_HALT): a halt at the WalletWall verifier wrapper with ACTIVE -> HALTED only; a halt-only principal (an existing emergency-security authority if it already satisfies the separation, else a new threshold or multisig; no rotation, vkey, upgrade or unhalt power); upstream signals as detection evidence only; recovery only by a new wrapper and the timelocked rotation; executable tests through all four consumers (valid verification while ACTIVE, the same verification fails closed after HALTED, the halt principal cannot make an invalid proof valid); and the recovery path WalletWallMultiSigVault lacks (TD1-N11)",
     "Designation file for mldsa65-withdrawal (generated from build observations, never typed) plus a CI check that fails when the zkvm subject no longer matches it",
     "A gated canonical-build workflow (vendor image by digest; guest lockfile unchanged after the build, TD1-N7) and a second-host release rebuild; both ELF and vkey must equal the designation, vkey recomputed by cargo-prove outside the build",
     "scripts/deploy-zk-verifier.ts: take PROGRAM_VKEY only from the designation and the SP1 verifier only from the trust-target designation, check EXTCODEHASH and run the per-chain execution check (real proof accepted, tampered and odd-word canary refused) on the target chain, refuse overrides on non-local chains, read back after deployment",
@@ -567,20 +596,72 @@
           "options": [
             "A"
           ],
-          "description": "no upstream lever in the accepted path. WalletWall watches upstream advisories and the gateway's RouteFrozen events and fails every consumer of the verifier closed itself. Today that takes four separate actions: the pause() of each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment (owner-held; each gates its own PQ-verifying entrypoints) and the PolicyControlBridge's pause() (held by EMERGENCY_PAUSER, and one-way: it retires the bridge). Before real value this needs either a single WalletWall-held fail-closed switch at the verifier wrapper (a new WalletWall liveness lever) or a tested runbook with a stated response bound, and a path that does not depend on an online owner key"
+          "description": "no upstream lever in the accepted path. WalletWall detects (upstream advisories, gateway RouteFrozen events, CVEs, verifier-repository disclosures and watcher findings are evidence only) and fails every consumer of the verifier closed through one local, one-way, halt-only circuit breaker at the verifier wrapper; recovery only by a new wrapper and the timelocked rotation"
         },
         {
           "id": "UPSTREAM_FREEZE_FAIL_CLOSED",
           "options": [
             "AF"
           ],
-          "description": "AF: A's direct binding plus a read-only check of the upstream gateway's freeze bit for the pinned selector; once upstream freezes it, verification fails closed in the verifier path, for every consumer at once. The cost is an external liveness lever: a freeze of the pinned route for any reason stops PqOnly withdrawals until a timelocked rotation, the testnet owner is one EOA, each chain needs the route in place before deployment, and the coupling is to one gateway instance (if upstream moves to a new gateway, it silently stops protecting). B realizes the same coupling by routing every proof through the pinned gateway: it has the same external principals and a longer path, and choosing it would change the trust-target decision, so it is not offered"
+          "description": "not chosen. AF: A's direct binding plus a read-only check of the upstream gateway's freeze bit for the pinned selector; upstream's freeze would fail every consumer closed at once, at the cost of making the gateway owners a WalletWall liveness principal on every chain, tied to one gateway instance. B realizes the same coupling through the gateway's routing code (same principals, longer path) and is not offered"
         }
       ],
       "recommendation": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
-      "rationale": "authority minimisation ranks above liveness, and a freeze of the pinned route is upstream's to time: of the four mainnet routes frozen so far, the last two were frozen in one batch 181 days after an advisory, and the earlier two are not joined to any advisory here; upstream's one measured fast freeze was of a broken testnet build, 21.4 h after routing it. The recommendation is conditional: it needs the single fail-closed switch or the tested runbook before real value. If the owner prefers delegating the kill switch, AF",
+      "rationale": "owner decision 2026-10-15: keep the direct binding to the immutable, code-pinned SP1 v6.1.0 verifier, with no dependency on the Succinct gateway for authorization or automatic liveness control; fail closed through a local, one-way, halt-only circuit breaker at the WalletWall verifier wrapper, so every consumer (PolicyControlBridge included) fails closed through one mechanism; recover only through the explicit replacement path. AF (UPSTREAM_FREEZE_FAIL_CLOSED) is not chosen, and upstream signals never become a WalletWall authority",
       "requiredBeforeRealValue": true,
-      "status": "OWNER_DECISION_REQUIRED"
+      "status": "DECIDED",
+      "decision": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+      "mechanism": "LOCAL_ONE_WAY_VERIFIER_HALT",
+      "decidedBy": "owner",
+      "decidedOn": "2026-10-15",
+      "haltDesign": {
+        "location": "VERIFIER_WRAPPER",
+        "states": [
+          "ACTIVE",
+          "HALTED"
+        ],
+        "initialState": "ACTIVE",
+        "transitions": [
+          {
+            "from": "ACTIVE",
+            "to": "HALTED",
+            "trigger": "HALT_PRINCIPAL_CALL"
+          }
+        ],
+        "haltPrincipal": {
+          "id": "WALLETWALL_EMERGENCY_HALT_PRINCIPAL",
+          "powers": [
+            "HALT"
+          ],
+          "selection": "prefer an existing WalletWall emergency-security authority that already satisfies the separation (the PolicyControlBridge EMERGENCY_PAUSER role pattern: halt-only and one-way); otherwise a new authority scoped to the halt; threshold or multisig control preferred over a single online EOA; never the vault owner (holds the pqVerifier rotation and a reversible pause), never the upstream gateway owner"
+        },
+        "wrapperIdentity": {
+          "sp1Verifier": "IMMUTABLE",
+          "programVKey": "IMMUTABLE"
+        },
+        "consumersCovered": [
+          "PolicyControlBridge",
+          "StablecoinVaultSimulator",
+          "WalletWallMultiSigVault",
+          "WalletWallVault"
+        ],
+        "detectionSignals": [
+          "RouteFrozen",
+          "security advisories",
+          "CVEs",
+          "verifier-repository disclosures",
+          "watcher findings"
+        ],
+        "detectionSignalsControlState": false,
+        "recovery": "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION",
+        "td2Tests": [
+          "positive control, through each of WalletWallVault, WalletWallMultiSigVault, StablecoinVaultSimulator and PolicyControlBridge: a valid verification succeeds while ACTIVE",
+          "after HALTED, the same otherwise-valid verification fails closed through every one of the four consumers",
+          "adversarial: no action of the halt principal makes an invalid proof valid, changes SP1_VERIFIER or PROGRAM_VKEY, selects another verifier, adds or removes a route, bypasses verification or restores it",
+          "no transition out of HALTED exists, and no upstream signal (RouteFrozen, advisory, CVE, disclosure, watcher finding) moves the state",
+          "recovery only by a new wrapper with independently established verifier and program identity, through the normal evidence gates and the timelocked rotation"
+        ]
+      }
     }
   ]
 }

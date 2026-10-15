@@ -128,6 +128,19 @@ export const REQUIRED_CHAIN_VERDICTS: Record<string, string> = {
  */
 export const INHERITED_BY_EVERY_OPTION =
   "each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)";
+/** The defect response the owner decided (2026-10-15), and the only mechanism it admits. */
+export const DECIDED_DEFECT_RESPONSE = "WALLETWALL_DETECT_AND_FAIL_CLOSED";
+export const LOCAL_ONE_WAY_VERIFIER_HALT = "LOCAL_ONE_WAY_VERIFIER_HALT";
+export const NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+/** Powers that would change what verifies. A halt principal holds none of them; holding one is authority. */
+export const WIDENING_POWERS = [
+  "WIDEN_ACCEPTED_RELATION",
+  "ADD_ROUTE",
+  "CHANGE_SP1_VERIFIER",
+  "CHANGE_PROGRAM_VKEY",
+  "SELECT_VERIFIER",
+  "BYPASS_VERIFICATION",
+];
 /** The only reachable environment read the pinned runtime may make (its self-call's code check). */
 const ALLOWED_RUNTIME_READS = ["EXTCODESIZE"];
 /** Precompiles a Groth16 BN254 verifier may call at a constant address: modexp, ecAdd, ecMul, pairing. */
@@ -196,6 +209,13 @@ export interface ProbeFacts {
     v610StaticcallSites: { constantPrecompile: number; computedTarget: number };
     v610ConstantStaticcallTargets: string[];
     v610MetadataIsSolcCbor: boolean;
+  };
+  /** Every contract that verifies through an IPQCVerifier, and how each can replace its verifier (source scan). */
+  verifierConsumers: {
+    pqVerifierConsumers: string[];
+    consumersWithTimelockedRotation: string[];
+    consumersFollowingTheirConsumer: string[];
+    consumersWithFixedVerifier: string[];
   };
   AF_directFreezeCoupled: {
     squattedRouteRejectedAtConstruction: boolean;
@@ -294,7 +314,7 @@ export interface DecisionInputs {
   ownerDecisions: OwnerDecisionInput[];
 }
 
-/** A trade-off the evidence frames but cannot settle; recorded so it cannot be dropped silently. */
+/** A trade-off the evidence frames but cannot settle: open until the owner decides, then recorded as decided. */
 export interface OwnerDecisionInput {
   id: string;
   question: string;
@@ -303,8 +323,31 @@ export interface OwnerDecisionInput {
   recommendation: string;
   rationale: string;
   requiredBeforeRealValue: boolean;
-  /** Only the owner settles it, outside a design lane; a lane records it as open. */
-  status: "OWNER_DECISION_REQUIRED";
+  /** Only the owner settles it; a lane records the owner's decision, never its own. */
+  status: "OWNER_DECISION_REQUIRED" | "DECIDED";
+  decision?: string;
+  mechanism?: string;
+  decidedBy?: string;
+  decidedOn?: string;
+  haltDesign?: HaltDesign;
+}
+
+/**
+ * The owner's refinement of WALLETWALL_DETECT_AND_FAIL_CLOSED: a local circuit breaker at the verifier wrapper,
+ * ACTIVE -> HALTED only, held by a principal that can do nothing but halt. Frozen here; built in TD2.
+ */
+export interface HaltDesign {
+  location: string;
+  states: string[];
+  initialState: string;
+  transitions: { from: string; to: string; trigger: string }[];
+  haltPrincipal: { id: string; powers: string[]; selection: string };
+  wrapperIdentity: { sp1Verifier: string; programVKey: string };
+  consumersCovered: string[];
+  detectionSignals: string[];
+  detectionSignalsControlState: boolean;
+  recovery: string;
+  td2Tests: string[];
 }
 
 interface ChainVerifierRead {
@@ -1490,6 +1533,8 @@ export interface Td1DecisionReceipt {
     SP1_TRUST_TARGET_OPTION: string | null;
     PROGRAM_IDENTITY_DECISION: ProgramIdentityDecision;
     AUTHORIZATION_AUTHORITY_DELTA: {
+      /** No new principal can widen the accepted relation (the halt principal included). */
+      classification: "NO_NEW_AUTHORIZATION_PRINCIPAL" | "NEW_AUTHORIZATION_PRINCIPAL";
       baseline: string;
       removed: Lever[];
       added: Lever[];
@@ -1502,19 +1547,42 @@ export interface Td1DecisionReceipt {
       offChain: string[];
       inheritedByEveryOption: string;
     };
+    /** Who gains or loses the power to stop valid proofs: the decided halt adds one WalletWall principal. */
+    LIVENESS_AUTHORITY_DELTA: {
+      classification:
+        | "WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY"
+        | "WALLETWALL_EMERGENCY_PRINCIPAL_WITH_MORE_THAN_HALT"
+        | "UNDECIDED";
+      added: Lever[];
+      removedVersusBaseline: Lever[];
+    };
     UPGRADE_MODEL: "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION" | "MUTABLE_ROUTING" | "UNRESOLVED";
     CROSS_CHAIN_MODEL: (typeof CROSS_CHAIN_MODELS)[number];
     PROGRAM_VKEY_DESIGNATION: VkeyDesignation;
-    /** A trade-off the evidence frames but cannot settle: recorded as an open owner decision, never dropped. */
+    /** A trade-off the evidence frames but cannot settle: an owner decision, recorded open or decided, never dropped. */
     DEFECT_RESPONSE_COUPLING: {
-      status: "OWNER_DECISION_REQUIRED" | "NOT_APPLICABLE";
+      status: "OWNER_DECISION_REQUIRED" | "DECIDED" | "NOT_APPLICABLE";
+      decision: string | null;
+      mechanism: string | null;
+      decidedBy: string | null;
+      decidedOn: string | null;
       decidedOptionDefectResponse: string[];
       viableAlternatives: { id: string; defectResponse: string[]; externalLivenessPrincipals: string[] }[];
       choices: OwnerDecisionInput["choices"];
       recommendation: string | null;
       rationale: string | null;
       requiredBeforeRealValue: boolean;
+      haltDesign: HaltDesign | null;
+      /** The consumers the source scan found, and those with no way to replace their verifier. */
+      measuredConsumers: string[];
+      consumersWithoutRecoveryPath: string[];
     };
+    DEFECT_RESPONSE_MECHANISM: string;
+    HALT_REVERSIBILITY: "ONE_WAY" | "REVERSIBLE" | "UNDECIDED";
+    RECOVERY: string;
+    UPSTREAM_GATEWAY_OWNER: "NOT_A_WALLETWALL_AUTHORITY" | "WALLETWALL_AUTHORITY";
+    /** What still stands between this design and real value. */
+    REAL_VALUE_BLOCKER: "TD2_IMPLEMENTATION_NOT_YET_BUILT" | "DEFECT_RESPONSE_COUPLING_UNDECIDED";
     IMPLEMENTATION_REQUIRED: { required: boolean; plan: string[] };
     REAL_PROOF_LANE_UNBLOCKED: { value: boolean; basis: string[]; preconditions: string[] };
   };
@@ -1547,7 +1615,7 @@ const REAL_PROOF_PRECONDITIONS = [
   "the proof is generated for the designated ELF: its sha256 is checked against the designation before proving (a default local build embeds the builder's CARGO_HOME and yields a different program)",
   "verification targets the designated trust target only: the CREATE2-authenticated v6.1.0 bytes (in a local EVM) or a chain deployment checked by EXTCODEHASH and by the per-chain execution check, never a gateway route",
   "the downloaded circuit artifacts are the pinned key's: sha256(groth16_vk.bin) must equal VERIFIER_HASH 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 (two different 'v6.1.0' keys have existed)",
-  "no real value: the lane is for testnet/local proofs; real value additionally needs DEFECT_RESPONSE_COUPLING decided and implemented, and the frozen implementation lane",
+  "no real value: the lane is for testnet/local proofs; real value additionally needs the decided DEFECT_RESPONSE_COUPLING (a local one-way verifier halt) built and tested through every consumer in TD2, the recovery path WalletWallMultiSigVault lacks (TD1-N11), and the frozen implementation lane",
 ];
 
 function sameLever(a: Lever, b: Lever) {
@@ -1597,15 +1665,54 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
       externalLivenessPrincipals: ext(o.disable).map((l) => l.principal),
     }));
   const od = ctx.inputs.ownerDecisions.find((x) => x.id === "DEFECT_RESPONSE_COUPLING");
+  // The owner decided the defect response of a decided trust target; with none decided, there is nothing to carry.
+  const ownerDecided = od?.status === "DECIDED" && !!decided;
+  const halt = ownerDecided ? (od.haltDesign ?? null) : null;
+  // The halt must reach every consumer, and each consumer must have a way to leave a halted wrapper: its own
+  // timelocked rotation, or its consumer's (the bridge reads the consumer's pqVerifier()).
+  const consumers = ctx.inputs.probeFacts.verifierConsumers;
+  const measuredConsumers = [...consumers.pqVerifierConsumers].sort();
+  const canRecover = [...consumers.consumersWithTimelockedRotation, ...consumers.consumersFollowingTheirConsumer];
   const defectCoupling: Td1DecisionReceipt["decisions"]["DEFECT_RESPONSE_COUPLING"] = {
-    status: alternatives.length === 0 ? "NOT_APPLICABLE" : "OWNER_DECISION_REQUIRED",
+    status: ownerDecided ? "DECIDED" : alternatives.length === 0 ? "NOT_APPLICABLE" : "OWNER_DECISION_REQUIRED",
+    decision: ownerDecided ? (od.decision ?? null) : null,
+    mechanism: ownerDecided ? (od.mechanism ?? null) : null,
+    decidedBy: ownerDecided ? (od.decidedBy ?? null) : null,
+    decidedOn: ownerDecided ? (od.decidedOn ?? null) : null,
     decidedOptionDefectResponse: decided?.defectResponse ?? [],
     viableAlternatives: alternatives,
     choices: od?.choices ?? [],
     recommendation: od?.recommendation ?? null,
     rationale: od?.rationale ?? null,
     requiredBeforeRealValue: od?.requiredBeforeRealValue ?? true,
+    haltDesign: halt,
+    measuredConsumers,
+    consumersWithoutRecoveryPath: measuredConsumers.filter((c) => !canRecover.includes(c)),
   };
+  // The halt lever: WalletWall's own (governed), liveness only, and protective by construction.
+  const haltLevers: Lever[] = halt
+    ? [
+        {
+          principal: `WalletWall emergency halt principal (${halt.haltPrincipal.id})`,
+          lever: "verifierHalt",
+          scope: "liveness",
+          chains: ["every chain WalletWall deploys to"],
+          delaySeconds: 0,
+          governed: true,
+          protectiveOnVerifierDefect: true,
+        },
+      ]
+    : [];
+  const haltOnly = !!halt && JSON.stringify(halt.haltPrincipal.powers) === JSON.stringify(["HALT"]);
+  const haltWidens = (halt?.haltPrincipal.powers ?? []).some((p) => WIDENING_POWERS.includes(p));
+  const addedWiden = ext(decided?.widen).filter((l) => !ext(baseline?.widen).some((b) => sameLever(b, l)));
+  // An upstream signal that moves the halt would make the upstream gateway owner a WalletWall authority again.
+  const signalsMoveTheHalt =
+    !!halt &&
+    (halt.detectionSignalsControlState || halt.transitions.some((t) => halt.detectionSignals.includes(t.trigger)));
+  const upstreamLeverInPath = [...ext(decided?.widen), ...ext(decided?.disable)].some((l) =>
+    l.principal.startsWith("upstream gateway owner"),
+  );
 
   const trustResolved = target.decision !== "UNRESOLVED";
   const programResolved = pid.decision !== "UNRESOLVED";
@@ -1694,9 +1801,11 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     DEFECT_RESPONSE_PATH: {
       status: "NOT_ESTABLISHED",
       basis:
-        defectCoupling.status === "OWNER_DECISION_REQUIRED"
-          ? `open owner decision DEFECT_RESPONSE_COUPLING (alternatives ${alternatives.map((a) => a.id).join(", ")}); until it is decided and built, a defect in the pinned verifier is stopped only by WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), with no stated or tested response bound`
-          : "no protective alternative exists; WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), are the only fail-closed path, with no stated or tested response bound",
+        defectCoupling.status === "DECIDED"
+          ? `decided by the ${defectCoupling.decidedBy} on ${defectCoupling.decidedOn}: ${defectCoupling.decision} via ${defectCoupling.mechanism}; not built — TD2 implements the halt and tests it through every consumer${defectCoupling.consumersWithoutRecoveryPath.length > 0 ? `, and ${defectCoupling.consumersWithoutRecoveryPath.join(", ")} still lacks the decided recovery path` : ""}; until then only WalletWall's manual pauses, one per consumer, fail it closed`
+          : defectCoupling.status === "OWNER_DECISION_REQUIRED"
+            ? `open owner decision DEFECT_RESPONSE_COUPLING (alternatives ${alternatives.map((a) => a.id).join(", ")}); until it is decided and built, a defect in the pinned verifier is stopped only by WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), with no stated or tested response bound`
+            : "no protective alternative exists; WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), are the only fail-closed path, with no stated or tested response bound",
     },
     REAL_SP1_PROOF_GENERATED: {
       status: "NOT_ESTABLISHED",
@@ -1742,9 +1851,12 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
       SP1_TRUST_TARGET_OPTION: target.optionId,
       PROGRAM_IDENTITY_DECISION: pid.decision,
       AUTHORIZATION_AUTHORITY_DELTA: {
+        // A halt principal with any widening power would be authority, whatever it is called.
+        classification:
+          addedWiden.length === 0 && !haltWidens ? "NO_NEW_AUTHORIZATION_PRINCIPAL" : "NEW_AUTHORIZATION_PRINCIPAL",
         baseline: baseline ? `option ${baseline.id} (${baseline.label})` : "none",
         removed: ext(baseline?.widen).filter((l) => !ext(decided?.widen).some((d) => sameLever(d, l))),
-        added: ext(decided?.widen).filter((l) => !ext(baseline?.widen).some((b) => sameLever(b, l))),
+        added: addedWiden,
         retained: (decided?.widen ?? []).filter((l) => l.governed),
         inheritedByEveryOption: INHERITED_BY_EVERY_OPTION,
       },
@@ -1755,6 +1867,17 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
         ),
         offChain: ctx.inputs.offChainLivenessDependencies,
         inheritedByEveryOption: INHERITED_BY_EVERY_OPTION,
+      },
+      LIVENESS_AUTHORITY_DELTA: {
+        classification: !halt
+          ? "UNDECIDED"
+          : haltOnly
+            ? "WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY"
+            : "WALLETWALL_EMERGENCY_PRINCIPAL_WITH_MORE_THAN_HALT",
+        added: haltLevers,
+        removedVersusBaseline: ext(baseline?.disable).filter(
+          (l) => !ext(decided?.disable).some((d) => sameLever(d, l)),
+        ),
       },
       UPGRADE_MODEL: !decided
         ? "UNRESOLVED"
@@ -1772,6 +1895,20 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
             : "UNRESOLVED",
       PROGRAM_VKEY_DESIGNATION: designation,
       DEFECT_RESPONSE_COUPLING: defectCoupling,
+      DEFECT_RESPONSE_MECHANISM: defectCoupling.mechanism ?? "UNDECIDED",
+      HALT_REVERSIBILITY: !halt
+        ? "UNDECIDED"
+        : halt.transitions.some((t) => t.from === "HALTED")
+          ? "REVERSIBLE"
+          : "ONE_WAY",
+      RECOVERY: halt?.recovery ?? "UNDECIDED",
+      UPSTREAM_GATEWAY_OWNER:
+        upstreamLeverInPath || signalsMoveTheHalt ? "WALLETWALL_AUTHORITY" : "NOT_A_WALLETWALL_AUTHORITY",
+      // Closing the decision does not lift the blocker: the halt is built and tested in TD2.
+      REAL_VALUE_BLOCKER:
+        defectCoupling.status === "OWNER_DECISION_REQUIRED"
+          ? "DEFECT_RESPONSE_COUPLING_UNDECIDED"
+          : "TD2_IMPLEMENTATION_NOT_YET_BUILT",
       IMPLEMENTATION_REQUIRED: { required: true, plan: ctx.inputs.implementationPlan },
       REAL_PROOF_LANE_UNBLOCKED: { value: unblocked, basis: unblockBasis, preconditions: REAL_PROOF_PRECONDITIONS },
     },
@@ -1794,6 +1931,69 @@ function evidenceFiles(inputs: DecisionInputs): FileRef[] {
 // ---------------------------------------------------------------------------------------------------------
 // Rules: what no receipt may claim, checked on the receipt alone
 // ---------------------------------------------------------------------------------------------------------
+
+/**
+ * The owner's decision (2026-10-15), checked on the receipt alone: a local, one-way, halt-only breaker at the
+ * verifier wrapper that every consumer reaches, moved only by its principal, recovered only by a new wrapper and the
+ * timelocked rotation, and never an upstream authority.
+ */
+function decidedHaltErrors(
+  d: Td1DecisionReceipt["decisions"],
+  dc: Td1DecisionReceipt["decisions"]["DEFECT_RESPONSE_COUPLING"],
+  decided: OptionAuthority | undefined,
+  ext: (ls: Lever[] | undefined) => Lever[],
+): string[] {
+  const errors: string[] = [];
+  const chosen = (dc.choices ?? []).find((c) => c.id === dc.decision);
+  if (!chosen) errors.push("the owner's decision is not one of the offered choices");
+  else if (!decided || !chosen.options.includes(decided.id))
+    errors.push("the owner's decision must be realized by the decided trust target");
+  if (dc.decision !== DECIDED_DEFECT_RESPONSE)
+    errors.push(`the owner decided ${DECIDED_DEFECT_RESPONSE}; AF is not chosen`);
+  if (dc.mechanism !== LOCAL_ONE_WAY_VERIFIER_HALT)
+    errors.push(`the decided mechanism is ${LOCAL_ONE_WAY_VERIFIER_HALT}`);
+  const h = dc.haltDesign;
+  if (!h) errors.push("a decided defect response needs its halt design");
+  else {
+    if (h.location !== "VERIFIER_WRAPPER")
+      errors.push("the halt sits at the verifier wrapper, where every consumer verifies");
+    const missing = (dc.measuredConsumers ?? []).filter((c) => !(h.consumersCovered ?? []).includes(c));
+    if (missing.length > 0)
+      errors.push(`the halt must cover every consumer of the verifier (missing: ${missing.join(", ")})`);
+    if (JSON.stringify(h.transitions.map((t) => [t.from, t.to])) !== JSON.stringify([["ACTIVE", "HALTED"]]))
+      errors.push("the halt has one transition, ACTIVE -> HALTED: nothing leaves HALTED in place");
+    if (h.transitions.some((t) => t.trigger !== "HALT_PRINCIPAL_CALL"))
+      errors.push("only the halt principal's call moves the halt; detection signals are evidence");
+    if (h.detectionSignalsControlState !== false) errors.push("detection signals cannot control the halt");
+    const extra = h.haltPrincipal.powers.filter((p) => p !== "HALT");
+    if (extra.length > 0 || !h.haltPrincipal.powers.includes("HALT"))
+      errors.push(`the halt principal may only halt (also holds: ${extra.join(", ") || "nothing, and no HALT"})`);
+    if (h.wrapperIdentity.sp1Verifier !== "IMMUTABLE")
+      errors.push("the wrapper's SP1 verifier is immutable, halted or not");
+    if (h.wrapperIdentity.programVKey !== "IMMUTABLE")
+      errors.push("the wrapper's PROGRAM_VKEY is immutable, halted or not");
+    if (h.recovery !== NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION)
+      errors.push("recovery from HALTED is a new wrapper and the timelocked rotation, nothing else");
+    // The outputs say what the design says.
+    const reversibility = h.transitions.some((t) => t.from === "HALTED") ? "REVERSIBLE" : "ONE_WAY";
+    if (d.HALT_REVERSIBILITY !== reversibility)
+      errors.push(`HALT_REVERSIBILITY disagrees with the halt design (${reversibility})`);
+    if (d.RECOVERY !== h.recovery) errors.push("RECOVERY disagrees with the halt design");
+    if (
+      d.AUTHORIZATION_AUTHORITY_DELTA?.classification === "NO_NEW_AUTHORIZATION_PRINCIPAL" &&
+      h.haltPrincipal.powers.some((p) => WIDENING_POWERS.includes(p))
+    )
+      errors.push("a halt principal with widening power is authority: the delta cannot be authorization-neutral");
+  }
+  if (d.UPSTREAM_GATEWAY_OWNER !== "NOT_A_WALLETWALL_AUTHORITY")
+    errors.push("the upstream gateway owner is not a WalletWall authority under the decided response");
+  if (
+    decided &&
+    [...ext(decided.widen), ...ext(decided.disable)].some((l) => l.principal.startsWith("upstream gateway owner"))
+  )
+    errors.push("the decided path gives the upstream gateway owner a lever");
+  return errors;
+}
 
 export function validateDecisionRules(value: unknown): string[] {
   const errors: string[] = [];
@@ -1960,14 +2160,25 @@ export function validateDecisionRules(value: unknown): string[] {
   const unblock = d.REAL_PROOF_LANE_UNBLOCKED;
   if (!dc) errors.push("DEFECT_RESPONSE_COUPLING is required");
   else {
-    if (failClosedAlternatives.length > 0 && dc.status !== "OWNER_DECISION_REQUIRED")
+    // A trade-off stays on the record — open, or decided by the owner — and is never marked not applicable.
+    if (failClosedAlternatives.length > 0 && dc.status === "NOT_APPLICABLE")
       errors.push(
         `viable fail-closed alternatives (${failClosedAlternatives.join(", ")}) make the defect response an owner decision`,
       );
     const listed = (dc.viableAlternatives ?? []).map((a) => a.id).sort();
     if (JSON.stringify(listed) !== JSON.stringify(failClosedAlternatives))
       errors.push("DEFECT_RESPONSE_COUPLING must list exactly the viable fail-closed alternatives");
-    if (dc.status === "OWNER_DECISION_REQUIRED") {
+    if (dc.status === "DECIDED") errors.push(...decidedHaltErrors(d, dc, decided, ext));
+    if (d.DEFECT_RESPONSE_MECHANISM !== (dc.mechanism ?? "UNDECIDED"))
+      errors.push("DEFECT_RESPONSE_MECHANISM disagrees with the defect-response decision");
+    // Closing the decision does not lift the blocker; only TD2's built and tested halt can.
+    const blocker =
+      dc.status === "OWNER_DECISION_REQUIRED"
+        ? "DEFECT_RESPONSE_COUPLING_UNDECIDED"
+        : "TD2_IMPLEMENTATION_NOT_YET_BUILT";
+    if (d.REAL_VALUE_BLOCKER !== blocker)
+      errors.push(`REAL_VALUE_BLOCKER must be ${blocker}: a design lane cannot lift it`);
+    if (dc.status !== "NOT_APPLICABLE") {
       const offered = (dc.choices ?? []).flatMap((c) => c.options);
       if (decided && !offered.includes(decided.id))
         errors.push(`the owner decision offers no choice realized by option ${decided.id}`);
@@ -1992,8 +2203,7 @@ export function validateDecisionRules(value: unknown): string[] {
           errors.push(`the owner decision offers no choice realized by option ${id}`);
       if (!(dc.choices ?? []).some((c) => c.id === dc.recommendation))
         errors.push("the owner decision's recommendation is not one of its choices");
-      if (dc.requiredBeforeRealValue !== true)
-        errors.push("an open defect-response decision must be required before real value");
+      if (dc.requiredBeforeRealValue !== true) errors.push("the defect response must be required before real value");
     }
   }
   // The real-proof preconditions are the lane's, word for word (one of them names the open owner decision).

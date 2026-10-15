@@ -12,8 +12,8 @@
  * (`probeFacts`), which the TD1 decision validator consumes: if an execution and the recorded fact
  * disagree, this suite fails. No network, no SP1 toolchain, no proving.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 import { expect } from "chai";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
@@ -431,6 +431,51 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       expect(gatewayOps).to.include("SSTORE");
       expect(v610Forbidden).to.deep.equal(FACTS.verifierRuntime.v610ForbiddenOpcodes);
       expect(gatewayOps.includes("SSTORE")).to.equal(FACTS.verifierRuntime.gatewayHasSstore);
+    });
+  });
+
+  describe("the consumers a verifier-level halt must reach (source scan)", function () {
+    it("finds every contract that verifies through an IPQCVerifier, and how each can replace its verifier", function () {
+      const solidity = (dir: string): string[] =>
+        readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+          e.isDirectory()
+            ? e.name === "mocks"
+              ? []
+              : solidity(join(dir, e.name))
+            : e.name.endsWith(".sol")
+              ? [join(dir, e.name)]
+              : [],
+        );
+      // A consumer calls .verify(...) on a verifier it holds or reads; an implementer is a verifier, not a consumer.
+      const consumers = solidity("contracts")
+        .map((path) => readFileSync(path, "utf8"))
+        .filter((s) => /\.verify\(/.test(s) && !/\bcontract\s+\w+\s+is\s+[^{]*\bIPQCVerifier\b/.test(s))
+        .map((s) => ({ name: /^contract\s+(\w+)/m.exec(s)![1], source: s }));
+      const rotates = (s: string) =>
+        /function proposePQVerifier\(/.test(s) &&
+        /function applyPQVerifierUpdate\(/.test(s) &&
+        /PQ_VERIFIER_UPDATE_DELAY/.test(s);
+      const followsItsConsumer = (s: string) => /\)\.pqVerifier\(\)/.test(s);
+      const names = (keep: (s: string) => boolean) =>
+        consumers
+          .filter((c) => keep(c.source))
+          .map((c) => c.name)
+          .sort();
+      const observed = {
+        pqVerifierConsumers: names(() => true),
+        consumersWithTimelockedRotation: names(rotates),
+        consumersFollowingTheirConsumer: names(followsItsConsumer),
+        consumersWithFixedVerifier: names((s) => !rotates(s) && !followsItsConsumer(s)),
+      };
+      expect(observed.pqVerifierConsumers).to.deep.equal([
+        "PolicyControlBridge",
+        "StablecoinVaultSimulator",
+        "WalletWallMultiSigVault",
+        "WalletWallVault",
+      ]);
+      // The multisig vault sets its verifier once and has no rotation: a one-way halt would strand it (TD1-N11).
+      expect(observed.consumersWithFixedVerifier).to.deep.equal(["WalletWallMultiSigVault"]);
+      expect(observed).to.deep.equal(FACTS.verifierConsumers);
     });
   });
 

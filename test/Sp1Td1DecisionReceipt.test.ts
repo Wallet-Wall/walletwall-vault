@@ -74,7 +74,26 @@ describe("SP1-TD1 decision receipt", function () {
       expect(r.decisions.PROGRAM_VKEY_DESIGNATION.elfSha256).to.equal(VENDOR_ELF);
       expect(r.decisions.UPGRADE_MODEL).to.equal("EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION");
       expect(r.decisions.CROSS_CHAIN_MODEL).to.equal("CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK");
-      expect(r.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("OWNER_DECISION_REQUIRED");
+      expect(r.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("DECIDED");
+      expect(r.decisions.DEFECT_RESPONSE_COUPLING.decision).to.equal("WALLETWALL_DETECT_AND_FAIL_CLOSED");
+      expect([
+        r.decisions.DEFECT_RESPONSE_MECHANISM,
+        r.decisions.AUTHORIZATION_AUTHORITY_DELTA.classification,
+        r.decisions.LIVENESS_AUTHORITY_DELTA.classification,
+        r.decisions.HALT_REVERSIBILITY,
+        r.decisions.RECOVERY,
+        r.decisions.UPSTREAM_GATEWAY_OWNER,
+        r.decisions.REAL_VALUE_BLOCKER,
+      ]).to.deep.equal([
+        "LOCAL_ONE_WAY_VERIFIER_HALT",
+        "NO_NEW_AUTHORIZATION_PRINCIPAL",
+        "WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY",
+        "ONE_WAY",
+        "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION",
+        "NOT_A_WALLETWALL_AUTHORITY",
+        "TD2_IMPLEMENTATION_NOT_YET_BUILT",
+      ]);
+      // The decision closes the design question; it lifts nothing: real value waits for TD2.
       expect(r.decisions.REAL_PROOF_LANE_UNBLOCKED.value).to.equal(true);
       expect(r.decisions.IMPLEMENTATION_REQUIRED.required).to.equal(true);
     });
@@ -584,9 +603,16 @@ describe("SP1-TD1 decision receipt", function () {
       expect(alternatives(c)).to.deep.equal(["B"]);
     });
 
-    it("keeps the defect response an open owner decision while a viable fail-closed alternative exists", function () {
+    it("records the owner's decision on the defect response, and the trade-off it settled", function () {
       const dc = built().decisions.DEFECT_RESPONSE_COUPLING;
-      expect(dc.status).to.equal("OWNER_DECISION_REQUIRED");
+      expect([dc.status, dc.decision, dc.mechanism, dc.decidedBy, dc.decidedOn]).to.deep.equal([
+        "DECIDED",
+        "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+        "LOCAL_ONE_WAY_VERIFIER_HALT",
+        "owner",
+        "2026-10-15",
+      ]);
+      expect(dc.haltDesign).to.deep.equal(ctx().inputs.ownerDecisions[0].haltDesign);
       expect(dc.viableAlternatives.map((a) => a.id)).to.deep.equal(["AF", "B"]);
       expect(dc.viableAlternatives[0].externalLivenessPrincipals.length).to.equal(2);
       expect(dc.decidedOptionDefectResponse).to.deep.equal([PAUSE]);
@@ -599,21 +625,52 @@ describe("SP1-TD1 decision receipt", function () {
         "WALLETWALL_DETECT_AND_FAIL_CLOSED",
         true,
       ]);
-      expect(built().claims.DEFECT_RESPONSE_PATH.basis).to.contain("open owner decision DEFECT_RESPONSE_COUPLING");
-      // No fail-closed alternative left (AF gone, B's route replaceable): the decision does not apply.
+      const path = built().claims.DEFECT_RESPONSE_PATH.basis;
+      expect(path).to.contain("decided by the owner on 2026-10-15");
+      expect(path).to.contain("WalletWallMultiSigVault still lacks the decided recovery path");
+      // Control: undecided, the same trade-off is an open owner decision and real value waits on it.
+      const open = ctx();
+      open.inputs.ownerDecisions[0].status = "OWNER_DECISION_REQUIRED";
+      const ro = built(open);
+      expect([
+        ro.decisions.DEFECT_RESPONSE_COUPLING.status,
+        ro.decisions.DEFECT_RESPONSE_COUPLING.decision,
+        ro.decisions.DEFECT_RESPONSE_COUPLING.haltDesign,
+        ro.decisions.DEFECT_RESPONSE_MECHANISM,
+        ro.decisions.HALT_REVERSIBILITY,
+        ro.decisions.RECOVERY,
+        ro.decisions.LIVENESS_AUTHORITY_DELTA.classification,
+        ro.decisions.REAL_VALUE_BLOCKER,
+      ]).to.deep.equal([
+        "OWNER_DECISION_REQUIRED",
+        null,
+        null,
+        "UNDECIDED",
+        "UNDECIDED",
+        "UNDECIDED",
+        "UNDECIDED",
+        "DEFECT_RESPONSE_COUPLING_UNDECIDED",
+      ]);
+      expect(ro.claims.DEFECT_RESPONSE_PATH.basis).to.contain("open owner decision DEFECT_RESPONSE_COUPLING");
+      expect(rulesOf(ro)).to.deep.equal([]);
+      // Undecided with no fail-closed alternative left (AF gone, B's route replaceable): the decision does not apply.
       const c1 = ctx();
+      c1.inputs.ownerDecisions[0].status = "OWNER_DECISION_REQUIRED";
       c1.inputs.options = c1.inputs.options.filter((o) => o.id !== "AF");
       c1.inputs.probeFacts.B_selectorRouteCodePinned.pinnedRouteReplaceable = true;
       const r1 = built(c1);
       expect(r1.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("NOT_APPLICABLE");
       expect(r1.claims.DEFECT_RESPONSE_PATH.basis).to.contain("no protective alternative exists");
       expect(rulesOf(r1)).to.deep.equal([]);
-      // The decided option is never its own alternative.
+      // The decided option is never its own alternative, and a decision made for A is not carried over to B.
       const c2 = ctx();
       c2.inputs.options = c2.inputs.options.filter((o) => o.id === "B");
       const r2 = built(c2);
       expect(r2.decisions.SP1_TRUST_TARGET_OPTION).to.equal("B");
-      expect(r2.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("NOT_APPLICABLE");
+      expect(r2.decisions.DEFECT_RESPONSE_COUPLING.viableAlternatives).to.deep.equal([]);
+      expectRule(r2, "the owner's decision must be realized by the decided trust target");
+      // B routes through the gateway: its owners' freeze is in the decided path, so they would be a WalletWall authority.
+      expect(r2.decisions.UPSTREAM_GATEWAY_OWNER).to.equal("WALLETWALL_AUTHORITY");
       // A missing owner-decision record leaves nothing to choose from, and the rules refuse it.
       const c3 = ctx();
       c3.inputs.ownerDecisions = [];
@@ -633,11 +690,170 @@ describe("SP1-TD1 decision receipt", function () {
       const c = ctx();
       c.inputs.probeFacts.verifierRuntime.v610ForbiddenOpcodes = ["SSTORE"];
       const dc = built(c).decisions.DEFECT_RESPONSE_COUPLING;
-      expect([dc.status, dc.decidedOptionDefectResponse, dc.viableAlternatives]).to.deep.equal([
+      expect([dc.status, dc.decidedOptionDefectResponse, dc.viableAlternatives, dc.haltDesign]).to.deep.equal([
         "NOT_APPLICABLE",
         [],
         [],
+        null,
       ]);
+    });
+
+    it("derives the authority classification and the halt's outputs from the decided design", function () {
+      const halt = (c: DecisionContext) => c.inputs.ownerDecisions[0].haltDesign!;
+      const d = built().decisions;
+      expect(
+        d.LIVENESS_AUTHORITY_DELTA.added.map((l) => [l.lever, l.scope, l.governed, l.protectiveOnVerifierDefect]),
+      ).to.deep.equal([["verifierHalt", "liveness", true, true]]);
+      expect(d.LIVENESS_AUTHORITY_DELTA.removedVersusBaseline).to.deep.equal(
+        d.LIVENESS_DEPENDENCY.removedVersusBaseline,
+      );
+      expect(d.DEFECT_RESPONSE_COUPLING.measuredConsumers).to.deep.equal([
+        "PolicyControlBridge",
+        "StablecoinVaultSimulator",
+        "WalletWallMultiSigVault",
+        "WalletWallVault",
+      ]);
+      expect(d.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath).to.deep.equal(["WalletWallMultiSigVault"]);
+      // Give the multisig vault the rotation it lacks (TD1-N11) and no consumer is stranded.
+      const rot = ctx();
+      rot.inputs.probeFacts.verifierConsumers.consumersWithTimelockedRotation.push("WalletWallMultiSigVault");
+      expect(built(rot).decisions.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath).to.deep.equal([]);
+      // The bridge recovers through its consumer: drop that and it is stranded too.
+      const fol = ctx();
+      fol.inputs.probeFacts.verifierConsumers.consumersFollowingTheirConsumer = [];
+      expect(built(fol).decisions.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath).to.deep.equal([
+        "PolicyControlBridge",
+        "WalletWallMultiSigVault",
+      ]);
+      // An unhalt transition makes the halt reversible.
+      const c1 = ctx();
+      halt(c1).transitions.push({ from: "HALTED", to: "ACTIVE", trigger: "HALT_PRINCIPAL_CALL" });
+      expect(built(c1).decisions.HALT_REVERSIBILITY).to.equal("REVERSIBLE");
+      // A widening power is authority, whatever the principal is called; any extra power is more than a halt.
+      const c2 = ctx();
+      halt(c2).haltPrincipal.powers.push("WIDEN_ACCEPTED_RELATION");
+      expect([
+        built(c2).decisions.AUTHORIZATION_AUTHORITY_DELTA.classification,
+        built(c2).decisions.LIVENESS_AUTHORITY_DELTA.classification,
+      ]).to.deep.equal(["NEW_AUTHORIZATION_PRINCIPAL", "WALLETWALL_EMERGENCY_PRINCIPAL_WITH_MORE_THAN_HALT"]);
+      const c3 = ctx();
+      halt(c3).haltPrincipal.powers.push("UNHALT");
+      expect([
+        built(c3).decisions.AUTHORIZATION_AUTHORITY_DELTA.classification,
+        built(c3).decisions.LIVENESS_AUTHORITY_DELTA.classification,
+      ]).to.deep.equal(["NO_NEW_AUTHORIZATION_PRINCIPAL", "WALLETWALL_EMERGENCY_PRINCIPAL_WITH_MORE_THAN_HALT"]);
+      // An upstream signal that moves the halt makes the upstream gateway owner a WalletWall authority again.
+      const c4 = ctx();
+      halt(c4).transitions[0].trigger = "RouteFrozen";
+      expect(built(c4).decisions.UPSTREAM_GATEWAY_OWNER).to.equal("WALLETWALL_AUTHORITY");
+      const c5 = ctx();
+      halt(c5).detectionSignalsControlState = true;
+      expect(built(c5).decisions.UPSTREAM_GATEWAY_OWNER).to.equal("WALLETWALL_AUTHORITY");
+      // Recovery is whatever the design says, and the rules hold it to the decided path.
+      const c6 = ctx();
+      halt(c6).recovery = "UNHALT_IN_PLACE";
+      expect(built(c6).decisions.RECOVERY).to.equal("UNHALT_IN_PLACE");
+    });
+
+    it("refuses each violation the owner named, built from the inputs", function () {
+      const halt = (c: DecisionContext) => c.inputs.ownerDecisions[0].haltDesign!;
+      const violations: [string, (c: DecisionContext) => void, string[]][] = [
+        [
+          "the halt principal can unhalt",
+          (c) => halt(c).haltPrincipal.powers.push("UNHALT"),
+          ["the halt principal may only halt (also holds: UNHALT)"],
+        ],
+        [
+          "an in-place HALTED -> ACTIVE transition",
+          (c) => halt(c).transitions.push({ from: "HALTED", to: "ACTIVE", trigger: "HALT_PRINCIPAL_CALL" }),
+          ["the halt has one transition, ACTIVE -> HALTED: nothing leaves HALTED in place"],
+        ],
+        [
+          "the verifier changes while halted",
+          (c) => (halt(c).wrapperIdentity.sp1Verifier = "MUTABLE_WHILE_HALTED"),
+          ["the wrapper's SP1 verifier is immutable, halted or not"],
+        ],
+        [
+          "the halt principal can select another verifier",
+          (c) => halt(c).haltPrincipal.powers.push("CHANGE_SP1_VERIFIER"),
+          ["the halt principal may only halt (also holds: CHANGE_SP1_VERIFIER)"],
+        ],
+        [
+          "PROGRAM_VKEY changes",
+          (c) => (halt(c).wrapperIdentity.programVKey = "MUTABLE"),
+          ["the wrapper's PROGRAM_VKEY is immutable, halted or not"],
+        ],
+        [
+          "RouteFrozen moves the halt automatically",
+          (c) => (halt(c).transitions[0].trigger = "RouteFrozen"),
+          [
+            "only the halt principal's call moves the halt; detection signals are evidence",
+            "the upstream gateway owner is not a WalletWall authority under the decided response",
+          ],
+        ],
+        [
+          "detection signals control the state",
+          (c) => (halt(c).detectionSignalsControlState = true),
+          [
+            "detection signals cannot control the halt",
+            "the upstream gateway owner is not a WalletWall authority under the decided response",
+          ],
+        ],
+        [
+          "PolicyControlBridge bypasses the halt",
+          (c) => (halt(c).consumersCovered = halt(c).consumersCovered.filter((x) => x !== "PolicyControlBridge")),
+          ["the halt must cover every consumer of the verifier (missing: PolicyControlBridge)"],
+        ],
+        [
+          "a halt at a consumer, not at the wrapper",
+          (c) => (halt(c).location = "VAULT_PAUSE"),
+          ["the halt sits at the verifier wrapper, where every consumer verifies"],
+        ],
+        [
+          "an authorization-neutral principal with widening power",
+          (c) => halt(c).haltPrincipal.powers.push("WIDEN_ACCEPTED_RELATION"),
+          ["the halt principal may only halt (also holds: WIDEN_ACCEPTED_RELATION)"],
+        ],
+        [
+          "recovery without a new wrapper and the timelocked rotation",
+          (c) => (halt(c).recovery = "UNHALT_IN_PLACE"),
+          ["recovery from HALTED is a new wrapper and the timelocked rotation, nothing else"],
+        ],
+        [
+          "a halt principal without the halt",
+          (c) => (halt(c).haltPrincipal.powers = []),
+          ["the halt principal may only halt (also holds: nothing, and no HALT)"],
+        ],
+        [
+          "a decision for AF",
+          (c) => (c.inputs.ownerDecisions[0].decision = "UPSTREAM_FREEZE_FAIL_CLOSED"),
+          [
+            "the owner decided WALLETWALL_DETECT_AND_FAIL_CLOSED; AF is not chosen",
+            "the owner's decision must be realized by the decided trust target",
+          ],
+        ],
+        [
+          "another mechanism",
+          (c) => (c.inputs.ownerDecisions[0].mechanism = "UPSTREAM_ROUTE_FREEZE"),
+          ["the decided mechanism is LOCAL_ONE_WAY_VERIFIER_HALT"],
+        ],
+        [
+          "a decision outside the choices",
+          (c) => (c.inputs.ownerDecisions[0].decision = "SOMETHING_ELSE"),
+          ["the owner's decision is not one of the offered choices"],
+        ],
+        [
+          "no halt design",
+          (c) => delete c.inputs.ownerDecisions[0].haltDesign,
+          ["a decided defect response needs its halt design"],
+        ],
+      ];
+      for (const [name, violate, expected] of violations) {
+        const c = ctx();
+        violate(c);
+        const errors = rulesOf(built(c));
+        for (const e of expected) expect(errors, name).to.include(e);
+      }
     });
 
     it("the upgrade and cross-chain models follow the decided option and the per-chain evidence", function () {
@@ -1180,7 +1396,7 @@ describe("SP1-TD1 decision receipt", function () {
       expectRule(R, "the owner decision's recommendation is not one of its choices");
       R = clone(committed());
       dc().requiredBeforeRealValue = false;
-      expectRule(R, "an open defect-response decision must be required before real value");
+      expectRule(R, "the defect response must be required before real value");
       R = clone(committed());
       delete (R.decisions as Partial<Td1DecisionReceipt["decisions"]>).DEFECT_RESPONSE_COUPLING;
       expectRule(R, "DEFECT_RESPONSE_COUPLING is required");
@@ -1251,6 +1467,41 @@ describe("SP1-TD1 decision receipt", function () {
           x.includes("DEFECT_RESPONSE_COUPLING"),
         ),
       ).to.equal(true);
+    });
+
+    it("holds the decided halt's outputs to its design, and real value blocked", function () {
+      R.decisions.HALT_REVERSIBILITY = "REVERSIBLE";
+      expectRule(R, "HALT_REVERSIBILITY disagrees with the halt design (ONE_WAY)");
+      R = clone(committed());
+      R.decisions.RECOVERY = "UNHALT_IN_PLACE";
+      expectRule(R, "RECOVERY disagrees with the halt design");
+      R = clone(committed());
+      R.decisions.UPSTREAM_GATEWAY_OWNER = "WALLETWALL_AUTHORITY";
+      expectRule(R, "the upstream gateway owner is not a WalletWall authority under the decided response");
+      R = clone(committed());
+      R.decisions.DEFECT_RESPONSE_MECHANISM = "UPSTREAM_ROUTE_FREEZE";
+      expectRule(R, "DEFECT_RESPONSE_MECHANISM disagrees with the defect-response decision");
+      R = clone(committed());
+      (R.decisions as { REAL_VALUE_BLOCKER: string }).REAL_VALUE_BLOCKER = "NONE";
+      expectRule(R, "REAL_VALUE_BLOCKER must be TD2_IMPLEMENTATION_NOT_YET_BUILT: a design lane cannot lift it");
+      // While the decision is open, the blocker is the decision itself.
+      R = clone(committed());
+      (R.decisions.DEFECT_RESPONSE_COUPLING as { status: string }).status = "OWNER_DECISION_REQUIRED";
+      expectRule(R, "REAL_VALUE_BLOCKER must be DEFECT_RESPONSE_COUPLING_UNDECIDED: a design lane cannot lift it");
+    });
+
+    it("rejects an authorization-neutral classification for a halt principal with widening power", function () {
+      R.decisions.DEFECT_RESPONSE_COUPLING.haltDesign!.haltPrincipal.powers.push("WIDEN_ACCEPTED_RELATION");
+      expect(R.decisions.AUTHORIZATION_AUTHORITY_DELTA.classification).to.equal("NO_NEW_AUTHORIZATION_PRINCIPAL");
+      expectRule(R, "a halt principal with widening power is authority: the delta cannot be authorization-neutral");
+      expectRule(R, "the halt principal may only halt (also holds: WIDEN_ACCEPTED_RELATION)");
+    });
+
+    it("refuses a decided path that gives the upstream gateway owner a lever", function () {
+      // AF shares A's decision value; deciding it would put the gateway owners' freeze in the path.
+      R.decisions.SP1_TRUST_TARGET_OPTION = "AF";
+      expectRule(R, "the decided path gives the upstream gateway owner a lever");
+      expectRule(R, "the owner's decision must be realized by the decided trust target");
     });
 
     it("states the authority every option inherits instead of claiming none", function () {
@@ -1360,7 +1611,14 @@ describe("SP1-TD1 decision receipt", function () {
         ["PROGRAM_IDENTITY_DECISION", d.PROGRAM_IDENTITY_DECISION],
         ["UPGRADE_MODEL", d.UPGRADE_MODEL],
         ["CROSS_CHAIN_MODEL", d.CROSS_CHAIN_MODEL],
-        ["DEFECT_RESPONSE_COUPLING", d.DEFECT_RESPONSE_COUPLING.status],
+        ["DEFECT_RESPONSE_COUPLING", d.DEFECT_RESPONSE_COUPLING.decision ?? d.DEFECT_RESPONSE_COUPLING.status],
+        ["DEFECT_RESPONSE_MECHANISM", d.DEFECT_RESPONSE_MECHANISM],
+        ["AUTHORIZATION_AUTHORITY_DELTA", d.AUTHORIZATION_AUTHORITY_DELTA.classification],
+        ["LIVENESS_AUTHORITY_DELTA", d.LIVENESS_AUTHORITY_DELTA.classification],
+        ["HALT_REVERSIBILITY", d.HALT_REVERSIBILITY],
+        ["RECOVERY", d.RECOVERY],
+        ["UPSTREAM_GATEWAY_OWNER", d.UPSTREAM_GATEWAY_OWNER],
+        ["REAL_VALUE_BLOCKER", d.REAL_VALUE_BLOCKER],
         ["REAL_PROOF_LANE_UNBLOCKED", String(d.REAL_PROOF_LANE_UNBLOCKED.value)],
         ["IMPLEMENTATION_REQUIRED", String(d.IMPLEMENTATION_REQUIRED.required)],
       ]);
