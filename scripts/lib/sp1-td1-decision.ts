@@ -15,9 +15,11 @@
  *   - the zkvm guest/host sources, in the working tree and as the trees HEAD records (the designation's subject).
  * Every decision, authority row, designation and claim status is DERIVED here; `validateCommittedDecisionReceipt`
  * re-derives the whole receipt and refuses drift, stale subjects and over-claims. `validateDecisionRules` checks,
- * on the receipt alone, what a hand edit could over-claim about decisions, viability, levers, models and claim
- * statuses; the remaining fields (the authority delta, findings, plan) are guarded by re-derivation only, and the
- * findings and plan are authored inputs, reviewed rather than derived.
+ * on the receipt alone, the invariants a hand edit could break in the decisions, option viability, lever classes
+ * (scope, protective freezes), the models, the owner decision, the real-proof preconditions and the claims it
+ * names. It cannot re-run a probe: a self-consistent edit of derived facts (an option's pins, the equivalence and
+ * widening claims, the authority delta) is caught only by re-derivation, and the findings and the plan are authored
+ * inputs, reviewed rather than derived.
  *
  * Authorization and liveness are kept apart throughout: a lever that can make a previously REJECTED proof
  * accepted is an authorization lever ("widen"); one that can only make a previously ACCEPTED proof rejected is
@@ -30,6 +32,8 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+
+import { AbiCoder, Interface, concat, getBytes, hexlify } from "ethers";
 
 import {
   ACVP,
@@ -105,6 +109,25 @@ export const CROSS_CHAIN_MODELS = [
   "PER_CHAIN_ROUTE_TABLE",
   "UNRESOLVED",
 ] as const;
+/**
+ * What every chain must answer, set here rather than read from the observation (which must not grade itself): a real
+ * proof verifies, its tampered copy does not, and the odd-word canary does not (it verifies wherever the pairing
+ * precompile is missing), on the v6.1.0 bytes and on the v6.0.0 template.
+ */
+export const REQUIRED_CHAIN_VERDICTS: Record<string, string> = {
+  v610RealProof: "success",
+  v610TamperedPublicValues: "revert ProofInvalid",
+  v610OddWordCanary: "revert ProofInvalid",
+  v600RealProof: "success",
+  v600TamperedPublicValues: "revert ProofInvalid",
+};
+/**
+ * Beneath every option: each chain's own governance (its precompile semantics; on an L2, its upgrade keys) can change
+ * what any deployed code accepts. No pin can see it and no option avoids it, so it does not separate the options; it
+ * is stated wherever a claim says "no external principal" (TD1-N8).
+ */
+export const INHERITED_BY_EVERY_OPTION =
+  "each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)";
 /** The only reachable environment read the pinned runtime may make (its self-call's code check). */
 const ALLOWED_RUNTIME_READS = ["EXTCODESIZE"];
 /** Precompiles a Groth16 BN254 verifier may call at a constant address: modexp, ecAdd, ecMul, pairing. */
@@ -112,6 +135,8 @@ const ALLOWED_CONSTANT_CALL_TARGETS = ["0x05", "0x06", "0x07", "0x08"];
 
 /** Pins that, together with write-once routes, take the gateway owner's addRoute out of the accepted path. */
 export const FULL_GATEWAY_PINS = ["selector", "routeVerifier", "gatewayCode", "verifierCode"] as const;
+/** Pins that make an upstream freeze bit the pinned verifier's own route (so freezing it protects). */
+export const FREEZE_COUPLING_PINS = ["selector", "routeVerifier", "gatewayCode"] as const;
 /** Levers that can only stop verification; they must never be read as widening it. */
 export const LIVENESS_LEVERS = ["freezeRoute", "gatewayAdminFreezeRoute"] as const;
 /** Levers that can make a previously rejected proof accepted. */
@@ -160,6 +185,9 @@ export interface ProbeFacts {
     realV610ProofAcceptedDirect: boolean;
     realV610ProofAcceptedViaGateway: boolean;
     realV610TamperedRejectedDirectAndViaGateway: boolean;
+    /** The canary's positive control: refused by the pinned code, accepted by it once the pairing call is empty. */
+    oddWordCanaryRefusedByPinnedCode: boolean;
+    oddWordCanaryAcceptedWithoutPairingPrecompile: boolean;
   };
   verifierRuntime: {
     v610ForbiddenOpcodes: string[];
@@ -425,7 +453,9 @@ export interface VendorImageObservation {
 
 /** eth_call verdicts of the deployed verifier template on each chain, through two providers. */
 export interface ChainExecutionObservation {
-  expected: Record<string, string>;
+  proofSource: { observation: string; transaction: string };
+  /** The exact calldata sent to every provider on every chain. */
+  calls: Record<string, { to: string; data: string; dataSha256: string }>;
   chains: Record<string, { block: number; providersAgree: boolean; verdicts: Record<string, string> }>;
 }
 
@@ -501,6 +531,10 @@ export interface TrustTargetIdentity {
   };
   /** Same code is the same relation only if each chain's precompiles give the same verdicts. */
   chainExecution: { chainId: string; block: number; providersAgree: boolean; verdictsAsExpected: boolean }[];
+  /** The calls behind those verdicts are the ones this receipt names (rebuilt and compared byte for byte). */
+  chainCallsBound: boolean;
+  /** The canary is shown to pass where the pairing precompile is missing, and to fail on the pinned code. */
+  canaryHasPositiveControl: boolean;
   /** A real proof for this circuit, verified on the pinned bytes (a third party's program, not WalletWall's). */
   realProofOnPinnedKey: { transaction: string; programVKey: string; verifiedInProbe: boolean; established: boolean };
   circuitVersionMatchesSubject: boolean;
@@ -610,11 +644,28 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
     failures.push(
       "the v6.0.0 and v6.1.0 wrappers no longer share their statements: the chain-execution control does not transfer",
     );
-  const expected = ctx.chainExec.expected;
+  // The per-chain verdicts are evidence only for the calls this receipt names: every calldata is rebuilt from the
+  // real proofs and the canary recipe and compared with what was sent, and the source proof is this receipt's.
+  const rebuilt = expectedChainCalls(ctx);
+  const chainCallsBound =
+    lower(ctx.chainExec.proofSource?.transaction) === lower(mp.source.transaction) &&
+    ctx.chainExec.proofSource?.observation === TD1_OBSERVATIONS.mainnetV610Proof.split("/").pop() &&
+    Object.entries(rebuilt).every(([k, c]) => {
+      const sent = ctx.chainExec.calls?.[k];
+      return !!sent && sameAddress(sent.to, c.to) && lower(sent.data) === lower(c.data);
+    });
+  if (!chainCallsBound)
+    failures.push("the per-chain calls are not the real proofs, tampered copies and canary this receipt names");
+  // The canary detects a missing pairing precompile only if it is shown to: refused by the pinned code, accepted by
+  // the same code whose pairing calls reach an empty account.
+  const canaryHasPositiveControl =
+    semantics.oddWordCanaryRefusedByPinnedCode === true &&
+    semantics.oddWordCanaryAcceptedWithoutPairingPrecompile === true;
+  if (!canaryHasPositiveControl)
+    failures.push("the odd-word canary has no positive control: it cannot show a missing pairing precompile");
   const chainExecution = sel.requiredChains.map((id) => {
     const e = ctx.chainExec.chains[id];
-    const verdictsAsExpected =
-      !!e && Object.keys(expected).length > 0 && Object.entries(expected).every(([k, v]) => e.verdicts[k] === v);
+    const verdictsAsExpected = !!e && Object.entries(REQUIRED_CHAIN_VERDICTS).every(([k, v]) => e.verdicts[k] === v);
     const providersAgree = !!e && e.providersAgree === true;
     if (!e) failures.push(`chain ${id}: the verifier template was not executed there`);
     else {
@@ -649,6 +700,8 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
       metadataIsSolcCbor: rt.v610MetadataIsSolcCbor,
     },
     chainExecution,
+    chainCallsBound,
+    canaryHasPositiveControl,
     realProofOnPinnedKey: {
       transaction: mp.source.transaction,
       programVKey: mp.call.programVKey,
@@ -658,6 +711,41 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
     circuitVersionMatchesSubject,
     established: failures.length === 0,
     failures,
+  };
+}
+
+const VERIFY_PROOF = new Interface(["function verifyProof(bytes32 programVKey, bytes publicValues, bytes proofBytes)"]);
+const flipLastBit = (hex: string) => {
+  const b = getBytes(hex);
+  b[b.length - 1] ^= 1;
+  return hexlify(b);
+};
+
+/**
+ * The calls the per-chain check must have sent, rebuilt from the real proofs: the mainnet v6.1.0 proof and its
+ * tampered copy on the pinned verifier, the odd-word canary (v6.1.0's selector, exit code 0, the vk root, nonce 0,
+ * eight proof words of 1), and upstream's v6.0.0 fixture and its tampered copy on the CREATE2-authenticated template.
+ */
+export function expectedChainCalls(ctx: DecisionContext): Record<string, { to: string; data: string }> {
+  const p = ctx.mainnetProof.call;
+  const fx = ctx.fixture.fixture;
+  const v610 = ctx.inputs.trustTargetSelection.verifier;
+  const v600 = ctx.deployments.deployments["v6.0.0"]?.create2Derived ?? "";
+  const canary = concat([
+    ctx.inputs.trustTargetSelection.selector,
+    AbiCoder.defaultAbiCoder().encode(
+      ["uint256", "uint256", "uint256", "uint256[8]"],
+      [0n, ctx.mainnetProof.decoded.vkRoot, 0n, Array(8).fill(1n)],
+    ),
+  ]);
+  const call = (vkey: string, publicValues: string, proofBytes: string) =>
+    VERIFY_PROOF.encodeFunctionData("verifyProof", [vkey, publicValues, proofBytes]);
+  return {
+    v610RealProof: { to: v610, data: call(p.programVKey, p.publicValues, p.proofBytes) },
+    v610TamperedPublicValues: { to: v610, data: call(p.programVKey, flipLastBit(p.publicValues), p.proofBytes) },
+    v610OddWordCanary: { to: v610, data: call(p.programVKey, p.publicValues, canary) },
+    v600RealProof: { to: v600, data: call(fx.programVKey, fx.publicValues, fx.proofBytes) },
+    v600TamperedPublicValues: { to: v600, data: call(fx.programVKey, flipLastBit(fx.publicValues), fx.proofBytes) },
   };
 }
 
@@ -763,13 +851,16 @@ export interface Lever {
 }
 
 /** WalletWall's own fail-closed lever, present under every option: the vault owner's pause(). */
-const WALLETWALL_PAUSE = "WalletWall vault owner pause() — liveness only; manual unless automated";
+const WALLETWALL_PAUSE =
+  "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders";
 
 export interface OptionAuthority {
   id: string;
   decisionValue: Exclude<TrustTargetDecision, "UNRESOLVED">;
   label: string;
   path: string[];
+  /** The contracts in (or read by) the accepted path, as the probe suite deployed them. */
+  components: OptionInput["components"];
   pins: string[];
   verifierCodeMutable: boolean;
   gatewayCodeMutable: boolean | null;
@@ -894,9 +985,7 @@ export function deriveOptionAuthority(
     // selector makes verification fail closed (executed). Without the route pin the bit might belong to a route
     // that is not the pinned verifier's, and the coupling would protect nothing.
     const couplingHolds =
-      pinned("selector") &&
-      pinned("routeVerifier") &&
-      pinned("gatewayCode") &&
+      FREEZE_COUPLING_PINS.every((p) => pinned(p)) &&
       f.AF_directFreezeCoupled.squattedRouteRejectedAtConstruction === true &&
       f.AF_directFreezeCoupled.otherSelectorRouteGrantsNothing === true;
     if (f.AF_directFreezeCoupled.upstreamFreezeFailsClosed)
@@ -1011,6 +1100,7 @@ export function deriveOptionAuthority(
     decisionValue: option.decisionValue,
     label: option.label,
     path: option.path,
+    components: option.components,
     pins: option.pins,
     verifierCodeMutable,
     gatewayCodeMutable,
@@ -1399,8 +1489,19 @@ export interface Td1DecisionReceipt {
     SP1_TRUST_TARGET_DECISION: TrustTargetDecision;
     SP1_TRUST_TARGET_OPTION: string | null;
     PROGRAM_IDENTITY_DECISION: ProgramIdentityDecision;
-    AUTHORIZATION_AUTHORITY_DELTA: { baseline: string; removed: Lever[]; added: Lever[]; retained: Lever[] };
-    LIVENESS_DEPENDENCY: { onChainExternal: Lever[]; removedVersusBaseline: Lever[]; offChain: string[] };
+    AUTHORIZATION_AUTHORITY_DELTA: {
+      baseline: string;
+      removed: Lever[];
+      added: Lever[];
+      retained: Lever[];
+      inheritedByEveryOption: string;
+    };
+    LIVENESS_DEPENDENCY: {
+      onChainExternal: Lever[];
+      removedVersusBaseline: Lever[];
+      offChain: string[];
+      inheritedByEveryOption: string;
+    };
     UPGRADE_MODEL: "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION" | "MUTABLE_ROUTING" | "UNRESOLVED";
     CROSS_CHAIN_MODEL: (typeof CROSS_CHAIN_MODELS)[number];
     PROGRAM_VKEY_DESIGNATION: VkeyDesignation;
@@ -1560,7 +1661,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER: {
       status: st(!!decided && ext(decided.widen).length === 0 && ext(decided.disable).length === 0),
       basis: decided
-        ? `option ${decided.id}: external authorization levers ${ext(decided.widen).length}, external liveness levers ${ext(decided.disable).length}`
+        ? `option ${decided.id}: external authorization levers ${ext(decided.widen).length}, external liveness levers ${ext(decided.disable).length}, beyond ${INHERITED_BY_EVERY_OPTION}`
         : "no option decided",
     },
     CANONICAL_PROGRAM_IDENTITY: {
@@ -1594,8 +1695,8 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
       status: "NOT_ESTABLISHED",
       basis:
         defectCoupling.status === "OWNER_DECISION_REQUIRED"
-          ? `open owner decision DEFECT_RESPONSE_COUPLING (alternatives ${alternatives.map((a) => a.id).join(", ")}); until it is decided and built, only the vault owner's manual pause() makes verification fail closed if the pinned verifier proves unsound`
-          : "no protective alternative exists; the vault owner's manual pause() is the only fail-closed path, with no stated or tested response bound",
+          ? `open owner decision DEFECT_RESPONSE_COUPLING (alternatives ${alternatives.map((a) => a.id).join(", ")}); until it is decided and built, a defect in the pinned verifier is stopped only by WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), with no stated or tested response bound`
+          : "no protective alternative exists; WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), are the only fail-closed path, with no stated or tested response bound",
     },
     REAL_SP1_PROOF_GENERATED: {
       status: "NOT_ESTABLISHED",
@@ -1645,6 +1746,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
         removed: ext(baseline?.widen).filter((l) => !ext(decided?.widen).some((d) => sameLever(d, l))),
         added: ext(decided?.widen).filter((l) => !ext(baseline?.widen).some((b) => sameLever(b, l))),
         retained: (decided?.widen ?? []).filter((l) => l.governed),
+        inheritedByEveryOption: INHERITED_BY_EVERY_OPTION,
       },
       LIVENESS_DEPENDENCY: {
         onChainExternal: ext(decided?.disable),
@@ -1652,6 +1754,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
           (l) => !ext(decided?.disable).some((d) => sameLever(d, l)),
         ),
         offChain: ctx.inputs.offChainLivenessDependencies,
+        inheritedByEveryOption: INHERITED_BY_EVERY_OPTION,
       },
       UPGRADE_MODEL: !decided
         ? "UNRESOLVED"
@@ -1734,7 +1837,20 @@ export function validateDecisionRules(value: unknown): string[] {
       if (l.scope !== "liveness") errors.push(`option ${o.id}: disable lever ${l.lever} is not scoped liveness`);
       if ((AUTHORIZATION_LEVERS as readonly string[]).includes(l.lever))
         errors.push(`option ${o.id}: ${l.lever} widens the accepted relation; it cannot be classified liveness-only`);
+      // A freeze protects exactly when it freezes the pinned verifier's own route: always on a route registry (the
+      // proof travels through it), and on a freeze-bit reader only with the coupling pins.
+      if ((LIVENESS_LEVERS as readonly string[]).includes(l.lever)) {
+        const protects = o.routeRegistry || FREEZE_COUPLING_PINS.every((p) => (o.pins ?? []).includes(p));
+        if (l.protectiveOnVerifierDefect !== protects)
+          errors.push(`option ${o.id}: ${l.lever} must be recorded ${protects ? "protective" : "not protective"}`);
+      }
     }
+    // Routing through the upstream gateway, or reading its freeze bit, puts its owners' freeze in the path.
+    if (
+      (o.components ?? []).some((c) => c === "upstreamGateway" || c === "upstreamFreezeBit") &&
+      !(o.disable ?? []).some((l) => l.lever === "freezeRoute")
+    )
+      errors.push(`option ${o.id}: an option that reads the upstream gateway must record its owners' freeze`);
     if (o.routeRegistry !== (o.path ?? []).some((p) => /gateway/i.test(p)))
       errors.push(`option ${o.id}: routeRegistry disagrees with its accepted path`);
     const external = (o.widen ?? []).filter((l) => !l.governed).length;
@@ -1796,8 +1912,15 @@ export function validateDecisionRules(value: unknown): string[] {
         errors.push("a direct immutable target needs the same verdicts from the deployed template on every chain");
       if (tt.realProofOnPinnedKey?.established !== true)
         errors.push("a direct immutable target needs a real proof verified on its pinned key");
+      if (tt.chainCallsBound !== true)
+        errors.push("a direct immutable target needs per-chain verdicts for the calls this receipt names");
+      if (tt.canaryHasPositiveControl !== true)
+        errors.push("a direct immutable target needs a canary shown to detect a missing pairing precompile");
     }
   }
+  // Each measured chain once: four entries for one chain must not read as four chains.
+  if (JSON.stringify(exec.map((c) => c.chainId).sort()) !== JSON.stringify(tt.chains.map((c) => c.chainId).sort()))
+    errors.push("the per-chain execution entries must be exactly the measured chains");
 
   const upgrade = !decided
     ? "UNRESOLVED"
@@ -1846,17 +1969,36 @@ export function validateDecisionRules(value: unknown): string[] {
       errors.push("DEFECT_RESPONSE_COUPLING must list exactly the viable fail-closed alternatives");
     if (dc.status === "OWNER_DECISION_REQUIRED") {
       const offered = (dc.choices ?? []).flatMap((c) => c.options);
-      for (const id of [decided?.id, ...failClosedAlternatives])
-        if (id && !offered.includes(id)) errors.push(`the owner decision offers no choice realized by option ${id}`);
+      if (decided && !offered.includes(decided.id))
+        errors.push(`the owner decision offers no choice realized by option ${decided.id}`);
+      // An alternative may go unoffered only if an offered one has the same external principals and a shorter path
+      // (B against AF): it would add components without changing who holds the lever.
+      const option = (id: string) => options.find((o) => o.id === id);
+      const principals = (id: string) =>
+        JSON.stringify(
+          ext(option(id)?.disable)
+            .map((l) => l.principal)
+            .sort(),
+        );
+      const dominated = (id: string) =>
+        failClosedAlternatives.some(
+          (p) =>
+            offered.includes(p) &&
+            principals(p) === principals(id) &&
+            (option(p)?.path.length ?? 0) < (option(id)?.path.length ?? 0),
+        );
+      for (const id of failClosedAlternatives)
+        if (!offered.includes(id) && !dominated(id))
+          errors.push(`the owner decision offers no choice realized by option ${id}`);
       if (!(dc.choices ?? []).some((c) => c.id === dc.recommendation))
         errors.push("the owner decision's recommendation is not one of its choices");
-      if (
-        dc.requiredBeforeRealValue &&
-        !(unblock?.preconditions ?? []).some((p) => p.includes("DEFECT_RESPONSE_COUPLING"))
-      )
-        errors.push("an open owner decision required before real value must be a real-proof precondition");
+      if (dc.requiredBeforeRealValue !== true)
+        errors.push("an open defect-response decision must be required before real value");
     }
   }
+  // The real-proof preconditions are the lane's, word for word (one of them names the open owner decision).
+  if (JSON.stringify(unblock?.preconditions) !== JSON.stringify(REAL_PROOF_PRECONDITIONS))
+    errors.push("the real-proof preconditions are not the lane's");
 
   const dz = d.PROGRAM_VKEY_DESIGNATION;
   const pid = r.programIdentity;
@@ -1957,6 +2099,15 @@ export function validateDecisionRules(value: unknown): string[] {
       errors.push(
         "DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER cannot be ESTABLISHED while the decided option has an external lever",
       );
+    if (claims.GATEWAY_ROUTE_HISTORY_COMPLETE?.status === "ESTABLISHED")
+      errors.push(
+        "GATEWAY_ROUTE_HISTORY_COMPLETE cannot be ESTABLISHED: an indexer's event history is not a completeness proof",
+      );
+    if (
+      claims.IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE?.status === "ESTABLISHED" &&
+      dz?.reproducedOutsideVendorImage !== true
+    )
+      errors.push("IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE cannot be ESTABLISHED without the reproduction");
     if (claims.PROGRAM_VKEY_DESIGNATED?.status === "ESTABLISHED" && dz?.status !== "DESIGNATED")
       errors.push("PROGRAM_VKEY_DESIGNATED cannot be ESTABLISHED without a designation");
     if (claims.CANONICAL_PROGRAM_IDENTITY?.status === "ESTABLISHED" && d.PROGRAM_IDENTITY_DECISION === "UNRESOLVED")

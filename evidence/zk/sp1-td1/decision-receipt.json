@@ -34,7 +34,7 @@
       },
       {
         "path": "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
-        "sha256": "e4969d42ddbf2e06b9317f3284dbad7de77bd70832bd04310e7eb2b72a4b97d7"
+        "sha256": "8f582dc268e754e61df15a956c79a891d9654a6f99aa393716d25e2f1a990e3a"
       },
       {
         "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
@@ -50,7 +50,7 @@
       },
       {
         "path": "evidence/zk/sp1-td1/observations/mainnet-v610-proof.raw.json",
-        "sha256": "c52d5eef226de2c397ff4c93189d5c3c73bc664f1977cd7222f760e28b27a7e3"
+        "sha256": "f14b76e39c29c6d053d7b3a29769ebe9d1ad12b8e30c33f993b2014ce5690601"
       },
       {
         "path": "evidence/zk/sp1-td1/observations/route-timeline.raw.json",
@@ -150,29 +150,31 @@
     "chainExecution": [
       {
         "chainId": "1",
-        "block": 26198253,
+        "block": 26198573,
         "providersAgree": true,
         "verdictsAsExpected": true
       },
       {
         "chainId": "8453",
-        "block": 52640998,
+        "block": 52642929,
         "providersAgree": true,
         "verdictsAsExpected": true
       },
       {
         "chainId": "11155111",
-        "block": 11920756,
+        "block": 11921074,
         "providersAgree": true,
         "verdictsAsExpected": true
       },
       {
         "chainId": "84532",
-        "block": 48151409,
+        "block": 48153351,
         "providersAgree": true,
         "verdictsAsExpected": true
       }
     ],
+    "chainCallsBound": true,
+    "canaryHasPositiveControl": true,
     "realProofOnPinnedKey": {
       "transaction": "0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4",
       "programVKey": "0x006cd47fd23937a6d247696cace28c22d2c6a8280447e6ac45a3571de232d6e3",
@@ -376,6 +378,9 @@
         "ZKMLDSAVerifier",
         "SP1Verifier v6.1.0"
       ],
+      "components": [
+        "sp1Verifier"
+      ],
       "pins": [
         "verifierCode"
       ],
@@ -408,7 +413,7 @@
       "newAttackSurface": "none added: the consumer already calls ISP1Verifier; the pin is one EXTCODEHASH comparison at construction",
       "operationalComplexity": "a new wrapper per SP1 circuit release, applied through the vault's timelocked pqVerifier rotation; WalletWall watches upstream advisories and gateway freezes as signals",
       "defectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated"
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders"
       ],
       "viable": true,
       "rejectedBecause": null
@@ -422,6 +427,10 @@
         "ZKMLDSAVerifier",
         "upstream freeze-bit check (read-only)",
         "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "sp1Verifier",
+        "upstreamFreezeBit"
       ],
       "pins": [
         "verifierCode",
@@ -483,7 +492,7 @@
       "newAttackSurface": "one read of the gateway's route table per verification; a per-chain gateway address",
       "operationalComplexity": "as A, plus the gateway address per chain; a routine upstream deprecation freeze of v6.1.0 stops verification until WalletWall rotates",
       "defectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated",
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
         "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
         "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
       ],
@@ -500,6 +509,10 @@
         "route-pinning check",
         "SP1VerifierGateway",
         "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
       ],
       "pins": [
         "selector",
@@ -561,7 +574,7 @@
       "newAttackSurface": "a pinning layer plus the gateway's routing code in the accepted path; per-chain gateway addresses",
       "operationalComplexity": "per-chain gateway address and route check at deployment; the same per-release redeploy as A",
       "defectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated",
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
         "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
         "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
       ],
@@ -578,6 +591,10 @@
         "selector check",
         "SP1VerifierGateway",
         "selector's route"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
       ],
       "pins": [
         "selector"
@@ -647,7 +664,7 @@
       "newAttackSurface": "fails open on any chain where the pinned selector is not yet routed: the owner registers any verifier under it",
       "operationalComplexity": "as B, without the checks that make it safe",
       "defectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated",
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
         "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
         "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
       ],
@@ -663,6 +680,10 @@
         "ZKMLDSAVerifier",
         "WalletWall SP1VerifierGateway",
         "any route its admin adds"
+      ],
+      "components": [
+        "walletwallGateway",
+        "sp1Verifier"
       ],
       "pins": [],
       "verifierCodeMutable": false,
@@ -717,7 +738,7 @@
       "newAttackSurface": "a second, instant verifier-replacement path that bypasses PQ_VERIFIER_UPDATE_DELAY and GOVERNANCE_GRACE_PERIOD",
       "operationalComplexity": "a new privileged key or Safe to operate and monitor; route hygiene per chain",
       "defectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated",
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
         "WalletWall gateway admin via gatewayAdminFreezeRoute (fail-closed at once, at the holder's discretion)"
       ],
       "viable": false,
@@ -732,6 +753,10 @@
         "ZKMLDSAVerifier",
         "SP1VerifierGateway",
         "any live route the prover selects"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
       ],
       "pins": [],
       "verifierCodeMutable": false,
@@ -812,7 +837,7 @@
       "newAttackSurface": "every live route on every chain is in the accepted relation, including deprecated or release-candidate verifiers",
       "operationalComplexity": "lowest: one address per chain, upgrades without WalletWall action",
       "defectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated",
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
         "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
         "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
       ],
@@ -1117,7 +1142,8 @@
           "governed": true,
           "protectiveOnVerifierDefect": false
         }
-      ]
+      ],
+      "inheritedByEveryOption": "each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)"
     },
     "LIVENESS_DEPENDENCY": {
       "onChainExternal": [],
@@ -1151,7 +1177,8 @@
         "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's.",
         "Rebuilding the canonical ELF needs the vendor image (ghcr.io, by digest) and crates.io for the locked crate set; the digest and Cargo.lock checksums protect integrity, not availability.",
         "A PqOnly user's exit during the 2-day rotation window needs a proof, so the timelock protects them only while proving is available (TD1-N9)."
-      ]
+      ],
+      "inheritedByEveryOption": "each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)"
     },
     "UPGRADE_MODEL": "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION",
     "CROSS_CHAIN_MODEL": "CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK",
@@ -1201,13 +1228,13 @@
     "DEFECT_RESPONSE_COUPLING": {
       "status": "OWNER_DECISION_REQUIRED",
       "decidedOptionDefectResponse": [
-        "WalletWall vault owner pause() — liveness only; manual unless automated"
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders"
       ],
       "viableAlternatives": [
         {
           "id": "AF",
           "defectResponse": [
-            "WalletWall vault owner pause() — liveness only; manual unless automated",
+            "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
             "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
             "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
           ],
@@ -1219,7 +1246,7 @@
         {
           "id": "B",
           "defectResponse": [
-            "WalletWall vault owner pause() — liveness only; manual unless automated",
+            "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
             "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
             "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
           ],
@@ -1231,23 +1258,22 @@
       ],
       "choices": [
         {
-          "id": "WALLETWALL_WATCHER_AND_PAUSE",
+          "id": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
           "options": [
             "A"
           ],
-          "description": "no upstream lever in the accepted path; WalletWall watches upstream advisories and the gateway's RouteFrozen events and pauses the vault (needs a stated, tested response bound and a pause path that does not depend on an online owner key)"
+          "description": "no upstream lever in the accepted path. WalletWall watches upstream advisories and the gateway's RouteFrozen events and fails every consumer of the verifier closed itself. Today that takes four separate actions: the pause() of each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment (owner-held; each gates its own PQ-verifying entrypoints) and the PolicyControlBridge's pause() (held by EMERGENCY_PAUSER, and one-way: it retires the bridge). Before real value this needs either a single WalletWall-held fail-closed switch at the verifier wrapper (a new WalletWall liveness lever) or a tested runbook with a stated response bound, and a path that does not depend on an online owner key"
         },
         {
           "id": "UPSTREAM_FREEZE_FAIL_CLOSED",
           "options": [
-            "AF",
-            "B"
+            "AF"
           ],
-          "description": "verification fails closed once the upstream gateway freezes the pinned selector: AF reads the freeze bit and calls the pinned verifier directly, B routes each proof through the fully pinned gateway route. Either gives upstream's owner an instant kill switch that protects when the verifier is unsound, at the cost of an external liveness lever: a routine deprecation freeze stops PqOnly withdrawals until a timelocked rotation, the testnet owner is one EOA, and each chain needs the route in place before deployment"
+          "description": "AF: A's direct binding plus a read-only check of the upstream gateway's freeze bit for the pinned selector; once upstream freezes it, verification fails closed in the verifier path, for every consumer at once. The cost is an external liveness lever: a freeze of the pinned route for any reason stops PqOnly withdrawals until a timelocked rotation, the testnet owner is one EOA, each chain needs the route in place before deployment, and the coupling is to one gateway instance (if upstream moves to a new gateway, it silently stops protecting). B realizes the same coupling by routing every proof through the pinned gateway: it has the same external principals and a longer path, and choosing it would change the trust-target decision, so it is not offered"
         }
       ],
-      "recommendation": "WALLETWALL_WATCHER_AND_PAUSE",
-      "rationale": "authority minimisation ranks above liveness, and deprecation freezes are routine (4 mainnet routes frozen so far) while upstream's emergency freezes are discretionary (the advised v6.0.0 route was frozen months after the advisory, in one batch with v5.0.0); if the owner prefers delegating the kill switch, AF realizes it without routing proofs through the gateway",
+      "recommendation": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+      "rationale": "authority minimisation ranks above liveness, and a freeze of the pinned route is upstream's to time: of the four mainnet routes frozen so far, the last two were frozen in one batch 181 days after an advisory, and the earlier two are not joined to any advisory here; upstream's one measured fast freeze was of a broken testnet build, 21.4 h after routing it. The recommendation is conditional: it needs the single fail-closed switch or the tested runbook before real value. If the owner prefers delegating the kill switch, AF",
       "requiredBeforeRealValue": true
     },
     "IMPLEMENTATION_REQUIRED": {
@@ -1255,7 +1281,7 @@
       "plan": [
         "ZKMLDSAVerifier: compile-time pin of the SP1 verifier's runtime code hash (and record VERIFIER_HASH, VK_ROOT, VERSION) checked in the constructor; keep the verify() logic unchanged",
         "ZKMLDSAVerifier: compare uint256(committedChainId) with block.chainid (F-1); document sigHash as non-authoritative (F-2)",
-        "Defect response (owner decision DEFECT_RESPONSE_COUPLING): either an advisory + RouteFrozen watcher with a stated, tested response bound and a pause path that needs no online owner key (A), or a fail-closed coupling to upstream's freeze of the pinned selector (AF, or B)",
+        "Defect response (owner decision DEFECT_RESPONSE_COUPLING): either WalletWall detection with a single fail-closed switch at the verifier wrapper (or a tested runbook covering all four consumers: three vault types' owner pause() and the policy bridge's one-way EMERGENCY_PAUSER pause()) with a stated response bound and no dependence on an online owner key (A), or the fail-closed freeze-bit coupling (AF)",
         "Designation file for mldsa65-withdrawal (generated from build observations, never typed) plus a CI check that fails when the zkvm subject no longer matches it",
         "A gated canonical-build workflow (vendor image by digest; guest lockfile unchanged after the build, TD1-N7) and a second-host release rebuild; both ELF and vkey must equal the designation, vkey recomputed by cargo-prove outside the build",
         "scripts/deploy-zk-verifier.ts: take PROGRAM_VKEY only from the designation and the SP1 verifier only from the trust-target designation, check EXTCODEHASH and run the per-chain execution check (real proof accepted, tampered and odd-word canary refused) on the target chain, refuse overrides on non-local chains, read back after deployment",
@@ -1298,7 +1324,7 @@
     },
     "DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER": {
       "status": "ESTABLISHED",
-      "basis": "option A: external authorization levers 0, external liveness levers 0"
+      "basis": "option A: external authorization levers 0, external liveness levers 0, beyond each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)"
     },
     "CANONICAL_PROGRAM_IDENTITY": {
       "status": "ESTABLISHED",
@@ -1322,7 +1348,7 @@
     },
     "DEFECT_RESPONSE_PATH": {
       "status": "NOT_ESTABLISHED",
-      "basis": "open owner decision DEFECT_RESPONSE_COUPLING (alternatives AF, B); until it is decided and built, only the vault owner's manual pause() makes verification fail closed if the pinned verifier proves unsound"
+      "basis": "open owner decision DEFECT_RESPONSE_COUPLING (alternatives AF, B); until it is decided and built, a defect in the pinned verifier is stopped only by WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), with no stated or tested response bound"
     },
     "REAL_SP1_PROOF_GENERATED": {
       "status": "NOT_ESTABLISHED",
@@ -1446,7 +1472,7 @@
       "securityImpact": "a freeze is dual-use: it stops valid proofs (liveness) and, when the verifier itself is unsound, forged ones (protection). Its timing is upstream's choice, and a routine deprecation freeze is near-certain over a deployment's life. Whether WalletWall couples to it is an explicit owner decision (DEFECT_RESPONSE_COUPLING), not a property this lane can settle. TD1 claims no exploitability of the on-chain v6.0.0 verifier.",
       "repairBeforeRealProof": false,
       "guestOrVkeyChange": false,
-      "plan": "owner decision DEFECT_RESPONSE_COUPLING before real value: WalletWall-operated detection and pause (A), or fail closed on upstream's freeze of the pinned selector (AF, or B)"
+      "plan": "owner decision DEFECT_RESPONSE_COUPLING before real value: WalletWall-operated detection with a single fail-closed switch or a tested runbook across every consumer (A), or fail closed on upstream's freeze of the pinned selector (AF)"
     },
     {
       "id": "TD1-N7",
@@ -1480,6 +1506,17 @@
       "repairBeforeRealProof": false,
       "guestOrVkeyChange": false,
       "plan": "archive the v6.1.0 circuit artifacts by hash and keep a self-hosted proving path before real value"
+    },
+    {
+      "id": "TD1-N10",
+      "source": "TD1 second adversarial review",
+      "title": "four consumers verify through the PQ verifier, each with its own fail-closed holder",
+      "disposition": "DEFECT_RESPONSE_IS_MULTI_CONSUMER",
+      "practicalImpact": "under A, failing closed on a verifier defect takes the pause() of every vault deployment (owner-held) and the policy bridge's one-way pause() (EMERGENCY_PAUSER); pausing a vault does not stop the bridge, which reads the consumer's pqVerifier",
+      "securityImpact": "a soundness defect in the pinned verifier stays exploitable through any consumer whose holder has not acted",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "part of DEFECT_RESPONSE_COUPLING: a single WalletWall-held fail-closed switch at the verifier wrapper, or a tested runbook covering every consumer, before real value"
     }
   ],
   "offChainLivenessDependencies": [

@@ -29,6 +29,8 @@ const CHAIN = readJson(`${OBS}/chain-state.raw.json`);
 const FIXTURE = readJson(`${OBS}/upstream-proof-fixture.raw.json`).fixture;
 /** A real v6.1.0 proof from a successful mainnet call into the pinned verifier (someone else's program). */
 const V610_PROOF = readJson(`${OBS}/mainnet-v610-proof.raw.json`).call;
+/** The per-chain eth_call record: the exact calldata sent on every chain, and the verdicts. */
+const CHAIN_EXEC = readJson(`${OBS}/chain-execution.raw.json`);
 const INPUTS = readJson("evidence/zk/sp1-td1/decision-inputs.json");
 const FACTS = INPUTS.probeFacts;
 
@@ -429,6 +431,38 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       expect(gatewayOps).to.include("SSTORE");
       expect(v610Forbidden).to.deep.equal(FACTS.verifierRuntime.v610ForbiddenOpcodes);
       expect(gatewayOps.includes("SSTORE")).to.equal(FACTS.verifierRuntime.gatewayHasSstore);
+    });
+  });
+
+  describe("the per-chain execution check can see a missing pairing precompile", function () {
+    it("positive control: the odd-word canary verifies once the pairing call targets an empty account, and only then", async function () {
+      const v610 = await deployVerifier("v6.1.0");
+      const code = ethers.getBytes(await ethers.provider.getCode(await v610.getAddress()));
+      // Every decoded PUSH1 0x08 GAS STATICCALL (PUSH immediates skipped, so data never matches): the pairing calls
+      // of verifyProof (read back as AND(success, first output word)) and of the compressed path. A chain without
+      // the precompile lacks it at both; point both at an empty account, where a call succeeds and writes nothing.
+      const pairingImmediates: number[] = [];
+      for (let i = 0; i < code.length; i++) {
+        if (code[i] === 0x60 && code[i + 1] === 0x08 && code[i + 2] === 0x5a && code[i + 3] === 0xfa)
+          pairingImmediates.push(i + 1);
+        if (code[i] >= 0x60 && code[i] <= 0x7f) i += code[i] - 0x5f;
+      }
+      expect(pairingImmediates.length).to.equal(2);
+      for (const at of pairingImmediates) code[at] = 0xee;
+      const withoutPairing = "0x00000000000000000000000000000000c0de0008";
+      await networkHelpers.setCode(withoutPairing, ethers.hexlify(code));
+      const patched = new ethers.Contract(withoutPairing, VERIFIER_ABI, deployer);
+      // The canary sent on every chain: v6.1.0's selector, exit code 0, the vk root, nonce 0, eight proof words of 1.
+      const canary = v610Proof(0n, await v610.VK_ROOT(), 1n);
+      const { programVKey, publicValues } = V610_PROOF;
+      expect(v610.interface.encodeFunctionData("verifyProof", [programVKey, publicValues, canary])).to.equal(
+        CHAIN_EXEC.calls.v610OddWordCanary.data,
+      );
+      const refused = await revertData(v610.verifyProof.staticCall(programVKey, publicValues, canary));
+      expect(refused).to.equal(v610.interface.getError("ProofInvalid")!.selector);
+      await patched.verifyProof.staticCall(programVKey, publicValues, canary);
+      expect(FACTS.semantics.oddWordCanaryRefusedByPinnedCode).to.equal(true);
+      expect(FACTS.semantics.oddWordCanaryAcceptedWithoutPairingPrecompile).to.equal(true);
     });
   });
 

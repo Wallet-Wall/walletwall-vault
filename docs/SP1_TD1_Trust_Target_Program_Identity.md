@@ -12,15 +12,17 @@ decided on evidence, with authorization and liveness kept apart:
 1. **Trust target: `DIRECT_IMMUTABLE_VERIFIER`.** Bind `ZKMLDSAVerifier` directly to Succinct's Groth16
    `SP1Verifier` v6.1.0, pinned by its **runtime code hash** and checked by executing proofs on each chain, not to
    the `SP1VerifierGateway`. No principal outside WalletWall can then widen the accepted relation or stop valid
-   proofs from verifying. WalletWall's vault owner keeps both powers: widening only through the timelocked
-   `pqVerifier` rotation, stopping through `pause()`.
+   proofs from verifying — beyond each chain's own governance, which every option inherits (TD1-N8). WalletWall keeps
+   both powers: widening only through the vault's timelocked `pqVerifier` rotation, stopping through its own pauses,
+   one per consumer of the verifier.
 2. **Program identity: `PINNED_VENDOR_BUILD`.** The digest-pinned vendor-image procedure defines the withdrawal
    ELF, and `PROGRAM_VKEY` is the vkey computed from that ELF:
    `0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc`.
 3. **Open: `DEFECT_RESPONSE_COUPLING`.** Binding directly also gives up upstream's freeze, which is a liveness cost
    while v6.1.0 is sound and a kill switch if it is not. Who fails verification closed when the pinned verifier
-   itself proves unsound is a trade-off the evidence frames but cannot settle, so it is recorded as an owner
-   decision, required before real value (see [What option A gives up](#what-option-a-gives-up-upstreams-kill-switch)).
+   itself proves unsound — across all four consumers of the verifier — is a trade-off the evidence frames but cannot
+   settle, so it is recorded as an owner decision, required before real value (see
+   [What option A gives up](#what-option-a-gives-up-upstreams-kill-switch)).
 
 The machine-readable record is [`evidence/zk/sp1-td1/decision-receipt.json`](../evidence/zk/sp1-td1/decision-receipt.json)
 (`npm run validate:sp1-td1-receipt`). Every decision in it is derived by
@@ -36,7 +38,7 @@ the exact mainnet verifier and gateway bytes.
 | `PROGRAM_IDENTITY_DECISION` | `PINNED_VENDOR_BUILD` | one ELF and vkey on two hosts, image pinned by verified digest, fresh subject |
 | `UPGRADE_MODEL` | `EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION` | a new verifier or guest means a new wrapper and the vault's 2-day rotation |
 | `CROSS_CHAIN_MODEL` | `CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK` | one runtime code hash at one CREATE2 address on Ethereum, Base, Sepolia and Base Sepolia; the hash is necessary, not sufficient, so each chain must also accept a real v6.1.0 proof and refuse a tampered copy and an odd-word canary |
-| `DEFECT_RESPONSE_COUPLING` | `OWNER_DECISION_REQUIRED` | if v6.1.0 itself proves unsound: WalletWall's watcher and `pause()` (A, recommended) or failing closed on upstream's freeze (AF, or B); required before real value |
+| `DEFECT_RESPONSE_COUPLING` | `OWNER_DECISION_REQUIRED` | if v6.1.0 itself proves unsound: WalletWall detection and its own fail-closed path across every consumer (A, recommended, conditional) or failing closed on upstream's freeze of the pinned route (AF); required before real value |
 | `REAL_PROOF_LANE_UNBLOCKED` | `true` | for a no-value lane: trust target and program identity established; starting it is the owner's call (the circuit download), under the preconditions below |
 | `IMPLEMENTATION_REQUIRED` | `true` | the pins, the designation file, the defect response and the tooling are frozen for the next lane |
 
@@ -48,23 +50,24 @@ Ethereum and Base, and the single EOA `0xBaB2c2aF5b91695e65955DA60d63aD1b2aE8112
 upstream's ability to fail WalletWall closed (that is `DEFECT_RESPONSE_COUPLING`). Off chain, proof generation needs
 Succinct's v6.1.0 circuit artifacts or prover network, and rebuilding the ELF needs the vendor image and crates.io;
 integrity is pinned, availability is not. A PqOnly user's exit during a 2-day rotation also needs a proof, so the
-timelock protects them only while proving is available (TD1-N9).
+timelock protects them only while proving is available (TD1-N9). Both records also name what every option
+inherits: each chain's own governance (its precompile semantics; on an L2, its upgrade keys), which no pin can see.
 
 ## Claim status
 
 | Claim | Status | Basis (short) |
 | --- | --- | --- |
-| `TRUST_TARGET_CODE_IDENTITY` | `ESTABLISHED` | one runtime hash on four chains via two providers each; CREATE2-authenticated initcode; SP1-P1's own compile, Sourcify and VK join; no reachable state- or code-changing opcode, no state or environment read but its own code size, constant call targets only the BN254/modexp precompiles; the same verdicts on every measured chain |
+| `TRUST_TARGET_CODE_IDENTITY` | `ESTABLISHED` | one runtime hash on four chains via two providers each; CREATE2-authenticated initcode; SP1-P1's own compile, Sourcify and VK join; no reachable state- or code-changing opcode, no state or environment read but its own code size, constant call targets only the BN254/modexp precompiles; the same verdicts on every measured chain, for calls rebuilt byte for byte, with a canary that has a positive control |
 | `PINNED_VERIFYING_KEY_REAL_PROOF` | `ESTABLISHED` | a real v6.1.0 proof from a mainnet transaction (a third party's program) verifies on the pinned bytes in the probe suite and by `eth_call` on all four chains; its tampered copy and an odd-word canary are refused |
 | `DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT` | `ESTABLISHED` | the gateway forwards the consumer's tuple unchanged; real v6.0.0 and v6.1.0 proofs verify on both paths, tampering is rejected identically |
 | `UNPINNED_GATEWAY_OWNER_CAN_WIDEN` | `ESTABLISHED` | executed: one `addRoute` by the owner drains a PqOnly vault through the unmodified `ZKMLDSAVerifier` |
-| `DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER` | `ESTABLISHED` | option A has no authorization or liveness lever outside WalletWall's own rotation and `pause()` |
+| `DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER` | `ESTABLISHED` | option A has no authorization or liveness lever outside WalletWall's own rotation and pauses, beyond each chain's own governance |
 | `CANONICAL_PROGRAM_IDENTITY` | `ESTABLISHED` | the vendor procedure; the default local build embeds the builder's `CARGO_HOME` |
 | `PROGRAM_VKEY_DESIGNATED` | `ESTABLISHED` | the vendor ELF's vkey; the released `cargo-prove`, run outside the build, computes the same vkey (three agreeing results from one binary on one machine) |
 | `IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE` | `ESTABLISHED` | on the same workstation, a separately installed toolchain plus one remap flag reproduced it byte for byte (corroboration, not a second CPU or a second distribution) |
 | `VKEY_DERIVATION_ALGORITHM_INDEPENDENT` | `NOT_ESTABLISHED` | every vkey comes from Succinct's `sp1-prover`; a WalletWall proof verifying on the pinned verifier is the next join |
-| `GATEWAY_ROUTE_HISTORY_COMPLETE` | `NOT_ESTABLISHED` | the indexer SP1-P1 used missed a `RouteFrozen`; under a code pin no route needs enumerating |
-| `DEFECT_RESPONSE_PATH` | `NOT_ESTABLISHED` | open owner decision; until it is decided and built, only the vault owner's manual `pause()` fails verification closed if v6.1.0 proves unsound |
+| `GATEWAY_ROUTE_HISTORY_COMPLETE` | `NOT_ESTABLISHED` | the indexer SP1-P1 used missed a `RouteFrozen`, and an indexer's history is no completeness proof; under a code pin no route needs enumerating |
+| `DEFECT_RESPONSE_PATH` | `NOT_ESTABLISHED` | open owner decision; until it is decided and built, a defect in v6.1.0 is stopped only by WalletWall's manual pauses, one per consumer (the policy bridge's is one-way) |
 | `REAL_SP1_PROOF_GENERATED` | `NOT_ESTABLISHED` | out of scope: no circuit download, no prover run |
 | `REAL_SP1_PROOF_VERIFIED` | `NOT_ESTABLISHED` | no WalletWall proof exists; the real proofs run are third parties' (upstream's v6 fixture, a v6.1.0 proof from mainnet), as controls |
 | `PRODUCTION_READINESS` | `NOT_ESTABLISHED` | design lane; implementation, defect response, real proof and audit outstanding |
@@ -108,10 +111,11 @@ each mainnet address from it, and the runtimes the tests deploy hash to the main
 Two real Groth16 proofs are the positive controls. Upstream's v6 fixture (`contracts/test/SP1VerifierGroth16V6.sol`
 at tag `v6.1.1`) targets v6.0.0, whose wrapper `SP1VerifierGroth16.sol` shares every non-constant statement with
 v6.1.0's; that comparison does not reach `Groth16Verifier.sol`, which holds the verifying-key constants and the
-pairing code. The second control does: a real v6.1.0 proof taken from the calldata of mainnet transaction
-`0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4` (program
+pairing code. The second control does: a real v6.1.0 proof taken from an internal call into the pinned verifier in
+mainnet transaction `0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4` (program
 `0x006cd47fd23937a6d247696cace28c22d2c6a8280447e6ac45a3571de232d6e3`, not WalletWall's; exit code 0, the v6.1.0
-selector and vk root). It authenticates itself: it verifies on the CREATE2-authenticated v6.1.0 bytes.
+selector and vk root), located through Blockscout's raw trace. The trace is only a pointer: the proof authenticates
+itself by verifying on the CREATE2-authenticated v6.1.0 bytes.
 
 ```mermaid
 flowchart LR
@@ -145,7 +149,8 @@ flowchart LR
 | v6.1.0 pre-checks (exit code, vk root, invalid points), directly and through the gateway | identical revert data |
 | v6.1.0 runtime: reachable `SSTORE`/`TSTORE`/`LOG`/`CALL`/`CALLCODE`/`DELEGATECALL`/`CREATE`/`CREATE2`/`SELFDESTRUCT` | none (the gateway has `SSTORE`) |
 | v6.1.0 runtime: reachable reads of state or environment; `STATICCALL` targets | only `EXTCODESIZE` (its own, before the self-call); 13 sites call the constant precompiles 0x05–0x08, two compute their target (sha256 and the self-call in the attributed source); the trailing metadata is solc's CBOR, so it cannot hide code |
-| On chain, read-only `eth_call` on Ethereum, Base, Sepolia and Base Sepolia (two providers each): the real v6.1.0 proof, its tampered copy, an odd-word canary; the v6.0.0 template with the fixture proof and a tampered copy | the same verdicts on every chain: real proofs accepted, the rest `ProofInvalid()`. The canary is an invalid proof whose words are all odd: it passes wherever the pairing precompile is missing, since the verifier then reads its own odd input word as the pairing result |
+| On chain, read-only `eth_call` on Ethereum, Base, Sepolia and Base Sepolia (two providers each): the real v6.1.0 proof, its tampered copy, an odd-word canary; the v6.0.0 template with the fixture proof and a tampered copy | the same verdicts on every chain: real proofs accepted, the rest `ProofInvalid()`. The observation records each call's exact calldata, and the validator rebuilds every one from the real proofs and the canary recipe and compares them byte for byte; the verdicts required are the validator's, not the observation's |
+| The canary's positive control: the same v6.1.0 runtime with both pairing calls pointed at an empty account, as on a chain without the precompile | the canary verifies there and is refused by the pinned code: a call to an empty account succeeds and writes nothing, so the verifier reads the canary's own odd word as the pairing result |
 | **D** — owner adds an accept-all route, forged journal, unmodified consumer, PqOnly `WalletWallVault` | **the vault pays the attacker** |
 | **D** — owner freezes the route of a valid proof | the gateway rejects it, the verifier still accepts it; nothing new is accepted |
 | **D** — non-owner `addRoute`; owner replaces an existing route | both revert |
@@ -169,7 +174,8 @@ verifier's code hashes are the expected ones — at which point the gateway cont
 ### Authority matrix
 
 Authorization ("widen") and liveness ("disable") are separate rows and are never combined. The defect-response row
-records what each freeze also does when the verifier itself is unsound.
+records what each freeze also does when the verifier itself is unsound. Every cell is beyond each chain's own
+governance (precompile semantics; on an L2, its upgrade keys), which every option inherits and no pin can see.
 
 | | A — direct, code-pinned | AF — A + upstream freeze bit | B — gateway, fully pinned | B0 — gateway, selector only | C — WalletWall gateway | D — gateway, unpinned |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -177,7 +183,7 @@ records what each freeze also does when the verifier itself is unsound.
 | accepted relation mutable outside WalletWall's timelock | **no** | **no** | **no** | yes (squat) | yes | yes |
 | who can widen | vault owner, after 172,800 s | vault owner, after 172,800 s | vault owner, after 172,800 s | + gateway owner where the selector is unrouted | + WalletWall gateway admin, 0 s | + gateway owner per chain, 0 s |
 | who outside WalletWall can stop valid proofs | nobody | gateway owner per chain | gateway owner per chain | gateway owner per chain | WalletWall gateway admin | gateway owner per chain |
-| who fails verification closed if v6.1.0 proves unsound | the vault owner's `pause()` only | + upstream's freeze, at once | + upstream's freeze, at once | + upstream's freeze | + the gateway admin's freeze | + upstream's freeze |
+| who fails verification closed if v6.1.0 proves unsound | WalletWall only: one pause per consumer (the policy bridge's is one-way) | + upstream's freeze, at once, for every consumer | + upstream's freeze, at once, for every consumer | + upstream's freeze | + the gateway admin's freeze | + upstream's freeze |
 | proxy / admin | none | upstream Ownable, read for its freeze bit only | upstream Ownable (no proxy) | upstream Ownable | WalletWall Ownable | upstream Ownable |
 | route registry in the accepted path | no | no | yes | yes | yes | yes |
 | upstream governance dependency | none | liveness | liveness | authorization | none | authorization |
@@ -186,55 +192,69 @@ records what each freeze also does when the verifier itself is unsound.
 | trust root independently reproducible | yes | yes | yes | no | no | no |
 | cross-chain identity | one code hash plus the per-chain execution check | as A, plus each chain's gateway route and owner | per-chain owner and routes | per-chain owner and routes | per-deployment admin | per-chain owner and routes; v4.0.0-rc.3 live on both testnets |
 | new attack surface | none | one route-table read per verification | pin layer + routing code | fails open on unrouted chains | a second, instant replacement path | every live route, any chain |
-| viable | **decided** | viable (owner alternative) | viable (owner alternative) | rejected | rejected | rejected |
+| viable | **decided** | viable (owner alternative) | viable, dominated by AF | rejected | rejected | rejected |
 
 The rule that ranks them is in the validator: (1) an option is viable only if nobody outside WalletWall's
 timelocked rotation can widen it; (2) among viable options, fewer distinct external liveness principals win; (3) then
 fewer components in the accepted path. A, AF and B tie on authorization; A wins on authority minimisation; AF ranks
 above B on path length.
 
-| Criterion (in priority order) | A — direct, code-pinned | AF / B — freeze-coupled | Better |
+| Criterion (in priority order) | A — direct, code-pinned | AF — freeze-coupled | Better |
 | --- | --- | --- | --- |
 | 1. authorization integrity (no actor widens) | only the timelocked rotation widens | the same | tie |
 | 2. authority minimisation | no external principal | the gateway owner on every chain (freeze) | **A** |
 | 3. independent provenance | CREATE2, four-chain code hash, own compile, Sourcify, VK join, a real v6.1.0 proof | the same, plus the gateway to attribute | tie |
 | 4. reproducibility | the same verifier bytes | the same | tie |
 | 5. fail closed on foreign code or routes | the code pin refuses any other code, on any chain | construction checks refuse a squatted or foreign route | tie |
-| 5a. fail closed on a defect in v6.1.0 itself | only when WalletWall pauses | at once, **if** upstream freezes | **AF / B** |
+| 5a. fail closed on a defect in v6.1.0 itself | only when WalletWall fails every consumer closed (four separate pauses today) | at once, for every consumer, **if** upstream freezes | **AF** |
 | 6. upgrade legibility | new wrapper + rotation | the same | tie |
 | 7. cross-chain consistency | one code hash at one address, checked by execution per chain | the same plus per-chain gateway routes and owners | **A** |
-| 8. liveness | nothing external can stop valid proofs | a routine deprecation freeze stops PqOnly withdrawals until rotation | **A** |
-| 9. operational complexity | one constant and a watcher | per-chain gateway address and route checks | **A** |
-| 10. implementation complexity | one `EXTCODEHASH` comparison | a pinning layer or a freeze read | **A** |
+| 8. liveness | nothing external can stop valid proofs | any freeze of the pinned route stops PqOnly withdrawals until rotation | **A** |
+| 9. operational complexity | one constant and a fail-closed path to build | per-chain gateway address and route checks | **A** |
+| 10. implementation complexity | one `EXTCODEHASH` comparison | a freeze read | **A** |
+
+> [!NOTE]
+> This table is not a score. Rows 2, 7, 8 and 9 and row 5a are faces of one lever, the gateway owners' freeze:
+> counting its cost four times against one protective entry would overweight it. The decision rule ranks
+> lexicographically (viability, then external liveness principals, then path length), and row 5a is left to the
+> owner as `DEFECT_RESPONSE_COUPLING`.
 
 ### What option A gives up: upstream's kill switch
 
 The decision rule ranks authority minimisation above liveness, and on that rule A wins. It does not settle row
-5a, so the receipt records it as `DEFECT_RESPONSE_COUPLING` instead of folding it into a score. Upstream's own
-history shows both sides of the lever (route timeline, two providers per event):
+5a, so the receipt records it as `DEFECT_RESPONSE_COUPLING` instead of folding it into a score. What the route
+timeline shows (two providers per event), and what it does not:
 
-- **A deprecation, not an incident response.** Upstream published a High-severity soundness advisory for SP1
+- **The freeze of an advised version was a batch.** Upstream published a High-severity soundness advisory for SP1
   6.0.0–6.0.2 on 2026-04-11 (GHSA-63x8-x938-vx33, CVE-2026-40323; fixed in 6.1.0). The mainnet gateway froze the
   v6.0.0 route on 2026-10-09 — 181 days later, and 108 s after freezing v5.0.0 in the same batch. The advisory does
   not say whether the on-chain verifier was affected, and TD1 claims no exploitability.
-- **An incident response.** The first v6.1.0 build carried the wrong `VERIFIER_HASH` and `VK_ROOT`. It was routed on
-  Sepolia and frozen 21.4 h later, before the corrected build was routed.
-- **The cost side.** Four mainnet routes have been frozen so far (v3.0.0, v4.0.0-rc.3, v5.0.0, v6.0.0). Under AF or
-  B, each such freeze of the pinned route stops PqOnly withdrawals until WalletWall rotates (at least 172,800 s), and
-  on both testnets one EOA holds that lever.
-- **The protective side.** Under A, a public `RouteFrozen` for `0x4388a21c` would tell everyone that v6.1.0 is
-  broken while A-bound vaults keep accepting until someone calls `pause()`. Under AF or B, verification fails closed
-  in the freeze's block.
+- **One fast freeze, on a testnet.** The first v6.1.0 build carried the wrong `VERIFIER_HASH` and `VK_ROOT`. It was
+  routed on Sepolia and frozen 21.4 h later, before the corrected build was routed — measured from routing to
+  freeze, not from any disclosure.
+- **The cost side.** Four mainnet routes have been frozen so far (v3.0.0 and v4.0.0-rc.3 in 2025, not joined to any
+  advisory here; v5.0.0 and v6.0.0 in the batch above). Under AF, any freeze of the pinned route stops PqOnly
+  withdrawals until WalletWall rotates (at least 172,800 s), and on both testnets one EOA holds that lever.
+- **The protective side.** Under A, a public `RouteFrozen` for `0x4388a21c` would tell everyone that v6.1.0 is broken
+  while every consumer keeps accepting until its own pause holder acts. There are four consumers of the verifier:
+  `WalletWallVault`, `WalletWallMultiSigVault` and `StablecoinVaultSimulator` (each deployment's owner-held `pause()`
+  gates its PQ-verifying entrypoints) and `PolicyControlBridge`, which verifies through the consumer's `pqVerifier()`,
+  ignores the vault's pause, and has its own one-way `pause()` held by `EMERGENCY_PAUSER` (TD1-N10). Under AF,
+  verification fails closed in the freeze's block, for every consumer at once.
 
 | Choice | Realized by | What it needs |
 | --- | --- | --- |
-| `WALLETWALL_WATCHER_AND_PAUSE` (**recommended**) | A | a watcher on upstream advisories and gateway `RouteFrozen` events, a stated and tested response bound, and a `pause()` path that does not depend on an online owner key |
-| `UPSTREAM_FREEZE_FAIL_CLOSED` | AF (or B) | accepting the gateway owners as a liveness principal on every chain, and a route in place on each chain before deployment |
+| `WALLETWALL_DETECT_AND_FAIL_CLOSED` (**recommended, conditional**) | A | a watcher on upstream advisories and gateway `RouteFrozen` events; either a single WalletWall-held fail-closed switch at the verifier wrapper (a new WalletWall liveness lever) or a tested runbook across all four consumers; a stated response bound; no dependence on an online owner key |
+| `UPSTREAM_FREEZE_FAIL_CLOSED` | AF | the gateway owners as a liveness principal on every chain; a route in place on each chain before deployment; a coupling to one gateway instance, so an upstream migration to a new gateway silently ends the protection |
 
-The recommendation follows the ranking: upstream's emergency freezes are discretionary, its deprecation freezes
-are routine, and A keeps the timing of WalletWall's liveness with WalletWall. If the owner prefers to delegate the
-kill switch, AF does it without routing proofs through the gateway. Either way the choice must be decided and built
-before real value; until then only a manual `pause()` exists.
+B realizes the same coupling by routing every proof through the pinned gateway: the same external principals, a
+longer path, and choosing it would change the trust-target decision. It is not offered; the rules accept an
+unoffered alternative only when an offered one has the same principals and a shorter path.
+
+The recommendation follows the ranking: a freeze of the pinned route is upstream's to time, and A keeps the timing
+of WalletWall's liveness with WalletWall. It is conditional on the single switch or the tested runbook. If the owner
+prefers to delegate the kill switch, AF does it without routing proofs through the gateway. Either way the choice
+must be decided and built before real value; until then only manual pauses exist, one per consumer.
 
 ## Program identity
 
@@ -242,7 +262,7 @@ before real value; until then only a manual `pause()` exists.
 | --- | --- | --- |
 | `PINNED_VENDOR_BUILD` | **established** | ELF `2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a` (206,504 B) and vkey `0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc` on the developer workstation (AMD) and a GitHub-hosted runner (Intel), both inside the pinned image, from the same source archive and operator; both procedure forms agree; the released `cargo-prove` agrees outside the build (three results, one binary, one machine) |
 | `REPRODUCIBLE_REPO_BUILD` | not established | the default local build embeds the builder's own `CARGO_HOME` (`/home/sirmrdrgod/.cargo`), so its identity is per builder: ELF `ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a`, vkey `0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597` (re-measured here, identical to SP1-P1) |
-| `OTHER_ESTABLISHED_PROCEDURE` | cross-check only | on the same workstation, the local build plus `--rustflags=--remap-path-prefix=$HOME/.cargo=/root/.cargo` (sp1-build's own `BuildArgs.rustflags`) reproduced the vendor ELF and vkey byte for byte. The flag was chosen after the vendor result was known and the sp1up toolchain binaries were not hashed, so this corroborates the identity, not a second CPU or a second distribution; it was pre-registered as a cross-check, never the definition |
+| `OTHER_ESTABLISHED_PROCEDURE` | cross-check only | on the same workstation, the local build plus `--rustflags=--remap-path-prefix=$HOME/.cargo=/root/.cargo` (sp1-build's own `BuildArgs.rustflags`) reproduced the vendor ELF and vkey byte for byte. The flag was chosen after the vendor result was known and the sp1up toolchain binaries were not hashed, so this corroborates the identity, not a second CPU or a second distribution. Its role was pre-registered as a cross-check, never the definition; the pre-registration's hash is in the observation, its timing is self-attested |
 
 sp1-build's own Docker mode (`cargo prove build --docker`, sp1-build 6.3.1 source) pulls
 `ghcr.io/succinctlabs/sp1:<tag>` **by tag**. The canonical procedure runs the same build inside the image referenced
@@ -301,7 +321,7 @@ zkvm subject (manifest digest) → canonical procedure (image by digest) → ELF
 | --- | --- | --- | --- | --- |
 | guest source, lockfile, SP1 crates or toolchain | yes | yes | yes (vkey is immutable) | new designation on two hosts → deploy → vault `proposePQVerifier` → 2 days → `applyPQVerifierUpdate` within 14 days |
 | SP1 verifier/circuit release (e.g. after v6.1.0) | re-measure | usually | yes (new code-hash pin) | the same; the old wrapper keeps working until rotated away |
-| a defect in v6.1.0 itself | — | — | yes (fixed verifier) | `pause()` at once (liveness only), then the rotation; under AF or B upstream's freeze would fail closed first |
+| a defect in v6.1.0 itself | — | — | yes (fixed verifier) | fail every consumer closed at once (the chosen defect response), then the rotation; under AF upstream's freeze would fail closed first |
 | F-1 fix (contract only) | no | no | yes | the same rotation |
 
 An existing `WalletWallVault` changes verifier only through that rotation, for every vault at once; it should not
@@ -326,8 +346,9 @@ part of the next lane (TD1-N9).
 | TD1-N5 Base Sepolia | `TESTNET_POSTURE_NOT_PRODUCTION` | no | no | as F-4 |
 | TD1-N6 upstream freezes | `UPSTREAM_FREEZE_IS_DISCRETIONARY` | no | no | owner decision `DEFECT_RESPONSE_COUPLING` before real value |
 | TD1-N7 guest built unlocked | `PROCEDURE_GAP` | no | no | the canonical workflow keeps `zkvm/guest/Cargo.lock` unchanged |
-| TD1-N8 same code, other precompiles | `PER_CHAIN_CHECK_REQUIRED` | no | no | per-chain execution check before deploying, and after |
+| TD1-N8 same code, other precompiles | `PER_CHAIN_CHECK_REQUIRED` | no | no | per-chain execution check before deploying, and after a chain changes its precompiles |
 | TD1-N9 rotation vs proving | `LIVENESS_INTERACTION_NOTED` | no | no | archive the circuit artifacts by hash; a self-hosted proving path |
+| TD1-N10 four consumers | `DEFECT_RESPONSE_IS_MULTI_CONSUMER` | no | no | part of `DEFECT_RESPONSE_COUPLING`: a single fail-closed switch or a tested runbook across every consumer |
 
 <details>
 <summary>F-1 and F-2: what the proof actually binds</summary>
@@ -370,7 +391,8 @@ For each failure: what independent observation catches it before WalletWall acce
 | upstream releases a new verifier | nothing changes: the wrapper accepts only the pinned code; adopting it is a new designation and a timelocked rotation |
 | gateway owner adds a malicious verifier | not in the path (executed: the code pin refuses the gateway and any other code) |
 | gateway owner freezes the v6.1.0 route | under A, not in the path: a signal for WalletWall's watcher, nothing more — the trade-off recorded as `DEFECT_RESPONSE_COUPLING` |
-| a soundness bug in v6.1.0 itself | **not by the code pin.** Under A only WalletWall's `pause()` (the watcher is not built yet); under AF or B, upstream's freeze fails closed at once if upstream acts. An open owner decision, required before real value |
+| a soundness bug in v6.1.0 itself | **not by the code pin.** Under A only WalletWall's pauses, one per consumer, the bridge's one-way and separately held (no watcher yet); under AF upstream's freeze fails closed at once for every consumer, if upstream acts. An open owner decision, required before real value |
+| one consumer's pause holder does not act | not caught under A today: each consumer fails closed only on its own holder's pause (TD1-N10); a single switch at the verifier wrapper is the implementation lane's option |
 | the vendor image disappears | the remapped local procedure reproduced the identity without the image (same workstation, same distribution); mirror the image by digest |
 | a mutable tag drifts | the procedure never uses the tag; the registry body hash pins the index |
 | the same digest behaves differently on another CPU | measured on an AMD workstation and an Intel runner, both inside the same image; the image-free build ran on the AMD workstation |
@@ -382,7 +404,7 @@ For each failure: what independent observation catches it before WalletWall acce
 | the verifier version changes without the vkey changing | the code pin is part of the designation; a new verifier is a new wrapper either way |
 | a proof selector routes somewhere unexpected | there is no routing; the verifier checks its own selector |
 | chain identity differs across deployments | the code-hash pin fails closed on any chain whose code differs |
-| same code, different precompile behaviour on a chain | the per-chain execution check: the real v6.1.0 proof accepted, its tampered copy and the odd-word canary refused. Required on every chain before deploying, and again after that chain changes its precompiles |
+| same code, different precompile behaviour on a chain | the per-chain execution check: the real v6.1.0 proof accepted, its tampered copy and the odd-word canary refused, for calldata the validator rebuilds; the canary's positive control is executed. Required on every chain before deploying, and again after that chain changes its precompiles |
 | one ELF, two vkeys | a contradiction that unresolves the decision |
 | vkey derivation is wrong in `sp1-prover` itself | **not caught here** (one implementation); a WalletWall proof verifying on the pinned verifier is the next join |
 | the probe facts are hand-edited | the probe suite re-executes every fact on the mainnet bytes and fails on disagreement |
@@ -392,7 +414,7 @@ For each failure: what independent observation catches it before WalletWall acce
 
 > [!IMPORTANT]
 > - A v6.1.0 soundness bug passes the pin. Who fails closed is an open owner decision; until it is decided and
->   built, only a manual `pause()` does.
+>   built, only manual pauses do, one per consumer, and the policy bridge's is one-way and separately held.
 > - The vkey derivation has binary- and machine-level independence only (one upstream implementation).
 > - No WalletWall proof exists: ELF → vkey → circuit → on-chain VK is joined only by a real proof (the next lane).
 >   The pinned key itself is exercised by a third party's real v6.1.0 proof.
@@ -400,23 +422,27 @@ For each failure: what independent observation catches it before WalletWall acce
 >   on the workstation, with a flag chosen after the vendor result.
 > - The per-chain execution check covers the four measured chains at the measured blocks. A chain's governance can
 >   change its precompiles later, which no code hash shows; the check must be repeated.
+> - AF's coupling, if chosen, is to one gateway instance: an upstream migration to a new gateway ends its protection
+>   silently.
 > - Two of the verifier's call sites compute their target; the scan does not resolve them, the attributed source does
 >   (sha256 and the self-call).
-> - `pause()` and the rotation are held by the vault owner — an existing principal this lane does not narrow.
-> - The findings' dispositions and the implementation plan are authored inputs, reviewed rather than derived; the
->   probe facts and each option's pins and components are re-executed.
+> - Each option's pins are checked against its probe contract's constructor parameters (B0's selector is checked at
+>   each call) and its components against a listed mapping of the contracts its probe deployed; the findings'
+>   dispositions and the implementation plan are authored inputs, reviewed rather than derived.
 > - The JavaScript measurement scripts are not committed (they would add CodeQL alerts); their exact bytes are
 >   published on the pull request. The chain-state, deployment, chain-execution, route-timeline and remap
->   observations record the sha256 of the script that produced them; the upstream fixture's extractor is identified
->   by hash on the pull request only, and the image digests are re-derivable from the public registry.
+>   observations record the sha256 of the script that produced them, and chain-execution names the mainnet-proof
+>   observation it wrote; the upstream fixture's extractor is identified by hash on the pull request only, and the
+>   image digests are re-derivable from the public registry.
 
 ## Next lane (implementation, frozen here)
 
 - [ ] `ZKMLDSAVerifier`: compile-time pin of the SP1 verifier's runtime code hash, checked in the constructor;
       record `VERIFIER_HASH`, `VK_ROOT`, `VERSION`; `verify()` unchanged.
 - [ ] `ZKMLDSAVerifier`: `uint256(committedChainId) != block.chainid` (F-1); document `sigHash` (F-2).
-- [ ] The defect response the owner chooses: a watcher with a tested response bound and a `pause()` path that needs
-      no online owner key (A), or the fail-closed freeze coupling (AF).
+- [ ] The defect response the owner chooses: WalletWall detection with a single fail-closed switch at the verifier
+      wrapper (or a tested runbook across all four consumers), a stated response bound and no dependence on an online
+      owner key (A); or the fail-closed freeze coupling (AF).
 - [ ] A generated designation file for `mldsa65-withdrawal` and the CI subject check.
 - [ ] A gated canonical-build workflow (guest lockfile unchanged) plus a second-host release rebuild; both must
       reproduce the designation.

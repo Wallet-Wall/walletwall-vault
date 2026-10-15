@@ -1,6 +1,6 @@
 {
   "schema": "walletwall.sp1-td1-mainnet-v610-proof.v1",
-  "measuredAtUtc": "2026-10-15T13:51:04.714Z",
+  "measuredAtUtc": "2026-10-15T14:56:48.194Z",
   "purpose": "A real Groth16 proof for circuit v6.1.0, taken from a successful mainnet call into the pinned verifier, to give the pinned verifying key a positive control without any circuit download. It is someone else's program: it says nothing about WalletWall's guest.",
   "source": {
     "chainId": 1,

@@ -1,8 +1,9 @@
 /**
  * Tests for the SP1-TD1 decision receipt (scripts/lib/sp1-td1-decision.ts, evidence/zk/sp1-td1/): the committed
- * receipt re-derives from its inputs and observations; the derivations respond to the facts they consume
- * (positive and negative controls); and the lane rules reject every over-claim on their own, so a hand-edited
- * receipt cannot pass by being internally consistent.
+ * receipt re-derives from its inputs and observations (any hand edit is drift); the derivations respond to the
+ * facts they consume (positive and negative controls); and the lane rules reject, on the receipt alone, the
+ * over-claims they name — a self-consistent edit of derived facts the rules cannot re-run (pins, the equivalence
+ * and widening claims, the authority delta) is caught by the re-derivation.
  *
  * Pure, fast, static reads — no SP1 toolchain, no proving, no network. The probe facts themselves are executed
  * by test/Sp1Td1TrustTargetProbes.test.ts.
@@ -13,6 +14,8 @@ import { resolve } from "node:path";
 import { expect } from "chai";
 
 import {
+  INHERITED_BY_EVERY_OPTION,
+  REQUIRED_CHAIN_VERDICTS,
   TD1_CLAIM_KEYS,
   TD1_INPUTS_REL,
   TD1_RECEIPT_REL,
@@ -20,6 +23,7 @@ import {
   buildDecisionReceipt,
   checkContextFresh,
   decideTrustTarget,
+  expectedChainCalls,
   readDecisionContext,
   validateCommittedDecisionReceipt,
   validateDecisionRules,
@@ -46,7 +50,8 @@ const VENDOR_VKEY = "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4
 const VENDOR_ELF = "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a";
 const LOCAL_VKEY = "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597";
 const LOCAL_ELF = "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a";
-const PAUSE = "WalletWall vault owner pause() — liveness only; manual unless automated";
+const PAUSE =
+  "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders";
 
 describe("SP1-TD1 decision receipt", function () {
   before(function () {
@@ -279,9 +284,80 @@ describe("SP1-TD1 decision receipt", function () {
       const c3 = ctx();
       delete c3.chainExec.chains["11155111"];
       expect(built(c3).trustTarget.failures).to.include("chain 11155111: the verifier template was not executed there");
+      // The observation cannot grade itself: the required verdicts are the validator's. A canary that verifies (a
+      // missing pairing precompile) fails the chain even where the observation's own expectations were relaxed.
       const c4 = ctx();
-      c4.chainExec.expected = {};
-      expect(built(c4).trustTarget.established).to.equal(false);
+      const relaxed = c4.chainExec as unknown as { expected: Record<string, string> };
+      relaxed.expected = { v610RealProof: "success" };
+      c4.chainExec.chains["84532"].verdicts.v610OddWordCanary = "success";
+      expect(built(c4).trustTarget.failures).to.include(
+        "chain 84532: the verifier template does not give the expected verdicts",
+      );
+      expect(REQUIRED_CHAIN_VERDICTS).to.deep.equal({
+        v610RealProof: "success",
+        v610TamperedPublicValues: "revert ProofInvalid",
+        v610OddWordCanary: "revert ProofInvalid",
+        v600RealProof: "success",
+        v600TamperedPublicValues: "revert ProofInvalid",
+      });
+    });
+
+    it("the per-chain verdicts count only for the calls this receipt names, rebuilt byte for byte", function () {
+      const tt = built().trustTarget;
+      expect([tt.chainCallsBound, tt.canaryHasPositiveControl]).to.deep.equal([true, true]);
+      const rebuilt = expectedChainCalls(ctx());
+      expect(Object.keys(rebuilt)).to.deep.equal(Object.keys(REQUIRED_CHAIN_VERDICTS));
+      const unbound = "the per-chain calls are not the real proofs, tampered copies and canary this receipt names";
+      const breaks: [string, (c: DecisionContext) => void][] = [
+        // Other bytes than the canary this receipt names.
+        [
+          "canary bytes",
+          (c) =>
+            (c.chainExec.calls.v610OddWordCanary.data = c.chainExec.calls.v610OddWordCanary.data.slice(0, -1) + "2"),
+        ],
+        ["another target", (c) => (c.chainExec.calls.v600RealProof.to = c.inputs.trustTargetSelection.verifier)],
+        [
+          "a missing call",
+          (c) => delete (c.chainExec.calls as Partial<typeof c.chainExec.calls>).v610TamperedPublicValues,
+        ],
+        ["another source transaction", (c) => (c.chainExec.proofSource.transaction = `0x${"ab".repeat(32)}`)],
+        [
+          "another source observation",
+          (c) => (c.chainExec.proofSource.observation = "upstream-proof-fixture.raw.json"),
+        ],
+        // A different real proof would rebuild different calldata from what was sent.
+        [
+          "another proof",
+          (c) => {
+            const pv = c.mainnetProof.call.publicValues;
+            c.mainnetProof.call.publicValues = pv.slice(0, -2) + (pv.endsWith("00") ? "01" : "00");
+          },
+        ],
+      ];
+      for (const [name, breakIt] of breaks) {
+        const c = ctx();
+        breakIt(c);
+        const r = built(c);
+        expect(r.trustTarget.chainCallsBound, name).to.equal(false);
+        expect(r.trustTarget.failures, name).to.include(unbound);
+        expect(r.decisions.SP1_TRUST_TARGET_DECISION, name).to.equal("UNRESOLVED");
+      }
+    });
+
+    it("the canary counts only with its positive control: refused by the pinned code, accepted without the pairing precompile", function () {
+      for (const fact of [
+        "oddWordCanaryRefusedByPinnedCode",
+        "oddWordCanaryAcceptedWithoutPairingPrecompile",
+      ] as const) {
+        const c = ctx();
+        c.inputs.probeFacts.semantics[fact] = false;
+        const r = built(c);
+        expect(r.trustTarget.canaryHasPositiveControl, fact).to.equal(false);
+        expect(r.trustTarget.failures, fact).to.include(
+          "the odd-word canary has no positive control: it cannot show a missing pairing precompile",
+        );
+        expect(r.decisions.SP1_TRUST_TARGET_DECISION, fact).to.equal("UNRESOLVED");
+      }
     });
 
     it("the real-proof control speaks for v6.1.0 only while both wrappers share their statements", function () {
@@ -476,6 +552,10 @@ describe("SP1-TD1 decision receipt", function () {
       expect(af.defectResponse.length).to.equal(3);
       expect(af.proxyOrAdmin).to.equal("upstream Ownable owner, read for its freeze bit only (no proxy)");
       expect(af.routeRegistry).to.equal(false);
+      // The receipt carries each option's components, so the rules can see which options read the upstream gateway.
+      expect(built().options.map((o) => [o.id, o.components])).to.deep.equal(
+        ctx().inputs.options.map((o) => [o.id, o.components]),
+      );
       expect(af.crossChainIdentity).to.contain("; the freeze bit ties each chain to its gateway owner (1: Safe 1.3.0");
       expect(option(built(), "A").crossChainIdentity).to.not.contain("freeze bit");
       const alternatives = (c: DecisionContext) =>
@@ -509,14 +589,16 @@ describe("SP1-TD1 decision receipt", function () {
       expect(dc.status).to.equal("OWNER_DECISION_REQUIRED");
       expect(dc.viableAlternatives.map((a) => a.id)).to.deep.equal(["AF", "B"]);
       expect(dc.viableAlternatives[0].externalLivenessPrincipals.length).to.equal(2);
-      expect(dc.decidedOptionDefectResponse).to.deep.equal([
-        "WalletWall vault owner pause() — liveness only; manual unless automated",
-      ]);
+      expect(dc.decidedOptionDefectResponse).to.deep.equal([PAUSE]);
+      // AF realizes the freeze coupling; B (same principals, longer path) is dominated and not offered.
       expect(dc.choices.map((x) => [x.id, x.options])).to.deep.equal([
-        ["WALLETWALL_WATCHER_AND_PAUSE", ["A"]],
-        ["UPSTREAM_FREEZE_FAIL_CLOSED", ["AF", "B"]],
+        ["WALLETWALL_DETECT_AND_FAIL_CLOSED", ["A"]],
+        ["UPSTREAM_FREEZE_FAIL_CLOSED", ["AF"]],
       ]);
-      expect([dc.recommendation, dc.requiredBeforeRealValue]).to.deep.equal(["WALLETWALL_WATCHER_AND_PAUSE", true]);
+      expect([dc.recommendation, dc.requiredBeforeRealValue]).to.deep.equal([
+        "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+        true,
+      ]);
       expect(built().claims.DEFECT_RESPONSE_PATH.basis).to.contain("open owner decision DEFECT_RESPONSE_COUPLING");
       // No fail-closed alternative left (AF gone, B's route replaceable): the decision does not apply.
       const c1 = ctx();
@@ -762,7 +844,7 @@ describe("SP1-TD1 decision receipt", function () {
     });
   });
 
-  describe("lane rules reject every over-claim on their own", function () {
+  describe("lane rules reject the over-claims they name, on the receipt alone", function () {
     let R: Td1DecisionReceipt;
     beforeEach(function () {
       R = clone(committed());
@@ -1084,8 +1166,11 @@ describe("SP1-TD1 decision receipt", function () {
       R = clone(committed());
       dc().viableAlternatives = dc().viableAlternatives.filter((a) => a.id !== "B");
       expectRule(R, "DEFECT_RESPONSE_COUPLING must list exactly the viable fail-closed alternatives");
+      // AF offered, B unoffered: B is dominated (same principals, longer path). Unoffer AF too and both are missing.
       R = clone(committed());
-      dc().choices[1].options = ["AF"];
+      expect(rulesOf(R).some((e) => e.includes("realized by option B"))).to.equal(false);
+      dc().choices[1].options = [];
+      expectRule(R, "the owner decision offers no choice realized by option AF");
       expectRule(R, "the owner decision offers no choice realized by option B");
       R = clone(committed());
       dc().choices = dc().choices.slice(1);
@@ -1094,15 +1179,86 @@ describe("SP1-TD1 decision receipt", function () {
       dc().recommendation = "SOMETHING_ELSE";
       expectRule(R, "the owner decision's recommendation is not one of its choices");
       R = clone(committed());
-      const p = R.decisions.REAL_PROOF_LANE_UNBLOCKED;
-      p.preconditions = p.preconditions.filter((x) => !x.includes("DEFECT_RESPONSE_COUPLING"));
-      expectRule(R, "an open owner decision required before real value must be a real-proof precondition");
-      // Control: a decision the owner does not require before real value carries no such precondition.
       dc().requiredBeforeRealValue = false;
-      expect(rulesOf(R)).to.deep.equal([]);
+      expectRule(R, "an open defect-response decision must be required before real value");
       R = clone(committed());
       delete (R.decisions as Partial<Td1DecisionReceipt["decisions"]>).DEFECT_RESPONSE_COUPLING;
       expectRule(R, "DEFECT_RESPONSE_COUPLING is required");
+    });
+
+    it("lets an alternative go unoffered only behind an offered one with the same principals and a shorter path", function () {
+      const missingB = "the owner decision offers no choice realized by option B";
+      // B as short as AF: no longer dominated.
+      option(R, "B").path = option(R, "AF").path.slice();
+      expectRule(R, missingB);
+      // B held by another principal: no longer dominated.
+      R = clone(committed());
+      option(R, "B").disable[0].principal = "upstream gateway owner 0x0000000000000000000000000000000000000001";
+      expectRule(R, missingB);
+    });
+
+    it("rejects the reviewer's drop: freezes recorded as not protective, the decision marked not applicable", function () {
+      for (const id of ["AF", "B"]) for (const l of option(R, id).disable) l.protectiveOnVerifierDefect = false;
+      (R.decisions.DEFECT_RESPONSE_COUPLING as { status: string }).status = "NOT_APPLICABLE";
+      R.decisions.DEFECT_RESPONSE_COUPLING.viableAlternatives = [];
+      expectRule(R, "option B: freezeRoute must be recorded protective");
+      expectRule(R, "option AF: freezeRoute must be recorded protective");
+    });
+
+    it("records a freeze as protective exactly when it freezes the pinned verifier's own route", function () {
+      // A freeze-bit reader without the route pin may be coupled to another verifier's route: not protective.
+      option(R, "AF").pins = option(R, "AF").pins.filter((p) => p !== "routeVerifier");
+      expectRule(R, "option AF: freezeRoute must be recorded not protective");
+      // The WalletWall gateway's own freeze stops the routed proofs too.
+      R = clone(committed());
+      option(R, "C").disable[0].protectiveOnVerifierDefect = false;
+      expectRule(R, "option C: gatewayAdminFreezeRoute must be recorded protective");
+    });
+
+    it("rejects an option that reads the upstream gateway but records no freeze of its owners", function () {
+      option(R, "AF").disable = [];
+      expectRule(R, "option AF: an option that reads the upstream gateway must record its owners' freeze");
+      R = clone(committed());
+      option(R, "D").disable = [];
+      expectRule(R, "option D: an option that reads the upstream gateway must record its owners' freeze");
+    });
+
+    it("rejects per-chain entries that are not the measured chains, once each", function () {
+      for (const e of R.trustTarget.chainExecution) e.chainId = "1";
+      expectRule(R, "the per-chain execution entries must be exactly the measured chains");
+    });
+
+    it("rejects a direct target whose per-chain calls are unbound or whose canary has no positive control", function () {
+      R.trustTarget.chainCallsBound = false;
+      expectRule(R, "a direct immutable target needs per-chain verdicts for the calls this receipt names");
+      R = clone(committed());
+      R.trustTarget.canaryHasPositiveControl = false;
+      expectRule(R, "a direct immutable target needs a canary shown to detect a missing pairing precompile");
+    });
+
+    it("requires the lane's real-proof preconditions word for word", function () {
+      const p = () => R.decisions.REAL_PROOF_LANE_UNBLOCKED;
+      p().preconditions = p().preconditions.filter((x) => !x.includes("DEFECT_RESPONSE_COUPLING"));
+      expectRule(R, "the real-proof preconditions are not the lane's");
+      // A negated sentence still names the decision, and is still refused.
+      R = clone(committed());
+      p().preconditions = p().preconditions.map((x) =>
+        x.includes("DEFECT_RESPONSE_COUPLING") ? x.replace("needs", "does not need") : x,
+      );
+      expectRule(R, "the real-proof preconditions are not the lane's");
+      expect(
+        committed().decisions.REAL_PROOF_LANE_UNBLOCKED.preconditions.some((x) =>
+          x.includes("DEFECT_RESPONSE_COUPLING"),
+        ),
+      ).to.equal(true);
+    });
+
+    it("states the authority every option inherits instead of claiming none", function () {
+      const r = built();
+      expect(r.decisions.AUTHORIZATION_AUTHORITY_DELTA.inheritedByEveryOption).to.equal(INHERITED_BY_EVERY_OPTION);
+      expect(r.decisions.LIVENESS_DEPENDENCY.inheritedByEveryOption).to.equal(INHERITED_BY_EVERY_OPTION);
+      expect(r.claims.DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER.basis).to.contain(`beyond ${INHERITED_BY_EVERY_OPTION}`);
+      expect(INHERITED_BY_EVERY_OPTION).to.contain("each chain's own governance");
     });
 
     it("counts as fail-closed alternatives only viable, undecided options whose external levers all protect", function () {
@@ -1140,6 +1296,17 @@ describe("SP1-TD1 decision receipt", function () {
       R = clone(committed());
       R.decisions.PROGRAM_VKEY_DESIGNATION.status = "NOT_DESIGNATED";
       expectRule(R, "PROGRAM_VKEY_DESIGNATED cannot be ESTABLISHED without a designation");
+    });
+
+    it("rejects a complete-route-history claim, and a reproduction claim without the reproduction", function () {
+      R.claims.GATEWAY_ROUTE_HISTORY_COMPLETE.status = "ESTABLISHED";
+      expectRule(
+        R,
+        "GATEWAY_ROUTE_HISTORY_COMPLETE cannot be ESTABLISHED: an indexer's event history is not a completeness proof",
+      );
+      R = clone(committed());
+      R.decisions.PROGRAM_VKEY_DESIGNATION.reproducedOutsideVendorImage = false;
+      expectRule(R, "IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE cannot be ESTABLISHED without the reproduction");
     });
 
     it("rejects a no-external-lever claim for a decided option that has one, or for no decided option", function () {
