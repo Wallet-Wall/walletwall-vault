@@ -1,0 +1,561 @@
+{
+  "schema": "walletwall.sp1-td1-chain-state.v1",
+  "measuredAtUtc": "2026-10-15T12:39:16.013Z",
+  "tool": {
+    "script": "measure-chain-state.cjs",
+    "scriptSha256": "1e526798514c1a755ddea03b0dd1b230f8bd3c060c814bbd1a830e1206eea609",
+    "node": "v24.16.0",
+    "ethers": "6.17.0"
+  },
+  "selectorUniverse": {
+    "source": "every VERIFIER_HASH literal in the full git history (all refs) of succinctlabs/sp1-contracts at clone",
+    "repository": "https://github.com/succinctlabs/sp1-contracts",
+    "headAtClone": "d3629729c3216eb51bd4859d027a8eb729399fa4",
+    "count": 36,
+    "selectors": [
+      "0x010c05fd",
+      "0x09069090",
+      "0x0e78f4db",
+      "0x11b6a09d",
+      "0x1b34fe11",
+      "0x1b5a112d",
+      "0x20f6aad0",
+      "0x28753e97",
+      "0x2b4aeaf7",
+      "0x433cef0e",
+      "0x4388a21c",
+      "0x4aca240a",
+      "0x54bdcae3",
+      "0x58b7a3c3",
+      "0x5a093a2f",
+      "0x5a1551d6",
+      "0x616a4205",
+      "0x6a2906ac",
+      "0x801c66ac",
+      "0x837629d3",
+      "0x86535066",
+      "0x8c5bc5e4",
+      "0x8e9362da",
+      "0x8fd4de72",
+      "0x91ff06f3",
+      "0xa4594c59",
+      "0xbb1a6f29",
+      "0xc430ff7f",
+      "0xc4399494",
+      "0xc7f26b1b",
+      "0xc865c1b6",
+      "0xd4e8ecd2",
+      "0xf740f971",
+      "0xfeb5e54e",
+      "0xfedc1fcc",
+      "0xffea2d2e"
+    ]
+  },
+  "chains": {
+    "1": {
+      "providers": [
+        "https://ethereum-rpc.publicnode.com",
+        "https://eth.drpc.org"
+      ],
+      "block": {
+        "tag": "finalized (provider 1)",
+        "number": 26197902,
+        "hash": "0xe60f5bef7c7ab852d76624e8bc42a2fe85ab10db00eefe27ca982db572192af1",
+        "timestamp": 1792067159
+      },
+      "chainIdReported": 1,
+      "deterministicDeployer": {
+        "address": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "codeBytes": 69,
+        "codeKeccak": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+      },
+      "verifiers": {
+        "v6.1.0": {
+          "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+          "codeBytes": 6741,
+          "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+          "VERIFIER_HASH": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "VK_ROOT": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+          "VERSION": "v6.1.0"
+        },
+        "v6.0.0": {
+          "address": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+          "codeBytes": 6742,
+          "codeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+          "VERIFIER_HASH": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+          "VK_ROOT": "0x008cd56e10c2fe24795cff1e1d1f40d3a324528d315674da45d26afb376e8670",
+          "VERSION": "v6.0.0"
+        }
+      },
+      "gateway": {
+        "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeBytes": 1975,
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "eip1967ImplementationSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "eip1967AdminSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "ownerCodeBytes": 171,
+        "ownerCodeKeccak": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
+        "ownerSafe": {
+          "singleton": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+          "version": "1.3.0",
+          "threshold": 2,
+          "owners": [
+            "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+            "0x72Ff26D9517324eEFA89A48B75c5df41132c4f54",
+            "0x9395e83720bf2D8ac6435f9c520b48E289Cb8885"
+          ],
+          "modules": [],
+          "guardSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "fallbackHandler": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"
+        },
+        "routes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "frozen": true,
+            "verifierCodeBytes": 6280,
+            "verifierCodeKeccak": "0x465c505e17982834d59c1a909c27f2363bb832b7b04e7431e3daec4776f53f5c",
+            "verifierHashCall": "0x090690902a12d1d02c07a1ad25aa76bded5f6499e12a11ba127669501b553998",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "frozen": true,
+            "verifierCodeBytes": 6742,
+            "verifierCodeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+            "verifierHashCall": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "frozen": true,
+            "verifierCodeBytes": 6134,
+            "verifierCodeKeccak": "0x217a765174e8eaac0850676292051cbf451865833e9a92ca9daf2102d336ac6b",
+            "verifierHashCall": "0x11b6a09d63d255ad425ee3a7f6211d5ec63fbde9805b40551c3136275b6f4eb4",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "frozen": false,
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+            "verifierHashCall": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+            "version": "v6.1.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "frozen": true,
+            "verifierCodeBytes": 11144,
+            "verifierCodeKeccak": "0xee5fe17d3c44b3e5a9587ec7d1fc8e7f07104a1c17946bb8ad833fe115206d6c",
+            "verifierHashCall": "0xa4594c59bbc142f3b81c3ecb7f50a7c34bc9af7c4c444b5d48b795427e285913",
+            "version": "v5.0.0"
+          }
+        ]
+      },
+      "secondProvider": {
+        "url": "https://eth.drpc.org",
+        "chainIdSame": true,
+        "blockHashSame": true,
+        "deterministicDeployerSame": true,
+        "verifiersSame": true,
+        "gatewayCodeSame": true,
+        "ownerSame": true,
+        "ownerSafeSame": true,
+        "routesSame": true,
+        "routesChecked": 36
+      },
+      "upstreamDeploymentsJson": {
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "v610": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+        "v600": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000009"
+      }
+    },
+    "8453": {
+      "providers": [
+        "https://mainnet.base.org",
+        "https://base-mainnet.public.blastapi.io"
+      ],
+      "block": {
+        "tag": "finalized (provider 1)",
+        "number": 52638886,
+        "hash": "0xc85836bbcb65e7b4b23ace2569b52c65af2e021f08ea9bd58bd0e7d992c60277",
+        "timestamp": 1792067119
+      },
+      "chainIdReported": 8453,
+      "deterministicDeployer": {
+        "address": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "codeBytes": 69,
+        "codeKeccak": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+      },
+      "verifiers": {
+        "v6.1.0": {
+          "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+          "codeBytes": 6741,
+          "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+          "VERIFIER_HASH": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "VK_ROOT": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+          "VERSION": "v6.1.0"
+        },
+        "v6.0.0": {
+          "address": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+          "codeBytes": 6742,
+          "codeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+          "VERIFIER_HASH": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+          "VK_ROOT": "0x008cd56e10c2fe24795cff1e1d1f40d3a324528d315674da45d26afb376e8670",
+          "VERSION": "v6.0.0"
+        }
+      },
+      "gateway": {
+        "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeBytes": 1975,
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "eip1967ImplementationSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "eip1967AdminSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "ownerCodeBytes": 171,
+        "ownerCodeKeccak": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
+        "ownerSafe": {
+          "singleton": "0xd9Db270c1B5E3Bd161E8c8503c55cEABeE709552",
+          "version": "1.3.0",
+          "threshold": 2,
+          "owners": [
+            "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+            "0x72Ff26D9517324eEFA89A48B75c5df41132c4f54",
+            "0x9395e83720bf2D8ac6435f9c520b48E289Cb8885"
+          ],
+          "modules": [],
+          "guardSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "fallbackHandler": "0xf48f2B2d2a534e402487b3ee7C18c33Aec0Fe5e4"
+        },
+        "routes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "frozen": true,
+            "verifierCodeBytes": 6280,
+            "verifierCodeKeccak": "0x465c505e17982834d59c1a909c27f2363bb832b7b04e7431e3daec4776f53f5c",
+            "verifierHashCall": "0x090690902a12d1d02c07a1ad25aa76bded5f6499e12a11ba127669501b553998",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "frozen": true,
+            "verifierCodeBytes": 6742,
+            "verifierCodeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+            "verifierHashCall": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "frozen": true,
+            "verifierCodeBytes": 6134,
+            "verifierCodeKeccak": "0x217a765174e8eaac0850676292051cbf451865833e9a92ca9daf2102d336ac6b",
+            "verifierHashCall": "0x11b6a09d63d255ad425ee3a7f6211d5ec63fbde9805b40551c3136275b6f4eb4",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "frozen": false,
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+            "verifierHashCall": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+            "version": "v6.1.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "frozen": true,
+            "verifierCodeBytes": 11144,
+            "verifierCodeKeccak": "0xee5fe17d3c44b3e5a9587ec7d1fc8e7f07104a1c17946bb8ad833fe115206d6c",
+            "verifierHashCall": "0xa4594c59bbc142f3b81c3ecb7f50a7c34bc9af7c4c444b5d48b795427e285913",
+            "version": "v5.0.0"
+          }
+        ]
+      },
+      "secondProvider": {
+        "url": "https://base-mainnet.public.blastapi.io",
+        "chainIdSame": true,
+        "blockHashSame": true,
+        "deterministicDeployerSame": true,
+        "verifiersSame": true,
+        "gatewayCodeSame": true,
+        "ownerSame": true,
+        "ownerSafeSame": true,
+        "routesSame": true,
+        "routesChecked": 36
+      },
+      "upstreamDeploymentsJson": {
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "v610": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+        "v600": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000009"
+      }
+    },
+    "84532": {
+      "providers": [
+        "https://sepolia.base.org",
+        "https://base-sepolia-rpc.publicnode.com"
+      ],
+      "block": {
+        "tag": "finalized (provider 1)",
+        "number": 48149325,
+        "hash": "0x1ef35dcc2fef3a06e13871020bc68bcbb71d77cb8604f97c45bb15bc80ae5596",
+        "timestamp": 1792066938
+      },
+      "chainIdReported": 84532,
+      "deterministicDeployer": {
+        "address": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "codeBytes": 69,
+        "codeKeccak": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+      },
+      "verifiers": {
+        "v6.1.0": {
+          "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+          "codeBytes": 6741,
+          "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+          "VERIFIER_HASH": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "VK_ROOT": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+          "VERSION": "v6.1.0"
+        },
+        "v6.0.0": {
+          "address": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+          "codeBytes": 6742,
+          "codeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+          "VERIFIER_HASH": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+          "VK_ROOT": "0x008cd56e10c2fe24795cff1e1d1f40d3a324528d315674da45d26afb376e8670",
+          "VERSION": "v6.0.0"
+        }
+      },
+      "gateway": {
+        "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeBytes": 1975,
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "eip1967ImplementationSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "eip1967AdminSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "ownerCodeBytes": 0,
+        "ownerCodeKeccak": null,
+        "ownerSafe": null,
+        "routes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "frozen": true,
+            "verifierCodeBytes": 6280,
+            "verifierCodeKeccak": "0x465c505e17982834d59c1a909c27f2363bb832b7b04e7431e3daec4776f53f5c",
+            "verifierHashCall": "0x090690902a12d1d02c07a1ad25aa76bded5f6499e12a11ba127669501b553998",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "frozen": true,
+            "verifierCodeBytes": 6742,
+            "verifierCodeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+            "verifierHashCall": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "frozen": false,
+            "verifierCodeBytes": 6134,
+            "verifierCodeKeccak": "0x217a765174e8eaac0850676292051cbf451865833e9a92ca9daf2102d336ac6b",
+            "verifierHashCall": "0x11b6a09d63d255ad425ee3a7f6211d5ec63fbde9805b40551c3136275b6f4eb4",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "frozen": false,
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+            "verifierHashCall": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+            "version": "v6.1.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "frozen": true,
+            "verifierCodeBytes": 11144,
+            "verifierCodeKeccak": "0xee5fe17d3c44b3e5a9587ec7d1fc8e7f07104a1c17946bb8ad833fe115206d6c",
+            "verifierHashCall": "0xa4594c59bbc142f3b81c3ecb7f50a7c34bc9af7c4c444b5d48b795427e285913",
+            "version": "v5.0.0"
+          }
+        ]
+      },
+      "secondProvider": {
+        "url": "https://base-sepolia-rpc.publicnode.com",
+        "chainIdSame": true,
+        "blockHashSame": true,
+        "deterministicDeployerSame": true,
+        "verifiersSame": true,
+        "gatewayCodeSame": true,
+        "ownerSame": true,
+        "ownerSafeSame": true,
+        "routesSame": true,
+        "routesChecked": 36
+      },
+      "upstreamDeploymentsJson": {
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "v610": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+        "v600": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000009"
+      }
+    },
+    "11155111": {
+      "providers": [
+        "https://ethereum-sepolia-rpc.publicnode.com",
+        "https://sepolia.drpc.org"
+      ],
+      "block": {
+        "tag": "finalized (provider 1)",
+        "number": 11920409,
+        "hash": "0x2baf1d575d686681f55526d601d7f20eeed988b5188ecd768de996a6a4d5cc39",
+        "timestamp": 1792067028
+      },
+      "chainIdReported": 11155111,
+      "deterministicDeployer": {
+        "address": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "codeBytes": 69,
+        "codeKeccak": "0x2fa86add0aed31f33a762c9d88e807c475bd51d0f52bd0955754b2608f7e4989"
+      },
+      "verifiers": {
+        "v6.1.0": {
+          "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+          "codeBytes": 6741,
+          "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+          "VERIFIER_HASH": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+          "VK_ROOT": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+          "VERSION": "v6.1.0"
+        },
+        "v6.0.0": {
+          "address": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+          "codeBytes": 6742,
+          "codeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+          "VERIFIER_HASH": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+          "VK_ROOT": "0x008cd56e10c2fe24795cff1e1d1f40d3a324528d315674da45d26afb376e8670",
+          "VERSION": "v6.0.0"
+        }
+      },
+      "gateway": {
+        "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeBytes": 1975,
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "eip1967ImplementationSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "eip1967AdminSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "ownerCodeBytes": 0,
+        "ownerCodeKeccak": null,
+        "ownerSafe": null,
+        "routes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "frozen": true,
+            "verifierCodeBytes": 6280,
+            "verifierCodeKeccak": "0x465c505e17982834d59c1a909c27f2363bb832b7b04e7431e3daec4776f53f5c",
+            "verifierHashCall": "0x090690902a12d1d02c07a1ad25aa76bded5f6499e12a11ba127669501b553998",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "frozen": true,
+            "verifierCodeBytes": 6742,
+            "verifierCodeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2",
+            "verifierHashCall": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "frozen": false,
+            "verifierCodeBytes": 6134,
+            "verifierCodeKeccak": "0x217a765174e8eaac0850676292051cbf451865833e9a92ca9daf2102d336ac6b",
+            "verifierHashCall": "0x11b6a09d63d255ad425ee3a7f6211d5ec63fbde9805b40551c3136275b6f4eb4",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x2b4aeaf7",
+            "verifier": "0xf0f70E15e9259970481c4F33bD87C3e47f161dec",
+            "frozen": true,
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0x28ce377474febced8ab4b39afb8314fb9f2e207bf3df554d214871b147f226f7",
+            "verifierHashCall": "0x2b4aeaf7a8005e6072a35ba0faf7a8da72644a4bed28babcc972c257463b26ca",
+            "version": "v6.1.0"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "frozen": false,
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+            "verifierHashCall": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+            "version": "v6.1.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "frozen": true,
+            "verifierCodeBytes": 11144,
+            "verifierCodeKeccak": "0xee5fe17d3c44b3e5a9587ec7d1fc8e7f07104a1c17946bb8ad833fe115206d6c",
+            "verifierHashCall": "0xa4594c59bbc142f3b81c3ecb7f50a7c34bc9af7c4c444b5d48b795427e285913",
+            "version": "v5.0.0"
+          }
+        ]
+      },
+      "secondProvider": {
+        "url": "https://sepolia.drpc.org",
+        "chainIdSame": true,
+        "blockHashSame": true,
+        "deterministicDeployerSame": true,
+        "verifiersSame": true,
+        "gatewayCodeSame": true,
+        "ownerSame": true,
+        "ownerSafeSame": true,
+        "routesSame": true,
+        "routesChecked": 36
+      },
+      "upstreamDeploymentsJson": {
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "v610": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+        "v600": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000009"
+      }
+    }
+  },
+  "sepoliaV500FrozenFlip": {
+    "archiveProvider": "https://sepolia.drpc.org",
+    "selector": "0xa4594c59",
+    "lastUnfrozenBlock": 11874716,
+    "firstFrozenBlock": 11874717,
+    "archiveProbes": 24,
+    "routeFrozenLogs": [
+      {
+        "block": 11874717,
+        "tx": "0xf7f547a987db9a472e8ce81f33e2a644b1141ee2cd7b46ac2f7377df3ace4db3",
+        "logIndex": 254,
+        "selector": "0xa4594c59",
+        "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5"
+      }
+    ],
+    "indexerCorroboration": [
+      {
+        "tx": "0xf7f547a987db9a472e8ce81f33e2a644b1141ee2cd7b46ac2f7377df3ace4db3",
+        "indexer": "eth-sepolia.blockscout.com /api/v2/transactions/{tx}/logs",
+        "routeFrozenLogsInTx": 0,
+        "blockNumber": null
+      }
+    ]
+  }
+}

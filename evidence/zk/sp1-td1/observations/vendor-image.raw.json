@@ -1,0 +1,78 @@
+{
+  "schema": "walletwall.sp1-td1-vendor-image.v1",
+  "measuredAtUtc": "2026-10-15T12:51:05Z",
+  "registry": "ghcr.io",
+  "repository": "succinctlabs/sp1",
+  "method": "anonymous pull token; GET /v2/<repo>/manifests/<ref>; every digest re-computed locally as sha256 of the raw response body",
+  "pinnedIndex": {
+    "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+    "mediaType": "application/vnd.oci.image.index.v1+json",
+    "bodySha256": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+    "bodyBytes": 856,
+    "manifests": [
+      {
+        "digest": "sha256:7c1c8201de6f63e3f1fb9075bd9a67a4c5fc8c2d546d11a5ff71587bb51e6eb3",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "size": 1258,
+        "platform": {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        "referenceType": null
+      },
+      {
+        "digest": "sha256:dc824e9063bb3b04fbfa0e05016504aae33ab8b9512f79a140bcd857f5344e43",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "size": 565,
+        "platform": {
+          "architecture": "unknown",
+          "os": "unknown"
+        },
+        "referenceType": "attestation-manifest"
+      }
+    ]
+  },
+  "linuxAmd64Manifest": {
+    "digest": "sha256:7c1c8201de6f63e3f1fb9075bd9a67a4c5fc8c2d546d11a5ff71587bb51e6eb3",
+    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+    "bodySha256": "sha256:7c1c8201de6f63e3f1fb9075bd9a67a4c5fc8c2d546d11a5ff71587bb51e6eb3",
+    "config": {
+      "mediaType": "application/vnd.oci.image.config.v1+json",
+      "digest": "sha256:aedac539617deeb11fb7fbac9270de9f8d0b021214eab05db672b2f0b181f796",
+      "size": 3172
+    },
+    "layers": [
+      {
+        "digest": "sha256:00d679a470c495ef7d52e70bcd7a008f4983530b67653e63e9d3cd27fade63d7",
+        "size": 28872332,
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      {
+        "digest": "sha256:2ff0b6b99140f0485ad546f904923e1d854de2cf1e3ada44ab59154a35a8fd14",
+        "size": 184056462,
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      {
+        "digest": "sha256:aaaa7fac73197f4f7ab6ce0c151af69749ba19ef999855d2aafb84fb13067d3c",
+        "size": 300716537,
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      {
+        "digest": "sha256:b0246b238f4bd60e40689eea3ce454d3f5bb35165fd631e3bc669f05d7ff3102",
+        "size": 581303174,
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      },
+      {
+        "digest": "sha256:47ddb8416854dac774a5a1558273d9b635bed1b858fa2a0e0e5187e96066c019",
+        "size": 395138108,
+        "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip"
+      }
+    ]
+  },
+  "mutableTag": {
+    "tag": "v6.3.1",
+    "resolvesToDigest": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+    "bodySha256": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+    "note": "sp1-build docker mode pulls ghcr.io/succinctlabs/sp1:<tag> BY TAG; the tag is mutable, so the canonical procedure references the index digest, never the tag. Equality here is a point-in-time observation, not a pin."
+  }
+}
