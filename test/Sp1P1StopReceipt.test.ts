@@ -341,10 +341,44 @@ describe("SP1-P1 assurance STOP receipt", function () {
 
     it("the committed observations re-derive the committed verdicts", function () {
       const r = committed();
-      expect(deriveProgramIdentityVerdict(INPUTS.identity.environments, WITHDRAWAL)).to.deep.equal(
+      const xc = INPUTS.identity.crossChecks?.vkeyFromElf?.results ?? [];
+      expect(deriveProgramIdentityVerdict(INPUTS.identity.environments, WITHDRAWAL, xc)).to.deep.equal(
         r.programIdentity.withdrawal,
       );
-      expect(deriveProgramIdentityVerdict(INPUTS.identity.environments, ACVP)).to.deep.equal(r.programIdentity.acvp);
+      expect(deriveProgramIdentityVerdict(INPUTS.identity.environments, ACVP, xc)).to.deep.equal(
+        r.programIdentity.acvp,
+      );
+    });
+
+    it("the out-of-environment cargo-prove cross-check covers and agrees with every observed identity", function () {
+      const r = committed();
+      for (const v of [r.programIdentity.withdrawal, r.programIdentity.acvp]) {
+        expect(v.contradictions).to.deep.equal([]);
+        for (const g of v.groups) {
+          expect(g.vkeyCrossChecked, `${v.program} ${g.elfSha256}`).to.equal(true);
+          expect(g.vkeys.length, `${v.program} ${g.elfSha256}`).to.equal(1);
+        }
+      }
+      expect(r.programIdentity.vkeyCrossCheck?.tool).to.match(/^cargo-prove sp1 \(8252c29 /);
+    });
+
+    it("a cross-check that disagrees with an environment's vkey is a contradiction", function () {
+      const envs = [env("x", "h1", "vendor-image-host-flow", W1, A1), env("y", "h2", "vendor-image-host-flow", W1, A1)];
+      expect(deriveProgramIdentityVerdict(envs, WITHDRAWAL).status, "positive control").to.equal("ESTABLISHED");
+      const v = deriveProgramIdentityVerdict(envs, WITHDRAWAL, [
+        { source: "z", program: WITHDRAWAL, elfSha256: W1[0], vkey: W2[1] },
+      ]);
+      expect(v.status).to.equal("NOT_ESTABLISHED");
+      expect(v.contradictions.join(" ")).to.match(/maps to 2 vkeys/);
+    });
+
+    it("a cross-check of an ELF no environment produced is a contradiction", function () {
+      const envs = [env("x", "h1", "vendor-image-host-flow", W1, A1), env("y", "h2", "vendor-image-host-flow", W1, A1)];
+      const v = deriveProgramIdentityVerdict(envs, WITHDRAWAL, [
+        { source: "z", program: WITHDRAWAL, elfSha256: W2[0], vkey: W2[1] },
+      ]);
+      expect(v.status).to.equal("NOT_ESTABLISHED");
+      expect(v.contradictions.join(" ")).to.match(/that no environment produced/);
     });
   });
 
@@ -405,6 +439,31 @@ describe("SP1-P1 assurance STOP receipt", function () {
         c.groth16Gateway.ownerCodeBytes = 0;
       }
       expect(deriveGatewayVerdict(o, target).status).to.equal("ESTABLISHED");
+    });
+
+    it("the committed state reads are corroborated by a second RPC provider", function () {
+      expect(committed().verifierGateway.stateReadsCorroborated).to.equal(true);
+    });
+
+    it("an ownerless gateway without second-provider corroboration is not ESTABLISHED", function () {
+      const ownerless = () => {
+        const o = gw();
+        for (const c of Object.values(o.chains)) {
+          c.groth16Gateway.owner = "0x0000000000000000000000000000000000000000";
+          c.groth16Gateway.ownerCodeBytes = 0;
+        }
+        return o;
+      };
+      expect(deriveGatewayVerdict(ownerless(), target).status, "positive control").to.equal("ESTABLISHED");
+      const missing = ownerless();
+      delete missing.secondProvider;
+      expect(deriveGatewayVerdict(missing, target).status).to.equal("NOT_ESTABLISHED");
+      const partial = ownerless();
+      partial.secondProvider!.checks = partial.secondProvider!.checks.slice(0, 1);
+      expect(deriveGatewayVerdict(partial, target).status).to.equal("NOT_ESTABLISHED");
+      const disagree = ownerless();
+      disagree.secondProvider!.checks[0].routesSame = false;
+      expect(deriveGatewayVerdict(disagree, target).stateReadsCorroborated).to.equal(false);
     });
 
     it("a set EIP-1967 slot makes an ownerless gateway mutable", function () {

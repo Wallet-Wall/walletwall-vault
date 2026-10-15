@@ -59,11 +59,11 @@
   "observations": [
     {
       "path": "evidence/zk/sp1-p1/observations/program-identity.raw.json",
-      "sha256": "07aac6177a6b9a5cd2913b30785b3d2264179426f109fef5d893cf22ef91a6ec"
+      "sha256": "19fe2cec6fbd5bc3edda5db0943e9101dd9a41d8ae32646a43d8fabb63e853dc"
     },
     {
       "path": "evidence/zk/sp1-p1/observations/verifier-gateway.raw.json",
-      "sha256": "0c0e783971b1e477b40d49d43101760e1e9cad401b7d06167eed1a97d5f7eb06"
+      "sha256": "b23c37c8c3c3c2733a21ae26fad4fb305580f7dde823c0070970e00e70dfc5cf"
     }
   ],
   "programIdentity": {
@@ -170,7 +170,8 @@
           ],
           "families": [
             "repository-local"
-          ]
+          ],
+          "vkeyCrossChecked": true
         },
         {
           "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
@@ -189,7 +190,8 @@
           ],
           "families": [
             "vendor-image"
-          ]
+          ],
+          "vkeyCrossChecked": true
         }
       ],
       "families": {
@@ -238,7 +240,8 @@
           ],
           "families": [
             "repository-local"
-          ]
+          ],
+          "vkeyCrossChecked": true
         },
         {
           "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
@@ -257,7 +260,8 @@
           ],
           "families": [
             "vendor-image"
-          ]
+          ],
+          "vkeyCrossChecked": true
         }
       ],
       "families": {
@@ -293,6 +297,12 @@
     "isolation": {
       "holds": true,
       "violations": []
+    },
+    "vkeyCrossCheck": {
+      "tool": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z)",
+      "purpose": "common-mode review: recompute each ELF's sha256 and its vkey outside the build environment, with Succinct's released cargo-prove binary instead of the repository's mldsa65-host (same upstream sp1-prover library; not an algorithm-level independent implementation)",
+      "ranOn": "developer workstation, WSL2 Ubuntu 26.04 (C ELFs taken from the run 38682655131 artifact)",
+      "results": 8
     },
     "mismatchCause": "Same sources and succinct toolchain (rustc 1.94.0-dev, LLVM 21.1.8); each ELF embeds the same 10 crate-registry source paths in panic Location strings, differing only in the builder's $CARGO_HOME prefix (sp1-build 6.3.1 passes no remap/trim-paths flag). The repository's local build is therefore bound to the builder's home directory."
   },
@@ -390,6 +400,7 @@
       "sp1VerifierGroth16V610": true,
       "vkConstantsJoined": true
     },
+    "stateReadsCorroborated": true,
     "ownerMutable": true,
     "status": "NOT_ESTABLISHED",
     "reason": "the gateway's accepting relation is owner-mutable on chain 1 (Safe 1.3.0 2-of-3 (modules: 0, guard: none)) and chain 11155111 (EOA (single key)): addRoute widens it for every program vkey and freezeRoute removes it, with no WalletWall action; byte attribution does not change that",
@@ -504,7 +515,8 @@
     "Program identity: the repository's default local build and the pinned vendor procedure yield different withdrawal identities; neither is designated canonical (owner decision).",
     "Gateway trust model: whether WalletWall binds to an immutable verifier, a WalletWall-governed gateway, or accounts for Succinct gateway mutability is a design decision for a follow-up lane.",
     "The prover's S3 circuit artifacts (v6.1.0-groth16) are joined to the on-chain verifying key only by a real proof that verifies; none exists.",
-    "sp1-contracts tags are lightweight (unsigned); provenance rests on byte equality, not on a signed release."
+    "sp1-contracts tags are lightweight (unsigned); provenance rests on byte equality, not on a signed release.",
+    "Every vkey here (mldsa65-host in each environment, and the cargo-prove cross-check) comes from the same upstream sp1-prover implementation: binary-level, not algorithm-level, independence."
   ],
   "independentAuthorities": [
     {
@@ -538,6 +550,14 @@
     {
       "authority": "Vendor image ghcr.io/succinctlabs/sp1@sha256:0942a27d… and a GitHub-hosted runner",
       "establishes": "program identity outside the developer workstation"
+    },
+    {
+      "authority": "Succinct's released cargo-prove binary (sp1up 8252c29), run outside every build environment",
+      "establishes": "each recorded ELF's sha256 and vkey recomputed from the ELF file itself, not by mldsa65-host"
+    },
+    {
+      "authority": "A second, independent RPC provider (dRPC) at the same pinned blocks",
+      "establishes": "the decisive chain state (block hashes, gateway code, owner, Safe threshold, every route) a second time"
     }
   ]
 }

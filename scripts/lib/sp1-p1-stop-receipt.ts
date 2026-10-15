@@ -96,8 +96,17 @@ export interface EnvironmentObservation {
   hostBinarySha256: string | null;
 }
 
+/** An (ELF -> vkey) result computed outside every build environment, by a different binary. */
+export interface VkeyCrossCheck {
+  source: string;
+  program: string;
+  elfSha256: string;
+  vkey: string;
+}
+
 export interface ProgramIdentityObservations {
   environments: EnvironmentObservation[];
+  crossChecks?: { vkeyFromElf?: { tool: string; purpose: string; ranOn: string; results: VkeyCrossCheck[] } };
 }
 
 interface RouteObservation {
@@ -181,6 +190,8 @@ export interface VerifierGatewayObservations {
     creationMatch: string | null;
   }[];
   upstream: Record<string, unknown>;
+  /** The decisive state reads re-done through an independent RPC provider at the same pinned blocks. */
+  secondProvider?: { purpose: string; providers: Record<string, string>; checks: Record<string, unknown>[] };
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -227,6 +238,8 @@ export interface IdentityGroup {
   environments: string[];
   hosts: string[];
   families: string[];
+  /** True when an out-of-environment vkey computation covered this ELF (and, being merged into `vkeys`, agreed). */
+  vkeyCrossChecked: boolean;
 }
 
 export interface ProgramIdentityVerdict {
@@ -253,7 +266,11 @@ function uniq<T>(xs: T[]): T[] {
  *                          observations as a whole contain more than one identity (an unresolved conflict)
  *   NOT_ESTABLISHED        otherwise, or when an ELF hash maps to two vkeys (contradiction)
  */
-export function deriveProgramIdentityVerdict(envs: EnvironmentObservation[], program: string): ProgramIdentityVerdict {
+export function deriveProgramIdentityVerdict(
+  envs: EnvironmentObservation[],
+  program: string,
+  crossChecks: VkeyCrossCheck[] = [],
+): ProgramIdentityVerdict {
   const contradictions: string[] = [];
   const byElf = new Map<string, IdentityGroup>();
   for (const e of envs) {
@@ -268,12 +285,25 @@ export function deriveProgramIdentityVerdict(envs: EnvironmentObservation[], pro
       environments: [],
       hosts: [],
       families: [],
+      vkeyCrossChecked: false,
     };
     if (m.vkey) g.vkeys = uniq([...g.vkeys, m.vkey]);
     g.environments.push(e.id);
     g.hosts = uniq([...g.hosts, e.hostId]);
     g.families = uniq([...g.families, procedureFamily(e.procedure)]);
     byElf.set(m.elfSha256, g);
+  }
+  // Out-of-environment (ELF -> vkey) results join the group of their ELF as further vkey evidence, so a
+  // disagreement surfaces as "maps to 2 vkeys" below; a cross-check of an ELF no environment produced is itself
+  // a contradiction (it cannot be evidence about these builds).
+  for (const x of crossChecks.filter((c) => c.program === program)) {
+    const g = byElf.get(x.elfSha256);
+    if (!g) {
+      contradictions.push(`cross-check ${x.source} names ${program} ELF ${x.elfSha256} that no environment produced`);
+      continue;
+    }
+    g.vkeys = uniq([...g.vkeys, x.vkey]);
+    g.vkeyCrossChecked = true;
   }
   const groups = [...byElf.values()];
   for (const g of groups) {
@@ -374,9 +404,22 @@ export interface GatewayVerdict {
   intendedTarget: string;
   chains: GatewayChainSummary[];
   bytesAttributed: { gateway: boolean; sp1VerifierGroth16V610: boolean; vkConstantsJoined: boolean };
+  /** Every measured chain re-read through a second RPC provider, every compared fact equal. */
+  stateReadsCorroborated: boolean;
   ownerMutable: boolean;
   status: ClaimStatus;
   reason: string;
+}
+
+/** True only when a second provider re-read every measured chain and every compared fact matched. */
+export function stateReadsCorroborated(obs: VerifierGatewayObservations): boolean {
+  const checks = obs.secondProvider?.checks ?? [];
+  return Object.keys(obs.chains).every((cid) => {
+    const c = checks.find((x) => String(x.chainId) === cid);
+    if (!c) return false;
+    const flags = Object.entries(c).filter(([k]) => k.endsWith("Same"));
+    return flags.length >= 5 && flags.every(([, v]) => v === true);
+  });
 }
 
 export function ownerKind(gw: GatewayChainObservation["groth16Gateway"]): string {
@@ -439,6 +482,7 @@ export function deriveGatewayVerdict(obs: VerifierGatewayObservations, intendedT
   };
   const ownerMutable = chains.some((c) => c.ownerCanAddRoutes || c.proxySlotsSet);
   const enumerationOk = chains.every((c) => c.routeEnumerationAgrees);
+  const corroborated = stateReadsCorroborated(obs);
   let status: ClaimStatus;
   let reason: string;
   if (ownerMutable) {
@@ -449,14 +493,22 @@ export function deriveGatewayVerdict(obs: VerifierGatewayObservations, intendedT
       .join(
         " and ",
       )}: addRoute widens it for every program vkey and freezeRoute removes it, with no WalletWall action; byte attribution does not change that`;
-  } else if (!(bytesAttributed.gateway && enumerationOk)) {
+  } else if (!(bytesAttributed.gateway && enumerationOk && corroborated)) {
     status = "NOT_ESTABLISHED";
-    reason = "gateway bytes or route table not independently attributed";
+    reason = "gateway bytes, route table or state reads not independently attributed";
   } else {
     status = "ESTABLISHED";
     reason = "ownerless, non-proxy gateway whose bytes and routes are independently attributed";
   }
-  return { intendedTarget, chains, bytesAttributed, ownerMutable, status, reason };
+  return {
+    intendedTarget,
+    chains,
+    bytesAttributed,
+    stateReadsCorroborated: corroborated,
+    ownerMutable,
+    status,
+    reason,
+  };
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -494,6 +546,7 @@ export interface Sp1P1StopReceipt {
     withdrawal: ProgramIdentityVerdict;
     acvp: ProgramIdentityVerdict;
     isolation: { holds: boolean; violations: string[] };
+    vkeyCrossCheck: { tool: string; purpose: string; ranOn: string; results: number } | null;
     mismatchCause: string;
   };
   verifierGateway: GatewayVerdict & { authoritySurface: string[] };
@@ -520,8 +573,9 @@ const INTENDED_TARGET =
 
 export function buildReceipt(inp: ReceiptInputs): Sp1P1StopReceipt {
   const envs = inp.identity.environments;
-  const withdrawal = deriveProgramIdentityVerdict(envs, WITHDRAWAL);
-  const acvp = deriveProgramIdentityVerdict(envs, ACVP);
+  const xc = inp.identity.crossChecks?.vkeyFromElf;
+  const withdrawal = deriveProgramIdentityVerdict(envs, WITHDRAWAL, xc?.results ?? []);
+  const acvp = deriveProgramIdentityVerdict(envs, ACVP, xc?.results ?? []);
   const isolation = deriveProgramIsolation(envs);
   const gateway = deriveGatewayVerdict(inp.gateway, INTENDED_TARGET);
   const homes = uniq(envs.map((e) => e.builder.embeddedCargoHome).filter((h): h is string => !!h));
@@ -642,6 +696,7 @@ export function buildReceipt(inp: ReceiptInputs): Sp1P1StopReceipt {
       withdrawal,
       acvp,
       isolation,
+      vkeyCrossCheck: xc ? { tool: xc.tool, purpose: xc.purpose, ranOn: xc.ranOn, results: xc.results.length } : null,
       mismatchCause:
         "Same sources and succinct toolchain (rustc 1.94.0-dev, LLVM 21.1.8); each ELF embeds the same 10 crate-registry source paths in panic Location strings, differing only in the builder's $CARGO_HOME prefix (sp1-build 6.3.1 passes no remap/trim-paths flag). The repository's local build is therefore bound to the builder's home directory.",
     },
@@ -689,6 +744,7 @@ export function buildReceipt(inp: ReceiptInputs): Sp1P1StopReceipt {
       "Gateway trust model: whether WalletWall binds to an immutable verifier, a WalletWall-governed gateway, or accounts for Succinct gateway mutability is a design decision for a follow-up lane.",
       "The prover's S3 circuit artifacts (v6.1.0-groth16) are joined to the on-chain verifying key only by a real proof that verifies; none exists.",
       "sp1-contracts tags are lightweight (unsigned); provenance rests on byte equality, not on a signed release.",
+      "Every vkey here (mldsa65-host in each environment, and the cargo-prove cross-check) comes from the same upstream sp1-prover implementation: binary-level, not algorithm-level, independence.",
     ],
     independentAuthorities: [
       {
@@ -723,6 +779,15 @@ export function buildReceipt(inp: ReceiptInputs): Sp1P1StopReceipt {
       {
         authority: "Vendor image ghcr.io/succinctlabs/sp1@sha256:0942a27d… and a GitHub-hosted runner",
         establishes: "program identity outside the developer workstation",
+      },
+      {
+        authority: "Succinct's released cargo-prove binary (sp1up 8252c29), run outside every build environment",
+        establishes: "each recorded ELF's sha256 and vkey recomputed from the ELF file itself, not by mldsa65-host",
+      },
+      {
+        authority: "A second, independent RPC provider (dRPC) at the same pinned blocks",
+        establishes:
+          "the decisive chain state (block hashes, gateway code, owner, Safe threshold, every route) a second time",
       },
     ],
   };

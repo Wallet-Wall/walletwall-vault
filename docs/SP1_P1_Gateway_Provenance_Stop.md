@@ -163,6 +163,21 @@ Attribution says which code runs. It does not change who can change the routes.
 - On mainnet the v5.0.0 and v6.0.0 routes were frozen at blocks 26,152,982 and 26,152,991.
 </details>
 
+## Common-mode review
+
+For each green assertion: could one implementation bug produce both the value and the verdict that it matches?
+
+| Assertion | Producer | Independent check | Residual common mode |
+| --- | --- | --- | --- |
+| ELF identity | `sha256sum` inside each build environment | the ELFs (the runner's taken from its artifact) re-hashed outside every build environment | same algorithm (SHA-256) |
+| ELF → vkey | the repository's `mldsa65-host` via `include_elf!` (the identical binary on B and C) | Succinct's released `cargo-prove vkey --elf` on the ELF files: all eight agree | same upstream `sp1-prover` vkey code; no algorithm-level second implementation |
+| subject sources | coreutils `sha256sum` manifest in every environment | Node `crypto` manifest of the working tree, recomputed by the validator | none known |
+| verifier bytes | Succinct's deployments | own solc 0.8.20 compile, CREATE2 derivation, Sourcify's compile | the gateway's OpenZeppelin files come from Sourcify, not re-fetched from OpenZeppelin |
+| VK constants | the sp1-contracts generator | arkworks decode of crates.io `groth16_vk.bin` | none known |
+| chain state | one public RPC provider | a second provider at the same pinned blocks (same block hashes) | both are third-party providers |
+| route completeness | Blockscout log history | `routes()` probe of every selector the upstream source declares | a route under a selector absent from both would be missed |
+| proof encoding, journal parsing, proof serialization, program routing | not exercised | — | `NOT_TESTED`: no proof exists |
+
 ## Findings
 
 | Id | Severity | Finding |
@@ -181,7 +196,10 @@ None of these is fixed here; the lane changes no contract, no deployment script 
       upstream-built gateway as the effective authority was explicitly ruled out.
 - [ ] Phases 5–6 negative and replay matrices with a real proof.
 - [x] Phase 8 mutation campaign — run against this lane's own validator (`scripts/lib/sp1-p1-stop-receipt.ts`), not
-      against proof-path code that was never exercised.
+      against proof-path code that was never exercised: 36 of 36 non-equivalent code mutants killed by
+      `test/Sp1P1StopReceipt.test.ts`, no invalid mutant, and one deliberately equivalent control that survives.
+      An earlier round's survivor (a same-environment isolation check masked by the cross-environment one) led to a
+      stronger test, not to a weaker check.
 
 ## Follow-up (separate lane)
 

@@ -289,5 +289,62 @@
       },
       "hostBinarySha256": null
     }
-  ]
+  ],
+  "crossChecks": {
+    "vkeyFromElf": {
+      "tool": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z)",
+      "purpose": "common-mode review: recompute each ELF's sha256 and its vkey outside the build environment, with Succinct's released cargo-prove binary instead of the repository's mldsa65-host (same upstream sp1-prover library; not an algorithm-level independent implementation)",
+      "ranOn": "developer workstation, WSL2 Ubuntu 26.04 (C ELFs taken from the run 38682655131 artifact)",
+      "results": [
+        {
+          "source": "A",
+          "program": "mldsa65-withdrawal",
+          "elfSha256": "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a",
+          "vkey": "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+        },
+        {
+          "source": "A",
+          "program": "mldsa65-acvp",
+          "elfSha256": "c29e31fbf572d4c7c38f0bfaa16515ad407e76aabf7e7f10c922076149c04a89",
+          "vkey": "0x00217f15120057e91d1de1cf672a9c3588aecd098690d96899ee1e09a77f17d5"
+        },
+        {
+          "source": "B-docker",
+          "program": "mldsa65-withdrawal",
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        {
+          "source": "B-docker",
+          "program": "mldsa65-acvp",
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        },
+        {
+          "source": "C-docker",
+          "program": "mldsa65-withdrawal",
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        {
+          "source": "C-docker",
+          "program": "mldsa65-acvp",
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        },
+        {
+          "source": "C-host",
+          "program": "mldsa65-withdrawal",
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        {
+          "source": "C-host",
+          "program": "mldsa65-acvp",
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      ]
+    }
+  }
 }

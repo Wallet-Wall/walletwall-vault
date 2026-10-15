@@ -606,5 +606,36 @@
       "a7bb13c (2026-02-17): v6.0.0 Groth16Verifier DELTA_NEG_* constants corrected after deployment prep; verifier address changed 0xEfe0156f... -> 0x99A74A05...",
       "2ac5ecb (#75): a first v6.1.0 Groth16 build carried VERIFIER_HASH 0x2b4aeaf7.../VK_ROOT 0x00995aa7...; regenerated from vk.bin; the first build was deployed on Sepolia as V6_1_0_BROKEN (0xf0f70E15...), routed, then frozen"
     ]
+  },
+  "secondProvider": {
+    "purpose": "common-mode review: the decisive state reads re-done through an independent RPC provider at the same pinned blocks",
+    "providers": {
+      "1": "https://eth.drpc.org",
+      "11155111": "https://sepolia.drpc.org"
+    },
+    "checks": [
+      {
+        "chainId": "1",
+        "block": 26195421,
+        "blockHashSame": true,
+        "gatewayCodeSame": true,
+        "ownerSame": true,
+        "ownerCodeBytesSame": true,
+        "thresholdSame": true,
+        "routesSame": true,
+        "routesChecked": 5
+      },
+      {
+        "chainId": "11155111",
+        "block": 11917946,
+        "blockHashSame": true,
+        "gatewayCodeSame": true,
+        "ownerSame": true,
+        "ownerCodeBytesSame": true,
+        "thresholdSame": true,
+        "routesSame": true,
+        "routesChecked": 6
+      }
+    ]
   }
 }
