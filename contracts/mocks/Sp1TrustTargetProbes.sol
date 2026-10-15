@@ -114,9 +114,11 @@ contract RoutePinnedGatewayProbe is ISP1Verifier {
 /**
  * @notice Option A: the production ZKMLDSAVerifier, unchanged, plus a construction-time pin of the
  *         SP1 verifier's runtime code hash. The trust target is a code identity, not an address: the
- *         pinned SP1Verifier has no owner, no storage writes and no immutables, so its code hash is the
- *         same on every chain. The implementation lane bakes the expected hash in as a constant; the
- *         probe takes it as an argument so a test can exercise both outcomes.
+ *         pinned SP1Verifier has no owner, no storage writes and no immutables, so the same code can be
+ *         recognised at any address. The code hash alone does not fix the accepted relation on a chain
+ *         whose precompiles differ; that is a per-chain execution check, not something a pin can see.
+ *         The implementation lane bakes the expected hash in as a constant; the probe takes it as an
+ *         argument so a test can exercise both outcomes.
  */
 contract ZKMLDSAVerifierCodePinnedProbe is ZKMLDSAVerifier {
     error SP1VerifierCodeMismatch(bytes32 actual, bytes32 expected);
@@ -128,5 +130,39 @@ contract ZKMLDSAVerifierCodePinnedProbe is ZKMLDSAVerifier {
     ) ZKMLDSAVerifier(sp1Verifier, programVKey) {
         bytes32 actual = sp1Verifier.codehash;
         if (actual != expectedSp1VerifierCodehash) revert SP1VerifierCodeMismatch(actual, expectedSp1VerifierCodehash);
+    }
+}
+
+/**
+ * @notice Option AF: the direct, code-pinned binding of A, plus a read-only coupling to the upstream gateway's
+ *         freeze bit for the pinned selector: verification fails closed once upstream freezes that route. The
+ *         gateway never routes anything here, so its owner gains no way to widen the relation; it gains a
+ *         kill switch (protective when the verifier itself is unsound, a liveness cost otherwise). The route
+ *         and both code hashes are checked at construction, as in the fully pinned gateway probe.
+ */
+contract FreezeCoupledSp1VerifierProbe is ISP1Verifier {
+    address public immutable GATEWAY;
+    bytes4 public immutable SELECTOR;
+    address public immutable VERIFIER;
+
+    error GatewayCodeMismatch(bytes32 actual, bytes32 expected);
+    error RouteVerifierMismatch(address routed, address expected);
+    error VerifierCodeMismatch(bytes32 actual, bytes32 expected);
+    error PinnedRouteFrozen(bytes4 selector);
+
+    constructor(address gateway, bytes32 gatewayCodehash, bytes4 selector, address verifier, bytes32 verifierCodehash) {
+        if (gateway.codehash != gatewayCodehash) revert GatewayCodeMismatch(gateway.codehash, gatewayCodehash);
+        (address routed, ) = ISp1GatewayRoutesProbe(gateway).routes(selector);
+        if (routed != verifier) revert RouteVerifierMismatch(routed, verifier);
+        if (verifier.codehash != verifierCodehash) revert VerifierCodeMismatch(verifier.codehash, verifierCodehash);
+        GATEWAY = gateway;
+        SELECTOR = selector;
+        VERIFIER = verifier;
+    }
+
+    function verifyProof(bytes32 programVKey, bytes calldata publicValues, bytes calldata proofBytes) external view {
+        (, bool frozen) = ISp1GatewayRoutesProbe(GATEWAY).routes(SELECTOR);
+        if (frozen) revert PinnedRouteFrozen(SELECTOR);
+        ISP1Verifier(VERIFIER).verifyProof(programVKey, publicValues, proofBytes);
     }
 }

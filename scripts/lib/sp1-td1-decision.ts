@@ -3,24 +3,31 @@
  * procedure defines PROGRAM_VKEY.
  *
  * The receipt (evidence/zk/sp1-td1/decision-receipt.json) is a pure function of
- *   - evidence/zk/sp1-td1/decision-inputs.json: the options under evaluation, the procedure candidates, and
- *     `probeFacts` — outcomes test/Sp1Td1TrustTargetProbes.test.ts re-executes against the exact mainnet
- *     verifier and gateway bytes (the suite fails when an execution and a recorded fact disagree);
+ *   - evidence/zk/sp1-td1/decision-inputs.json: the options under evaluation, the procedure candidates, the
+ *     open owner decisions, and `probeFacts` — outcomes test/Sp1Td1TrustTargetProbes.test.ts re-executes against
+ *     the exact mainnet verifier and gateway bytes (the suite fails when an execution and a recorded fact
+ *     disagree, and when an option's pins or components differ from the probe contracts that ran for it);
  *   - the TD1 raw observations (evidence/zk/sp1-td1/observations/*.raw.json): chain state on four chains via
- *     two providers each, CREATE2-authenticated deployment bytecode, the vendor image's content digests, a
- *     route-event timeline, an upstream proof fixture, and a local build probe;
+ *     two providers each, CREATE2-authenticated deployment bytecode, per-chain execution verdicts, a real v6.1.0
+ *     proof from mainnet, the vendor image's content digests, a route-event timeline, an upstream proof fixture,
+ *     and a local build probe (whose committed inputs are bound to the hashes it recorded);
  *   - the SP1-P1 observations and receipt (evidence/zk/sp1-p1/), referenced by hash, never rewritten; and
- *   - the zkvm guest/host sources in the working tree (the designation's subject).
+ *   - the zkvm guest/host sources, in the working tree and as the trees HEAD records (the designation's subject).
  * Every decision, authority row, designation and claim status is DERIVED here; `validateCommittedDecisionReceipt`
- * re-derives the whole receipt and refuses drift, stale subjects and over-claims, and `validateDecisionRules`
- * rejects the over-claims on its own (a hand-edited receipt cannot pass by being self-consistent).
+ * re-derives the whole receipt and refuses drift, stale subjects and over-claims. `validateDecisionRules` checks,
+ * on the receipt alone, what a hand edit could over-claim about decisions, viability, levers, models and claim
+ * statuses; the remaining fields (the authority delta, findings, plan) are guarded by re-derivation only, and the
+ * findings and plan are authored inputs, reviewed rather than derived.
  *
  * Authorization and liveness are kept apart throughout: a lever that can make a previously REJECTED proof
  * accepted is an authorization lever ("widen"); one that can only make a previously ACCEPTED proof rejected is
- * a liveness lever ("disable"). They are never summed into one score.
+ * a liveness lever ("disable"). They are never summed into one score. A liveness lever is also marked when it
+ * would protect against a defect in the verifier itself (a freeze stops forged proofs too); that trade-off is
+ * recorded as an open owner decision, never netted against authorization.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -49,6 +56,7 @@ export const TD1_OBSERVATIONS = {
   chainState: "evidence/zk/sp1-td1/observations/chain-state.raw.json",
   deploymentBytecode: "evidence/zk/sp1-td1/observations/deployment-bytecode.raw.json",
   localRemapBuild: "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
+  mainnetV610Proof: "evidence/zk/sp1-td1/observations/mainnet-v610-proof.raw.json",
   routeTimeline: "evidence/zk/sp1-td1/observations/route-timeline.raw.json",
   upstreamProofFixture: "evidence/zk/sp1-td1/observations/upstream-proof-fixture.raw.json",
   vendorImage: "evidence/zk/sp1-td1/observations/vendor-image.raw.json",
@@ -75,6 +83,7 @@ export const CLAIM_STATUSES = ["ESTABLISHED", "PARTIALLY_ESTABLISHED", "NOT_ESTA
 export type ClaimStatus = (typeof CLAIM_STATUSES)[number];
 export const TD1_CLAIM_KEYS = [
   "TRUST_TARGET_CODE_IDENTITY",
+  "PINNED_VERIFYING_KEY_REAL_PROOF",
   "DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT",
   "UNPINNED_GATEWAY_OWNER_CAN_WIDEN",
   "DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER",
@@ -83,11 +92,23 @@ export const TD1_CLAIM_KEYS = [
   "IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE",
   "VKEY_DERIVATION_ALGORITHM_INDEPENDENT",
   "GATEWAY_ROUTE_HISTORY_COMPLETE",
+  "DEFECT_RESPONSE_PATH",
   "REAL_SP1_PROOF_GENERATED",
   "REAL_SP1_PROOF_VERIFIED",
   "PRODUCTION_READINESS",
 ] as const;
 export type Td1ClaimKey = (typeof TD1_CLAIM_KEYS)[number];
+
+/** CROSS_CHAIN_MODEL values: a code hash is necessary but not sufficient, so the direct model carries a per-chain check. */
+export const CROSS_CHAIN_MODELS = [
+  "CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK",
+  "PER_CHAIN_ROUTE_TABLE",
+  "UNRESOLVED",
+] as const;
+/** The only reachable environment read the pinned runtime may make (its self-call's code check). */
+const ALLOWED_RUNTIME_READS = ["EXTCODESIZE"];
+/** Precompiles a Groth16 BN254 verifier may call at a constant address: modexp, ecAdd, ecMul, pairing. */
+const ALLOWED_CONSTANT_CALL_TARGETS = ["0x05", "0x06", "0x07", "0x08"];
 
 /** Pins that, together with write-once routes, take the gateway owner's addRoute out of the accepted path. */
 export const FULL_GATEWAY_PINS = ["selector", "routeVerifier", "gatewayCode", "verifierCode"] as const;
@@ -102,6 +123,8 @@ export const AUTHORIZATION_LEVERS = [
   "unestablished verifier code",
 ] as const;
 const GOVERNED_PRINCIPAL = "WalletWall vault owner (timelocked pqVerifier rotation)";
+/** The first v6.1.0 build's selector (wrong VERIFIER_HASH/VK_ROOT): routed on Sepolia, then frozen. */
+const BROKEN_V610_SELECTOR = "0x2b4aeaf7";
 const ZERO_WORD = `0x${"0".repeat(64)}`;
 
 // ---------------------------------------------------------------------------------------------------------
@@ -118,7 +141,7 @@ export interface OptionInput {
   decisionValue: Exclude<TrustTargetDecision, "UNRESOLVED">;
   label: string;
   path: string[];
-  components: ("sp1Verifier" | "upstreamGateway" | "walletwallGateway")[];
+  components: ("sp1Verifier" | "upstreamGateway" | "walletwallGateway" | "upstreamFreezeBit")[];
   pins: string[];
   probeFactsKey: string;
   newAttackSurface: string;
@@ -134,8 +157,24 @@ export interface ProbeFacts {
     tamperedProofRejectedDirectAndViaGateway: boolean;
     v610PreCheckRevertDataIdenticalDirectAndViaGateway: boolean;
     unroutedSelectorRejectedDirectAndViaGateway: boolean;
+    realV610ProofAcceptedDirect: boolean;
+    realV610ProofAcceptedViaGateway: boolean;
+    realV610TamperedRejectedDirectAndViaGateway: boolean;
   };
-  verifierRuntime: { v610ForbiddenOpcodes: string[]; gatewayHasSstore: boolean };
+  verifierRuntime: {
+    v610ForbiddenOpcodes: string[];
+    gatewayHasSstore: boolean;
+    v610ReachableEnvironmentReads: Record<string, number>;
+    v610StaticcallSites: { constantPrecompile: number; computedTarget: number };
+    v610ConstantStaticcallTargets: string[];
+    v610MetadataIsSolcCbor: boolean;
+  };
+  AF_directFreezeCoupled: {
+    squattedRouteRejectedAtConstruction: boolean;
+    realProofAcceptedThroughCoupling: boolean;
+    upstreamFreezeFailsClosed: boolean;
+    otherSelectorRouteGrantsNothing: boolean;
+  };
   D_upstreamGatewayUnpinned: {
     ownerAddRouteWidensAcceptedRelation: boolean;
     ownerAddRouteDrainsPqOnlyVault: boolean;
@@ -195,7 +234,10 @@ export interface DecisionInputs {
     sp1p1Receipt: FileRef;
     sp1p1Observations: FileRef[];
     td1Observations: FileRef[];
-    canonicalProcedureScripts: (FileRef & { sourceCommit: string; sourcePath: string })[];
+    canonicalProcedureScripts: (FileRef & { sourceCommit: string | null; sourcePath: string; provenance?: string })[];
+    /** Committed measurement inputs, each bound (RFC 6901 pointer) to the hash an observation recorded for it. */
+    measurementFiles: (FileRef & { boundTo: { observation: string; pointer: string } })[];
+    measurementScriptsNotCommitted: { reason: string; scripts: string[] };
     probeSuite: string;
   };
   trustTargetSelection: { version: string; verifier: string; selector: string; requiredChains: string[] };
@@ -221,6 +263,20 @@ export interface DecisionInputs {
   offChainLivenessDependencies: string[];
   findings: FindingInput[];
   implementationPlan: string[];
+  ownerDecisions: OwnerDecisionInput[];
+}
+
+/** A trade-off the evidence frames but cannot settle; recorded so it cannot be dropped silently. */
+export interface OwnerDecisionInput {
+  id: string;
+  question: string;
+  /** Each choice names the evaluated options that realize it. */
+  choices: { id: string; options: string[]; description: string }[];
+  recommendation: string;
+  rationale: string;
+  requiredBeforeRealValue: boolean;
+  /** Only the owner settles it, outside a design lane; a lane records it as open. */
+  status: "OWNER_DECISION_REQUIRED";
 }
 
 interface ChainVerifierRead {
@@ -373,9 +429,21 @@ export interface ChainExecutionObservation {
   chains: Record<string, { block: number; providersAgree: boolean; verdicts: Record<string, string> }>;
 }
 
+/** A real v6.1.0 proof taken from a successful mainnet call into the pinned verifier. */
+export interface MainnetProofObservation {
+  source: { chainId: number; transaction: string; transactionOnBothProviders: boolean; receiptStatus: number | null };
+  call: { programVKey: string; publicValues: string; proofBytes: string };
+  decoded: { proofSelector: string; exitCode: string; vkRoot: string };
+}
+
 export interface DecisionContext {
   inputs: DecisionInputs;
   chainExec: ChainExecutionObservation;
+  mainnetProof: MainnetProofObservation;
+  /** `git rev-parse HEAD:zkvm/guest` / `HEAD:zkvm/host` of the checkout being validated (null: unreadable). */
+  gitTrees: { guest: string | null; host: string | null };
+  /** For each measurement file, the hash its bound observation recorded (null: the pointer resolves to nothing). */
+  boundHashes: Record<string, string | null>;
   chain: ChainStateObservation;
   deployments: DeploymentBytecodeObservation;
   remap: LocalRemapObservation;
@@ -423,9 +491,18 @@ export interface TrustTargetIdentity {
   chains: { chainId: string; block: number; codeKeccak: string | null; providersAgree: boolean }[];
   create2: { tx: string; salt: string; initcodeKeccak: string; derived: string; authenticated: boolean };
   sp1p1Attribution: { ownCompileEqualsChain: boolean; vkConstantsJoined: boolean; sourcifyExactMainnet: boolean };
-  runtime: { forbiddenOpcodes: string[]; probeBytesEqualMainnet: boolean };
+  runtime: {
+    forbiddenOpcodes: string[];
+    probeBytesEqualMainnet: boolean;
+    reachableEnvironmentReads: Record<string, number>;
+    constantCallTargets: string[];
+    computedCallTargets: number;
+    metadataIsSolcCbor: boolean;
+  };
   /** Same code is the same relation only if each chain's precompiles give the same verdicts. */
   chainExecution: { chainId: string; block: number; providersAgree: boolean; verdictsAsExpected: boolean }[];
+  /** A real proof for this circuit, verified on the pinned bytes (a third party's program, not WalletWall's). */
+  realProofOnPinnedKey: { transaction: string; programVKey: string; verifiedInProbe: boolean; established: boolean };
   circuitVersionMatchesSubject: boolean;
   established: boolean;
   failures: string[];
@@ -489,11 +566,40 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
   if (!vkConstantsJoined) failures.push("the verifying-key constants are not joined to the published vk artifact");
   if (!sourcifyExactMainnet) failures.push("no Sourcify exact match for the verifier on mainnet");
 
-  const forbidden = ctx.inputs.probeFacts.verifierRuntime.v610ForbiddenOpcodes;
+  const rt = ctx.inputs.probeFacts.verifierRuntime;
+  const forbidden = rt.v610ForbiddenOpcodes;
   const probeBytesEqualMainnet = ctx.inputs.probeFacts.bytes.v610RuntimeEqualsMainnet === true;
   if (forbidden.length > 0)
     failures.push(`the verifier runtime has reachable ${forbidden.join("/")}: it is not immutable`);
   if (!probeBytesEqualMainnet) failures.push("the probe suite did not run the mainnet verifier bytes");
+  // A verdict may depend only on the call's inputs: no reachable read of state or environment beyond the
+  // self-call's code check, and every constant call target a BN254/modexp precompile.
+  const extraReads = Object.keys(rt.v610ReachableEnvironmentReads).filter((r) => !ALLOWED_RUNTIME_READS.includes(r));
+  if (extraReads.length > 0)
+    failures.push(`the verifier runtime reads ${extraReads.join("/")}: its verdict could depend on mutable state`);
+  const extraTargets = rt.v610ConstantStaticcallTargets.filter((t) => !ALLOWED_CONSTANT_CALL_TARGETS.includes(t));
+  if (extraTargets.length > 0)
+    failures.push(`the verifier runtime calls ${extraTargets.join("/")}, which is not a BN254/modexp precompile`);
+  if (!rt.v610MetadataIsSolcCbor)
+    failures.push("the runtime's trailing metadata is not solc's CBOR: the scan may miss code");
+
+  // The pinned key itself, exercised by a real proof (a third party's program; it verifies by itself).
+  const mp = ctx.mainnetProof;
+  const semantics = ctx.inputs.probeFacts.semantics;
+  const verifiedInProbe =
+    semantics.realV610ProofAcceptedDirect === true && semantics.realV610TamperedRejectedDirectAndViaGateway === true;
+  const realProofEstablished =
+    verifiedInProbe &&
+    lower(mp.decoded.proofSelector) === lower(sel.selector) &&
+    mp.decoded.exitCode === "0" &&
+    roots.length === 1 &&
+    lower(mp.decoded.vkRoot) === roots[0] &&
+    mp.source.receiptStatus === 1 &&
+    mp.source.transactionOnBothProviders === true;
+  if (!realProofEstablished)
+    failures.push(
+      "no real proof for this circuit is shown to verify on the pinned bytes (selector, vk root, source or probe)",
+    );
   const circuitVersionMatchesSubject = ctx.sp1p1Receipt.subject.circuitVersion === sel.version;
   if (!circuitVersionMatchesSubject)
     failures.push(`the subject's SP1 circuit (${ctx.sp1p1Receipt.subject.circuitVersion}) is not the target version`);
@@ -534,8 +640,21 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
       authenticated,
     },
     sp1p1Attribution: { ownCompileEqualsChain, vkConstantsJoined, sourcifyExactMainnet },
-    runtime: { forbiddenOpcodes: [...forbidden], probeBytesEqualMainnet },
+    runtime: {
+      forbiddenOpcodes: [...forbidden],
+      probeBytesEqualMainnet,
+      reachableEnvironmentReads: { ...rt.v610ReachableEnvironmentReads },
+      constantCallTargets: [...rt.v610ConstantStaticcallTargets],
+      computedCallTargets: rt.v610StaticcallSites.computedTarget,
+      metadataIsSolcCbor: rt.v610MetadataIsSolcCbor,
+    },
     chainExecution,
+    realProofOnPinnedKey: {
+      transaction: mp.source.transaction,
+      programVKey: mp.call.programVKey,
+      verifiedInProbe,
+      established: realProofEstablished,
+    },
     circuitVersionMatchesSubject,
     established: failures.length === 0,
     failures,
@@ -635,7 +754,16 @@ export interface Lever {
   chains: string[];
   delaySeconds: number;
   governed: boolean;
+  /**
+   * A liveness lever is dual-use: it stops valid proofs, and when the verifier itself is unsound it also stops
+   * forged ones. Recorded on the lever so the trade-off is visible, never folded into an authorization score;
+   * always false on an authorization lever.
+   */
+  protectiveOnVerifierDefect: boolean;
 }
+
+/** WalletWall's own fail-closed lever, present under every option: the vault owner's pause(). */
+const WALLETWALL_PAUSE = "WalletWall vault owner pause() — liveness only; manual unless automated";
 
 export interface OptionAuthority {
   id: string;
@@ -659,11 +787,18 @@ export interface OptionAuthority {
   livenessCut: string;
   newAttackSurface: string;
   operationalComplexity: string;
+  /** Who can make verification fail closed if the pinned verifier proves unsound, in the order they can act. */
+  defectResponse: string[];
   viable: boolean;
   rejectedBecause: string | null;
 }
 
-function gatewayOwnerLevers(posture: GatewayPosture, lever: string, scope: Lever["scope"]): Lever[] {
+function gatewayOwnerLevers(
+  posture: GatewayPosture,
+  lever: string,
+  scope: Lever["scope"],
+  protectiveOnVerifierDefect: boolean,
+): Lever[] {
   const byOwner = new Map<string, { kind: string; chains: string[] }>();
   for (const c of posture.chains) {
     if (!c.owner) continue;
@@ -679,6 +814,7 @@ function gatewayOwnerLevers(posture: GatewayPosture, lever: string, scope: Lever
     chains: e.chains,
     delaySeconds: 0,
     governed: false,
+    protectiveOnVerifierDefect,
   }));
 }
 
@@ -698,6 +834,7 @@ export function deriveOptionAuthority(
       chains: ["every chain WalletWall deploys to"],
       delaySeconds: f.C_walletwallGateway.vaultVerifierRotationDelaySeconds,
       governed: true,
+      protectiveOnVerifierDefect: false,
     },
   ];
   const disable: Lever[] = [];
@@ -730,10 +867,11 @@ export function deriveOptionAuthority(
             ],
             delaySeconds: 0,
             governed: false,
+            protectiveOnVerifierDefect: false,
           });
       } else {
         if (f.D_upstreamGatewayUnpinned.ownerAddRouteWidensAcceptedRelation)
-          widen.push(...gatewayOwnerLevers(posture, "addRoute", "authorization"));
+          widen.push(...gatewayOwnerLevers(posture, "addRoute", "authorization", false));
         if (adder)
           widen.push({
             principal: adder,
@@ -742,13 +880,27 @@ export function deriveOptionAuthority(
             chains: measuredChains,
             delaySeconds: 0,
             governed: false,
+            protectiveOnVerifierDefect: false,
           });
       }
     }
     const freezeStops = fullyPinned
       ? f.B_selectorRouteCodePinned.ownerFreezeRejectsValidProof
       : f.D_upstreamGatewayUnpinned.ownerFreezeRejectsValidProof;
-    if (freezeStops) disable.push(...gatewayOwnerLevers(posture, "freezeRoute", "liveness"));
+    if (freezeStops) disable.push(...gatewayOwnerLevers(posture, "freezeRoute", "liveness", true));
+  }
+  if (has("upstreamFreezeBit")) {
+    // A read-only coupling: the gateway routes nothing here, so its owner cannot widen; its freeze of the pinned
+    // selector makes verification fail closed (executed). Without the route pin the bit might belong to a route
+    // that is not the pinned verifier's, and the coupling would protect nothing.
+    const couplingHolds =
+      pinned("selector") &&
+      pinned("routeVerifier") &&
+      pinned("gatewayCode") &&
+      f.AF_directFreezeCoupled.squattedRouteRejectedAtConstruction === true &&
+      f.AF_directFreezeCoupled.otherSelectorRouteGrantsNothing === true;
+    if (f.AF_directFreezeCoupled.upstreamFreezeFailsClosed)
+      disable.push(...gatewayOwnerLevers(posture, "freezeRoute", "liveness", couplingHolds));
   }
   if (has("walletwallGateway")) {
     if (f.C_walletwallGateway.adminAddRouteWidensAcceptedRelation)
@@ -761,6 +913,7 @@ export function deriveOptionAuthority(
           ? 0
           : f.C_walletwallGateway.vaultVerifierRotationDelaySeconds,
         governed: false,
+        protectiveOnVerifierDefect: false,
       });
     disable.push({
       principal: "WalletWall gateway admin",
@@ -769,6 +922,7 @@ export function deriveOptionAuthority(
       chains: ["every chain the WalletWall gateway is deployed to"],
       delaySeconds: 0,
       governed: false,
+      protectiveOnVerifierDefect: true,
     });
   }
   // deriveTrustTargetIdentity already fails on any reachable state- or code-changing opcode.
@@ -782,10 +936,13 @@ export function deriveOptionAuthority(
       chains: measuredChains,
       delaySeconds: 0,
       governed: false,
+      protectiveOnVerifierDefect: false,
     });
 
   const routeRegistry = has("upstreamGateway") || has("walletwallGateway");
-  const gatewayCodeMutable = has("upstreamGateway")
+  // Routing through the upstream gateway or reading its freeze bit both depend on its code and its owner.
+  const readsUpstreamGateway = has("upstreamGateway") || has("upstreamFreezeBit");
+  const gatewayCodeMutable = readsUpstreamGateway
     ? posture.chains.some((c) => c.proxySlotsSet) || !posture.sameCodeOnEveryChain
     : has("walletwallGateway")
       ? false
@@ -803,7 +960,7 @@ export function deriveOptionAuthority(
   const trustRootIndependentlyReproducible =
     identity.established &&
     !acceptedRelationMutableOutsideTimelock &&
-    (!has("upstreamGateway") || f.bytes.gatewayRuntimeEqualsMainnet);
+    (!readsUpstreamGateway || f.bytes.gatewayRuntimeEqualsMainnet);
 
   const extraLive = posture.chains.filter((c) => c.extraLiveRoutes.length > 0);
   const ownerKinds = uniq(posture.chains.map((c) => `${c.chainId}: ${c.ownerKind}`));
@@ -813,8 +970,19 @@ export function deriveOptionAuthority(
         ? `; extra live routes on ${extraLive.map((c) => `${c.chainId} (${c.extraLiveRoutes.map((r) => r.version).join(", ")})`).join(", ")}`
         : "")
     : identity.codeKeccak
-      ? `one runtime code hash ${identity.codeKeccak} on every measured chain (${identity.chains.map((c) => c.chainId).join(", ")})`
+      ? `one runtime code hash ${identity.codeKeccak} and the same proof verdicts on every measured chain (${identity.chains.map((c) => c.chainId).join(", ")}); any other chain needs the execution check first` +
+        (has("upstreamFreezeBit")
+          ? `; the freeze bit ties each chain to its gateway owner (${ownerKinds.join("; ")})`
+          : "")
       : "code identity not established";
+  // Who can fail verification closed if the pinned verifier proves unsound: WalletWall always, by pausing; an
+  // external principal only where a protective freeze lever is in the path.
+  const defectResponse = [
+    WALLETWALL_PAUSE,
+    ...externalDisable
+      .filter((l) => l.protectiveOnVerifierDefect)
+      .map((l) => `${l.principal} via ${l.lever} (fail-closed at once, at the holder's discretion)`),
+  ];
 
   const cut = (ls: Lever[]) =>
     ls.length === 0
@@ -832,9 +1000,11 @@ export function deriveOptionAuthority(
     rejectedBecause = `a principal outside WalletWall's timelocked rotation can widen the accepted relation: ${cut(externalWiden)}`;
   const proxyOrAdmin = has("upstreamGateway")
     ? "upstream Ownable owner (no proxy)"
-    : has("walletwallGateway")
-      ? "WalletWall Ownable admin (no proxy)"
-      : "none";
+    : has("upstreamFreezeBit")
+      ? "upstream Ownable owner, read for its freeze bit only (no proxy)"
+      : has("walletwallGateway")
+        ? "WalletWall Ownable admin (no proxy)"
+        : "none";
 
   return {
     id: option.id,
@@ -860,6 +1030,7 @@ export function deriveOptionAuthority(
     livenessCut,
     newAttackSurface: option.newAttackSurface,
     operationalComplexity: option.operationalComplexity,
+    defectResponse,
     viable: rejectedBecause === null,
     rejectedBecause,
   };
@@ -1118,7 +1289,11 @@ export interface VkeyDesignation {
   vkey: string | null;
   independentHosts: string[];
   environments: string[];
-  crossCheck: { tool: string | null; agreeing: number; conflicting: number };
+  /**
+   * `agreeing` counts recorded results; `distinctComputations` counts distinct (tool, machine) pairs behind them.
+   * The same ELF bytes from three environments, re-checked by one binary on one machine, are ONE computation.
+   */
+  crossCheck: { tool: string | null; agreeing: number; conflicting: number; distinctComputations: number };
   reproducedOutsideVendorImage: boolean;
   doNotPin: { program: string; elfSha256: string | null; vkey: string | null }[];
   reason: string;
@@ -1172,7 +1347,12 @@ export function deriveDesignation(ctx: DecisionContext, pid: ProgramIdentityVerd
     vkey: ok ? vkey : null,
     independentHosts: fam?.hosts ?? [],
     environments: fam?.environments ?? [],
-    crossCheck: { tool: xc?.tool ?? null, agreeing, conflicting },
+    crossCheck: {
+      tool: xc?.tool ?? null,
+      agreeing,
+      conflicting,
+      distinctComputations: agreeing > 0 ? uniq([`${xc?.tool ?? ""} @ ${xc?.ranOn ?? ""}`]).length : 0,
+    },
     reproducedOutsideVendorImage,
     doNotPin: [
       {
@@ -1210,6 +1390,10 @@ export interface Td1DecisionReceipt {
     advisory: RouteTimelineObservation["upstreamAdvisory"];
     advisedVersionRouteFrozenUtc: string | null;
     daysFromAdvisoryToFreeze: number | null;
+    /** Seconds between the mainnet v5.0.0 and v6.0.0 freezes: a batch, not an incident response. */
+    advisedFreezeBatchedWithUnaffectedVersionSeconds: number | null;
+    /** Hours from routing the broken first v6.1.0 build on Sepolia to freezing it. */
+    brokenBuildFreezeHours: number | null;
   };
   decisions: {
     SP1_TRUST_TARGET_DECISION: TrustTargetDecision;
@@ -1218,8 +1402,18 @@ export interface Td1DecisionReceipt {
     AUTHORIZATION_AUTHORITY_DELTA: { baseline: string; removed: Lever[]; added: Lever[]; retained: Lever[] };
     LIVENESS_DEPENDENCY: { onChainExternal: Lever[]; removedVersusBaseline: Lever[]; offChain: string[] };
     UPGRADE_MODEL: "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION" | "MUTABLE_ROUTING" | "UNRESOLVED";
-    CROSS_CHAIN_MODEL: "CODE_HASH_PINNED_SAME_IDENTITY_ON_EVERY_CHAIN" | "PER_CHAIN_ROUTE_TABLE" | "UNRESOLVED";
+    CROSS_CHAIN_MODEL: (typeof CROSS_CHAIN_MODELS)[number];
     PROGRAM_VKEY_DESIGNATION: VkeyDesignation;
+    /** A trade-off the evidence frames but cannot settle: recorded as an open owner decision, never dropped. */
+    DEFECT_RESPONSE_COUPLING: {
+      status: "OWNER_DECISION_REQUIRED" | "NOT_APPLICABLE";
+      decidedOptionDefectResponse: string[];
+      viableAlternatives: { id: string; defectResponse: string[]; externalLivenessPrincipals: string[] }[];
+      choices: OwnerDecisionInput["choices"];
+      recommendation: string | null;
+      rationale: string | null;
+      requiredBeforeRealValue: boolean;
+    };
     IMPLEMENTATION_REQUIRED: { required: boolean; plan: string[] };
     REAL_PROOF_LANE_UNBLOCKED: { value: boolean; basis: string[]; preconditions: string[] };
   };
@@ -1250,7 +1444,9 @@ const TOP_KEYS = [
 const REAL_PROOF_PRECONDITIONS = [
   "the owner approves the v6.1.0 Groth16 circuit download (an owner gate, not a trust gate)",
   "the proof is generated for the designated ELF: its sha256 is checked against the designation before proving (a default local build embeds the builder's CARGO_HOME and yields a different program)",
-  "verification targets the designated trust target only: the CREATE2-authenticated v6.1.0 bytes (in a local EVM) or a chain deployment checked by EXTCODEHASH, never a gateway route",
+  "verification targets the designated trust target only: the CREATE2-authenticated v6.1.0 bytes (in a local EVM) or a chain deployment checked by EXTCODEHASH and by the per-chain execution check, never a gateway route",
+  "the downloaded circuit artifacts are the pinned key's: sha256(groth16_vk.bin) must equal VERIFIER_HASH 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 (two different 'v6.1.0' keys have existed)",
+  "no real value: the lane is for testnet/local proofs; real value additionally needs DEFECT_RESPONSE_COUPLING decided and implemented, and the frozen implementation lane",
 ];
 
 function sameLever(a: Lever, b: Lever) {
@@ -1268,11 +1464,47 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
   const baseline = options.find((o) => o.decisionValue === "UPSTREAM_GATEWAY_OWNER_ACCEPTED");
   const ext = (ls: Lever[] | undefined) => (ls ?? []).filter((l) => !l.governed);
 
-  const advisoryFreeze = ctx.timeline.events.find(
-    (e) => e.chainId === 1 && e.event === "RouteFrozen" && e.version === "v6.0.0" && e.providersAgree,
-  );
+  const event = (chainId: number, name: string, match: (e: RouteTimelineObservation["events"][number]) => boolean) =>
+    ctx.timeline.events.find((e) => e.chainId === chainId && e.event === name && match(e) && e.providersAgree);
+  const advisoryFreeze = event(1, "RouteFrozen", (e) => e.version === "v6.0.0");
   const advisoryTs = Date.parse(`${ctx.timeline.upstreamAdvisory.published}T00:00:00Z`) / 1000;
   const lag = advisoryFreeze ? Math.floor((advisoryFreeze.timestamp - advisoryTs) / 86400) : null;
+  // The advised version's freeze shared a batch with an unaffected version's: a deprecation, not a response.
+  const unaffectedFreeze = event(1, "RouteFrozen", (e) => e.version === "v5.0.0");
+  const batchSeconds =
+    advisoryFreeze && unaffectedFreeze ? Math.abs(advisoryFreeze.timestamp - unaffectedFreeze.timestamp) : null;
+  // The one measured incident response: the broken first v6.1.0 build, routed and frozen on Sepolia.
+  const brokenAdded = event(11155111, "RouteAdded", (e) => e.selector === BROKEN_V610_SELECTOR);
+  const brokenFrozen = event(11155111, "RouteFrozen", (e) => e.selector === BROKEN_V610_SELECTOR);
+  const brokenBuildFreezeHours =
+    brokenAdded && brokenFrozen
+      ? Math.round(((brokenFrozen.timestamp - brokenAdded.timestamp) / 3600) * 10) / 10
+      : null;
+
+  // When the pinned verifier itself proves unsound, who fails verification closed? Viable alternatives (so with no
+  // external authorization lever) whose external levers are all protective freezes make that a trade-off the
+  // evidence frames but cannot settle.
+  const alternatives = options
+    .filter((o) => o.viable && o.id !== decided?.id)
+    .filter((o) => {
+      const xs = ext(o.disable);
+      return xs.length > 0 && xs.every((l) => l.protectiveOnVerifierDefect);
+    })
+    .map((o) => ({
+      id: o.id,
+      defectResponse: o.defectResponse,
+      externalLivenessPrincipals: ext(o.disable).map((l) => l.principal),
+    }));
+  const od = ctx.inputs.ownerDecisions.find((x) => x.id === "DEFECT_RESPONSE_COUPLING");
+  const defectCoupling: Td1DecisionReceipt["decisions"]["DEFECT_RESPONSE_COUPLING"] = {
+    status: alternatives.length === 0 ? "NOT_APPLICABLE" : "OWNER_DECISION_REQUIRED",
+    decidedOptionDefectResponse: decided?.defectResponse ?? [],
+    viableAlternatives: alternatives,
+    choices: od?.choices ?? [],
+    recommendation: od?.recommendation ?? null,
+    rationale: od?.rationale ?? null,
+    requiredBeforeRealValue: od?.requiredBeforeRealValue ?? true,
+  };
 
   const trustResolved = target.decision !== "UNRESOLVED";
   const programResolved = pid.decision !== "UNRESOLVED";
@@ -1303,8 +1535,14 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     TRUST_TARGET_CODE_IDENTITY: {
       status: st(identity.established),
       basis: identity.established
-        ? `runtime ${identity.codeKeccak} on ${identity.chains.length} chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode, and the same real-proof/tampered-proof verdicts from the deployed template on every chain`
+        ? `runtime ${identity.codeKeccak} on ${identity.chains.length} chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode or state/environment read beyond its own code size, constant call targets only BN254/modexp precompiles, and the same verdicts on every measured chain`
         : `not established: ${identity.failures.join("; ")}`,
+    },
+    PINNED_VERIFYING_KEY_REAL_PROOF: {
+      status: st(identity.realProofOnPinnedKey.established),
+      basis: identity.realProofOnPinnedKey.established
+        ? `a real v6.1.0 proof from mainnet transaction ${identity.realProofOnPinnedKey.transaction} (program ${identity.realProofOnPinnedKey.programVKey}, not WalletWall's) verifies on the CREATE2-authenticated bytes in the probe suite and by eth_call on every measured chain; its tampered copy and an odd-word canary are refused`
+        : "no real proof for this circuit is shown to verify on the pinned bytes",
     },
     DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT: {
       status: st(equivalence),
@@ -1333,7 +1571,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
       status: st(designation.status === "DESIGNATED"),
       basis:
         designation.status === "DESIGNATED"
-          ? `${designation.vkey} for ELF ${designation.elfSha256} (${designation.elfBytes} B) on ${designation.independentHosts.length} hosts; cargo-prove cross-check ${designation.crossCheck.agreeing} agreeing, ${designation.crossCheck.conflicting} conflicting`
+          ? `${designation.vkey} for ELF ${designation.elfSha256} (${designation.elfBytes} B) on ${designation.independentHosts.length} hosts; outside cross-check ${designation.crossCheck.agreeing} agreeing results from ${designation.crossCheck.distinctComputations} distinct (binary, machine) computation, ${designation.crossCheck.conflicting} conflicting`
           : designation.reason,
     },
     IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE: {
@@ -1344,13 +1582,20 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     VKEY_DERIVATION_ALGORITHM_INDEPENDENT: {
       status: "NOT_ESTABLISHED",
       basis:
-        "every vkey here comes from Succinct's sp1-prover (mldsa65-host and two cargo-prove runs): binary- and machine-level independence only; a real proof verifying on the pinned verifier is the next join",
+        "every vkey here comes from Succinct's sp1-prover: mldsa65-host inside each build environment, and the released cargo-prove binary run on the workstation (SP1-P1's cross-check and TD1's remap probe) — binary- and machine-level independence only; a WalletWall proof verifying on the pinned verifier is the next join",
     },
     GATEWAY_ROUTE_HISTORY_COMPLETE: {
       status: "NOT_ESTABLISHED",
       basis: gap
         ? `the Sepolia RouteFrozen ${gap.selector} in tx ${gap.tx} is ${gap.missingFromSp1P1History ? "absent from" : "present in"} the SP1-P1 indexer history and the indexer ${gap.indexerHasLog ? "has" : "lacks"} its log; enumerating a mutable route table is not needed under a code-pinned target`
         : "not assessed",
+    },
+    DEFECT_RESPONSE_PATH: {
+      status: "NOT_ESTABLISHED",
+      basis:
+        defectCoupling.status === "OWNER_DECISION_REQUIRED"
+          ? `open owner decision DEFECT_RESPONSE_COUPLING (alternatives ${alternatives.map((a) => a.id).join(", ")}); until it is decided and built, only the vault owner's manual pause() makes verification fail closed if the pinned verifier proves unsound`
+          : "no protective alternative exists; the vault owner's manual pause() is the only fail-closed path, with no stated or tested response bound",
     },
     REAL_SP1_PROOF_GENERATED: {
       status: "NOT_ESTABLISHED",
@@ -1359,7 +1604,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     REAL_SP1_PROOF_VERIFIED: {
       status: "NOT_ESTABLISHED",
       basis:
-        "no WalletWall proof exists; the only real proof exercised is upstream's v6 fixture, as a control for the verifier template",
+        "no WalletWall proof exists; the real proofs exercised are third parties' (upstream's v6 fixture, and a v6.1.0 proof from a mainnet transaction), as controls for the verifier and its key",
     },
     PRODUCTION_READINESS: {
       status: "NOT_ESTABLISHED",
@@ -1388,6 +1633,8 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
       advisory: ctx.timeline.upstreamAdvisory,
       advisedVersionRouteFrozenUtc: advisoryFreeze?.utc ?? null,
       daysFromAdvisoryToFreeze: lag,
+      advisedFreezeBatchedWithUnaffectedVersionSeconds: batchSeconds,
+      brokenBuildFreezeHours,
     },
     decisions: {
       SP1_TRUST_TARGET_DECISION: target.decision,
@@ -1411,14 +1658,17 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
         : decided.requiresRedeployToUpgrade
           ? "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION"
           : "MUTABLE_ROUTING",
+      // A code hash is necessary, not sufficient: the same bytes are the same relation only where the chain's
+      // precompiles give the same verdicts, so the direct model always carries the per-chain execution check.
       CROSS_CHAIN_MODEL: !decided
         ? "UNRESOLVED"
         : decided.routeRegistry
           ? "PER_CHAIN_ROUTE_TABLE"
-          : identity.established
-            ? "CODE_HASH_PINNED_SAME_IDENTITY_ON_EVERY_CHAIN"
+          : identity.established && identity.chainExecution.length >= 2
+            ? "CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK"
             : "UNRESOLVED",
       PROGRAM_VKEY_DESIGNATION: designation,
+      DEFECT_RESPONSE_COUPLING: defectCoupling,
       IMPLEMENTATION_REQUIRED: { required: true, plan: ctx.inputs.implementationPlan },
       REAL_PROOF_LANE_UNBLOCKED: { value: unblocked, basis: unblockBasis, preconditions: REAL_PROOF_PRECONDITIONS },
     },
@@ -1434,6 +1684,7 @@ function evidenceFiles(inputs: DecisionInputs): FileRef[] {
     ...inputs.evidence.sp1p1Observations,
     ...inputs.evidence.td1Observations,
     ...inputs.evidence.canonicalProcedureScripts.map(({ path, sha256 }) => ({ path, sha256 })),
+    ...inputs.evidence.measurementFiles.map(({ path, sha256 }) => ({ path, sha256 })),
   ];
 }
 
@@ -1458,6 +1709,15 @@ export function validateDecisionRules(value: unknown): string[] {
     errors.push(`invalid SP1_TRUST_TARGET_DECISION ${String(d.SP1_TRUST_TARGET_DECISION)}`);
   if (!(PROGRAM_IDENTITY_DECISIONS as readonly string[]).includes(d.PROGRAM_IDENTITY_DECISION))
     errors.push(`invalid PROGRAM_IDENTITY_DECISION ${String(d.PROGRAM_IDENTITY_DECISION)}`);
+  const trustResolved = d.SP1_TRUST_TARGET_DECISION !== "UNRESOLVED";
+  const programResolved = d.PROGRAM_IDENTITY_DECISION !== "UNRESOLVED";
+  const verdict =
+    trustResolved && programResolved
+      ? "DESIGN_DECIDED"
+      : !trustResolved && !programResolved
+        ? "STOP_NO_DESIGN_JUSTIFIED"
+        : "PARTIAL_DECISION";
+  if (r.verdict !== verdict) errors.push(`verdict ${String(r.verdict)} disagrees with the decisions (${verdict})`);
 
   // Authorization and liveness are never conflated.
   for (const o of options) {
@@ -1466,6 +1726,9 @@ export function validateDecisionRules(value: unknown): string[] {
         errors.push(`option ${o.id}: widen lever ${l.lever} is not scoped authorization`);
       if ((LIVENESS_LEVERS as readonly string[]).includes(l.lever))
         errors.push(`option ${o.id}: ${l.lever} can only stop verification; it is not an authorization lever`);
+      // "Protective" describes a lever that can only stop verification; it never excuses a widening one.
+      if (l.protectiveOnVerifierDefect === true)
+        errors.push(`option ${o.id}: authorization lever ${l.lever} cannot be marked protective`);
     }
     for (const l of o.disable ?? []) {
       if (l.scope !== "liveness") errors.push(`option ${o.id}: disable lever ${l.lever} is not scoped liveness`);
@@ -1486,9 +1749,13 @@ export function validateDecisionRules(value: unknown): string[] {
     if (o.viable && o.acceptedRelationMutableOutsideTimelock)
       errors.push(`option ${o.id}: an option with an external authorization lever cannot be viable`);
     if (o.viable !== (o.rejectedBecause === null)) errors.push(`option ${o.id}: viable and rejectedBecause disagree`);
+    // Only an unpinned route registry can move the accepted relation without a redeploy.
+    if (o.requiresRedeployToUpgrade !== !(o.routeRegistry && !(o.pins ?? []).includes("selector")))
+      errors.push(`option ${o.id}: requiresRedeployToUpgrade disagrees with its route registry and pins`);
   }
 
   const decided = options.find((o) => o.id === d.SP1_TRUST_TARGET_OPTION);
+  const exec = tt.chainExecution ?? [];
   if (d.SP1_TRUST_TARGET_DECISION === "UNRESOLVED") {
     if (d.SP1_TRUST_TARGET_OPTION !== null) errors.push("an UNRESOLVED trust target names no option");
   } else {
@@ -1509,17 +1776,85 @@ export function validateDecisionRules(value: unknown): string[] {
         );
     }
     if (!tt.established) errors.push("a trust target cannot be decided while its code identity is not established");
+    if (tt.chains.some((c) => !c.providersAgree))
+      errors.push("a trust target cannot be decided on a chain read that a second provider does not corroborate");
     if (d.SP1_TRUST_TARGET_DECISION === "DIRECT_IMMUTABLE_VERIFIER") {
       if (tt.runtime.forbiddenOpcodes.length > 0)
         errors.push("a direct immutable target cannot have reachable state- or code-changing opcodes");
+      if (Object.keys(tt.runtime.reachableEnvironmentReads ?? {}).some((x) => !ALLOWED_RUNTIME_READS.includes(x)))
+        errors.push("a direct immutable target cannot read state or environment beyond its own code size");
+      if ((tt.runtime.constantCallTargets ?? []).some((t) => !ALLOWED_CONSTANT_CALL_TARGETS.includes(t)))
+        errors.push("a direct immutable target may call only the BN254/modexp precompiles at constant addresses");
+      if (tt.runtime.metadataIsSolcCbor !== true)
+        errors.push("a direct immutable target's opcode scan needs solc's CBOR metadata to bound the code");
       if (!tt.create2.authenticated) errors.push("a direct immutable target needs CREATE2-authenticated initcode");
       if (uniq(tt.chains.map((c) => c.codeKeccak)).length !== 1)
         errors.push("a direct immutable target needs one code hash on every chain");
       if (decided && decided.verifierCodeMutable)
         errors.push("a direct immutable target cannot have mutable verifier code");
-      const exec = tt.chainExecution ?? [];
       if (exec.length !== tt.chains.length || exec.some((c) => !c.verdictsAsExpected || !c.providersAgree))
         errors.push("a direct immutable target needs the same verdicts from the deployed template on every chain");
+      if (tt.realProofOnPinnedKey?.established !== true)
+        errors.push("a direct immutable target needs a real proof verified on its pinned key");
+    }
+  }
+
+  const upgrade = !decided
+    ? "UNRESOLVED"
+    : decided.requiresRedeployToUpgrade
+      ? "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION"
+      : "MUTABLE_ROUTING";
+  if (d.UPGRADE_MODEL !== upgrade)
+    errors.push(`UPGRADE_MODEL ${String(d.UPGRADE_MODEL)} disagrees with the decided option (${upgrade})`);
+  // One code hash is one relation only where each chain's precompiles give the same verdicts: a cross-chain
+  // code-pin model needs the execution check on at least two chains.
+  const perChainChecked = exec.length >= 2 && exec.every((c) => c.verdictsAsExpected && c.providersAgree);
+  const crossChain = !decided
+    ? "UNRESOLVED"
+    : decided.routeRegistry
+      ? "PER_CHAIN_ROUTE_TABLE"
+      : tt.established && perChainChecked
+        ? "CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK"
+        : "UNRESOLVED";
+  if (d.CROSS_CHAIN_MODEL !== crossChain)
+    errors.push(`CROSS_CHAIN_MODEL ${String(d.CROSS_CHAIN_MODEL)} disagrees with the evidence (${crossChain})`);
+
+  // Freeze levers are dual-use. A viable alternative whose external levers are all protective freezes is a
+  // trade-off between authority minimisation and an upstream kill switch: an open owner decision, never dropped.
+  // (A viable option with an external authorization lever is refused above.)
+  const ext = (ls: Lever[] | undefined) => (ls ?? []).filter((l) => !l.governed);
+  const failClosedAlternatives = options
+    .filter(
+      (o) =>
+        o.viable &&
+        o.id !== decided?.id &&
+        ext(o.disable).length > 0 &&
+        ext(o.disable).every((l) => l.protectiveOnVerifierDefect === true),
+    )
+    .map((o) => o.id)
+    .sort();
+  const dc = d.DEFECT_RESPONSE_COUPLING;
+  const unblock = d.REAL_PROOF_LANE_UNBLOCKED;
+  if (!dc) errors.push("DEFECT_RESPONSE_COUPLING is required");
+  else {
+    if (failClosedAlternatives.length > 0 && dc.status !== "OWNER_DECISION_REQUIRED")
+      errors.push(
+        `viable fail-closed alternatives (${failClosedAlternatives.join(", ")}) make the defect response an owner decision`,
+      );
+    const listed = (dc.viableAlternatives ?? []).map((a) => a.id).sort();
+    if (JSON.stringify(listed) !== JSON.stringify(failClosedAlternatives))
+      errors.push("DEFECT_RESPONSE_COUPLING must list exactly the viable fail-closed alternatives");
+    if (dc.status === "OWNER_DECISION_REQUIRED") {
+      const offered = (dc.choices ?? []).flatMap((c) => c.options);
+      for (const id of [decided?.id, ...failClosedAlternatives])
+        if (id && !offered.includes(id)) errors.push(`the owner decision offers no choice realized by option ${id}`);
+      if (!(dc.choices ?? []).some((c) => c.id === dc.recommendation))
+        errors.push("the owner decision's recommendation is not one of its choices");
+      if (
+        dc.requiredBeforeRealValue &&
+        !(unblock?.preconditions ?? []).some((p) => p.includes("DEFECT_RESPONSE_COUPLING"))
+      )
+        errors.push("an open owner decision required before real value must be a real-proof precondition");
     }
   }
 
@@ -1570,7 +1905,6 @@ export function validateDecisionRules(value: unknown): string[] {
     }
   }
 
-  const unblock = d.REAL_PROOF_LANE_UNBLOCKED;
   if (unblock?.value === true) {
     if (d.SP1_TRUST_TARGET_DECISION === "UNRESOLVED")
       errors.push("the real-proof lane cannot be unblocked with an UNRESOLVED trust target");
@@ -1604,10 +1938,25 @@ export function validateDecisionRules(value: unknown): string[] {
       "REAL_SP1_PROOF_VERIFIED",
       "PRODUCTION_READINESS",
       "VKEY_DERIVATION_ALGORITHM_INDEPENDENT",
+      "DEFECT_RESPONSE_PATH",
     ])
       if (claims[k]?.status !== "NOT_ESTABLISHED") errors.push(`${k} cannot be claimed by a design lane`);
     if (claims.TRUST_TARGET_CODE_IDENTITY?.status === "ESTABLISHED" && !tt.established)
       errors.push("TRUST_TARGET_CODE_IDENTITY cannot be ESTABLISHED without the evidence");
+    if (
+      claims.PINNED_VERIFYING_KEY_REAL_PROOF?.status === "ESTABLISHED" &&
+      tt.realProofOnPinnedKey?.established !== true
+    )
+      errors.push(
+        "PINNED_VERIFYING_KEY_REAL_PROOF cannot be ESTABLISHED without a real proof verified on the pinned key",
+      );
+    if (
+      claims.DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER?.status === "ESTABLISHED" &&
+      (!decided || ext(decided.widen).length > 0 || ext(decided.disable).length > 0)
+    )
+      errors.push(
+        "DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER cannot be ESTABLISHED while the decided option has an external lever",
+      );
     if (claims.PROGRAM_VKEY_DESIGNATED?.status === "ESTABLISHED" && dz?.status !== "DESIGNATED")
       errors.push("PROGRAM_VKEY_DESIGNATED cannot be ESTABLISHED without a designation");
     if (claims.CANONICAL_PROGRAM_IDENTITY?.status === "ESTABLISHED" && d.PROGRAM_IDENTITY_DECISION === "UNRESOLVED")
@@ -1619,6 +1968,47 @@ export function validateDecisionRules(value: unknown): string[] {
 // ---------------------------------------------------------------------------------------------------------
 // Reading, freshness and the committed-receipt check
 // ---------------------------------------------------------------------------------------------------------
+
+/** The tree id git records for `rel` at HEAD; null when it cannot be read (fails the freshness check). */
+function headTree(repoRoot: string, rel: string): string | null {
+  try {
+    return execFileSync("git", ["rev-parse", `HEAD:${rel}`], {
+      cwd: resolve(repoRoot),
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString("utf8")
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * A JSON pointer without escapes ("/scripts/remap-build.sh"; no bound key contains "/" or "~"). A missing step
+ * yields undefined or throws; the caller records either as unbound.
+ */
+function jsonPointer(doc: unknown, pointer: string): unknown {
+  return pointer
+    .split("/")
+    .slice(1)
+    .reduce<unknown>((cur, key) => (cur as Record<string, unknown>)[key], doc);
+}
+
+/** For each committed measurement input, the hash its bound observation recorded (null: nothing resolvable). */
+export function boundMeasurementHashes(inputs: DecisionInputs, repoRoot = "."): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const m of inputs.evidence.measurementFiles) {
+    let recorded: unknown;
+    try {
+      const observation: unknown = JSON.parse(readFileSync(resolve(repoRoot, m.boundTo.observation), "utf8"));
+      recorded = jsonPointer(observation, m.boundTo.pointer);
+    } catch {
+      recorded = undefined;
+    }
+    out[m.path] = typeof recorded === "string" ? recorded : null;
+  }
+  return out;
+}
 
 export function readDecisionContext(repoRoot = "."): DecisionContext {
   const bytes = (rel: string) => readFileSync(resolve(repoRoot, rel));
@@ -1635,6 +2025,9 @@ export function readDecisionContext(repoRoot = "."): DecisionContext {
   return {
     inputs,
     chainExec: json<ChainExecutionObservation>(TD1_OBSERVATIONS.chainExecution),
+    mainnetProof: json<MainnetProofObservation>(TD1_OBSERVATIONS.mainnetV610Proof),
+    gitTrees: { guest: headTree(repoRoot, "zkvm/guest"), host: headTree(repoRoot, "zkvm/host") },
+    boundHashes: boundMeasurementHashes(inputs, repoRoot),
     chain: json<ChainStateObservation>(TD1_OBSERVATIONS.chainState),
     deployments: json<DeploymentBytecodeObservation>(TD1_OBSERVATIONS.deploymentBytecode),
     remap: json<LocalRemapObservation>(TD1_OBSERVATIONS.localRemapBuild),
@@ -1660,10 +2053,25 @@ export function checkContextFresh(ctx: DecisionContext): string[] {
     errors.push(
       `stale: the zkvm guest/host sources (${onDisk}) are not the subject the designation was measured on (${ctx.sp1p1Receipt.subject.sourceManifestSha256}); a guest change needs a new designation`,
     );
+  // The working tree can match while HEAD records other trees (or the reverse): the subject is both.
+  const subject = ctx.inputs.subject;
+  if (ctx.gitTrees.guest !== subject.zkvmGuestTree)
+    errors.push(`stale: HEAD:zkvm/guest is ${String(ctx.gitTrees.guest)}, not the subject's ${subject.zkvmGuestTree}`);
+  if (ctx.gitTrees.host !== subject.zkvmHostTree)
+    errors.push(`stale: HEAD:zkvm/host is ${String(ctx.gitTrees.host)}, not the subject's ${subject.zkvmHostTree}`);
   const listed = ctx.inputs.evidence.td1Observations.map((o) => o.path).sort();
-  const expected = Object.values(TD1_OBSERVATIONS).slice().sort();
+  const expected: string[] = Object.values(TD1_OBSERVATIONS).slice().sort();
   if (JSON.stringify(listed) !== JSON.stringify(expected))
     errors.push("decision inputs must list exactly the TD1 observation files");
+  // A committed measurement input is evidence only as the file an observation says it ran.
+  for (const m of ctx.inputs.evidence.measurementFiles) {
+    if (!expected.includes(m.boundTo.observation))
+      errors.push(`unbound: ${m.path} is bound to ${m.boundTo.observation}, which is not a TD1 observation`);
+    else if (ctx.boundHashes[m.path] !== m.sha256)
+      errors.push(
+        `unbound: ${m.path} (${m.sha256}) is not the file ${m.boundTo.observation} recorded at ${m.boundTo.pointer} (${String(ctx.boundHashes[m.path])})`,
+      );
+  }
   return errors;
 }
 

@@ -27,7 +27,10 @@ const readJson = (rel: string) => JSON.parse(readFileSync(resolve(rel), "utf8"))
 const BYTECODE = readJson(`${OBS}/deployment-bytecode.raw.json`);
 const CHAIN = readJson(`${OBS}/chain-state.raw.json`);
 const FIXTURE = readJson(`${OBS}/upstream-proof-fixture.raw.json`).fixture;
-const FACTS = readJson("evidence/zk/sp1-td1/decision-inputs.json").probeFacts;
+/** A real v6.1.0 proof from a successful mainnet call into the pinned verifier (someone else's program). */
+const V610_PROOF = readJson(`${OBS}/mainnet-v610-proof.raw.json`).call;
+const INPUTS = readJson("evidence/zk/sp1-td1/decision-inputs.json");
+const FACTS = INPUTS.probeFacts;
 
 const MAINNET = CHAIN.chains["1"];
 const V610_SELECTOR = "0x4388a21c";
@@ -100,6 +103,75 @@ function forbiddenOpcodes(runtime: string): string[] {
     if (TERMINAL.has(op)) reachable = false;
   }
   return [...found].sort();
+}
+
+/** Reachable reads of state or environment a verification result could depend on (beyond its inputs). */
+const STATE_OR_ENVIRONMENT_READS = new Map<number, string>([
+  [0x31, "BALANCE"],
+  [0x32, "ORIGIN"],
+  [0x33, "CALLER"],
+  [0x3a, "GASPRICE"],
+  [0x3b, "EXTCODESIZE"],
+  [0x3c, "EXTCODECOPY"],
+  [0x3f, "EXTCODEHASH"],
+  [0x40, "BLOCKHASH"],
+  [0x41, "COINBASE"],
+  [0x42, "TIMESTAMP"],
+  [0x43, "NUMBER"],
+  [0x44, "PREVRANDAO"],
+  [0x45, "GASLIMIT"],
+  [0x46, "CHAINID"],
+  [0x47, "SELFBALANCE"],
+  [0x48, "BASEFEE"],
+  [0x49, "BLOBHASH"],
+  [0x4a, "BLOBBASEFEE"],
+  [0x54, "SLOAD"],
+  [0x5c, "TLOAD"],
+]);
+
+/**
+ * The reachable runtime profile behind "no principal can alter the accepted relation": reads of state or
+ * environment, and every STATICCALL classified by its target — a constant precompile when the instructions
+ * right before it are `PUSH1 <address> GAS`, otherwise a computed target the scan cannot resolve (those two sites
+ * are sha256 and the self-call per the attributed source). The CBOR metadata must actually be solc's, so a
+ * forged length field cannot hide code from the scan.
+ */
+function runtimeProfile(runtime: string) {
+  const code = ethers.getBytes(runtime);
+  const metadataLength = (code[code.length - 2] << 8) | code[code.length - 1];
+  const end = code.length - 2 - metadataLength;
+  const metadata = Buffer.from(code.slice(end, code.length - 2));
+  const reads: Record<string, number> = {};
+  const constantTargets = new Set<string>();
+  const sites = { constantPrecompile: 0, computedTarget: 0 };
+  const decoded: { op: number; imm: string | null }[] = [];
+  let reachable = true;
+  for (let i = 0; i < end; i++) {
+    const op = code[i];
+    if (op === 0x5b) reachable = true;
+    const imm = op >= 0x60 && op <= 0x7f ? ethers.hexlify(code.slice(i + 1, i + 1 + (op - 0x5f))) : null;
+    if (reachable) {
+      const read = STATE_OR_ENVIRONMENT_READS.get(op);
+      if (read) reads[read] = (reads[read] ?? 0) + 1;
+      if (op === 0xfa) {
+        const [pushed, gas] = decoded.slice(-2);
+        if (gas?.op === 0x5a && pushed?.op === 0x60 && pushed.imm) {
+          sites.constantPrecompile++;
+          constantTargets.add(pushed.imm);
+        } else sites.computedTarget++;
+      }
+    }
+    decoded.push({ op, imm });
+    if (imm) i += op - 0x5f;
+    if (TERMINAL.has(op)) reachable = false;
+  }
+  const metadataIsSolcCbor =
+    metadata.length > 0 &&
+    metadata[0] >= 0xa1 &&
+    metadata[0] <= 0xa5 &&
+    metadata.includes(Buffer.from("solc")) &&
+    metadata.includes(Buffer.from("ipfs"));
+  return { reads, sites, constantTargets: [...constantTargets].sort(), metadataIsSolcCbor };
 }
 
 async function revertData(call: Promise<unknown>): Promise<string> {
@@ -230,6 +302,26 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       expect(FACTS.semantics.realProofAcceptedViaGateway).to.equal(true);
     });
 
+    it("positive control on the pinned key: a real v6.1.0 proof from mainnet verifies on the pinned bytes, directly and through the gateway", async function () {
+      const v610 = await deployVerifier("v6.1.0");
+      const gateway = await deployGateway(gatewayOwner.address);
+      await gateway.connect(gatewayOwner).addRoute(await v610.getAddress());
+      const { programVKey, publicValues, proofBytes } = V610_PROOF;
+      expect(proofBytes.slice(0, 10)).to.equal(V610_SELECTOR);
+      await v610.verifyProof.staticCall(programVKey, publicValues, proofBytes);
+      await gateway.verifyProof.staticCall(programVKey, publicValues, proofBytes);
+      const bytes = ethers.getBytes(publicValues);
+      bytes[bytes.length - 1] ^= 0x01;
+      const tampered = ethers.hexlify(bytes);
+      const direct = await revertData(v610.verifyProof.staticCall(programVKey, tampered, proofBytes));
+      const routed = await revertData(gateway.verifyProof.staticCall(programVKey, tampered, proofBytes));
+      expect(direct).to.equal(routed);
+      expect(direct).to.equal(v610.interface.getError("ProofInvalid")!.selector);
+      expect(FACTS.semantics.realV610ProofAcceptedDirect).to.equal(true);
+      expect(FACTS.semantics.realV610ProofAcceptedViaGateway).to.equal(true);
+      expect(FACTS.semantics.realV610TamperedRejectedDirectAndViaGateway).to.equal(true);
+    });
+
     it("negative control: one changed public-value bit is rejected with the same revert data on both paths", async function () {
       const v600 = await deployVerifier("v6.0.0");
       const gateway = await deployGateway(gatewayOwner.address);
@@ -303,6 +395,29 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       expect(forbiddenOpcodes("0xfe605b55" + noMetadata)).to.deep.equal([]);
       // DELEGATECALL right at the start is reachable.
       expect(forbiddenOpcodes("0xf4" + noMetadata)).to.deep.equal(["DELEGATECALL"]);
+    });
+
+    it("the v6.1.0 runtime reads no state or environment but its own code size, and calls only fixed precompiles or computed targets", async function () {
+      const v610 = await deployVerifier("v6.1.0");
+      const profile = runtimeProfile(await ethers.provider.getCode(await v610.getAddress()));
+      expect(profile.reads).to.deep.equal({ EXTCODESIZE: 1 });
+      expect(profile.sites).to.deep.equal({ constantPrecompile: 13, computedTarget: 2 });
+      expect(profile.constantTargets).to.deep.equal(["0x05", "0x06", "0x07", "0x08"]);
+      expect(profile.metadataIsSolcCbor).to.equal(true);
+      // Positive control for the read scan: the gateway reads its route table from storage.
+      const gateway = await deployGateway(gatewayOwner.address);
+      expect(runtimeProfile(await ethers.provider.getCode(await gateway.getAddress())).reads).to.have.property("SLOAD");
+      expect({
+        v610ReachableEnvironmentReads: profile.reads,
+        v610StaticcallSites: profile.sites,
+        v610ConstantStaticcallTargets: profile.constantTargets,
+        v610MetadataIsSolcCbor: profile.metadataIsSolcCbor,
+      }).to.deep.equal({
+        v610ReachableEnvironmentReads: FACTS.verifierRuntime.v610ReachableEnvironmentReads,
+        v610StaticcallSites: FACTS.verifierRuntime.v610StaticcallSites,
+        v610ConstantStaticcallTargets: FACTS.verifierRuntime.v610ConstantStaticcallTargets,
+        v610MetadataIsSolcCbor: FACTS.verifierRuntime.v610MetadataIsSolcCbor,
+      });
     });
 
     it("the v6.1.0 runtime cannot write state, call out mutably, run foreign code or replace code; the gateway can write", async function () {
@@ -563,7 +678,7 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       });
     });
 
-    it("bound directly, the unmodified consumer refuses every forged proof shape and no principal exists to change that", async function () {
+    it("bound directly, the unmodified consumer refuses four forged proof shapes and no principal exists to change that", async function () {
       const v610 = await deployVerifier("v6.1.0");
       const zk = await zkVerifier(await v610.getAddress());
       const digest = ethers.id("td1: direct digest");
@@ -582,9 +697,94 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       await expect(probe.owner()).to.revert(ethers);
       await expect(probe.addRoute(attacker.address)).to.revert(ethers);
       expect(FACTS.A_directCodePinned.unmodifiedConsumerRejectsForgedRouteProof).to.equal(true);
-      expect(FACTS.A_directCodePinned.noPrincipalCanAlterAcceptedRelation).to.equal(
-        FACTS.verifierRuntime.v610ForbiddenOpcodes.length === 0,
+      // "No principal" means: no reachable state- or code-changing opcode, no read of state or environment but
+      // its own code size, and constant call targets that are precompiles (the two computed ones are sha256
+      // and the self-call in the attributed source).
+      const profile = runtimeProfile(await ethers.provider.getCode(await v610.getAddress()));
+      const noPrincipal =
+        forbiddenOpcodes(await ethers.provider.getCode(await v610.getAddress())).length === 0 &&
+        Object.keys(profile.reads).every((r) => r === "EXTCODESIZE") &&
+        profile.constantTargets.every((t) => ["0x05", "0x06", "0x07", "0x08"].includes(t));
+      expect(FACTS.A_directCodePinned.noPrincipalCanAlterAcceptedRelation).to.equal(noPrincipal);
+    });
+  });
+
+  describe("Option AF — the direct binding of A, failing closed when upstream freezes the pinned selector", function () {
+    it("refuses a squatted route, verifies a real v6.1.0 proof, ignores other routes and fails closed after a freeze", async function () {
+      const factory = await ethers.getContractFactory("FreezeCoupledSp1VerifierProbe");
+      const v610 = await deployVerifier("v6.1.0");
+      const pins = async (gateway: any) =>
+        [
+          await gateway.getAddress(),
+          MAINNET.gateway.codeKeccak,
+          V610_SELECTOR,
+          await v610.getAddress(),
+          MAINNET.verifiers["v6.1.0"].codeKeccak,
+        ] as const;
+      // A route squatted before the honest one: refused at construction.
+      const squatted = await deployGateway(gatewayOwner.address);
+      await squatted.connect(gatewayOwner).addRoute(await (await acceptAll(rogueHash(V610_SELECTOR))).getAddress());
+      await expect(factory.deploy(...(await pins(squatted)))).to.be.revertedWithCustomError(
+        factory,
+        "RouteVerifierMismatch",
       );
+      // Honest route: the real proof verifies through the coupling.
+      const gateway = await deployGateway(gatewayOwner.address);
+      await gateway.connect(gatewayOwner).addRoute(await v610.getAddress());
+      const probe = await factory.deploy(...(await pins(gateway)));
+      const { programVKey, publicValues, proofBytes } = V610_PROOF;
+      await probe.verifyProof.staticCall(programVKey, publicValues, proofBytes);
+      // An accept-all route under another selector is unreachable: the pinned verifier checks its own selector.
+      await gateway.connect(gatewayOwner).addRoute(await (await acceptAll(rogueHash(ROGUE_SELECTOR))).getAddress());
+      await expect(
+        probe.verifyProof.staticCall(programVKey, publicValues, ethers.concat([ROGUE_SELECTOR, ethers.ZeroHash])),
+      ).to.be.revertedWithCustomError(v610, "WrongVerifierSelector");
+      // The freeze is upstream's kill switch here: the same real proof now fails closed.
+      await gateway.connect(gatewayOwner).freezeRoute(V610_SELECTOR);
+      await expect(probe.verifyProof.staticCall(programVKey, publicValues, proofBytes))
+        .to.be.revertedWithCustomError(probe, "PinnedRouteFrozen")
+        .withArgs(V610_SELECTOR);
+      expect(FACTS.AF_directFreezeCoupled).to.deep.equal({
+        squattedRouteRejectedAtConstruction: true,
+        realProofAcceptedThroughCoupling: true,
+        upstreamFreezeFailsClosed: true,
+        otherSelectorRouteGrantsNothing: true,
+      });
+    });
+  });
+
+  describe("the options recorded in decision-inputs.json are the ones these probes ran", function () {
+    // Each pin an option declares must be a constructor check of the probe contract that ran for it, read from
+    // that contract's ABI rather than restated here.
+    const PIN_OF_PARAMETER: Record<string, string> = {
+      selector: "selector",
+      verifier: "routeVerifier",
+      gatewayCodehash: "gatewayCode",
+      verifierCodehash: "verifierCode",
+      expectedSp1VerifierCodehash: "verifierCode",
+    };
+    const pinsOf = async (contract: string) =>
+      (await ethers.getContractFactory(contract)).interface.deploy.inputs
+        .map((input) => PIN_OF_PARAMETER[input.name])
+        .filter((pin): pin is string => !!pin)
+        .sort();
+    const declared = (id: string) => [...INPUTS.options.find((o: { id: string }) => o.id === id).pins].sort();
+
+    it("A, AF, B and B0 declare exactly the pins their probe contracts check; C and D declare none", async function () {
+      expect(declared("A")).to.deep.equal(await pinsOf("ZKMLDSAVerifierCodePinnedProbe"));
+      expect(declared("AF")).to.deep.equal(await pinsOf("FreezeCoupledSp1VerifierProbe"));
+      expect(declared("B")).to.deep.equal(await pinsOf("RoutePinnedGatewayProbe"));
+      expect(declared("B0")).to.deep.equal(await pinsOf("SelectorPinnedGatewayProbe"));
+      expect(declared("C")).to.deep.equal([]);
+      expect(declared("D")).to.deep.equal([]);
+    });
+
+    it("each option's components are the contracts its probes deployed", function () {
+      const components = (id: string) => INPUTS.options.find((o: { id: string }) => o.id === id).components;
+      expect(components("A")).to.deep.equal(["sp1Verifier"]);
+      expect(components("AF")).to.deep.equal(["sp1Verifier", "upstreamFreezeBit"]);
+      for (const id of ["B", "B0", "D"]) expect(components(id)).to.deep.equal(["upstreamGateway", "sp1Verifier"]);
+      expect(components("C")).to.deep.equal(["walletwallGateway", "sp1Verifier"]);
     });
   });
 });

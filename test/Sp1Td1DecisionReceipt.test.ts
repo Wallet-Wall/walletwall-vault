@@ -16,6 +16,7 @@ import {
   TD1_CLAIM_KEYS,
   TD1_INPUTS_REL,
   TD1_RECEIPT_REL,
+  boundMeasurementHashes,
   buildDecisionReceipt,
   checkContextFresh,
   decideTrustTarget,
@@ -45,6 +46,7 @@ const VENDOR_VKEY = "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4
 const VENDOR_ELF = "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a";
 const LOCAL_VKEY = "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597";
 const LOCAL_ELF = "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a";
+const PAUSE = "WalletWall vault owner pause() — liveness only; manual unless automated";
 
 describe("SP1-TD1 decision receipt", function () {
   before(function () {
@@ -66,7 +68,8 @@ describe("SP1-TD1 decision receipt", function () {
       expect(r.decisions.PROGRAM_VKEY_DESIGNATION.vkey).to.equal(VENDOR_VKEY);
       expect(r.decisions.PROGRAM_VKEY_DESIGNATION.elfSha256).to.equal(VENDOR_ELF);
       expect(r.decisions.UPGRADE_MODEL).to.equal("EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION");
-      expect(r.decisions.CROSS_CHAIN_MODEL).to.equal("CODE_HASH_PINNED_SAME_IDENTITY_ON_EVERY_CHAIN");
+      expect(r.decisions.CROSS_CHAIN_MODEL).to.equal("CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK");
+      expect(r.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("OWNER_DECISION_REQUIRED");
       expect(r.decisions.REAL_PROOF_LANE_UNBLOCKED.value).to.equal(true);
       expect(r.decisions.IMPLEMENTATION_REQUIRED.required).to.equal(true);
     });
@@ -96,6 +99,58 @@ describe("SP1-TD1 decision receipt", function () {
       c.inputs.evidence.td1Observations.pop();
       expect(checkContextFresh(c)).to.include("decision inputs must list exactly the TD1 observation files");
     });
+
+    it("refuses a checkout whose HEAD records other zkvm trees than the subject, or none", function () {
+      expect(CTX.gitTrees).to.deep.equal({
+        guest: CTX.inputs.subject.zkvmGuestTree,
+        host: CTX.inputs.subject.zkvmHostTree,
+      });
+      const c1 = ctx();
+      c1.gitTrees.guest = "0".repeat(40);
+      expect(checkContextFresh(c1)).to.include(
+        `stale: HEAD:zkvm/guest is ${"0".repeat(40)}, not the subject's ${CTX.inputs.subject.zkvmGuestTree}`,
+      );
+      const c2 = ctx();
+      c2.gitTrees.host = null;
+      expect(checkContextFresh(c2)).to.include(
+        `stale: HEAD:zkvm/host is null, not the subject's ${CTX.inputs.subject.zkvmHostTree}`,
+      );
+    });
+
+    it("binds each committed measurement input to the hash its observation recorded", function () {
+      const files = CTX.inputs.evidence.measurementFiles;
+      expect(files.map((m) => [m.path, CTX.boundHashes[m.path]])).to.deep.equal(files.map((m) => [m.path, m.sha256]));
+      const [script] = files;
+      const c1 = ctx();
+      c1.boundHashes[script.path] = "0".repeat(64);
+      expect(checkContextFresh(c1).some((e) => e.startsWith(`unbound: ${script.path} (`))).to.equal(true);
+      const c2 = ctx();
+      c2.inputs.evidence.measurementFiles[0].boundTo.observation = c2.inputs.evidence.sp1p1Receipt.path;
+      expect(checkContextFresh(c2)).to.include(
+        `unbound: ${script.path} is bound to ${c2.inputs.evidence.sp1p1Receipt.path}, which is not a TD1 observation`,
+      );
+      // The bytes on disk are part of the evidence set like every observation.
+      const c3 = ctx();
+      c3.fileHashes[script.path] = "0".repeat(64);
+      expect(checkContextFresh(c3).some((e) => e.startsWith(`stale: ${script.path} on disk`))).to.equal(true);
+      expect(built().evidence.files.map((f) => f.path)).to.include.members(files.map((m) => m.path));
+    });
+
+    it("records a pointer that resolves to nothing, to a non-string, or through a missing step, as unbound", function () {
+      const path = CTX.inputs.evidence.measurementFiles[0].path;
+      for (const pointer of ["/scripts/missing.sh", "/scripts", "/nope/deeper", "scripts/remap-build.sh"]) {
+        const c = ctx();
+        c.inputs.evidence.measurementFiles[0].boundTo.pointer = pointer;
+        c.boundHashes = boundMeasurementHashes(c.inputs);
+        expect(c.boundHashes[path], pointer).to.equal(null);
+        expect(
+          checkContextFresh(c).some((e) => e.startsWith(`unbound: ${path} (`)),
+          pointer,
+        ).to.equal(true);
+      }
+      // Positive control: the recorded pointer resolves to the script's hash.
+      expect(boundMeasurementHashes(CTX.inputs)[path]).to.equal(CTX.inputs.evidence.measurementFiles[0].sha256);
+    });
   });
 
   describe("trust target: derivations respond to the facts", function () {
@@ -122,13 +177,17 @@ describe("SP1-TD1 decision receipt", function () {
       ]);
     });
 
-    it("ranks by authority minimisation: A over the viable pinned gateway, which carries external liveness levers", function () {
+    it("ranks by authority minimisation: A over the viable options that carry external liveness levers", function () {
       const r = built();
-      expect(option(r, "A").viable).to.equal(true);
-      expect(option(r, "B").viable).to.equal(true);
+      expect(["A", "AF", "B"].map((id) => option(r, id).viable)).to.deep.equal([true, true, true]);
       expect(decideTrustTarget(r.options)).to.deep.equal({ decision: "DIRECT_IMMUTABLE_VERIFIER", optionId: "A" });
-      // Positive control for the tie-break: without A, the pinned gateway is the decision.
+      // Positive controls for the tie-breaks: without A, the freeze coupling (same liveness principals, shorter
+      // path) is the decision; without both, the pinned gateway.
       expect(decideTrustTarget(r.options.filter((o) => o.id !== "A"))).to.deep.equal({
+        decision: "DIRECT_IMMUTABLE_VERIFIER",
+        optionId: "AF",
+      });
+      expect(decideTrustTarget(r.options.filter((o) => o.id !== "A" && o.id !== "AF"))).to.deep.equal({
         decision: "SELECTOR_PINNED_GATEWAY",
         optionId: "B",
       });
@@ -154,6 +213,11 @@ describe("SP1-TD1 decision receipt", function () {
       expect(c.viable).to.equal(false);
       expect(c.widen.find((l) => l.lever === "gatewayAdminAddRoute")?.delaySeconds).to.equal(0);
       expect(c.requiresRedeployToUpgrade).to.equal(false);
+      // Its admin's freeze is dual-use like upstream's: a liveness lever that also fails closed on a defect.
+      expect(c.defectResponse).to.deep.equal([
+        PAUSE,
+        "WalletWall gateway admin via gatewayAdminFreezeRoute (fail-closed at once, at the holder's discretion)",
+      ]);
     });
 
     it("a verifier runtime with a reachable state write is not an immutable target: nothing is decided", function () {
@@ -262,11 +326,21 @@ describe("SP1-TD1 decision receipt", function () {
       ]);
     });
 
-    it("a gateway with a set EIP-1967 slot is reported as code-mutable", function () {
-      expect(option(built(), "D").gatewayCodeMutable).to.equal(false);
+    it("a gateway with a set EIP-1967 slot is reported as code-mutable, also where only its freeze bit is read", function () {
+      const mutable = (r: Td1DecisionReceipt) => ["A", "AF", "D"].map((id) => option(r, id).gatewayCodeMutable);
+      expect(mutable(built())).to.deep.equal([null, false, false]);
       const c = ctx();
       c.chain.chains["1"].gateway.eip1967ImplementationSlot = `0x${"0".repeat(63)}1`;
-      expect(option(built(c), "D").gatewayCodeMutable).to.equal(true);
+      expect(mutable(built(c))).to.deep.equal([null, true, true]);
+    });
+
+    it("an option that reads the upstream gateway is reproducible only from the mainnet gateway bytes", function () {
+      const reproducible = (r: Td1DecisionReceipt) =>
+        ["A", "AF", "B"].map((id) => option(r, id).trustRootIndependentlyReproducible);
+      expect(reproducible(built())).to.deep.equal([true, true, true]);
+      const c = ctx();
+      c.inputs.probeFacts.bytes.gatewayRuntimeEqualsMainnet = false;
+      expect(reproducible(built(c))).to.deep.equal([true, false, false]);
     });
 
     it("the pinned gateway loses viability unless every pin fact holds", function () {
@@ -334,6 +408,210 @@ describe("SP1-TD1 decision receipt", function () {
       expect(gap.missingFromSp1P1History).to.equal(true);
       expect(gap.indexerHasLog).to.equal(false);
       expect(built().claims.GATEWAY_ROUTE_HISTORY_COMPLETE.status).to.equal("NOT_ESTABLISHED");
+    });
+
+    it("exercises the pinned key with a real v6.1.0 proof, and refuses each broken link of that join", function () {
+      const real = built().trustTarget.realProofOnPinnedKey;
+      expect(real).to.deep.equal({
+        transaction: "0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4",
+        programVKey: "0x006cd47fd23937a6d247696cace28c22d2c6a8280447e6ac45a3571de232d6e3",
+        verifiedInProbe: true,
+        established: true,
+      });
+      expect(built().claims.PINNED_VERIFYING_KEY_REAL_PROOF.status).to.equal("ESTABLISHED");
+      const breaks: [string, (c: DecisionContext) => void][] = [
+        ["selector", (c) => (c.mainnetProof.decoded.proofSelector = "0x0e78f4db")],
+        ["exit code", (c) => (c.mainnetProof.decoded.exitCode = "1")],
+        ["vk root", (c) => (c.mainnetProof.decoded.vkRoot = `0x${"00".repeat(32)}`)],
+        ["receipt", (c) => (c.mainnetProof.source.receiptStatus = 0)],
+        ["one provider", (c) => (c.mainnetProof.source.transactionOnBothProviders = false)],
+        ["probe accept", (c) => (c.inputs.probeFacts.semantics.realV610ProofAcceptedDirect = false)],
+        ["probe tamper", (c) => (c.inputs.probeFacts.semantics.realV610TamperedRejectedDirectAndViaGateway = false)],
+        // Two roots across chains: the proof's root matching the first one does not identify "the pinned key".
+        ["split root", (c) => (c.chain.chains["84532"].verifiers["v6.1.0"].VK_ROOT = `0x${"11".repeat(32)}`)],
+      ];
+      for (const [name, breakIt] of breaks) {
+        const c = ctx();
+        breakIt(c);
+        const r = built(c);
+        expect(r.trustTarget.realProofOnPinnedKey.established, name).to.equal(false);
+        expect(r.claims.PINNED_VERIFYING_KEY_REAL_PROOF.status, name).to.equal("NOT_ESTABLISHED");
+        expect(r.decisions.SP1_TRUST_TARGET_DECISION, name).to.equal("UNRESOLVED");
+      }
+    });
+
+    it("a verdict may depend only on the call: extra reads, non-precompile targets or unbounded code are refused", function () {
+      expect(built().trustTarget.runtime).to.deep.include({
+        reachableEnvironmentReads: { EXTCODESIZE: 1 },
+        constantCallTargets: ["0x05", "0x06", "0x07", "0x08"],
+        metadataIsSolcCbor: true,
+      });
+      const c1 = ctx();
+      c1.inputs.probeFacts.verifierRuntime.v610ReachableEnvironmentReads = { EXTCODESIZE: 1, SLOAD: 2 };
+      expect(built(c1).trustTarget.failures).to.include(
+        "the verifier runtime reads SLOAD: its verdict could depend on mutable state",
+      );
+      const c2 = ctx();
+      c2.inputs.probeFacts.verifierRuntime.v610ConstantStaticcallTargets.push("0x01");
+      expect(built(c2).trustTarget.failures).to.include(
+        "the verifier runtime calls 0x01, which is not a BN254/modexp precompile",
+      );
+      const c3 = ctx();
+      c3.inputs.probeFacts.verifierRuntime.v610MetadataIsSolcCbor = false;
+      expect(built(c3).trustTarget.failures).to.include(
+        "the runtime's trailing metadata is not solc's CBOR: the scan may miss code",
+      );
+      for (const c of [c1, c2, c3]) expect(built(c).decisions.SP1_TRUST_TARGET_DECISION).to.equal("UNRESOLVED");
+    });
+
+    it("AF: a read-only freeze coupling widens nothing, and its freeze protects only while the route pin holds", function () {
+      const af = option(built(), "AF");
+      expect(af.viable).to.equal(true);
+      expect(af.widen.filter((l) => !l.governed)).to.deep.equal([]);
+      expect(af.disable.map((l) => [l.lever, l.protectiveOnVerifierDefect])).to.deep.equal([
+        ["freezeRoute", true],
+        ["freezeRoute", true],
+      ]);
+      expect(af.upstreamGovernanceDependency).to.equal("liveness");
+      expect(af.defectResponse.length).to.equal(3);
+      expect(af.proxyOrAdmin).to.equal("upstream Ownable owner, read for its freeze bit only (no proxy)");
+      expect(af.routeRegistry).to.equal(false);
+      expect(af.crossChainIdentity).to.contain("; the freeze bit ties each chain to its gateway owner (1: Safe 1.3.0");
+      expect(option(built(), "A").crossChainIdentity).to.not.contain("freeze bit");
+      const alternatives = (c: DecisionContext) =>
+        built(c).decisions.DEFECT_RESPONSE_COUPLING.viableAlternatives.map((a) => a.id);
+      for (const pin of ["selector", "routeVerifier", "gatewayCode"]) {
+        const c = ctx();
+        const input = c.inputs.options.find((o) => o.id === "AF")!;
+        input.pins = input.pins.filter((p) => p !== pin);
+        expect(
+          option(built(c), "AF").disable.every((l) => !l.protectiveOnVerifierDefect),
+          pin,
+        ).to.equal(true);
+        // A freeze that may belong to another verifier's route is a liveness cost only: no defect response.
+        expect(option(built(c), "AF").defectResponse, pin).to.deep.equal([PAUSE]);
+        expect(alternatives(c), pin).to.deep.equal(["B"]);
+      }
+      for (const fact of ["squattedRouteRejectedAtConstruction", "otherSelectorRouteGrantsNothing"] as const) {
+        const c = ctx();
+        c.inputs.probeFacts.AF_directFreezeCoupled[fact] = false;
+        expect(alternatives(c), fact).to.deep.equal(["B"]);
+      }
+      // Without an executed fail-closed freeze, AF has no external lever at all: nothing to trade.
+      const c = ctx();
+      c.inputs.probeFacts.AF_directFreezeCoupled.upstreamFreezeFailsClosed = false;
+      expect(option(built(c), "AF").disable).to.deep.equal([]);
+      expect(alternatives(c)).to.deep.equal(["B"]);
+    });
+
+    it("keeps the defect response an open owner decision while a viable fail-closed alternative exists", function () {
+      const dc = built().decisions.DEFECT_RESPONSE_COUPLING;
+      expect(dc.status).to.equal("OWNER_DECISION_REQUIRED");
+      expect(dc.viableAlternatives.map((a) => a.id)).to.deep.equal(["AF", "B"]);
+      expect(dc.viableAlternatives[0].externalLivenessPrincipals.length).to.equal(2);
+      expect(dc.decidedOptionDefectResponse).to.deep.equal([
+        "WalletWall vault owner pause() — liveness only; manual unless automated",
+      ]);
+      expect(dc.choices.map((x) => [x.id, x.options])).to.deep.equal([
+        ["WALLETWALL_WATCHER_AND_PAUSE", ["A"]],
+        ["UPSTREAM_FREEZE_FAIL_CLOSED", ["AF", "B"]],
+      ]);
+      expect([dc.recommendation, dc.requiredBeforeRealValue]).to.deep.equal(["WALLETWALL_WATCHER_AND_PAUSE", true]);
+      expect(built().claims.DEFECT_RESPONSE_PATH.basis).to.contain("open owner decision DEFECT_RESPONSE_COUPLING");
+      // No fail-closed alternative left (AF gone, B's route replaceable): the decision does not apply.
+      const c1 = ctx();
+      c1.inputs.options = c1.inputs.options.filter((o) => o.id !== "AF");
+      c1.inputs.probeFacts.B_selectorRouteCodePinned.pinnedRouteReplaceable = true;
+      const r1 = built(c1);
+      expect(r1.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("NOT_APPLICABLE");
+      expect(r1.claims.DEFECT_RESPONSE_PATH.basis).to.contain("no protective alternative exists");
+      expect(rulesOf(r1)).to.deep.equal([]);
+      // The decided option is never its own alternative.
+      const c2 = ctx();
+      c2.inputs.options = c2.inputs.options.filter((o) => o.id === "B");
+      const r2 = built(c2);
+      expect(r2.decisions.SP1_TRUST_TARGET_OPTION).to.equal("B");
+      expect(r2.decisions.DEFECT_RESPONSE_COUPLING.status).to.equal("NOT_APPLICABLE");
+      // A missing owner-decision record leaves nothing to choose from, and the rules refuse it.
+      const c3 = ctx();
+      c3.inputs.ownerDecisions = [];
+      const r3 = built(c3).decisions.DEFECT_RESPONSE_COUPLING;
+      expect([r3.status, r3.choices, r3.recommendation, r3.rationale, r3.requiredBeforeRealValue]).to.deep.equal([
+        "OWNER_DECISION_REQUIRED",
+        [],
+        null,
+        null,
+        true,
+      ]);
+      expectRule(built(c3), "the owner decision offers no choice realized by option A");
+      expectRule(built(c3), "the owner decision's recommendation is not one of its choices");
+    });
+
+    it("an unresolved trust target has no decided defect response", function () {
+      const c = ctx();
+      c.inputs.probeFacts.verifierRuntime.v610ForbiddenOpcodes = ["SSTORE"];
+      const dc = built(c).decisions.DEFECT_RESPONSE_COUPLING;
+      expect([dc.status, dc.decidedOptionDefectResponse, dc.viableAlternatives]).to.deep.equal([
+        "NOT_APPLICABLE",
+        [],
+        [],
+      ]);
+    });
+
+    it("the upgrade and cross-chain models follow the decided option and the per-chain evidence", function () {
+      const models = (r: Td1DecisionReceipt) => [r.decisions.UPGRADE_MODEL, r.decisions.CROSS_CHAIN_MODEL];
+      expect(models(built())).to.deep.equal([
+        "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION",
+        "CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK",
+      ]);
+      // A decided route registry is a per-chain route table.
+      const c1 = ctx();
+      c1.inputs.options = c1.inputs.options.filter((o) => o.id === "B");
+      expect(models(built(c1))).to.deep.equal(["EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION", "PER_CHAIN_ROUTE_TABLE"]);
+      // One measured chain carries no cross-chain model, and the rules accept that answer.
+      const c2 = ctx();
+      c2.inputs.trustTargetSelection.requiredChains = ["1"];
+      const r2 = built(c2);
+      expect(r2.decisions.SP1_TRUST_TARGET_OPTION).to.equal("A");
+      expect(models(r2)).to.deep.equal(["EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION", "UNRESOLVED"]);
+      expect(rulesOf(r2)).to.deep.equal([]);
+      // Nothing decided: nothing to upgrade or carry across chains.
+      const c3 = ctx();
+      c3.inputs.probeFacts.verifierRuntime.v610ForbiddenOpcodes = ["SSTORE"];
+      expect(models(built(c3))).to.deep.equal(["UNRESOLVED", "UNRESOLVED"]);
+      // An unpinned registry that were viable would route upgrades (the rules still refuse it).
+      const c4 = ctx();
+      c4.inputs.options = c4.inputs.options.filter((o) => o.id === "C");
+      c4.inputs.probeFacts.C_walletwallGateway.adminAddRouteWidensAcceptedRelation = false;
+      const r4 = built(c4);
+      expect(models(r4)).to.deep.equal(["MUTABLE_ROUTING", "PER_CHAIN_ROUTE_TABLE"]);
+      expectRule(r4, "option C: an unpinned route registry cannot be viable");
+    });
+
+    it("measures upstream's freezes: a batch with an unaffected version, and one incident response", function () {
+      const timing = (r: Td1DecisionReceipt) => [
+        r.upstreamTimeline.daysFromAdvisoryToFreeze,
+        r.upstreamTimeline.advisedFreezeBatchedWithUnaffectedVersionSeconds,
+        r.upstreamTimeline.brokenBuildFreezeHours,
+      ];
+      expect(timing(built())).to.deep.equal([181, 108, 21.4]);
+      // Order-independent: Sepolia's freezes of the same versions are not mainnet's.
+      const c1 = ctx();
+      c1.timeline.events.reverse();
+      expect(timing(built(c1))).to.deep.equal([181, 108, 21.4]);
+      // The batch is a distance, whichever freeze came first.
+      const c2 = ctx();
+      const v5 = c2.timeline.events.find((e) => e.chainId === 1 && e.version === "v5.0.0")!;
+      v5.timestamp += 216;
+      expect(timing(built(c2))[1]).to.equal(108);
+      // Uncorroborated events are not measurements.
+      const c3 = ctx();
+      c3.timeline.events.find((e) => e.chainId === 1 && e.version === "v5.0.0")!.providersAgree = false;
+      c3.timeline.events.find((e) => e.event === "RouteFrozen" && e.selector === "0x2b4aeaf7")!.providersAgree = false;
+      expect(timing(built(c3))).to.deep.equal([181, null, null]);
+      const c4 = ctx();
+      c4.timeline.events = c4.timeline.events.filter((e) => !(e.event === "RouteAdded" && e.selector === "0x2b4aeaf7"));
+      expect(timing(built(c4))[2]).to.equal(null);
     });
   });
 
@@ -699,12 +977,156 @@ describe("SP1-TD1 decision receipt", function () {
       expectRule(R, "the real-proof lane needs the target circuit to match the subject's SP1 version");
     });
 
-    it("rejects proof, readiness and algorithm-independence claims from a design lane", function () {
+    it("rejects a verdict that disagrees with the two decisions", function () {
+      R.verdict = "STOP_NO_DESIGN_JUSTIFIED";
+      expectRule(R, "verdict STOP_NO_DESIGN_JUSTIFIED disagrees with the decisions (DESIGN_DECIDED)");
+      R = clone(committed());
+      R.decisions.SP1_TRUST_TARGET_DECISION = "UNRESOLVED";
+      R.decisions.SP1_TRUST_TARGET_OPTION = null;
+      expectRule(R, "verdict DESIGN_DECIDED disagrees with the decisions (PARTIAL_DECISION)");
+      R.decisions.PROGRAM_IDENTITY_DECISION = "UNRESOLVED";
+      expectRule(R, "verdict DESIGN_DECIDED disagrees with the decisions (STOP_NO_DESIGN_JUSTIFIED)");
+      R = clone(committed());
+      R.decisions.PROGRAM_IDENTITY_DECISION = "UNRESOLVED";
+      expectRule(R, "verdict DESIGN_DECIDED disagrees with the decisions (PARTIAL_DECISION)");
+    });
+
+    it("rejects an authorization lever marked protective", function () {
+      option(R, "D").widen.find((l) => l.lever === "addRoute")!.protectiveOnVerifierDefect = true;
+      expectRule(R, "option D: authorization lever addRoute cannot be marked protective");
+    });
+
+    it("rejects an upgrade property the route registry and pins contradict", function () {
+      option(R, "A").requiresRedeployToUpgrade = false;
+      expectRule(R, "option A: requiresRedeployToUpgrade disagrees with its route registry and pins");
+      R = clone(committed());
+      option(R, "D").requiresRedeployToUpgrade = true;
+      expectRule(R, "option D: requiresRedeployToUpgrade disagrees with its route registry and pins");
+      R = clone(committed());
+      option(R, "B").requiresRedeployToUpgrade = false;
+      expectRule(R, "option B: requiresRedeployToUpgrade disagrees with its route registry and pins");
+    });
+
+    it("rejects a decided target on a chain read a second provider does not corroborate", function () {
+      R.trustTarget.chains[3].providersAgree = false;
+      expectRule(R, "a trust target cannot be decided on a chain read that a second provider does not corroborate");
+    });
+
+    it("rejects a direct target whose verdict could depend on more than the call", function () {
+      R.trustTarget.runtime.reachableEnvironmentReads = { EXTCODESIZE: 1, BALANCE: 1 };
+      expectRule(R, "a direct immutable target cannot read state or environment beyond its own code size");
+      R = clone(committed());
+      R.trustTarget.runtime.constantCallTargets = ["0x02", "0x08"];
+      expectRule(R, "a direct immutable target may call only the BN254/modexp precompiles at constant addresses");
+      R = clone(committed());
+      R.trustTarget.runtime.metadataIsSolcCbor = false;
+      expectRule(R, "a direct immutable target's opcode scan needs solc's CBOR metadata to bound the code");
+    });
+
+    it("rejects a direct target, or a real-proof claim, without a real proof on the pinned key", function () {
+      R.trustTarget.realProofOnPinnedKey.established = false;
+      expectRule(R, "a direct immutable target needs a real proof verified on its pinned key");
+      expectRule(
+        R,
+        "PINNED_VERIFYING_KEY_REAL_PROOF cannot be ESTABLISHED without a real proof verified on the pinned key",
+      );
+    });
+
+    it("rejects upgrade and cross-chain models that the decided option and the evidence do not carry", function () {
+      R.decisions.UPGRADE_MODEL = "MUTABLE_ROUTING";
+      expectRule(
+        R,
+        "UPGRADE_MODEL MUTABLE_ROUTING disagrees with the decided option (EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION)",
+      );
+      R = clone(committed());
+      R.decisions.SP1_TRUST_TARGET_DECISION = "UNRESOLVED";
+      R.decisions.SP1_TRUST_TARGET_OPTION = null;
+      expectRule(
+        R,
+        "UPGRADE_MODEL EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION disagrees with the decided option (UNRESOLVED)",
+      );
+      expectRule(
+        R,
+        "CROSS_CHAIN_MODEL CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK disagrees with the evidence (UNRESOLVED)",
+      );
+      R = clone(committed());
+      R.decisions.CROSS_CHAIN_MODEL = "PER_CHAIN_ROUTE_TABLE";
+      expectRule(
+        R,
+        "CROSS_CHAIN_MODEL PER_CHAIN_ROUTE_TABLE disagrees with the evidence (CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK)",
+      );
+      const unresolved =
+        "CROSS_CHAIN_MODEL CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK disagrees with the evidence (UNRESOLVED)";
+      const breaks: ((r: Td1DecisionReceipt) => void)[] = [
+        (r) => r.trustTarget.chainExecution.splice(1),
+        (r) => (r.trustTarget.chainExecution[1].verdictsAsExpected = false),
+        (r) => (r.trustTarget.chainExecution[1].providersAgree = false),
+        (r) => (r.trustTarget.established = false),
+      ];
+      for (const breakIt of breaks) {
+        R = clone(committed());
+        breakIt(R);
+        expectRule(R, unresolved);
+      }
+      R = clone(committed());
+      R.decisions.SP1_TRUST_TARGET_DECISION = "SELECTOR_PINNED_GATEWAY";
+      R.decisions.SP1_TRUST_TARGET_OPTION = "B";
+      expectRule(
+        R,
+        "CROSS_CHAIN_MODEL CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK disagrees with the evidence (PER_CHAIN_ROUTE_TABLE)",
+      );
+    });
+
+    it("rejects a defect response that drops or bends the open owner decision", function () {
+      const dc = () => R.decisions.DEFECT_RESPONSE_COUPLING;
+      (dc() as { status: string }).status = "NOT_APPLICABLE";
+      expectRule(R, "viable fail-closed alternatives (AF, B) make the defect response an owner decision");
+      R = clone(committed());
+      dc().viableAlternatives = dc().viableAlternatives.filter((a) => a.id !== "B");
+      expectRule(R, "DEFECT_RESPONSE_COUPLING must list exactly the viable fail-closed alternatives");
+      R = clone(committed());
+      dc().choices[1].options = ["AF"];
+      expectRule(R, "the owner decision offers no choice realized by option B");
+      R = clone(committed());
+      dc().choices = dc().choices.slice(1);
+      expectRule(R, "the owner decision offers no choice realized by option A");
+      R = clone(committed());
+      dc().recommendation = "SOMETHING_ELSE";
+      expectRule(R, "the owner decision's recommendation is not one of its choices");
+      R = clone(committed());
+      const p = R.decisions.REAL_PROOF_LANE_UNBLOCKED;
+      p.preconditions = p.preconditions.filter((x) => !x.includes("DEFECT_RESPONSE_COUPLING"));
+      expectRule(R, "an open owner decision required before real value must be a real-proof precondition");
+      // Control: a decision the owner does not require before real value carries no such precondition.
+      dc().requiredBeforeRealValue = false;
+      expect(rulesOf(R)).to.deep.equal([]);
+      R = clone(committed());
+      delete (R.decisions as Partial<Td1DecisionReceipt["decisions"]>).DEFECT_RESPONSE_COUPLING;
+      expectRule(R, "DEFECT_RESPONSE_COUPLING is required");
+    });
+
+    it("counts as fail-closed alternatives only viable, undecided options whose external levers all protect", function () {
+      const listedExactly = "DEFECT_RESPONSE_COUPLING must list exactly the viable fail-closed alternatives";
+      // A freeze recorded as not protective takes AF out of the trade-off.
+      option(R, "AF").disable[0].protectiveOnVerifierDefect = false;
+      expectRule(R, listedExactly);
+      // Deciding B leaves AF as the only alternative: B is not its own, and A has no external lever to trade.
+      R = clone(committed());
+      R.decisions.SP1_TRUST_TARGET_DECISION = "SELECTOR_PINNED_GATEWAY";
+      R.decisions.SP1_TRUST_TARGET_OPTION = "B";
+      R.decisions.DEFECT_RESPONSE_COUPLING.viableAlternatives =
+        R.decisions.DEFECT_RESPONSE_COUPLING.viableAlternatives.filter((a) => a.id === "AF");
+      expect(rulesOf(R)).to.not.include(listedExactly);
+      expectRule(R, "a viable option with fewer external liveness levers exists (A)");
+    });
+
+    it("rejects proof, readiness, algorithm-independence and defect-response claims from a design lane", function () {
       for (const k of [
         "REAL_SP1_PROOF_GENERATED",
         "REAL_SP1_PROOF_VERIFIED",
         "PRODUCTION_READINESS",
         "VKEY_DERIVATION_ALGORITHM_INDEPENDENT",
+        "DEFECT_RESPONSE_PATH",
       ] as const) {
         const r = clone(committed());
         r.claims[k].status = "ESTABLISHED";
@@ -718,6 +1140,20 @@ describe("SP1-TD1 decision receipt", function () {
       R = clone(committed());
       R.decisions.PROGRAM_VKEY_DESIGNATION.status = "NOT_DESIGNATED";
       expectRule(R, "PROGRAM_VKEY_DESIGNATED cannot be ESTABLISHED without a designation");
+    });
+
+    it("rejects a no-external-lever claim for a decided option that has one, or for no decided option", function () {
+      const claim =
+        "DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER cannot be ESTABLISHED while the decided option has an external lever";
+      option(R, "A").disable.push({ ...option(R, "B").disable[0] });
+      expectRule(R, claim);
+      R = clone(committed());
+      option(R, "A").widen.push({ ...option(R, "D").widen.find((l) => l.lever === "addRoute")! });
+      expectRule(R, claim);
+      R = clone(committed());
+      R.decisions.SP1_TRUST_TARGET_DECISION = "UNRESOLVED";
+      R.decisions.SP1_TRUST_TARGET_OPTION = null;
+      expectRule(R, claim);
     });
 
     it("rejects unknown or missing structure", function () {
@@ -757,6 +1193,7 @@ describe("SP1-TD1 decision receipt", function () {
         ["PROGRAM_IDENTITY_DECISION", d.PROGRAM_IDENTITY_DECISION],
         ["UPGRADE_MODEL", d.UPGRADE_MODEL],
         ["CROSS_CHAIN_MODEL", d.CROSS_CHAIN_MODEL],
+        ["DEFECT_RESPONSE_COUPLING", d.DEFECT_RESPONSE_COUPLING.status],
         ["REAL_PROOF_LANE_UNBLOCKED", String(d.REAL_PROOF_LANE_UNBLOCKED.value)],
         ["IMPLEMENTATION_REQUIRED", String(d.IMPLEMENTATION_REQUIRED.required)],
       ]);

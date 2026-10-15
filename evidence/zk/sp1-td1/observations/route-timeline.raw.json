@@ -1,9 +1,9 @@
 {
   "schema": "walletwall.sp1-td1-route-timeline.v1",
-  "measuredAtUtc": "2026-10-15T12:56:04.682Z",
+  "measuredAtUtc": "2026-10-15T13:53:42.843Z",
   "tool": {
     "script": "route-timeline.cjs",
-    "scriptSha256": "25ca49f1ea3e8d02de8e21a62101b99b63f439dd7707d612d6b966cb6f7be311",
+    "scriptSha256": "d174c6a388c57e1c9d640caacdad451ed2c12aeb3a0a0b989adaf9eac5907c95",
     "node": "v24.16.0"
   },
   "upstreamAdvisory": {
@@ -185,6 +185,54 @@
           "url": "https://ethereum-sepolia-rpc.publicnode.com",
           "hash": "0x33f44c40b3a2a0adda6cb6b669175cea948865859a0ce69c1b0f7ebccb60e87f",
           "timestamp": 1771445784
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 10653682,
+      "event": "RouteAdded",
+      "selector": "0x2b4aeaf7",
+      "version": "v6.1.0 first build (broken)",
+      "blockHash": "0xa4118c7202cd0d7c4c1f23cc2c78249900dcac4d4b9f0b56bd07c8325a7e564b",
+      "timestamp": 1776116196,
+      "utc": "2026-04-13T21:36:36.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0xa4118c7202cd0d7c4c1f23cc2c78249900dcac4d4b9f0b56bd07c8325a7e564b",
+          "timestamp": 1776116196
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0xa4118c7202cd0d7c4c1f23cc2c78249900dcac4d4b9f0b56bd07c8325a7e564b",
+          "timestamp": 1776116196
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 10659903,
+      "event": "RouteFrozen",
+      "selector": "0x2b4aeaf7",
+      "version": "v6.1.0 first build (broken)",
+      "blockHash": "0x24fddd89632115fa01608e1d1b94abbc40e8c0de22f08bc0608f5531b214ba8c",
+      "timestamp": 1776193356,
+      "utc": "2026-04-14T19:02:36.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0x24fddd89632115fa01608e1d1b94abbc40e8c0de22f08bc0608f5531b214ba8c",
+          "timestamp": 1776193356
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0x24fddd89632115fa01608e1d1b94abbc40e8c0de22f08bc0608f5531b214ba8c",
+          "timestamp": 1776193356
         }
       ]
     },

@@ -32,7 +32,7 @@
     "td1Observations": [
       {
         "path": "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
-        "sha256": "324c934ea733dc0959d73996336bbcc5eb461a1d4ee2001ed3d14a8fd0ae29f7"
+        "sha256": "e4969d42ddbf2e06b9317f3284dbad7de77bd70832bd04310e7eb2b72a4b97d7"
       },
       {
         "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
@@ -47,8 +47,12 @@
         "sha256": "451e0720d4ba92eb72b4e9037bad8adbabb68a91878ff44b46a4809dfb958832"
       },
       {
+        "path": "evidence/zk/sp1-td1/observations/mainnet-v610-proof.raw.json",
+        "sha256": "c52d5eef226de2c397ff4c93189d5c3c73bc664f1977cd7222f760e28b27a7e3"
+      },
+      {
         "path": "evidence/zk/sp1-td1/observations/route-timeline.raw.json",
-        "sha256": "8ed81f6c14677184429584e47e700bb3b1ac814910b1084ab6f5d94cedecfda6"
+        "sha256": "cae924531b2cad09bfef44ba27c42fddf250e34466afad8b78656b440685857e"
       },
       {
         "path": "evidence/zk/sp1-td1/observations/upstream-proof-fixture.raw.json",
@@ -71,9 +75,44 @@
         "sha256": "cf650fd0b4890751f65ea43260c15cf68c5ce8a99ea9faf4723a62050d7252b1",
         "sourceCommit": "ad6211c8a20779c984b9ec13adc34adc543b068e",
         "sourcePath": ".github/sp1-p1-observation/observe.sh"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/workstation-driver-envB-run.sh",
+        "sha256": "3c46287adadca8ee87f80dad85ea17530c555248ffc100e10763baec00d39e63",
+        "sourceCommit": null,
+        "sourcePath": "SP1-P1 session working directory p1/envB/envB-run.sh",
+        "provenance": "the workstation (environment B) driver; never committed by SP1-P1. Last modified 8 s before the measured B run's output directory out-20261015T040434Z, and it copies in the same host-build-in-container.sh (identical sha256) that the runner used"
       }
     ],
-    "probeSuite": "test/Sp1Td1TrustTargetProbes.test.ts"
+    "probeSuite": "test/Sp1Td1TrustTargetProbes.test.ts",
+    "measurementFiles": [
+      {
+        "path": "evidence/zk/sp1-td1/measurement/remap-build.sh",
+        "sha256": "b0543ff370b21aa4bfd434623abffb56473fc6c757c4c45d436453c2741f088b",
+        "boundTo": {
+          "observation": "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
+          "pointer": "/scripts/remap-build.sh"
+        }
+      },
+      {
+        "path": "evidence/zk/sp1-td1/measurement/00-preregistration.txt",
+        "sha256": "3e6860c71e291e53102d0a33a637655aac714b56fcdc1c1977aee09fa309725f",
+        "boundTo": {
+          "observation": "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
+          "pointer": "/preregistration/sha256"
+        }
+      }
+    ],
+    "measurementScriptsNotCommitted": {
+      "reason": "this repository's CodeQL security-extended configuration analyzes every JavaScript path outside build directories, and four of these scripts send file-derived data over the network, which it raises as new alerts; to leave the analyzed surface unchanged none of the five JavaScript measurement scripts is committed. Their exact bytes are published on the pull request. The chain-state, deployment-bytecode, chain-execution and route-timeline observations record the sha256 of the script that produced them, the local-remap observation records to-observation.cjs, and chain-execution names the mainnet-proof observation it wrote; the upstream fixture's extractor is identified by hash on the pull request only, and the image digests are re-derivable from the public registry (vendor-image.raw.json, method)",
+      "scripts": [
+        "measure-chain-state.cjs",
+        "chain-exec-probe.cjs",
+        "route-timeline.cjs",
+        "extract-upstream-fixture.cjs",
+        "to-observation.cjs"
+      ]
+    }
   },
   "trustTargetSelection": {
     "version": "v6.1.0",
@@ -105,6 +144,30 @@
       "probeFactsKey": "A_directCodePinned",
       "newAttackSurface": "none added: the consumer already calls ISP1Verifier; the pin is one EXTCODEHASH comparison at construction",
       "operationalComplexity": "a new wrapper per SP1 circuit release, applied through the vault's timelocked pqVerifier rotation; WalletWall watches upstream advisories and gateway freezes as signals"
+    },
+    {
+      "id": "AF",
+      "decisionValue": "DIRECT_IMMUTABLE_VERIFIER",
+      "label": "A, plus fail-closed when the upstream gateway freezes the pinned selector (read-only coupling)",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "upstream freeze-bit check (read-only)",
+        "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "sp1Verifier",
+        "upstreamFreezeBit"
+      ],
+      "pins": [
+        "verifierCode",
+        "selector",
+        "routeVerifier",
+        "gatewayCode"
+      ],
+      "probeFactsKey": "AF_directFreezeCoupled",
+      "newAttackSurface": "one read of the gateway's route table per verification; a per-chain gateway address",
+      "operationalComplexity": "as A, plus the gateway address per chain; a routine upstream deprecation freeze of v6.1.0 stops verification until WalletWall rotates"
     },
     {
       "id": "B",
@@ -204,11 +267,28 @@
       "realProofAcceptedViaGateway": true,
       "tamperedProofRejectedDirectAndViaGateway": true,
       "v610PreCheckRevertDataIdenticalDirectAndViaGateway": true,
-      "unroutedSelectorRejectedDirectAndViaGateway": true
+      "unroutedSelectorRejectedDirectAndViaGateway": true,
+      "realV610ProofAcceptedDirect": true,
+      "realV610ProofAcceptedViaGateway": true,
+      "realV610TamperedRejectedDirectAndViaGateway": true
     },
     "verifierRuntime": {
       "v610ForbiddenOpcodes": [],
-      "gatewayHasSstore": true
+      "gatewayHasSstore": true,
+      "v610ReachableEnvironmentReads": {
+        "EXTCODESIZE": 1
+      },
+      "v610StaticcallSites": {
+        "constantPrecompile": 13,
+        "computedTarget": 2
+      },
+      "v610ConstantStaticcallTargets": [
+        "0x05",
+        "0x06",
+        "0x07",
+        "0x08"
+      ],
+      "v610MetadataIsSolcCbor": true
     },
     "D_upstreamGatewayUnpinned": {
       "ownerAddRouteWidensAcceptedRelation": true,
@@ -241,6 +321,12 @@
       "rejectsAcceptAllVerifier": true,
       "unmodifiedConsumerRejectsForgedRouteProof": true,
       "noPrincipalCanAlterAcceptedRelation": true
+    },
+    "AF_directFreezeCoupled": {
+      "squattedRouteRejectedAtConstruction": true,
+      "realProofAcceptedThroughCoupling": true,
+      "upstreamFreezeFailsClosed": true,
+      "otherSelectorRouteGrantsNothing": true
     }
   },
   "programIdentitySelection": {
@@ -271,7 +357,7 @@
       "commands": [
         "git archive --format=tar HEAD zkvm/guest zkvm/host (the subject; no other files)",
         "docker create --platform linux/amd64 <image@digest>; docker cp the archive and the entrypoint in; no bind mounts, no cache volumes",
-        "in the container: cargo build --release --locked in /root/program/zkvm/host (build.rs -> sp1_build::build_program, local mode inside the image)",
+        "in the container: cargo build --release --locked in /root/program/zkvm/host (locks the HOST's dependencies; build.rs -> sp1_build::build_program builds the guest in local mode inside the image WITHOUT --locked, see guestLock)",
         "in the container: the host's own `vkey` / `acvp-vkey` on the ELFs it embedded",
         "outside every build environment: cargo-prove vkey --elf on each ELF file (vkey cross-check)"
       ],
@@ -294,12 +380,14 @@
         "a developer CARGO_HOME, RUSTFLAGS or CARGO_TARGET_DIR",
         "post-hoc ELF rewriting",
         "a hand-entered vkey"
-      ]
+      ],
+      "guestLock": "required: the canonical workflow must leave zkvm/guest/Cargo.lock unchanged by the build (git diff --exit-code after building) or pass BuildArgs.locked = true; sp1-build 6.3.1's build_program defaults to locked = false. The measured host-flow ELFs equal the --locked docker-mode ELFs on both hosts, so the designated identity is unaffected"
     }
   },
   "offChainLivenessDependencies": [
     "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's.",
-    "Rebuilding the canonical ELF needs the vendor image (ghcr.io, by digest) and crates.io for the locked crate set; the digest and Cargo.lock checksums protect integrity, not availability."
+    "Rebuilding the canonical ELF needs the vendor image (ghcr.io, by digest) and crates.io for the locked crate set; the digest and Cargo.lock checksums protect integrity, not availability.",
+    "A PqOnly user's exit during the 2-day rotation window needs a proof, so the timelock protects them only while proving is available (TD1-N9)."
   ],
   "findings": [
     {
@@ -307,7 +395,7 @@
       "source": "SP1-P1",
       "title": "uint64(block.chainid) truncation in ZKMLDSAVerifier.verify",
       "disposition": "NO_AUTHORIZATION_IMPACT",
-      "practicalImpact": "none: every measured or targeted chain id is far below 2^64, and every consumer's EIP-712 digest binds the full 256-bit chainid",
+      "practicalImpact": "none: every measured or targeted chain id is far below 2^64, and every consumer's EIP-712 digest binds the full 256-bit chainid (WalletWallVault, WalletWallMultiSigVault, PolicyControlBridge and StablecoinVaultSimulator all use _hashTypedDataV4)",
       "securityImpact": "the journal chain_id is prover-chosen stdin the guest never checks, so it is a proof-routing tag, not a binding; authorization binds chain identity only through the digest. The truncation makes the verifier's own tag compare modulo 2^64.",
       "repairBeforeRealProof": false,
       "guestOrVkeyChange": false,
@@ -404,22 +492,83 @@
     {
       "id": "TD1-N6",
       "source": "SP1-TD1",
-      "title": "upstream froze the vulnerable v6.0.0 route 181 days after its advisory",
-      "disposition": "UPSTREAM_BRAKE_NOT_RELIABLE",
-      "practicalImpact": "GHSA-63x8-x938-vx33 (High, SP1 6.0.0-6.0.2, fixed in 6.1.0) was published 2026-04-11; the mainnet gateway froze the v6.0.0 route on 2026-10-09",
-      "securityImpact": "an unpinned consumer's accepted relation kept a route from an advised-against version for six months; the gateway owner's freeze lever cannot be counted as a safety control. TD1 claims no exploitability of the on-chain v6.0.0 verifier; the advisory does not state on-chain impact.",
+      "title": "upstream freezes are discretionary: fast for a broken build, a deprecation batch for an advised version",
+      "disposition": "UPSTREAM_FREEZE_IS_DISCRETIONARY",
+      "practicalImpact": "the broken first v6.1.0 build was frozen on Sepolia 21.4 hours after it was routed; the advised v6.0.0 route (GHSA-63x8-x938-vx33, 2026-04-11) was frozen on mainnet 181 days later, 108 s after the unaffected v5.0.0 route, i.e. as a deprecation batch",
+      "securityImpact": "a freeze is dual-use: it stops valid proofs (liveness) and, when the verifier itself is unsound, forged ones (protection). Its timing is upstream's choice, and a routine deprecation freeze is near-certain over a deployment's life. Whether WalletWall couples to it is an explicit owner decision (DEFECT_RESPONSE_COUPLING), not a property this lane can settle. TD1 claims no exploitability of the on-chain v6.0.0 verifier.",
       "repairBeforeRealProof": false,
       "guestOrVkeyChange": false,
-      "plan": "WalletWall watches upstream advisories and RouteFrozen events itself and answers with the vault's own pause and timelocked rotation"
+      "plan": "owner decision DEFECT_RESPONSE_COUPLING before real value: WalletWall-operated detection and pause (A), or fail closed on upstream's freeze of the pinned selector (AF, or B)"
+    },
+    {
+      "id": "TD1-N7",
+      "source": "SP1-TD1 review",
+      "title": "the host flow builds the guest without --locked",
+      "disposition": "PROCEDURE_GAP",
+      "practicalImpact": "zkvm/host/build.rs calls sp1_build::build_program, whose BuildArgs.locked defaults to false; the host's --locked does not reach the nested guest build. The measured host-flow ELFs equal the --locked docker-mode ELFs on both hosts",
+      "securityImpact": "a stale guest lockfile would re-resolve from crates.io silently instead of failing; the designated identity is unaffected",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "canonical workflow: assert zkvm/guest/Cargo.lock unchanged after the build, or build with BuildArgs.locked = true"
+    },
+    {
+      "id": "TD1-N8",
+      "source": "SP1-TD1 review",
+      "title": "the same code hash is not the same relation on a chain whose precompiles differ",
+      "disposition": "PER_CHAIN_CHECK_REQUIRED",
+      "practicalImpact": "the Groth16 verifier ANDs the pairing call's success with the first output word; on a chain without the 0x08 precompile the call succeeds and the word is still the first input word, so an odd word passes. The odd-word canary reverts, and a real v6.1.0 proof verifies, on all four measured chains",
+      "securityImpact": "the code-hash pin is necessary, not sufficient; precompile semantics are chain-governed (an L2's upgrade keys can change them), an implicit authority every option shares",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "deploy tooling: per-chain execution check (real proof accepted, tampered and odd-word canary refused) before deploying, and periodically after"
+    },
+    {
+      "id": "TD1-N9",
+      "source": "SP1-TD1 review",
+      "title": "the rotation delay protects PqOnly users only if they can prove within it",
+      "disposition": "LIVENESS_INTERACTION_NOTED",
+      "practicalImpact": "the 2-day pqVerifier rotation gives users time to exit, but a PqOnly exit needs a proof, i.e. Succinct's v6.1.0 artifacts or prover network during that window",
+      "securityImpact": "the timelock's protection depends on an off-chain liveness dependency",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "archive the v6.1.0 circuit artifacts by hash and keep a self-hosted proving path before real value"
     }
   ],
   "implementationPlan": [
-    "ZKMLDSAVerifier: pin the SP1 verifier's runtime code hash (and record VERIFIER_HASH, VK_ROOT, VERSION) as compile-time constants checked in the constructor; keep the verify() logic unchanged",
+    "ZKMLDSAVerifier: compile-time pin of the SP1 verifier's runtime code hash (and record VERIFIER_HASH, VK_ROOT, VERSION) checked in the constructor; keep the verify() logic unchanged",
     "ZKMLDSAVerifier: compare uint256(committedChainId) with block.chainid (F-1); document sigHash as non-authoritative (F-2)",
+    "Defect response (owner decision DEFECT_RESPONSE_COUPLING): either an advisory + RouteFrozen watcher with a stated, tested response bound and a pause path that needs no online owner key (A), or a fail-closed coupling to upstream's freeze of the pinned selector (AF, or B)",
     "Designation file for mldsa65-withdrawal (generated from build observations, never typed) plus a CI check that fails when the zkvm subject no longer matches it",
-    "A gated canonical-build workflow (vendor image by digest) and a second-host release rebuild; both ELF and vkey must equal the designation, vkey recomputed by cargo-prove outside the build",
-    "scripts/deploy-zk-verifier.ts: take PROGRAM_VKEY only from the designation and the SP1 verifier only from the trust-target designation, check EXTCODEHASH on the target chain, refuse overrides on non-local chains, read back after deployment",
+    "A gated canonical-build workflow (vendor image by digest; guest lockfile unchanged after the build, TD1-N7) and a second-host release rebuild; both ELF and vkey must equal the designation, vkey recomputed by cargo-prove outside the build",
+    "scripts/deploy-zk-verifier.ts: take PROGRAM_VKEY only from the designation and the SP1 verifier only from the trust-target designation, check EXTCODEHASH and run the per-chain execution check (real proof accepted, tampered and odd-word canary refused) on the target chain, refuse overrides on non-local chains, read back after deployment",
     "Docs: rewrite the runbook section 4 and ZK_Verifier_Production.md in the TD1 terms (F-3); mark the SP1-P1 STOP receipt superseded rather than restamped (TD1-N4)",
-    "Ops: a watcher for upstream SP1 advisories and gateway RouteFrozen events that pages the vault owner (pause, then timelocked rotation)"
+    "Proving availability: archive the v6.1.0 circuit artifacts by hash (their groth16_vk.bin sha256 must equal VERIFIER_HASH) and keep a self-hosted proving path (TD1-N9)"
+  ],
+  "ownerDecisions": [
+    {
+      "id": "DEFECT_RESPONSE_COUPLING",
+      "question": "If the pinned verifier itself proves unsound, what stops verification first?",
+      "choices": [
+        {
+          "id": "WALLETWALL_WATCHER_AND_PAUSE",
+          "options": [
+            "A"
+          ],
+          "description": "no upstream lever in the accepted path; WalletWall watches upstream advisories and the gateway's RouteFrozen events and pauses the vault (needs a stated, tested response bound and a pause path that does not depend on an online owner key)"
+        },
+        {
+          "id": "UPSTREAM_FREEZE_FAIL_CLOSED",
+          "options": [
+            "AF",
+            "B"
+          ],
+          "description": "verification fails closed once the upstream gateway freezes the pinned selector: AF reads the freeze bit and calls the pinned verifier directly, B routes each proof through the fully pinned gateway route. Either gives upstream's owner an instant kill switch that protects when the verifier is unsound, at the cost of an external liveness lever: a routine deprecation freeze stops PqOnly withdrawals until a timelocked rotation, the testnet owner is one EOA, and each chain needs the route in place before deployment"
+        }
+      ],
+      "recommendation": "WALLETWALL_WATCHER_AND_PAUSE",
+      "rationale": "authority minimisation ranks above liveness, and deprecation freezes are routine (4 mainnet routes frozen so far) while upstream's emergency freezes are discretionary (the advised v6.0.0 route was frozen months after the advisory, in one batch with v5.0.0); if the owner prefers delegating the kill switch, AF realizes it without routing proofs through the gateway",
+      "requiredBeforeRealValue": true,
+      "status": "OWNER_DECISION_REQUIRED"
+    }
   ]
 }
