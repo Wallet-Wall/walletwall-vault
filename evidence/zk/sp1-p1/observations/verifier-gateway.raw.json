@@ -1,0 +1,610 @@
+{
+  "measuredAtUtc": "2026-10-15T04:08:19.202Z",
+  "chains": {
+    "1": {
+      "rpc": "https://ethereum-rpc.publicnode.com",
+      "chainIdReported": 1,
+      "block": {
+        "number": 26195421,
+        "hash": "0x8c1a7423f257bb9d190b701aa669c2a629855193169c157176d87b1d817f2da2",
+        "timestamp": 1792037291
+      },
+      "groth16Gateway": {
+        "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeBytes": 1975,
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "eip1967ImplementationSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "eip1967AdminSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "ownerCodeBytes": 171,
+        "ownerCodeKeccak": "0xb89c1b3bdf2cf8827818646bce9a8f6e372885f8c55e5c07acbd307cb133b000",
+        "ownerSafe": {
+          "singleton": "0xd9db270c1b5e3bd161e8c8503c55ceabee709552",
+          "version": "1.3.0",
+          "threshold": 2,
+          "owners": [
+            "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+            "0x72Ff26D9517324eEFA89A48B75c5df41132c4f54",
+            "0x9395e83720bf2D8ac6435f9c520b48E289Cb8885"
+          ],
+          "modules": [],
+          "guardSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+          "fallbackHandler": "0xf48f2b2d2a534e402487b3ee7c18c33aec0fe5e4"
+        },
+        "eventLogSource": "https://eth.blockscout.com/api",
+        "events": [
+          {
+            "kind": "OwnershipTransferred",
+            "block": 21094694,
+            "tx": "0xaa62b91f62101b0440d869b641963893054f465392305c8edcf8beef844e497c",
+            "logIndex": 219,
+            "previousOwner": "0x0000000000000000000000000000000000000000",
+            "newOwner": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 21094774,
+            "tx": "0xf18e9dc6438281e55e21ea4f8dc453385a33cf391e42a4ac6cc015e0ed349971",
+            "logIndex": 183,
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1"
+          },
+          {
+            "kind": "OwnershipTransferred",
+            "block": 21095694,
+            "tx": "0x31de0a6aad19bb730740d3e3ab177acb22811b8e2bc85b61443d65b0e5cf98d4",
+            "logIndex": 303,
+            "previousOwner": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e",
+            "newOwner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 21547655,
+            "tx": "0xdf1cdd2422df4356c7b79c2f276e3476f003fa1a56bed26d1328b60e7fea0e13",
+            "logIndex": 348,
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 21632034,
+            "tx": "0x7dd26bc3c14d206fa16a5679efe29e881564010d3e63a8720c8188c283cdc7c6",
+            "logIndex": 176,
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 22591466,
+            "tx": "0x58d09a350a33949ff777b5ec4dc31b915029b1df95c0ee095951a7a8ebae35bf",
+            "logIndex": 291,
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 22775718,
+            "tx": "0xf34005e0745bb168467f4d0b124ceb17b689a8a2d89de2726d1fcc0620e8f26f",
+            "logIndex": 426,
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 24486035,
+            "tx": "0xbb4c93b7377b1df69b9ed980d05ef7c7126b0aa221edcaa61790aafe456743eb",
+            "logIndex": 420,
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 24894712,
+            "tx": "0xc3a2e684bea302a0f8bd11ab21ad8e7feb49e0f4453d4341f4688081e79a927b",
+            "logIndex": 141,
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 26152982,
+            "tx": "0x7f2b454a4beb7868a2bf134d1972d1ec6de547cbc7539b59dbcfc79db7e860a6",
+            "logIndex": 389,
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 26152991,
+            "tx": "0x1d0bdeba4c4de08476702c7c244847cf538d84e8b56a576ae56721d111494962",
+            "logIndex": 171,
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508"
+          }
+        ],
+        "routes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "frozen": true,
+            "version": "v3.0.0",
+            "verifierHash": "0x090690902a12d1d02c07a1ad25aa76bded5f6499e12a11ba127669501b553998",
+            "verifierCodeBytes": 6280,
+            "verifierCodeKeccak": "0x465c505e17982834d59c1a909c27f2363bb832b7b04e7431e3daec4776f53f5c"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "frozen": true,
+            "version": "v4.0.0-rc.3",
+            "verifierHash": "0x11b6a09d63d255ad425ee3a7f6211d5ec63fbde9805b40551c3136275b6f4eb4",
+            "verifierCodeBytes": 6134,
+            "verifierCodeKeccak": "0x217a765174e8eaac0850676292051cbf451865833e9a92ca9daf2102d336ac6b"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "frozen": true,
+            "version": "v5.0.0",
+            "verifierHash": "0xa4594c59bbc142f3b81c3ecb7f50a7c34bc9af7c4c444b5d48b795427e285913",
+            "verifierCodeBytes": 11144,
+            "verifierCodeKeccak": "0xee5fe17d3c44b3e5a9587ec7d1fc8e7f07104a1c17946bb8ad833fe115206d6c"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "frozen": true,
+            "version": "v6.0.0",
+            "verifierHash": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+            "verifierCodeBytes": 6742,
+            "verifierCodeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "frozen": false,
+            "version": "v6.1.0",
+            "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd"
+          }
+        ],
+        "upstreamSelectorProbe": {
+          "probed": 27,
+          "nonEmpty": [
+            {
+              "selector": "0x09069090",
+              "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+              "frozen": true,
+              "inLogs": true
+            },
+            {
+              "selector": "0x0e78f4db",
+              "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+              "frozen": true,
+              "inLogs": true
+            },
+            {
+              "selector": "0x11b6a09d",
+              "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+              "frozen": true,
+              "inLogs": true
+            },
+            {
+              "selector": "0x4388a21c",
+              "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+              "frozen": false,
+              "inLogs": true
+            },
+            {
+              "selector": "0xa4594c59",
+              "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+              "frozen": true,
+              "inLogs": true
+            }
+          ]
+        }
+      },
+      "plonkGateway": {
+        "address": "0x3B6041173B80E77f038f3F2C0f9744f04837185e",
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "routes": 12,
+        "liveRoutes": 1
+      }
+    },
+    "11155111": {
+      "rpc": "https://ethereum-sepolia-rpc.publicnode.com",
+      "chainIdReported": 11155111,
+      "block": {
+        "number": 11917946,
+        "hash": "0xc59ad288ebf1cd19eef4a7783e5d50aea4e2a7700552a537dd0add383afea3f9",
+        "timestamp": 1792037316
+      },
+      "groth16Gateway": {
+        "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeBytes": 1975,
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "eip1967ImplementationSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "eip1967AdminSlot": "0x0000000000000000000000000000000000000000000000000000000000000000",
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "ownerCodeBytes": 0,
+        "ownerCodeKeccak": null,
+        "ownerSafe": null,
+        "eventLogSource": "https://eth-sepolia.blockscout.com/api",
+        "events": [
+          {
+            "kind": "OwnershipTransferred",
+            "block": 6991931,
+            "tx": "0x6a668e6ea4b4a090f7e5fe399565730eaa91e257c6fc843c0548d236b7dbe932",
+            "logIndex": 84,
+            "previousOwner": "0x0000000000000000000000000000000000000000",
+            "newOwner": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 6992004,
+            "tx": "0x4028eb506d46b860e7fd1fe8debb438a904670c2a73aee321c1afcad07500361",
+            "logIndex": 92,
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 7395965,
+            "tx": "0xdc843fae68563de750178ea7208c4d125d9c5ac23435c5de273a7d7f52e401ed",
+            "logIndex": 54,
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D"
+          },
+          {
+            "kind": "OwnershipTransferred",
+            "block": 7451741,
+            "tx": "0x2346cccf5ebbb47226419862a5eb4f06ef31df8e3d78edcfdc48cc255084f61e",
+            "logIndex": 121,
+            "previousOwner": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e",
+            "newOwner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 7544476,
+            "tx": "0x132fc54c35074907519f33019e57868cf80153af055bdab3460673a9c390b194",
+            "logIndex": 150,
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 8434000,
+            "tx": "0xee1355da83724267f4546f18be425a6abda8e7c921f0f7d09e44d75d17e75698",
+            "logIndex": 200,
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 10288046,
+            "tx": "0x612de15a2ca88a7807d62b12560242cd0d10a01864bf9ce85542f6c8759801f8",
+            "logIndex": 106,
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 10653682,
+            "tx": "0x38517d3df1ab9c5bac8b663f74ef28a23748e5b87840d4a9a5dea450d3fc54b7",
+            "logIndex": 2064,
+            "selector": "0x2b4aeaf7",
+            "verifier": "0xf0f70E15e9259970481c4F33bD87C3e47f161dec"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 10659903,
+            "tx": "0x234c21078cf9c22090f551d64d75df4d29f8fc1655670bcaf8a43d47ca2d394f",
+            "logIndex": 1682,
+            "selector": "0x2b4aeaf7",
+            "verifier": "0xf0f70E15e9259970481c4F33bD87C3e47f161dec"
+          },
+          {
+            "kind": "RouteAdded",
+            "block": 10660378,
+            "tx": "0x4e09d47b0f380fffd069aa25358ec128a545f8aa50020906864f9ed7aa0d58ef",
+            "logIndex": 455,
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2"
+          },
+          {
+            "kind": "RouteFrozen",
+            "block": 11874735,
+            "tx": "0xb96942deb68e456a818ee2d0be2bf3aeb4d7a89857f56f3d153664ac71eaa465",
+            "logIndex": 220,
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508"
+          }
+        ],
+        "routes": [
+          {
+            "selector": "0x09069090",
+            "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+            "frozen": true,
+            "version": "v3.0.0",
+            "verifierHash": "0x090690902a12d1d02c07a1ad25aa76bded5f6499e12a11ba127669501b553998",
+            "verifierCodeBytes": 6280,
+            "verifierCodeKeccak": "0x465c505e17982834d59c1a909c27f2363bb832b7b04e7431e3daec4776f53f5c"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+            "frozen": false,
+            "version": "v4.0.0-rc.3",
+            "verifierHash": "0x11b6a09d63d255ad425ee3a7f6211d5ec63fbde9805b40551c3136275b6f4eb4",
+            "verifierCodeBytes": 6134,
+            "verifierCodeKeccak": "0x217a765174e8eaac0850676292051cbf451865833e9a92ca9daf2102d336ac6b"
+          },
+          {
+            "selector": "0xa4594c59",
+            "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+            "frozen": true,
+            "version": "v5.0.0",
+            "verifierHash": "0xa4594c59bbc142f3b81c3ecb7f50a7c34bc9af7c4c444b5d48b795427e285913",
+            "verifierCodeBytes": 11144,
+            "verifierCodeKeccak": "0xee5fe17d3c44b3e5a9587ec7d1fc8e7f07104a1c17946bb8ad833fe115206d6c"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+            "frozen": true,
+            "version": "v6.0.0",
+            "verifierHash": "0x0e78f4db7a6771a3a6a7d9c3b0de6fe73d58781368967a7fe84d87aefffec896",
+            "verifierCodeBytes": 6742,
+            "verifierCodeKeccak": "0xdf34e327244216e855305a1b40f911e42644fca8d97f2cdbcedfc447c70469f2"
+          },
+          {
+            "selector": "0x2b4aeaf7",
+            "verifier": "0xf0f70E15e9259970481c4F33bD87C3e47f161dec",
+            "frozen": true,
+            "version": "v6.1.0",
+            "verifierHash": "0x2b4aeaf7a8005e6072a35ba0faf7a8da72644a4bed28babcc972c257463b26ca",
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0x28ce377474febced8ab4b39afb8314fb9f2e207bf3df554d214871b147f226f7"
+          },
+          {
+            "selector": "0x4388a21c",
+            "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+            "frozen": false,
+            "version": "v6.1.0",
+            "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+            "verifierCodeBytes": 6741,
+            "verifierCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd"
+          }
+        ],
+        "upstreamSelectorProbe": {
+          "probed": 27,
+          "nonEmpty": [
+            {
+              "selector": "0x09069090",
+              "verifier": "0xE780809121774D06aD9B0EEeC620fF4B3913Ced1",
+              "frozen": true,
+              "inLogs": true
+            },
+            {
+              "selector": "0x0e78f4db",
+              "verifier": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508",
+              "frozen": true,
+              "inLogs": true
+            },
+            {
+              "selector": "0x11b6a09d",
+              "verifier": "0xa27A057CAb1a4798c6242F6eE5b2416B7Cd45E5D",
+              "frozen": false,
+              "inLogs": true
+            },
+            {
+              "selector": "0x4388a21c",
+              "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+              "frozen": false,
+              "inLogs": true
+            },
+            {
+              "selector": "0xa4594c59",
+              "verifier": "0x50ACFBEdecf4cbe350E1a86fC6f03a821772f1e5",
+              "frozen": true,
+              "inLogs": true
+            },
+            {
+              "selector": "0x2b4aeaf7",
+              "verifier": "0xf0f70E15e9259970481c4F33bD87C3e47f161dec",
+              "frozen": true,
+              "inLogs": true
+            }
+          ]
+        }
+      },
+      "plonkGateway": {
+        "address": "0xd685a80aF2d1761648e56716af4868d850Dae49B",
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "routes": 1,
+        "liveRoutes": 1
+      }
+    }
+  },
+  "attribution": {
+    "sp1VerifierGroth16V610": {
+      "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+      "sourceRepository": "https://github.com/succinctlabs/sp1-contracts",
+      "sourceTag": "v6.1.0",
+      "sourceCommit": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "sourceSha256": {
+        "src/v6.1.0/SP1VerifierGroth16.sol": "0x48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0",
+        "src/v6.1.0/Groth16Verifier.sol": "0xd5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457",
+        "src/ISP1Verifier.sol": "0x9e918032a5aa799c1319b14b013154d6a40ca6e5f2267c9f540560abd7fd7689"
+      },
+      "solc": {
+        "version": "0.8.20+commit.a1b79de6",
+        "binary": "solc-windows-amd64-v0.8.20+commit.a1b79de6.exe",
+        "sha256": "a0fa8eb77805c530cfb6962f400643dbe83991387d27b319efd6b89482061946",
+        "sha256Authority": "https://binaries.soliditylang.org/windows-amd64/list.json"
+      },
+      "settings": {
+        "optimizer": {
+          "enabled": true,
+          "runs": 200
+        },
+        "evmVersion": "shanghai",
+        "viaIR": false,
+        "bytecodeHash": "ipfs"
+      },
+      "localRuntimeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "onchainRuntimeKeccakMainnet": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "runtimeEqual": true,
+      "initcodeKeccak": "0x2b4eb4fe475628cdaffe6c75b27664ae7da9e55131fc82d7590eb668df6bc8c3",
+      "deployTx": {
+        "hash": "0xa2270e27bccef81cf20602e8566e6fc6d5d49fddc63a7bb16fe53c280043cc3d",
+        "to": "0x4e59b44847b379578588920ca78fbf26c0b4956c",
+        "from": "0x9193a78157957f3e03bee50a3e6a51f0f1669e23",
+        "block": 24878255,
+        "inputIsSaltPlusInitcode": true
+      },
+      "create2": {
+        "factory": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000009",
+        "derived": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+        "equalsAddress": true
+      },
+      "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "vkRoot": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+      "ownerOrMutableState": "none (no Ownable, no storage writes; VERIFIER_HASH/VK_ROOT/VK constants are pure)"
+    },
+    "groth16Gateway": {
+      "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+      "sourceFilesEqualGitAt": [
+        "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+        "1b102609d616d760afd6eadfe2def48c88ab9e3b",
+        "d3629729c3216eb51bd4859d027a8eb729399fa4"
+      ],
+      "sourceSetOrigin": "Sourcify (sp1-contracts files byte-equal to git; OpenZeppelin Ownable/Context from the submodule as published to Sourcify)",
+      "settings": {
+        "optimizer": {
+          "enabled": true,
+          "runs": 200
+        },
+        "evmVersion": "paris",
+        "viaIR": false,
+        "bytecodeHash": "ipfs"
+      },
+      "localRuntimeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+      "onchainRuntimeKeccakMainnet": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+      "onchainRuntimeKeccakSepolia": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+      "runtimeEqual": true,
+      "deployTx": {
+        "hash": "0xaa62b91f62101b0440d869b641963893054f465392305c8edcf8beef844e497c",
+        "to": "0x4e59b44847b379578588920ca78fbf26c0b4956c",
+        "from": "0xded0000e32f8f40414d3ab3a830f735a3553e18e",
+        "constructorInitialOwner": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e"
+      },
+      "create2": {
+        "factory": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+        "salt": "0x0000000000000000000000000000000000000000000000000000000000000010",
+        "derived": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "equalsAddress": true,
+        "deploymentsJsonSaltDiffers": "contracts/deployments/*.json CREATE2_SALT is 0x..09; the gateway deploy used 0x..10"
+      }
+    },
+    "vkConstantJoin": {
+      "solidityFile": "contracts/src/v6.1.0/Groth16Verifier.sol @ 2ac5ecbb",
+      "independentDecoder": "arkworks 0.5 via sp1_verifier::load_ark_groth16_verifying_key_from_bytes (crates.io sp1-verifier 6.3.1)",
+      "vkFile": "sp1-verifier-6.3.1/vk-artifacts/groth16_vk.bin",
+      "vkBytes": 492,
+      "vkSha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "comparedConstants": 26,
+      "equal": 26,
+      "mismatches": 0,
+      "mapping": "BETA/GAMMA/DELTA_NEG_X_{0,1} = x.c{0,1}; *_NEG_Y_{0,1} = (-y).c{0,1}; CONSTANT = IC0; PUB_i = IC(i+1)"
+    }
+  },
+  "sourcify": [
+    {
+      "chainId": 1,
+      "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+      "match": "exact_match",
+      "runtimeMatch": "exact_match",
+      "creationMatch": "exact_match",
+      "compilerVersion": "0.8.20+commit.a1b79de6",
+      "fullyQualifiedName": "src/SP1VerifierGateway.sol:SP1VerifierGateway",
+      "evmVersion": "paris",
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "deploymentTx": "0xaa62b91f62101b0440d869b641963893054f465392305c8edcf8beef844e497c",
+      "deployer": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e",
+      "verifiedAt": "2024-11-02T01:20:09Z",
+      "queriedAtUtc": "2026-10-15T04:46:27.132Z"
+    },
+    {
+      "chainId": 1,
+      "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+      "match": "exact_match",
+      "runtimeMatch": "exact_match",
+      "creationMatch": "exact_match",
+      "compilerVersion": "0.8.20+commit.a1b79de6",
+      "fullyQualifiedName": "src/v6.1.0/SP1VerifierGroth16.sol:SP1Verifier",
+      "evmVersion": "shanghai",
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "deploymentTx": "0xa2270e27bccef81cf20602e8566e6fc6d5d49fddc63a7bb16fe53c280043cc3d",
+      "deployer": "0x9193a78157957F3E03beE50A3E6a51F0f1669E23",
+      "verifiedAt": "2026-08-26T13:46:24Z",
+      "queriedAtUtc": "2026-10-15T04:46:27.364Z"
+    },
+    {
+      "chainId": 11155111,
+      "address": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+      "match": "exact_match",
+      "runtimeMatch": "exact_match",
+      "creationMatch": "exact_match",
+      "compilerVersion": "0.8.20+commit.a1b79de6",
+      "fullyQualifiedName": "src/SP1VerifierGateway.sol:SP1VerifierGateway",
+      "evmVersion": "paris",
+      "optimizer": {
+        "runs": 200,
+        "enabled": true
+      },
+      "deploymentTx": "0x6a668e6ea4b4a090f7e5fe399565730eaa91e257c6fc843c0548d236b7dbe932",
+      "deployer": "0xDEd0000E32f8F40414d3ab3a830f735a3553E18e",
+      "verifiedAt": "2024-11-02T05:30:22Z",
+      "queriedAtUtc": "2026-10-15T04:46:27.544Z"
+    },
+    {
+      "chainId": 11155111,
+      "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+      "match": null,
+      "runtimeMatch": null,
+      "creationMatch": null,
+      "compilerVersion": null,
+      "fullyQualifiedName": null,
+      "evmVersion": null,
+      "optimizer": null,
+      "deploymentTx": null,
+      "deployer": null,
+      "verifiedAt": null,
+      "queriedAtUtc": "2026-10-15T04:46:27.702Z"
+    }
+  ],
+  "upstream": {
+    "repository": "https://github.com/succinctlabs/sp1-contracts",
+    "headAtClone": "d3629729c3216eb51bd4859d027a8eb729399fa4",
+    "tags": {
+      "v6.0.0": "1b102609d616d760afd6eadfe2def48c88ab9e3b",
+      "v6.1.0": "2ac5ecbbe473421a963d67e55f182e9a36576f7c",
+      "v6.1.1": "d3629729c3216eb51bd4859d027a8eb729399fa4"
+    },
+    "tagsAreLightweight": true,
+    "v611Delta": "only contracts/src/v6.1.0/Groth16Verifier.sol pragma 0.8.20 -> ^0.8.20 (#81)",
+    "incidents": [
+      "a7bb13c (2026-02-17): v6.0.0 Groth16Verifier DELTA_NEG_* constants corrected after deployment prep; verifier address changed 0xEfe0156f... -> 0x99A74A05...",
+      "2ac5ecb (#75): a first v6.1.0 Groth16 build carried VERIFIER_HASH 0x2b4aeaf7.../VK_ROOT 0x00995aa7...; regenerated from vk.bin; the first build was deployed on Sepolia as V6_1_0_BROKEN (0xf0f70E15...), routed, then frozen"
+    ]
+  }
+}

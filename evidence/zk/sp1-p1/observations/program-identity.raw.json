@@ -1,0 +1,293 @@
+{
+  "environments": [
+    {
+      "id": "A",
+      "hostId": "developer-workstation",
+      "procedure": "repository-host-flow-local",
+      "description": "Repository host flow (cargo build --release --locked in zkvm/host; build.rs -> sp1_build::build_program, local mode) on WSL2 (Ubuntu 26.04, kernel 6.18.33.1-microsoft-standard-WSL2) with the sp1up-installed toolchain on the developer workstation (AMD Ryzen 7 9800X3D); fresh extraction, fresh target dirs.",
+      "os": "Ubuntu 26.04 LTS",
+      "kernel": "6.18.33.1-microsoft-standard-WSL2",
+      "measuredAtUtc": "2026-10-15T04:01:00Z",
+      "image": null,
+      "toolchain": {
+        "succinctRustc": "rustc 1.94.0-dev binary: rustc commit-hash: unknown commit-date: unknown host: x86_64-unknown-linux-gnu release: 1.94.0-dev LLVM version: 21.1.8",
+        "hostRustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+        "cargoProve": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z)",
+        "succinctToolchainDir": "zbBELn4Gb9"
+      },
+      "builder": {
+        "home": "/home/sirmrdrgod",
+        "embeddedCargoHome": "/home/sirmrdrgod/.cargo"
+      },
+      "sourceManifest": [
+        {
+          "path": "zkvm/guest/Cargo.lock",
+          "sha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48"
+        },
+        {
+          "path": "zkvm/guest/Cargo.toml",
+          "sha256": "e53c6d38fb597c4caa2f20c66433fddc6fb8fec98d458a62b375f76456ba6f3e"
+        },
+        {
+          "path": "zkvm/guest/src/bin/acvp.rs",
+          "sha256": "cbfcb5e980b2bdad724325621fd78deef0a4e65ca8c5f742e5c290fbb8c16c9c"
+        },
+        {
+          "path": "zkvm/guest/src/bin/withdrawal.rs",
+          "sha256": "5ce07f53dc61a23f2cc7d78b58169e95f42f14406dfb5b1b5346b235ecdb3c75"
+        },
+        {
+          "path": "zkvm/host/Cargo.lock",
+          "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+        },
+        {
+          "path": "zkvm/host/Cargo.toml",
+          "sha256": "089135867c60e92702dc25c337f5c166eeadb4df8d43cc6222868e9d4b269189"
+        },
+        {
+          "path": "zkvm/host/build.rs",
+          "sha256": "2e2a657ab94d9ba021af0a19879f74467b32b9041b429bcd9cc86e1e53451094"
+        },
+        {
+          "path": "zkvm/host/src/main.rs",
+          "sha256": "cc33889d7ce20774b9ba1e837014db47094086b75cd4c18646078f7d6b083ccd"
+        }
+      ],
+      "programs": {
+        "mldsa65-withdrawal": {
+          "elfSha256": "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a",
+          "elfBytes": 206600,
+          "vkey": "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+        },
+        "mldsa65-acvp": {
+          "elfSha256": "c29e31fbf572d4c7c38f0bfaa16515ad407e76aabf7e7f10c922076149c04a89",
+          "elfBytes": 195792,
+          "vkey": "0x00217f15120057e91d1de1cf672a9c3588aecd098690d96899ee1e09a77f17d5"
+        }
+      },
+      "hostBinarySha256": "998bbdbf9c2d8e7a9ca19f3a5cac1a686ef144bea2ac1b866af41b586e57b78d"
+    },
+    {
+      "id": "B-host",
+      "hostId": "developer-workstation",
+      "procedure": "vendor-image-host-flow",
+      "description": "Repository host flow inside a fresh container of the pinned vendor image on the developer workstation (Docker Desktop, engine 29.8.0, containerd snapshotter, WSL2 kernel 6.18.33.1, AMD Ryzen 7 9800X3D); sources copied in with docker cp, no mounts, no cache volumes.",
+      "os": "Ubuntu 24.04 LTS",
+      "kernel": "6.18.33.1-microsoft-standard-WSL2",
+      "measuredAtUtc": "2026-10-15T04:04:38Z",
+      "image": {
+        "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "imageId": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "createdUtc": "2026-06-25T11:54:10.081043797Z",
+        "platform": "linux/amd64"
+      },
+      "toolchain": {
+        "succinctRustc": "rustc 1.94.0-dev binary: rustc commit-hash: unknown commit-date: unknown host: x86_64-unknown-linux-gnu release: 1.94.0-dev LLVM version: 21.1.8",
+        "hostRustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+        "cargoProve": null,
+        "succinctToolchainDir": "g7wv95WZT7"
+      },
+      "builder": {
+        "home": "/root",
+        "embeddedCargoHome": "/root/.cargo"
+      },
+      "sourceManifest": [
+        {
+          "path": "zkvm/guest/Cargo.lock",
+          "sha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48"
+        },
+        {
+          "path": "zkvm/guest/Cargo.toml",
+          "sha256": "e53c6d38fb597c4caa2f20c66433fddc6fb8fec98d458a62b375f76456ba6f3e"
+        },
+        {
+          "path": "zkvm/guest/src/bin/acvp.rs",
+          "sha256": "cbfcb5e980b2bdad724325621fd78deef0a4e65ca8c5f742e5c290fbb8c16c9c"
+        },
+        {
+          "path": "zkvm/guest/src/bin/withdrawal.rs",
+          "sha256": "5ce07f53dc61a23f2cc7d78b58169e95f42f14406dfb5b1b5346b235ecdb3c75"
+        },
+        {
+          "path": "zkvm/host/Cargo.lock",
+          "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+        },
+        {
+          "path": "zkvm/host/Cargo.toml",
+          "sha256": "089135867c60e92702dc25c337f5c166eeadb4df8d43cc6222868e9d4b269189"
+        },
+        {
+          "path": "zkvm/host/build.rs",
+          "sha256": "2e2a657ab94d9ba021af0a19879f74467b32b9041b429bcd9cc86e1e53451094"
+        },
+        {
+          "path": "zkvm/host/src/main.rs",
+          "sha256": "cc33889d7ce20774b9ba1e837014db47094086b75cd4c18646078f7d6b083ccd"
+        }
+      ],
+      "programs": {
+        "mldsa65-withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "mldsa65-acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      },
+      "hostBinarySha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b"
+    },
+    {
+      "id": "B-docker",
+      "hostId": "developer-workstation",
+      "procedure": "vendor-image-docker-mode",
+      "description": "Replay of sp1-build 6.3.1 build_docker_args() (cargo prove build --docker --tag v6.3.1 --locked --no-docker-cache) in a fresh container of the pinned vendor image on the same workstation.",
+      "os": null,
+      "kernel": null,
+      "measuredAtUtc": null,
+      "image": {
+        "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "imageId": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "createdUtc": "2026-06-25T11:54:10.081043797Z",
+        "platform": "linux/amd64"
+      },
+      "toolchain": {
+        "succinctRustc": "rustc 1.94.0-dev",
+        "hostRustc": null,
+        "cargoProve": null,
+        "succinctToolchainDir": "/root/.sp1/toolchains/g7wv95WZT7"
+      },
+      "builder": {
+        "home": "/root",
+        "embeddedCargoHome": "/root/.cargo"
+      },
+      "sourceManifest": null,
+      "programs": {
+        "mldsa65-withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": null
+        },
+        "mldsa65-acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": null
+        }
+      },
+      "hostBinarySha256": null
+    },
+    {
+      "id": "C-host",
+      "hostId": "github-hosted-runner",
+      "procedure": "vendor-image-host-flow",
+      "description": "Repository host flow inside a fresh container of the pinned vendor image on a GitHub-hosted ubuntu-24.04 runner: GitHub Actions run 38682655131 (head ad6211c8a20779c984b9ec13adc34adc543b068e, runner image ubuntu24 20261012.334.1, Azure VM, 4 vCPU Intel Xeon 6973P-C, kernel 6.17.0-1022-azure, Docker 28.0.4; image config digest sha256:aedac539617deeb11fb7fbac9270de9f8d0b021214eab05db672b2f0b181f796 = the linux/amd64 manifest sha256:7c1c8201... of the pinned index). Non-claiming observation workflow; container script byte-identical (sha256 dd038475...).",
+      "os": "Ubuntu 24.04 LTS",
+      "kernel": "6.17.0-1022-azure",
+      "measuredAtUtc": "2026-10-15T04:44:31Z",
+      "image": {
+        "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "imageId": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "createdUtc": "2026-06-25T11:54:10.081043797Z",
+        "platform": "linux/amd64"
+      },
+      "toolchain": {
+        "succinctRustc": "rustc 1.94.0-dev binary: rustc commit-hash: unknown commit-date: unknown host: x86_64-unknown-linux-gnu release: 1.94.0-dev LLVM version: 21.1.8",
+        "hostRustc": "rustc 1.96.0 (ac68faa20 2026-05-25)",
+        "cargoProve": null,
+        "succinctToolchainDir": "g7wv95WZT7"
+      },
+      "builder": {
+        "home": "/root",
+        "embeddedCargoHome": "/root/.cargo"
+      },
+      "sourceManifest": [
+        {
+          "path": "zkvm/guest/Cargo.lock",
+          "sha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48"
+        },
+        {
+          "path": "zkvm/guest/Cargo.toml",
+          "sha256": "e53c6d38fb597c4caa2f20c66433fddc6fb8fec98d458a62b375f76456ba6f3e"
+        },
+        {
+          "path": "zkvm/guest/src/bin/acvp.rs",
+          "sha256": "cbfcb5e980b2bdad724325621fd78deef0a4e65ca8c5f742e5c290fbb8c16c9c"
+        },
+        {
+          "path": "zkvm/guest/src/bin/withdrawal.rs",
+          "sha256": "5ce07f53dc61a23f2cc7d78b58169e95f42f14406dfb5b1b5346b235ecdb3c75"
+        },
+        {
+          "path": "zkvm/host/Cargo.lock",
+          "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+        },
+        {
+          "path": "zkvm/host/Cargo.toml",
+          "sha256": "089135867c60e92702dc25c337f5c166eeadb4df8d43cc6222868e9d4b269189"
+        },
+        {
+          "path": "zkvm/host/build.rs",
+          "sha256": "2e2a657ab94d9ba021af0a19879f74467b32b9041b429bcd9cc86e1e53451094"
+        },
+        {
+          "path": "zkvm/host/src/main.rs",
+          "sha256": "cc33889d7ce20774b9ba1e837014db47094086b75cd4c18646078f7d6b083ccd"
+        }
+      ],
+      "programs": {
+        "mldsa65-withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "mldsa65-acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      },
+      "hostBinarySha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b"
+    },
+    {
+      "id": "C-docker",
+      "hostId": "github-hosted-runner",
+      "procedure": "vendor-image-docker-mode",
+      "description": "sp1-build 6.3.1 docker-mode replay on the same GitHub-hosted runner, fresh container of the pinned vendor image.",
+      "os": null,
+      "kernel": null,
+      "measuredAtUtc": null,
+      "image": {
+        "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "imageId": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "createdUtc": "2026-06-25T11:54:10.081043797Z",
+        "platform": "linux/amd64"
+      },
+      "toolchain": {
+        "succinctRustc": "rustc 1.94.0-dev",
+        "hostRustc": null,
+        "cargoProve": null,
+        "succinctToolchainDir": "/root/.sp1/toolchains/g7wv95WZT7"
+      },
+      "builder": {
+        "home": "/root",
+        "embeddedCargoHome": "/root/.cargo"
+      },
+      "sourceManifest": null,
+      "programs": {
+        "mldsa65-withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": null
+        },
+        "mldsa65-acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "elfBytes": 195680,
+          "vkey": null
+        }
+      },
+      "hostBinarySha256": null
+    }
+  ]
+}
