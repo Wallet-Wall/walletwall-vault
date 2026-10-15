@@ -34,6 +34,8 @@
     "sp1:smoke": "tsx scripts/sp1-smoke.ts",
     "sp1:proof-input": "tsx scripts/generate-sp1-proof-input.ts",
     "validate:sp1-input": "tsx scripts/generate-sp1-proof-input.ts --validate",
+    "sp1-p1:receipt": "tsx scripts/generate-sp1-p1-stop-receipt.ts",
+    "validate:sp1-p1-receipt": "tsx scripts/generate-sp1-p1-stop-receipt.ts --validate",
     "zk:adapter": "tsx scripts/generate-zk-verifier-adapter.ts",
     "validate:zk-adapter": "tsx scripts/generate-zk-verifier-adapter.ts --validate",
     "zk:adapter:response": "tsx scripts/generate-zk-adapter-evidence-response.ts",
