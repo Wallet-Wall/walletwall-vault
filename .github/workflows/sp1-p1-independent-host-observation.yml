@@ -1,0 +1,50 @@
+name: SP1-P1 independent-host vendor build observation (non-claiming)
+
+# One-off assurance observation for the SP1-P1 lane: runs the pinned vendor SP1 build procedure for
+# zkvm/guest on a GitHub-hosted runner (a host independent of the developer machine that produced the
+# earlier observations) and records the ELF hashes, sizes and program vkeys. It asserts nothing, gates
+# nothing, needs no secrets, and runs only on a push to this observation branch that touches its files.
+on:
+  push:
+    branches:
+      - observation/sp1-p1-independent-host-vendor-build
+    paths:
+      - ".github/workflows/sp1-p1-independent-host-observation.yml"
+      - ".github/sp1-p1-observation/**"
+
+permissions:
+  contents: read
+
+jobs:
+  observe:
+    name: Vendor-image SP1 build on a GitHub-hosted runner
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Free runner disk for the 7 GB vendor image
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker image prune -af > /dev/null
+          df -h /
+
+      - name: Observe the pinned vendor build
+        run: bash .github/sp1-p1-observation/observe.sh "$RUNNER_TEMP/sp1-p1-observation"
+
+      - name: Job summary
+        if: always()
+        run: cat "$RUNNER_TEMP/sp1-p1-observation/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload observation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-p1-independent-host-observation
+          path: ${{ runner.temp }}/sp1-p1-observation
+          retention-days: 90
+          if-no-files-found: error
