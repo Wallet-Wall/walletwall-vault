@@ -45,6 +45,7 @@ export const TD1_RECEIPT_GENERATED_AT = "2026-10-15T00:00:00.000Z";
 export const TD1_INPUTS_REL = "evidence/zk/sp1-td1/decision-inputs.json";
 export const TD1_RECEIPT_REL = "evidence/zk/sp1-td1/decision-receipt.json";
 export const TD1_OBSERVATIONS = {
+  chainExecution: "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
   chainState: "evidence/zk/sp1-td1/observations/chain-state.raw.json",
   deploymentBytecode: "evidence/zk/sp1-td1/observations/deployment-bytecode.raw.json",
   localRemapBuild: "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
@@ -366,8 +367,15 @@ export interface VendorImageObservation {
   mutableTag: { tag: string; resolvesToDigest: string | null };
 }
 
+/** eth_call verdicts of the deployed verifier template on each chain, through two providers. */
+export interface ChainExecutionObservation {
+  expected: Record<string, string>;
+  chains: Record<string, { block: number; providersAgree: boolean; verdicts: Record<string, string> }>;
+}
+
 export interface DecisionContext {
   inputs: DecisionInputs;
+  chainExec: ChainExecutionObservation;
   chain: ChainStateObservation;
   deployments: DeploymentBytecodeObservation;
   remap: LocalRemapObservation;
@@ -416,6 +424,8 @@ export interface TrustTargetIdentity {
   create2: { tx: string; salt: string; initcodeKeccak: string; derived: string; authenticated: boolean };
   sp1p1Attribution: { ownCompileEqualsChain: boolean; vkConstantsJoined: boolean; sourcifyExactMainnet: boolean };
   runtime: { forbiddenOpcodes: string[]; probeBytesEqualMainnet: boolean };
+  /** Same code is the same relation only if each chain's precompiles give the same verdicts. */
+  chainExecution: { chainId: string; block: number; providersAgree: boolean; verdictsAsExpected: boolean }[];
   circuitVersionMatchesSubject: boolean;
   established: boolean;
   failures: string[];
@@ -488,6 +498,26 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
   if (!circuitVersionMatchesSubject)
     failures.push(`the subject's SP1 circuit (${ctx.sp1p1Receipt.subject.circuitVersion}) is not the target version`);
 
+  // The real proof exercises the v6.0.0 deployment of the shared template, so it speaks for v6.1.0 only while the
+  // two wrappers carry the same non-constant statements.
+  if (!ctx.fixture.templateComparison.nonConstantLinesSameMultiset)
+    failures.push(
+      "the v6.0.0 and v6.1.0 wrappers no longer share their statements: the chain-execution control does not transfer",
+    );
+  const expected = ctx.chainExec.expected;
+  const chainExecution = sel.requiredChains.map((id) => {
+    const e = ctx.chainExec.chains[id];
+    const verdictsAsExpected =
+      !!e && Object.keys(expected).length > 0 && Object.entries(expected).every(([k, v]) => e.verdicts[k] === v);
+    const providersAgree = !!e && e.providersAgree === true;
+    if (!e) failures.push(`chain ${id}: the verifier template was not executed there`);
+    else {
+      if (!providersAgree) failures.push(`chain ${id}: the providers disagree on the verifier's verdicts`);
+      if (!verdictsAsExpected) failures.push(`chain ${id}: the verifier template does not give the expected verdicts`);
+    }
+    return { chainId: id, block: e?.block ?? 0, providersAgree, verdictsAsExpected };
+  });
+
   return {
     version: sel.version,
     verifier: sel.verifier,
@@ -505,6 +535,7 @@ export function deriveTrustTargetIdentity(ctx: DecisionContext): TrustTargetIden
     },
     sp1p1Attribution: { ownCompileEqualsChain, vkConstantsJoined, sourcifyExactMainnet },
     runtime: { forbiddenOpcodes: [...forbidden], probeBytesEqualMainnet },
+    chainExecution,
     circuitVersionMatchesSubject,
     established: failures.length === 0,
     failures,
@@ -1272,7 +1303,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     TRUST_TARGET_CODE_IDENTITY: {
       status: st(identity.established),
       basis: identity.established
-        ? `runtime ${identity.codeKeccak} on ${identity.chains.length} chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode`
+        ? `runtime ${identity.codeKeccak} on ${identity.chains.length} chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode, and the same real-proof/tampered-proof verdicts from the deployed template on every chain`
         : `not established: ${identity.failures.join("; ")}`,
     },
     DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT: {
@@ -1486,6 +1517,9 @@ export function validateDecisionRules(value: unknown): string[] {
         errors.push("a direct immutable target needs one code hash on every chain");
       if (decided && decided.verifierCodeMutable)
         errors.push("a direct immutable target cannot have mutable verifier code");
+      const exec = tt.chainExecution ?? [];
+      if (exec.length !== tt.chains.length || exec.some((c) => !c.verdictsAsExpected || !c.providersAgree))
+        errors.push("a direct immutable target needs the same verdicts from the deployed template on every chain");
     }
   }
 
@@ -1600,6 +1634,7 @@ export function readDecisionContext(repoRoot = "."): DecisionContext {
   }
   return {
     inputs,
+    chainExec: json<ChainExecutionObservation>(TD1_OBSERVATIONS.chainExecution),
     chain: json<ChainStateObservation>(TD1_OBSERVATIONS.chainState),
     deployments: json<DeploymentBytecodeObservation>(TD1_OBSERVATIONS.deploymentBytecode),
     remap: json<LocalRemapObservation>(TD1_OBSERVATIONS.localRemapBuild),

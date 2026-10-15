@@ -10,8 +10,9 @@ should trust, and which build defines `PROGRAM_VKEY`. Both are now decided on ev
 liveness kept apart:
 
 1. **Trust target: `DIRECT_IMMUTABLE_VERIFIER`.** Bind `ZKMLDSAVerifier` directly to Succinct's Groth16
-   `SP1Verifier` v6.1.0, pinned by its **runtime code hash**, not to the `SP1VerifierGateway`. No principal outside
-   WalletWall's own timelocked `pqVerifier` rotation can then widen or stop the accepted relation.
+   `SP1Verifier` v6.1.0, pinned by its **runtime code hash**, not to the `SP1VerifierGateway`. Nobody outside
+   WalletWall can then widen the accepted relation or stop valid proofs from verifying; widening happens only through
+   WalletWall's timelocked `pqVerifier` rotation.
 2. **Program identity: `PINNED_VENDOR_BUILD`.** The digest-pinned vendor-image procedure defines the withdrawal
    ELF, and `PROGRAM_VKEY` is the vkey computed from that ELF:
    `0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc`.
@@ -29,7 +30,7 @@ the exact mainnet verifier and gateway bytes.
 | `SP1_TRUST_TARGET_DECISION` | `DIRECT_IMMUTABLE_VERIFIER` | option A: no external authorization or liveness lever; the pinned gateway (B) is viable but keeps the gateway owner's freeze |
 | `PROGRAM_IDENTITY_DECISION` | `PINNED_VENDOR_BUILD` | one ELF and vkey on two independent hosts, image pinned by verified digest, fresh subject |
 | `UPGRADE_MODEL` | `EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION` | a new verifier or guest means a new wrapper and the vault's 2-day rotation |
-| `CROSS_CHAIN_MODEL` | `CODE_HASH_PINNED_SAME_IDENTITY_ON_EVERY_CHAIN` | one runtime code hash at one CREATE2 address on Ethereum, Base, Sepolia and Base Sepolia |
+| `CROSS_CHAIN_MODEL` | `CODE_HASH_PINNED_SAME_IDENTITY_ON_EVERY_CHAIN` | one runtime code hash at one CREATE2 address on Ethereum, Base, Sepolia and Base Sepolia, and the same real-proof verdicts from the deployed template on each |
 | `REAL_PROOF_LANE_UNBLOCKED` | `true` | trust prerequisites established; starting it is still an owner decision (the circuit download) |
 | `IMPLEMENTATION_REQUIRED` | `true` | the pins, the designation file and the tooling are frozen for the next lane |
 
@@ -45,7 +46,7 @@ image and crates.io — integrity is pinned, availability is not.
 
 | Claim | Status | Basis (short) |
 | --- | --- | --- |
-| `TRUST_TARGET_CODE_IDENTITY` | `ESTABLISHED` | one runtime hash on four chains via two providers each; CREATE2-authenticated initcode; SP1-P1's own compile, Sourcify and VK join; no reachable state- or code-changing opcode |
+| `TRUST_TARGET_CODE_IDENTITY` | `ESTABLISHED` | one runtime hash on four chains via two providers each; CREATE2-authenticated initcode; SP1-P1's own compile, Sourcify and VK join; no reachable state- or code-changing opcode; the same proof verdicts on every chain |
 | `DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT` | `ESTABLISHED` | the gateway forwards the consumer's tuple unchanged; a real upstream v6 proof verifies on both paths, tampering is rejected identically |
 | `UNPINNED_GATEWAY_OWNER_CAN_WIDEN` | `ESTABLISHED` | executed: one `addRoute` by the owner drains a PqOnly vault through the unmodified `ZKMLDSAVerifier` |
 | `DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER` | `ESTABLISHED` | option A has no authorization or liveness lever outside WalletWall's rotation |
@@ -119,6 +120,7 @@ flowchart LR
 | One public-value bit flipped, or another program vkey | `ProofInvalid()` on both, identical revert data |
 | v6.1.0 pre-checks (exit code, vk root, invalid points), directly and through the gateway | identical revert data |
 | v6.1.0 runtime: reachable `SSTORE`/`TSTORE`/`LOG`/`CALL`/`CALLCODE`/`DELEGATECALL`/`CREATE`/`CREATE2`/`SELFDESTRUCT` | none (the gateway has `SSTORE`) |
+| On chain, read-only `eth_call` on Ethereum, Base, Sepolia and Base Sepolia (two providers each): the deployed v6.0.0 verifier with the real proof and with a tampered copy; v6.1.0 with an invalid proof | real proof accepted, tampered and invalid proofs `ProofInvalid()` — the same verdicts on every chain, so the chains' BN254 and modexp precompiles agree on these paths |
 | **D** — owner adds an accept-all route, forged journal, unmodified consumer, PqOnly `WalletWallVault` | **the vault pays the attacker** |
 | **D** — owner freezes the route of a valid proof | the gateway rejects it, the verifier still accepts it; nothing new is accepted |
 | **D** — non-owner `addRoute`; owner replaces an existing route | both revert |
@@ -320,6 +322,7 @@ For each failure: what independent observation catches it before WalletWall acce
 | the verifier version changes without the vkey changing | the code pin is part of the designation; a new verifier is a new wrapper either way |
 | a proof selector routes somewhere unexpected | there is no routing; the verifier checks its own selector |
 | chain identity differs across deployments | the code-hash pin fails closed on any chain whose code differs |
+| same code, different precompile behaviour on a chain | the per-chain execution check (real proof accepted, tampered refused); a chain not measured here needs it before deployment |
 | one ELF, two vkeys | a contradiction that unresolves the decision |
 | vkey derivation is wrong in `sp1-prover` itself | **not caught here** (one implementation); a real proof verifying on the pinned verifier is the next join |
 | the probe facts are hand-edited | the probe suite re-executes every fact on the mainnet bytes and fails on disagreement |
@@ -332,6 +335,8 @@ For each failure: what independent observation catches it before WalletWall acce
 > - A v6.1.0 soundness bug would pass the pin; WalletWall's response is detection plus `pause()` and rotation.
 > - The SP1-P1 runner observation used the same vendor image as the workstation; the third, image-free
 >   reproduction was on the workstation itself.
+> - The per-chain execution check used upstream's v6.0.0 proof against the shared template; a valid v6.1.0 proof
+>   (from the real-proof lane) and every chain not measured here still need it.
 > - `pause()` and the rotation are held by the vault owner — an existing principal this lane does not narrow.
 
 ## Next lane (implementation, frozen here)
@@ -341,8 +346,9 @@ For each failure: what independent observation catches it before WalletWall acce
 - [ ] `ZKMLDSAVerifier`: `uint256(committedChainId) != block.chainid` (F-1); document `sigHash` (F-2).
 - [ ] A generated designation file for `mldsa65-withdrawal` and the CI subject check.
 - [ ] A gated canonical-build workflow plus a second-host release rebuild; both must reproduce the designation.
-- [ ] `scripts/deploy-zk-verifier.ts`: vkey and verifier only from the designations; `EXTCODEHASH` check; no
-      overrides on non-local chains; read back after deployment.
+- [ ] `scripts/deploy-zk-verifier.ts`: vkey and verifier only from the designations; `EXTCODEHASH` check; a
+      per-chain execution check (a known-valid proof accepted, a tampered one refused, by `eth_call`); no overrides on
+      non-local chains; read back after deployment.
 - [ ] Rewrite runbook section 4 and `docs/ZK_Verifier_Production.md` (F-3); mark the SP1-P1 STOP receipt
       superseded rather than restamping it (TD1-N4).
 - [ ] An advisory and `RouteFrozen` watcher that pages the vault owner.

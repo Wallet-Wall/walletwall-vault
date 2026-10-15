@@ -1,0 +1,129 @@
+{
+  "schema": "walletwall.sp1-td1-chain-execution.v1",
+  "measuredAtUtc": "2026-10-15T13:31:58.912Z",
+  "purpose": "Same code is not the same accepted relation unless each chain's precompiles agree: run upstream's real v6 proof (and a tampered copy) through the deployed v6.0.0 verifier, and an invalid v6.1.0-shaped proof through v6.1.0, by eth_call on every measured chain",
+  "tool": {
+    "script": "chain-exec-probe.cjs",
+    "scriptSha256": "507c051eec17c4b6e03d7363030948e36c69504d6dc52d08e50dc35c2a829bb4",
+    "node": "v24.16.0",
+    "ethers": "6.17.0"
+  },
+  "calls": {
+    "v600RealProof": {
+      "to": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508"
+    },
+    "v600TamperedPublicValues": {
+      "to": "0x99A74A05a0FaBEB217C1A329b0dac59a1FA52508"
+    },
+    "v610InvalidPoints": {
+      "to": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2"
+    }
+  },
+  "expected": {
+    "v600RealProof": "success",
+    "v600TamperedPublicValues": "revert ProofInvalid",
+    "v610InvalidPoints": "revert ProofInvalid"
+  },
+  "chains": {
+    "1": {
+      "block": 26198157,
+      "blockHash": "0xb5d7f71ee7f17ccf431a57eaa31dd0c7dcd6a89be96ecc54c3183c9a059ff348",
+      "providers": {
+        "https://ethereum-rpc.publicnode.com": {
+          "blockHash": "0xb5d7f71ee7f17ccf431a57eaa31dd0c7dcd6a89be96ecc54c3183c9a059ff348",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        },
+        "https://eth.drpc.org": {
+          "blockHash": "0xb5d7f71ee7f17ccf431a57eaa31dd0c7dcd6a89be96ecc54c3183c9a059ff348",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        }
+      },
+      "providersAgree": true,
+      "verdicts": {
+        "blockHash": "0xb5d7f71ee7f17ccf431a57eaa31dd0c7dcd6a89be96ecc54c3183c9a059ff348",
+        "v600RealProof": "success",
+        "v600TamperedPublicValues": "revert ProofInvalid",
+        "v610InvalidPoints": "revert ProofInvalid"
+      }
+    },
+    "8453": {
+      "block": 52640438,
+      "blockHash": "0x36c213f916e3bc32a2b16ce7e6c085aba19f9ff4a569cb95964f51cc523d9a43",
+      "providers": {
+        "https://mainnet.base.org": {
+          "blockHash": "0x36c213f916e3bc32a2b16ce7e6c085aba19f9ff4a569cb95964f51cc523d9a43",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        },
+        "https://base-mainnet.public.blastapi.io": {
+          "blockHash": "0x36c213f916e3bc32a2b16ce7e6c085aba19f9ff4a569cb95964f51cc523d9a43",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        }
+      },
+      "providersAgree": true,
+      "verdicts": {
+        "blockHash": "0x36c213f916e3bc32a2b16ce7e6c085aba19f9ff4a569cb95964f51cc523d9a43",
+        "v600RealProof": "success",
+        "v600TamperedPublicValues": "revert ProofInvalid",
+        "v610InvalidPoints": "revert ProofInvalid"
+      }
+    },
+    "84532": {
+      "block": 48150880,
+      "blockHash": "0xb3ddbab778490075d15a3eac89cbc0a8b596f9a5c5e8e2e34be996291c624a80",
+      "providers": {
+        "https://sepolia.base.org": {
+          "blockHash": "0xb3ddbab778490075d15a3eac89cbc0a8b596f9a5c5e8e2e34be996291c624a80",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        },
+        "https://base-sepolia-rpc.publicnode.com": {
+          "blockHash": "0xb3ddbab778490075d15a3eac89cbc0a8b596f9a5c5e8e2e34be996291c624a80",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        }
+      },
+      "providersAgree": true,
+      "verdicts": {
+        "blockHash": "0xb3ddbab778490075d15a3eac89cbc0a8b596f9a5c5e8e2e34be996291c624a80",
+        "v600RealProof": "success",
+        "v600TamperedPublicValues": "revert ProofInvalid",
+        "v610InvalidPoints": "revert ProofInvalid"
+      }
+    },
+    "11155111": {
+      "block": 11920663,
+      "blockHash": "0x0fec27c38c9f0d75fff96852957f66c48344a8dedb36abe75686df1d57b8036c",
+      "providers": {
+        "https://ethereum-sepolia-rpc.publicnode.com": {
+          "blockHash": "0x0fec27c38c9f0d75fff96852957f66c48344a8dedb36abe75686df1d57b8036c",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        },
+        "https://sepolia.drpc.org": {
+          "blockHash": "0x0fec27c38c9f0d75fff96852957f66c48344a8dedb36abe75686df1d57b8036c",
+          "v600RealProof": "success",
+          "v600TamperedPublicValues": "revert ProofInvalid",
+          "v610InvalidPoints": "revert ProofInvalid"
+        }
+      },
+      "providersAgree": true,
+      "verdicts": {
+        "blockHash": "0x0fec27c38c9f0d75fff96852957f66c48344a8dedb36abe75686df1d57b8036c",
+        "v600RealProof": "success",
+        "v600TamperedPublicValues": "revert ProofInvalid",
+        "v610InvalidPoints": "revert ProofInvalid"
+      }
+    }
+  }
+}

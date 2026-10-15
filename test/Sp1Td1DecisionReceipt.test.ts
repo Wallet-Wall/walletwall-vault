@@ -192,6 +192,42 @@ describe("SP1-TD1 decision receipt", function () {
       );
     });
 
+    it("code identity needs the same real-proof verdicts from the deployed template on every chain", function () {
+      expect(
+        built().trustTarget.chainExecution.map((c) => [c.chainId, c.verdictsAsExpected, c.providersAgree]),
+      ).to.deep.equal([
+        ["1", true, true],
+        ["8453", true, true],
+        ["11155111", true, true],
+        ["84532", true, true],
+      ]);
+      const c1 = ctx();
+      c1.chainExec.chains["8453"].verdicts.v600RealProof = "revert ProofInvalid";
+      expect(built(c1).trustTarget.failures).to.include(
+        "chain 8453: the verifier template does not give the expected verdicts",
+      );
+      expect(built(c1).decisions.SP1_TRUST_TARGET_DECISION).to.equal("UNRESOLVED");
+      const c2 = ctx();
+      c2.chainExec.chains["84532"].providersAgree = false;
+      expect(built(c2).trustTarget.failures).to.include(
+        "chain 84532: the providers disagree on the verifier's verdicts",
+      );
+      const c3 = ctx();
+      delete c3.chainExec.chains["11155111"];
+      expect(built(c3).trustTarget.failures).to.include("chain 11155111: the verifier template was not executed there");
+      const c4 = ctx();
+      c4.chainExec.expected = {};
+      expect(built(c4).trustTarget.established).to.equal(false);
+    });
+
+    it("the real-proof control speaks for v6.1.0 only while both wrappers share their statements", function () {
+      const c = ctx();
+      c.fixture.templateComparison.nonConstantLinesSameMultiset = false;
+      expect(built(c).trustTarget.failures).to.include(
+        "the v6.0.0 and v6.1.0 wrappers no longer share their statements: the chain-execution control does not transfer",
+      );
+    });
+
     it("code identity needs the probe suite to have run the mainnet verifier bytes", function () {
       const c = ctx();
       c.inputs.probeFacts.bytes.v610RuntimeEqualsMainnet = false;
@@ -521,6 +557,17 @@ describe("SP1-TD1 decision receipt", function () {
       R.trustTarget.established = false;
       expectRule(R, "a trust target cannot be decided while its code identity is not established");
       expectRule(R, "the real-proof lane cannot be unblocked before the trust target's code identity is established");
+    });
+
+    it("rejects a direct immutable target without matching verdicts on every chain", function () {
+      R.trustTarget.chainExecution[2].verdictsAsExpected = false;
+      expectRule(R, "a direct immutable target needs the same verdicts from the deployed template on every chain");
+      R = clone(committed());
+      R.trustTarget.chainExecution[0].providersAgree = false;
+      expectRule(R, "a direct immutable target needs the same verdicts from the deployed template on every chain");
+      R = clone(committed());
+      R.trustTarget.chainExecution.pop();
+      expectRule(R, "a direct immutable target needs the same verdicts from the deployed template on every chain");
     });
 
     it("rejects a direct immutable target recorded with mutable verifier code", function () {

@@ -31,6 +31,10 @@
     ],
     "td1Observations": [
       {
+        "path": "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
+        "sha256": "324c934ea733dc0959d73996336bbcc5eb461a1d4ee2001ed3d14a8fd0ae29f7"
+      },
+      {
         "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
         "sha256": "5db307e574f5f1a86214cfc2de9b5627e9e048cb8f716e961fa370a40c153275"
       },
@@ -75,16 +79,29 @@
     "version": "v6.1.0",
     "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
     "selector": "0x4388a21c",
-    "requiredChains": ["1", "8453", "11155111", "84532"]
+    "requiredChains": [
+      "1",
+      "8453",
+      "11155111",
+      "84532"
+    ]
   },
   "options": [
     {
       "id": "A",
       "decisionValue": "DIRECT_IMMUTABLE_VERIFIER",
       "label": "ZKMLDSAVerifier bound directly to the immutable SP1Verifier v6.1.0, pinned by runtime code hash",
-      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "SP1Verifier v6.1.0"],
-      "components": ["sp1Verifier"],
-      "pins": ["verifierCode"],
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "sp1Verifier"
+      ],
+      "pins": [
+        "verifierCode"
+      ],
       "probeFactsKey": "A_directCodePinned",
       "newAttackSurface": "none added: the consumer already calls ISP1Verifier; the pin is one EXTCODEHASH comparison at construction",
       "operationalComplexity": "a new wrapper per SP1 circuit release, applied through the vault's timelocked pqVerifier rotation; WalletWall watches upstream advisories and gateway freezes as signals"
@@ -93,9 +110,23 @@
       "id": "B",
       "decisionValue": "SELECTOR_PINNED_GATEWAY",
       "label": "Succinct's gateway, with WalletWall pinning the selector, the route's verifier and both code hashes",
-      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "route-pinning check", "SP1VerifierGateway", "SP1Verifier v6.1.0"],
-      "components": ["upstreamGateway", "sp1Verifier"],
-      "pins": ["selector", "routeVerifier", "gatewayCode", "verifierCode"],
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "route-pinning check",
+        "SP1VerifierGateway",
+        "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
+      ],
+      "pins": [
+        "selector",
+        "routeVerifier",
+        "gatewayCode",
+        "verifierCode"
+      ],
       "probeFactsKey": "B_selectorRouteCodePinned",
       "newAttackSurface": "a pinning layer plus the gateway's routing code in the accepted path; per-chain gateway addresses",
       "operationalComplexity": "per-chain gateway address and route check at deployment; the same per-release redeploy as A"
@@ -104,9 +135,20 @@
       "id": "B0",
       "decisionValue": "SELECTOR_PINNED_GATEWAY",
       "label": "Succinct's gateway with a selector-only pin (the naive variant)",
-      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "selector check", "SP1VerifierGateway", "selector's route"],
-      "components": ["upstreamGateway", "sp1Verifier"],
-      "pins": ["selector"],
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "selector check",
+        "SP1VerifierGateway",
+        "selector's route"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
+      ],
+      "pins": [
+        "selector"
+      ],
       "probeFactsKey": "B0_selectorOnlyPin",
       "newAttackSurface": "fails open on any chain where the pinned selector is not yet routed: the owner registers any verifier under it",
       "operationalComplexity": "as B, without the checks that make it safe"
@@ -115,8 +157,16 @@
       "id": "C",
       "decisionValue": "WALLETWALL_GOVERNED_GATEWAY",
       "label": "A WalletWall-owned instance of the gateway code",
-      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "WalletWall SP1VerifierGateway", "any route its admin adds"],
-      "components": ["walletwallGateway", "sp1Verifier"],
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "WalletWall SP1VerifierGateway",
+        "any route its admin adds"
+      ],
+      "components": [
+        "walletwallGateway",
+        "sp1Verifier"
+      ],
       "pins": [],
       "probeFactsKey": "C_walletwallGateway",
       "newAttackSurface": "a second, instant verifier-replacement path that bypasses PQ_VERIFIER_UPDATE_DELAY and GOVERNANCE_GRACE_PERIOD",
@@ -126,8 +176,16 @@
       "id": "D",
       "decisionValue": "UPSTREAM_GATEWAY_OWNER_ACCEPTED",
       "label": "Succinct's gateway, unpinned (what docs/ZK_Prover_Runbook.md section 4 directs today)",
-      "path": ["WalletWall consumer", "ZKMLDSAVerifier", "SP1VerifierGateway", "any live route the prover selects"],
-      "components": ["upstreamGateway", "sp1Verifier"],
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "SP1VerifierGateway",
+        "any live route the prover selects"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
+      ],
       "pins": [],
       "probeFactsKey": "D_upstreamGatewayUnpinned",
       "newAttackSurface": "every live route on every chain is in the accepted relation, including deprecated or release-candidate verifiers",

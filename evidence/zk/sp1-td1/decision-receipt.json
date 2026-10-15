@@ -33,6 +33,10 @@
         "sha256": "b23c37c8c3c3c2733a21ae26fad4fb305580f7dde823c0070970e00e70dfc5cf"
       },
       {
+        "path": "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
+        "sha256": "324c934ea733dc0959d73996336bbcc5eb461a1d4ee2001ed3d14a8fd0ae29f7"
+      },
+      {
         "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
         "sha256": "5db307e574f5f1a86214cfc2de9b5627e9e048cb8f716e961fa370a40c153275"
       },
@@ -116,6 +120,32 @@
       "forbiddenOpcodes": [],
       "probeBytesEqualMainnet": true
     },
+    "chainExecution": [
+      {
+        "chainId": "1",
+        "block": 26198157,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "8453",
+        "block": 52640438,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11920663,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "84532",
+        "block": 48150880,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      }
+    ],
     "circuitVersionMatchesSubject": true,
     "established": true,
     "failures": []
@@ -1040,7 +1070,7 @@
   "claims": {
     "TRUST_TARGET_CODE_IDENTITY": {
       "status": "ESTABLISHED",
-      "basis": "runtime 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd on 4 chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode"
+      "basis": "runtime 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd on 4 chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode, and the same real-proof/tampered-proof verdicts from the deployed template on every chain"
     },
     "DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT": {
       "status": "ESTABLISHED",
