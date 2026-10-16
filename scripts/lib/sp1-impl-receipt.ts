@@ -57,7 +57,9 @@ import {
   DESIGNATIONS_DIR,
   DESIGNATION_EVIDENCE_DIR,
   designationSetErrors,
+  latestDesignation,
   readDesignations,
+  subjectFreshnessErrors,
   validateDesignationsInRepo,
   type ProgramDesignation,
 } from "./sp1-designation";
@@ -797,6 +799,8 @@ export interface ImplReceiptInputs {
   td2: { errors: string[]; multisigClass: string | null };
   designations: ProgramDesignation[];
   designationErrors: string[];
+  /** The zkvm subject on disk and at HEAD is not the latest designation's: a demonstrated guest change. */
+  subjectErrors: string[];
   builds: WrapperBuild[];
   buildErrors: string[];
   registry: RegistryDoc;
@@ -968,7 +972,7 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     `every parent edge of every commit reachable from HEAD, and the working tree, only extends ${REGISTRY_REL}, the designations, their evidence bundles and the wrapper builds: ${yes(i.registryErrors.length === 0)}`,
     "a shallow clone cannot show that, and fails closed",
     probeLine(i.probes.registryHistory),
-    `a rewrite of main itself is outside any walk: main's ruleset forbids force pushes and deletion with nobody to bypass it, as measured at ${i.ruleset.observedAtUtc || "(no measurement)"} (${MAIN_RULESET_OBSERVATION_REL}): ${yes(i.ruleset.errors.length === 0 && i.ruleset.gaps.length === 0)}; whoever administers the repository can change that, and only the next measurement would show it`,
+    `a rewrite of main itself is outside any walk: main's ruleset forbids force pushes and deletion with nobody to bypass it, as measured at ${i.ruleset.observedAtUtc || "(no measurement)"} (${MAIN_RULESET_OBSERVATION_REL}): ${i.ruleset.errors.length > 0 ? "unmeasured" : yes(i.ruleset.gaps.length === 0)}; whoever administers the repository can change that, and only the next measurement would show it`,
     ...i.ruleset.gaps,
     ...i.ruleset.errors,
     ...i.registryErrors,
@@ -1017,7 +1021,7 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
       ? "TRUNCATING"
       : !same(i.ast.journalTypes, i.journalTypesAtBase)
         ? "PROOF_FORMAT_CHANGED"
-        : i.designationErrors.length > 0
+        : i.designationErrors.length > 0 || i.subjectErrors.length > 0
           ? "GUEST_CHANGE_NOT_EXCLUDED"
           : "FULL_WIDTH_WRAPPER_ONLY";
   set("F1_CHAIN_ID_FIX", f1, [
@@ -1096,14 +1100,16 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     .map(([source]) => source);
 
   const stop: Record<(typeof STOP_CONDITION_IDS)[number], [boolean, string]> = {
-    // Only a completed rebuild that produced another ELF or vkey shows the designation is not reproduced; an
-    // incomplete build, a procedure that drifted or invalid evidence shows no reproduction, and is not this STOP.
+    // Only a completed rebuild that produced another ELF or vkey, in evidence that re-derives, shows the designation
+    // is not reproduced; an incomplete build, a procedure that drifted or invalid evidence shows no reproduction, and
+    // is not this STOP (invalid evidence is EVIDENCE_INVALID).
     CANONICAL_BUILD_DOES_NOT_REPRODUCE: [
-      i.canonical.oneHost === "PROGRAM_IDENTITY_DRIFT" || i.canonical.twoHost === "PROGRAM_IDENTITY_DRIFT",
+      canonicalEvidenceValid &&
+        (i.canonical.oneHost === "PROGRAM_IDENTITY_DRIFT" || i.canonical.twoHost === "PROGRAM_IDENTITY_DRIFT"),
       `rebuild: ${i.canonical.oneHost} (one host), ${i.canonical.twoHost} (two)`,
     ],
     ONE_ELF_CONFLICTING_VKEYS: [
-      i.canonical.conflictingVkeys > 0 ||
+      (canonicalEvidenceValid && i.canonical.conflictingVkeys > 0) ||
         i.designations.some((x) => x.vkeyRecomputed.conflicting !== 0) ||
         i.designationErrors.some((e) => e.includes("PROGRAM_IDENTITY_CONTRADICTION")),
       `conflicting vkeys for a designated ELF: ${i.canonical.conflictingVkeys} in the rebuild evidence; across the designations: ${i.designationErrors.filter((e) => e.includes("PROGRAM_IDENTITY_CONTRADICTION")).length}`,
@@ -1132,7 +1138,7 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     // ruleset's to forbid (measured). A violation the walk did detect is invalid evidence (REGISTRY), not this STOP.
     REGISTRY_HISTORY_REWRITABLE_UNDETECTED: [
       !passed(i.probes.registryHistory) || i.ruleset.gaps.length > 0,
-      `${probeLine(i.probes.registryHistory)}; main's history protected by its ruleset (observed ${i.ruleset.observedAtUtc || "never"}): ${i.ruleset.gaps.length === 0 ? "yes" : `no: ${i.ruleset.gaps.join("; ")}`}`,
+      `${probeLine(i.probes.registryHistory)}; main's history protected by its ruleset: ${i.ruleset.errors.length > 0 ? "unmeasured (EVIDENCE_INVALID)" : i.ruleset.gaps.length === 0 ? `yes (observed ${i.ruleset.observedAtUtc})` : `no: ${i.ruleset.gaps.join("; ")}`}`,
     ],
     HALTED_IDENTITY_REPUBLISHABLE_BY_ADDRESS_CHANGE: [
       !(
@@ -1147,8 +1153,8 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
       `the wrapper's only mutator is halt(), and no contract outside the wrapper changed: the cross-chain refusal is repository-published data`,
     ],
     F1_CHANGES_GUEST_ELF_VKEY_OR_PROOF_FORMAT: [
-      f1 === "PROOF_FORMAT_CHANGED" || f1 === "GUEST_CHANGE_NOT_EXCLUDED",
-      `F1_CHAIN_ID_FIX is ${f1}`,
+      f1 === "PROOF_FORMAT_CHANGED" || i.subjectErrors.length > 0,
+      `F1_CHAIN_ID_FIX is ${f1}; the zkvm subject at HEAD is the designated one: ${yes(i.subjectErrors.length === 0)} (a designation that does not validate otherwise is EVIDENCE_INVALID)`,
     ],
     RPC_FAILURE_FAILS_OPEN: [
       !(passed(i.probes.rpc) && i.probes.finality.length > 0 && i.probes.finality.every(passed)),
@@ -1193,8 +1199,15 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     {
       id: "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
       reachableInThisLane: true,
-      met: i.canonical.evidenceErrors.length === 0 && i.canonical.twoHost === "REPRODUCED",
-      basis: `the committed rebuild evidence (valid: ${yes(i.canonical.evidenceErrors.length === 0)}), judged for the release (two distinct machines): ${i.canonical.twoHost}`,
+      met:
+        i.canonical.evidenceErrors.length === 0 &&
+        i.canonical.twoHost === "REPRODUCED" &&
+        i.canonical.designation === latestDesignation(i.designations)?.id,
+      basis:
+        `the committed rebuild evidence (valid: ${yes(i.canonical.evidenceErrors.length === 0)}), judged for the release (two distinct machines): ${i.canonical.twoHost}; ` +
+        (i.canonical.designation === latestDesignation(i.designations)?.id
+          ? `of the latest designation, ${i.canonical.designation}`
+          : `of ${i.canonical.designation}, not the latest designation (${String(latestDesignation(i.designations)?.id)})`),
     },
     {
       id: "PER_CHAIN_EXECUTION_CHECK",
@@ -1364,6 +1377,60 @@ export function baseCommitErrors(repoRoot: string, base: string, at: string): st
   return errors;
 }
 
+/** The contract sources changed since `rev`, against the working tree (what the receipt states as changed). */
+function contractsChangedSince(repoRoot: string, rev: string): { path: string; status: string }[] {
+  return git(repoRoot, ["diff", "--name-status", "--no-renames", rev, "--", "contracts"])
+    .split("\n")
+    .filter((l) => l.trim() !== "")
+    .map((l) => {
+      const [status, path] = l.split("\t");
+      return { path, status };
+    })
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+/** The journal the wrapper decoded at `rev`; a commit without the wrapper's source names none. */
+function journalTypesAt(repoRoot: string, rev: string): string[] {
+  try {
+    return journalTypesInSource(git(repoRoot, ["show", `${rev}:${WRAPPER_SOURCE}`]));
+  } catch {
+    return ["(no wrapper source)"];
+  }
+}
+
+/**
+ * Off main, HEAD's history can hold a main commit later than the base (the lane merged main; a pull request's
+ * synthetic merge). What the receipt states against its base — the contract sources changed, the journal there —
+ * must then read the same against that commit; otherwise a change main made and this tree undoes is hidden behind the
+ * older base (the re-review's A2). On main itself the commit that wrote the receipt decides (baseCommitErrors).
+ */
+export function baseDriftErrors(repoRoot: string, base: string): string[] {
+  const list = (args: string[]) => git(repoRoot, args).split("\n").filter(Boolean);
+  let mainline: string[];
+  try {
+    mainline = list(["rev-list", "--first-parent", "origin/main"]);
+  } catch {
+    return [
+      "origin/main is not available, with its history: the base cannot be verified, and the receipt is not judged",
+    ];
+  }
+  if (mainline.includes(git(repoRoot, ["rev-parse", "HEAD"]).trim())) return [];
+  const index = mainline.indexOf(base);
+  if (index <= 0) return [];
+  const since = new Set(list(["rev-list", "HEAD", `^${base}`]));
+  const later = mainline.slice(0, index).find((c) => since.has(c));
+  if (later === undefined) return [];
+  const facts = (rev: string) =>
+    JSON.stringify({ contracts: contractsChangedSince(repoRoot, rev), journal: journalTypesAt(repoRoot, rev) });
+  return facts(base) === facts(later)
+    ? []
+    : [
+        `main moved after the base ${base}: against ${later}, the latest main commit in HEAD's history, the contract ` +
+          "sources changed since the base and the journal there read otherwise (a change main made and this tree " +
+          "undoes would be hidden): generate the receipt again (npm run sp1-impl:receipt)",
+      ];
+}
+
 /**
  * Everything the derivation needs, read from the repository at `repoRoot` (compile first). The base is verified at
  * `at`: HEAD when generating, the commit that wrote the receipt when validating it.
@@ -1375,6 +1442,8 @@ export async function readImplReceiptInputs(
 ): Promise<ImplReceiptInputs> {
   const baseErrors = baseCommitErrors(repoRoot, baseCommit, at);
   if (baseErrors.length > 0) throw new Error(baseErrors.join("; "));
+  const drift = baseDriftErrors(repoRoot, baseCommit);
+  if (drift.length > 0) throw new Error(drift.join("; "));
   if (jsonFiles(repoRoot, REAL_PROOF_RECORDS_DIR).length > 0) {
     throw new Error(
       `${REAL_PROOF_RECORDS_DIR}: real-proof records have no validator in this lane; a lane must define and validate them before they count`,
@@ -1410,14 +1479,7 @@ export async function readImplReceiptInputs(
 
   const provingErrors = provingAvailabilityErrors(repoRoot);
   const { abi, contract } = compiledWrapper(repoRoot);
-  const contractsChanged = git(repoRoot, ["diff", "--name-status", "--no-renames", baseCommit, "--", "contracts"])
-    .split("\n")
-    .filter((l) => l.trim() !== "")
-    .map((l) => {
-      const [status, path] = l.split("\t");
-      return { path, status };
-    })
-    .sort((a, b) => a.path.localeCompare(b.path));
+  const contractsChanged = contractsChangedSince(repoRoot, baseCommit);
   const multisig = (Array.isArray(td2.authorizationCut) ? td2.authorizationCut : []).find(
     (c: { principal?: string }) => c?.principal === MULTISIG_OWNER,
   );
@@ -1463,6 +1525,8 @@ export async function readImplReceiptInputs(
     },
     designations,
     designationErrors: validateDesignationsInRepo(repoRoot),
+    subjectErrors:
+      designations.length > 0 ? subjectFreshnessErrors(designations[designations.length - 1], repoRoot) : [],
     builds,
     buildErrors: [...wrapperBuildErrors(builds), ...currentBuildErrors(repoRoot)],
     registry,

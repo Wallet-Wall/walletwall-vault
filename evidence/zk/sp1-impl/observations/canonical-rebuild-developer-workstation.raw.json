@@ -14,7 +14,7 @@
       },
       {
         "script": "scripts/lib/sp1-canonical-build.ts",
-        "scriptSha256": "59449641b2e8baf33caaea0bcf900e72967a9cffc6232c1a68bd2a0b23679497"
+        "scriptSha256": "466d0384e53e3e0e1fe4017700bbcc125edecf44101344177ad1caf1cc7fb1b2"
       }
     ]
   },

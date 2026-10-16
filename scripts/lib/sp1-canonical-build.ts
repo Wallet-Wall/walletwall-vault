@@ -397,8 +397,19 @@ export function canonicalRebuildEvidenceErrors(
 
 type Kind = "IDENTITY" | "PROCEDURE" | "INCOMPLETE" | "HOSTS";
 
-/** What a host recorded about itself, without the label it was given (its first line). */
-const identityBody = (identity: string) => identity.split("\n").slice(1).join("\n");
+/**
+ * What a host's driver measured about its machine: its kernel, its CPU and its Docker engine. Never the label it was
+ * given (host_id) or what it read from its environment (runner=, run=): one machine run twice, under any names, is one
+ * host (the re-review's A1). Empty when it measured nothing.
+ */
+const machineOf = (b: CanonicalBuild): string => {
+  const measured = String(b?.hostIdentity ?? "")
+    .split("\n")
+    .slice(1)
+    .filter((line) => line.trim() !== "" && !/^(runner|run)=/.test(line));
+  const docker = String(b?.dockerInfo ?? "").trim();
+  return measured.length === 0 && docker === "" ? "" : JSON.stringify([...measured, docker]);
+};
 
 function classified(obs: CanonicalBuildObservation, d: ProgramDesignation, minimumHosts: number): [Kind, string][] {
   const out: [Kind, string][] = [];
@@ -409,7 +420,7 @@ function classified(obs: CanonicalBuildObservation, d: ProgramDesignation, minim
   const driver = obs?.tools?.driver?.scriptSha256;
   if (!isHex64(driver)) push("PROCEDURE", "the observation names no driver (tools.driver)");
   const builds = Array.isArray(obs?.builds) ? obs.builds : [];
-  const machines = new Set(builds.filter((b) => b?.hostIdentity).map((b) => identityBody(String(b.hostIdentity))));
+  const machines = new Set(builds.map(machineOf).filter((m) => m !== ""));
   if (!(builds.length >= minimumHosts && machines.size >= minimumHosts)) {
     push("HOSTS", `the rebuild needs ${minimumHosts} distinct hosts, it has ${machines.size}`);
   }
@@ -419,6 +430,7 @@ function classified(obs: CanonicalBuildObservation, d: ProgramDesignation, minim
     const at = `the build on ${b?.hostId}`;
     const named = String(b?.hostIdentity ?? "").split("\n")[0];
     if (!b?.hostIdentity) push("INCOMPLETE", `${at} recorded no host identity`);
+    else if (machineOf(b) === "") push("INCOMPLETE", `${at} recorded no machine (kernel, CPU, Docker engine)`);
     else if (named !== `host_id=${b.hostId}`) push("PROCEDURE", `the build record of ${b.hostId} names ${named}`);
     if (!isHex64(b?.driver?.scriptSha256)) push("INCOMPLETE", `${at} recorded no driver digest`);
     else if (isHex64(driver) && b.driver.scriptSha256 !== driver) {
@@ -491,6 +503,21 @@ function classified(obs: CanonicalBuildObservation, d: ProgramDesignation, minim
   );
   if (outputs.size > 1) push("IDENTITY", "the hosts disagree on the withdrawal ELF or vkey");
   const recompute = obs?.vkeyRecompute;
+  // A recompute is of these builds' ELFs: one of an ELF no completed build produced is another procedure's (L2).
+  for (const program of [WITHDRAWAL, ACVP]) {
+    const built = new Set(
+      builds
+        .filter((b) => b?.containerExit === 0)
+        .map((b) => b.programs?.[program]?.elfSha256)
+        .filter(isHex64),
+    );
+    if (built.size === 0) continue;
+    for (const r of Array.isArray(recompute?.results) ? recompute.results : []) {
+      if (r?.program === program && isHex64(r.elfSha256) && !built.has(r.elfSha256)) {
+        push("PROCEDURE", `the outside recompute ran on ELF ${r.elfSha256}, which no build produced`);
+      }
+    }
+  }
   if (!isHex64(recompute?.toolSha256)) push("INCOMPLETE", "the outside recompute names no tool digest");
   const results = (Array.isArray(recompute?.results) ? recompute.results : []).filter(
     (r) => r?.program === WITHDRAWAL && r.elfSha256 === d.elf.sha256 && isVkey(r.vkey),

@@ -144,6 +144,14 @@ export function patchPairingToEmptyAccount(runtime: string, expectedSites = 2): 
   return hexlify(code);
 }
 
+/**
+ * Whether the canary's positive control fired: the pinned code refuses the canary as the check requires, and the
+ * same code with its pairing calls aimed at an empty account accepts it. Either alone is no detector.
+ */
+export function controlDetects(pinnedCode: unknown, withoutPairingPrecompile: unknown): boolean {
+  return pinnedCode === REQUIRED_VERDICTS.canary && withoutPairingPrecompile === "success";
+}
+
 /** A provider for a development chain, which can install code (hardhat_setCode). */
 export type DevProvider = Provider & { send(method: string, params: unknown[]): Promise<unknown> };
 
@@ -172,7 +180,7 @@ export async function canaryPositiveControl(
   return {
     pinnedCode,
     withoutPairingPrecompile,
-    detects: pinnedCode === REQUIRED_VERDICTS.canary && withoutPairingPrecompile === "success",
+    detects: controlDetects(pinnedCode, withoutPairingPrecompile),
   };
 }
 
@@ -251,11 +259,7 @@ export function chainExecutionObservationErrors(
   }
   // The control is judged from its recorded verdicts, never from its flag (review finding F7).
   const control = obs?.canaryPositiveControl;
-  if (
-    control?.pinnedCode !== REQUIRED_VERDICTS.canary ||
-    control?.withoutPairingPrecompile !== "success" ||
-    control?.detects !== true
-  ) {
+  if (!controlDetects(control?.pinnedCode, control?.withoutPairingPrecompile) || control?.detects !== true) {
     errors.push(
       `the canary's positive control did not fire: the pinned code gave ${String(control?.pinnedCode)} ` +
         `(required ${REQUIRED_VERDICTS.canary}), without the pairing precompile ${String(control?.withoutPairingPrecompile)} ` +

@@ -30,6 +30,7 @@ import {
   canaryPositiveControl,
   chainExecutionCalls,
   chainExecutionObservationErrors,
+  controlDetects,
   patchPairingToEmptyAccount,
   runChainExecutionCheck,
   type ChainExecutionObservation,
@@ -81,6 +82,20 @@ describe("SP1 implementation lane — the per-chain execution check", function (
       expect([result.pass, result.failures]).to.deep.equal([true, []]);
     });
 
+    it("a verifier that refuses everything with ProofInvalid fails: the real proof must be accepted (a bricked chain)", async function () {
+      // PUSH4 ProofInvalid, PUSH1 0xe0, SHL, PUSH0, MSTORE, PUSH1 4, PUSH0, REVERT: every call reverts ProofInvalid, so
+      // the tampered proof and the canary get the required refusal and only the real proof shows the failure.
+      const refuseAll = ethers.getAddress(ethers.dataSlice(ethers.id("sp1-impl: refuses everything"), 12));
+      await networkHelpers.setCode(refuseAll, `0x63${PROOF_INVALID.slice(2)}60e01b5f5260045ffd`);
+      const result = await runChainExecutionCheck(ethers.provider, at(refuseAll));
+      expect([result.verdicts.tampered, result.verdicts.canary]).to.deep.equal([
+        REQUIRED_VERDICTS.tampered,
+        REQUIRED_VERDICTS.canary,
+      ]);
+      expect(result.pass).to.equal(false);
+      expect(result.failures).to.deep.equal([`real: revert ${PROOF_INVALID}, required success`]);
+    });
+
     it("the same code whose pairing calls reach an empty account accepts the canary, and fails the check", async function () {
       const patched = ethers.getAddress(ethers.dataSlice(ethers.id("sp1-impl: no pairing precompile"), 12));
       await networkHelpers.setCode(patched, patchPairingToEmptyAccount(await v610Runtime()));
@@ -88,6 +103,15 @@ describe("SP1 implementation lane — the per-chain execution check", function (
       expect(result.verdicts.canary).to.equal("success");
       expect(result.pass).to.equal(false);
       expect(result.failures.join("\n")).to.match(/canary: success, required revert 0x7fcdd1f4/);
+    });
+
+    it("the control detects only when the pinned code refuses the canary and the broken environment accepts it", function () {
+      const refused = REQUIRED_VERDICTS.canary;
+      expect(controlDetects(refused, "success"), "the control fires").to.equal(true);
+      expect(controlDetects(refused, refused), "the broken environment refuses too: no detector").to.equal(false);
+      expect(controlDetects("success", "success"), "the pinned code accepts it: no canary").to.equal(false);
+      expect(controlDetects("success", refused)).to.equal(false);
+      expect(controlDetects("revert 0x", "success"), "another refusal is not the canary's").to.equal(false);
     });
 
     it("the canary's positive control fires (and would fail if the canary could not see a missing precompile)", async function () {
@@ -187,7 +211,19 @@ describe("SP1 implementation lane — the per-chain execution check", function (
         (o) => (Object.values(o.chains["1"].providers)[0].blockHash = ethers.ZeroHash),
         /\b1\b.*block/,
       ],
-      ["other verifier code", (o) => (o.chains["8453"].codeKeccak = ethers.ZeroHash), /8453.*code/],
+      [
+        "other verifier code, on which the providers agree",
+        (o) => {
+          o.chains["8453"].codeKeccak = ethers.ZeroHash;
+          for (const r of Object.values(o.chains["8453"].providers)) r.codeKeccak = ethers.ZeroHash;
+        },
+        /chain 8453: the verifier's code 0x0{64} is not mldsa65-withdrawal-d1's/,
+      ],
+      [
+        "a provider that reports other code than the chain's record",
+        (o) => (Object.values(o.chains["11155111"].providers)[0].codeKeccak = ethers.ZeroHash),
+        /chain 11155111: the providers disagree on the verifier's code/,
+      ],
       ["a supported chain missing", (o) => delete o.chains["84532"], /84532.*not measured/],
       [
         "one provider only",

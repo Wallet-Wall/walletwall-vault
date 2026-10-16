@@ -23,7 +23,7 @@ import { ethers, networkHelpers } from "./helpers/connection";
 import { deployPinnedSp1Verifier, v610Runtime } from "./helpers/sp1PinnedVerifier";
 import { registryFromProfiles } from "./helpers/registryHelpers";
 import { skipWhenInstrumented } from "./helpers/instrumented";
-import { readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
+import { identityOf, readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
 import { readWrapperBuilds, type WrapperBuild } from "../scripts/lib/sp1-wrapper-build";
 import { patchPairingToEmptyAccount } from "../scripts/lib/sp1-chain-execution";
 import { readRegistry } from "../scripts/lib/sp1-registry";
@@ -176,6 +176,12 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
         }),
       );
       expect(chosen.programVKey).to.equal(ethers.id("d2 vkey"));
+      // With d1's identity recorded halted, the only accepted designation is d2's, chosen without being named.
+      const d2Identity = identityOf(d1.verifier.runtimeCodeKeccak, ethers.id("d2 vkey"));
+      const recovered = planWrapperDeployment(
+        input({ designations: [d1, { ...d2, identity: d2Identity }], registry: haltedOnBaseSepolia() }),
+      );
+      expect(recovered.designation?.id).to.equal("mldsa65-withdrawal-d2");
     });
 
     it("the local test path is the only one that takes a mock, and only with the flag on a local chain", function () {
@@ -266,6 +272,30 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
       }
     });
 
+    it("a positive control that does not fire stops it: a check that cannot see a missing precompile proves nothing", async function () {
+      // The development chain answers the broken environment's call with the pinned code's refusal: no detector.
+      const withoutPairing = ethers.getAddress(
+        `0x${ethers.id("sp1 canary positive control: without pairing").slice(26)}`,
+      );
+      const blind = new Proxy(ethers.provider, {
+        get(t, prop) {
+          if (prop === "call")
+            return async (tx: { to?: string }) => {
+              if (tx.to?.toLowerCase() === withoutPairing.toLowerCase()) {
+                throw Object.assign(new Error("execution reverted"), { code: "CALL_EXCEPTION", data: "0x7fcdd1f4" });
+              }
+              return t.call(tx as any);
+            };
+          const value = Reflect.get(t, prop, t);
+          return typeof value === "function" ? value.bind(t) : value;
+        },
+      });
+      await assert.rejects(
+        preDeploymentChecks(ethers.provider, localPlan(v610), blind as any),
+        /positive control did not fire/,
+      );
+    });
+
     it("refuses other code at the verifier address, and an address without code", async function () {
       const mock = await (await ethers.getContractFactory("MockSP1Verifier")).deploy();
       await assert.rejects(
@@ -338,6 +368,19 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
         ["another vkey", { ...plan, programVKey: ethers.id("x") }, /PROGRAM_VKEY/],
         ["another halt principal", { ...plan, haltPrincipal: stranger.address }, /halt principal/],
         ["another verifier", { ...plan, sp1Verifier: stranger.address }, /SP1 verifier/],
+        [
+          "another verifier code than the plan expects",
+          { ...plan, expectedSp1CodeKeccak: ethers.id("other code") },
+          /its SP1 verifier runs 0x[0-9a-f]{64}, not the designated code/,
+        ],
+        [
+          "another designation's identity",
+          {
+            ...plan,
+            designation: { ...plan.designation, id: "mldsa65-withdrawal-d2", identity: ethers.id("another identity") },
+          },
+          /is not designation mldsa65-withdrawal-d2's/,
+        ],
       ];
       for (const [label, other, rule] of cases) {
         expect((await readBackErrors(ethers.provider, wrapper, other, builds)).join("\n"), label).to.match(rule);

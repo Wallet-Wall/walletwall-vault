@@ -429,6 +429,21 @@ describe("SP1 implementation lane — the canonical build against the designatio
         /no tool digest/,
         "INCOMPLETE",
       ],
+      [
+        "a recompute of an ELF no build produced (the re-review's L2)",
+        (o) => o.vkeyRecompute.results.push({ program: WITHDRAWAL, elfSha256: "ee".repeat(32), vkey: d1.programVKey }),
+        /recompute ran on ELF e{64}, which no build produced/,
+        "PROCEDURE_DRIFT",
+      ],
+      [
+        "a build that recorded no machine (kernel, CPU, Docker engine)",
+        (o) => {
+          o.builds[0].hostIdentity = `host_id=${o.builds[0].hostId}\nrunner=r run=1.1`;
+          o.builds[0].dockerInfo = "";
+        },
+        /recorded no machine/,
+        "INCOMPLETE",
+      ],
     ];
     for (const [label, change, rule, verdict] of cases) {
       it(`refuses ${label} (${verdict})`, function () {
@@ -498,6 +513,33 @@ describe("SP1 implementation lane — the canonical build against the designatio
       expect(canonicalBuildVerdict(padded, d1, { minimumHosts: 2 })).to.not.equal("REPRODUCED");
     });
 
+    it("one machine is one host whatever its environment names it: only what the driver measured counts (the re-review's A1)", function () {
+      // The re-review ran the driver's identity block with RUNNER_NAME=hostB: every measured line was the same.
+      const [b] = committed.builds;
+      const second = {
+        ...clone(b),
+        hostId: "host-b",
+        hostIdentity: b.hostIdentity
+          .replace(/^host_id=[^\n]*/, "host_id=host-b")
+          .replace(/^runner=local /m, "runner=hostB ")
+          .replace(/^run=unset\.unset/m, "run=4242.1"),
+      };
+      expect(second.hostIdentity, "the labels differ").to.not.equal(b.hostIdentity);
+      const twoLabels = { ...clone(committed), builds: [clone(b), second] };
+      expect(canonicalBuildErrors(twoLabels, d1, { minimumHosts: 2 }).join("\n")).to.match(
+        /2 distinct hosts, it has 1/,
+      );
+      expect(canonicalBuildVerdict(twoLabels, d1, { minimumHosts: 2 })).to.equal("INSUFFICIENT_HOSTS");
+      // Another machine is another kernel, CPU or Docker engine (the CI runners differ in OS image).
+      const otherMachine = {
+        ...clone(second),
+        dockerInfo: "server=28.0.4 kernel=6.8.0-1017-azure os=Ubuntu 22.04.5 LTS ncpu=4",
+      };
+      expect(
+        canonicalBuildVerdict({ ...clone(committed), builds: [clone(b), otherMachine] }, d1, { minimumHosts: 2 }),
+      ).to.equal("REPRODUCED");
+    });
+
     it("an observation that names no driver, or no designation, is refused", function () {
       const o = reproducing(d1, ["host-a"]);
       o.tools.driver.scriptSha256 = "";
@@ -554,11 +596,10 @@ describe("SP1 implementation lane — the canonical build against the designatio
     it("every raw record is committed: none is ignored, so a fresh clone re-derives what this checkout does", function () {
       const records = recordsDirOf(CANONICAL_REBUILD_OBSERVATION_REL);
       const git = (...args: string[]) =>
-        execFileSync("git", args, { encoding: "utf8" })
-          .split("\n")
-          .filter(Boolean)
-          .sort();
-      expect(git("ls-files", "--others", "--ignored", "--exclude-standard", "--", records), "ignored").to.deep.equal([]);
+        execFileSync("git", args, { encoding: "utf8" }).split("\n").filter(Boolean).sort();
+      expect(git("ls-files", "--others", "--ignored", "--exclude-standard", "--", records), "ignored").to.deep.equal(
+        [],
+      );
       expect(git("ls-files", "--others", "--exclude-standard", "--", records), "untracked").to.deep.equal([]);
       const tracked = git("ls-files", "--", records);
       for (const b of committed.builds) {

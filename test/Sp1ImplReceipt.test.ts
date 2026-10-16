@@ -22,6 +22,7 @@ import {
   STATUS_KEYS,
   STOP_CONDITION_IDS,
   baseCommitErrors,
+  baseDriftErrors,
   compareReceipt,
   deriveImplReceipt,
   implReceiptErrors,
@@ -164,6 +165,44 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       "is not what this tree's checker derives",
     );
     expect(twoHosts(invalid)).to.equal(false);
+    // The release rebuild is of the latest designation, the one CI holds HEAD to (the re-review's A6).
+    const superseded = perturbed((i) => {
+      i.canonical.twoHost = "REPRODUCED";
+      i.canonical.designation = "mldsa65-withdrawal-d0";
+    });
+    expect(twoHosts(superseded), "a superseded designation's rebuild").to.equal(false);
+    expect(
+      superseded.productionBinding.prerequisites.find((p) => p.id === "CANONICAL_RELEASE_REBUILD_TWO_HOSTS")!.basis,
+    ).to.match(/not the latest designation/);
+  });
+
+  it("a STOP is raised only from valid records; invalid evidence is EVIDENCE_INVALID, never a STOP (the re-review's L2)", function () {
+    const triggered = (r: ReturnType<typeof deriveImplReceipt>) =>
+      r.stopConditions.filter((c) => c.triggered).map((c) => c.id);
+    // Drift read from rebuild evidence that does not re-derive is no demonstration.
+    const unproven = perturbed((i) => {
+      i.canonical.oneHost = "PROGRAM_IDENTITY_DRIFT";
+      i.canonical.conflictingVkeys = 1;
+      i.canonical.evidenceErrors = ["the observation is not what this tree's checker derives"];
+    });
+    expect(triggered(unproven)).to.deep.equal([]);
+    expect(unproven.verdict).to.equal("EVIDENCE_INVALID: CANONICAL_REBUILD");
+    // A designation that does not regenerate is invalid evidence; a subject that is not the designation's is a change.
+    const invalidDesignation = perturbed((i) => (i.designationErrors = ["mldsa65-withdrawal-d1 does not regenerate"]));
+    expect(triggered(invalidDesignation)).to.deep.equal([]);
+    expect(invalidDesignation.verdict).to.equal("EVIDENCE_INVALID: DESIGNATIONS");
+    const guestChanged = perturbed((i) => {
+      i.subjectErrors = ["the zkvm guest tree at HEAD is not mldsa65-withdrawal-d1's"];
+      i.designationErrors = [...i.subjectErrors];
+    });
+    expect(triggered(guestChanged)).to.deep.equal(["F1_CHANGES_GUEST_ELF_VKEY_OR_PROOF_FORMAT"]);
+    // An unmeasured ruleset reads unmeasured, never as protection.
+    const unmeasured = perturbed((i) => (i.ruleset = { observedAtUtc: "", errors: ["no observation"], gaps: [] }));
+    expect(unmeasured.verdict).to.equal("EVIDENCE_INVALID: RULESET");
+    const basis = unmeasured.stopConditions.find((c) => c.id === "REGISTRY_HISTORY_REWRITABLE_UNDETECTED")!.basis;
+    expect(basis).to.match(/unmeasured/);
+    expect(basis).to.not.match(/protected by its ruleset[^;]*: yes/);
+    expect(unmeasured.statuses.REGISTRY_APPEND_ONLY_STATUS.basis.join("\n")).to.match(/unmeasured/);
   });
 
   it("PRODUCTION_SP1_BINDING_STATUS is ESTABLISHED only when every prerequisite is met; this lane leaves five unmet", function () {
@@ -210,7 +249,10 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       ],
       ["HALTED_IDENTITY_REPUBLISHABLE_BY_ADDRESS_CHANGE", (i) => (i.probes.identityReuse.attackRefused = false)],
       ["CROSS_CHAIN_FIX_NEEDS_NEW_MUTABLE_PRINCIPAL", (i) => i.ast.mutatingFunctions.push("setRegistry")],
-      ["F1_CHANGES_GUEST_ELF_VKEY_OR_PROOF_FORMAT", (i) => (i.designationErrors = ["subject"])],
+      [
+        "F1_CHANGES_GUEST_ELF_VKEY_OR_PROOF_FORMAT",
+        (i) => (i.subjectErrors = ["the zkvm guest tree at HEAD is not mldsa65-withdrawal-d1's"]),
+      ],
       ["RPC_FAILURE_FAILS_OPEN", (i) => (i.probes.rpc.attackRefused = false)],
       ["RPC_FAILURE_FAILS_OPEN", (i) => (i.probes.finality[0].attackRefused = false)],
       ["RPC_FAILURE_FAILS_OPEN", (i) => (i.probes.finality[1].attackRefused = false)],
@@ -360,6 +402,71 @@ describe("SP1 implementation lane — the implementation receipt", function () {
         expect(readFileSync(c.test, "utf8"), `${k}: ${c.test}`).to.include(`it("${c.title}"`);
       }
     }
+  });
+
+  describe("after main moves, what the receipt states against its base must hold against the newer main (the re-review's A2)", function () {
+    // main: m0 (vault A, wrapper w0) - m1 (docs) - m2 (vault B); the lane forks at m0 and changes the wrapper (l1).
+    const VAULT = "contracts/WalletWallVault.sol";
+    const WRAPPER = "contracts/verifiers/ZKMLDSAVerifier.sol";
+    let repo: string;
+    const ids: Record<string, string> = {};
+    const git = (...args: string[]) =>
+      execFileSync(
+        "git",
+        ["-c", "core.autocrlf=false", "-c", "user.email=t@example.invalid", "-c", "user.name=t", ...args],
+        {
+          cwd: repo,
+          encoding: "utf8",
+        },
+      ).trim();
+    const commit = (name: string, files: Record<string, string>) => {
+      for (const [rel, text] of Object.entries(files)) {
+        mkdirSync(dirname(join(repo, rel)), { recursive: true });
+        writeFileSync(join(repo, rel), text);
+      }
+      git("add", "-A");
+      git("commit", "-q", "-m", name);
+      ids[name] = git("rev-parse", "HEAD");
+    };
+    beforeEach(function () {
+      repo = mkdtempSync(join(tmpdir(), "sp1-receipt-drift-"));
+      git("init", "-q", "-b", "main");
+      commit("m0", { [VAULT]: "vault A\n", [WRAPPER]: "wrapper w0\n" });
+      git("checkout", "-q", "-b", "lane");
+      commit("l1", { [IMPL_RECEIPT_REL]: "receipt\n", [WRAPPER]: "wrapper w1\n" });
+      git("checkout", "-q", "main");
+      commit("m1", { "docs/notes.md": "notes\n" });
+      commit("m2", { [VAULT]: "vault B\n" });
+      git("update-ref", "refs/remotes/origin/main", ids.m2);
+      git("checkout", "-q", "lane");
+    });
+    afterEach(function () {
+      rmSync(repo, { recursive: true, force: true });
+    });
+
+    it("a lane that merged a main commit touching no contract keeps its base (the positive control)", function () {
+      git("merge", "-q", "--no-ff", "-m", "sync docs", ids.m1);
+      expect(baseDriftErrors(repo, ids.m0)).to.deep.equal([]);
+    });
+
+    it("a lane that merged main's contract change and reverted it is refused: the old base would hide the revert", function () {
+      git("merge", "-q", "--no-ff", "-m", "sync vault", ids.m2);
+      commit("l3", { [VAULT]: "vault A\n" });
+      expect(git("diff", "--name-only", ids.l1, "HEAD", "--", "contracts"), "the contracts are l1's again").to.equal(
+        "",
+      );
+      expect(baseDriftErrors(repo, ids.m0).join("\n")).to.match(
+        new RegExp(`against ${ids.m2}, the latest main commit in HEAD's history`),
+      );
+      expect(baseDriftErrors(repo, ids.m2), "the receipt generated again, against m2").to.deep.equal([]);
+    });
+
+    it("on main itself the commit that wrote the receipt decides (baseCommitErrors), not HEAD's history", function () {
+      git("checkout", "-q", "--detach", ids.m2);
+      git("merge", "-q", "--no-ff", "-m", "merge the lane", "lane");
+      git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"));
+      expect(baseDriftErrors(repo, ids.m0)).to.deep.equal([]);
+    });
   });
 
   describe("the base is verified, never self-asserted (review finding F5)", function () {
