@@ -57,6 +57,7 @@ const B = {
   ReturnHuge: 5,
   ReturnOwner: 6,
   ReturnPendingOwner: 7,
+  ReturnPendingTargets: 8,
 } as const;
 const SEL = {
   HALT_PRINCIPAL: ethers.id("HALT_PRINCIPAL()").slice(0, 10),
@@ -184,6 +185,21 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           expect(await consumer.owner()).to.equal(successor.address);
         });
 
+        it(`${c.name}: the consumer cannot be deployed over a halted wrapper, and stores the identity of the one it is deployed over`, async function () {
+          const factory = await ethers.getContractFactory(c.name);
+          expect(await consumer.pqVerifierIdentity()).to.equal(await identityOf(w1));
+          await w1.connect(haltPrincipal).halt();
+          await expect(c.deploy(await w1.getAddress(), admin))
+            .to.be.revertedWithCustomError(factory, "HaltedVerifierTarget")
+            .withArgs(await w1.getAddress());
+          const onW2 = await c.deploy(await w2.getAddress(), admin); // positive control
+          expect(await onW2.pqVerifierIdentity()).to.equal(await identityOf(w2));
+          const plain = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
+          expect(await (await c.deploy(await plain.getAddress(), admin)).pqVerifierIdentity()).to.equal(
+            ethers.ZeroHash,
+          );
+        });
+
         it(`${c.name}: the halt principal cannot deploy the consumer over its own wrapper (it would own it from birth)`, async function () {
           const factory = await ethers.getContractFactory(c.name);
           await expect(c.deploy(await w1.getAddress(), haltPrincipal))
@@ -240,6 +256,9 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
             .to.emit(consumer, "PQVerifierUpdated")
             .withArgs(await w1.getAddress(), await w2.getAddress());
           expect(await consumer.pqVerifier()).to.equal(await w2.getAddress());
+          expect(await consumer.pqVerifierIdentity(), "the new wrapper's identity is stored").to.equal(
+            await identityOf(w2),
+          );
           const identity = await identityOf(w1);
           expect(await consumer.haltedVerifierIdentities(identity)).to.equal(true);
           expect(await w1.halted(), "the old wrapper stays HALTED (no HALTED -> ACTIVE)").to.equal(true);
@@ -338,20 +357,54 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           expect(await consumer.owner()).to.equal(successor.address);
         });
 
-        it(`${c.name}: the documented residual: an installed verifier can make the consumer record one identity as halted, never every identity`, async function () {
+        it(`${c.name}: a current verifier that claims a halt and reports the pending target's own identity cannot refuse it (the review's veto)`, async function () {
+          const fixedCode = await (await ethers.getContractFactory("MockSP1Verifier")).deploy();
+          const targets = [
+            async () => w2, // an independent program build
+            async () => deployWrapper(fixedCode, VKEY_A, otherHaltPrincipal.address), // fixed verifier code, same vkey
+          ];
+          for (const makeTarget of targets) {
+            const liar = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+            await rotateTo(liar); // installed while it showed no halt surface
+            await liar.program(SEL.halted, B.Return, word("0x01"));
+            await liar.program(SEL.SP1_VERIFIER, B.ReturnPendingTargets, ethers.ZeroHash);
+            await liar.program(SEL.PROGRAM_VKEY, B.ReturnPendingTargets, ethers.ZeroHash);
+            const target = await makeTarget();
+            await rotateTo(target);
+            expect(await consumer.pqVerifier()).to.equal(await target.getAddress());
+            expect(await consumer.haltedVerifierIdentities(await identityOf(target))).to.equal(false);
+          }
+        });
+
+        it(`${c.name}: a verifier that showed no identity when installed can have no identity recorded as halted later`, async function () {
           await hostile.program(SEL.halted, B.Return, word("0x01"));
           await hostile.program(SEL.SP1_VERIFIER, B.Return, word(await sp1.getAddress()));
           await hostile.program(SEL.PROGRAM_VKEY, B.Return, VKEY_A);
-          await rotateTo(w2); // leaving a verifier that claims to be a halted wrapper of identity A
-          const claimed = await identityOf(w1); // w1 is identity A
-          expect(await consumer.haltedVerifierIdentities(claimed)).to.equal(true);
-          const freshA = await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address);
+          await rotateTo(w2); // leaving a verifier that now claims to be a halted wrapper of identity A
+          expect(await consumer.haltedVerifierIdentities(await identityOf(w1))).to.equal(false);
+          await consumer
+            .connect(admin)
+            .proposePQVerifier(await (await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address)).getAddress());
+        });
+
+        it(`${c.name}: the documented residual: a verifier can have recorded only the identity it showed when installed`, async function () {
+          const lookalike = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+          await lookalike.program(SEL.SP1_VERIFIER, B.Return, word(await sp1.getAddress()));
+          await lookalike.program(SEL.PROGRAM_VKEY, B.Return, VKEY_A);
+          await rotateTo(lookalike); // installed showing identity A, ACTIVE
+          expect(await consumer.pqVerifierIdentity()).to.equal(await identityOf(w1));
+          await lookalike.program(SEL.halted, B.Return, word("0x01"));
+          await rotateTo(w2); // leaving it while it claims a halt: identity A is recorded
+          expect(await consumer.haltedVerifierIdentities(await identityOf(w1))).to.equal(true);
           await expect(
-            consumer.connect(admin).proposePQVerifier(await freshA.getAddress()),
+            consumer
+              .connect(admin)
+              .proposePQVerifier(await (await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address)).getAddress()),
           ).to.be.revertedWithCustomError(consumer, "HaltedVerifierIdentity");
           // Bounded: any other identity is still admissible.
-          const otherB = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
-          await consumer.connect(admin).proposePQVerifier(await otherB.getAddress());
+          await consumer
+            .connect(admin)
+            .proposePQVerifier(await (await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address)).getAddress());
         });
       });
 

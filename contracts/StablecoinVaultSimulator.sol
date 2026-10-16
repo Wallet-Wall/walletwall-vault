@@ -189,6 +189,11 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     ///         never accepted as a rotation target again. See {VerifierRotationGuard}.
     mapping(bytes32 identity => bool halted) public haltedVerifierIdentities;
 
+    /// @notice The identity (SP1 verifier code hash, PROGRAM_VKEY) {pqVerifier} showed when it was installed, or
+    ///         zero if it showed none. Measured once and never asked again, so the current verifier cannot
+    ///         change which identity its halt refuses. See {VerifierRotationGuard}.
+    bytes32 public pqVerifierIdentity;
+
     mapping(address => VaultOwner) public vaults;
 
     /// @notice Monotonic counter, per vaultOwner, that any external policy-control
@@ -351,7 +356,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (_pqVerifier == address(0)) revert ZeroAddress();
         token = IERC20(_token);
         pqVerifier = IPQCVerifier(_pqVerifier);
-        VerifierRotationGuard.requireNotHaltPrincipal(msg.sender, _pqVerifier, address(0));
+        pqVerifierIdentity = VerifierRotationGuard.requireAdmissibleInitialVerifier(_pqVerifier, msg.sender);
     }
 
     // -----------------------------------------------------------------------
@@ -994,6 +999,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (newVerifier.code.length == 0) revert NoCode(newVerifier);
         VerifierRotationGuard.requireAdmissibleRotation(
             haltedVerifierIdentities,
+            pqVerifierIdentity,
             address(pqVerifier),
             newVerifier,
             msg.sender
@@ -1037,9 +1043,16 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
         address oldVerifier = address(pqVerifier);
-        VerifierRotationGuard.requireAdmissibleRotation(haltedVerifierIdentities, oldVerifier, newVerifier, msg.sender);
-        VerifierRotationGuard.recordHaltedIdentity(haltedVerifierIdentities, oldVerifier);
+        bytes32 newIdentity = VerifierRotationGuard.requireAdmissibleRotation(
+            haltedVerifierIdentities,
+            pqVerifierIdentity,
+            oldVerifier,
+            newVerifier,
+            msg.sender
+        );
+        VerifierRotationGuard.recordHaltedIdentity(haltedVerifierIdentities, pqVerifierIdentity, oldVerifier);
         pqVerifier = IPQCVerifier(newVerifier);
+        pqVerifierIdentity = newIdentity;
 
         pendingPQVerifier = address(0);
         pendingPQVerifierValidAfter = 0;

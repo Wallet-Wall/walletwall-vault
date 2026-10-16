@@ -7,6 +7,8 @@ interface IOwnable2StepView {
     function owner() external view returns (address);
 
     function pendingOwner() external view returns (address);
+
+    function pendingPQVerifier() external view returns (address);
 }
 
 /**
@@ -24,6 +26,8 @@ interface IOwnable2StepView {
  *         ReturnHuge       — return a mebibyte.
  *         ReturnOwner      — return the calling consumer's owner().
  *         ReturnPendingOwner — return the calling consumer's pendingOwner().
+ *         ReturnPendingTargets — return what the calling consumer's pending verifier answers to the same function
+ *                            (so its identity reads as the target's own).
  */
 contract MisbehavingVerifierMock is IPQCVerifier {
     enum Behavior {
@@ -34,7 +38,8 @@ contract MisbehavingVerifierMock is IPQCVerifier {
         BurnGas,
         ReturnHuge,
         ReturnOwner,
-        ReturnPendingOwner
+        ReturnPendingOwner,
+        ReturnPendingTargets
     }
 
     struct Answer {
@@ -79,6 +84,12 @@ contract MisbehavingVerifierMock is IPQCVerifier {
         if (a.behavior == Behavior.ReturnOwner) word = bytes32(uint256(uint160(IOwnable2StepView(msg.sender).owner())));
         if (a.behavior == Behavior.ReturnPendingOwner) {
             word = bytes32(uint256(uint160(IOwnable2StepView(msg.sender).pendingOwner())));
+        }
+        if (a.behavior == Behavior.ReturnPendingTargets) {
+            (bool ok, bytes memory ret) = IOwnable2StepView(msg.sender).pendingPQVerifier().staticcall(
+                abi.encodeWithSelector(msg.sig)
+            );
+            if (ok && ret.length >= 32) word = abi.decode(ret, (bytes32));
         }
         if (a.behavior == Behavior.BurnGas) {
             uint256 spin;

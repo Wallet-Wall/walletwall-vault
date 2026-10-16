@@ -109,7 +109,7 @@ describe("SP1-TD2 consumer scan (the working tree)", function () {
       const ctor = (contract.nodes as AstNode[]).find(
         (n) => n.nodeType === "FunctionDefinition" && n.kind === "constructor",
       )!;
-      expect(guardCalls(ctor), "constructor").to.deep.equal(["requireNotHaltPrincipal"]);
+      expect(guardCalls(ctor), "constructor").to.deep.equal(["requireAdmissibleInitialVerifier"]);
       expect(guardCalls(findFunctionDefinition(contract, "_transferOwnership")), "_transferOwnership").to.deep.equal([
         "requireNotHaltPrincipal",
       ]);

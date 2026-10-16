@@ -21,13 +21,15 @@ import "./IHaltableVerifier.sol";
  *      hash and PROGRAM_VKEY passed the SP1 evidence gates. A consumer cannot recognise "passed the gates" on
  *      chain without a new authority to say so, so that gating is process (scripts/lib/verifier-binding.ts),
  *      and after the delay the owner can still install any code-bearing verifier. What a verifier reports is
- *      self-reported: the checks stop an honest mistake, not a malicious owner, and a verifier the owner
- *      installed can make the consumer record any identity as halted (refusing that identity for good, never
- *      every identity).
+ *      self-reported: the checks stop an honest mistake, not a malicious owner. The identity check is per
+ *      consumer: it covers the wrapper this consumer verifies through and the ones it left while they were
+ *      halted, not a wrapper some other consumer used (that is the binding gate's wrapper registry).
  *
- *      Nothing here lets the CURRENT verifier veto its own replacement, so no verifier can strand a consumer:
- *      a rotation never asks the current verifier for its halt principal (the invariant in 1 already holds),
- *      every probe is a static call capped at {PROBE_GAS} that reads at most one word of return data, and a
+ *      Nothing here lets the CURRENT verifier veto its own replacement, so no verifier can strand a consumer.
+ *      A rotation never asks the current verifier for its halt principal (the invariant in 1 already holds), nor
+ *      for its identity: the consumer stores the identity each verifier showed when it was installed, so a
+ *      current verifier that later claims a halt can refuse, or have recorded, that one identity only, never the
+ *      target's. Every probe is a static call capped at {PROBE_GAS} that reads at most one word of return data, and a
  *      failed or malformed probe never reverts — it reads as no halt principal, not halted, no identity. A
  *      verifier without this surface (a mock, an attestation verifier) reads as "not haltable".
  */
@@ -76,30 +78,49 @@ library VerifierRotationGuard {
     }
 
     /**
+     * @notice The constructor's check of the first verifier: not halted, not haltable by the deployer (the first
+     *         owner). Returns the verifier's identity, which the consumer stores as the identity it was installed
+     *         with.
+     */
+    function requireAdmissibleInitialVerifier(address verifier, address deployer) internal view returns (bytes32) {
+        if (_isHaltPrincipal(deployer, verifier)) revert HaltPrincipalCannotGovern(deployer);
+        if (isHalted(verifier)) revert HaltedVerifierTarget(verifier);
+        return identityOf(verifier);
+    }
+
+    /**
      * @notice Refuses a rotation from `current` to `target` driven by `caller` (the consumer's owner) when the
      *         caller could halt the target, the target is halted, or the target has a halted identity: the
-     *         current wrapper's while it is halted, or one this consumer recorded when it left a halted wrapper.
+     *         identity the current verifier was installed with while it reports itself halted, or one this
+     *         consumer recorded when it left a halted wrapper. Returns the target's identity, for the consumer to
+     *         store when it installs the target.
+     * @dev The current verifier's identity is `currentIdentity`, measured when it was installed — never asked
+     *      again — so a current verifier can refuse at most that one identity, whatever it reports later.
      */
     function requireAdmissibleRotation(
         mapping(bytes32 => bool) storage haltedIdentities,
+        bytes32 currentIdentity,
         address current,
         address target,
         address caller
-    ) internal view {
+    ) internal view returns (bytes32 identity) {
         if (_isHaltPrincipal(caller, target)) revert HaltPrincipalCannotGovern(caller);
         if (isHalted(target)) revert HaltedVerifierTarget(target);
-        bytes32 identity = identityOf(target);
-        if (identity == bytes32(0)) return;
-        if (haltedIdentities[identity] || (isHalted(current) && identity == identityOf(current))) {
+        identity = identityOf(target);
+        if (identity == bytes32(0)) return identity;
+        if (haltedIdentities[identity] || (identity == currentIdentity && isHalted(current))) {
             revert HaltedVerifierIdentity(target, identity);
         }
     }
 
-    /// @notice Records the identity of the verifier being replaced if it is halted, so it is refused for good.
-    function recordHaltedIdentity(mapping(bytes32 => bool) storage haltedIdentities, address oldVerifier) internal {
-        if (!isHalted(oldVerifier)) return;
-        bytes32 identity = identityOf(oldVerifier);
-        if (identity != bytes32(0)) haltedIdentities[identity] = true;
+    /// @notice Records the identity the replaced verifier was installed with if it reports itself halted, so that
+    ///         identity is refused for good.
+    function recordHaltedIdentity(
+        mapping(bytes32 => bool) storage haltedIdentities,
+        bytes32 currentIdentity,
+        address oldVerifier
+    ) internal {
+        if (currentIdentity != bytes32(0) && isHalted(oldVerifier)) haltedIdentities[currentIdentity] = true;
     }
 
     function _isHaltPrincipal(address account, address verifier) private view returns (bool) {
