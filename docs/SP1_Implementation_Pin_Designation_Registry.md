@@ -437,6 +437,67 @@ showed claimed fixes that did not yet hold, and each is now fixed:
 | L4: the gate needed both pinned runner images even when nothing was rebuilt | liveness | with nothing to rebuild the matrix runs on `ubuntu-latest` |
 | (note) `deploy.ts` deployed its mock ML-DSA verifier before checking the records | liveness | the records are checked before any transaction |
 
+## Mutation testing
+
+A curated campaign of **223 mutants** covers each defense this lane names and every fix the two reviews added. A
+mutant is one source edit, applied alone in a separate worktree and run against the suites that cover its file. The
+harness refuses an anchor that does not occur exactly once and an edit that changes nothing, restores and re-hashes
+the original bytes after every run, and counts a kill only when a named test or hook fails; a run in which no test
+ran is invalid, never a kill. Every suite set passed unmutated first.
+
+| Defense | Mutants | Killed |
+| --- | --- | --- |
+| the expected verifier runtime hash | 3 | 3 |
+| the hash comparison: removed, inverted, bypassed, or misread by the receipt | 5 | 5 |
+| the gateway accepted as the target | 4 | 4 |
+| the designation subject | 7 | 7 |
+| the ELF hash | 4 | 4 |
+| the vkey: one ELF with two vkeys, the recompute and its tool | 11 | 11 |
+| the lockfile binding | 3 | 3 |
+| the build image digest | 5 | 5 |
+| successor designations: identity equality, two hosts, no new SP1 verifier | 4 | 4 |
+| the append-only registry: the history walk, main's ruleset, STOP 7 | 24 | 24 |
+| registry build provenance and what a fact records | 12 | 12 |
+| the halted identity on every chain | 7 | 7 |
+| the production override refusals and the read-back | 10 | 10 |
+| RPC errors fail closed; STOP 11 | 9 | 9 |
+| the per-chain real-proof verdict | 7 | 7 |
+| the tamper verdict | 2 | 2 |
+| the canary verdict and its positive control | 7 | 7 |
+| F-1, the full chain-id comparison | 5 | 5 |
+| the canonical build (L-4, F3, A1, L2) | 19 | 19 |
+| the workflow's gate and rebuild decision (L-5, A5, L4) | 15 | 15 |
+| the published records (L-1, AUTH-4, A3, A4) | 7 | 7 |
+| registry facts measured and reconciled (AUTH-2, F4, L1, L3) | 19 | 19 |
+| the receipt: base, verdict, prerequisites, probes (F5, F6, A2, A6, L2) | 26 | 26 |
+| proving availability | 8 | 8 |
+| **total** | **223** | **223** |
+
+**No mutant survives and none is called equivalent.** Two full passes at `881e690f` agreed exactly, verdicts and
+killing tests alike, and left one survivor, P03: the mock flag honoured off a local chain. The refusal still fires, so
+it looked equivalent; it is not. Off a local chain the mutant runs the mock mode's `PROGRAM_VKEY` validation before
+refusing, so a malformed value changes the error. A test now pins that no part of the mock mode runs off a local chain
+(`d8478fa9`, test only), and it kills P03 in each of two runs. A confirming pass at `d8478fa9`, the final test bytes
+(every later commit changes only documents and the version), killed all 223. It differs from the first pass only where
+the new test reaches: P03 is killed, and P02 has the new test as a second killer.
+
+Three kills come from tests that read source text rather than run it: the published-records check removed from
+`deploy.ts` (U05) or from `register-sp1-wrapper.ts` (U06), and the workflow asking for the pinned runner when nothing
+is rebuilt (Q16). The scripts need a live fetch of the canonical repository, and the runner choice is GitHub's; what
+the records check refuses and what the gate decides are killed by behavioural tests.
+
+One defense has no measured kill: the published records' refusal of a link in place of a record. Its test makes a
+symlink, which this Windows host refuses (`EPERM`, no Developer Mode); the test skips here and runs on Linux CI, so the
+mutant was not run and no kill is claimed.
+
+A dry pass before the second review's fixes ran 203 mutants and left 36 survivors and two invalid mutants. Most
+survivors were checks masked by an earlier check that refuses the same input; the tests now reach each check on its
+own. One was equivalent: the gate's check that a job result is a known one could refuse nothing the gate's acceptance
+lists do not already refuse (a job passes only as `success`, or as `skipped` when nothing is rebuilt), so the check was
+removed. The invalid mutants were an edit that did not compile (repaired) and a `before all` hook failure the harness
+had counted as no test run (a named hook failure is a kill). Every other survivor is killed in the final passes. The
+catalog and harness are in the PR's comments.
+
 ## What remains unestablished
 
 > [!IMPORTANT]
