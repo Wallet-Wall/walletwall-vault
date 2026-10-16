@@ -207,14 +207,22 @@ describe("SP1 implementation lane — the binding gate on the published record",
   describe("a registered wrapper is what its registration records, field by field", function () {
     it("a fact whose identity, vkey, SP1 verifier or halt principal is not the chain's is refused: one of them is wrong", function () {
       expect(bindingRefusals(request(designated)), "positive control").to.deep.equal([]);
-      const cases: [string, (f: RegistryFact) => void][] = [
-        ["the halt principal", (f) => (f.haltPrincipal = ethers.getAddress(otherHaltPrincipal.address))],
+      // Each field alone, then with the identity that follows from it: every field is reconciled on its own.
+      const cases: [string, (f: RegistryFact) => void, RegExp][] = [
         [
-          "the vkey (and with it the identity)",
+          "the halt principal",
+          (f) => (f.haltPrincipal = ethers.getAddress(otherHaltPrincipal.address)),
+          /the registry records halt principal /,
+        ],
+        ["the identity alone", (f) => (f.identity = word("another identity")), /the registry records identity /],
+        ["the vkey alone", (f) => (f.programVKey = word("another vkey")), /the registry records PROGRAM_VKEY /],
+        [
+          "the vkey and with it the identity",
           (f) => {
             f.programVKey = word("another vkey");
             f.identity = identityOf(f.sp1Verifier!.runtimeCodeKeccak, f.programVKey);
           },
+          /the registry records PROGRAM_VKEY /,
         ],
         [
           "the SP1 verifier's address",
@@ -223,21 +231,28 @@ describe("SP1 implementation lane — the binding gate on the published record",
               ...f.sp1Verifier!,
               address: ethers.getAddress(ethers.dataSlice(word("elsewhere"), 12)),
             }),
+          /the registry records SP1 verifier 0x/,
         ],
         [
-          "the SP1 verifier's code (and with it the identity)",
+          "the SP1 verifier's code alone",
+          (f) => (f.sp1Verifier = { ...f.sp1Verifier!, runtimeCodeKeccak: word("other code") }),
+          /the registry records SP1 verifier code /,
+        ],
+        [
+          "the SP1 verifier's code and with it the identity",
           (f) => {
             f.sp1Verifier = { ...f.sp1Verifier!, runtimeCodeKeccak: word("other code") };
             f.identity = identityOf(f.sp1Verifier.runtimeCodeKeccak, f.programVKey!);
           },
+          /the registry records SP1 verifier code /,
         ],
       ];
-      for (const [label, change] of cases) {
+      for (const [label, change, field] of cases) {
         const registry = registryFromProfiles(SEPOLIA, [designated]);
         change(registry.facts[0]);
-        expect(bindingRefusals(request(designated, { registry })).join("\n"), label).to.match(
-          /the registry records .* the chain reports/,
-        );
+        const refusals = bindingRefusals(request(designated, { registry })).join("\n");
+        expect(refusals, label).to.match(/the registry records .* the chain reports/);
+        expect(refusals, `${label}: named by its own field`).to.match(field);
       }
     });
 

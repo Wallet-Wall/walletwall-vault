@@ -35,11 +35,14 @@ import {
   productionBindingStatus,
   readImplReceiptInputs,
   receiptCommit,
+  rulesetInput,
   serializeImplReceipt,
   wrapperAstFacts,
   type ImplReceiptInputs,
 } from "../scripts/lib/sp1-impl-receipt";
-import { compiledWrapper, readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
+import { compiledWrapper, readWrapperBuilds, walkAst } from "../scripts/lib/sp1-wrapper-build";
+import { MAIN_RULESET_OBSERVATION_REL } from "../scripts/lib/main-ruleset";
+import type { Provider } from "ethers";
 import { planWrapperDeployment } from "../scripts/lib/zk-verifier-deployment";
 import { skipWhenInstrumented } from "./helpers/instrumented";
 
@@ -138,6 +141,60 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       perturbed((i) => (i.td2.multisigClass = "AUTHORITY_NEUTRAL")).statuses.MULTISIG_AUTHORIZATION_CLASS_PRESERVED
         .value,
     ).to.equal("CHANGED");
+    expect(
+      perturbed((i) => (i.td2.errors = ["the TD2 record does not validate"])).statuses.TD2_HALT_INVARIANTS_PRESERVED
+        .value,
+      "an invalid record is no demonstration either way",
+    ).to.equal("TD2_RECORD_INVALID");
+  });
+
+  it("reads the pin and F-1 from the compiler's AST: another stored target, or a narrowed block.chainid, is seen", function () {
+    const { abi, contract } = compiledWrapper(".");
+    const plain = wrapperAstFacts(contract, abi);
+    expect([plain.constructorPinsCodehash, plain.chainIdNarrowings]).to.deep.equal([true, 0]);
+    // The constructor still checks the target's code hash, but stores another value as SP1_VERIFIER.
+    const storesOther = structuredClone(contract);
+    walkAst(storesOther, (n) => {
+      if (n.nodeType === "Assignment" && n.leftHandSide?.name === "SP1_VERIFIER") {
+        n.rightHandSide = { ...n.rightHandSide, name: "_programVKey" };
+      }
+    });
+    expect(wrapperAstFacts(storesOther, abi).constructorPinsCodehash).to.equal(false);
+    // verify() converts block.chainid to a narrower type somewhere.
+    const narrowed = structuredClone(contract);
+    narrowed.nodes
+      .find((n: { name?: string }) => n.name === "verify")
+      .body.statements.unshift({
+        nodeType: "ExpressionStatement",
+        expression: {
+          nodeType: "FunctionCall",
+          kind: "typeConversion",
+          typeDescriptions: { typeString: "uint64" },
+          arguments: [
+            { nodeType: "MemberAccess", memberName: "chainid", expression: { nodeType: "Identifier", name: "block" } },
+          ],
+        },
+      });
+    expect(wrapperAstFacts(narrowed, abi).chainIdNarrowings).to.equal(1);
+  });
+
+  it("main's ruleset as the receipt reads it: gaps only from a well-formed record, errors from a missing one", function () {
+    const committedRuleset = JSON.parse(readFileSync(MAIN_RULESET_OBSERVATION_REL, "utf8"));
+    expect(rulesetInput(committedRuleset)).to.deep.equal({
+      observedAtUtc: committedRuleset.observedAtUtc,
+      errors: [],
+      gaps: [],
+    });
+    const forcePushes = structuredClone(committedRuleset);
+    forcePushes.response.rules = forcePushes.response.rules.filter(
+      (r: { type: string }) => r.type !== "non_fast_forward",
+    );
+    expect(rulesetInput(forcePushes).gaps.join("\n")).to.match(/force pushes/);
+    expect(rulesetInput(null)).to.deep.include({ gaps: [] });
+    expect(rulesetInput(null).errors.join("\n")).to.match(/no observation/);
+    const malformed = { ...structuredClone(committedRuleset), schema: "x" };
+    expect(rulesetInput(malformed).errors).to.not.deep.equal([]);
+    expect(rulesetInput(malformed).gaps, "a malformed record shows no gaps: it shows nothing").to.deep.equal([]);
   });
 
   it("the rebuild evidence: only identity drift is the STOP; drift of procedure, an incomplete build or invalid evidence is no reproduction, and no STOP (L-4, F3)", function () {
@@ -276,6 +333,23 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     const refusals = probes.map((p) => p.refusal).join(" | ");
     expect(refusals).to.match(/503/);
     expect(refusals).to.match(/no finalized block/);
+    // The probes see a broken read: one that falls back to the latest block, and one that never answers.
+    const latestInstead = async (provider: Provider) => {
+      await provider.getBlock("finalized"); // a failure still throws
+      const b = (await provider.getBlock("latest"))!;
+      return { block: b.number, blockHash: String(b.hash) };
+    };
+    expect((await probeFinalityReads(latestInstead))[0], "reads the latest block").to.deep.include({
+      controlAccepted: false,
+    });
+    const alwaysFails = async () => {
+      throw new Error("server response 503 Service Unavailable");
+    };
+    const [failing] = await probeFinalityReads(alwaysFails);
+    expect(failing, "a read that never answers is no control").to.deep.include({
+      controlAccepted: false,
+      attackRefused: true,
+    });
   });
 
   it("the verdict is gated on valid evidence: a STOP outranks invalid records, which outrank BUILT_AND_TESTED (F6)", function () {

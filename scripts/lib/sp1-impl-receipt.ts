@@ -36,6 +36,7 @@ import {
   historyProtectionGaps,
   readRulesetObservation,
   rulesetObservationErrors,
+  type RulesetObservation,
 } from "./main-ruleset";
 import { isExecutionFailure } from "./rpc-answer";
 import {
@@ -740,14 +741,16 @@ export function probeRegistryHistory(
  * read as some other block (review finding L-7; L-3 was a fallback to the latest block). The probe providers answer
  * "latest" either way, so a fallback would resolve, and the probe would see it.
  */
-export async function probeFinalityReads(): Promise<ProbeResult[]> {
-  const provider = (finalized: () => Promise<unknown>) =>
+export async function probeFinalityReads(
+  finalized: (provider: Provider) => Promise<{ block: number; blockHash: string }> = finalizedBlock,
+): Promise<ProbeResult[]> {
+  const provider = (answer: () => Promise<unknown>) =>
     ({
-      getBlock: async (tag: unknown) => (tag === "finalized" ? finalized() : { number: 130, hash: word("44") }),
+      getBlock: async (tag: unknown) => (tag === "finalized" ? answer() : { number: 130, hash: word("44") }),
     }) as unknown as Provider;
   const healthy = provider(async () => ({ number: 120, hash: word("33") }));
   const read = async (p: Provider) => {
-    const at = await finalizedBlock(p);
+    const at = await finalized(p);
     if (at.block !== 120) throw new Error(`observed at block ${at.block}, not the finalized block`);
   };
   return [
@@ -1377,6 +1380,19 @@ export function baseCommitErrors(repoRoot: string, base: string, at: string): st
   return errors;
 }
 
+/**
+ * Main's ruleset as the receipt reads it: a missing or malformed record is invalid evidence (errors) and shows no
+ * gaps, because it shows nothing; only a well-formed record has gaps to show.
+ */
+export function rulesetInput(obs: RulesetObservation | null): ImplReceiptInputs["ruleset"] {
+  const errors = obs === null ? [`no observation at ${MAIN_RULESET_OBSERVATION_REL}`] : rulesetObservationErrors(obs);
+  return {
+    observedAtUtc: String(obs?.observedAtUtc ?? ""),
+    errors,
+    gaps: obs !== null && errors.length === 0 ? historyProtectionGaps(obs) : [],
+  };
+}
+
 /** The contract sources changed since `rev`, against the working tree (what the receipt states as changed). */
 function contractsChangedSince(repoRoot: string, rev: string): { path: string; status: string }[] {
   return git(repoRoot, ["diff", "--name-status", "--no-renames", rev, "--", "contracts"])
@@ -1484,14 +1500,7 @@ export async function readImplReceiptInputs(
     (c: { principal?: string }) => c?.principal === MULTISIG_OWNER,
   );
 
-  const rulesetObs = readRulesetObservation(repoRoot);
-  const rulesetErrors =
-    rulesetObs === null ? [`no observation at ${MAIN_RULESET_OBSERVATION_REL}`] : rulesetObservationErrors(rulesetObs);
-  const ruleset = {
-    observedAtUtc: String(rulesetObs?.observedAtUtc ?? ""),
-    errors: rulesetErrors,
-    gaps: rulesetObs !== null && rulesetErrors.length === 0 ? historyProtectionGaps(rulesetObs) : [],
-  };
+  const ruleset = rulesetInput(readRulesetObservation(repoRoot));
 
   const evidenceFiles = [
     TD1_RECEIPT_REL,

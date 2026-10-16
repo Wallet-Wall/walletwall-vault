@@ -17,7 +17,7 @@ import { dirname, join } from "node:path";
 import { expect } from "chai";
 
 import { ethers } from "./helpers/connection";
-import { readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
+import { identityOf, readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
 import { readWrapperBuilds, type WrapperBuild } from "../scripts/lib/sp1-wrapper-build";
 import {
   REGISTRY_REL,
@@ -196,6 +196,52 @@ describe("SP1 implementation lane — the wrapper registry", function () {
       });
     }
 
+    it("each content rule refuses on its own: the identity formula, the designation's vkey, the build's pin", function () {
+      // Each case is built so that exactly one rule can fire (the others hold), and each is named by its own message.
+      const X = d1.verifier.runtimeCodeKeccak;
+      const V = d1.programVKey;
+      const V2 = "0x" + "21".repeat(32);
+      const Y = "0x" + "31".repeat(32);
+      const synthetic = (id: string, code: string, identity: string): ProgramDesignation => ({
+        ...structuredClone(d1),
+        id,
+        verifier: { ...structuredClone(d1.verifier), runtimeCodeKeccak: code },
+        identity,
+      });
+      const Z = "0x" + "41".repeat(32);
+      const dZ = synthetic("mldsa65-withdrawal-dz", X, Z);
+      const formula = registryErrors(
+        doc([registration(1, SEPOLIA, "a", { identity: Z, designation: dZ.id })]),
+        builds,
+        [...designations, dZ],
+      );
+      expect(formula).to.have.length(1);
+      expect(formula[0]).to.match(
+        /its identity is not keccak256\(abi\.encode\(SP1 verifier code hash, PROGRAM_VKEY\)\)/,
+      );
+      const vkey = registryErrors(
+        doc([registration(1, SEPOLIA, "a", { programVKey: V2, identity: identityOf(X, V2) })]),
+        builds,
+        designations,
+      );
+      expect(vkey).to.have.length(1);
+      expect(vkey[0]).to.match(/its vkey and identity are not designation mldsa65-withdrawal-d1's/);
+      const dY = synthetic("mldsa65-withdrawal-dy", Y, identityOf(Y, V));
+      const pin = registryErrors(
+        doc([
+          registration(1, SEPOLIA, "a", {
+            designation: dY.id,
+            sp1Verifier: { address: d1.verifier.address, runtimeCodeKeccak: Y },
+            identity: identityOf(Y, V),
+          }),
+        ]),
+        builds,
+        [...designations, dY],
+      );
+      expect(pin).to.have.length(1);
+      expect(pin[0]).to.match(new RegExp(`wrapper build ${b1.id} pins another SP1 verifier`));
+    });
+
     it("the state it publishes: per-chain registrations, and every halted identity on every chain", function () {
       const facts = [registration(1, SEPOLIA, "a"), registration(2, BASE_SEPOLIA, "b"), halt(3, SEPOLIA, "a")];
       const state = registryState(doc(facts));
@@ -350,6 +396,60 @@ describe("SP1 implementation lane — the wrapper registry", function () {
       expect(history().join("\n")).to.include(merge.slice(0, 12));
     });
 
+    it("refuses a merge that drops a fact only its second parent held", function () {
+      const a = registration(1, SEPOLIA, "a");
+      const b = registration(2, BASE_SEPOLIA, "b");
+      put([a], "main: a");
+      git("checkout", "-q", "-b", "side");
+      put([a, b], "side: b");
+      git("checkout", "-q", "main");
+      put([a, halt(2, SEPOLIA, "a")], "main: halt a");
+      git("checkout", "-q", "side");
+      try {
+        git("merge", "-q", "-m", "merge main into side", "main");
+      } catch {
+        // conflict: resolve by keeping the side's list, which drops main's halt (main is the second parent here)
+      }
+      write(REGISTRY_REL, `${JSON.stringify(doc([a, b]), null, 2)}\n`);
+      const merge = commit("merge: keep side, drop main's halt");
+      const [, first, second] = git("rev-list", "--parents", "-n", "1", "HEAD").split(" ");
+      expect(git("show", `${first}:${REGISTRY_REL}`), "the first parent is the side").to.not.include("WRAPPER_HALTED");
+      expect(git("show", `${second}:${REGISTRY_REL}`), "the second parent held the halt").to.include("WRAPPER_HALTED");
+      expect(history().join("\n")).to.match(
+        new RegExp(`${merge.slice(0, 12)} \\(against parent ${second.slice(0, 12)}\\)`),
+      );
+    });
+
+    it("a branch older than the registry, merged later, is no rewrite (no false refusal)", function () {
+      rmSync(dir, { recursive: true, force: true });
+      dir = mkdtempSync(join(tmpdir(), "sp1-registry-old-branch-"));
+      git("init", "-q", "-b", "main");
+      git("config", "user.email", "test@example.invalid");
+      git("config", "user.name", "test");
+      git("config", "core.autocrlf", "false");
+      write("README.md", "before the registry\n");
+      commit("before the registry");
+      git("checkout", "-q", "-b", "old");
+      write("docs/notes.md", "work begun before the registry existed\n");
+      commit("old: notes");
+      git("checkout", "-q", "main");
+      write(REGISTRY_REL, v1([]));
+      commit("SP1-TD2: empty v1 registry");
+      put([registration(1, SEPOLIA, "a")], "v2: a");
+      git("merge", "-q", "--no-ff", "-m", "merge the old branch", "old");
+      expect(git("rev-list", "--parents", "-n", "1", "HEAD").split(" ").length).to.equal(3);
+      expect(history()).to.deep.equal([]);
+      expect(directoryHistoryErrors(dir, "evidence/zk/sp1/designations")).to.deep.equal([]);
+    });
+
+    it("refuses another schema in place of the v2 fact log, even with the same facts", function () {
+      const facts = [registration(1, SEPOLIA, "a")];
+      const v2 = `${JSON.stringify(doc(facts), null, 2)}\n`;
+      const v3 = `${JSON.stringify({ ...doc(facts), schema: "walletwall.sp1-wrapper-registry.v3" }, null, 2)}\n`;
+      expect(registryExtensionErrors(v2, v2)).to.deep.equal([]);
+      expect(registryExtensionErrors(v2, v3).join("\n")).to.match(/changed the schema away from the v2 fact log/);
+    });
+
     it("refuses an uncommitted destructive edit in the working tree", function () {
       put([registration(1, SEPOLIA, "a")], "a");
       write(REGISTRY_REL, `${JSON.stringify(doc([]), null, 2)}\n`);
@@ -383,6 +483,7 @@ describe("SP1 implementation lane — the wrapper registry", function () {
       git("mv", `${d}/x-d2.json`, `${d}/x-d3.json`);
       const rename = commit("rename d2");
       expect(directoryHistoryErrors(dir, d).join("\n")).to.include(rename.slice(0, 12));
+      expect(directoryHistoryErrors(dir, d).join("\n")).to.match(/x-d2\.json was removed or renamed/);
       git("reset", "-q", "--hard", "HEAD~1");
       rmSync(join(dir, d, "x-d1.json"));
       expect(directoryHistoryErrors(dir, d).join("\n")).to.match(/working tree/);

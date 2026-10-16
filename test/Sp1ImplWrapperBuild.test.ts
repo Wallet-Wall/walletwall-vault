@@ -17,6 +17,7 @@ import { ethers } from "./helpers/connection";
 import { deployPinnedSp1Verifier } from "./helpers/sp1PinnedVerifier";
 import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
 import { skipWhenInstrumented } from "./helpers/instrumented";
+import { decodeSolcMetadataBoundary } from "../scripts/lib/reproducibility-evidence";
 import {
   WRAPPER_BUILDS_DIR,
   WRAPPER_BUILD_SCHEMA,
@@ -131,6 +132,24 @@ describe("SP1 implementation lane — wrapper build records", function () {
       expect(buildMatching(flipByte(runtime, 0), builds)).to.equal(null);
       // Inside an immutable slot any value is the same build (the slot is the deployment's, not the build's).
       expect(matchesBuild(flipByte(runtime, firstImmutable), latest)).to.equal(true);
+    });
+
+    it("a trailer that starts elsewhere is another build, though every byte before the recorded boundary is the same", function () {
+      const bytes = Buffer.from(runtime.slice(2), "hex");
+      const cbor = Buffer.from("a164736f6c634300081e", "hex"); // {"solc": 0x00081e}: a valid, shorter trailer
+      const shifted = Buffer.concat([
+        bytes.subarray(0, bytes.length - 2 - cbor.length),
+        cbor,
+        Buffer.from([0, cbor.length]),
+      ]);
+      const start = latest.runtime.metadataRegionStart;
+      expect(shifted.length).to.equal(bytes.length);
+      expect(shifted.subarray(0, start).equals(bytes.subarray(0, start)), "the bytes before the boundary").to.equal(
+        true,
+      );
+      const boundary = decodeSolcMetadataBoundary(`0x${shifted.toString("hex")}`);
+      expect(boundary.ok && boundary.regionStart, "it decodes, at another boundary").to.equal(bytes.length - 2 - 10);
+      expect(matchesBuild(`0x${shifted.toString("hex")}`, latest)).to.equal(false);
     });
 
     it("an old build stays the build of the wrappers deployed from it after the contract changes", function () {
