@@ -934,8 +934,8 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     },
     {
       id: "REGISTERED_ACTIVE_WRAPPER",
-      met: active.length > 0,
-      basis: `registrations of a designated identity on a supported deployment chain, never recorded halted: ${active.length}`,
+      met: active.length > 0 && i.registryErrors.length === 0,
+      basis: `registrations of a designated identity on a supported deployment chain, never recorded halted: ${active.length}; the registry validates, content and history: ${yes(i.registryErrors.length === 0)}; the binding gate reconciles each fact with the chain when it binds`,
     },
     {
       id: "REAL_WALLETWALL_PROOF",

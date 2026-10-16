@@ -14,7 +14,7 @@ import { deployPinnedSp1Verifier } from "./helpers/sp1PinnedVerifier";
 import { skipWhenInstrumented } from "./helpers/instrumented";
 import { readDesignations } from "../scripts/lib/sp1-designation";
 import { readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
-import { readRegistry, registryErrors, type RegistryDoc } from "../scripts/lib/sp1-registry";
+import { readRegistry, registryErrors, type RegistryDoc, type RegistryFact } from "../scripts/lib/sp1-registry";
 import { haltFact, registrationFact } from "../scripts/lib/sp1-registration";
 import { deployPlannedWrapper, planWrapperDeployment } from "../scripts/lib/zk-verifier-deployment";
 
@@ -160,6 +160,100 @@ describe("SP1 implementation lane — registry facts from chain reads", function
       haltFact(ethers.provider, { wrapper, haltTx: halt!.hash, reason: "BECAUSE", registry, builds: builds() }),
       /reason/,
     );
+  });
+
+  /** The provider, with the named methods replaced. */
+  const withOverrides = (overrides: Record<string, unknown>) =>
+    new Proxy(ethers.provider, {
+      get(t, prop) {
+        if (typeof prop === "string" && prop in overrides) return overrides[prop];
+        const value = Reflect.get(t, prop, t);
+        return typeof value === "function" ? value.bind(t) : value;
+      },
+    });
+  const registrationInput = (wrapper: string, deploymentTx: string) => ({
+    wrapper,
+    deploymentTx,
+    designations: designations(),
+    builds: builds(),
+    registry: readRegistry("."),
+  });
+
+  it("registers only a final deployment: one after the finalized block is refused until it is final", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    const deployedIn = (await ethers.provider.getTransactionReceipt(deployment))!.blockNumber;
+    const lagging = withOverrides({
+      getBlock: async (tag: unknown) =>
+        ethers.provider.getBlock(tag === "finalized" ? deployedIn - 1 : (tag as number)),
+    });
+    await assert.rejects(registrationFact(lagging, registrationInput(wrapper, deployment)), /not final/);
+  });
+
+  it("a finalized read that fails is no answer: it is never replaced by the latest block", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    // How ethers reports a rate-limited eth_getBlockByNumber: the payload, "finalized" included, is in the message.
+    const failing = withOverrides({
+      getBlock: async (tag: unknown) => {
+        if (tag === "finalized") {
+          throw Object.assign(
+            new Error(
+              'could not coalesce error (error={ "code": -32005, "message": "rate limited" }, payload={ "method": ' +
+                '"eth_getBlockByNumber", "params": [ "finalized", false ] })',
+            ),
+            { code: "UNKNOWN_ERROR" },
+          );
+        }
+        return ethers.provider.getBlock(tag as number);
+      },
+    });
+    await assert.rejects(registrationFact(failing, registrationInput(wrapper, deployment)), /rate limited/);
+  });
+
+  it("measures the wrapper at the block the fact is observed at", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    const tags: unknown[] = [];
+    const recording = withOverrides({
+      call: async (tx: { blockTag?: unknown }) => {
+        tags.push(tx.blockTag);
+        return ethers.provider.call(tx as never);
+      },
+      getCode: async (address: string, tag?: unknown) => {
+        tags.push(tag);
+        return ethers.provider.getCode(address, tag as number);
+      },
+    });
+    const fact = await registrationFact(recording, registrationInput(wrapper, deployment));
+    expect(tags.length).to.be.greaterThan(0);
+    expect([...new Set(tags)]).to.deep.equal([fact.observedAt.block]);
+  });
+
+  it("a halt carries the identity measured on chain, and is refused for a wrapper its registration does not describe", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    const base = readRegistry(".");
+    const registration = await registrationFact(ethers.provider, registrationInput(wrapper, deployment));
+    const zk = await ethers.getContractAt("ZKMLDSAVerifier", wrapper);
+    const tx = await (await zk.connect(haltPrincipal).halt()).wait();
+    const halting = (facts: RegistryFact[]) =>
+      haltFact(ethers.provider, {
+        wrapper,
+        haltTx: tx!.hash,
+        reason: "VERIFIER_SOUNDNESS",
+        registry: { ...base, facts },
+        builds: builds(),
+      });
+    for (const [label, forged] of [
+      ["halt principal", { ...registration, haltPrincipal: ethers.getAddress(stranger.address) }],
+      ["SP1 verifier", { ...registration, sp1Verifier: { ...registration.sp1Verifier!, address: stranger.address } }],
+      ["wrapper build", { ...registration, wrapperBuild: "zkmldsa-verifier-b7" }],
+    ] as const) {
+      await assert.rejects(halting([forged as RegistryFact]), /not what its registration records/, label);
+    }
+    const fact = await halting([registration]);
+    expect(fact.identity).to.equal(registration.identity);
   });
 
   it("an RPC that does not answer writes nothing", async function () {

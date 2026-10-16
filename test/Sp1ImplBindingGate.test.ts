@@ -24,6 +24,8 @@ import { deployPinnedSp1Verifier, withPinnedSp1Code } from "./helpers/sp1PinnedV
 import { installWrapperOfBuild, laterBuild, registryFromProfiles } from "./helpers/registryHelpers";
 import { skipWhenInstrumented } from "./helpers/instrumented";
 import { readWrapperBuilds, type WrapperBuild } from "../scripts/lib/sp1-wrapper-build";
+import { identityOf } from "../scripts/lib/sp1-designation";
+import type { RegistryFact } from "../scripts/lib/sp1-registry";
 import {
   bindingRefusals,
   checkDeploymentBinding,
@@ -198,6 +200,71 @@ describe("SP1 implementation lane — the binding gate on the published record",
       expect(bindingRefusals(request(designated, { registry })).join("\n")).to.match(
         /runs build zkmldsa-verifier-b1, not the build its registration records \(zkmldsa-verifier-b2\)/,
       );
+    });
+  });
+
+  describe("a registered wrapper is what its registration records, field by field", function () {
+    it("a fact whose identity, vkey, SP1 verifier or halt principal is not the chain's is refused: one of them is wrong", function () {
+      expect(bindingRefusals(request(designated)), "positive control").to.deep.equal([]);
+      const cases: [string, (f: RegistryFact) => void][] = [
+        ["the halt principal", (f) => (f.haltPrincipal = ethers.getAddress(otherHaltPrincipal.address))],
+        [
+          "the vkey (and with it the identity)",
+          (f) => {
+            f.programVKey = word("another vkey");
+            f.identity = identityOf(f.sp1Verifier!.runtimeCodeKeccak, f.programVKey);
+          },
+        ],
+        [
+          "the SP1 verifier's address",
+          (f) =>
+            (f.sp1Verifier = {
+              ...f.sp1Verifier!,
+              address: ethers.getAddress(ethers.dataSlice(word("elsewhere"), 12)),
+            }),
+        ],
+        [
+          "the SP1 verifier's code (and with it the identity)",
+          (f) => {
+            f.sp1Verifier = { ...f.sp1Verifier!, runtimeCodeKeccak: word("other code") };
+            f.identity = identityOf(f.sp1Verifier.runtimeCodeKeccak, f.programVKey!);
+          },
+        ],
+      ];
+      for (const [label, change] of cases) {
+        const registry = registryFromProfiles(SEPOLIA, [designated]);
+        change(registry.facts[0]);
+        expect(bindingRefusals(request(designated, { registry })).join("\n"), label).to.match(
+          /the registry records .* the chain reports/,
+        );
+      }
+    });
+
+    it("measures every wrapper the gate reads at one block", async function () {
+      const tags: unknown[] = [];
+      const recording = new Proxy(ethers.provider, {
+        get(t, prop) {
+          if (prop === "call")
+            return async (tx: { blockTag?: unknown }) => {
+              tags.push(tx.blockTag);
+              return ethers.provider.call(tx as never);
+            };
+          if (prop === "getCode")
+            return async (address: string, tag?: unknown) => {
+              tags.push(tag);
+              return ethers.provider.getCode(address, tag as number);
+            };
+          const value = Reflect.get(t, prop, t);
+          return typeof value === "function" ? value.bind(t) : value;
+        },
+      });
+      await checkDeploymentBinding(recording, "WalletWallVault", designated.address, admin.address, {
+        registry: registryFromProfiles(31337n, [designated]),
+        allowMockSp1: false,
+      }).catch(() => undefined);
+      expect(tags.length).to.be.greaterThan(4);
+      expect(new Set(tags).size, `read at ${[...new Set(tags)].join(", ")}`).to.equal(1);
+      expect(typeof tags[0]).to.equal("number");
     });
   });
 

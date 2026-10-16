@@ -179,6 +179,8 @@ export function registryErrors(
       }
       if (!isWord(f.deployment?.txHash) || !isBlock(f.deployment?.block) || !isChecksummed(f.deployment?.deployer)) {
         errors.push(`${at}: the deployment needs its transaction, block and deployer`);
+      } else if (isBlock(f.observedAt?.block) && Number(f.deployment?.block) > Number(f.observedAt?.block)) {
+        errors.push(`${at}: observed before its deployment (block ${f.observedAt?.block} < ${f.deployment?.block})`);
       }
       const prior = haltedIdentities.get(f.identity);
       if (prior !== undefined && prior.length > 0) {
@@ -208,6 +210,8 @@ export function registryErrors(
         errors.push(`${at}: the halt needs its transaction and block`);
       } else if ((f.halt as { block: number }).block < Number(registration.deployment?.block)) {
         errors.push(`${at}: the halt precedes the wrapper's deployment`);
+      } else if (isBlock(f.observedAt?.block) && Number(f.halt?.block) > Number(f.observedAt?.block)) {
+        errors.push(`${at}: observed before the halt (block ${f.observedAt?.block} < ${f.halt?.block})`);
       }
       const halts = haltedIdentities.get(registration.identity) ?? [];
       if (halts.some((h) => h.chainId === f.chainId && h.address === f.address)) {
@@ -241,7 +245,15 @@ export function registryExtensionErrors(older: string | null, newer: string | nu
   } catch {
     return ["the registry is not JSON"];
   }
-  if (older === null) return [];
+  // Where the record first appears it is SP1-TD2's v1 list: a history that starts at the fact log (an orphan root, as
+  // a rewrite would make) would skip the only migration the v1 list allows.
+  if (older === null) {
+    return next?.schema === REGISTRY_V1_SCHEMA
+      ? []
+      : [
+          "the registry's first version must be a v1 registry (SP1-TD2's list): a history that starts at the fact log skips the only migration allowed",
+        ];
+  }
   let prev: any;
   try {
     prev = JSON.parse(older);

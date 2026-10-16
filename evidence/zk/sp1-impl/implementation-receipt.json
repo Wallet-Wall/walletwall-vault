@@ -329,7 +329,7 @@
       {
         "id": "REGISTERED_ACTIVE_WRAPPER",
         "met": false,
-        "basis": "registrations of a designated identity on a supported deployment chain, never recorded halted: 0"
+        "basis": "registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds"
       },
       {
         "id": "REAL_WALLETWALL_PROOF",
@@ -440,7 +440,7 @@
     "blocked": true,
     "blockers": [
       "CANONICAL_RELEASE_REBUILD_TWO_HOSTS: the committed rebuild evidence, judged for the release (two hosts): INSUFFICIENT_HOSTS",
-      "REGISTERED_ACTIVE_WRAPPER: registrations of a designated identity on a supported deployment chain, never recorded halted: 0",
+      "REGISTERED_ACTIVE_WRAPPER: registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds",
       "REAL_WALLETWALL_PROOF: evidence/zk/sp1-real-proof holds no record: no WalletWall proof of the designated program has been generated and verified by the designated verifier",
       "PROVING_AVAILABILITY: PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED",
       "OWNER_REVIEW_AND_MERGE: a receipt cannot attest its own review: the owner reviews and merges after it is generated"

@@ -74,7 +74,12 @@ function objectIds(repoRoot: string, commits: string[], rel: string): Map<string
   return ids;
 }
 
-/** Every parent edge where the object at `rel` differs: [commit, parent (null for a root), newer id, older id]. */
+/**
+ * Every parent edge where the object at `rel` differs: [commit, parent (null for a root), newer id, older id]. A commit
+ * is compared with the parents that hold the record; where none does (a root, or a commit whose parents all predate
+ * the record) it is an introduction, compared with nothing (older id null). A merge of a branch that predates the
+ * record is therefore no introduction: it inherits the record from the parent that holds it.
+ */
 function changedEdges(repoRoot: string, rel: string): [string, string | null, string | null, string | null][] {
   const commits = commitsWithParents(repoRoot);
   const ids = objectIds(
@@ -85,11 +90,12 @@ function changedEdges(repoRoot: string, rel: string): [string, string | null, st
   const edges: [string, string | null, string | null, string | null][] = [];
   for (const { commit, parents } of commits) {
     const newer = ids.get(commit) ?? null;
-    if (parents.length === 0) {
-      if (newer !== null) edges.push([commit, null, newer, null]);
+    const holding = parents.filter((p) => (ids.get(p) ?? null) !== null);
+    if (holding.length === 0) {
+      if (newer !== null) edges.push([commit, parents[0] ?? null, newer, null]);
       continue;
     }
-    for (const parent of parents) {
+    for (const parent of holding) {
       const older = ids.get(parent) ?? null;
       if (older !== newer) edges.push([commit, parent, newer, older]);
     }

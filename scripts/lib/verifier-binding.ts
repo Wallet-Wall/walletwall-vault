@@ -203,9 +203,9 @@ export function readWrapperRegistry(chainId: bigint, repoRoot = "."): string[] {
  * the guard reads). A call the RPC did not answer throws: read as "no answer" it would drop refusals that nothing
  * on chain backs, such as a registered wrapper's halt (the review's R2-2).
  */
-async function word(provider: Provider, to: string, data: string): Promise<string | null> {
+async function word(provider: Provider, to: string, data: string, blockTag?: number): Promise<string | null> {
   try {
-    const out = await provider.call({ to, data });
+    const out = await provider.call({ to, data, ...(blockTag === undefined ? {} : { blockTag }) });
     return out.length >= 66 ? `0x${out.slice(2, 66)}` : null;
   } catch (error) {
     if (isExecutionFailure(error)) return null;
@@ -224,15 +224,16 @@ export async function profileVerifier(
   provider: Provider,
   address: string,
   builds: readonly WrapperBuild[] = readWrapperBuilds(),
+  blockTag?: number,
 ): Promise<VerifierProfile> {
-  const code = await provider.getCode(address);
-  const sp1Verifier = asAddress(await word(provider, address, selector("SP1_VERIFIER()")));
-  const programVKey = await word(provider, address, selector("PROGRAM_VKEY()"));
-  const haltPrincipal = asAddress(await word(provider, address, selector("HALT_PRINCIPAL()")));
-  const haltedWord = await word(provider, address, selector("halted()"));
+  const code = await provider.getCode(address, blockTag);
+  const sp1Verifier = asAddress(await word(provider, address, selector("SP1_VERIFIER()"), blockTag));
+  const programVKey = await word(provider, address, selector("PROGRAM_VKEY()"), blockTag);
+  const haltPrincipal = asAddress(await word(provider, address, selector("HALT_PRINCIPAL()"), blockTag));
+  const haltedWord = await word(provider, address, selector("halted()"), blockTag);
   let sp1VerifierCodeKeccak: string | null = null;
   if (sp1Verifier !== null) {
-    const sp1Code = await provider.getCode(sp1Verifier);
+    const sp1Code = await provider.getCode(sp1Verifier, blockTag);
     sp1VerifierCodeKeccak = sp1Code === "0x" ? null : keccak256(sp1Code);
   }
   const build = buildMatching(code, builds);
@@ -242,7 +243,7 @@ export async function profileVerifier(
     genuineWrapper: build !== null,
     wrapperBuild: build === null ? null : build.id,
     pinnedSp1VerifierCodehash: build === null ? null : build.pins.sp1VerifierCodehash,
-    algorithmId: await word(provider, address, selector("algorithmId()")),
+    algorithmId: await word(provider, address, selector("algorithmId()"), blockTag),
     sp1Verifier,
     sp1VerifierCodeKeccak,
     programVKey,
@@ -350,6 +351,23 @@ export function bindingRefusals(req: BindingRequest): string[] {
       refusals.push(`registered wrapper ${r.address} is not a ZKMLDSAVerifier compiled from this tree`);
     else if (!measuredCompletely(r)) refusals.push(unmeasured(r, "registered wrapper"));
     const fact = state.registration(chain, r.address);
+    // A fact is a measurement: every field it records must still be what the chain reports.
+    if (fact !== undefined) {
+      for (const [field, recorded, live] of [
+        ["identity", fact.identity, r.identity],
+        ["PROGRAM_VKEY", fact.programVKey, r.programVKey],
+        ["SP1 verifier", fact.sp1Verifier?.address, r.sp1Verifier],
+        ["SP1 verifier code", fact.sp1Verifier?.runtimeCodeKeccak, r.sp1VerifierCodeKeccak],
+        ["halt principal", fact.haltPrincipal, r.haltPrincipal],
+      ] as const) {
+        if (recorded !== live) {
+          refusals.push(
+            `registered wrapper ${r.address}: the registry records ${field} ${String(recorded)}, but the chain reports ` +
+              `${String(live)}: the registry or the RPC is wrong; refusing rather than guessing`,
+          );
+        }
+      }
+    }
     if (fact !== undefined && r.wrapperBuild !== null && fact.wrapperBuild !== r.wrapperBuild) {
       refusals.push(
         `registered wrapper ${r.address} runs build ${r.wrapperBuild}, not the build its registration records ` +
@@ -456,14 +474,17 @@ export interface GateOptions {
 
 async function context(provider: Provider, options: GateOptions) {
   const chainId = (await provider.getNetwork()).chainId;
+  // Every wrapper the gate reads is read at one block, so no two answers come from different chain states.
+  const blockTag = await provider.getBlockNumber();
   const builds = readWrapperBuilds(options.repoRoot);
   const registry = options.registry ?? readRegistry(options.repoRoot ?? ".");
   const malformed = wrapperRegistryErrors(registry);
   if (malformed.length > 0) throw new Error(`malformed ${WRAPPER_REGISTRY_REL}:\n - ${malformed.join("\n - ")}`);
   const addresses = registryState(registry).registeredOn(chainId.toString());
-  const registered = await Promise.all(addresses.map((a) => profileVerifier(provider, a, builds)));
+  const registered = await Promise.all(addresses.map((a) => profileVerifier(provider, a, builds, blockTag)));
   return {
     chainId,
+    blockTag,
     builds,
     registry,
     registered,
@@ -481,7 +502,7 @@ export async function checkDeploymentBinding(
   options: GateOptions,
 ): Promise<VerifierProfile> {
   const ctx = await context(provider, options);
-  const target = await profileVerifier(provider, verifier, ctx.builds);
+  const target = await profileVerifier(provider, verifier, ctx.builds, ctx.blockTag);
   assertBindable({
     consumer,
     target,
@@ -522,11 +543,11 @@ export async function checkRotationBinding(
   options: GateOptions,
 ): Promise<{ consumer: ConsumerName; target: VerifierProfile; current: VerifierProfile }> {
   const consumer = await identifyConsumer(provider, consumerAddress);
-  const currentAddress = asAddress(await word(provider, consumerAddress, selector("pqVerifier()")));
-  if (currentAddress === null) throw new Error(`${consumerAddress} reports no pqVerifier`);
   const ctx = await context(provider, options);
-  const current = await profileVerifier(provider, currentAddress, ctx.builds);
-  const target = await profileVerifier(provider, newVerifier, ctx.builds);
+  const currentAddress = asAddress(await word(provider, consumerAddress, selector("pqVerifier()"), ctx.blockTag));
+  if (currentAddress === null) throw new Error(`${consumerAddress} reports no pqVerifier`);
+  const current = await profileVerifier(provider, currentAddress, ctx.builds, ctx.blockTag);
+  const target = await profileVerifier(provider, newVerifier, ctx.builds, ctx.blockTag);
   const stored = await word(provider, consumerAddress, selector("pqVerifierIdentity()"));
   let recorded = false;
   if (target.identity !== null) {

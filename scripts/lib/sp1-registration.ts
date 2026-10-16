@@ -5,10 +5,13 @@
  *     and who sent it) and the wrapper's measured profile (its recorded build, SP1 verifier and that verifier's code
  *     hash, PROGRAM_VKEY, identity, halt principal, ACTIVE), joined to the designation of that identity.
  *   haltFact — a WRAPPER_HALTED fact from the halt transaction's receipt (the wrapper emitted VerifierHalted) and the
- *     wrapper's measured state (HALTED), for a wrapper already registered.
+ *     wrapper's measured state (HALTED, and still the wrapper its registration records), with the measured identity.
  *
- * Each fact is checked against the registry it would extend (registryErrors, with the builds and designations) before
- * it is returned; nothing here writes to a chain, and every RPC failure propagates.
+ * Every fact is observed at the chain's finalized block: the transaction it records must be final by then, and the
+ * wrapper is measured at that block, so the fact holds what one chain state shows. A finalized read that fails is no
+ * answer and throws (it is never replaced by the latest block). Each fact is checked against the registry it would
+ * extend (registryErrors, with the builds and designations) before it is returned; nothing here writes to a chain,
+ * and every RPC failure propagates.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
@@ -21,19 +24,20 @@ import { profileVerifier } from "./verifier-binding";
 
 const VERIFIER_HALTED = id("VerifierHalted(address)");
 
-/** The block the facts are observed at: the finalized one where the chain has it, else the latest. */
-async function observedAt(provider: Provider): Promise<{ block: number; blockHash: string }> {
-  let block = null;
-  try {
-    block = await provider.getBlock("finalized");
-  } catch (error) {
-    // A node without the finalized tag answers with an error; any other failure is not an answer.
-    if (!/finalized|not supported|unknown block|invalid block tag/i.test(String((error as Error)?.message)))
-      throw error;
-  }
-  block ??= await provider.getBlock("latest");
-  if (block === null || block.hash === null) throw new Error("the chain gave no block to observe the facts at");
+/** The finalized block the facts are observed at. A chain or RPC that gives none fails the measurement. */
+export async function finalizedBlock(provider: Provider): Promise<{ block: number; blockHash: string }> {
+  const block = await provider.getBlock("finalized");
+  if (block === null || block.hash === null)
+    throw new Error("the chain gave no finalized block to observe the facts at");
   return { block: block.number, blockHash: block.hash };
+}
+
+function final(what: string, txBlock: number, observedAt: { block: number }): void {
+  if (txBlock > observedAt.block) {
+    throw new Error(
+      `${what} in block ${txBlock} is not final yet (the finalized block is ${observedAt.block}): record it once it is`,
+    );
+  }
 }
 
 function checked(
@@ -60,6 +64,7 @@ export async function registrationFact(
   },
 ): Promise<RegistryFact> {
   const wrapper = getAddress(input.wrapper);
+  const observedAt = await finalizedBlock(provider);
   const receipt = await provider.getTransactionReceipt(input.deploymentTx);
   if (
     receipt === null ||
@@ -69,7 +74,8 @@ export async function registrationFact(
   ) {
     throw new Error(`transaction ${input.deploymentTx} did not deploy ${wrapper}`);
   }
-  const p = await profileVerifier(provider, wrapper, input.builds);
+  final(`the deployment of ${wrapper}`, receipt.blockNumber, observedAt);
+  const p = await profileVerifier(provider, wrapper, input.builds, observedAt.block);
   if (p.wrapperBuild === null) throw new Error(`${wrapper} is no recorded wrapper build`);
   if (
     p.halted !== false ||
@@ -91,7 +97,7 @@ export async function registrationFact(
       chainId,
       address: wrapper,
       identity: p.identity,
-      observedAt: await observedAt(provider),
+      observedAt,
       wrapperBuild: p.wrapperBuild,
       designation: designation.id,
       sp1Verifier: { address: p.sp1Verifier, runtimeCodeKeccak: String(p.sp1VerifierCodeKeccak) },
@@ -117,14 +123,35 @@ export async function haltFact(
   const chainId = (await provider.getNetwork()).chainId.toString();
   const registration = registryState(input.registry).registration(chainId, wrapper);
   if (registration === undefined) throw new Error(`${wrapper} is not registered on chain ${chainId}`);
+  const observedAt = await finalizedBlock(provider);
   const receipt = await provider.getTransactionReceipt(input.haltTx);
   const halted =
     receipt?.logs.some((l) => getAddress(l.address) === wrapper && l.topics[0] === VERIFIER_HALTED) ?? false;
   if (receipt === null || receipt.status !== 1 || !halted) {
     throw new Error(`transaction ${input.haltTx} emitted no VerifierHalted from ${wrapper}`);
   }
-  const p = await profileVerifier(provider, wrapper, input.builds);
+  final(`the halt of ${wrapper}`, receipt.blockNumber, observedAt);
+  const p = await profileVerifier(provider, wrapper, input.builds, observedAt.block);
   if (p.halted !== true) throw new Error(`${wrapper} is not HALTED on chain ${chainId}`);
+  // The halted wrapper must be the one its registration describes: the identity a halt retires is the one measured.
+  const differs = (
+    [
+      ["identity", registration.identity, p.identity],
+      ["PROGRAM_VKEY", registration.programVKey, p.programVKey],
+      ["SP1 verifier", registration.sp1Verifier?.address, p.sp1Verifier],
+      ["SP1 verifier code", registration.sp1Verifier?.runtimeCodeKeccak, p.sp1VerifierCodeKeccak],
+      ["halt principal", registration.haltPrincipal, p.haltPrincipal],
+      ["wrapper build", registration.wrapperBuild, p.wrapperBuild],
+    ] as const
+  ).filter(([, recorded, measured]) => recorded !== measured);
+  if (differs.length > 0) {
+    throw new Error(
+      `${wrapper} measured on chain ${chainId} is not what its registration records (fact #${registration.seq}): ` +
+        differs
+          .map(([field, recorded, measured]) => `${field} ${String(recorded)} recorded, ${String(measured)} measured`)
+          .join("; "),
+    );
+  }
   return checked(
     input.registry,
     {
@@ -132,8 +159,8 @@ export async function haltFact(
       kind: "WRAPPER_HALTED",
       chainId,
       address: wrapper,
-      identity: registration.identity,
-      observedAt: await observedAt(provider),
+      identity: String(p.identity),
+      observedAt,
       reason: input.reason,
       halt: { txHash: input.haltTx, block: receipt.blockNumber },
     },

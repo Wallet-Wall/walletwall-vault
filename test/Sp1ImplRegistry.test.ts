@@ -156,6 +156,19 @@ describe("SP1 implementation lane — the wrapper registry", function () {
         /identity/,
       ],
       [
+        "a registration observed before its deployment",
+        () => [registration(1, SEPOLIA, "a", { observedAt: { block: 900, blockHash: ethers.id("early") } })],
+        /observed before/,
+      ],
+      [
+        "a halt observed before it happened",
+        () => [
+          registration(1, SEPOLIA, "a"),
+          halt(2, SEPOLIA, "a", { observedAt: { block: 1999, blockHash: ethers.id("early halt") } }),
+        ],
+        /observed before/,
+      ],
+      [
         "a lowercase (unchecked) address",
         () => [registration(1, SEPOLIA, "a", { address: addr("wrapper a").toLowerCase() })],
         /checksum/,
@@ -230,6 +243,21 @@ describe("SP1 implementation lane — the wrapper registry", function () {
     });
     afterEach(function () {
       rmSync(dir, { recursive: true, force: true });
+    });
+
+    it("the history starts at SP1-TD2's v1 list: one that starts at the fact log (an orphan root) is refused", function () {
+      expect(registryExtensionErrors(null, v1([]))).to.deep.equal([]);
+      expect(registryExtensionErrors(null, `${JSON.stringify(doc([]), null, 2)}\n`).join("\n")).to.match(
+        /first version must be a v1 registry/,
+      );
+      rmSync(dir, { recursive: true, force: true });
+      dir = mkdtempSync(join(tmpdir(), "sp1-registry-orphan-"));
+      git("init", "-q", "-b", "main");
+      git("config", "user.email", "test@example.invalid");
+      git("config", "user.name", "test");
+      git("config", "core.autocrlf", "false");
+      const root = put([registration(1, SEPOLIA, "a")], "a fact log with no v1 list before it");
+      expect(history().join("\n")).to.match(new RegExp(`${root.slice(0, 12)}.*first version must be a v1 registry`));
     });
 
     it("appends pass: v1 empty → v2 → one fact → two facts → a halt", function () {
