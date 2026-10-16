@@ -440,7 +440,7 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
     it("finds every contract that verifies through an IPQCVerifier, and how each can replace its verifier", function () {
       // These are facts about the subject TD1 measured. SP1-TD2 changed the consumers (the multisig vault gained
       // its delayed rotation), so the scan reads TD1's subject commit from git rather than the working tree; the
-      // current tree is measured by TD2's own scan (test/Sp1Td2VerifierHalt.test.ts). Needs full history, as CI has.
+      // current tree is measured by TD2's own scan (test/Sp1Td2ConsumerScan.test.ts). Needs full history, as CI has.
       const subject: string = readJson("evidence/zk/sp1-td1/decision-receipt.json").subject.baseCommit;
       const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       // A consumer calls .verify(...) on a verifier it holds or reads; an implementer is a verifier, not a consumer.

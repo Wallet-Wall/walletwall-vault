@@ -323,7 +323,7 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
             async () => hostile.program(SEL.HALT_PRINCIPAL, B.ReturnOwner, ethers.ZeroHash),
           ],
           ["burns all the gas each probe gets", async () => programAll(B.BurnGas)],
-          ["returns a mebibyte to each probe", async () => programAll(B.ReturnHuge)],
+          ["returns 96 KiB to each probe (the probe reads one word of it)", async () => programAll(B.ReturnHuge)],
           [
             "reverts with the owner's address as its revert data",
             async () => hostile.program(SEL.HALT_PRINCIPAL, B.RevertWithWord, word(admin.address)),
@@ -337,6 +337,17 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
             expect(await consumer.pqVerifier()).to.equal(await w2.getAddress());
           });
         }
+
+        it(`${c.name}: the 96 KiB answer really returns within the probe's gas cap (it is not another out-of-gas case)`, async function () {
+          await programAll(B.ReturnHuge);
+          const out = await ethers.provider.call({
+            to: await hostile.getAddress(),
+            data: SEL.halted,
+            // The probe's 50,000 of execution gas, plus this call's intrinsic and calldata cost.
+            gasLimit: 21_000 + 64 + 50_000,
+          });
+          expect(ethers.dataLength(out)).to.equal(0x18000);
+        });
 
         it(`${c.name}: a current verifier that claims to be halted, with no identity, cannot refuse a target that has none either`, async function () {
           await hostile.program(SEL.halted, B.Return, word("0x01"));

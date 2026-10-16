@@ -5,11 +5,12 @@
  *   EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER — WalletWallMultiSigVault, kept outside the halt until its gate
  *     TD2-MULTISIG-ROTATION is built, tested and admitted by the owner, is refused a haltable wrapper (and any other
  *     part of the SP1 path) by the deployment and rotation tooling; the consumers in scope are not.
- *   TD1-N12, recovery-target gating BY PROCESS — on a non-local chain, with no override, a binding or rotation
- *     target must be an ACTIVE haltable wrapper whose SP1 verifier code hash and PROGRAM_VKEY are the SP1-TD1
- *     designations, not a halted identity, and not haltable by the signer.
+ *   TD1-N12, recovery-target gating BY PROCESS — a target on the SP1 path must be a ZKMLDSAVerifier compiled from
+ *     this tree, ACTIVE, not haltable by the signer, of no identity halted at the consumer or at any wrapper in the
+ *     registry; and, without the local override, registered, the only ACTIVE registered wrapper of its identity,
+ *     and designated (SP1-TD1's designation, or a successor's).
  *
- * Scope and designations are read from the SP1-TD1 receipt; this suite checks that they are, then exercises the
+ * Scope and SP1-TD1's designation are read from its receipt; this suite checks that they are, then exercises the
  * gate's rules on profiles measured from deployed contracts (the real v6.1.0 bytes included), each refusal with a
  * positive control.
  */
@@ -23,6 +24,7 @@ import { ethers, networkHelpers } from "./helpers/connection";
 import { ROTATION_DELAY, VKEY_A, VKEY_B, deploySp1, deployWrapper } from "./helpers/td2Helpers";
 import {
   CONSUMERS,
+  WRAPPER_REGISTRY_SCHEMA,
   ZK_ALGORITHM_ID,
   bindingRefusals,
   checkDeploymentBinding,
@@ -30,10 +32,15 @@ import {
   identifyConsumer,
   isHaltable,
   isOnSp1Path,
+  matchesWrapperArtifact,
   profileVerifier,
   readDesignations,
   readHaltScope,
+  readWrapperArtifact,
+  readWrapperRegistry,
+  wrapperRegistryErrors,
   type BindingRequest,
+  type Designation,
   type VerifierProfile,
 } from "../scripts/lib/verifier-binding";
 
@@ -66,13 +73,18 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     signer: admin.address,
     allowMockSp1: false,
     current: null,
+    currentIdentity: null,
     targetIdentityRecordedHalted: false,
     scope: readHaltScope(),
     designations: readDesignations(),
+    registered: [],
     ...overrides,
   });
+  /** A request for a target that is registered (the only ACTIVE wrapper of its identity) on the chain. */
+  const registeredRequest = (target: VerifierProfile, overrides: Partial<BindingRequest> = {}) =>
+    request(target, { registered: [target], ...overrides });
 
-  describe("inputs come from the SP1-TD1 receipt, never typed", function () {
+  describe("inputs come from the SP1-TD1 receipt and the wrapper registry, never typed", function () {
     it("the halt scope is the owner's amended scope: three consumers, the multisig vault excluded under its own gate", function () {
       const frozen = TD1.decisions.DEFECT_RESPONSE_COUPLING.haltDesign.haltScope;
       expect(readHaltScope()).to.deep.equal(frozen);
@@ -92,12 +104,52 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect([...CONSUMERS].sort()).to.deep.equal([...TD1.decisions.DEFECT_RESPONSE_COUPLING.measuredConsumers].sort());
     });
 
-    it("the designations are the trust target's code hash (per chain) and the designated PROGRAM_VKEY", function () {
-      const d = readDesignations();
+    it("SP1-TD1's designation is the trust target's code hash (per chain) and the designated PROGRAM_VKEY", function () {
+      const designations = readDesignations();
+      expect(designations).to.have.length(1);
+      const [d] = designations;
       expect(d.sp1VerifierCodeKeccak).to.equal(TD1.trustTarget.codeKeccak);
       expect(d.programVKey).to.equal(TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey);
       expect(Object.keys(d.sp1VerifierCodeKeccakByChain).sort()).to.deep.equal(["1", "11155111", "8453", "84532"]);
       for (const c of TD1.trustTarget.chains) expect(d.sp1VerifierCodeKeccakByChain[c.chainId]).to.equal(c.codeKeccak);
+    });
+
+    it("the committed wrapper registry is well formed and empty: no wrapper is deployed anywhere yet", function () {
+      const doc = JSON.parse(readFileSync(resolve("evidence/zk/sp1-td2/wrapper-registry.json"), "utf8"));
+      expect(wrapperRegistryErrors(doc)).to.deep.equal([]);
+      expect(doc.entries).to.deep.equal([]);
+      for (const chain of [1n, 8453n, SEPOLIA, 84532n, LOCAL]) expect(readWrapperRegistry(chain)).to.deep.equal([]);
+    });
+
+    it("a registry document is refused unless every entry names a decimal chain id and an address, once", function () {
+      const entry = { chainId: "11155111", address: stranger.address };
+      expect(wrapperRegistryErrors({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [entry] })).to.deep.equal([]);
+      const cases: [string, unknown, RegExp][] = [
+        ["not an object", null, /not an object/],
+        ["another schema", { schema: "x", entries: [] }, /schema must be/],
+        ["no list", { schema: WRAPPER_REGISTRY_SCHEMA, entries: {} }, /entries must be a list/],
+        [
+          "a numeric chain id",
+          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ ...entry, chainId: 1 }] },
+          /decimal string/,
+        ],
+        [
+          "a zero-led chain id",
+          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ ...entry, chainId: "01" }] },
+          /decimal string/,
+        ],
+        [
+          "a malformed address",
+          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ ...entry, address: "0x12" }] },
+          /must be an address/,
+        ],
+        [
+          "a duplicate",
+          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [entry, { ...entry, address: entry.address.toLowerCase() }] },
+          /listed twice/,
+        ],
+      ];
+      for (const [label, doc, rule] of cases) expect(wrapperRegistryErrors(doc).join("\n"), label).to.match(rule);
     });
   });
 
@@ -106,6 +158,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const p = await profileVerifier(ethers.provider, await haltable.getAddress());
       expect(p).to.include({
         hasCode: true,
+        genuineWrapper: true,
         algorithmId: ZK_ALGORITHM_ID,
         sp1Verifier: await sp1.getAddress(),
         programVKey: VKEY_A,
@@ -114,11 +167,17 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       });
       expect([isOnSp1Path(p), isHaltable(p)]).to.deep.equal([true, true]);
       const u = await profileVerifier(ethers.provider, await unhaltable.getAddress());
-      expect([isOnSp1Path(u), isHaltable(u), u.haltPrincipal, u.halted]).to.deep.equal([true, false, null, null]);
+      expect([isOnSp1Path(u), isHaltable(u), u.haltPrincipal, u.halted, u.genuineWrapper]).to.deep.equal([
+        true,
+        false,
+        null,
+        null,
+        false,
+      ]);
       const m = await profileVerifier(ethers.provider, await mock.getAddress());
-      expect([isOnSp1Path(m), isHaltable(m), m.identity]).to.deep.equal([false, false, null]);
+      expect([isOnSp1Path(m), isHaltable(m), m.identity, m.genuineWrapper]).to.deep.equal([false, false, null, false]);
       const eoa = await profileVerifier(ethers.provider, stranger.address);
-      expect([eoa.hasCode, isOnSp1Path(eoa)]).to.deep.equal([false, false]);
+      expect([eoa.hasCode, isOnSp1Path(eoa), eoa.genuineWrapper]).to.deep.equal([false, false, false]);
       await haltable.connect(haltPrincipal).halt();
       expect((await profileVerifier(ethers.provider, await haltable.getAddress())).halted).to.equal(true);
     });
@@ -161,32 +220,77 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect((await profileVerifier(ethers.provider, await m.getAddress())).halted).to.equal(true);
     });
 
-    it("computes the same identity the on-chain guard records", async function () {
+    it("computes the same identity the on-chain guard records and stores", async function () {
       const vault = await (
         await ethers.getContractFactory("WalletWallVault", admin)
       ).deploy(await haltable.getAddress());
       const recovery = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
+      const identity = (await profileVerifier(ethers.provider, await haltable.getAddress())).identity!;
+      expect(await vault.pqVerifierIdentity()).to.equal(identity);
       await haltable.connect(haltPrincipal).halt();
       await vault.proposePQVerifier(await recovery.getAddress());
       await networkHelpers.time.increase(ROTATION_DELAY);
       await vault.applyPQVerifierUpdate();
-      const identity = (await profileVerifier(ethers.provider, await haltable.getAddress())).identity!;
+      const recoveryIdentity = (await profileVerifier(ethers.provider, await recovery.getAddress())).identity!;
       expect(await vault.haltedVerifierIdentities(identity)).to.equal(true);
-      expect(
-        await vault.haltedVerifierIdentities(
-          (await profileVerifier(ethers.provider, await recovery.getAddress())).identity!,
-        ),
-      ).to.equal(false);
+      expect(await vault.haltedVerifierIdentities(recoveryIdentity)).to.equal(false);
+      expect(await vault.pqVerifierIdentity()).to.equal(recoveryIdentity);
+    });
+  });
+
+  describe("a target must be a ZKMLDSAVerifier compiled from this tree (the review's look-alike)", function () {
+    it("compares runtime code with the artifact, immutables masked and metadata excluded", async function () {
+      const artifact = readWrapperArtifact();
+      const code = await ethers.provider.getCode(await haltable.getAddress());
+      expect(matchesWrapperArtifact(code, artifact), "a deployed wrapper").to.equal(true);
+      // Other immutables (another verifier, vkey and halt principal) are the same code.
+      const other = await deployWrapper(await deploySp1(), VKEY_B, otherHaltPrincipal.address);
+      expect(matchesWrapperArtifact(await ethers.provider.getCode(await other.getAddress()), artifact)).to.equal(true);
+      // The metadata trailer (the source hash) is not compared...
+      const bytes = ethers.getBytes(code);
+      const trailer = Uint8Array.from(bytes);
+      // Inside the IPFS source hash: the CBOR map starts a2 64 "ipfs" 58 22, so its payload begins 8 bytes in.
+      const cborStart = bytes.length - 2 - ((bytes[bytes.length - 2] << 8) | bytes[bytes.length - 1]);
+      trailer[cborStart + 12] ^= 0xff;
+      expect(matchesWrapperArtifact(ethers.hexlify(trailer), artifact), "metadata byte changed").to.equal(true);
+      // ...but every executable byte is.
+      const executable = Uint8Array.from(bytes);
+      executable[5] ^= 0x01;
+      expect(matchesWrapperArtifact(ethers.hexlify(executable), artifact), "code byte changed").to.equal(false);
+      for (const notWrapper of [
+        await ethers.provider.getCode(await unhaltable.getAddress()),
+        await ethers.provider.getCode(await mock.getAddress()),
+        "0x",
+        ethers.hexlify(bytes.slice(0, -1)),
+      ]) {
+        expect(matchesWrapperArtifact(notWrapper, artifact)).to.equal(false);
+      }
+    });
+
+    it("refuses a look-alike that reports the designated identity, a halt principal and ACTIVE; admits the genuine wrapper", async function () {
+      const lookalike = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+      const sel = (signature: string) => ethers.id(signature).slice(0, 10);
+      await lookalike.program(sel("HALT_PRINCIPAL()"), 1, ethers.zeroPadValue(haltPrincipal.address, 32));
+      await lookalike.program(sel("halted()"), 1, ethers.ZeroHash);
+      await lookalike.program(sel("SP1_VERIFIER()"), 1, ethers.zeroPadValue(await sp1.getAddress(), 32));
+      await lookalike.program(sel("PROGRAM_VKEY()"), 1, VKEY_A);
+      const fake = await profileVerifier(ethers.provider, await lookalike.getAddress());
+      expect(isHaltable(fake)).to.equal(true);
+      expect(bindingRefusals(request(fake, { chainId: LOCAL, allowMockSp1: true })).join("\n")).to.match(
+        /not a ZKMLDSAVerifier compiled from this tree/,
+      );
+      const genuine = await profileVerifier(ethers.provider, await haltable.getAddress());
+      expect(bindingRefusals(request(genuine, { chainId: LOCAL, allowMockSp1: true }))).to.deep.equal([]);
     });
   });
 
   describe("EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER", function () {
-    it("without the local override, deployment tooling refuses a consumer in scope a wrapper over a mock SP1 verifier", async function () {
+    it("without the local override, deployment tooling refuses a consumer in scope an unregistered, undesignated wrapper", async function () {
       await assert.rejects(
         checkDeploymentBinding(ethers.provider, "WalletWallVault", await haltable.getAddress(), admin.address, {
           allowMockSp1: false,
         }),
-        /runtime code hash .* not the designated/,
+        /not in the WalletWall wrapper registry for chain 31337.*matches no designation/s,
       );
     });
 
@@ -286,70 +390,78 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   });
 
   describe("TD1-N12: recovery-target gating by process", function () {
+    let realVerifier: string;
     let designated: VerifierProfile;
     let mockSp1Wrapper: VerifierProfile;
 
     beforeEach(async function () {
       // A wrapper over the real SP1Verifier v6.1.0 bytes (CREATE2-authenticated in SP1-TD1) with the designated vkey.
       const receipt = await (await admin.sendTransaction({ data: BYTECODE.deployments["v6.1.0"].initcode })).wait();
-      const real = await (
-        await ethers.getContractFactory("ZKMLDSAVerifier")
-      ).deploy(receipt.contractAddress, TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey, haltPrincipal.address);
+      realVerifier = receipt.contractAddress;
+      const real = await deployWrapper(
+        { getAddress: async () => realVerifier },
+        TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
+        haltPrincipal.address,
+      );
       designated = await profileVerifier(ethers.provider, await real.getAddress());
       mockSp1Wrapper = await profileVerifier(ethers.provider, await haltable.getAddress());
     });
 
-    it("positive control: a wrapper over the designated verifier code with the designated vkey passes on a non-local chain", function () {
+    it("positive control: a registered wrapper over the designated verifier code with the designated vkey passes on a non-local chain", function () {
       expect(designated.sp1VerifierCodeKeccak).to.equal(TD1.trustTarget.codeKeccak);
-      expect(bindingRefusals(request(designated))).to.deep.equal([]);
+      expect(designated.genuineWrapper).to.equal(true);
+      expect(bindingRefusals(registeredRequest(designated))).to.deep.equal([]);
     });
 
     it("refuses another SP1 verifier code or another PROGRAM_VKEY on a non-local chain, and grants no override there", function () {
-      expect(bindingRefusals(request(mockSp1Wrapper)).join("\n")).to.match(/runtime code hash .* not the designated/);
-      expect(bindingRefusals(request({ ...designated, programVKey: VKEY_B })).join("\n")).to.match(
-        /PROGRAM_VKEY is .* not the designated/,
-      );
-      expect(bindingRefusals(request(mockSp1Wrapper, { allowMockSp1: true })).join("\n")).to.match(
+      expect(bindingRefusals(registeredRequest(mockSp1Wrapper)).join("\n")).to.match(/matches no designation/);
+      const otherVKey = { ...designated, programVKey: VKEY_B };
+      expect(bindingRefusals(registeredRequest(otherVKey)).join("\n")).to.match(/matches no designation/);
+      expect(bindingRefusals(registeredRequest(mockSp1Wrapper, { allowMockSp1: true })).join("\n")).to.match(
         /no override exists on chain 11155111/,
       );
       // The override works only where it is meant to: a local chain.
       expect(bindingRefusals(request(mockSp1Wrapper, { chainId: LOCAL, allowMockSp1: true }))).to.deep.equal([]);
-      expect(bindingRefusals(request(mockSp1Wrapper, { chainId: LOCAL })).length, "no flag, no mock").to.be.greaterThan(
-        0,
-      );
+      expect(
+        bindingRefusals(registeredRequest(mockSp1Wrapper, { chainId: LOCAL })).length,
+        "no flag, no mock",
+      ).to.be.greaterThan(0);
     });
 
     it("refuses a halted target, a recorded halted identity, a fresh deployment of the current halted identity, and a signer that can halt", function () {
       const cases: [string, BindingRequest, RegExp][] = [
-        ["halted target", request({ ...designated, halted: true }), /is HALTED/],
+        ["halted target", registeredRequest({ ...designated, halted: true }), /is HALTED/],
         [
           "recorded halted identity",
-          request(designated, { targetIdentityRecordedHalted: true }),
+          registeredRequest(designated, { targetIdentityRecordedHalted: true }),
           /halted wrapper .* recorded/,
         ],
         [
-          "fresh deployment of the current halted identity",
-          request(designated, { current: { ...designated, address: stranger.address, halted: true } }),
+          "fresh deployment of the identity the halted current verifier was installed with",
+          registeredRequest(designated, {
+            current: { ...designated, address: stranger.address, halted: true },
+            currentIdentity: designated.identity,
+          }),
           /fresh deployment of the halted identity/,
         ],
         [
           "signer is the target's halt principal",
-          request(designated, { signer: haltPrincipal.address }),
+          registeredRequest(designated, { signer: haltPrincipal.address }),
           /halt principal never governs/,
         ],
         [
           "signer is the target's halt principal, spelled in lower case",
-          request(designated, { signer: haltPrincipal.address.toLowerCase() }),
+          registeredRequest(designated, { signer: haltPrincipal.address.toLowerCase() }),
           /halt principal never governs/,
         ],
         [
           "signer can halt the current verifier",
-          request(designated, { current: { ...mockSp1Wrapper, haltPrincipal: admin.address } }),
+          registeredRequest(designated, { current: { ...mockSp1Wrapper, haltPrincipal: admin.address } }),
           /can halt the current verifier/,
         ],
         [
           "signer can halt the current verifier, spelled in lower case",
-          request(designated, {
+          registeredRequest(designated, {
             signer: admin.address.toLowerCase(),
             current: { ...mockSp1Wrapper, haltPrincipal: admin.address },
           }),
@@ -357,43 +469,62 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         ],
       ];
       for (const [label, req, refusal] of cases) expect(bindingRefusals(req).join("\n"), label).to.match(refusal);
-      // Positive control: an ACTIVE current wrapper of the same identity does not disqualify a redeploy.
+      // Positive controls: an ACTIVE current verifier of the same stored identity, and a halted current verifier
+      // installed with another identity (whatever it reports now), do not disqualify the target.
       expect(
-        bindingRefusals(request(designated, { current: { ...designated, address: stranger.address } })),
+        bindingRefusals(
+          registeredRequest(designated, {
+            current: { ...designated, address: stranger.address },
+            currentIdentity: designated.identity,
+          }),
+        ),
+      ).to.deep.equal([]);
+      expect(
+        bindingRefusals(
+          registeredRequest(designated, {
+            current: { ...designated, address: stranger.address, halted: true },
+            currentIdentity: mockSp1Wrapper.identity,
+          }),
+        ),
       ).to.deep.equal([]);
     });
 
     it("refuses an SP1-path verifier that cannot be halted for a consumer in scope, and any consumer the scope does not name", function () {
       const u = { ...designated, haltPrincipal: null, halted: null };
-      expect(bindingRefusals(request(u)).join("\n")).to.match(/not haltable: the halt would not reach WalletWallVault/);
-      expect(bindingRefusals(request(designated, { consumer: "SomeOtherVault" })).join("\n")).to.match(
+      expect(bindingRefusals(registeredRequest(u)).join("\n")).to.match(
+        /not haltable: the halt would not reach WalletWallVault/,
+      );
+      expect(bindingRefusals(registeredRequest(designated, { consumer: "SomeOtherVault" })).join("\n")).to.match(
         /not a consumer the halt's scope names/,
       );
     });
 
-    it("refuses a target without code; a designated wrapper passes on a local chain without any override", function () {
-      expect(bindingRefusals(request({ ...designated, hasCode: false })).join("\n")).to.match(/has no code/);
-      expect(bindingRefusals(request(designated, { chainId: LOCAL }))).to.deep.equal([]);
+    it("refuses a target without code; a registered designated wrapper passes on a local chain without any override", function () {
+      expect(bindingRefusals(registeredRequest({ ...designated, hasCode: false })).join("\n")).to.match(/has no code/);
+      expect(bindingRefusals(registeredRequest(designated, { chainId: LOCAL }))).to.deep.equal([]);
     });
 
-    it("checks the code hash designated for the chain, falling back to the trust target's only where the chain has none", function () {
+    it("checks the code hash designated for the chain, falling back to the designation's own only where the chain has none", function () {
       const other = `0x${"ab".repeat(32)}`;
-      const designations = {
-        ...readDesignations(),
-        sp1VerifierCodeKeccakByChain: { ...readDesignations().sp1VerifierCodeKeccakByChain, "11155111": other },
-      };
-      expect(bindingRefusals(request({ ...designated, sp1VerifierCodeKeccak: other }, { designations }))).to.deep.equal(
-        [],
+      const [td1] = readDesignations();
+      const designations: Designation[] = [
+        { ...td1, sp1VerifierCodeKeccakByChain: { ...td1.sp1VerifierCodeKeccakByChain, "11155111": other } },
+      ];
+      expect(
+        bindingRefusals(registeredRequest({ ...designated, sp1VerifierCodeKeccak: other }, { designations })),
+      ).to.deep.equal([]);
+      expect(bindingRefusals(registeredRequest(designated, { designations })).join("\n")).to.match(
+        /matches no designation/,
       );
-      expect(bindingRefusals(request(designated, { designations })).join("\n")).to.match(/not the designated 0xabab/);
-      // A chain the designations do not list falls back to the trust target's code hash.
-      expect(bindingRefusals(request(designated, { designations, chainId: 10_000n }))).to.deep.equal([]);
+      // A chain the designation does not list falls back to its trust target's code hash.
+      expect(bindingRefusals(registeredRequest(designated, { designations, chainId: 10_000n }))).to.deep.equal([]);
     });
 
     it("anything that answers one part of the SP1 surface is on the SP1 path, and a wrapper needs both halves of the halt surface", function () {
       const bare: VerifierProfile = {
         address: stranger.address,
         hasCode: true,
+        genuineWrapper: false,
         algorithmId: null,
         sp1Verifier: null,
         sp1VerifierCodeKeccak: null,
@@ -420,9 +551,10 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(isHaltable({ ...bare, halted: false })).to.equal(false);
       expect(isHaltable({ ...bare, haltPrincipal: haltPrincipal.address, halted: false })).to.equal(true);
       for (const half of [{ halted: null }, { haltPrincipal: null }]) {
-        expect(bindingRefusals(request({ ...designated, ...half })).join("\n"), JSON.stringify(half)).to.match(
-          /not haltable/,
-        );
+        expect(
+          bindingRefusals(registeredRequest({ ...designated, ...half })).join("\n"),
+          JSON.stringify(half),
+        ).to.match(/not haltable/);
       }
     });
 
@@ -528,10 +660,129 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
           /WalletWallMultiSigVault waits outside the halt/,
         );
       }
-      // Positive control: off the SP1 path the multisig vault's rotation tooling still works.
+      // Positive control: the gate's rules admit an off-path verifier for it (the rotation script itself proposes ZK
+      // targets only, so it cannot rotate the multisig vault while it is excluded).
       const otherMock = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
       const profile = await profileVerifier(ethers.provider, await otherMock.getAddress());
       expect(bindingRefusals(request(profile, { consumer: "WalletWallMultiSigVault" }))).to.deep.equal([]);
+    });
+  });
+
+  describe("the wrapper registry: one halt reaches every consumer, and a halt is seen by every consumer", function () {
+    it("refuses an unregistered wrapper off a local chain, and a second ACTIVE registered wrapper of the same identity", async function () {
+      const target = await profileVerifier(ethers.provider, await haltable.getAddress());
+      const designation: Designation = {
+        source: "a test designation of the mock program",
+        sp1VerifierCodeKeccak: target.sp1VerifierCodeKeccak!,
+        sp1VerifierCodeKeccakByChain: {},
+        programVKey: VKEY_A,
+      };
+      const base = { chainId: LOCAL, designations: [designation] };
+      expect(bindingRefusals(request(target, { ...base, registered: [target] })), "positive control").to.deep.equal([]);
+      expect(bindingRefusals(request(target, { ...base, registered: [] })).join("\n")).to.match(
+        /not in the WalletWall wrapper registry for chain 31337/,
+      );
+      const twin = await profileVerifier(
+        ethers.provider,
+        await (await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address)).getAddress(),
+      );
+      expect(bindingRefusals(request(target, { ...base, registered: [target, twin] })).join("\n")).to.match(
+        /another ACTIVE registered wrapper of .* identity: one halt call must reach every consumer/,
+      );
+    });
+
+    it("refuses an identity halted at any registered wrapper, for every consumer and even under the local override", async function () {
+      // Consumer A used w1 and left it while it was ACTIVE; w1 was halted later. A consumer that never used w1 is
+      // refused a fresh deployment of its identity all the same, because the registry shows the halt.
+      const w1 = await deployWrapper(sp1, VKEY_A, haltPrincipal.address);
+      await w1.connect(haltPrincipal).halt();
+      const halted = await profileVerifier(ethers.provider, await w1.getAddress());
+      const freshA = await profileVerifier(ethers.provider, await haltable.getAddress()); // identity A, ACTIVE
+      expect(freshA.identity).to.equal(halted.identity);
+      expect(
+        bindingRefusals(request(freshA, { chainId: LOCAL, allowMockSp1: true, registered: [halted] })).join("\n"),
+      ).to.match(/has the identity of registered wrapper .*, which is HALTED/);
+      const otherB = await profileVerifier(
+        ethers.provider,
+        await (await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address)).getAddress(),
+      );
+      expect(
+        bindingRefusals(request(otherB, { chainId: LOCAL, allowMockSp1: true, registered: [halted] })),
+        "positive control: another identity",
+      ).to.deep.equal([]);
+      // End to end through the tooling, with the registry naming the halted wrapper.
+      const vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await mock.getAddress());
+      await assert.rejects(
+        checkRotationBinding(ethers.provider, await vault.getAddress(), await haltable.getAddress(), admin.address, {
+          ...MOCK_OK,
+          registry: [await w1.getAddress()],
+        }),
+        /which is HALTED/,
+      );
+      await assert.rejects(
+        checkDeploymentBinding(ethers.provider, "WalletWallVault", await haltable.getAddress(), admin.address, {
+          ...MOCK_OK,
+          registry: [await w1.getAddress()],
+        }),
+        /which is HALTED/,
+      );
+    });
+
+    it("refuses everything while a registry entry is not a genuine wrapper", async function () {
+      const target = await profileVerifier(ethers.provider, await haltable.getAddress());
+      const bogus = await profileVerifier(ethers.provider, await unhaltable.getAddress());
+      expect(
+        bindingRefusals(request(target, { chainId: LOCAL, allowMockSp1: true, registered: [bogus] })).join("\n"),
+      ).to.match(/registered wrapper .* is not a ZKMLDSAVerifier compiled from this tree/);
+    });
+  });
+
+  describe("recovery from a halt of the designated identity needs a successor designation", function () {
+    it("off a local chain the gate admits no recovery target on SP1-TD1's designation alone, and admits a designated successor", async function () {
+      // The designated wrapper is registered and HALTED (a v6.1.0 defect); the recovery wrapper runs fixed verifier
+      // code with the same vkey, registered and ACTIVE.
+      const receipt = await (await admin.sendTransaction({ data: BYTECODE.deployments["v6.1.0"].initcode })).wait();
+      const designatedWrapper = await deployWrapper(
+        { getAddress: async () => receipt.contractAddress },
+        TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
+        haltPrincipal.address,
+      );
+      await designatedWrapper.connect(haltPrincipal).halt();
+      const fixedVerifier = await (await ethers.getContractFactory("MockSP1Verifier")).deploy();
+      const recoveryWrapper = await deployWrapper(
+        fixedVerifier,
+        TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
+        otherHaltPrincipal.address,
+      );
+      const halted = await profileVerifier(ethers.provider, await designatedWrapper.getAddress());
+      const recovery = await profileVerifier(ethers.provider, await recoveryWrapper.getAddress());
+      const registered = [halted, recovery];
+      expect(bindingRefusals(request(recovery, { registered })).join("\n")).to.match(
+        /matches no designation \(SP1-TD1 decision receipt\): a recovery identity needs a successor designation/,
+      );
+      const successor: Designation = {
+        source: "a successor designation (the designation process's, simulated)",
+        sp1VerifierCodeKeccak: recovery.sp1VerifierCodeKeccak!,
+        sp1VerifierCodeKeccakByChain: {},
+        programVKey: recovery.programVKey!,
+      };
+      expect(
+        bindingRefusals(request(recovery, { registered, designations: [...readDesignations(), successor] })),
+      ).to.deep.equal([]);
+      // The halted identity stays refused even though SP1-TD1 designated it.
+      const redeploy = await profileVerifier(
+        ethers.provider,
+        await (
+          await deployWrapper(
+            { getAddress: async () => receipt.contractAddress },
+            TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
+            otherHaltPrincipal.address,
+          )
+        ).getAddress(),
+      );
+      expect(bindingRefusals(request(redeploy, { registered: [...registered, redeploy] })).join("\n")).to.match(
+        /which is HALTED/,
+      );
     });
   });
 

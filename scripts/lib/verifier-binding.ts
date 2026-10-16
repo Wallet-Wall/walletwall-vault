@@ -9,23 +9,34 @@
  *      tested and its cut accepted) may be bound to no part of the SP1 path — a haltable wrapper least of all,
  *      since a halt would lock it. A consumer inside the scope, if it is on the SP1 path at all, must verify
  *      through a haltable wrapper, or the halt would not reach it (a bypass, not a scope choice).
- *   2. Recovery-target gating (TD1-N12): a wrapper may be a binding or rotation target only if it is ACTIVE, is
- *      not a halted identity, cannot be halted by the signer, and — on any non-local chain, with no override —
- *      its SP1 verifier's runtime code hash and its PROGRAM_VKEY are the SP1-TD1 designations.
+ *   2. Recovery-target gating (TD1-N12). A target on the SP1 path must be a ZKMLDSAVerifier compiled from this
+ *      tree (its runtime code, immutables masked and metadata excluded, is the artifact's), ACTIVE, not haltable by
+ *      the signer, and of no identity that is halted — at this consumer (its stored and recorded identities) or at
+ *      any wrapper in the WalletWall wrapper registry for the chain, whose state is read live. On any chain where
+ *      the local override does not apply it must also be registered, be the only ACTIVE registered wrapper of its
+ *      identity (so one halt call reaches every consumer), and match a designation: SP1-TD1's (the SP1 verifier's
+ *      runtime code hash per chain and PROGRAM_VKEY) or a successor designation the caller supplies.
  *
- * The scope and the designations are read from the SP1-TD1 decision receipt, never typed here. The chain enforces
- * part of (2) on its own (contracts/verifiers/VerifierRotationGuard.sol: halt principal, halted wrapper, halted
- * identity); whether a target passed the evidence gates it cannot see, and an owner who skips this tooling can
- * still install any code-bearing verifier after the delay. That is the authorization cut the TD2 doc reports.
+ * The scope and SP1-TD1's designation are read from its decision receipt; the registry from
+ * evidence/zk/sp1-td2/wrapper-registry.json. A successor designation is produced by the designation process of
+ * the frozen implementation lane; until one exists the gate can admit no recovery from a halt of the designated
+ * identity on a chain without the local override, and says so. The chain enforces part of (2) on its own
+ * (contracts/verifiers/VerifierRotationGuard.sol); an owner who skips this tooling can still install any
+ * code-bearing verifier after the delay. That is the authorization cut the TD2 doc reports.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { AbiCoder, getAddress, id, keccak256, type Provider } from "ethers";
+import { AbiCoder, getAddress, id, isAddress, keccak256, type Provider } from "ethers";
+
+import { decodeSolcMetadataBoundary } from "./reproducibility-evidence";
 
 export const TD1_RECEIPT_REL = "evidence/zk/sp1-td1/decision-receipt.json";
+export const WRAPPER_REGISTRY_REL = "evidence/zk/sp1-td2/wrapper-registry.json";
+export const WRAPPER_REGISTRY_SCHEMA = "walletwall.sp1-wrapper-registry.v1";
+export const WRAPPER_ARTIFACT_REL = "artifacts/contracts/verifiers/ZKMLDSAVerifier.sol/ZKMLDSAVerifier.json";
 export const ZK_ALGORITHM_ID = id("ZK-ML-DSA-65");
 /** Chains where a mock SP1 verifier may stand in (with an explicit flag), and nowhere else. */
 export const LOCAL_CHAIN_IDS = [31337n, 1337n] as const;
@@ -51,18 +62,26 @@ export interface HaltScope {
   excludedUntilRecoverable: { consumer: string; gate: string; interim: string; authorizedBy: string }[];
 }
 
-export interface Designations {
-  /** The trust target's runtime code hash (SP1Verifier v6.1.0), and per measured chain. */
+/** A designated identity: the SP1 verifier's runtime code hash (per chain, with a fallback) and the vkey. */
+export interface Designation {
+  source: string;
   sp1VerifierCodeKeccak: string;
   sp1VerifierCodeKeccakByChain: Record<string, string>;
-  /** The designated PROGRAM_VKEY of mldsa65-withdrawal. */
   programVKey: string;
+}
+
+/** The compiled wrapper a target's runtime code must be: deployed bytecode and its immutables' positions. */
+export interface WrapperArtifact {
+  deployedBytecode: string;
+  immutableReferences: Record<string, { start: number; length: number }[]>;
 }
 
 /** What a verifier is, measured from the chain (never from what an operator says it is). */
 export interface VerifierProfile {
   address: string;
   hasCode: boolean;
+  /** Its runtime code is the ZKMLDSAVerifier artifact's, immutables masked and metadata excluded. */
+  genuineWrapper: boolean;
   algorithmId: string | null;
   sp1Verifier: string | null;
   sp1VerifierCodeKeccak: string | null;
@@ -79,28 +98,33 @@ export interface BindingRequest {
   chainId: bigint;
   /** The account that will send the deployment or the rotation proposal. */
   signer: string;
-  /** Local chains only: accept a mock SP1 verifier and an undesignated vkey. */
+  /** Local chains only: accept a mock SP1 verifier, an unregistered wrapper and an undesignated identity. */
   allowMockSp1: boolean;
-  /** For a rotation: what the consumer verifies through now. */
+  /** For a rotation: what the consumer verifies through now (its halt state and halt principal, read live). */
   current: VerifierProfile | null;
+  /** For a rotation: the identity the consumer stored when it installed its current verifier. */
+  currentIdentity: string | null;
   /** Whether the consumer recorded the target's identity as halted (haltedVerifierIdentities). */
   targetIdentityRecordedHalted: boolean;
   scope: HaltScope;
-  designations: Designations;
+  designations: Designation[];
+  /** Every WalletWall wrapper registered for this chain, profiled live. */
+  registered: VerifierProfile[];
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const ZERO_WORD = `0x${"0".repeat(64)}`;
 const abi = AbiCoder.defaultAbiCoder();
 
 // ---------------------------------------------------------------------------------------------------------
-// Inputs from the SP1-TD1 receipt
+// Inputs: the SP1-TD1 receipt, the wrapper registry, the compiled wrapper
 // ---------------------------------------------------------------------------------------------------------
 
 function td1Receipt(repoRoot: string): any {
   return JSON.parse(readFileSync(resolve(repoRoot, TD1_RECEIPT_REL), "utf8"));
 }
 
-/** The owner-decided halt scope (SP1-TD1 DEFECT_RESPONSE_COUPLING.haltDesign.haltScope, amended 2026-10-15). */
+/** The owner-decided halt scope (SP1-TD1 DEFECT_RESPONSE_COUPLING.haltDesign.haltScope, as amended). */
 export function readHaltScope(repoRoot = "."): HaltScope {
   const scope = td1Receipt(repoRoot).decisions.DEFECT_RESPONSE_COUPLING.haltDesign.haltScope;
   return {
@@ -109,16 +133,81 @@ export function readHaltScope(repoRoot = "."): HaltScope {
   };
 }
 
-/** The SP1-TD1 trust-target and program designations. */
-export function readDesignations(repoRoot = "."): Designations {
+/** SP1-TD1's designation: the trust target's runtime code hash (and per chain) and the program's PROGRAM_VKEY. */
+export function readDesignations(repoRoot = "."): Designation[] {
   const r = td1Receipt(repoRoot);
-  return {
-    sp1VerifierCodeKeccak: r.trustTarget.codeKeccak,
-    sp1VerifierCodeKeccakByChain: Object.fromEntries(
-      r.trustTarget.chains.map((c: { chainId: string; codeKeccak: string }) => [c.chainId, c.codeKeccak]),
-    ),
-    programVKey: r.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
-  };
+  return [
+    {
+      source: "SP1-TD1 decision receipt",
+      sp1VerifierCodeKeccak: r.trustTarget.codeKeccak,
+      sp1VerifierCodeKeccakByChain: Object.fromEntries(
+        r.trustTarget.chains.map((c: { chainId: string; codeKeccak: string }) => [c.chainId, c.codeKeccak]),
+      ),
+      programVKey: r.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
+    },
+  ];
+}
+
+/** Problems with a wrapper registry document; empty means well formed. */
+export function wrapperRegistryErrors(value: unknown): string[] {
+  const errors: string[] = [];
+  const r = value as { schema?: unknown; entries?: unknown } | null;
+  if (r === null || typeof r !== "object") return ["the wrapper registry is not an object"];
+  if (r.schema !== WRAPPER_REGISTRY_SCHEMA)
+    errors.push(`the wrapper registry's schema must be ${WRAPPER_REGISTRY_SCHEMA}`);
+  if (!Array.isArray(r.entries)) return [...errors, "the wrapper registry's entries must be a list"];
+  const seen = new Set<string>();
+  for (const e of r.entries as { chainId?: unknown; address?: unknown }[]) {
+    if (typeof e?.chainId !== "string" || !/^[1-9][0-9]*$/.test(e.chainId)) {
+      errors.push(`registry entry ${JSON.stringify(e)}: chainId must be a decimal string`);
+      continue;
+    }
+    if (typeof e.address !== "string" || !isAddress(e.address)) {
+      errors.push(`registry entry ${JSON.stringify(e)}: address must be an address`);
+      continue;
+    }
+    const key = `${e.chainId}:${getAddress(e.address)}`;
+    if (seen.has(key)) errors.push(`registry entry ${key} is listed twice`);
+    seen.add(key);
+  }
+  return errors;
+}
+
+/** The registered WalletWall wrapper addresses for `chainId`; throws on a malformed registry. */
+export function readWrapperRegistry(chainId: bigint, repoRoot = "."): string[] {
+  const doc = JSON.parse(readFileSync(resolve(repoRoot, WRAPPER_REGISTRY_REL), "utf8")) as unknown;
+  const errors = wrapperRegistryErrors(doc);
+  if (errors.length > 0) throw new Error(`malformed ${WRAPPER_REGISTRY_REL}:\n - ${errors.join("\n - ")}`);
+  return (doc as { entries: { chainId: string; address: string }[] }).entries
+    .filter((e) => e.chainId === chainId.toString())
+    .map((e) => getAddress(e.address));
+}
+
+/** The compiled ZKMLDSAVerifier (run `npx hardhat compile` first). */
+export function readWrapperArtifact(repoRoot = "."): WrapperArtifact {
+  const a = JSON.parse(readFileSync(resolve(repoRoot, WRAPPER_ARTIFACT_REL), "utf8"));
+  return { deployedBytecode: a.deployedBytecode, immutableReferences: a.immutableReferences ?? {} };
+}
+
+/**
+ * Whether `runtime` is the artifact's runtime code: the same length, the same CBOR metadata boundary, and the
+ * same bytes before it once every immutable's position is masked. The metadata (which hashes the source,
+ * comments included) is excluded; executable code is not.
+ */
+export function matchesWrapperArtifact(runtime: string, artifact: WrapperArtifact): boolean {
+  if (runtime === "0x" || runtime.length !== artifact.deployedBytecode.length) return false;
+  const expected = decodeSolcMetadataBoundary(artifact.deployedBytecode);
+  const actual = decodeSolcMetadataBoundary(runtime);
+  if (!expected.ok || !actual.ok || expected.regionStart !== actual.regionStart) return false;
+  const code = Buffer.from(runtime.slice(2), "hex");
+  const reference = Buffer.from(artifact.deployedBytecode.slice(2), "hex");
+  for (const refs of Object.values(artifact.immutableReferences)) {
+    for (const { start, length } of refs) {
+      code.fill(0, start, start + length);
+      reference.fill(0, start, start + length);
+    }
+  }
+  return code.subarray(0, expected.regionStart).equals(reference.subarray(0, expected.regionStart));
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -126,25 +215,30 @@ export function readDesignations(repoRoot = "."): Designations {
 // ---------------------------------------------------------------------------------------------------------
 
 /** One word from a view function, or null when the call fails or returns less than a word (as the guard reads). */
-async function word(provider: Provider, to: string, signature: string): Promise<string | null> {
+async function word(provider: Provider, to: string, data: string): Promise<string | null> {
   try {
-    const out = await provider.call({ to, data: id(signature).slice(0, 10) });
+    const out = await provider.call({ to, data });
     return out.length >= 66 ? `0x${out.slice(2, 66)}` : null;
   } catch {
     return null;
   }
 }
 
+const selector = (signature: string) => id(signature).slice(0, 10);
+
 const asAddress = (w: string | null) =>
   w !== null && BigInt(w) >> 160n === 0n ? getAddress(`0x${w.slice(26)}`) : null;
 
-export async function profileVerifier(provider: Provider, address: string): Promise<VerifierProfile> {
+export async function profileVerifier(
+  provider: Provider,
+  address: string,
+  artifact: WrapperArtifact = readWrapperArtifact(),
+): Promise<VerifierProfile> {
   const code = await provider.getCode(address);
-  const hasCode = code !== "0x";
-  const sp1Verifier = asAddress(await word(provider, address, "SP1_VERIFIER()"));
-  const programVKey = await word(provider, address, "PROGRAM_VKEY()");
-  const haltPrincipal = asAddress(await word(provider, address, "HALT_PRINCIPAL()"));
-  const haltedWord = await word(provider, address, "halted()");
+  const sp1Verifier = asAddress(await word(provider, address, selector("SP1_VERIFIER()")));
+  const programVKey = await word(provider, address, selector("PROGRAM_VKEY()"));
+  const haltPrincipal = asAddress(await word(provider, address, selector("HALT_PRINCIPAL()")));
+  const haltedWord = await word(provider, address, selector("halted()"));
   let sp1VerifierCodeKeccak: string | null = null;
   if (sp1Verifier !== null) {
     const sp1Code = await provider.getCode(sp1Verifier);
@@ -152,8 +246,9 @@ export async function profileVerifier(provider: Provider, address: string): Prom
   }
   return {
     address: getAddress(address),
-    hasCode,
-    algorithmId: await word(provider, address, "algorithmId()"),
+    hasCode: code !== "0x",
+    genuineWrapper: matchesWrapperArtifact(code, artifact),
+    algorithmId: await word(provider, address, selector("algorithmId()")),
     sp1Verifier,
     sp1VerifierCodeKeccak,
     programVKey,
@@ -216,42 +311,66 @@ export function bindingRefusals(req: BindingRequest): string[] {
     refusals.push(`${t.address} is on the SP1 path but not haltable: the halt would not reach ${req.consumer}`);
     return refusals;
   }
+  if (!t.genuineWrapper) {
+    refusals.push(
+      `${t.address} is not a ZKMLDSAVerifier compiled from this tree: its runtime code is not the artifact's`,
+    );
+  }
   if (t.halted) refusals.push(`${t.address} is HALTED: a halted wrapper is never a binding or rotation target`);
-  if (t.haltPrincipal !== null && t.haltPrincipal === getAddress(req.signer)) {
+  const signer = getAddress(req.signer);
+  if (t.haltPrincipal !== null && t.haltPrincipal === signer) {
     refusals.push(
       `the signer ${req.signer} is ${t.address}'s halt principal: the halt principal never governs a consumer`,
     );
   }
-  if (
-    req.current !== null &&
-    req.current.haltPrincipal !== null &&
-    req.current.haltPrincipal === getAddress(req.signer)
-  ) {
+  if (req.current !== null && req.current.haltPrincipal !== null && req.current.haltPrincipal === signer) {
     refusals.push(
       `the signer ${req.signer} can halt the current verifier: the halt principal never governs a consumer`,
     );
+  }
+
+  for (const r of req.registered) {
+    if (!r.genuineWrapper)
+      refusals.push(`registered wrapper ${r.address} is not a ZKMLDSAVerifier compiled from this tree`);
   }
   if (t.identity !== null) {
     if (req.targetIdentityRecordedHalted) {
       refusals.push(`${t.address} has the identity of a halted wrapper ${req.consumer} recorded (${t.identity})`);
     }
-    if (req.current?.halted && req.current.identity === t.identity) {
+    if (req.current?.halted && req.currentIdentity === t.identity) {
       refusals.push(`${t.address} is a fresh deployment of the halted identity ${t.identity}`);
+    }
+    for (const r of req.registered) {
+      if (r.halted && r.identity === t.identity && r.address !== t.address) {
+        refusals.push(`${t.address} has the identity of registered wrapper ${r.address}, which is HALTED`);
+      }
     }
   }
 
-  // The evidence gates: the SP1-TD1 designations, with no override off a local chain.
+  // Registration and designation: no override off a local chain.
   if (req.allowMockSp1 && local) return refusals;
-  const expectedCode =
-    req.designations.sp1VerifierCodeKeccakByChain[req.chainId.toString()] ?? req.designations.sp1VerifierCodeKeccak;
-  if (t.sp1VerifierCodeKeccak !== expectedCode) {
+  if (!req.registered.some((r) => r.address === t.address)) {
+    refusals.push(`${t.address} is not in the WalletWall wrapper registry for chain ${req.chainId}`);
+  }
+  const twins = req.registered.filter(
+    (r) => r.address !== t.address && r.identity === t.identity && r.halted === false,
+  );
+  if (twins.length > 0) {
     refusals.push(
-      `${t.address}'s SP1 verifier runtime code hash is ${String(t.sp1VerifierCodeKeccak)}, not the designated ${expectedCode}`,
+      `${twins.map((r) => r.address).join(", ")} is another ACTIVE registered wrapper of ${t.address}'s identity: ` +
+        `one halt call must reach every consumer`,
     );
   }
-  if (t.programVKey !== req.designations.programVKey) {
+  const designated = req.designations.some(
+    (d) =>
+      (d.sp1VerifierCodeKeccakByChain[req.chainId.toString()] ?? d.sp1VerifierCodeKeccak) === t.sp1VerifierCodeKeccak &&
+      d.programVKey === t.programVKey,
+  );
+  if (!designated) {
     refusals.push(
-      `${t.address}'s PROGRAM_VKEY is ${String(t.programVKey)}, not the designated ${req.designations.programVKey}`,
+      `${t.address}'s identity (SP1 verifier code ${String(t.sp1VerifierCodeKeccak)}, PROGRAM_VKEY ${String(t.programVKey)}) ` +
+        `matches no designation (${req.designations.map((d) => d.source).join(", ")}): a recovery identity needs a ` +
+        `successor designation from the designation process`,
     );
   }
   return refusals;
@@ -272,6 +391,24 @@ export function assertBindable(req: BindingRequest): void {
 export interface GateOptions {
   allowMockSp1: boolean;
   repoRoot?: string;
+  /** Designations to accept; SP1-TD1's by default. A successor designation is the designation process's. */
+  designations?: Designation[];
+  /** Registered wrapper addresses for this chain; the committed registry by default. */
+  registry?: string[];
+}
+
+async function context(provider: Provider, options: GateOptions) {
+  const chainId = (await provider.getNetwork()).chainId;
+  const artifact = readWrapperArtifact(options.repoRoot);
+  const addresses = options.registry ?? readWrapperRegistry(chainId, options.repoRoot);
+  const registered = await Promise.all(addresses.map((a) => profileVerifier(provider, a, artifact)));
+  return {
+    chainId,
+    artifact,
+    registered,
+    scope: readHaltScope(options.repoRoot),
+    designations: options.designations ?? readDesignations(options.repoRoot),
+  };
 }
 
 /** Checks that `consumer` may be deployed bound to `verifier`, signed by `signer`. */
@@ -282,17 +419,20 @@ export async function checkDeploymentBinding(
   signer: string,
   options: GateOptions,
 ): Promise<VerifierProfile> {
-  const target = await profileVerifier(provider, verifier);
+  const ctx = await context(provider, options);
+  const target = await profileVerifier(provider, verifier, ctx.artifact);
   assertBindable({
     consumer,
     target,
-    chainId: (await provider.getNetwork()).chainId,
+    chainId: ctx.chainId,
     signer,
     allowMockSp1: options.allowMockSp1,
     current: null,
+    currentIdentity: null,
     targetIdentityRecordedHalted: false,
-    scope: readHaltScope(options.repoRoot),
-    designations: readDesignations(options.repoRoot),
+    scope: ctx.scope,
+    designations: ctx.designations,
+    registered: ctx.registered,
   });
   return target;
 }
@@ -301,7 +441,7 @@ export async function checkDeploymentBinding(
 export async function identifyConsumer(provider: Provider, address: string): Promise<ConsumerName> {
   let name: string | undefined;
   try {
-    const out = await provider.call({ to: address, data: id("eip712Domain()").slice(0, 10) });
+    const out = await provider.call({ to: address, data: selector("eip712Domain()") });
     name = abi.decode(["bytes1", "string", "string", "uint256", "address", "bytes32", "uint256[]"], out)[1] as string;
   } catch {
     name = undefined;
@@ -320,28 +460,32 @@ export async function checkRotationBinding(
   options: GateOptions,
 ): Promise<{ consumer: ConsumerName; target: VerifierProfile; current: VerifierProfile }> {
   const consumer = await identifyConsumer(provider, consumerAddress);
-  const currentAddress = asAddress(await word(provider, consumerAddress, "pqVerifier()"));
+  const currentAddress = asAddress(await word(provider, consumerAddress, selector("pqVerifier()")));
   if (currentAddress === null) throw new Error(`${consumerAddress} reports no pqVerifier`);
-  const current = await profileVerifier(provider, currentAddress);
-  const target = await profileVerifier(provider, newVerifier);
+  const ctx = await context(provider, options);
+  const current = await profileVerifier(provider, currentAddress, ctx.artifact);
+  const target = await profileVerifier(provider, newVerifier, ctx.artifact);
+  const stored = await word(provider, consumerAddress, selector("pqVerifierIdentity()"));
   let recorded = false;
   if (target.identity !== null) {
     const out = await provider.call({
       to: consumerAddress,
-      data: id("haltedVerifierIdentities(bytes32)").slice(0, 10) + target.identity.slice(2),
+      data: selector("haltedVerifierIdentities(bytes32)") + target.identity.slice(2),
     });
     recorded = BigInt(out) !== 0n;
   }
   assertBindable({
     consumer,
     target,
-    chainId: (await provider.getNetwork()).chainId,
+    chainId: ctx.chainId,
     signer,
     allowMockSp1: options.allowMockSp1,
     current,
+    currentIdentity: stored === null || stored === ZERO_WORD ? null : stored,
     targetIdentityRecordedHalted: recorded,
-    scope: readHaltScope(options.repoRoot),
-    designations: readDesignations(options.repoRoot),
+    scope: ctx.scope,
+    designations: ctx.designations,
+    registered: ctx.registered,
   });
   return { consumer, target, current };
 }

@@ -23,7 +23,7 @@ interface IOwnable2StepView {
  *         RevertWithWord   — revert with the programmed word as 32 bytes of revert data.
  *         ReturnShort      — return only the first byte of the programmed word.
  *         BurnGas          — run until out of gas.
- *         ReturnHuge       — return a mebibyte.
+ *         ReturnHuge       — return 96 KiB (affordable within the guard's probe cap, unlike a mebibyte).
  *         ReturnOwner      — return the calling consumer's owner().
  *         ReturnPendingOwner — return the calling consumer's pendingOwner().
  *         ReturnPendingTargets — return what the calling consumer's pending verifier answers to the same function
@@ -114,7 +114,7 @@ contract MisbehavingVerifierMock is IPQCVerifier {
                 return(0x00, 0x01)
             }
             case 5 {
-                return(0x00, 0x100000)
+                return(0x00, 0x18000)
             }
             default {
                 mstore(0x00, word)

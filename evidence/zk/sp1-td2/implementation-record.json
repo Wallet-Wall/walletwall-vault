@@ -129,19 +129,20 @@
     "answer": "BY_PROCESS_WITH_ON_CHAIN_IDENTITY_AND_PRINCIPAL_CHECKS",
     "onChain": [
       "the delay (172,800 s) and the 14-day apply window, owner-only, a code-bearing target at proposal and at apply",
-      "the target is not HALTED",
-      "the target's identity (SP1 verifier code hash, PROGRAM_VKEY) is not that of the current wrapper while it is halted, nor one the consumer recorded when it left a halted wrapper",
-      "the owner is never a halt principal of the current, pending or target verifier (constructor, ownership transfer, proposal, apply)"
+      "the target is not HALTED, and a halted wrapper is refused as a first verifier",
+      "per consumer: the target's identity (SP1 verifier code hash, PROGRAM_VKEY) is neither the identity the current verifier was installed with, once it reports a halt, nor one the consumer recorded when it left a halted wrapper",
+      "the owner is never a halt principal of the current, pending or target verifier (constructor, ownership transfer, proposal, apply), by address"
     ],
     "byProcess": [
-      "the target is an ACTIVE, haltable ZKMLDSAVerifier wrapper",
-      "its SP1 verifier runtime code hash is the SP1-TD1 trust-target designation for the chain",
-      "its PROGRAM_VKEY is the SP1-TD1 program designation",
-      "no override on a non-local chain",
+      "the target's runtime code is the compiled ZKMLDSAVerifier (immutables masked, metadata excluded); it is ACTIVE, haltable and not haltable by the signer",
+      "its identity is not that of any halted wrapper in the WalletWall wrapper registry, read live, for every consumer",
+      "without the local override: it is registered and the only ACTIVE registered wrapper of its identity, so one halt call reaches every consumer",
+      "without the local override: its SP1 verifier's runtime code hash for the chain and its PROGRAM_VKEY match a designation, SP1-TD1's or a successor's",
       "a consumer the halt's scope excludes is refused any SP1-path target"
     ],
     "notYetEnforced": [
-      "the per-chain execution check (TD1-N8) and the generated designation file with its CI subject check: the frozen implementation lane"
+      "a successor designation for a recovery identity (the generated designation file and its CI subject check): until one exists the tooling admits no recovery from a halt of the designated identity off a local chain",
+      "the per-chain execution check (TD1-N8)"
     ],
     "why": "a consumer cannot recognise 'passed the evidence gates' on chain without a new authority to say so, and pinning a verifier code hash or a vkey in the consumer would refuse exactly the recovery targets (a fixed verifier has new code, a fixed guest a new vkey)"
   },

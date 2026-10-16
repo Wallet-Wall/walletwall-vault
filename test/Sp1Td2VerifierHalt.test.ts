@@ -249,15 +249,20 @@ describe("SP1-TD2 common verifier halt (TD2-COMMON-VERIFIER-HALT)", function () 
       const direct = await (
         await ethers.getContractFactory("ZKMLDSAVerifier")
       ).deploy(v610, VKEY_A, haltPrincipal.address);
+      // A wrapper that verifies a valid proof (the program-bound stand-in), to show an answer of `true` survives too.
       const key = mlDsaKey();
       const digest = ethers.id("SP1-TD2: upstream signal");
-      const payload = await unprovenFor(direct, digest, key.publicKey, mlDsaSign(digest, key));
-      const before = await direct.verify(digest, key.publicKey, payload);
+      const signature = mlDsaSign(digest, key);
+      const valid = await proveFor(wrapper, digest, key.publicKey, signature);
+      const unproven = await unprovenFor(direct, digest, key.publicKey, signature);
+      expect(await wrapper.verify(digest, key.publicKey, valid), "positive control before the freeze").to.equal(true);
+      expect(await direct.verify(digest, key.publicKey, unproven)).to.equal(false);
 
       await gateway.freezeRoute("0x4388a21c");
       expect((await gateway.routes("0x4388a21c"))[1], "the upstream route really is frozen").to.equal(true);
-      expect(await direct.halted(), "a signal is not a state input").to.equal(false);
-      expect(await direct.verify(digest, key.publicKey, payload)).to.equal(before);
+      for (const w of [direct, wrapper]) expect(await w.halted(), "a signal is not a state input").to.equal(false);
+      expect(await wrapper.verify(digest, key.publicKey, valid), "a valid proof still verifies").to.equal(true);
+      expect(await direct.verify(digest, key.publicKey, unproven)).to.equal(false);
       // Only the halt principal moves it, as it would after reading such a signal.
       await direct.connect(haltPrincipal).halt();
       expect(await direct.halted()).to.equal(true);
