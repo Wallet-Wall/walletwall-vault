@@ -9,7 +9,6 @@
  * A record is written once and never edited; the append-only history check keeps it that way. No transactions, no
  * deploys, no network. Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-import { existsSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
@@ -21,6 +20,7 @@ import {
   serializeBuild,
   wrapperBuildErrors,
 } from "./lib/sp1-wrapper-build";
+import { writeNewFiles } from "./lib/write-once";
 
 function record(): void {
   const builds = readWrapperBuilds();
@@ -32,8 +32,7 @@ function record(): void {
     return;
   }
   const path = resolve(WRAPPER_BUILDS_DIR, `${next.id}.json`);
-  if (existsSync(path)) throw new Error(`${path} exists: a recorded build is never rewritten`);
-  writeFileSync(path, serializeBuild(next));
+  writeNewFiles([[path, serializeBuild(next)]], "a recorded build is never rewritten");
   console.log(`recorded ${next.id} (${next.runtime.bytes} runtime bytes, ${next.runtime.templateKeccak})`);
 }
 
