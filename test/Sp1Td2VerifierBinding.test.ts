@@ -363,8 +363,15 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const source = (rel: string) => readFileSync(resolve(rel), "utf8");
       // deploy.ts gates the vault itself; deploy-multisig.ts runs deployMultisigVault, which gates the multisig vault
       // (exercised in test/Sp1Td2DeploymentTooling.test.ts). Each gate runs before its consumer is deployed.
-      expect(source("scripts/deploy.ts")).to.match(/checkDeploymentBinding\(\s*ethers\.provider,\s*"WalletWallVault",/);
-      expect(source("scripts/deploy-multisig.ts")).to.match(/deployMultisigVault\(/);
+      // Each call passes the account that deploys (or proposes) as the signer and the operator's ALLOW_MOCK_SP1 flag
+      // as the override, nothing else: a forced override or another signer would skip rules on a local chain.
+      expect(source("scripts/deploy.ts")).to.match(
+        /checkDeploymentBinding\(ethers\.provider, "WalletWallVault", pqVerifierAddress, await deployer\.getAddress\(\), \{\s*allowMockSp1: process\.env\.ALLOW_MOCK_SP1 === "true",\s*\}\);/,
+      );
+      expect(source("scripts/deploy.ts")).to.match(/getContractFactory\("WalletWallVault", deployer\)/);
+      expect(source("scripts/deploy-multisig.ts")).to.match(
+        /deployMultisigVault\(ethers, deployer, \{\s*pqcVerifierAddress: process\.env\.PQC_VERIFIER_ADDRESS,\s*allowMockSp1: process\.env\.ALLOW_MOCK_SP1 === "true",\s*\}\);/,
+      );
       expect(source("scripts/deploy-multisig.ts")).to.not.match(/getContractFactory\(/);
       const lib = source("scripts/lib/deployment-guards.ts");
       expect(lib).to.match(/checkDeploymentBinding\(\s*ethers\.provider,\s*"WalletWallMultiSigVault",/);
@@ -378,7 +385,12 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         );
       }
       const propose = source("scripts/propose-verifier-update.ts");
-      expect(propose).to.match(/checkRotationBinding\(/);
+      expect(propose).to.match(
+        /checkRotationBinding\(\s*ethers\.provider,\s*vaultAddress,\s*newVerifierAddress,\s*await proposer\.getAddress\(\),\s*\{ allowMockSp1: process\.env\.ALLOW_MOCK_SP1 === "true" \},\s*\);/,
+      );
+      // The proposer it checks is the account that sends the proposal: the first signer, which getContractAt uses.
+      expect(propose).to.match(/const \[proposer\] = await ethers\.getSigners\(\);/);
+      expect(propose).to.match(/const vault = await ethers\.getContractAt\("WalletWallVault", vaultAddress\);/);
       expect(propose.indexOf("checkRotationBinding(")).to.be.lessThan(propose.indexOf(".proposePQVerifier("));
       // The multisig script checks the chain before it deploys anything.
       const multisig = source("scripts/deploy-multisig.ts");
@@ -386,7 +398,15 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(multisig.indexOf("assertDeployableChain(")).to.be.lessThan(multisig.indexOf("deployMultisigVault("));
       // The wrapper deployment passes the resolved halt principal, and nothing else, as the third argument.
       const zk = source("scripts/deploy-zk-verifier.ts");
-      expect(zk).to.match(/const haltPrincipal = resolveHaltPrincipal\(\s*process\.env\.HALT_PRINCIPAL_ADDRESS,/);
+      // ...resolved from the operator's HALT_PRINCIPAL_ADDRESS, defaulting only on a local chain and only to the second
+      // local account, never the deployer.
+      expect(zk).to.match(
+        /const haltPrincipal = resolveHaltPrincipal\(\s*process\.env\.HALT_PRINCIPAL_ADDRESS,\s*isLocalNetwork,\s*localHaltPrincipal\?\.address,\s*\);/,
+      );
+      expect(zk).to.match(
+        /const isLocalNetwork = chainNetwork\.chainId === 31337n \|\| chainNetwork\.chainId === 1337n;/,
+      );
+      expect(zk).to.match(/const \[deployer, localHaltPrincipal\] = await ethers\.getSigners\(\);/);
       expect(zk).to.match(/ZKMLDSAVerifier\.deploy\(sp1VerifierAddress, programVKey, haltPrincipal\)/);
     });
   });
