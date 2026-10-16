@@ -1,0 +1,1 @@
+server=29.8.0 kernel=6.18.33.1-microsoft-standard-WSL2 os=Docker Desktop ncpu=16

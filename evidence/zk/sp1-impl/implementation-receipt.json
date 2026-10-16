@@ -87,9 +87,11 @@
       "value": "REPRODUCED",
       "basis": [
         "the frozen subject rebuilt by the canonical procedure on developer-workstation, compared with designation mldsa65-withdrawal-d1: REPRODUCED",
-        "the release rebuild needs two hosts: the committed evidence gives INSUFFICIENT_HOSTS; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone and fails on any drift",
-        "one ELF with another vkey, in a build or the outside recompute: 0",
-        "the guest lockfile was the subject's before and after the build on: developer-workstation"
+        "the committed observation is what this tree's checker derives from its committed raw records, made with this tree's driver and checker: yes; the records are what the driver wrote on the machine that ran it (self-attested for a local run)",
+        "the release rebuild needs two distinct machines: the committed evidence gives INSUFFICIENT_HOSTS; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone, fails on any drift or incomplete build, and reports the \"SP1 canonical build gate\" (requiring it is the owner's ruleset change)",
+        "one ELF with another vkey, in a completed build or the outside recompute: 0",
+        "the guest lockfile was the subject's before and after the build on: developer-workstation",
+        "only PROGRAM_IDENTITY_DRIFT is the STOP; PROCEDURE_DRIFT, INCOMPLETE (a liveness failure: an absent record) and EVIDENCE_INVALID are no reproduction, and no STOP"
       ],
       "verifiedBy": [
         {
@@ -319,7 +321,7 @@
       {
         "id": "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
         "met": false,
-        "basis": "the committed rebuild evidence, judged for the release (two hosts): INSUFFICIENT_HOSTS"
+        "basis": "the committed rebuild evidence (valid: yes), judged for the release (two distinct machines): INSUFFICIENT_HOSTS"
       },
       {
         "id": "PER_CHAIN_EXECUTION_CHECK",
@@ -353,7 +355,7 @@
       "id": "CANONICAL_BUILD_DOES_NOT_REPRODUCE",
       "condition": "the canonical build does not reproduce the designated ELF and vkey",
       "triggered": false,
-      "basis": "rebuild: REPRODUCED"
+      "basis": "rebuild: REPRODUCED (one host), INSUFFICIENT_HOSTS (two)"
     },
     {
       "id": "ONE_ELF_CONFLICTING_VKEYS",
@@ -439,7 +441,7 @@
   "realValue": {
     "blocked": true,
     "blockers": [
-      "CANONICAL_RELEASE_REBUILD_TWO_HOSTS: the committed rebuild evidence, judged for the release (two hosts): INSUFFICIENT_HOSTS",
+      "CANONICAL_RELEASE_REBUILD_TWO_HOSTS: the committed rebuild evidence (valid: yes), judged for the release (two distinct machines): INSUFFICIENT_HOSTS",
       "REGISTERED_ACTIVE_WRAPPER: registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds",
       "REAL_WALLETWALL_PROOF: evidence/zk/sp1-real-proof holds no record: no WalletWall proof of the designated program has been generated and verified by the designated verifier",
       "PROVING_AVAILABILITY: PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED",
@@ -616,7 +618,75 @@
     },
     {
       "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation.raw.json",
-      "sha256": "ca271c119767c85ac02cd9890c2a3c90ece8c2bcbe85e0131594de075e13d9a9"
+      "sha256": "b60579acdfa389ddfd6f92652c1d66d4a74ffe3a97b354bcce4d23a3e79b0e41"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/docker-info.txt",
+      "sha256": "e113ca4215e4fb169970db044dbbb998abd6e93ff5f63423c5e99f52622fd861"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/driver.txt",
+      "sha256": "c75a8b8e6b6bcf186858ec88ba4bc69e6cf4e3d91948841ad7fa3b7a2ab0b338"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host-identity.txt",
+      "sha256": "af4dcec296638fe70fc8b0b5b23367e3ccffe24499251afea9ab3aebf6c49184"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/acvp-vkey.stdout",
+      "sha256": "14acbdcd98442348a115a1cdd1fb5a3f9f4b12ded507fc31a796fe5fa1b6f432"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/elf-sha256.txt",
+      "sha256": "85bfe5a93f8c462d0ce2b22e97d9274def7b74428736681bd4443625c6ca70a2"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/elf-size.txt",
+      "sha256": "2819320e8c9f45859d5199d0aec2876e0fefd6dd92fa655cf56e2a2005262d68"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/env.txt",
+      "sha256": "5bf58941cb3a4b7490e2ec0de0b873c575fb074ee1a0884b97d7a7e5a49e8f24"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/host-bin-sha256.txt",
+      "sha256": "a4482428c32b0c2a3d60d97caaa49ab426b883f51800d6d6fc936998c66be65e"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/lock-after.txt",
+      "sha256": "c40c74800a96302af821884d7a52288a7019f18a63bf0947916ac3f2b6232580"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/lock-before.txt",
+      "sha256": "c40c74800a96302af821884d7a52288a7019f18a63bf0947916ac3f2b6232580"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/run.log",
+      "sha256": "55a5e5095c59528fd483f784f056625dfdcb8e712f056fec0d4868ceb4c7cb1c"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/source-sha256.txt",
+      "sha256": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/vkey.stdout",
+      "sha256": "e694dc48cb7ddecd79c1201e570e791071c607153e7575bdc10622811b213f81"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/image.txt",
+      "sha256": "db575357ca06f546391d85907d82ba5009023160437cc34a5dfa8cce699be0d1"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/src/git-ids.txt",
+      "sha256": "41dc0873f0997f763bd818e18305d5be72e60dbc0048f8132e3f0bad9c9f89aa"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/src/guest-lock-at-head.txt",
+      "sha256": "c40c74800a96302af821884d7a52288a7019f18a63bf0947916ac3f2b6232580"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/vkey-recompute/developer-workstation.txt",
+      "sha256": "c660a3321eea2d51111d6b52d824cb3fbf40911d45be08fcaeca9218e73b9285"
     },
     {
       "path": "evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json",

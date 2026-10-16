@@ -1,0 +1,5 @@
+host_id=developer-workstation
+runner=local runner_os=MINGW64_NT-10.0-26200 image_os=unset image_version=unset
+run=unset.unset sha=unset
+MINGW64_NT-10.0-26200 3.6.7-fb42d713.x86_64 x86_64
+model name	: AMD Ryzen 7 9800X3D 8-Core Processor           

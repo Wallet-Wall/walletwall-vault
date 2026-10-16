@@ -39,6 +39,8 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+# ...except the SP1 canonical rebuild's raw records, which are evidence (the container's run.log among them).
+!evidence/zk/sp1-impl/observations/**/run.log
 
 # Docker image exports (large binary files, not for version control)
 *.tar.gz

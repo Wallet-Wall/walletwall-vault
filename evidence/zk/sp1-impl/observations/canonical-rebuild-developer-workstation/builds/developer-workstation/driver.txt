@@ -1,0 +1,7 @@
+driver_sha256=a2ce54031514d2a0417148463b38cb1ffd176bf4944e6f8f99cdb754554c3d11
+designation=evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json
+image=ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400
+entrypoint=evidence/zk/sp1-td1/canonical-procedure/host-build-in-container.sh
+entrypoint_sha256=dd0384751156b5e61d59c166ff09a80b3abdfcab576080b9f7be3603ac520f2d
+started_utc=2026-10-16T17:29:40Z
+finished_utc=2026-10-16T17:32:36Z

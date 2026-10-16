@@ -12,6 +12,7 @@
  * (F3). The committed observation is what this tree's checker derives from the committed raw records, written by
  * this tree's driver (F3).
  */
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,6 +28,7 @@ import {
 } from "../scripts/lib/sp1-designation";
 import { workingTreeSourceManifest } from "../scripts/lib/sp1-p1-stop-receipt";
 import {
+  CANONICAL_BUILD_RECORDS,
   CANONICAL_BUILD_SCHEMA,
   CANONICAL_CHECKER_RELS,
   CANONICAL_DRIVER_REL,
@@ -547,6 +549,23 @@ describe("SP1 implementation lane — the canonical build against the designatio
       expect(readdirSync(join(resolve(recordsDirOf(CANONICAL_REBUILD_OBSERVATION_REL)), "builds"))).to.deep.equal(
         committed.builds.map((b) => b.hostId),
       );
+    });
+
+    it("every raw record is committed: none is ignored, so a fresh clone re-derives what this checkout does", function () {
+      const records = recordsDirOf(CANONICAL_REBUILD_OBSERVATION_REL);
+      const git = (...args: string[]) =>
+        execFileSync("git", args, { encoding: "utf8" })
+          .split("\n")
+          .filter(Boolean)
+          .sort();
+      expect(git("ls-files", "--others", "--ignored", "--exclude-standard", "--", records), "ignored").to.deep.equal([]);
+      expect(git("ls-files", "--others", "--exclude-standard", "--", records), "untracked").to.deep.equal([]);
+      const tracked = git("ls-files", "--", records);
+      for (const b of committed.builds) {
+        for (const rel of CANONICAL_BUILD_RECORDS) {
+          expect(tracked, `${b.hostId}: ${rel}`).to.include(`${records}/builds/${b.hostId}/${rel}`);
+        }
+      }
     });
 
     it("the copied evidence validates (the positive control for the tampering below)", function () {

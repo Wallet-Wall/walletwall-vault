@@ -1,11 +1,34 @@
 {
-  "schema": "walletwall.sp1-canonical-build.v1",
-  "measuredAtUtc": "2026-10-16T15:14:46.320Z",
+  "schema": "walletwall.sp1-canonical-build.v2",
+  "measuredAtUtc": "2026-10-16T17:32:36Z",
   "designation": "mldsa65-withdrawal-d1",
+  "tools": {
+    "driver": {
+      "script": "scripts/sp1-canonical/canonical-build.sh",
+      "scriptSha256": "a2ce54031514d2a0417148463b38cb1ffd176bf4944e6f8f99cdb754554c3d11"
+    },
+    "checker": [
+      {
+        "script": "scripts/check-sp1-canonical-build.ts",
+        "scriptSha256": "2d266453d3f64518a239ae588d567dc1cf1b21427b16ea523937a7ba4b5d4462"
+      },
+      {
+        "script": "scripts/lib/sp1-canonical-build.ts",
+        "scriptSha256": "59449641b2e8baf33caaea0bcf900e72967a9cffc6232c1a68bd2a0b23679497"
+      }
+    ]
+  },
   "builds": [
     {
       "hostId": "developer-workstation",
       "hostIdentity": "host_id=developer-workstation\nrunner=local runner_os=MINGW64_NT-10.0-26200 image_os=unset image_version=unset\nrun=unset.unset sha=unset\nMINGW64_NT-10.0-26200 3.6.7-fb42d713.x86_64 x86_64\nmodel name\t: AMD Ryzen 7 9800X3D 8-Core Processor",
+      "dockerInfo": "server=29.8.0 kernel=6.18.33.1-microsoft-standard-WSL2 os=Docker Desktop ncpu=16",
+      "driver": {
+        "scriptSha256": "a2ce54031514d2a0417148463b38cb1ffd176bf4944e6f8f99cdb754554c3d11",
+        "designation": "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json",
+        "startedUtc": "2026-10-16T17:29:40Z",
+        "finishedUtc": "2026-10-16T17:32:36Z"
+      },
       "image": {
         "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
         "id": "sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
@@ -15,7 +38,7 @@
         "platform": "linux/amd64"
       },
       "subject": {
-        "head": "2e3988c7fbd244fccc62afbd157dd38797aa9bf4",
+        "head": "39066b465cfaaddaeeb6523bfb8d6a2db3ebb66d",
         "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
         "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
         "guestLockAtHead": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
@@ -59,7 +82,7 @@
         "sha256": "dd0384751156b5e61d59c166ff09a80b3abdfcab576080b9f7be3603ac520f2d"
       },
       "containerExit": 0,
-      "buildSeconds": 165,
+      "buildSeconds": 121,
       "guestLockBefore": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
       "guestLockAfter": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
       "programs": {
@@ -83,14 +106,14 @@
     "ranOn": "Linux 6.18.33.1-microsoft-standard-WSL2 x86_64 Ubuntu 26.04 LTS AMD Ryzen 7 9800X3D 8-Core Processor",
     "results": [
       {
-        "program": "mldsa65-withdrawal",
-        "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
-        "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
-      },
-      {
         "program": "mldsa65-acvp",
         "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
         "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+      },
+      {
+        "program": "mldsa65-withdrawal",
+        "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+        "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
       }
     ]
   },
