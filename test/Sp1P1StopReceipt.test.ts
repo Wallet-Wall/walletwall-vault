@@ -261,6 +261,25 @@ describe("SP1-P1 assurance STOP receipt", function () {
       expect(validateSupersession(record(), receiptBytes())).to.deep.equal([]);
     });
 
+    it("the in-repository validation refuses a bad supersession, and without one the receipt is not valid live", function () {
+      const bad = record();
+      bad.receiptSha256 = HEX("0");
+      expect(validateCommittedReceiptInRepo(".", bad).join(" | ")).to.match(/never restamped/);
+      expect(validateCommittedReceiptInRepo(".", null).join(" | ")).to.match(/ZKMLDSAVerifier\.sol changed/);
+    });
+
+    it("the validator CLI reports the superseded receipt valid", function () {
+      const run = spawnSync(
+        process.execPath,
+        ["--import", "tsx", "scripts/generate-sp1-p1-stop-receipt.ts", "--validate"],
+        {
+          encoding: "utf8",
+        },
+      );
+      expect(run.status, run.stderr).to.equal(0);
+      expect(run.stdout).to.include(`superseded: bindings checked at its historical subject, ${SUPERSESSION_REL}`);
+    });
+
     it("the tripwire really fired: the working tree's ZKMLDSAVerifier.sol no longer matches the binding, its historical subject does", function () {
       const live = validateCommittedReceipt(committed(), readObservationInputs());
       expect(live.join(" | ")).to.match(/ZKMLDSAVerifier\.sol changed/);

@@ -1012,14 +1012,19 @@ export function receiptInputsInRepo(repoRoot = "."): ReceiptInputs {
 }
 
 /** The full check of the committed receipt in this repository: live against the working tree, or as superseded. */
-export function validateCommittedReceiptInRepo(repoRoot = "."): string[] {
+export function validateCommittedReceiptInRepo(
+  repoRoot = ".",
+  supersession: unknown = readSupersession(repoRoot),
+): string[] {
   const receiptBytes = readFileSync(resolve(repoRoot, RECEIPT_REL));
   const committed = JSON.parse(receiptBytes.toString("utf8")) as unknown;
-  const supersession = readSupersession(repoRoot);
   if (supersession === null) return validateCommittedReceipt(committed, readObservationInputs(repoRoot));
   const errors = validateSupersession(supersession, receiptBytes, repoRoot);
   if (errors.length > 0) return errors;
-  return validateCommittedReceipt(committed, receiptInputsInRepo(repoRoot));
+  return validateCommittedReceipt(
+    committed,
+    readObservationInputs(repoRoot, (supersession as Supersession).historicalSubject),
+  );
 }
 
 /**

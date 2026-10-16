@@ -151,6 +151,9 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const q = await profileVerifier(ethers.provider, await m.getAddress());
       expect([q.haltPrincipal, q.halted, q.sp1Verifier]).to.deep.equal([admin.address, true, await sp1.getAddress()]);
       expect(q.identity).to.equal((await profileVerifier(ethers.provider, await haltable.getAddress())).identity);
+      // Any non-zero halted() word reads as halted, as on chain.
+      await m.program(sel("halted()"), RETURN, ethers.zeroPadValue("0x02", 32));
+      expect((await profileVerifier(ethers.provider, await m.getAddress())).halted).to.equal(true);
     });
 
     it("computes the same identity the on-chain guard records", async function () {
@@ -173,6 +176,15 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   });
 
   describe("EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER", function () {
+    it("without the local override, deployment tooling refuses a consumer in scope a wrapper over a mock SP1 verifier", async function () {
+      await assert.rejects(
+        checkDeploymentBinding(ethers.provider, "WalletWallVault", await haltable.getAddress(), admin.address, {
+          allowMockSp1: false,
+        }),
+        /runtime code hash .* not the designated/,
+      );
+    });
+
     it("deployment tooling refuses WalletWallMultiSigVault a haltable wrapper, and the consumers in scope are not refused it", async function () {
       await assert.rejects(
         checkDeploymentBinding(
@@ -257,6 +269,14 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const propose = source("scripts/propose-verifier-update.ts");
       expect(propose).to.match(/checkRotationBinding\(/);
       expect(propose.indexOf("checkRotationBinding(")).to.be.lessThan(propose.indexOf(".proposePQVerifier("));
+      // The multisig script checks the chain before it deploys anything.
+      const multisig = source("scripts/deploy-multisig.ts");
+      expect(multisig).to.match(/assertDeployableChain\(connection\.networkName,/);
+      expect(multisig.indexOf("assertDeployableChain(")).to.be.lessThan(multisig.indexOf("deployMultisigVault("));
+      // The wrapper deployment passes the resolved halt principal, and nothing else, as the third argument.
+      const zk = source("scripts/deploy-zk-verifier.ts");
+      expect(zk).to.match(/const haltPrincipal = resolveHaltPrincipal\(\s*process\.env\.HALT_PRINCIPAL_ADDRESS,/);
+      expect(zk).to.match(/ZKMLDSAVerifier\.deploy\(sp1VerifierAddress, programVKey, haltPrincipal\)/);
     });
   });
 
@@ -313,8 +333,21 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
           /halt principal never governs/,
         ],
         [
+          "signer is the target's halt principal, spelled in lower case",
+          request(designated, { signer: haltPrincipal.address.toLowerCase() }),
+          /halt principal never governs/,
+        ],
+        [
           "signer can halt the current verifier",
           request(designated, { current: { ...mockSp1Wrapper, haltPrincipal: admin.address } }),
+          /can halt the current verifier/,
+        ],
+        [
+          "signer can halt the current verifier, spelled in lower case",
+          request(designated, {
+            signer: admin.address.toLowerCase(),
+            current: { ...mockSp1Wrapper, haltPrincipal: admin.address },
+          }),
           /can halt the current verifier/,
         ],
       ];

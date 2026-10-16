@@ -218,6 +218,16 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           await consumer.connect(admin).proposePQVerifier(await w2.getAddress());
         });
 
+        it(`${c.name}: the main recovery: a fixed SP1 verifier (new code) with the same PROGRAM_VKEY is another identity, admitted`, async function () {
+          // A soundness bug in the verifier is fixed by new verifier code; the guest, and so the vkey, can stay.
+          await w1.connect(haltPrincipal).halt();
+          const fixedVerifier = await (await ethers.getContractFactory("MockSP1Verifier")).deploy();
+          const fixed = await deployWrapper(fixedVerifier, VKEY_A, otherHaltPrincipal.address);
+          expect(await identityOf(fixed)).to.not.equal(await identityOf(w1));
+          await rotateTo(fixed);
+          expect(await consumer.pqVerifier()).to.equal(await fixed.getAddress());
+        });
+
         it(`${c.name}: recovery to an independent identity succeeds after the delay, and the halted identity stays refused for good`, async function () {
           await w1.connect(haltPrincipal).halt();
           await consumer.connect(admin).proposePQVerifier(await w2.getAddress());
@@ -309,6 +319,13 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           });
         }
 
+        it(`${c.name}: a current verifier that claims to be halted, with no identity, cannot refuse a target that has none either`, async function () {
+          await hostile.program(SEL.halted, B.Return, word("0x01"));
+          const plain = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
+          await rotateTo(plain);
+          expect(await consumer.pqVerifier()).to.equal(await plain.getAddress());
+        });
+
         it(`${c.name}: a current verifier can only delay an ownership transfer (rotating away from it ends the veto)`, async function () {
           await hostile.program(SEL.HALT_PRINCIPAL, B.ReturnPendingOwner, ethers.ZeroHash);
           await consumer.connect(admin).transferOwnership(successor.address);
@@ -361,6 +378,9 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
 
         it(`${c.name}: positive control: a well-formed halted() is refused; a one-byte answer, or a failed call carrying 1, is not a halt`, async function () {
           await target.program(SEL.halted, B.Return, word("0x01"));
+          await expect(proposeTarget()).to.be.revertedWithCustomError(consumer, "HaltedVerifierTarget");
+          // Fail closed on the target: any non-zero word, not only 1, reads as halted.
+          await target.program(SEL.halted, B.Return, word("0x02"));
           await expect(proposeTarget()).to.be.revertedWithCustomError(consumer, "HaltedVerifierTarget");
           await target.program(SEL.halted, B.ReturnShort, ethers.toBeHex(1n << 248n, 32));
           await proposeTarget();
