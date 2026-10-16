@@ -234,6 +234,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   });
 
   it("a STOP is raised only from valid records; invalid evidence is EVIDENCE_INVALID, never a STOP (the re-review's L2)", function () {
+    skipWhenInstrumented(this);
     const triggered = (r: ReturnType<typeof deriveImplReceipt>) =>
       r.stopConditions.filter((c) => c.triggered).map((c) => c.id);
     // Drift read from rebuild evidence that does not re-derive is no demonstration.
@@ -353,6 +354,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   });
 
   it("the verdict is gated on valid evidence: a STOP outranks invalid records, which outrank BUILT_AND_TESTED (F6)", function () {
+    skipWhenInstrumented(this);
     const records = (r: ReturnType<typeof deriveImplReceipt>) =>
       r.productionBinding.prerequisites.find((p) => p.id === "RECORDS_VALID")!.met;
     const cases: [string, (i: ImplReceiptInputs) => void][] = [
