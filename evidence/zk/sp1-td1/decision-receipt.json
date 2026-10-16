@@ -1385,7 +1385,8 @@
             {
               "consumer": "WalletWallMultiSigVault",
               "gate": "TD2-MULTISIG-ROTATION",
-              "interim": "NOT_BOUND_TO_THE_SP1_PATH"
+              "interim": "NOT_BOUND_TO_THE_SP1_PATH",
+              "authorizedBy": "TD1-N11-PREREQUISITE"
             }
           ]
         }
@@ -1439,6 +1440,12 @@
           "by": "owner",
           "on": "2026-10-15",
           "summary": "the halt must not be applied to WalletWallMultiSigVault until it has a recoverable verifier transition (TD2-MULTISIG-ROTATION, frozen); recovery is not claimed for all four consumers; the halt principal, the multisig vault's owner and the proposed multisig rotation are accounted apart; real value waits for the rotation path and the common halt, both built and tested"
+        },
+        {
+          "id": "TD1-REVIEW-ADDITIONS-KEPT",
+          "by": "owner",
+          "on": "2026-10-15",
+          "summary": "the owner keeps both additions of the amendment's review as frozen TD2 requirements, binding like the owner's own items: one-way per identity (a fresh deployment of the halted identity is refused as a recovery or rotation target) and the halt principal cannot rotate, also after an ownership transfer"
         }
       ],
       "authorityAccounting": {
