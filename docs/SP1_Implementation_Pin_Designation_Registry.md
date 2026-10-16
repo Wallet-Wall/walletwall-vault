@@ -477,9 +477,11 @@ ran is invalid, never a kill. Every suite set passed unmutated first.
 killing tests alike, and left one survivor, P03: the mock flag honoured off a local chain. The refusal still fires, so
 it looked equivalent; it is not. Off a local chain the mutant runs the mock mode's `PROGRAM_VKEY` validation before
 refusing, so a malformed value changes the error. A test now pins that no part of the mock mode runs off a local chain
-(`d8478fa9`, test only), and it kills P03 in each of two runs. A confirming pass at `d8478fa9`, the final test bytes
-(every later commit changes only documents and the version), killed all 223. It differs from the first pass only where
-the new test reaches: P03 is killed, and P02 has the new test as a second killer.
+(`d8478fa9`, test only), and it kills P03 in each of two runs. A confirming pass at `d8478fa9` killed all 223. It
+differs from the first pass only where the new test reaches: P03 is killed, and P02 has the new test as a second
+killer. One later commit touches tests: `9296a4a6` makes two receipt tests skip under coverage instrumentation, a no-op
+in a plain run, which is how the harness runs. The receipt suite's 38 mutants, run again there, are all killed by the
+same tests. No later commit changes code or tests.
 
 Three kills come from tests that read source text rather than run it: the published-records check removed from
 `deploy.ts` (U05) or from `register-sp1-wrapper.ts` (U06), and the workflow asking for the pinned runner when nothing
@@ -540,6 +542,10 @@ superseded, never restamped ([`evidence/zk/sp1-p1/supersession.json`](../evidenc
 this lane after SP1-TD1 and SP1-TD2). [`ZK_Verifier_Production.md`](ZK_Verifier_Production.md) and
 [section 4 of the runbook](ZK_Prover_Runbook.md#4-deploy-against-the-designated-sp1-verifier) are rewritten in these
 terms (F-3), and the SP1-TD1 and SP1-TD2 documents carry a note pointing here; their records are unchanged.
+
+The three Sepolia reproducibility bundles' public-HEAD captures are re-taken at `9a560da6`, as SP1-TD2 did: the
+pinned `ZKMLDSAVerifier.sol` and the new `ChainIdBindingProbe.sol` are covered sources of the one compilation unit.
+Nothing outside the public-HEAD capture moves; the deployed bytecode of all three subjects is byte-identical.
 
 ## Reproduce / check
 
