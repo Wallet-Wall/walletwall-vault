@@ -409,7 +409,11 @@ export interface HaltDesign {
    * haltable wrapper until its own TD2 gate gives it a delayed verifier rotation (TD1-N11), bound meanwhile to no part
    * of the SP1 path.
    */
-  haltScope: { applies: string[]; excludedUntilRecoverable: { consumer: string; gate: string; interim: string }[] };
+  haltScope: {
+    applies: string[];
+    /** Each exclusion names its gate, its interim, and the owner's amendment that put it there. */
+    excludedUntilRecoverable: { consumer: string; gate: string; interim: string; authorizedBy: string }[];
+  };
   detectionSignals: string[];
   detectionSignalsControlState: boolean;
   recovery: string;
@@ -2320,12 +2324,12 @@ function decidedHaltErrors(
     if (h.location !== "VERIFIER_WRAPPER")
       errors.push("the halt sits at the verifier wrapper, which the consumers in its scope verify through");
     errors.push(...haltScopeErrors(h, dc, repoDelay));
-    // A scope narrower than the measured consumers is the owner's amendment, not the lane's choice.
-    if (
-      (h.haltScope?.excludedUntilRecoverable ?? []).length > 0 &&
-      !(dc.amendments ?? []).some((x) => x.by === "owner")
-    )
-      errors.push("a halt scope narrower than the measured consumers is the owner's amendment, on record");
+    // Each consumer kept outside the halt is there by the owner's amendment, cited and on record — not the lane's choice.
+    for (const e of h.haltScope?.excludedUntilRecoverable ?? [])
+      if (!(dc.amendments ?? []).some((x) => x.id === e.authorizedBy && x.by === "owner"))
+        errors.push(
+          `${e.consumer} is kept outside the halt only by the owner's amendment, on record (${String(e.authorizedBy)})`,
+        );
     if (h.recoveryIdentity !== RECOVERY_IDENTITY)
       errors.push("recovery is to an independently established identity, never a fresh deployment of the halted one");
     if (JSON.stringify(h.transitions.map((t) => [t.from, t.to])) !== JSON.stringify([["ACTIVE", "HALTED"]]))

@@ -308,8 +308,9 @@ for all four consumers. Like every consumer, it holds no real value until both T
 > **TD1-N11 is a prerequisite, not a note.** The rules refuse a halt scope that applies the halt to a consumer that
 > cannot recover, or to one whose gate is unbuilt (even if a scan someday finds it a rotation: the gate's delay,
 > target gating and proofs are what make it recoverable); one that leaves a recoverable consumer outside; and a
-> recovery claim for every consumer while one cannot recover. The scope's narrowing is the owner's amendment, on
-> record in the receipt (`amendments`).
+> recovery claim for every consumer while one cannot recover. Each exclusion cites the owner's amendment that made it
+> (`authorizedBy: TD1-N11-PREREQUISITE`), which must be on record in the receipt (`amendments`); another owner
+> amendment does not stand in for it.
 
 The principals, accounted apart (`DEFECT_RESPONSE_COUPLING.authorityAccounting`):
 
@@ -356,8 +357,9 @@ it:
 > structured fields — `UNACCEPTABLE_AUTHORIZATION_CUT` → `STOP_AND_RETURN_TO_DESIGN`, never
 > `WEAKEN_THE_ONE_WAY_HALT` — which the rules read.)
 
-What the adversarial review of this amendment added, recorded apart from the owner's items (`reviewAdditions`), each
-an executable proof the rules require:
+What the adversarial review of this amendment added, recorded apart from the owner's items (`reviewAdditions`) and
+kept by the owner the same day as binding TD2 requirements (`amendments`: `TD1-REVIEW-ADDITIONS-KEPT`), each an
+executable proof the rules require:
 
 - **The exclusion is enforced, not only stated** (`TD2-COMMON-VERIFIER-HALT`): deployment tooling refuses a haltable
   wrapper to any consumer kept outside the halt (`EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER`).

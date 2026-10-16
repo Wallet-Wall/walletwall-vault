@@ -109,9 +109,10 @@ describe("SP1-TD1 decision receipt", function () {
         },
         { ...rot("WalletWallVault", "OWN_TIMELOCKED_ROTATION", 172_800), halt: "APPLIED", gate: null },
       ]);
-      // The narrowing is the owner's, on record.
+      // The narrowing is the owner's, on record, and so is the keeping of the review's two additions.
       expect(r.decisions.DEFECT_RESPONSE_COUPLING.amendments.map((a) => [a.id, a.by, a.on])).to.deep.equal([
         ["TD1-N11-PREREQUISITE", "owner", "2026-10-15"],
+        ["TD1-REVIEW-ADDITIONS-KEPT", "owner", "2026-10-15"],
       ]);
       // The rotation TD2 would give the multisig vault's owner is new authority, on the record before it is built.
       expect(r.decisions.AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2).to.deep.equal([
@@ -941,6 +942,7 @@ describe("SP1-TD1 decision receipt", function () {
               consumer: "PolicyControlBridge",
               gate: "TD2-MULTISIG-ROTATION",
               interim: "NOT_BOUND_TO_THE_SP1_PATH",
+              authorizedBy: "TD1-N11-PREREQUISITE",
             });
           },
           [
@@ -1123,12 +1125,23 @@ describe("SP1-TD1 decision receipt", function () {
         [
           "the narrowed scope without the owner's amendment on record",
           (c) => delete od(c).amendments,
-          ["a halt scope narrower than the measured consumers is the owner's amendment, on record"],
+          [`${MSV} is kept outside the halt only by the owner's amendment, on record (TD1-N11-PREREQUISITE)`],
         ],
         [
+          // Another owner amendment on record (the review additions kept) does not cover the narrowing.
           "the narrowing attributed to the lane",
           (c) => (od(c).amendments![0].by = "lane"),
-          ["a halt scope narrower than the measured consumers is the owner's amendment, on record"],
+          [`${MSV} is kept outside the halt only by the owner's amendment, on record (TD1-N11-PREREQUISITE)`],
+        ],
+        [
+          "an exclusion that cites no amendment",
+          (c) => delete (scope(c).excludedUntilRecoverable[0] as { authorizedBy?: string }).authorizedBy,
+          [`${MSV} is kept outside the halt only by the owner's amendment, on record (undefined)`],
+        ],
+        [
+          "an exclusion that cites an amendment not on record",
+          (c) => (scope(c).excludedUntilRecoverable[0].authorizedBy = "TD1-SOMETHING-ELSE"),
+          [`${MSV} is kept outside the halt only by the owner's amendment, on record (TD1-SOMETHING-ELSE)`],
         ],
         [
           "a rotating consumer whose rotation waits less than the repository's",
@@ -2123,6 +2136,7 @@ describe("SP1-TD1 decision receipt", function () {
         consumer: "PolicyControlBridge",
         gate: "TD2-MULTISIG-ROTATION",
         interim: "NOT_BOUND_TO_THE_SP1_PATH",
+        authorizedBy: "TD1-N11-PREREQUISITE",
       });
       dc().td2Requirements.find((r) => r.id === "TD2-COMMON-VERIFIER-HALT")!.excludedConsumersRefusedAHaltableWrapper =
         ["PolicyControlBridge", "WalletWallMultiSigVault"];
