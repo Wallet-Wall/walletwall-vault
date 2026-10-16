@@ -12,7 +12,7 @@
  * wrapper's registration and its halt can be published together.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -140,6 +140,19 @@ describe("SP1 implementation lane — off a local chain, only the published reco
     expect(errors()).to.match(/zkmldsa-verifier-b2\.json: not published/);
   });
 
+  it("a link in place of a record is refused, never followed (where the host can make one)", function () {
+    const target = join(root, "elsewhere.json");
+    writeFileSync(target, '{"id":"d1"}\n');
+    const d1 = join(work, "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json");
+    rmSync(d1);
+    try {
+      symlinkSync(target, d1, "file");
+    } catch {
+      this.skip(); // Windows without Developer Mode refuses symlinks; Linux CI runs this
+    }
+    expect(errors()).to.match(/mldsa65-withdrawal-d1\.json: a link, not a record/);
+  });
+
   it("a record published but missing here is refused", function () {
     rmSync(join(work, "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json"));
     expect(errors()).to.match(/mldsa65-withdrawal-d1\.json: published, but missing here/);
@@ -165,6 +178,9 @@ describe("SP1 implementation lane — off a local chain, only the published reco
   });
 
   it("a fetch that fails is no answer: refused, never read as 'nothing new'", function () {
+    // An earlier fetch succeeded; main has moved since; now the fetch fails: the stale copy is never used.
+    expect(errors()).to.equal("");
+    publish(REGISTRY, registry([{ seq: 1, kind: "a halt on another chain" }]));
     expect(publishedRecordsErrors(work, { source: join(root, "no-such-repo.git") }).join("\n")).to.match(
       /could not be fetched/,
     );
