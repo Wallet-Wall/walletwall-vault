@@ -255,6 +255,66 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           expect(await consumer.haltedVerifierIdentities(await identityOf(w1))).to.equal(false);
         });
       });
+
+      describe("no verifier can veto its own replacement (the guard never strands a consumer)", function () {
+        // Mode ordinals of MisbehavingVerifierMock.
+        const MODE = {
+          Honest: 0,
+          ClaimsConsumerOwner: 1,
+          ClaimsPendingOwner: 2,
+          BurnsGas: 3,
+          ReturnsHugeData: 4,
+          ClaimsHaltedIdentity: 5,
+        };
+        let hostile: any;
+
+        beforeEach(async function () {
+          hostile = await (
+            await ethers.getContractFactory("MisbehavingVerifierMock")
+          ).deploy(await sp1.getAddress(), VKEY_A);
+          await rotateTo(hostile); // installed through the delayed path while it still behaved
+        });
+
+        for (const [label, mode] of [
+          ["claims the consumer's owner as its halt principal", MODE.ClaimsConsumerOwner],
+          ["burns all the gas each probe gets", MODE.BurnsGas],
+          ["returns a mebibyte to each probe", MODE.ReturnsHugeData],
+        ] as const) {
+          it(`${c.name}: a current verifier that ${label} cannot stop the owner rotating away from it`, async function () {
+            await hostile.setMode(mode);
+            await consumer.connect(admin).proposePQVerifier(await w2.getAddress());
+            await networkHelpers.time.increase(ROTATION_DELAY);
+            await consumer.connect(admin).applyPQVerifierUpdate({ gasLimit: 2_000_000n });
+            expect(await consumer.pqVerifier()).to.equal(await w2.getAddress());
+          });
+        }
+
+        it(`${c.name}: a current verifier can only delay an ownership transfer (rotating away from it ends the veto)`, async function () {
+          await hostile.setMode(MODE.ClaimsPendingOwner);
+          await consumer.connect(admin).transferOwnership(successor.address);
+          await expect(consumer.connect(successor).acceptOwnership()).to.be.revertedWithCustomError(
+            consumer,
+            "HaltPrincipalCannotGovern",
+          );
+          await rotateTo(w2);
+          await consumer.connect(successor).acceptOwnership();
+          expect(await consumer.owner()).to.equal(successor.address);
+        });
+
+        it(`${c.name}: the documented residual: an installed verifier can make the consumer record one identity as halted, never every identity`, async function () {
+          await hostile.setMode(MODE.ClaimsHaltedIdentity);
+          await rotateTo(w2); // leaving a verifier that claims to be a halted wrapper of identity A
+          const claimed = await identityOf(w1); // w1 is identity A
+          expect(await consumer.haltedVerifierIdentities(claimed)).to.equal(true);
+          const freshA = await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address);
+          await expect(
+            consumer.connect(admin).proposePQVerifier(await freshA.getAddress()),
+          ).to.be.revertedWithCustomError(consumer, "HaltedVerifierIdentity");
+          // Bounded: any other identity is still admissible.
+          const otherB = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
+          await consumer.connect(admin).proposePQVerifier(await otherB.getAddress());
+        });
+      });
     });
   }
 });

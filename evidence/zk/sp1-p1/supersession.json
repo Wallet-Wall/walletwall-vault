@@ -12,7 +12,7 @@
     },
     {
       "lane": "SP1-TD2",
-      "record": "docs/SP1_TD2_Verifier_Halt_And_Multisig_Rotation.md",
+      "record": "evidence/zk/sp1-td2/implementation-record.json",
       "reason": "changed contracts/verifiers/ZKMLDSAVerifier.sol, a file this receipt binds, to add the owner-decided local one-way verifier halt; the receipt is pinned and validated at its last live commit instead of being restamped"
     }
   ]

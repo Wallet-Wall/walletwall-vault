@@ -1,0 +1,214 @@
+{
+  "schema": "walletwall.sp1-td2-implementation-record.v1",
+  "lane": "SP1-TD2",
+  "verdict": "BUILT_AND_TESTED_AWAITING_OWNER_REVIEW",
+  "baseCommit": "69ea579809bf7fc7190e8bc07fd5f043667f786d",
+  "td1Receipt": {
+    "path": "evidence/zk/sp1-td1/decision-receipt.json",
+    "sha256": "0440c3807e8d3848a6db00bedde6a70d81b4caeb3af14c9414ec98580f1867e5"
+  },
+  "requirements": [
+    {
+      "id": "TD2-COMMON-VERIFIER-HALT",
+      "status": "BUILT_AND_TESTED",
+      "proofs": [
+        {
+          "id": "VALID_VERIFICATION_WHILE_ACTIVE",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierHalt.test.ts"
+          ]
+        },
+        {
+          "id": "FAILS_CLOSED_AFTER_HALT_THROUGH_EVERY_CONSUMER_IN_SCOPE",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierHalt.test.ts"
+          ]
+        },
+        {
+          "id": "HALT_PRINCIPAL_CANNOT_MAKE_AN_INVALID_PROOF_VALID",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierHalt.test.ts"
+          ]
+        },
+        {
+          "id": "HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierRotation.test.ts"
+          ]
+        },
+        {
+          "id": "HALTED_IDENTITY_REFUSED_AS_A_RECOVERY_TARGET",
+          "enforcedBy": "CODE_AND_PROCESS",
+          "tests": [
+            "test/Sp1Td2VerifierRotation.test.ts",
+            "test/Sp1Td2VerifierBinding.test.ts"
+          ]
+        },
+        {
+          "id": "EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER",
+          "enforcedBy": "PROCESS",
+          "tests": [
+            "test/Sp1Td2VerifierBinding.test.ts"
+          ]
+        }
+      ],
+      "built": {
+        "wrapper": "contracts/verifiers/ZKMLDSAVerifier.sol",
+        "states": [
+          "ACTIVE",
+          "HALTED"
+        ],
+        "haltPrincipal": "IMMUTABLE_CONSTRUCTOR_ARGUMENT",
+        "haltPrincipalPowers": [
+          "HALT"
+        ],
+        "guard": "contracts/verifiers/VerifierRotationGuard.sol",
+        "tooling": "scripts/lib/verifier-binding.ts"
+      }
+    },
+    {
+      "id": "TD2-MULTISIG-ROTATION",
+      "consumer": "WalletWallMultiSigVault",
+      "status": "BUILT_AND_TESTED",
+      "haltAdmission": "OWNER_DECISION_PENDING",
+      "measured": {
+        "minimumDelaySeconds": 172800,
+        "applyWindowSeconds": 1209600,
+        "instantReplacement": false,
+        "invokableByHaltPrincipal": false,
+        "targetMustPassEvidenceGates": "PROCESS",
+        "oldWrapperUnhalt": false
+      },
+      "proofs": [
+        {
+          "id": "HALTED_THEN_ROTATED_WITHDRAWAL_SUCCEEDS",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierRotation.test.ts"
+          ]
+        },
+        {
+          "id": "MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierRotation.test.ts"
+          ]
+        },
+        {
+          "id": "HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER",
+          "enforcedBy": "CODE",
+          "tests": [
+            "test/Sp1Td2VerifierRotation.test.ts"
+          ]
+        },
+        {
+          "id": "HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET",
+          "enforcedBy": "CODE_AND_PROCESS",
+          "tests": [
+            "test/Sp1Td2VerifierRotation.test.ts",
+            "test/Sp1Td2VerifierBinding.test.ts"
+          ]
+        }
+      ],
+      "stopCondition": {
+        "when": "UNACCEPTABLE_AUTHORIZATION_CUT",
+        "then": "STOP_AND_RETURN_TO_DESIGN",
+        "never": "WEAKEN_THE_ONE_WAY_HALT",
+        "text": "if adding verifier rotation to WalletWallMultiSigVault creates an unacceptable authorization cut, STOP TD2-MULTISIG-ROTATION and return to design rather than weakening the one-way halt"
+      },
+      "stopConditionEvaluation": "NOT_FOUND_UNACCEPTABLE_BY_TD2_OWNER_DECIDES"
+    }
+  ],
+  "td1N12": {
+    "question": "while a wrapper is halted no PQ-gated exit works, so the rotation delay gives no exit: is recovery-target gating (only a wrapper whose verifier code hash and PROGRAM_VKEY designation passed the SP1 evidence gates) enforced on chain or by process?",
+    "answer": "BY_PROCESS_WITH_ON_CHAIN_IDENTITY_AND_PRINCIPAL_CHECKS",
+    "onChain": [
+      "the delay (172,800 s) and the 14-day apply window, owner-only, a code-bearing target at proposal and at apply",
+      "the target is not HALTED",
+      "the target's identity (SP1 verifier code hash, PROGRAM_VKEY) is not that of the current wrapper while it is halted, nor one the consumer recorded when it left a halted wrapper",
+      "the owner is never a halt principal of the current, pending or target verifier (constructor, ownership transfer, proposal, apply)"
+    ],
+    "byProcess": [
+      "the target is an ACTIVE, haltable ZKMLDSAVerifier wrapper",
+      "its SP1 verifier runtime code hash is the SP1-TD1 trust-target designation for the chain",
+      "its PROGRAM_VKEY is the SP1-TD1 program designation",
+      "no override on a non-local chain",
+      "a consumer the halt's scope excludes is refused any SP1-path target"
+    ],
+    "notYetEnforced": [
+      "the per-chain execution check (TD1-N8) and the generated designation file with its CI subject check: the frozen implementation lane"
+    ],
+    "why": "a consumer cannot recognise 'passed the evidence gates' on chain without a new authority to say so, and pinning a verifier code hash or a vkey in the consumer would refuse exactly the recovery targets (a fixed verifier has new code, a fixed guest a new vkey)"
+  },
+  "authorizationCut": [
+    {
+      "principal": "WALLETWALL_EMERGENCY_HALT_PRINCIPAL",
+      "consumer": "every wrapper (ZKMLDSAVerifier)",
+      "capabilities": [
+        "HALT"
+      ],
+      "widensAuthorization": false,
+      "delaySeconds": 0,
+      "classification": "LIVENESS_ONLY_ONE_WAY",
+      "whileHalted": "holds no rotation and no ownership of any consumer (code)"
+    },
+    {
+      "principal": "WALLETWALL_VAULT_OWNER",
+      "consumer": "WalletWallVault, StablecoinVaultSimulator",
+      "capabilities": [
+        "PQ_VERIFIER_ROTATION",
+        "pause",
+        "unpause"
+      ],
+      "widensAuthorization": true,
+      "delaySeconds": 172800,
+      "classification": "RETAINED",
+      "whileHalted": "no PQ-gated exit works (TD1-N12), so the delay protects no one; after it the owner can install any code-bearing verifier, letting anyone drain PqOnly vaults and reducing Hybrid vaults to ECDSA; target gating is process"
+    },
+    {
+      "principal": "WALLETWALL_MULTISIG_VAULT_OWNER",
+      "consumer": "WalletWallMultiSigVault",
+      "capabilities": [
+        "PQ_VERIFIER_ROTATION"
+      ],
+      "widensAuthorization": true,
+      "delaySeconds": 172800,
+      "classification": "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+      "whileHalted": "no tenant can withdraw (TD1-N12), so the delay protects no one; after it the owner can install an accept-all verifier, voiding every tenant's p-of-q PQ signatures at once; each withdrawal still needs the tenant's m-of-n ECDSA signatures (executed); target gating is process"
+    }
+  ],
+  "haltScope": {
+    "applies": [
+      "PolicyControlBridge",
+      "StablecoinVaultSimulator",
+      "WalletWallVault"
+    ],
+    "excludedUntilRecoverable": [
+      {
+        "consumer": "WalletWallMultiSigVault",
+        "gate": "TD2-MULTISIG-ROTATION",
+        "interim": "NOT_BOUND_TO_THE_SP1_PATH"
+      }
+    ]
+  },
+  "supersedes": [
+    {
+      "record": "evidence/zk/sp1-p1/stop-receipt.json",
+      "via": "evidence/zk/sp1-p1/supersession.json",
+      "finding": "TD1-N4"
+    }
+  ],
+  "realValue": {
+    "blocked": true,
+    "blockers": [
+      "the owner's review of both TD2 requirements as built and tested",
+      "the owner's decision on the multisig vault's authorization cut and its admission to the halt's scope",
+      "the frozen implementation lane: the SP1 verifier code-hash pin in the wrapper, F-1, the designation file and CI subject check, the canonical-build workflow, deploy-zk-verifier's per-chain execution check, the runbook rewrite, proving availability",
+      "a real WalletWall proof (the real-proof lane)"
+    ]
+  }
+}

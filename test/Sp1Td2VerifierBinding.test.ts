@@ -300,7 +300,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(bindingRefusals(request(m, { consumer: "StablecoinVaultSimulator" }))).to.deep.equal([]);
     });
 
-    it("end to end on a live vault: the tooling refuses a fresh deployment of its halted identity, as the chain does", async function () {
+    it("HALTED_IDENTITY_REFUSED_AS_A_RECOVERY_TARGET, process side: on a live vault the tooling refuses a fresh deployment of its halted identity, as the chain does", async function () {
       const vault = await (
         await ethers.getContractFactory("WalletWallVault", admin)
       ).deploy(await haltable.getAddress());
@@ -330,6 +330,31 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         MOCK_OK,
       );
       await vault.proposePQVerifier(await recovery.getAddress());
+    });
+
+    it("HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET, process side: while excluded, the multisig vault is refused every SP1 target, a fresh deployment of a halted identity included", async function () {
+      const multisig = await (
+        await ethers.getContractFactory("WalletWallMultiSigVault", admin)
+      ).deploy(await mock.getAddress());
+      await haltable.connect(haltPrincipal).halt();
+      const fresh = await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address);
+      const recovery = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
+      for (const target of [haltable, fresh, recovery]) {
+        await assert.rejects(
+          checkRotationBinding(
+            ethers.provider,
+            await multisig.getAddress(),
+            await target.getAddress(),
+            admin.address,
+            MOCK_OK,
+          ),
+          /WalletWallMultiSigVault waits outside the halt/,
+        );
+      }
+      // Positive control: off the SP1 path the multisig vault's rotation tooling still works.
+      const otherMock = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
+      const profile = await profileVerifier(ethers.provider, await otherMock.getAddress());
+      expect(bindingRefusals(request(profile, { consumer: "WalletWallMultiSigVault" }))).to.deep.equal([]);
     });
   });
 
