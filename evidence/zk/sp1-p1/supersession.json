@@ -1,0 +1,19 @@
+{
+  "schema": "walletwall.sp1-p1-supersession.v1",
+  "receipt": "evidence/zk/sp1-p1/stop-receipt.json",
+  "receiptSha256": "736de05c80062190def543de267630e7c36ed04fba383d3620c782bfd47ec124",
+  "historicalSubject": "69ea579809bf7fc7190e8bc07fd5f043667f786d",
+  "finding": "TD1-N4",
+  "supersededBy": [
+    {
+      "lane": "SP1-TD1",
+      "record": "evidence/zk/sp1-td1/decision-receipt.json",
+      "reason": "decided both questions the STOP left open: the verifier trust target (DIRECT_IMMUTABLE_VERIFIER, SP1Verifier v6.1.0 pinned by runtime code hash) and the canonical PROGRAM_VKEY (PINNED_VENDOR_BUILD)"
+    },
+    {
+      "lane": "SP1-TD2",
+      "record": "evidence/zk/sp1-td2/implementation-record.json",
+      "reason": "changed contracts/verifiers/ZKMLDSAVerifier.sol, a file this receipt binds, to add the owner-decided local one-way verifier halt; the receipt is pinned and validated at its last live commit instead of being restamped"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import "./IPQCVerifier.sol";
 import "./IPolicyEngine.sol";
+import "./verifiers/VerifierRotationGuard.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
@@ -184,6 +185,15 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     address public pendingPQVerifier;
     uint256 public pendingPQVerifierValidAfter;
 
+    /// @notice Identities (SP1 verifier code hash, PROGRAM_VKEY) of halted wrappers this vault rotated away from;
+    ///         never accepted as a rotation target again. See {VerifierRotationGuard}.
+    mapping(bytes32 identity => bool halted) public haltedVerifierIdentities;
+
+    /// @notice The identity (SP1 verifier code hash, PROGRAM_VKEY) {pqVerifier} showed when it was installed, or
+    ///         zero if it showed none. Measured once and never asked again, so the current verifier cannot
+    ///         change which identity its halt refuses. See {VerifierRotationGuard}.
+    bytes32 public pqVerifierIdentity;
+
     mapping(address => VaultOwner) public vaults;
 
     /// @notice Monotonic counter, per vaultOwner, that any external policy-control
@@ -346,6 +356,7 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (_pqVerifier == address(0)) revert ZeroAddress();
         token = IERC20(_token);
         pqVerifier = IPQCVerifier(_pqVerifier);
+        pqVerifierIdentity = VerifierRotationGuard.requireAdmissibleInitialVerifier(_pqVerifier, msg.sender);
     }
 
     // -----------------------------------------------------------------------
@@ -986,6 +997,13 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
     function proposePQVerifier(address newVerifier) external onlyOwner {
         if (newVerifier == address(0)) revert ZeroAddress();
         if (newVerifier.code.length == 0) revert NoCode(newVerifier);
+        VerifierRotationGuard.requireAdmissibleRotation(
+            haltedVerifierIdentities,
+            pqVerifierIdentity,
+            address(pqVerifier),
+            newVerifier,
+            msg.sender
+        );
 
         uint256 validAfter = block.timestamp + PQ_VERIFIER_UPDATE_DELAY;
         pendingPQVerifier = newVerifier;
@@ -1025,7 +1043,16 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
         if (newVerifier.code.length == 0) revert NoCode(newVerifier);
 
         address oldVerifier = address(pqVerifier);
+        bytes32 newIdentity = VerifierRotationGuard.requireAdmissibleRotation(
+            haltedVerifierIdentities,
+            pqVerifierIdentity,
+            oldVerifier,
+            newVerifier,
+            msg.sender
+        );
+        VerifierRotationGuard.recordHaltedIdentity(haltedVerifierIdentities, pqVerifierIdentity, oldVerifier);
         pqVerifier = IPQCVerifier(newVerifier);
+        pqVerifierIdentity = newIdentity;
 
         pendingPQVerifier = address(0);
         pendingPQVerifierValidAfter = 0;
@@ -1214,6 +1241,14 @@ contract StablecoinVaultSimulator is ReentrancyGuard, Pausable, Ownable2Step, EI
      */
     function renounceOwnership() public pure override {
         revert OwnershipRenunciationDisabled();
+    }
+
+    /// @dev Every completed ownership change (accepting a two-step transfer) refuses an account that can halt the
+    ///      current or the pending verifier: the halt principal never holds the rotation (SP1-TD2). The
+    ///      constructor makes the same check for the deployer once {pqVerifier} is set. Mirrors {WalletWallVault}.
+    function _transferOwnership(address newOwner) internal override {
+        VerifierRotationGuard.requireNotHaltPrincipal(newOwner, address(pqVerifier), pendingPQVerifier);
+        super._transferOwnership(newOwner);
     }
 
     // -----------------------------------------------------------------------

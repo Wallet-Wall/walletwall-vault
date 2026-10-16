@@ -1,0 +1,5 @@
+{
+  "schema": "walletwall.sp1-wrapper-registry.v1",
+  "note": "Every ZKMLDSAVerifier wrapper WalletWall deploys, per chain. The binding gate (scripts/lib/verifier-binding.ts) reads each entry's state live: a halted entry's identity is refused for every consumer, and off a local chain a consumer may be bound only to a registered wrapper that is the sole ACTIVE wrapper of its identity, so one halt call reaches every consumer. Record a wrapper here when it is deployed; never remove a halted one. No wrapper is deployed anywhere yet.",
+  "entries": []
+}

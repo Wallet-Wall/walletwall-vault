@@ -1,6 +1,7 @@
 import { expect } from "chai";
 import { ethers } from "./helpers/connection";
 import { ProverClient } from "../scripts/prover-client";
+import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
 
 /**
  * ZKMLDSAVerifier accepts a proof only for the program it pins, and only for the public binding
@@ -32,7 +33,11 @@ describe("ZKMLDSAVerifier program identity and public bindings", function () {
   });
 
   async function deployVerifier(programVKey: string) {
-    return (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(await sp1.getAddress(), programVKey);
+    return (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(
+      await sp1.getAddress(),
+      programVKey,
+      TEST_HALT_PRINCIPAL,
+    );
   }
 
   function journal(overrides: { digest?: string; publicKey?: Uint8Array; chainId?: bigint; verifier: string }) {

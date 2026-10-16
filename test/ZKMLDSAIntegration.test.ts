@@ -4,7 +4,12 @@ import { ethers } from "./helpers/connection";
 import { MLDSASigner } from "../pqc/ml-dsa";
 import { ProverClient } from "../scripts/prover-client";
 import { signWithdrawalRequest } from "./helpers/vaultHelpers";
-import { deployMockZkVerifier, encodeMockProof, MOCK_PROGRAM_VKEY } from "./helpers/zkVerifierHelpers";
+import {
+  deployMockZkVerifier,
+  encodeMockProof,
+  MOCK_PROGRAM_VKEY,
+  TEST_HALT_PRINCIPAL,
+} from "./helpers/zkVerifierHelpers";
 
 describe("ZKMLDSAVerifier Integration", function () {
   let vault: any;
@@ -106,16 +111,15 @@ describe("ZKMLDSAVerifier Integration", function () {
 
   it("rejects an EOA as the SP1 verifier", async function () {
     const ZKMLDSAVerifier = await ethers.getContractFactory("ZKMLDSAVerifier");
-    await expect(ZKMLDSAVerifier.deploy(owner.address, MOCK_PROGRAM_VKEY)).to.be.revertedWithCustomError(
-      ZKMLDSAVerifier,
-      "InvalidSP1Verifier",
-    );
+    await expect(
+      ZKMLDSAVerifier.deploy(owner.address, MOCK_PROGRAM_VKEY, TEST_HALT_PRINCIPAL),
+    ).to.be.revertedWithCustomError(ZKMLDSAVerifier, "InvalidSP1Verifier");
   });
 
   it("rejects a zero program verification key", async function () {
     const ZKMLDSAVerifier = await ethers.getContractFactory("ZKMLDSAVerifier");
     await expect(
-      ZKMLDSAVerifier.deploy(await mockSp1Verifier.getAddress(), ethers.ZeroHash),
+      ZKMLDSAVerifier.deploy(await mockSp1Verifier.getAddress(), ethers.ZeroHash, TEST_HALT_PRINCIPAL),
     ).to.be.revertedWithCustomError(ZKMLDSAVerifier, "InvalidProgramVKey");
   });
 

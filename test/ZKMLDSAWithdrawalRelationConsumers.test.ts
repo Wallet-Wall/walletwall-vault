@@ -8,6 +8,7 @@ import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { WITHDRAWAL_TYPES, withdrawalDomain } from "./helpers/vaultHelpers";
 import { ProverClient } from "../scripts/prover-client";
+import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
 
 /**
  * The withdrawal relation through every PQ consumer of a ZKMLDSAVerifier: WalletWallVault withdrawals
@@ -140,7 +141,7 @@ describe("ZKMLDSAVerifier consumers: the withdrawal relation through the vault, 
     sp1 = await (await ethers.getContractFactory("ProgramBoundMockSP1Verifier")).deploy();
     const zkVerifier = await (
       await ethers.getContractFactory("ZKMLDSAVerifier")
-    ).deploy(await sp1.getAddress(), WITHDRAWAL_PROGRAM_VKEY);
+    ).deploy(await sp1.getAddress(), WITHDRAWAL_PROGRAM_VKEY, TEST_HALT_PRINCIPAL);
     vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await zkVerifier.getAddress());
     chainId = (await ethers.provider.getNetwork()).chainId;
     verifierAddress = await zkVerifier.getAddress();

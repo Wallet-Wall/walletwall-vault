@@ -10,25 +10,35 @@
  *   npm run sp1-p1:receipt            # (re)write the receipt; refuses stale sources or a changed premise
  *   npm run validate:sp1-p1-receipt   # validate the committed receipt, exit non-zero on any error
  *
+ * Superseded (SP1-TD1 finding TD1-N4; evidence/zk/sp1-p1/supersession.json): the receipt is a spent STOP record.
+ * It is never rewritten again; validation re-checks its bindings at the commit where it was last live.
+ *
  * No transactions, no deploys, no proving, no network.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
   RECEIPT_REL,
+  SUPERSESSION_REL,
   buildReceipt,
   checkInputsFresh,
   readObservationInputs,
-  validateCommittedReceipt,
+  readSupersession,
+  validateCommittedReceiptInRepo,
   validateReceiptRules,
 } from "./lib/sp1-p1-stop-receipt";
 
 export const RECEIPT_PATH = resolve(RECEIPT_REL);
 
 function writeReceipt(): void {
+  if (readSupersession() !== null) {
+    throw new Error(
+      `refusing to regenerate the SP1-P1 receipt: it is superseded (${SUPERSESSION_REL}) and is never restamped`,
+    );
+  }
   const inputs = readObservationInputs();
   const stale = checkInputsFresh(inputs);
   if (stale.length > 0) throw new Error(`refusing to generate the SP1-P1 receipt:\n - ${stale.join("\n - ")}`);
@@ -40,10 +50,13 @@ function writeReceipt(): void {
 }
 
 function validateCommitted(): void {
-  const committed = JSON.parse(readFileSync(RECEIPT_PATH, "utf8")) as unknown;
-  const errors = validateCommittedReceipt(committed, readObservationInputs());
+  const errors = validateCommittedReceiptInRepo();
   if (errors.length > 0) throw new Error(`committed SP1-P1 receipt is invalid:\n - ${errors.join("\n - ")}`);
-  console.log(`OK: ${RECEIPT_PATH} matches its observations, the subject sources and the lane rules (no drift).`);
+  const superseded =
+    readSupersession() === null ? "" : ` (superseded: bindings checked at its historical subject, ${SUPERSESSION_REL})`;
+  console.log(
+    `OK: ${RECEIPT_PATH} matches its observations, the subject sources and the lane rules (no drift)${superseded}.`,
+  );
 }
 
 if (process.argv[1]?.includes("generate-sp1-p1-stop-receipt")) {
