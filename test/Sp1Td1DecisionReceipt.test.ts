@@ -89,10 +89,40 @@ describe("SP1-TD1 decision receipt", function () {
         "NO_NEW_AUTHORIZATION_PRINCIPAL",
         "WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY",
         "ONE_WAY",
-        "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION",
+        // The owner's amendment: recovery is not claimed for the multisig vault, which cannot rotate (TD1-N11).
+        "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE",
         "NOT_A_WALLETWALL_AUTHORITY",
         "TD2_IMPLEMENTATION_NOT_YET_BUILT",
       ]);
+      const rot = (consumer: string, route: string, rotationDelaySeconds: number | null) => ({
+        consumer,
+        route,
+        rotationDelaySeconds,
+      });
+      expect(r.decisions.DEFECT_RESPONSE_COUPLING.recoveryByConsumer).to.deep.equal([
+        { ...rot("PolicyControlBridge", "ITS_CONSUMERS_TIMELOCKED_ROTATION", null), halt: "APPLIED", gate: null },
+        { ...rot("StablecoinVaultSimulator", "OWN_TIMELOCKED_ROTATION", 172_800), halt: "APPLIED", gate: null },
+        {
+          ...rot("WalletWallMultiSigVault", "NONE", null),
+          halt: "EXCLUDED_UNTIL_RECOVERABLE",
+          gate: "TD2-MULTISIG-ROTATION",
+        },
+        { ...rot("WalletWallVault", "OWN_TIMELOCKED_ROTATION", 172_800), halt: "APPLIED", gate: null },
+      ]);
+      // The narrowing is the owner's, on record.
+      expect(r.decisions.DEFECT_RESPONSE_COUPLING.amendments.map((a) => [a.id, a.by, a.on])).to.deep.equal([
+        ["TD1-N11-PREREQUISITE", "owner", "2026-10-15"],
+      ]);
+      // The rotation TD2 would give the multisig vault's owner is new authority, on the record before it is built.
+      expect(r.decisions.AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2).to.deep.equal([
+        {
+          principal: "WALLETWALL_MULTISIG_VAULT_OWNER",
+          capabilities: ["PQ_VERIFIER_ROTATION"],
+          classification: "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+          status: "PROPOSED_FOR_TD2",
+        },
+      ]);
+      expect(r.decisions.REAL_VALUE_REQUIREMENTS).to.deep.equal(["TD2-COMMON-VERIFIER-HALT", "TD2-MULTISIG-ROTATION"]);
       // The decision closes the design question; it lifts nothing: real value waits for TD2.
       expect(r.decisions.REAL_PROOF_LANE_UNBLOCKED.value).to.equal(true);
       expect(r.decisions.IMPLEMENTATION_REQUIRED.required).to.equal(true);
@@ -627,7 +657,9 @@ describe("SP1-TD1 decision receipt", function () {
       ]);
       const path = built().claims.DEFECT_RESPONSE_PATH.basis;
       expect(path).to.contain("decided by the owner on 2026-10-15");
-      expect(path).to.contain("WalletWallMultiSigVault still lacks the decided recovery path");
+      expect(path).to.contain(
+        "TD2 tests it through every consumer in its scope (PolicyControlBridge, StablecoinVaultSimulator, WalletWallVault); WalletWallMultiSigVault has no recovery path and stays off a haltable wrapper until TD2-MULTISIG-ROTATION",
+      );
       // Control: undecided, the same trade-off is an open owner decision and real value waits on it.
       const open = ctx();
       open.inputs.ownerDecisions[0].status = "OWNER_DECISION_REQUIRED";
@@ -636,21 +668,37 @@ describe("SP1-TD1 decision receipt", function () {
         ro.decisions.DEFECT_RESPONSE_COUPLING.status,
         ro.decisions.DEFECT_RESPONSE_COUPLING.decision,
         ro.decisions.DEFECT_RESPONSE_COUPLING.haltDesign,
+        ro.decisions.DEFECT_RESPONSE_COUPLING.authorityAccounting,
+        ro.decisions.DEFECT_RESPONSE_COUPLING.td2Requirements,
         ro.decisions.DEFECT_RESPONSE_MECHANISM,
         ro.decisions.HALT_REVERSIBILITY,
         ro.decisions.RECOVERY,
         ro.decisions.LIVENESS_AUTHORITY_DELTA.classification,
+        ro.decisions.AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2,
         ro.decisions.REAL_VALUE_BLOCKER,
+        ro.decisions.REAL_VALUE_REQUIREMENTS,
       ]).to.deep.equal([
         "OWNER_DECISION_REQUIRED",
         null,
         null,
+        null,
+        [],
         "UNDECIDED",
         "UNDECIDED",
         "UNDECIDED",
         "UNDECIDED",
+        [],
         "DEFECT_RESPONSE_COUPLING_UNDECIDED",
+        [],
       ]);
+      // Undecided, no consumer is in a halt's scope, and no amendment is carried.
+      expect(ro.decisions.DEFECT_RESPONSE_COUPLING.recoveryByConsumer.map((x) => x.halt)).to.deep.equal([
+        "UNSCOPED",
+        "UNSCOPED",
+        "UNSCOPED",
+        "UNSCOPED",
+      ]);
+      expect(ro.decisions.DEFECT_RESPONSE_COUPLING.amendments).to.deep.equal([]);
       expect(ro.claims.DEFECT_RESPONSE_PATH.basis).to.contain("open owner decision DEFECT_RESPONSE_COUPLING");
       expect(rulesOf(ro)).to.deep.equal([]);
       // Undecided with no fail-closed alternative left (AF gone, B's route replaceable): the decision does not apply.
@@ -714,17 +762,95 @@ describe("SP1-TD1 decision receipt", function () {
         "WalletWallVault",
       ]);
       expect(d.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath).to.deep.equal(["WalletWallMultiSigVault"]);
-      // Give the multisig vault the rotation it lacks (TD1-N11) and no consumer is stranded.
+      expect(d.RECOVERY).to.equal("NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE");
+      // If the scan ever showed the multisig vault a rotation (TD1-N11), the derivation would follow the code: no
+      // consumer stranded, and recovery claimed for every consumer once the halt applies to it too. The rules refuse
+      // both, because TD2-MULTISIG-ROTATION is unbuilt: a scanned rotation is not the gate's (delay, target gating,
+      // proofs), and the design no longer describes the code.
       const rot = ctx();
       rot.inputs.probeFacts.verifierConsumers.consumersWithTimelockedRotation.push("WalletWallMultiSigVault");
+      rot.inputs.probeFacts.verifierConsumers.rotationDelaySeconds.WalletWallMultiSigVault = 172_800;
       expect(built(rot).decisions.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath).to.deep.equal([]);
-      // The bridge recovers through its consumer: drop that and it is stranded too.
+      expect(built(rot).decisions.RECOVERY).to.equal("NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE");
+      expectRule(built(rot), "WalletWallMultiSigVault can recover, so it cannot be left outside the halt");
+      expectRule(
+        built(rot),
+        "WalletWallMultiSigVault shows a recovery route before TD2-MULTISIG-ROTATION is built: the design no longer describes the code",
+      );
+      halt(rot).haltScope = {
+        applies: ["PolicyControlBridge", "StablecoinVaultSimulator", "WalletWallMultiSigVault", "WalletWallVault"],
+        excludedUntilRecoverable: [],
+      };
+      expect(built(rot).decisions.RECOVERY).to.equal("NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION");
+      for (const e of [
+        "WalletWallMultiSigVault may not be in the halt's scope before TD2-MULTISIG-ROTATION is built",
+        "WalletWallMultiSigVault waits outside the halt for TD2-MULTISIG-ROTATION",
+        "WalletWallMultiSigVault shows a recovery route before TD2-MULTISIG-ROTATION is built: the design no longer describes the code",
+      ])
+        expectRule(built(rot), e);
+      // A scope as wide as the measured consumers narrows nothing, so it needs no amendment on record.
+      delete rot.inputs.ownerDecisions[0].amendments;
+      expect(rulesOf(built(rot)).filter((e) => e.includes("the owner's amendment, on record"))).to.deep.equal([]);
+      // A delay constant alone is not a rotation: only an owner-gated rotation carries its delay.
+      const constantOnly = ctx();
+      constantOnly.inputs.probeFacts.verifierConsumers.rotationDelaySeconds.WalletWallMultiSigVault = 172_800;
+      expect(
+        built(constantOnly).decisions.DEFECT_RESPONSE_COUPLING.recoveryByConsumer.find(
+          (x) => x.consumer === "WalletWallMultiSigVault",
+        )!.rotationDelaySeconds,
+      ).to.equal(null);
+      // Applying the halt to every consumer does not make one that cannot rotate recoverable; and a scan that finds no
+      // consumer is no evidence that every consumer recovers.
+      const stuck = ctx();
+      halt(stuck).haltScope = {
+        applies: ["PolicyControlBridge", "StablecoinVaultSimulator", "WalletWallMultiSigVault", "WalletWallVault"],
+        excludedUntilRecoverable: [],
+      };
+      expect(built(stuck).decisions.RECOVERY).to.equal("NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE");
+      const noneFound = ctx();
+      noneFound.inputs.probeFacts.verifierConsumers.pqVerifierConsumers = [];
+      expect(built(noneFound).decisions.RECOVERY).to.equal("NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE");
+      // The bridge recovers through the consumers it follows: drop that, or let it follow one that cannot rotate (or
+      // none at all), and it is stranded too.
+      const stranded = (c: DecisionContext) => built(c).decisions.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath;
       const fol = ctx();
       fol.inputs.probeFacts.verifierConsumers.consumersFollowingTheirConsumer = [];
-      expect(built(fol).decisions.DEFECT_RESPONSE_COUPLING.consumersWithoutRecoveryPath).to.deep.equal([
-        "PolicyControlBridge",
-        "WalletWallMultiSigVault",
-      ]);
+      expect(stranded(fol)).to.deep.equal(["PolicyControlBridge", "WalletWallMultiSigVault"]);
+      const src = ctx();
+      src.inputs.probeFacts.verifierConsumers.bridgeCredentialSources.push("WalletWallMultiSigVault");
+      expect(stranded(src)).to.deep.equal(["PolicyControlBridge", "WalletWallMultiSigVault"]);
+      const none = ctx();
+      none.inputs.probeFacts.verifierConsumers.bridgeCredentialSources = [];
+      expect(stranded(none)).to.deep.equal(["PolicyControlBridge", "WalletWallMultiSigVault"]);
+      // A widening capability beyond the retained vault rotation is recorded by what it holds, whatever its own flags
+      // or status say (the rules then refuse anything but a TD2 proposal); a capability that cannot widen is not.
+      const acct = (c: DecisionContext) => c.inputs.ownerDecisions[0].authorityAccounting!;
+      const proposed = (c: DecisionContext) => built(c).decisions.AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2;
+      const flags = ctx();
+      acct(flags).proposedMultisigRotation.widensAuthorization = false;
+      acct(flags).proposedMultisigRotation.scope = "liveness";
+      expect(proposed(flags).map((p) => p.capabilities)).to.deep.equal([["PQ_VERIFIER_ROTATION"]]);
+      const pause = ctx();
+      acct(pause).proposedMultisigRotation.capabilities = ["pause"];
+      expect(proposed(pause)).to.deep.equal([]);
+      const decidedNow = ctx();
+      acct(decidedNow).proposedMultisigRotation.status = "DECIDED";
+      expect(proposed(decidedNow).map((p) => p.status)).to.deep.equal(["DECIDED"]);
+      expectRule(built(decidedNow), "the multisig rotation is proposed for TD2, not part of the decided design");
+      const unstated = ctx();
+      delete acct(unstated).proposedMultisigRotation.status;
+      expect(proposed(unstated).map((p) => p.status)).to.deep.equal(["UNSTATED"]);
+      // The vault owner's rotation is the retained baseline (AUTHORIZATION_AUTHORITY_DELTA.retained), not a proposal.
+      expect(proposed(ctx()).map((p) => p.principal)).to.deep.equal(["WALLETWALL_MULTISIG_VAULT_OWNER"]);
+      const unclassified = ctx();
+      delete acct(unclassified).proposedMultisigRotation.classification;
+      expect(proposed(unclassified).map((p) => p.classification)).to.deep.equal(["UNCLASSIFIED"]);
+      // A rotation is a widening power: a halt principal holding one is authority.
+      const rotHalt = ctx();
+      halt(rotHalt).haltPrincipal.powers.push("PQ_VERIFIER_ROTATION");
+      expect(built(rotHalt).decisions.AUTHORIZATION_AUTHORITY_DELTA.classification).to.equal(
+        "NEW_AUTHORIZATION_PRINCIPAL",
+      );
       // An unhalt transition makes the halt reversible.
       const c1 = ctx();
       halt(c1).transitions.push({ from: "HALTED", to: "ACTIVE", trigger: "HALT_PRINCIPAL_CALL" });
@@ -753,6 +879,9 @@ describe("SP1-TD1 decision receipt", function () {
       const c6 = ctx();
       halt(c6).recovery = "UNHALT_IN_PLACE";
       expect(built(c6).decisions.RECOVERY).to.equal("UNHALT_IN_PLACE");
+      // The output then says what the design says; the design rule, not the output rule, refuses it.
+      expect(rulesOf(built(c6)).filter((e) => e.startsWith("RECOVERY must be"))).to.deep.equal([]);
+      expectRule(built(c6), "recovery from HALTED is a new wrapper and the timelocked rotation, nothing else");
     });
 
     it("refuses each violation the owner named, built from the inputs", function () {
@@ -800,14 +929,30 @@ describe("SP1-TD1 decision receipt", function () {
           ],
         ],
         [
-          "PolicyControlBridge bypasses the halt",
-          (c) => (halt(c).consumersCovered = halt(c).consumersCovered.filter((x) => x !== "PolicyControlBridge")),
-          ["the halt must cover every consumer of the verifier (missing: PolicyControlBridge)"],
+          "PolicyControlBridge bypasses the halt (left out of its scope)",
+          (c) => (halt(c).haltScope.applies = halt(c).haltScope.applies.filter((x) => x !== "PolicyControlBridge")),
+          ["the halt's scope must name every consumer of the verifier (missing: PolicyControlBridge)"],
+        ],
+        [
+          "PolicyControlBridge bypasses the halt (excluded as if it could not recover)",
+          (c) => {
+            halt(c).haltScope.applies = halt(c).haltScope.applies.filter((x) => x !== "PolicyControlBridge");
+            halt(c).haltScope.excludedUntilRecoverable.push({
+              consumer: "PolicyControlBridge",
+              gate: "TD2-MULTISIG-ROTATION",
+              interim: "NOT_BOUND_TO_THE_SP1_PATH",
+            });
+          },
+          [
+            "PolicyControlBridge can recover, so it cannot be left outside the halt",
+            "PolicyControlBridge waits for TD2-MULTISIG-ROTATION, which is not its own gate",
+            "TD2-COMMON-VERIFIER-HALT: it must refuse a haltable wrapper to every consumer kept outside the halt",
+          ],
         ],
         [
           "a halt at a consumer, not at the wrapper",
           (c) => (halt(c).location = "VAULT_PAUSE"),
-          ["the halt sits at the verifier wrapper, where every consumer verifies"],
+          ["the halt sits at the verifier wrapper, which the consumers in its scope verify through"],
         ],
         [
           "an authorization-neutral principal with widening power",
@@ -854,6 +999,393 @@ describe("SP1-TD1 decision receipt", function () {
         const errors = rulesOf(built(c));
         for (const e of expected) expect(errors, name).to.include(e);
       }
+    });
+
+    it("refuses each violation of the owner's amendment (TD1-N11), built from the inputs", function () {
+      const od = (c: DecisionContext) => c.inputs.ownerDecisions[0];
+      const scope = (c: DecisionContext) => od(c).haltDesign!.haltScope;
+      const acct = (c: DecisionContext) => od(c).authorityAccounting!;
+      const req = (c: DecisionContext, id: string) => od(c).td2Requirements!.find((r) => r.id === id)!;
+      const gate = (c: DecisionContext) => req(c, "TD2-MULTISIG-ROTATION");
+      const MSV = "WalletWallMultiSigVault";
+      const violations: [string, (c: DecisionContext) => void, string[]][] = [
+        [
+          "the halt applied to the multisig vault before it can rotate",
+          (c) => {
+            scope(c).excludedUntilRecoverable = [];
+            scope(c).applies.push(MSV);
+          },
+          [
+            `the halt may not be applied to ${MSV}: it cannot leave a halted wrapper`,
+            `${MSV} may not be in the halt's scope before TD2-MULTISIG-ROTATION is built`,
+            `${MSV} waits outside the halt for TD2-MULTISIG-ROTATION`,
+          ],
+        ],
+        [
+          "the multisig vault dropped from the scope",
+          (c) => (scope(c).excludedUntilRecoverable = []),
+          [`the halt's scope must name every consumer of the verifier (missing: ${MSV})`],
+        ],
+        [
+          "a consumer named twice",
+          (c) => scope(c).applies.push(MSV),
+          ["the halt's scope names each measured consumer once, and only those"],
+        ],
+        [
+          "a consumer the scan did not find",
+          (c) => scope(c).applies.push("SomeOtherVault"),
+          [
+            "the halt's scope names each measured consumer once, and only those",
+            // Nothing shows it can recover, so the halt may not be applied to it either.
+            "the halt may not be applied to SomeOtherVault: it cannot leave a halted wrapper",
+          ],
+        ],
+        [
+          "excluded until a gate that is not a frozen requirement",
+          (c) => (scope(c).excludedUntilRecoverable[0].gate = "TD3-SOMETHING"),
+          [
+            `${MSV} waits for TD3-SOMETHING, which is not a frozen TD2 requirement`,
+            // Its own gate still names it: it must wait under that one.
+            `${MSV} waits outside the halt for TD2-MULTISIG-ROTATION`,
+          ],
+        ],
+        [
+          "TD2-MULTISIG-ROTATION dropped",
+          (c) => (od(c).td2Requirements = od(c).td2Requirements!.filter((r) => r.id !== "TD2-MULTISIG-ROTATION")),
+          [
+            `${MSV} waits for TD2-MULTISIG-ROTATION, which is not a frozen TD2 requirement`,
+            `TD2-MULTISIG-ROTATION is ${MSV}'s frozen gate`,
+          ],
+        ],
+        [
+          "the multisig gate moved onto the common halt (one requirement for both)",
+          (c) => {
+            const common = req(c, "TD2-COMMON-VERIFIER-HALT");
+            Object.assign(common, {
+              consumer: MSV,
+              invariants: gate(c).invariants,
+              stopCondition: gate(c).stopCondition,
+            });
+            common.executableProofs = [...common.executableProofs!, ...gate(c).executableProofs!];
+            od(c).td2Requirements = od(c).td2Requirements!.filter((r) => r.id !== "TD2-MULTISIG-ROTATION");
+            scope(c).excludedUntilRecoverable[0].gate = "TD2-COMMON-VERIFIER-HALT";
+          },
+          [`TD2-MULTISIG-ROTATION is ${MSV}'s frozen gate`],
+        ],
+        [
+          "the multisig vault waits under another consumer's gate",
+          (c) => (gate(c).consumer = "PolicyControlBridge"),
+          [
+            `${MSV} waits for TD2-MULTISIG-ROTATION, which is not its own gate`,
+            `TD2-MULTISIG-ROTATION is ${MSV}'s frozen gate`,
+            "PolicyControlBridge waits outside the halt for TD2-MULTISIG-ROTATION",
+            "PolicyControlBridge may not be in the halt's scope before TD2-MULTISIG-ROTATION is built",
+            "PolicyControlBridge shows a recovery route before TD2-MULTISIG-ROTATION is built: the design no longer describes the code",
+          ],
+        ],
+        [
+          "an interim other than no SP1 binding",
+          (c) => (scope(c).excludedUntilRecoverable[0].interim = "NON_HALTABLE_PINNED_WRAPPER"),
+          [
+            `until TD2-MULTISIG-ROTATION, ${MSV} is bound to no part of the SP1 path (any other interim is an owner decision)`,
+          ],
+        ],
+        [
+          "the multisig vault shows a rotation before its gate is built",
+          (c) => {
+            c.inputs.probeFacts.verifierConsumers.consumersWithTimelockedRotation.push(MSV);
+            c.inputs.probeFacts.verifierConsumers.rotationDelaySeconds[MSV] = 172_800;
+          },
+          [
+            `${MSV} shows a recovery route before TD2-MULTISIG-ROTATION is built: the design no longer describes the code`,
+            `${MSV} can recover, so it cannot be left outside the halt`,
+          ],
+        ],
+        [
+          "the common halt does not enforce the exclusion",
+          (c) => (req(c, "TD2-COMMON-VERIFIER-HALT").excludedConsumersRefusedAHaltableWrapper = []),
+          ["TD2-COMMON-VERIFIER-HALT: it must refuse a haltable wrapper to every consumer kept outside the halt"],
+        ],
+        [
+          "the common halt without the exclusion's proof",
+          (c) =>
+            (req(c, "TD2-COMMON-VERIFIER-HALT").executableProofs = req(
+              c,
+              "TD2-COMMON-VERIFIER-HALT",
+            ).executableProofs!.filter((p) => p !== "EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER")),
+          ["TD2-COMMON-VERIFIER-HALT: it must prove EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER"],
+        ],
+        [
+          "recovery to a fresh deployment of the halted identity",
+          (c) => (od(c).haltDesign!.recoveryIdentity = "ANY_DESIGNATED_WRAPPER"),
+          ["recovery is to an independently established identity, never a fresh deployment of the halted one"],
+        ],
+        [
+          "the narrowed scope without the owner's amendment on record",
+          (c) => delete od(c).amendments,
+          ["a halt scope narrower than the measured consumers is the owner's amendment, on record"],
+        ],
+        [
+          "the narrowing attributed to the lane",
+          (c) => (od(c).amendments![0].by = "lane"),
+          ["a halt scope narrower than the measured consumers is the owner's amendment, on record"],
+        ],
+        [
+          "a rotating consumer whose rotation waits less than the repository's",
+          (c) => (c.inputs.probeFacts.verifierConsumers.rotationDelaySeconds.StablecoinVaultSimulator = 3600),
+          ["StablecoinVaultSimulator: its rotation must wait at least the repository's 172800s (measured: 3600)"],
+        ],
+        [
+          "a rotating consumer whose delay was not measured",
+          (c) => delete c.inputs.probeFacts.verifierConsumers.rotationDelaySeconds.WalletWallVault,
+          ["WalletWallVault: its rotation must wait at least the repository's 172800s (measured: null)"],
+        ],
+        [
+          "a requirement marked built",
+          (c) => (gate(c).status = "BUILT"),
+          [
+            "TD2-MULTISIG-ROTATION: TD1 freezes requirements and builds none (BUILT)",
+            `${MSV} waits for TD2-MULTISIG-ROTATION, which is not a frozen TD2 requirement`,
+          ],
+        ],
+        [
+          "the common halt not frozen",
+          (c) => (od(c).td2Requirements = od(c).td2Requirements!.filter((r) => r.id !== "TD2-COMMON-VERIFIER-HALT")),
+          ["TD2-COMMON-VERIFIER-HALT is frozen for TD2"],
+        ],
+        [
+          "a delay shorter than the repository's",
+          (c) => (gate(c).invariants!.minimumDelaySeconds = 172_799),
+          ["TD2-MULTISIG-ROTATION: the rotation waits at least the repository's 172800s"],
+        ],
+        [
+          "no delay invariants at all",
+          (c) => delete gate(c).invariants,
+          [
+            "TD2-MULTISIG-ROTATION: the rotation waits at least the repository's 172800s",
+            "TD2-MULTISIG-ROTATION: no instantaneous verifier replacement",
+            "TD2-MULTISIG-ROTATION: no halt principal may invoke the rotation",
+            "TD2-MULTISIG-ROTATION: the rotation targets only a wrapper that passed the SP1 evidence gates",
+            "TD2-MULTISIG-ROTATION: no HALTED -> ACTIVE on the old wrapper",
+          ],
+        ],
+        [
+          "an instantaneous replacement",
+          (c) => (gate(c).invariants!.instantReplacement = true),
+          ["TD2-MULTISIG-ROTATION: no instantaneous verifier replacement"],
+        ],
+        [
+          "the halt principal invokes the rotation",
+          (c) => (gate(c).invariants!.invokableByHaltPrincipal = true),
+          ["TD2-MULTISIG-ROTATION: no halt principal may invoke the rotation"],
+        ],
+        [
+          "a rotation to a wrapper outside the evidence gates",
+          (c) => (gate(c).invariants!.targetMustPassEvidenceGates = false),
+          ["TD2-MULTISIG-ROTATION: the rotation targets only a wrapper that passed the SP1 evidence gates"],
+        ],
+        [
+          "the old wrapper unhalted",
+          (c) => (gate(c).invariants!.oldWrapperUnhalt = true),
+          ["TD2-MULTISIG-ROTATION: no HALTED -> ACTIVE on the old wrapper"],
+        ],
+        [
+          "no proof that a malicious replacement is blocked",
+          (c) =>
+            (gate(c).executableProofs = gate(c).executableProofs!.filter(
+              (p) => p !== "MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH",
+            )),
+          ["TD2-MULTISIG-ROTATION: it must prove MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH"],
+        ],
+        [
+          "no proof that the halted identity is refused as a target",
+          (c) =>
+            (gate(c).executableProofs = gate(c).executableProofs!.filter(
+              (p) => p !== "HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET",
+            )),
+          ["TD2-MULTISIG-ROTATION: it must prove HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET"],
+        ],
+        [
+          "no proofs at all",
+          (c) => delete gate(c).executableProofs,
+          [
+            "TD2-MULTISIG-ROTATION: it must prove HALTED_THEN_ROTATED_WITHDRAWAL_SUCCEEDS and MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH and HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER and HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET",
+          ],
+        ],
+        [
+          "no stop condition",
+          (c) => delete gate(c).stopCondition,
+          ["TD2-MULTISIG-ROTATION: it stops and returns to design rather than weakening the one-way halt"],
+        ],
+        [
+          "a stop condition that weakens the halt instead",
+          (c) => (gate(c).stopCondition!.never = "NOTHING"),
+          ["TD2-MULTISIG-ROTATION: it stops and returns to design rather than weakening the one-way halt"],
+        ],
+        [
+          "a stop condition that does not stop",
+          (c) => (gate(c).stopCondition!.then = "CONTINUE_TO_BUILD"),
+          ["TD2-MULTISIG-ROTATION: it stops and returns to design rather than weakening the one-way halt"],
+        ],
+        [
+          "a stop condition that never fires",
+          (c) => (gate(c).stopCondition!.when = "NEVER"),
+          ["TD2-MULTISIG-ROTATION: it stops and returns to design rather than weakening the one-way halt"],
+        ],
+        [
+          "the rotation labelled authority-neutral",
+          (c) => (acct(c).proposedMultisigRotation.classification = "AUTHORITY_NEUTRAL"),
+          ["a rotation for an existing principal is a new authorization capability, never authority-neutral"],
+        ],
+        [
+          "the rotation recorded as liveness",
+          (c) => {
+            acct(c).proposedMultisigRotation.scope = "liveness";
+            acct(c).proposedMultisigRotation.widensAuthorization = false;
+          },
+          ["proposedMultisigRotation: a capability that can widen what verifies is authorization"],
+        ],
+        [
+          "the rotation's widening flag cleared",
+          (c) => (acct(c).proposedMultisigRotation.widensAuthorization = false),
+          ["proposedMultisigRotation: a capability that can widen what verifies is authorization"],
+        ],
+        [
+          "the rotation's scope set to liveness",
+          (c) => (acct(c).proposedMultisigRotation.scope = "liveness"),
+          ["proposedMultisigRotation: a capability that can widen what verifies is authorization"],
+        ],
+        [
+          "the rotation held by the halt principal",
+          (c) => (acct(c).proposedMultisigRotation.principal = "WALLETWALL_EMERGENCY_HALT_PRINCIPAL"),
+          [
+            "the rotation is proposed for the multisig vault's existing owner",
+            "the halt principal is never a vault owner, and never holds a rotation",
+          ],
+        ],
+        [
+          "the multisig vault's owner as the halt principal",
+          (c) => {
+            od(c).haltDesign!.haltPrincipal.id = "WALLETWALL_MULTISIG_VAULT_OWNER";
+            acct(c).haltPrincipal.principal = "WALLETWALL_MULTISIG_VAULT_OWNER";
+          },
+          ["the halt principal is never a vault owner, and never holds a rotation"],
+        ],
+        [
+          "the multisig vault's owner recorded under the halt principal's name",
+          (c) => (acct(c).multisigOwnerToday.principal = "WALLETWALL_EMERGENCY_HALT_PRINCIPAL"),
+          ["the halt principal is never a vault owner, and never holds a rotation"],
+        ],
+        [
+          "the halt principal accounted with a rotation",
+          (c) => acct(c).haltPrincipal.capabilities.push("PQ_VERIFIER_ROTATION"),
+          [
+            "haltPrincipal: a capability that can widen what verifies is authorization",
+            "the halt principal is accounted with the halt design's principal and powers",
+          ],
+        ],
+        [
+          "the halt principal accounted under another name",
+          (c) => (acct(c).haltPrincipal.principal = "SOMEONE_ELSE"),
+          ["the halt principal is accounted with the halt design's principal and powers"],
+        ],
+        [
+          "the multisig vault's owner accounted beyond its code",
+          (c) => acct(c).multisigOwnerToday.capabilities.push("setPqVerifier"),
+          [
+            "the multisig vault's owner is accounted with the onlyOwner functions its code declares",
+            "the multisig vault's owner holds more than pause and unpause (setPqVerifier)",
+          ],
+        ],
+        [
+          "the multisig vault's code gains an owner function",
+          (c) => c.inputs.probeFacts.verifierConsumers.multisigOwnerOnlyFunctions.push("setPqVerifier"),
+          ["the multisig vault's owner is accounted with the onlyOwner functions its code declares"],
+        ],
+        [
+          "the rotation is something else",
+          (c) => {
+            acct(c).proposedMultisigRotation.capabilities = ["PAUSE_ALL"];
+            acct(c).proposedMultisigRotation.scope = "liveness";
+            acct(c).proposedMultisigRotation.widensAuthorization = false;
+          },
+          ["the proposed capability is the multisig vault's pqVerifier rotation, and nothing else"],
+        ],
+        [
+          "the rotation carries a further power",
+          (c) => acct(c).proposedMultisigRotation.capabilities.push("BYPASS_VERIFICATION"),
+          ["the proposed capability is the multisig vault's pqVerifier rotation, and nothing else"],
+        ],
+        [
+          "an extra accounting row (a widening capability adopted outside the proposal)",
+          (c) =>
+            Object.assign(acct(c), {
+              adopted: {
+                principal: "WALLETWALL_MULTISIG_VAULT_OWNER",
+                capabilities: ["PQ_VERIFIER_ROTATION"],
+                scope: "authorization",
+                widensAuthorization: true,
+                status: "DECIDED",
+                classification: "AUTHORITY_NEUTRAL",
+              },
+            }),
+          [
+            "the authority accounting holds exactly haltPrincipal, vaultOwnerToday, multisigOwnerToday, proposedMultisigRotation",
+          ],
+        ],
+        [
+          "the vault owner accounted without its rotation",
+          (c) => (acct(c).vaultOwnerToday.capabilities = ["pause", "unpause"]),
+          [
+            "the vault owner is accounted with the retained rotation and its pause, nothing more",
+            "vaultOwnerToday: a capability that cannot widen what verifies is liveness",
+          ],
+        ],
+        [
+          "the vault owner's rotation recorded as something other than retained",
+          (c) => (acct(c).vaultOwnerToday.status = "PROPOSED_FOR_TD2"),
+          ["the vault owner is accounted with the retained rotation and its pause, nothing more"],
+        ],
+        [
+          "the halt principal is the vault owner who holds the in-scope rotation",
+          (c) => {
+            od(c).haltDesign!.haltPrincipal.id = "WALLETWALL_VAULT_OWNER";
+            acct(c).haltPrincipal.principal = "WALLETWALL_VAULT_OWNER";
+          },
+          ["the halt principal is never a vault owner, and never holds a rotation"],
+        ],
+        [
+          "the rotation folded into the decided design",
+          (c) => (acct(c).proposedMultisigRotation.status = "DECIDED"),
+          ["the multisig rotation is proposed for TD2, not part of the decided design"],
+        ],
+        [
+          "the rotation without its own review",
+          (c) => (acct(c).proposedMultisigRotation.requires = []),
+          [
+            "the proposed rotation requires separate authority accounting",
+            "the proposed rotation requires executable review",
+          ],
+        ],
+        [
+          "no authority accounting",
+          (c) => delete od(c).authorityAccounting,
+          ["the decided halt needs its authority accounting"],
+        ],
+        [
+          "the bridge could follow the multisig vault",
+          (c) => c.inputs.probeFacts.verifierConsumers.bridgeCredentialSources.push(MSV),
+          ["the halt may not be applied to PolicyControlBridge: it cannot leave a halted wrapper"],
+        ],
+      ];
+      for (const [name, violate, expected] of violations) {
+        const c = ctx();
+        violate(c);
+        const errors = rulesOf(built(c));
+        for (const e of expected) expect(errors, name).to.include(e);
+      }
+      // Control: the amendment as recorded passes every rule.
+      expect(rulesOf(built())).to.deep.equal([]);
     });
 
     it("the upgrade and cross-chain models follow the decided option and the per-chain evidence", function () {
@@ -1474,7 +2006,7 @@ describe("SP1-TD1 decision receipt", function () {
       expectRule(R, "HALT_REVERSIBILITY disagrees with the halt design (ONE_WAY)");
       R = clone(committed());
       R.decisions.RECOVERY = "UNHALT_IN_PLACE";
-      expectRule(R, "RECOVERY disagrees with the halt design");
+      expectRule(R, "RECOVERY must be NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE");
       R = clone(committed());
       R.decisions.UPSTREAM_GATEWAY_OWNER = "WALLETWALL_AUTHORITY";
       expectRule(R, "the upstream gateway owner is not a WalletWall authority under the decided response");
@@ -1488,6 +2020,135 @@ describe("SP1-TD1 decision receipt", function () {
       R = clone(committed());
       (R.decisions.DEFECT_RESPONSE_COUPLING as { status: string }).status = "OWNER_DECISION_REQUIRED";
       expectRule(R, "REAL_VALUE_BLOCKER must be DEFECT_RESPONSE_COUPLING_UNDECIDED: a design lane cannot lift it");
+    });
+
+    it("refuses a recovery claim for every consumer while the multisig vault cannot recover (TD1-N11)", function () {
+      const all =
+        "RECOVERY must be NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE: it claims every consumer only once every consumer can recover";
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      expectRule(R, all);
+      // Hiding the stranded consumer from the per-consumer table does not make the claim true.
+      R = clone(committed());
+      const dc = () => R.decisions.DEFECT_RESPONSE_COUPLING;
+      dc().recoveryByConsumer = dc().recoveryByConsumer.filter((x) => x.consumer !== "WalletWallMultiSigVault");
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      expectRule(R, all);
+      expectRule(R, "recoveryByConsumer must list each measured consumer once, with the halt's scope and gate");
+      // Nor does marking it applied, or erasing it from the stranded list.
+      R = clone(committed());
+      dc().recoveryByConsumer.find((x) => x.consumer === "WalletWallMultiSigVault")!.halt = "APPLIED";
+      expectRule(R, "recoveryByConsumer must list each measured consumer once, with the halt's scope and gate");
+      R = clone(committed());
+      dc().recoveryByConsumer.find((x) => x.consumer === "WalletWallMultiSigVault")!.gate = null;
+      expectRule(R, "recoveryByConsumer must list each measured consumer once, with the halt's scope and gate");
+      R = clone(committed());
+      dc().consumersWithoutRecoveryPath = [];
+      expectRule(R, "consumersWithoutRecoveryPath must be the consumers with no recovery route");
+      // Applying the halt to the stranded consumer everywhere does not make it recover.
+      R = clone(committed());
+      const msv = () => dc().recoveryByConsumer.find((x) => x.consumer === "WalletWallMultiSigVault")!;
+      dc().haltDesign!.haltScope = {
+        applies: ["PolicyControlBridge", "StablecoinVaultSimulator", "WalletWallMultiSigVault", "WalletWallVault"],
+        excludedUntilRecoverable: [],
+      };
+      msv().halt = "APPLIED";
+      msv().gate = null;
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      expectRule(R, all);
+      // Nor does a route written in while it stays outside the halt.
+      R = clone(committed());
+      msv().route = "OWN_TIMELOCKED_ROTATION";
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      expectRule(R, all);
+      // And a receipt that measured no consumer at all claims nothing for every consumer.
+      R = clone(committed());
+      dc().measuredConsumers = [];
+      dc().recoveryByConsumer = [];
+      dc().consumersWithoutRecoveryPath = [];
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      expectRule(R, all);
+      // A route the rules do not know is no route: an applied consumer with one cannot carry the halt, and it counts
+      // for no recovery claim.
+      R = clone(committed());
+      const bridge = () => dc().recoveryByConsumer.find((x) => x.consumer === "PolicyControlBridge")!;
+      (bridge() as { route: string }).route = "SOMETHING_ELSE";
+      expectRule(R, "recoveryByConsumer: PolicyControlBridge has an unknown route SOMETHING_ELSE");
+      expectRule(R, "the halt may not be applied to PolicyControlBridge: it cannot leave a halted wrapper");
+      R = clone(committed());
+      dc().haltDesign!.haltScope = {
+        applies: ["PolicyControlBridge", "StablecoinVaultSimulator", "WalletWallMultiSigVault", "WalletWallVault"],
+        excludedUntilRecoverable: [],
+      };
+      Object.assign(msv(), { route: "SOMETHING_ELSE", halt: "APPLIED", gate: null });
+      dc().consumersWithoutRecoveryPath = [];
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      expectRule(R, all);
+    });
+
+    it("refuses the review's self-consistent hand edits: the multisig vault admitted, the bridge excluded", function () {
+      const dc = () => R.decisions.DEFECT_RESPONSE_COUPLING;
+      const row = (c: string) => dc().recoveryByConsumer.find((x) => x.consumer === c)!;
+      // Every field agrees that the multisig vault rotates and is in the scope; its gate is still unbuilt.
+      R.decisions.RECOVERY = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+      Object.assign(row("WalletWallMultiSigVault"), {
+        route: "OWN_TIMELOCKED_ROTATION",
+        rotationDelaySeconds: 172_800,
+        halt: "APPLIED",
+        gate: null,
+      });
+      dc().consumersWithoutRecoveryPath = [];
+      dc().haltDesign!.haltScope = {
+        applies: ["PolicyControlBridge", "StablecoinVaultSimulator", "WalletWallMultiSigVault", "WalletWallVault"],
+        excludedUntilRecoverable: [],
+      };
+      dc().td2Requirements.find((r) => r.id === "TD2-COMMON-VERIFIER-HALT")!.excludedConsumersRefusedAHaltableWrapper =
+        [];
+      for (const e of [
+        "WalletWallMultiSigVault may not be in the halt's scope before TD2-MULTISIG-ROTATION is built",
+        "WalletWallMultiSigVault waits outside the halt for TD2-MULTISIG-ROTATION",
+        "WalletWallMultiSigVault shows a recovery route before TD2-MULTISIG-ROTATION is built: the design no longer describes the code",
+      ])
+        expectRule(R, e);
+      // The bridge marked stranded and parked under the multisig vault's gate.
+      R = clone(committed());
+      Object.assign(row("PolicyControlBridge"), {
+        route: "NONE",
+        halt: "EXCLUDED_UNTIL_RECOVERABLE",
+        gate: "TD2-MULTISIG-ROTATION",
+      });
+      dc().consumersWithoutRecoveryPath = ["PolicyControlBridge", "WalletWallMultiSigVault"];
+      const scope = dc().haltDesign!.haltScope;
+      scope.applies = scope.applies.filter((c) => c !== "PolicyControlBridge");
+      scope.excludedUntilRecoverable.push({
+        consumer: "PolicyControlBridge",
+        gate: "TD2-MULTISIG-ROTATION",
+        interim: "NOT_BOUND_TO_THE_SP1_PATH",
+      });
+      dc().td2Requirements.find((r) => r.id === "TD2-COMMON-VERIFIER-HALT")!.excludedConsumersRefusedAHaltableWrapper =
+        ["PolicyControlBridge", "WalletWallMultiSigVault"];
+      expectRule(R, "PolicyControlBridge waits for TD2-MULTISIG-ROTATION, which is not its own gate");
+    });
+
+    it("keeps every frozen TD2 requirement, and the proposed rotation, on the record", function () {
+      R.decisions.REAL_VALUE_REQUIREMENTS = ["TD2-COMMON-VERIFIER-HALT"];
+      expectRule(
+        R,
+        "REAL_VALUE_REQUIREMENTS must name every requirement frozen for TD2: real value waits for all of them",
+      );
+      R = clone(committed());
+      R.decisions.AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2 = [];
+      expectRule(R, "AUTHORIZATION_AUTHORITY_DELTA must carry every widening capability proposed for TD2");
+      R = clone(committed());
+      R.decisions.AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2[0].classification = "AUTHORITY_NEUTRAL";
+      expectRule(R, "AUTHORIZATION_AUTHORITY_DELTA must carry every widening capability proposed for TD2");
+      // An undecided response freezes nothing, and real value waits on the decision itself.
+      R = clone(committed());
+      (R.decisions.DEFECT_RESPONSE_COUPLING as { status: string }).status = "OWNER_DECISION_REQUIRED";
+      R.decisions.DEFECT_RESPONSE_COUPLING.td2Requirements = [];
+      expectRule(
+        R,
+        "REAL_VALUE_REQUIREMENTS must name every requirement frozen for TD2: real value waits for all of them",
+      );
     });
 
     it("rejects an authorization-neutral classification for a halt principal with widening power", function () {
@@ -1622,6 +2283,37 @@ describe("SP1-TD1 decision receipt", function () {
         ["REAL_PROOF_LANE_UNBLOCKED", String(d.REAL_PROOF_LANE_UNBLOCKED.value)],
         ["IMPLEMENTATION_REQUIRED", String(d.IMPLEMENTATION_REQUIRED.required)],
       ]);
+      // The requirement ids are hyphenated, so their row is read on its own: every backticked value, in order.
+      const req = /^\| `REAL_VALUE_REQUIREMENTS` \| (.*?) \|/m.exec(section("Decisions"));
+      expect(req, "REAL_VALUE_REQUIREMENTS row").to.not.equal(null);
+      expect([...req![1].matchAll(/`([^`]+)`/g)].map((m) => m[1])).to.deep.equal(d.REAL_VALUE_REQUIREMENTS);
+    });
+
+    it("states the authority accounting the receipt carries, principal by principal", function () {
+      const a = committed().decisions.DEFECT_RESPONSE_COUPLING.authorityAccounting!;
+      const table = doc()
+        .split("\n")
+        .filter((l) => /^\| `WALLETWALL_(?:EMERGENCY_HALT_PRINCIPAL|VAULT_OWNER|MULTISIG_VAULT_OWNER)`/.test(l));
+      const accounted = [a.haltPrincipal, a.vaultOwnerToday, a.multisigOwnerToday, a.proposedMultisigRotation];
+      expect(table.length).to.equal(accounted.length);
+      accounted.forEach((x, i) => {
+        const [principal, holds, scope, widens, status] = table[i].slice(2, -2).split(" | ");
+        expect(principal, x.principal).to.contain(`\`${x.principal}\``);
+        for (const c of x.capabilities) expect(holds, x.principal).to.contain(`\`${c}\``);
+        expect(scope, x.principal).to.equal(x.scope);
+        expect(widens.replace(/\*/g, ""), x.principal).to.equal(x.widensAuthorization ? "yes" : "no");
+        for (const s of [x.status, x.classification].filter(Boolean))
+          expect(status, x.principal).to.contain(`\`${s}\``);
+      });
+    });
+
+    it("states each finding's disposition as the receipt records it", function () {
+      const findings = section("Findings intersecting this design");
+      for (const f of committed().findings) {
+        const line = findings.split("\n").find((l) => l.startsWith(`| ${f.id} `));
+        expect(line, f.id).to.not.equal(undefined);
+        expect(line!.split(" | ")[1], f.id).to.equal(`\`${f.disposition}\``);
+      }
     });
 
     it("names no full-length hash, vkey or address that the committed evidence does not contain", function () {

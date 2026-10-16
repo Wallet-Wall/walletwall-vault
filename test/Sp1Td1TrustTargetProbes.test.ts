@@ -447,26 +447,55 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
               : [],
         );
       // A consumer calls .verify(...) on a verifier it holds or reads; an implementer is a verifier, not a consumer.
-      const consumers = solidity("contracts")
-        .map((path) => readFileSync(path, "utf8"))
+      const sources = solidity("contracts").map((path) => readFileSync(path, "utf8"));
+      const consumers = sources
         .filter((s) => /\.verify\(/.test(s) && !/\bcontract\s+\w+\s+is\s+[^{]*\bIPQCVerifier\b/.test(s))
         .map((s) => ({ name: /^contract\s+(\w+)/m.exec(s)![1], source: s }));
+      // The timelocked rotation recovery relies on: both steps owner-gated, and a delay constant (measured below).
       const rotates = (s: string) =>
-        /function proposePQVerifier\(/.test(s) &&
-        /function applyPQVerifierUpdate\(/.test(s) &&
+        /function proposePQVerifier\([^)]*\)[^{;]*\bonlyOwner\b/.test(s) &&
+        /function applyPQVerifierUpdate\([^)]*\)[^{;]*\bonlyOwner\b/.test(s) &&
         /PQ_VERIFIER_UPDATE_DELAY/.test(s);
+      const UNIT: Record<string, number> = { seconds: 1, minutes: 60, hours: 3600, days: 86400, weeks: 604800 };
+      const delayOf = (s: string) => {
+        const m = /\bPQ_VERIFIER_UPDATE_DELAY\s*=\s*(\d+)\s*(seconds|minutes|hours|days|weeks)?\s*;/.exec(s);
+        return m ? Number(m[1]) * UNIT[m[2] ?? "seconds"] : null;
+      };
       const followsItsConsumer = (s: string) => /\)\.pqVerifier\(\)/.test(s);
       const names = (keep: (s: string) => boolean) =>
         consumers
           .filter((c) => keep(c.source))
           .map((c) => c.name)
           .sort();
+      // The bridge reads pqVerifier() from the consumer an intent names, through a credential-source surface only a
+      // contract that keeps policyControlEpoch provides: a public mapping (any further modifiers, `override` included)
+      // or a function with a body. Among WalletWall's contracts; a contract outside them is outside the claim.
+      const credentialSources = sources
+        .filter((s) =>
+          /mapping\s*\([^;]*\)\s*public\b[^;=]*\bpolicyControlEpoch\s*;|function\s+policyControlEpoch\s*\([^)]*\)[^;{]*\{/.test(
+            s,
+          ),
+        )
+        .map((s) => /^contract\s+(\w+)/m.exec(s)![1])
+        .sort();
+      const multisig = consumers.find((c) => c.name === "WalletWallMultiSigVault")!.source;
       const observed = {
         pqVerifierConsumers: names(() => true),
         consumersWithTimelockedRotation: names(rotates),
         consumersFollowingTheirConsumer: names(followsItsConsumer),
         consumersWithFixedVerifier: names((s) => !rotates(s) && !followsItsConsumer(s)),
+        bridgeCredentialSources: credentialSources,
+        multisigOwnerOnlyFunctions: [...multisig.matchAll(/function\s+(\w+)\s*\([^)]*\)[^{;]*\bonlyOwner\b/g)]
+          .map((m) => m[1])
+          .sort(),
+        rotationDelaySeconds: Object.fromEntries(
+          consumers.filter((c) => rotates(c.source)).map((c) => [c.name, delayOf(c.source)]),
+        ),
       };
+      // The source constant is the delay the executed rotation waits (WalletWallVault, option C's probe).
+      expect(observed.rotationDelaySeconds.WalletWallVault).to.equal(
+        FACTS.C_walletwallGateway.vaultVerifierRotationDelaySeconds,
+      );
       expect(observed.pqVerifierConsumers).to.deep.equal([
         "PolicyControlBridge",
         "StablecoinVaultSimulator",
@@ -475,6 +504,17 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
       ]);
       // The multisig vault sets its verifier once and has no rotation: a one-way halt would strand it (TD1-N11).
       expect(observed.consumersWithFixedVerifier).to.deep.equal(["WalletWallMultiSigVault"]);
+      // "Fixed" is measured, not inferred from the absence of a rotation: one assignment, in the constructor.
+      for (const c of consumers.filter((x) => observed.consumersWithFixedVerifier.includes(x.name))) {
+        expect([...c.source.matchAll(/\bpqVerifier\s*=(?!=)/g)].length, c.name).to.equal(1);
+        expect(/\bconstructor\s*\([^{]*\{[^}]*\bpqVerifier\s*=(?!=)/.test(c.source), c.name).to.equal(true);
+      }
+      // Its owner can only pause and unpause; the bridge can follow only vaults that rotate, never the multisig vault.
+      expect(observed.multisigOwnerOnlyFunctions).to.deep.equal(["pause", "unpause"]);
+      expect(observed.bridgeCredentialSources).to.not.include("WalletWallMultiSigVault");
+      expect(
+        observed.bridgeCredentialSources.every((s) => observed.consumersWithTimelockedRotation.includes(s)),
+      ).to.equal(true);
       expect(observed).to.deep.equal(FACTS.verifierConsumers);
     });
   });

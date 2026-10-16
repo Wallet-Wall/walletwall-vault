@@ -25,7 +25,7 @@
  * accepted is an authorization lever ("widen"); one that can only make a previously ACCEPTED proof rejected is
  * a liveness lever ("disable"). They are never summed into one score. A liveness lever is also marked when it
  * would protect against a defect in the verifier itself (a freeze stops forged proofs too); that trade-off is
- * recorded as an open owner decision, never netted against authorization.
+ * the owner's decision, recorded open or decided, never netted against authorization.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
@@ -132,6 +132,49 @@ export const INHERITED_BY_EVERY_OPTION =
 export const DECIDED_DEFECT_RESPONSE = "WALLETWALL_DETECT_AND_FAIL_CLOSED";
 export const LOCAL_ONE_WAY_VERIFIER_HALT = "LOCAL_ONE_WAY_VERIFIER_HALT";
 export const NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION = "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION";
+/** The owner's amendment (2026-10-15): until every consumer can recover, recovery is claimed only where the halt applies. */
+export const NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE =
+  "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE";
+/** A widening capability given to a principal that already exists is new authority all the same. */
+export const NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL =
+  "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL";
+/** The common halt, frozen for TD2 beside the recovery gate of each consumer the halt cannot reach yet. */
+export const TD2_COMMON_VERIFIER_HALT = "TD2-COMMON-VERIFIER-HALT";
+/** The owner's name for the multisig vault's recovery gate, and the consumer it is for (TD1-N11). */
+export const TD2_MULTISIG_ROTATION = "TD2-MULTISIG-ROTATION";
+const MULTISIG_VAULT = "WalletWallMultiSigVault";
+/** What the common halt must prove in TD2: the owner's three, and what the review added (exclusion, identity, transfer). */
+export const COMMON_HALT_PROOFS = [
+  "VALID_VERIFICATION_WHILE_ACTIVE",
+  "FAILS_CLOSED_AFTER_HALT_THROUGH_EVERY_CONSUMER_IN_SCOPE",
+  "HALT_PRINCIPAL_CANNOT_MAKE_AN_INVALID_PROOF_VALID",
+  "HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER",
+  "HALTED_IDENTITY_REFUSED_AS_A_RECOVERY_TARGET",
+  "EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER",
+];
+/** What a consumer's recovery gate must prove before the halt may reach that consumer. */
+export const RECOVERY_GATE_PROOFS = [
+  "HALTED_THEN_ROTATED_WITHDRAWAL_SUCCEEDS",
+  "MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH",
+  "HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER",
+  "HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET",
+];
+/** A gate's stop condition, structured: on an unacceptable cut it stops and returns to design, never weakens the halt. */
+export const GATE_STOP_CONDITION = {
+  when: "UNACCEPTABLE_AUTHORIZATION_CUT",
+  then: "STOP_AND_RETURN_TO_DESIGN",
+  never: "WEAKEN_THE_ONE_WAY_HALT",
+};
+/** Recovery is to an independently established identity: a fresh deployment of the halted one is not. */
+export const RECOVERY_IDENTITY = "INDEPENDENTLY_ESTABLISHED_NEVER_THE_HALTED_ONE";
+/** Until its gate, a consumer kept outside the halt is bound to no part of the SP1 path (another interim is the owner's). */
+export const EXCLUDED_INTERIM = "NOT_BOUND_TO_THE_SP1_PATH";
+/** The principals the amendment accounts for, in order. */
+const ACCOUNTING_KEYS = ["haltPrincipal", "vaultOwnerToday", "multisigOwnerToday", "proposedMultisigRotation"];
+/** What the vault owner holds with respect to verification: the retained rotation and a reversible pause. */
+const VAULT_OWNER_CAPABILITIES = ["PQ_VERIFIER_ROTATION", "pause", "unpause"];
+/** The routes by which a consumer leaves a halted wrapper; anything else is no route. */
+const RECOVERING_ROUTES = ["OWN_TIMELOCKED_ROTATION", "ITS_CONSUMERS_TIMELOCKED_ROTATION"];
 /** Powers that would change what verifies. A halt principal holds none of them; holding one is authority. */
 export const WIDENING_POWERS = [
   "WIDEN_ACCEPTED_RELATION",
@@ -140,7 +183,11 @@ export const WIDENING_POWERS = [
   "CHANGE_PROGRAM_VKEY",
   "SELECT_VERIFIER",
   "BYPASS_VERIFICATION",
+  // After its delay, a rotation can point a consumer at any verifier, an accept-all one included.
+  "PQ_VERIFIER_ROTATION",
 ];
+/** The onlyOwner functions the multisig vault's owner may hold while it is accounted liveness-only. */
+const LIVENESS_OWNER_FUNCTIONS = ["pause", "unpause"];
 /** The only reachable environment read the pinned runtime may make (its self-call's code check). */
 const ALLOWED_RUNTIME_READS = ["EXTCODESIZE"];
 /** Precompiles a Groth16 BN254 verifier may call at a constant address: modexp, ecAdd, ecMul, pairing. */
@@ -216,6 +263,12 @@ export interface ProbeFacts {
     consumersWithTimelockedRotation: string[];
     consumersFollowingTheirConsumer: string[];
     consumersWithFixedVerifier: string[];
+    /** The contracts the policy bridge can read a verifier from (they declare policyControlEpoch): it recovers with them. */
+    bridgeCredentialSources: string[];
+    /** The onlyOwner functions WalletWallMultiSigVault declares: its owner's powers beyond handing over ownership. */
+    multisigOwnerOnlyFunctions: string[];
+    /** Each rotating consumer's PQ_VERIFIER_UPDATE_DELAY, in seconds. */
+    rotationDelaySeconds: Record<string, number>;
   };
   AF_directFreezeCoupled: {
     squattedRouteRejectedAtConstruction: boolean;
@@ -330,6 +383,12 @@ export interface OwnerDecisionInput {
   decidedBy?: string;
   decidedOn?: string;
   haltDesign?: HaltDesign;
+  /** Amendments to the decision, each attributed: the owner's words, not the lane's. */
+  amendments?: { id: string; by: string; on: string; summary: string }[];
+  /** The owner's amendment: the halt principal, the vault owners, and the rotation proposed for the multisig vault. */
+  authorityAccounting?: AuthorityAccounting;
+  /** What TD1 freezes for TD2 to build; TD1 builds none of it. */
+  td2Requirements?: Td2Requirement[];
 }
 
 /**
@@ -343,11 +402,72 @@ export interface HaltDesign {
   transitions: { from: string; to: string; trigger: string }[];
   haltPrincipal: { id: string; powers: string[]; selection: string };
   wrapperIdentity: { sp1Verifier: string; programVKey: string };
-  consumersCovered: string[];
+  /** What recovery may rotate to: an independently established identity, never a fresh deployment of the halted one. */
+  recoveryIdentity: string;
+  /**
+   * Where the halt applies: only to consumers that can leave a halted wrapper. A consumer that cannot stays off any
+   * haltable wrapper until its own TD2 gate gives it a delayed verifier rotation (TD1-N11), bound meanwhile to no part
+   * of the SP1 path.
+   */
+  haltScope: { applies: string[]; excludedUntilRecoverable: { consumer: string; gate: string; interim: string }[] };
   detectionSignals: string[];
   detectionSignalsControlState: boolean;
   recovery: string;
   td2Tests: string[];
+}
+
+/** One principal's power over verification, accounted on its own: what it holds, and whether that can widen. */
+export interface AccountedAuthority {
+  principal: string;
+  capabilities: string[];
+  scope: "authorization" | "liveness";
+  widensAuthorization: boolean;
+  classification?: string;
+  status?: string;
+  requires?: string[];
+  note?: string;
+}
+
+export interface AuthorityAccounting {
+  haltPrincipal: AccountedAuthority;
+  /** The WalletWallVault and StablecoinVaultSimulator owner, whose timelocked rotation the decision retains. */
+  vaultOwnerToday: AccountedAuthority;
+  multisigOwnerToday: AccountedAuthority;
+  proposedMultisigRotation: AccountedAuthority;
+}
+
+/**
+ * A requirement TD1 freezes for TD2. A consumer's recovery gate names its consumer and carries its delayed rotation's
+ * invariants; the owner's items are kept as given, and what review added is recorded apart.
+ */
+export interface Td2Requirement {
+  id: string;
+  status: string;
+  summary: string;
+  consumer?: string;
+  excludedConsumersRefusedAHaltableWrapper?: string[];
+  items?: string[];
+  reviewAdditions?: string[];
+  invariants?: {
+    minimumDelaySeconds: number;
+    instantReplacement: boolean;
+    invokableByHaltPrincipal: boolean;
+    targetMustPassEvidenceGates: boolean;
+    oldWrapperUnhalt: boolean;
+  };
+  executableProofs?: string[];
+  stopCondition?: { when: string; then: string; never: string; text: string };
+}
+
+/** How one consumer leaves a halted wrapper, and whether the halt applies to it yet. */
+export interface ConsumerRecovery {
+  consumer: string;
+  /** Its own timelocked pqVerifier rotation, the rotation of the consumers it follows (the policy bridge), or none. */
+  route: "OWN_TIMELOCKED_ROTATION" | "ITS_CONSUMERS_TIMELOCKED_ROTATION" | "NONE";
+  /** Its own rotation's delay (OWN_TIMELOCKED_ROTATION only). */
+  rotationDelaySeconds: number | null;
+  halt: "APPLIED" | "EXCLUDED_UNTIL_RECOVERABLE" | "UNSCOPED";
+  gate: string | null;
 }
 
 interface ChainVerifierRead {
@@ -1540,6 +1660,8 @@ export interface Td1DecisionReceipt {
       added: Lever[];
       retained: Lever[];
       inheritedByEveryOption: string;
+      /** Widening capabilities proposed for TD2: accounted apart, outside the decided design, never authority-neutral. */
+      proposedForTd2: { principal: string; capabilities: string[]; classification: string; status: string }[];
     };
     LIVENESS_DEPENDENCY: {
       onChainExternal: Lever[];
@@ -1576,6 +1698,12 @@ export interface Td1DecisionReceipt {
       /** The consumers the source scan found, and those with no way to replace their verifier. */
       measuredConsumers: string[];
       consumersWithoutRecoveryPath: string[];
+      recoveryByConsumer: ConsumerRecovery[];
+      /** The onlyOwner functions the multisig vault declares, against which its owner is accounted. */
+      multisigOwnerOnlyFunctions: string[];
+      amendments: NonNullable<OwnerDecisionInput["amendments"]>;
+      authorityAccounting: AuthorityAccounting | null;
+      td2Requirements: Td2Requirement[];
     };
     DEFECT_RESPONSE_MECHANISM: string;
     HALT_REVERSIBILITY: "ONE_WAY" | "REVERSIBLE" | "UNDECIDED";
@@ -1583,6 +1711,8 @@ export interface Td1DecisionReceipt {
     UPSTREAM_GATEWAY_OWNER: "NOT_A_WALLETWALL_AUTHORITY" | "WALLETWALL_AUTHORITY";
     /** What still stands between this design and real value. */
     REAL_VALUE_BLOCKER: "TD2_IMPLEMENTATION_NOT_YET_BUILT" | "DEFECT_RESPONSE_COUPLING_UNDECIDED";
+    /** The frozen TD2 requirements real value waits for; TD1 builds none of them. */
+    REAL_VALUE_REQUIREMENTS: string[];
     IMPLEMENTATION_REQUIRED: { required: boolean; plan: string[] };
     REAL_PROOF_LANE_UNBLOCKED: { value: boolean; basis: string[]; preconditions: string[] };
   };
@@ -1615,11 +1745,29 @@ const REAL_PROOF_PRECONDITIONS = [
   "the proof is generated for the designated ELF: its sha256 is checked against the designation before proving (a default local build embeds the builder's CARGO_HOME and yields a different program)",
   "verification targets the designated trust target only: the CREATE2-authenticated v6.1.0 bytes (in a local EVM) or a chain deployment checked by EXTCODEHASH and by the per-chain execution check, never a gateway route",
   "the downloaded circuit artifacts are the pinned key's: sha256(groth16_vk.bin) must equal VERIFIER_HASH 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 (two different 'v6.1.0' keys have existed)",
-  "no real value: the lane is for testnet/local proofs; real value additionally needs the decided DEFECT_RESPONSE_COUPLING (a local one-way verifier halt) built and tested through every consumer in TD2, the recovery path WalletWallMultiSigVault lacks (TD1-N11), and the frozen implementation lane",
+  "no real value: the lane is for testnet/local proofs; real value additionally needs the decided DEFECT_RESPONSE_COUPLING built and tested in TD2 — TD2-COMMON-VERIFIER-HALT (the local one-way verifier halt, through every consumer in its scope) and TD2-MULTISIG-ROTATION (WalletWallMultiSigVault's delayed verifier rotation, without which the halt may not reach it: TD1-N11) — and the frozen implementation lane",
 ];
 
 function sameLever(a: Lever, b: Lever) {
   return a.principal === b.principal && a.lever === b.lever;
+}
+
+/**
+ * Every capability beyond the retained vault rotation that can widen what verifies, judged by what it holds, not by
+ * its own flags or status: each must then be a TD2 proposal, classified as new authority.
+ */
+function proposedWidening(accounting: AuthorityAccounting | null | undefined) {
+  return Object.entries(accounting ?? {})
+    .filter(
+      ([key, a]: [string, AccountedAuthority]) =>
+        key !== "vaultOwnerToday" && a.capabilities.some((c) => WIDENING_POWERS.includes(c)),
+    )
+    .map(([, a]: [string, AccountedAuthority]) => ({
+      principal: a.principal,
+      capabilities: a.capabilities,
+      classification: a.classification ?? "UNCLASSIFIED",
+      status: a.status ?? "UNSTATED",
+    }));
 }
 
 export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
@@ -1668,11 +1816,34 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
   // The owner decided the defect response of a decided trust target; with none decided, there is nothing to carry.
   const ownerDecided = od?.status === "DECIDED" && !!decided;
   const halt = ownerDecided ? (od.haltDesign ?? null) : null;
-  // The halt must reach every consumer, and each consumer must have a way to leave a halted wrapper: its own
-  // timelocked rotation, or its consumer's (the bridge reads the consumer's pqVerifier()).
+  // A consumer leaves a halted wrapper by its own timelocked rotation, or — the policy bridge, which reads the
+  // pqVerifier() of the consumer an intent names — by the rotation of every contract it can read one from. The halt
+  // applies only where such a route exists; a consumer without one waits outside it for its TD2 gate (TD1-N11).
   const consumers = ctx.inputs.probeFacts.verifierConsumers;
   const measuredConsumers = [...consumers.pqVerifierConsumers].sort();
-  const canRecover = [...consumers.consumersWithTimelockedRotation, ...consumers.consumersFollowingTheirConsumer];
+  const sourcesRotate =
+    consumers.bridgeCredentialSources.length > 0 &&
+    consumers.bridgeCredentialSources.every((s) => consumers.consumersWithTimelockedRotation.includes(s));
+  const route = (c: string): ConsumerRecovery["route"] =>
+    consumers.consumersWithTimelockedRotation.includes(c)
+      ? "OWN_TIMELOCKED_ROTATION"
+      : consumers.consumersFollowingTheirConsumer.includes(c) && sourcesRotate
+        ? "ITS_CONSUMERS_TIMELOCKED_ROTATION"
+        : "NONE";
+  const applies = halt?.haltScope?.applies ?? [];
+  const excluded = halt?.haltScope?.excludedUntilRecoverable ?? [];
+  const recoveryByConsumer = measuredConsumers.map((c): ConsumerRecovery => {
+    const gate = excluded.find((e) => e.consumer === c)?.gate ?? null;
+    return {
+      consumer: c,
+      route: route(c),
+      rotationDelaySeconds: route(c) === "OWN_TIMELOCKED_ROTATION" ? (consumers.rotationDelaySeconds[c] ?? null) : null,
+      halt: applies.includes(c) ? "APPLIED" : gate ? "EXCLUDED_UNTIL_RECOVERABLE" : "UNSCOPED",
+      gate,
+    };
+  });
+  const accounting = ownerDecided ? (od.authorityAccounting ?? null) : null;
+  const td2Requirements = ownerDecided ? (od.td2Requirements ?? []) : [];
   const defectCoupling: Td1DecisionReceipt["decisions"]["DEFECT_RESPONSE_COUPLING"] = {
     status: ownerDecided ? "DECIDED" : alternatives.length === 0 ? "NOT_APPLICABLE" : "OWNER_DECISION_REQUIRED",
     decision: ownerDecided ? (od.decision ?? null) : null,
@@ -1687,7 +1858,12 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
     requiredBeforeRealValue: od?.requiredBeforeRealValue ?? true,
     haltDesign: halt,
     measuredConsumers,
-    consumersWithoutRecoveryPath: measuredConsumers.filter((c) => !canRecover.includes(c)),
+    consumersWithoutRecoveryPath: recoveryByConsumer.filter((x) => x.route === "NONE").map((x) => x.consumer),
+    recoveryByConsumer,
+    multisigOwnerOnlyFunctions: [...consumers.multisigOwnerOnlyFunctions].sort(),
+    amendments: ownerDecided ? (od.amendments ?? []) : [],
+    authorityAccounting: accounting,
+    td2Requirements,
   };
   // The halt lever: WalletWall's own (governed), liveness only, and protective by construction.
   const haltLevers: Lever[] = halt
@@ -1713,6 +1889,18 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
   const upstreamLeverInPath = [...ext(decided?.widen), ...ext(decided?.disable)].some((l) =>
     l.principal.startsWith("upstream gateway owner"),
   );
+  // Recovery is claimed for every consumer only once the halt applies to every consumer and each can leave it.
+  const everyConsumerRecovers =
+    recoveryByConsumer.length > 0 && recoveryByConsumer.every((x) => x.halt === "APPLIED" && x.route !== "NONE");
+  const haltScopeText =
+    `TD2 tests it through every consumer in its scope (${applies.join(", ") || "none"})` +
+    recoveryByConsumer
+      .filter((x) => x.halt !== "APPLIED")
+      .map(
+        (x) =>
+          `; ${x.consumer} ${x.route === "NONE" ? "has no recovery path and " : ""}stays off a haltable wrapper${x.gate ? ` until ${x.gate}` : ""}`,
+      )
+      .join("");
 
   const trustResolved = target.decision !== "UNRESOLVED";
   const programResolved = pid.decision !== "UNRESOLVED";
@@ -1802,7 +1990,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
       status: "NOT_ESTABLISHED",
       basis:
         defectCoupling.status === "DECIDED"
-          ? `decided by the ${defectCoupling.decidedBy} on ${defectCoupling.decidedOn}: ${defectCoupling.decision} via ${defectCoupling.mechanism}; not built — TD2 implements the halt and tests it through every consumer${defectCoupling.consumersWithoutRecoveryPath.length > 0 ? `, and ${defectCoupling.consumersWithoutRecoveryPath.join(", ")} still lacks the decided recovery path` : ""}; until then only WalletWall's manual pauses, one per consumer, fail it closed`
+          ? `decided by the ${defectCoupling.decidedBy} on ${defectCoupling.decidedOn}: ${defectCoupling.decision} via ${defectCoupling.mechanism}; not built — until TD2 builds the halt, only WalletWall's manual pauses, one per consumer, fail a defect closed; ${haltScopeText}`
           : defectCoupling.status === "OWNER_DECISION_REQUIRED"
             ? `open owner decision DEFECT_RESPONSE_COUPLING (alternatives ${alternatives.map((a) => a.id).join(", ")}); until it is decided and built, a defect in the pinned verifier is stopped only by WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), with no stated or tested response bound`
             : "no protective alternative exists; WalletWall's manual pauses, one per consumer (the policy bridge's is one-way), are the only fail-closed path, with no stated or tested response bound",
@@ -1859,6 +2047,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
         added: addedWiden,
         retained: (decided?.widen ?? []).filter((l) => l.governed),
         inheritedByEveryOption: INHERITED_BY_EVERY_OPTION,
+        proposedForTd2: proposedWidening(accounting),
       },
       LIVENESS_DEPENDENCY: {
         onChainExternal: ext(decided?.disable),
@@ -1901,7 +2090,11 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
         : halt.transitions.some((t) => t.from === "HALTED")
           ? "REVERSIBLE"
           : "ONE_WAY",
-      RECOVERY: halt?.recovery ?? "UNDECIDED",
+      RECOVERY: !halt
+        ? "UNDECIDED"
+        : halt.recovery !== NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION || everyConsumerRecovers
+          ? halt.recovery
+          : NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE,
       UPSTREAM_GATEWAY_OWNER:
         upstreamLeverInPath || signalsMoveTheHalt ? "WALLETWALL_AUTHORITY" : "NOT_A_WALLETWALL_AUTHORITY",
       // Closing the decision does not lift the blocker: the halt is built and tested in TD2.
@@ -1909,6 +2102,7 @@ export function buildDecisionReceipt(ctx: DecisionContext): Td1DecisionReceipt {
         defectCoupling.status === "OWNER_DECISION_REQUIRED"
           ? "DEFECT_RESPONSE_COUPLING_UNDECIDED"
           : "TD2_IMPLEMENTATION_NOT_YET_BUILT",
+      REAL_VALUE_REQUIREMENTS: td2Requirements.map((r) => r.id),
       IMPLEMENTATION_REQUIRED: { required: true, plan: ctx.inputs.implementationPlan },
       REAL_PROOF_LANE_UNBLOCKED: { value: unblocked, basis: unblockBasis, preconditions: REAL_PROOF_PRECONDITIONS },
     },
@@ -1932,14 +2126,180 @@ function evidenceFiles(inputs: DecisionInputs): FileRef[] {
 // Rules: what no receipt may claim, checked on the receipt alone
 // ---------------------------------------------------------------------------------------------------------
 
+type DefectCoupling = Td1DecisionReceipt["decisions"]["DEFECT_RESPONSE_COUPLING"];
+
 /**
- * The owner's decision (2026-10-15), checked on the receipt alone: a local, one-way, halt-only breaker at the
- * verifier wrapper that every consumer reaches, moved only by its principal, recovered only by a new wrapper and the
- * timelocked rotation, and never an upstream authority.
+ * The halt's scope (the owner's amendment): every measured consumer named once; the halt applied only where a
+ * consumer can leave a halted wrapper; a consumer that cannot waits outside it for its own frozen TD2 gate, bound to
+ * no part of the SP1 path, and one that can is never left outside (that would be a bypass, the policy bridge's
+ * included). A gate is unbuilt in TD1, so its consumer can be neither in the scope nor shown a recovery route: if the
+ * code ever shows one, the design no longer describes the code.
+ */
+function haltScopeErrors(h: HaltDesign, dc: DefectCoupling, repoDelay: number | undefined): string[] {
+  const errors: string[] = [];
+  const applies = h.haltScope?.applies ?? [];
+  const excluded = h.haltScope?.excludedUntilRecoverable ?? [];
+  const measured = dc.measuredConsumers ?? [];
+  const rbc = dc.recoveryByConsumer ?? [];
+  const reqs = dc.td2Requirements ?? [];
+  const named = [...applies, ...excluded.map((e) => e.consumer)];
+  const missing = measured.filter((c) => !named.includes(c));
+  if (missing.length > 0)
+    errors.push(`the halt's scope must name every consumer of the verifier (missing: ${missing.join(", ")})`);
+  if (named.length !== new Set(named).size || named.some((c) => !measured.includes(c)))
+    errors.push("the halt's scope names each measured consumer once, and only those");
+  // A route the rules do not know is no route.
+  const route = (c: string) => {
+    const r = rbc.find((x) => x.consumer === c)?.route ?? "NONE";
+    return RECOVERING_ROUTES.includes(r) ? r : "NONE";
+  };
+  for (const x of rbc)
+    if (![...RECOVERING_ROUTES, "NONE"].includes(x.route))
+      errors.push(`recoveryByConsumer: ${x.consumer} has an unknown route ${String(x.route)}`);
+  for (const c of applies)
+    if (route(c) === "NONE") errors.push(`the halt may not be applied to ${c}: it cannot leave a halted wrapper`);
+  for (const e of excluded) {
+    if (route(e.consumer) !== "NONE") errors.push(`${e.consumer} can recover, so it cannot be left outside the halt`);
+    const g = reqs.find((r) => r.id === e.gate);
+    if (!g || g.status !== "FROZEN_FOR_TD2")
+      errors.push(`${e.consumer} waits for ${e.gate}, which is not a frozen TD2 requirement`);
+    else if (g.consumer !== e.consumer) errors.push(`${e.consumer} waits for ${e.gate}, which is not its own gate`);
+    if (e.interim !== EXCLUDED_INTERIM)
+      errors.push(
+        `until ${e.gate}, ${e.consumer} is bound to no part of the SP1 path (any other interim is an owner decision)`,
+      );
+  }
+  // A recovery gate is unbuilt in TD1: its consumer waits outside the halt and shows no recovery route.
+  for (const g of reqs.filter((r) => r.consumer !== undefined)) {
+    const c = g.consumer as string;
+    if (applies.includes(c)) errors.push(`${c} may not be in the halt's scope before ${g.id} is built`);
+    if (!excluded.some((e) => e.consumer === c && e.gate === g.id))
+      errors.push(`${c} waits outside the halt for ${g.id}`);
+    if (route(c) !== "NONE")
+      errors.push(`${c} shows a recovery route before ${g.id} is built: the design no longer describes the code`);
+  }
+  // A rotation that waits less than the repository's is not the timelocked rotation recovery relies on.
+  for (const x of rbc.filter((r) => r.route === "OWN_TIMELOCKED_ROTATION"))
+    if (repoDelay === undefined || !(typeof x.rotationDelaySeconds === "number" && x.rotationDelaySeconds >= repoDelay))
+      errors.push(
+        `${x.consumer}: its rotation must wait at least the repository's ${String(repoDelay)}s (measured: ${String(x.rotationDelaySeconds)})`,
+      );
+  // The per-consumer table says what the scope says, for exactly the measured consumers.
+  const scopeOf = (c: string) => {
+    const gate = excluded.find((e) => e.consumer === c)?.gate ?? null;
+    return { halt: applies.includes(c) ? "APPLIED" : gate ? "EXCLUDED_UNTIL_RECOVERABLE" : "UNSCOPED", gate };
+  };
+  if (
+    JSON.stringify(rbc.map((x) => x.consumer)) !== JSON.stringify(measured) ||
+    rbc.some((x) => JSON.stringify({ halt: x.halt, gate: x.gate }) !== JSON.stringify(scopeOf(x.consumer)))
+  )
+    errors.push("recoveryByConsumer must list each measured consumer once, with the halt's scope and gate");
+  if (
+    JSON.stringify(dc.consumersWithoutRecoveryPath) !==
+    JSON.stringify(rbc.filter((x) => x.route === "NONE").map((x) => x.consumer))
+  )
+    errors.push("consumersWithoutRecoveryPath must be the consumers with no recovery route");
+  return errors;
+}
+
+/**
+ * The principals the owner's amendment separates. The halt principal and the multisig vault's owner today hold
+ * liveness only; the vault owner holds the retained rotation; a verifier rotation proposed for the multisig vault's
+ * owner widens what verifies, so it is a new authorization capability however long its holder has existed. The halt
+ * principal is none of the others.
+ */
+function accountingErrors(h: HaltDesign, dc: DefectCoupling): string[] {
+  const a = dc.authorityAccounting;
+  if (!a) return ["the decided halt needs its authority accounting"];
+  if (JSON.stringify(Object.keys(a)) !== JSON.stringify(ACCOUNTING_KEYS))
+    return [`the authority accounting holds exactly ${ACCOUNTING_KEYS.join(", ")}`];
+  const errors: string[] = [];
+  for (const [k, x] of Object.entries(a) as [string, AccountedAuthority][]) {
+    const widens = x.capabilities.some((c) => WIDENING_POWERS.includes(c));
+    if (x.widensAuthorization !== widens || x.scope !== (widens ? "authorization" : "liveness"))
+      errors.push(
+        widens
+          ? `${k}: a capability that can widen what verifies is authorization`
+          : `${k}: a capability that cannot widen what verifies is liveness`,
+      );
+  }
+  const { haltPrincipal: hp, vaultOwnerToday: vo, multisigOwnerToday: mo, proposedMultisigRotation: pr } = a;
+  if (hp.principal !== h.haltPrincipal.id || JSON.stringify(hp.capabilities) !== JSON.stringify(h.haltPrincipal.powers))
+    errors.push("the halt principal is accounted with the halt design's principal and powers");
+  if (vo.status !== "RETAINED" || JSON.stringify(vo.capabilities) !== JSON.stringify(VAULT_OWNER_CAPABILITIES))
+    errors.push("the vault owner is accounted with the retained rotation and its pause, nothing more");
+  if (JSON.stringify([...mo.capabilities].sort()) !== JSON.stringify(dc.multisigOwnerOnlyFunctions))
+    errors.push("the multisig vault's owner is accounted with the onlyOwner functions its code declares");
+  const beyond = mo.capabilities.filter((c) => !LIVENESS_OWNER_FUNCTIONS.includes(c));
+  if (beyond.length > 0)
+    errors.push(`the multisig vault's owner holds more than pause and unpause (${beyond.join(", ")})`);
+  if (pr.principal !== mo.principal) errors.push("the rotation is proposed for the multisig vault's existing owner");
+  if ([vo.principal, mo.principal, pr.principal].includes(hp.principal))
+    errors.push("the halt principal is never a vault owner, and never holds a rotation");
+  if (JSON.stringify(pr.capabilities) !== JSON.stringify(["PQ_VERIFIER_ROTATION"]))
+    errors.push("the proposed capability is the multisig vault's pqVerifier rotation, and nothing else");
+  if (pr.status !== "PROPOSED_FOR_TD2")
+    errors.push("the multisig rotation is proposed for TD2, not part of the decided design");
+  if (pr.classification !== NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL)
+    errors.push("a rotation for an existing principal is a new authorization capability, never authority-neutral");
+  for (const need of ["separate authority accounting", "executable review"])
+    if (!(pr.requires ?? []).includes(need)) errors.push(`the proposed rotation requires ${need}`);
+  return errors;
+}
+
+/**
+ * What TD1 freezes for TD2: nothing built; the common halt, which must enforce every exclusion and prove what the
+ * owner and the review named; and each recovery gate (a requirement that names its consumer) a delayed rotation no
+ * weaker than the repository's own, with its proofs and its stop condition — the multisig vault's under the owner's
+ * name.
+ */
+function td2RequirementErrors(dc: DefectCoupling, repoDelay: number | undefined): string[] {
+  const errors: string[] = [];
+  const reqs = dc.td2Requirements ?? [];
+  for (const r of reqs)
+    if (r.status !== "FROZEN_FOR_TD2") errors.push(`${r.id}: TD1 freezes requirements and builds none (${r.status})`);
+  const common = reqs.find((r) => r.id === TD2_COMMON_VERIFIER_HALT);
+  if (!common) errors.push(`${TD2_COMMON_VERIFIER_HALT} is frozen for TD2`);
+  else {
+    const kept = (dc.haltDesign?.haltScope?.excludedUntilRecoverable ?? []).map((e) => e.consumer).sort();
+    if (JSON.stringify([...(common.excludedConsumersRefusedAHaltableWrapper ?? [])].sort()) !== JSON.stringify(kept))
+      errors.push(`${common.id}: it must refuse a haltable wrapper to every consumer kept outside the halt`);
+    const unproved = COMMON_HALT_PROOFS.filter((p) => !(common.executableProofs ?? []).includes(p));
+    if (unproved.length > 0) errors.push(`${common.id}: it must prove ${unproved.join(" and ")}`);
+  }
+  if (!reqs.some((r) => r.id === TD2_MULTISIG_ROTATION && r.consumer === MULTISIG_VAULT))
+    errors.push(`${TD2_MULTISIG_ROTATION} is ${MULTISIG_VAULT}'s frozen gate`);
+  for (const g of reqs.filter((r) => r.consumer !== undefined)) {
+    const inv = g.invariants;
+    if (repoDelay === undefined || !(inv && inv.minimumDelaySeconds >= repoDelay))
+      errors.push(`${g.id}: the rotation waits at least the repository's ${String(repoDelay)}s`);
+    if (inv?.instantReplacement !== false) errors.push(`${g.id}: no instantaneous verifier replacement`);
+    if (inv?.invokableByHaltPrincipal !== false) errors.push(`${g.id}: no halt principal may invoke the rotation`);
+    if (inv?.targetMustPassEvidenceGates !== true)
+      errors.push(`${g.id}: the rotation targets only a wrapper that passed the SP1 evidence gates`);
+    if (inv?.oldWrapperUnhalt !== false) errors.push(`${g.id}: no HALTED -> ACTIVE on the old wrapper`);
+    const unproved = RECOVERY_GATE_PROOFS.filter((p) => !(g.executableProofs ?? []).includes(p));
+    if (unproved.length > 0) errors.push(`${g.id}: it must prove ${unproved.join(" and ")}`);
+    const stop = g.stopCondition;
+    if (
+      stop?.when !== GATE_STOP_CONDITION.when ||
+      stop.then !== GATE_STOP_CONDITION.then ||
+      stop.never !== GATE_STOP_CONDITION.never
+    )
+      errors.push(`${g.id}: it stops and returns to design rather than weakening the one-way halt`);
+  }
+  return errors;
+}
+
+/**
+ * The owner's decision (2026-10-15) and its amendment, checked on the receipt alone: a local, one-way, halt-only
+ * breaker at the verifier wrapper, applied to every consumer that can recover from it, moved only by its principal,
+ * recovered only by a new wrapper and the timelocked rotation, never an upstream authority; the principals accounted
+ * apart; and the requirements TD2 must meet frozen.
  */
 function decidedHaltErrors(
   d: Td1DecisionReceipt["decisions"],
-  dc: Td1DecisionReceipt["decisions"]["DEFECT_RESPONSE_COUPLING"],
+  dc: DefectCoupling,
   decided: OptionAuthority | undefined,
   ext: (ls: Lever[] | undefined) => Lever[],
 ): string[] {
@@ -1953,13 +2313,21 @@ function decidedHaltErrors(
   if (dc.mechanism !== LOCAL_ONE_WAY_VERIFIER_HALT)
     errors.push(`the decided mechanism is ${LOCAL_ONE_WAY_VERIFIER_HALT}`);
   const h = dc.haltDesign;
+  // The rotation delay the decision retains (the vault owner's governed lever): the floor for every recovery rotation.
+  const repoDelay = decided?.widen.find((l) => l.lever === "pqVerifierRotation")?.delaySeconds;
   if (!h) errors.push("a decided defect response needs its halt design");
   else {
     if (h.location !== "VERIFIER_WRAPPER")
-      errors.push("the halt sits at the verifier wrapper, where every consumer verifies");
-    const missing = (dc.measuredConsumers ?? []).filter((c) => !(h.consumersCovered ?? []).includes(c));
-    if (missing.length > 0)
-      errors.push(`the halt must cover every consumer of the verifier (missing: ${missing.join(", ")})`);
+      errors.push("the halt sits at the verifier wrapper, which the consumers in its scope verify through");
+    errors.push(...haltScopeErrors(h, dc, repoDelay));
+    // A scope narrower than the measured consumers is the owner's amendment, not the lane's choice.
+    if (
+      (h.haltScope?.excludedUntilRecoverable ?? []).length > 0 &&
+      !(dc.amendments ?? []).some((x) => x.by === "owner")
+    )
+      errors.push("a halt scope narrower than the measured consumers is the owner's amendment, on record");
+    if (h.recoveryIdentity !== RECOVERY_IDENTITY)
+      errors.push("recovery is to an independently established identity, never a fresh deployment of the halted one");
     if (JSON.stringify(h.transitions.map((t) => [t.from, t.to])) !== JSON.stringify([["ACTIVE", "HALTED"]]))
       errors.push("the halt has one transition, ACTIVE -> HALTED: nothing leaves HALTED in place");
     if (h.transitions.some((t) => t.trigger !== "HALT_PRINCIPAL_CALL"))
@@ -1974,17 +2342,30 @@ function decidedHaltErrors(
       errors.push("the wrapper's PROGRAM_VKEY is immutable, halted or not");
     if (h.recovery !== NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION)
       errors.push("recovery from HALTED is a new wrapper and the timelocked rotation, nothing else");
-    // The outputs say what the design says.
+    // The outputs say what the design says; RECOVERY claims every consumer only once every consumer can recover.
     const reversibility = h.transitions.some((t) => t.from === "HALTED") ? "REVERSIBLE" : "ONE_WAY";
     if (d.HALT_REVERSIBILITY !== reversibility)
       errors.push(`HALT_REVERSIBILITY disagrees with the halt design (${reversibility})`);
-    if (d.RECOVERY !== h.recovery) errors.push("RECOVERY disagrees with the halt design");
+    const entry = (c: string) => (dc.recoveryByConsumer ?? []).find((x) => x.consumer === c);
+    const everyConsumerRecovers =
+      (dc.measuredConsumers ?? []).length > 0 &&
+      (dc.measuredConsumers ?? []).every(
+        (c) => entry(c)?.halt === "APPLIED" && RECOVERING_ROUTES.includes(entry(c)?.route ?? "NONE"),
+      );
+    const recovery =
+      h.recovery !== NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION || everyConsumerRecovers
+        ? h.recovery
+        : NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE;
+    if (d.RECOVERY !== recovery)
+      errors.push(`RECOVERY must be ${recovery}: it claims every consumer only once every consumer can recover`);
     if (
       d.AUTHORIZATION_AUTHORITY_DELTA?.classification === "NO_NEW_AUTHORIZATION_PRINCIPAL" &&
       h.haltPrincipal.powers.some((p) => WIDENING_POWERS.includes(p))
     )
       errors.push("a halt principal with widening power is authority: the delta cannot be authorization-neutral");
+    errors.push(...accountingErrors(h, dc));
   }
+  errors.push(...td2RequirementErrors(dc, repoDelay));
   if (d.UPSTREAM_GATEWAY_OWNER !== "NOT_A_WALLETWALL_AUTHORITY")
     errors.push("the upstream gateway owner is not a WalletWall authority under the decided response");
   if (
@@ -2178,6 +2559,16 @@ export function validateDecisionRules(value: unknown): string[] {
         : "TD2_IMPLEMENTATION_NOT_YET_BUILT";
     if (d.REAL_VALUE_BLOCKER !== blocker)
       errors.push(`REAL_VALUE_BLOCKER must be ${blocker}: a design lane cannot lift it`);
+    if (JSON.stringify(d.REAL_VALUE_REQUIREMENTS) !== JSON.stringify((dc.td2Requirements ?? []).map((x) => x.id)))
+      errors.push(
+        "REAL_VALUE_REQUIREMENTS must name every requirement frozen for TD2: real value waits for all of them",
+      );
+    // A widening capability proposed for TD2 stays on the authorization record, whatever it says of itself.
+    if (
+      JSON.stringify(d.AUTHORIZATION_AUTHORITY_DELTA?.proposedForTd2) !==
+      JSON.stringify(proposedWidening(dc.authorityAccounting))
+    )
+      errors.push("AUTHORIZATION_AUTHORITY_DELTA must carry every widening capability proposed for TD2");
     if (dc.status !== "NOT_APPLICABLE") {
       const offered = (dc.choices ?? []).flatMap((c) => c.options);
       if (decided && !offered.includes(decided.id))
@@ -2206,7 +2597,7 @@ export function validateDecisionRules(value: unknown): string[] {
       if (dc.requiredBeforeRealValue !== true) errors.push("the defect response must be required before real value");
     }
   }
-  // The real-proof preconditions are the lane's, word for word (one of them names the open owner decision).
+  // The real-proof preconditions are the lane's, word for word (one names the decided response and its TD2 gates).
   if (JSON.stringify(unblock?.preconditions) !== JSON.stringify(REAL_PROOF_PRECONDITIONS))
     errors.push("the real-proof preconditions are not the lane's");
 

@@ -22,9 +22,13 @@ stopped on two open questions: which verifier `ZKMLDSAVerifier` should trust, an
    `LOCAL_ONE_WAY_VERIFIER_HALT`.** Binding directly gives up upstream's freeze, which is a liveness cost while
    v6.1.0 is sound and a kill switch if it is not. The owner chose WalletWall's own kill switch: a one-way circuit
    breaker at the WalletWall verifier wrapper (ACTIVE → HALTED only), held by a principal that can do nothing but
-   halt, which fails all four consumers closed through one mechanism; recovery only by a new wrapper and the
-   timelocked rotation. AF is not chosen, and upstream signals are detection evidence only. TD1 freezes the design;
-   TD2 builds and tests it, and real value waits for that (`REAL_VALUE_BLOCKER`; see
+   halt, which fails every consumer in its scope closed through one mechanism; recovery only by a new wrapper and
+   the timelocked rotation. AF is not chosen, and upstream signals are detection evidence only. **The owner's
+   amendment:** the halt is applied only to consumers that can recover from it. `WalletWallMultiSigVault` cannot
+   yet (TD1-N11), so it is bound to no part of the SP1 path until `TD2-MULTISIG-ROTATION` gives it a delayed verifier
+   rotation, which is itself a new authorization capability for its owner, accounted apart. TD1 freezes the design;
+   TD2 builds and tests it, and real value — for every consumer — waits for both requirements
+   (`REAL_VALUE_BLOCKER`, `REAL_VALUE_REQUIREMENTS`; see
    [the decided defect response](#the-decided-defect-response-a-local-one-way-verifier-halt)).
 
 The machine-readable record is [`evidence/zk/sp1-td1/decision-receipt.json`](../evidence/zk/sp1-td1/decision-receipt.json)
@@ -42,20 +46,23 @@ the exact mainnet verifier and gateway bytes.
 | `UPGRADE_MODEL` | `EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION` | a new verifier or guest means a new wrapper and the vault's 2-day rotation |
 | `CROSS_CHAIN_MODEL` | `CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK` | one runtime code hash at one CREATE2 address on Ethereum, Base, Sepolia and Base Sepolia; the hash is necessary, not sufficient, so each chain must also accept a real v6.1.0 proof and refuse a tampered copy and an odd-word canary |
 | `DEFECT_RESPONSE_COUPLING` | `WALLETWALL_DETECT_AND_FAIL_CLOSED` | decided by the owner on 2026-10-15; AF (`UPSTREAM_FREEZE_FAIL_CLOSED`) is not chosen |
-| `DEFECT_RESPONSE_MECHANISM` | `LOCAL_ONE_WAY_VERIFIER_HALT` | a circuit breaker at the WalletWall verifier wrapper, which all four consumers verify through |
-| `AUTHORIZATION_AUTHORITY_DELTA` | `NO_NEW_AUTHORIZATION_PRINCIPAL` | the halt principal holds no widening power; nothing outside the timelocked rotation can widen |
+| `DEFECT_RESPONSE_MECHANISM` | `LOCAL_ONE_WAY_VERIFIER_HALT` | a circuit breaker at the WalletWall verifier wrapper, applied to the three consumers that can recover from it; `WalletWallMultiSigVault` waits for `TD2-MULTISIG-ROTATION` |
+| `AUTHORIZATION_AUTHORITY_DELTA` | `NO_NEW_AUTHORIZATION_PRINCIPAL` | the halt principal holds no widening power; nothing outside the timelocked rotation can widen. Proposed for TD2 and accounted apart: the multisig vault owner's `pqVerifier` rotation, `NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL` |
 | `LIVENESS_AUTHORITY_DELTA` | `WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY` | one WalletWall principal that can only halt; the upstream owners' freeze is removed |
 | `HALT_REVERSIBILITY` | `ONE_WAY` | ACTIVE → HALTED; nothing leaves HALTED in place |
-| `RECOVERY` | `NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION` | a new wrapper with independently established identity, the normal evidence gates, the timelocked rotation; `WalletWallMultiSigVault` lacks this path today (TD1-N11) |
+| `RECOVERY` | `NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE` | a new wrapper with independently established identity, the normal evidence gates, the timelocked rotation — for the consumers in the halt's scope only; not claimed for `WalletWallMultiSigVault`, which cannot rotate yet (TD1-N11) |
 | `UPSTREAM_GATEWAY_OWNER` | `NOT_A_WALLETWALL_AUTHORITY` | no lever in the decided path; `RouteFrozen` and advisories are detection evidence only |
-| `REAL_VALUE_BLOCKER` | `TD2_IMPLEMENTATION_NOT_YET_BUILT` | closing the decision lifts nothing: the halt is built and tested through every consumer in TD2 |
+| `REAL_VALUE_BLOCKER` | `TD2_IMPLEMENTATION_NOT_YET_BUILT` | closing the decision lifts nothing: real value waits for both requirements below |
+| `REAL_VALUE_REQUIREMENTS` | `TD2-COMMON-VERIFIER-HALT`, `TD2-MULTISIG-ROTATION` | the common halt, built and tested through every consumer in its scope; the multisig vault's delayed verifier rotation, after which the halt may reach it. TD1 builds neither |
 | `REAL_PROOF_LANE_UNBLOCKED` | `true` | for a no-value lane: trust target and program identity established; starting it is the owner's call (the circuit download), under the preconditions below |
 | `IMPLEMENTATION_REQUIRED` | `true` | the pins, the designation file, the halt and the tooling are frozen for the next lane |
 
 `AUTHORIZATION_AUTHORITY_DELTA` (against what the runbook directs today, option D): **removed** the gateway
 owner's `addRoute` on every measured chain — the Safe `0xCafEf00d348Adbd57c37d1B77e0619C6244C6878` (2-of-3) on
 Ethereum and Base, and the single EOA `0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126` on Sepolia and Base Sepolia;
-**added** none; **retained** the vault owner's timelocked `pqVerifier` rotation (172,800 s delay).
+**added** none; **retained** the vault owner's timelocked `pqVerifier` rotation (172,800 s delay); **proposed for
+TD2, not decided**: a `pqVerifier` rotation for the multisig vault's owner, a new authorization capability for an
+existing principal (`proposedForTd2`; see [the authority accounting](#the-owners-amendment-the-multisig-vault-needs-a-way-out-first-td1-n11)).
 `LIVENESS_DEPENDENCY`: no external on-chain lever remains. The owners' `freezeRoute` is removed, and with it
 upstream's ability to fail WalletWall closed; the decided halt gives that ability to one WalletWall principal that
 can do nothing else (`LIVENESS_AUTHORITY_DELTA`). Off chain, proof generation needs
@@ -78,7 +85,7 @@ inherits: each chain's own governance (its precompile semantics; on an L2, its u
 | `IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE` | `ESTABLISHED` | on the same workstation, a separately installed toolchain plus one remap flag reproduced it byte for byte (corroboration, not a second CPU or a second distribution) |
 | `VKEY_DERIVATION_ALGORITHM_INDEPENDENT` | `NOT_ESTABLISHED` | every vkey comes from Succinct's `sp1-prover`; a WalletWall proof verifying on the pinned verifier is the next join |
 | `GATEWAY_ROUTE_HISTORY_COMPLETE` | `NOT_ESTABLISHED` | the indexer SP1-P1 used missed a `RouteFrozen`, and an indexer's history is no completeness proof; under a code pin no route needs enumerating |
-| `DEFECT_RESPONSE_PATH` | `NOT_ESTABLISHED` | decided (a local one-way verifier halt), not built: TD2 implements it and tests it through every consumer, and `WalletWallMultiSigVault` still lacks the recovery path; until then only WalletWall's manual pauses, one per consumer, fail a defect closed |
+| `DEFECT_RESPONSE_PATH` | `NOT_ESTABLISHED` | decided (a local one-way verifier halt), not built: until TD2 builds it, only WalletWall's manual pauses, one per consumer, fail a defect closed; TD2 tests it through every consumer in its scope, and `WalletWallMultiSigVault` is bound to no part of the SP1 path until `TD2-MULTISIG-ROTATION` |
 | `REAL_SP1_PROOF_GENERATED` | `NOT_ESTABLISHED` | out of scope: no circuit download, no prover run |
 | `REAL_SP1_PROOF_VERIFIED` | `NOT_ESTABLISHED` | no WalletWall proof exists; the real proofs run are third parties' (upstream's v6 fixture, a v6.1.0 proof from mainnet), as controls |
 | `PRODUCTION_READINESS` | `NOT_ESTABLISHED` | design lane; implementation, defect response, real proof and audit outstanding |
@@ -195,7 +202,7 @@ governance (precompile semantics; on an L2, its upgrade keys), which every optio
 | accepted relation mutable outside WalletWall's timelock | **no** | **no** | **no** | yes (squat) | yes | yes |
 | who can widen | vault owner, after 172,800 s | vault owner, after 172,800 s | vault owner, after 172,800 s | + gateway owner where the selector is unrouted | + WalletWall gateway admin, 0 s | + gateway owner per chain, 0 s |
 | who outside WalletWall can stop valid proofs | nobody | gateway owner per chain | gateway owner per chain | gateway owner per chain | WalletWall gateway admin | gateway owner per chain |
-| who fails verification closed if v6.1.0 proves unsound | **decided:** WalletWall's halt principal, one-way, at the wrapper, every consumer at once (built in TD2); today one pause per consumer | + upstream's freeze, at once, for every consumer | + upstream's freeze, at once, for every consumer | + upstream's freeze | + the gateway admin's freeze | + upstream's freeze |
+| who fails verification closed if v6.1.0 proves unsound | **decided:** WalletWall's halt principal, one-way, at the wrapper, every consumer in its scope at once (built in TD2; the multisig vault only after `TD2-MULTISIG-ROTATION`); today one pause per consumer | + upstream's freeze, at once, for every consumer | + upstream's freeze, at once, for every consumer | + upstream's freeze | + the gateway admin's freeze | + upstream's freeze |
 | proxy / admin | none | upstream Ownable, read for its freeze bit only | upstream Ownable (no proxy) | upstream Ownable | WalletWall Ownable | upstream Ownable |
 | route registry in the accepted path | no | no | yes | yes | yes | yes |
 | upstream governance dependency | none | liveness | liveness | authorization | none | authorization |
@@ -218,7 +225,7 @@ above B on path length.
 | 3. independent provenance | CREATE2, four-chain code hash, own compile, Sourcify, VK join, a real v6.1.0 proof | the same, plus the gateway to attribute | tie |
 | 4. reproducibility | the same verifier bytes | the same | tie |
 | 5. fail closed on foreign code or routes | the code pin refuses any other code, on any chain | construction checks refuse a squatted or foreign route | tie |
-| 5a. fail closed on a defect in v6.1.0 itself | decided: WalletWall's one-way halt at the wrapper, every consumer at once (four separate pauses until TD2 builds it) | at once, for every consumer, **if** upstream freezes | owner's decision: **A + halt** |
+| 5a. fail closed on a defect in v6.1.0 itself | decided: WalletWall's one-way halt at the wrapper, every consumer that can recover at once (four separate pauses until TD2 builds it; the multisig vault keeps only its owner's pause until `TD2-MULTISIG-ROTATION`) | at once, for every consumer, **if** upstream freezes | owner's decision: **A + halt** |
 | 6. upgrade legibility | new wrapper + rotation | the same | tie |
 | 7. cross-chain consistency | one code hash at one address, checked by execution per chain | the same plus per-chain gateway routes and owners | **A** |
 | 8. liveness | nothing external can stop valid proofs | any freeze of the pinned route stops PqOnly withdrawals until rotation | **A** |
@@ -256,7 +263,7 @@ timeline shows (two providers per event), and what it does not:
 
 | Choice | Realized by | What it needs | Owner |
 | --- | --- | --- | --- |
-| `WALLETWALL_DETECT_AND_FAIL_CLOSED` | A | WalletWall detection, and one fail-closed mechanism across all four consumers | **decided 2026-10-15**, as a local one-way verifier halt |
+| `WALLETWALL_DETECT_AND_FAIL_CLOSED` | A | WalletWall detection, and one fail-closed mechanism across all four consumers (the multisig vault's once it can rotate) | **decided 2026-10-15**, as a local one-way verifier halt, amended the same day |
 | `UPSTREAM_FREEZE_FAIL_CLOSED` | AF | the gateway owners as a liveness principal on every chain; a route in place on each chain before deployment; a coupling to one gateway instance, so an upstream migration to a new gateway silently ends the protection | not chosen |
 
 B realizes the same coupling by routing every proof through the pinned gateway: the same external principals, a
@@ -273,31 +280,105 @@ replacement plus the timelocked rotation is the upgrade and recovery path. The h
 
 | Requirement | Frozen as | The rules refuse |
 | --- | --- | --- |
-| where | `location: VERIFIER_WRAPPER` — every consumer, `PolicyControlBridge` included, verifies through the wrapper | a halt anywhere else, or one that leaves out a consumer the source scan finds |
+| where | `location: VERIFIER_WRAPPER`, which the consumers in its scope verify through | a halt anywhere else |
+| scope | applied to every consumer that can leave a halted wrapper: `WalletWallVault` and `StablecoinVaultSimulator` (each by its own owner-gated rotation of at least 172,800 s, scanned) and `PolicyControlBridge` (it reads the `pqVerifier()` of the consumer an intent names; the only WalletWall contracts that can serve as one, those keeping `policyControlEpoch`, both rotate; a contract outside WalletWall's is outside this claim). `WalletWallMultiSigVault` waits for its own gate, `TD2-MULTISIG-ROTATION`, bound meanwhile to no part of the SP1 path; TD2's deployment tooling refuses it a haltable wrapper | a consumer the source scan finds but the scope does not name; the halt applied to a consumer that cannot recover, or to one whose gate is unbuilt; a consumer that can recover (the bridge included) left outside; an exclusion under a gate that is not its own and frozen; any other interim; a rotating consumer whose delay is below the repository's |
 | state | `ACTIVE → HALTED`, the only transition | any transition out of `HALTED` (`HALT_REVERSIBILITY` must be `ONE_WAY`) |
 | who | a halt principal with the single power `HALT` | any other power: unhalt, restore, bypass, change `SP1_VERIFIER` or `PROGRAM_VKEY`, select a verifier, add or remove a route, widen the relation, rotate, upgrade |
 | identity | `SP1_VERIFIER` and `PROGRAM_VKEY` immutable, halted or not | a wrapper whose verifier or vkey can change |
 | triggers | only the halt principal's call; `RouteFrozen`, advisories, CVEs, verifier-repository disclosures and watcher findings are detection evidence | a signal that moves the state, which would make the upstream gateway owner a WalletWall authority again |
-| recovery | `NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION` | any in-place recovery |
-| authority | `NO_NEW_AUTHORIZATION_PRINCIPAL`; `WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY` | an authorization-neutral classification for a principal with widening power |
+| recovery | a new wrapper with an independently established identity, never a fresh deployment of the halted one (`INDEPENDENTLY_ESTABLISHED_NEVER_THE_HALTED_ONE`), and the timelocked rotation; recorded as `NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE` until every consumer can recover | any in-place recovery; a rotation back to the halted identity; a recovery claim for every consumer while one cannot recover |
+| authority | `NO_NEW_AUTHORIZATION_PRINCIPAL`; `WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY`; the principals accounted apart (below) | an authorization-neutral classification for a principal with widening power |
 
 The principal: an existing WalletWall emergency-security authority if one already satisfies the separation (the
 `PolicyControlBridge` `EMERGENCY_PAUSER` role is the pattern: halt-only and one-way); otherwise a new authority
 scoped to the halt, under threshold or multisig control rather than one online EOA. Never the vault owner, who holds
 the rotation and a reversible pause, and never the upstream gateway owner.
 
-> [!WARNING]
-> **One consumer cannot recover yet (TD1-N11).** `WalletWallMultiSigVault` sets its `pqVerifier` once in the
-> constructor and has no rotation, and its only exit, `withdraw`, needs at least one PQ signature through that
-> verifier. Halting its wrapper would lock its funds: the decided recovery path does not exist for it. TD2 must give
-> it the same timelocked rotation the other vaults have, or keep it off a haltable wrapper and away from real value
-> until it has one.
+#### The owner's amendment: the multisig vault needs a way out first (TD1-N11)
 
-TD2 must executable-test the halt through all four consumers — `WalletWallVault`, `WalletWallMultiSigVault`,
-`StablecoinVaultSimulator` and `PolicyControlBridge`: a valid verification succeeds while `ACTIVE` (positive control);
-after `HALTED` the same otherwise-valid verification fails closed through every consumer; and no action of the halt
-principal makes an invalid proof valid. Until that is built, a defect in v6.1.0 is stopped only by manual pauses,
-one per consumer, and `REAL_VALUE_BLOCKER` stays `TD2_IMPLEMENTATION_NOT_YET_BUILT`.
+`WalletWallMultiSigVault` sets its `pqVerifier` once in the constructor and has no rotation, and its only exit,
+`withdraw`, needs `pqThreshold` (at least one) PQ signatures through that verifier. A one-way halt of its wrapper
+would lock its funds: the decided recovery path does not exist for it. So the halt **must not** be applied to it
+until it has a recoverable verifier transition. Until then it is bound to no part of the SP1 path — TD2's deployment
+tooling refuses it a haltable wrapper, with a negative test; any other interim, such as a non-haltable pinned
+wrapper, is an owner decision — and its owner's `pause()` is its only fail-closed lever. `RECOVERY` is not claimed
+for all four consumers. Like every consumer, it holds no real value until both TD2 requirements are built and tested.
+
+> [!WARNING]
+> **TD1-N11 is a prerequisite, not a note.** The rules refuse a halt scope that applies the halt to a consumer that
+> cannot recover, or to one whose gate is unbuilt (even if a scan someday finds it a rotation: the gate's delay,
+> target gating and proofs are what make it recoverable); one that leaves a recoverable consumer outside; and a
+> recovery claim for every consumer while one cannot recover. The scope's narrowing is the owner's amendment, on
+> record in the receipt (`amendments`).
+
+The principals, accounted apart (`DEFECT_RESPONSE_COUPLING.authorityAccounting`):
+
+| Principal | Holds | Scope | Widens what verifies | Status |
+| --- | --- | --- | --- | --- |
+| `WALLETWALL_EMERGENCY_HALT_PRINCIPAL` | `HALT` | liveness | no | decided; built in TD2 |
+| `WALLETWALL_VAULT_OWNER` | `PQ_VERIFIER_ROTATION`, `pause`, `unpause` — each `WalletWallVault` and `StablecoinVaultSimulator` deployment's owner: the timelocked rotation (the recovery path in the halt's scope) and a reversible pause | authorization | **yes** | `RETAINED`: the governed lever the decision keeps |
+| `WALLETWALL_MULTISIG_VAULT_OWNER`, today | `pause`, `unpause` — the only `onlyOwner` functions the contract declares (scanned); the inherited ownership transfer hands over only these | liveness | no | in the code |
+| `WALLETWALL_MULTISIG_VAULT_OWNER`, proposed | `PQ_VERIFIER_ROTATION` | authorization | **yes** | `PROPOSED_FOR_TD2`, classified `NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL`; needs separate authority accounting and executable review |
+
+The halt principal is none of the other three: the rules refuse it the vault owner's or the multisig vault owner's
+label, and refuse the proposed rotation any capability beyond `PQ_VERIFIER_ROTATION`.
+
+The proposed rotation is not authority-neutral just because its holder already exists. The contract has one owner
+for every tenant. After the delay, that owner could point the vault at an accept-all verifier, which voids every
+tenant's p-of-q PQ signatures at once and leaves each withdrawal guarded by the tenant's m-of-n ECDSA signatures
+alone. And the delay is no safeguard during recovery: while the old wrapper is halted, no tenant can withdraw at all,
+so nobody can leave before the rotation lands, and the target gating (item 3) is the only check (TD1-N12; the same
+holds for the vaults in scope, whose PqOnly and Hybrid tenants cannot exit while halted). The receipt carries the
+rotation in `AUTHORIZATION_AUTHORITY_DELTA.proposedForTd2`, and no rule lets it be classified otherwise.
+
+**`TD2-MULTISIG-ROTATION`**, frozen for TD2 (the owner's ten items); the halt may reach the multisig vault only after
+it:
+
+1. an explicit delayed `pqVerifier` replacement path for `WalletWallMultiSigVault`;
+2. at least the repository's 172,800 s rotation delay, unless independent review establishes a stronger compatible
+   mechanism;
+3. the rotation targets only a new wrapper whose verifier code hash and `PROGRAM_VKEY` designation have already
+   passed the SP1 evidence gates;
+4. no instantaneous replacement;
+5. no halt principal may invoke the rotation;
+6. no `HALTED → ACTIVE` on the old wrapper;
+7. an executable proof that once the old wrapper is halted the multisig vault cannot withdraw through it, and that
+   after the delay and a rotation to a fresh valid wrapper the same valid authorization succeeds
+   (`HALTED_THEN_ROTATED_WITHDRAWAL_SUCCEEDS`);
+8. an executable proof that a malicious or accept-all replacement cannot be activated outside the delayed path
+   (`MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH`);
+9. the authorization cut recalculated, never labelled authority-neutral because the principal already existed;
+10. real value stays blocked until this path and the common halt are both built and tested.
+
+> [!IMPORTANT]
+> **Stop condition.** If adding verifier rotation to `WalletWallMultiSigVault` creates an unacceptable authorization
+> cut, TD2 stops `TD2-MULTISIG-ROTATION` and returns to design rather than weakening the one-way halt. (Frozen as
+> structured fields — `UNACCEPTABLE_AUTHORIZATION_CUT` → `STOP_AND_RETURN_TO_DESIGN`, never
+> `WEAKEN_THE_ONE_WAY_HALT` — which the rules read.)
+
+What the adversarial review of this amendment added, recorded apart from the owner's items (`reviewAdditions`), each
+an executable proof the rules require:
+
+- **The exclusion is enforced, not only stated** (`TD2-COMMON-VERIFIER-HALT`): deployment tooling refuses a haltable
+  wrapper to any consumer kept outside the halt (`EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER`).
+- **One-way for the identity, not only the wrapper instance**: a fresh deployment of the halted identity (the same
+  verifier code hash and `PROGRAM_VKEY`) is refused as a recovery or rotation target
+  (`HALTED_IDENTITY_REFUSED_AS_A_RECOVERY_TARGET`, `..._AS_A_ROTATION_TARGET`) — the evidence gates measure identity,
+  not soundness, so they would pass the halted one again.
+- **The halt principal cannot rotate, also after any ownership transfer** (item 5 made executable:
+  `HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER`); TD2 states whether code or an operational check
+  enforces it.
+- **TD1-N12**: since nobody can exit while halted, TD2 states whether recovery-target gating is enforced on chain or
+  by process — today's rotation accepts any code-bearing target — and counts the answer in the authorization cut, for
+  the multisig rotation (against the stop condition) and for the vaults in scope (reported to the owner).
+
+TD2 must executable-test the halt (`TD2-COMMON-VERIFIER-HALT`) through every consumer in its scope:
+`WalletWallVault`, `StablecoinVaultSimulator` and `PolicyControlBridge`. A valid verification must succeed while
+`ACTIVE` (positive control); after `HALTED` the same otherwise-valid verification must fail closed through each; and
+no action of the halt principal may make an invalid proof valid. `WalletWallMultiSigVault` joins the scope only
+through `TD2-MULTISIG-ROTATION`, with its own halted-then-rotated proof. Until both are built, a defect in v6.1.0 is
+stopped only by manual pauses, one per consumer. `REAL_VALUE_BLOCKER` stays `TD2_IMPLEMENTATION_NOT_YET_BUILT`, and
+`REAL_VALUE_REQUIREMENTS` names both requirements: no consumer holds real value before both are built and tested.
 
 ## Program identity
 
@@ -364,12 +445,13 @@ zkvm subject (manifest digest) → canonical procedure (image by digest) → ELF
 | --- | --- | --- | --- | --- |
 | guest source, lockfile, SP1 crates or toolchain | yes | yes | yes (vkey is immutable) | new designation on two hosts → deploy → vault `proposePQVerifier` → 2 days → `applyPQVerifierUpdate` within 14 days |
 | SP1 verifier/circuit release (e.g. after v6.1.0) | re-measure | usually | yes (new code-hash pin) | the same; the old wrapper keeps working until rotated away |
-| a defect in v6.1.0 itself | — | — | yes (fixed verifier) | the halt principal halts the wrapper (one-way, every consumer at once, once TD2 builds it); recovery is the new wrapper and the rotation — the multisig vault needs a rotation first (TD1-N11) |
+| a defect in v6.1.0 itself | — | — | yes (fixed verifier) | the halt principal halts the wrapper (one-way, every consumer in its scope at once, once TD2 builds it); recovery is a new wrapper of an independently established identity (never a fresh deployment of the halted one) and the rotation — the multisig vault is bound to no part of the SP1 path until `TD2-MULTISIG-ROTATION` gives it one (TD1-N11); nobody can exit during the rotation while halted (TD1-N12) |
 | F-1 fix (contract only) | no | no | yes | the same rotation |
 
 An existing `WalletWallVault` changes verifier only through that rotation, for every vault at once; it should not
-change by any other path. `WalletWallMultiSigVault` fixes its verifier at construction, so it moves only by
-redeploying and migrating. **Rollback** is the same transition pointed back at a previously designated wrapper (still
+change by any other path. `WalletWallMultiSigVault` fixes its verifier at construction, so today it moves only by
+redeploying and migrating; `TD2-MULTISIG-ROTATION` would give it a delayed rotation, which is new authorization
+for its owner (accounted above). **Rollback** is the same transition pointed back at a previously designated wrapper (still
 deployed, still immutable) — never a mutable route, so it adds no authority. The 2-day window protects PqOnly users
 only while they can prove: proving availability (the v6.1.0 artifacts, archived by hash, and a self-hosted path) is
 part of the next lane (TD1-N9).
@@ -391,8 +473,9 @@ part of the next lane (TD1-N9).
 | TD1-N7 guest built unlocked | `PROCEDURE_GAP` | no | no | the canonical workflow keeps `zkvm/guest/Cargo.lock` unchanged |
 | TD1-N8 same code, other precompiles | `PER_CHAIN_CHECK_REQUIRED` | no | no | per-chain execution check before deploying, and after a chain changes its precompiles |
 | TD1-N9 rotation vs proving | `LIVENESS_INTERACTION_NOTED` | no | no | archive the circuit artifacts by hash; a self-hosted proving path |
-| TD1-N10 four consumers | `DEFECT_RESPONSE_IS_MULTI_CONSUMER` | no | no | decided: one halt at the verifier wrapper reaches all four (built and tested through every consumer in TD2) |
-| TD1-N11 multisig vault | `RECOVERY_PATH_MISSING_FOR_ONE_CONSUMER` | no | no | TD2: a timelocked rotation for `WalletWallMultiSigVault`, or keep it off a haltable wrapper and away from real value |
+| TD1-N10 four consumers | `DEFECT_RESPONSE_IS_MULTI_CONSUMER` | no | no | decided: one halt at the verifier wrapper, applied to every consumer that can recover from it (built and tested in TD2) |
+| TD1-N11 multisig vault | `PREREQUISITE_FOR_THE_HALT` | no | no | `TD2-MULTISIG-ROTATION`: a delayed `pqVerifier` rotation (new authority for its owner, accounted apart) before the halt may reach it; until then bound to no part of the SP1 path; real value stays blocked for every consumer until both TD2 requirements are built |
+| TD1-N12 no exit while halted | `RECOVERY_TARGET_UNCHECKED_BY_EXIT` | no | no | while a wrapper is halted no PQ-gated withdrawal works, so the rotation delay gives no exit and the recovery target is the vault owner's alone; TD2 states whether target gating is on chain or by process and counts it in the authorization cut |
 
 <details>
 <summary>F-1 and F-2: what the proof actually binds</summary>
@@ -435,9 +518,12 @@ For each failure: what independent observation catches it before WalletWall acce
 | upstream releases a new verifier | nothing changes: the wrapper accepts only the pinned code; adopting it is a new designation and a timelocked rotation |
 | gateway owner adds a malicious verifier | not in the path (executed: the code pin refuses the gateway and any other code) |
 | gateway owner freezes the v6.1.0 route | under A, not in the path: a signal for WalletWall's watcher, nothing more — the trade-off recorded as `DEFECT_RESPONSE_COUPLING` |
-| a soundness bug in v6.1.0 itself | **not by the code pin.** Decided: WalletWall's one-way halt at the verifier wrapper fails every consumer closed at once, on detection evidence; until TD2 builds it, only the pauses, one per consumer, the bridge's one-way and separately held |
-| one consumer's pause holder does not act | today, not caught (each consumer fails closed only on its own holder's pause, TD1-N10); with the decided halt, one call reaches all four consumers |
-| a halted wrapper strands a consumer | `WalletWallMultiSigVault` has no rotation, so its funds would stay locked (TD1-N11); TD2 adds the rotation or keeps it away from a haltable wrapper |
+| a soundness bug in v6.1.0 itself | **not by the code pin.** Decided: WalletWall's one-way halt at the verifier wrapper fails every consumer in its scope closed at once, on detection evidence; until TD2 builds it, only the pauses, one per consumer, the bridge's one-way and separately held |
+| one consumer's pause holder does not act | today, not caught (each consumer fails closed only on its own holder's pause, TD1-N10); with the decided halt, one call reaches every consumer in its scope, and the multisig vault after `TD2-MULTISIG-ROTATION` |
+| a halted wrapper strands a consumer | the scope: the halt is not applied to `WalletWallMultiSigVault`, which has no rotation (TD1-N11), and the rules refuse a scope that applies it to a consumer that cannot recover or whose gate is unbuilt; in TD2, deployment tooling refuses it a haltable wrapper (a negative test) |
+| the multisig rotation becomes a back door | `TD2-MULTISIG-ROTATION`: at least 172,800 s, only to a wrapper that passed the evidence gates, never by the halt principal (also after an ownership transfer), never to the halted identity, proven unable to activate a malicious or accept-all replacement outside the delayed path; accounted as new authorization, and stopped rather than weakened if its cut is unacceptable. Through the delayed path, while halted, only the target gating checks it (TD1-N12) |
+| recovery rotates back to the halted identity | refused: recovery is to an independently established identity; a fresh deployment of the halted one is refused as a target (an executable TD2 proof), since the evidence gates measure identity, not soundness |
+| users cannot leave while recovery runs | not caught: every PQ-gated withdrawal fails while halted, so the rotation delay gives no exit (TD1-N12); TD2 states whether target gating is on chain or by process and counts it in the authorization cut |
 | the halt principal is compromised | it can only stop verification (liveness), never make an invalid proof valid: no rotation, vkey, upgrade, unhalt or route power (the rules refuse any) |
 | the vendor image disappears | the remapped local procedure reproduced the identity without the image (same workstation, same distribution); mirror the image by digest |
 | a mutable tag drifts | the procedure never uses the tag; the registry body hash pins the index |
@@ -461,7 +547,14 @@ For each failure: what independent observation catches it before WalletWall acce
 > [!IMPORTANT]
 > - A v6.1.0 soundness bug passes the pin. The decided response is WalletWall's one-way halt at the verifier
 >   wrapper; until TD2 builds and tests it, only manual pauses do, one per consumer, and the policy bridge's is
->   one-way and separately held. `WalletWallMultiSigVault` cannot recover from a halt yet (TD1-N11).
+>   one-way and separately held. `WalletWallMultiSigVault` cannot recover from a halt yet (TD1-N11), so the halt
+>   does not reach it, and only its owner's pause fails it closed, until `TD2-MULTISIG-ROTATION`.
+> - The multisig rotation `TD2-MULTISIG-ROTATION` requires is itself new authorization: the vault's one owner could,
+>   after the delay, void every tenant's PQ factor. TD2 must recalculate that cut and stop if it is unacceptable.
+> - While any wrapper is halted, the rotation delay gives no one an exit (TD1-N12): recovery's target is the vault
+>   owner's choice, checked only by target gating that today's rotation does not enforce on chain.
+> - The consumer scan covers WalletWall's own contracts. The bridge reads `pqVerifier()` from whatever consumer an
+>   intent names; a third party's contract is outside the halt's claims.
 > - The vkey derivation has binary- and machine-level independence only (one upstream implementation).
 > - No WalletWall proof exists: ELF → vkey → circuit → on-chain VK is joined only by a real proof (the next lane).
 >   The pinned key itself is exercised by a third party's real v6.1.0 proof.
@@ -487,15 +580,24 @@ For each failure: what independent observation catches it before WalletWall acce
 - [ ] `ZKMLDSAVerifier`: compile-time pin of the SP1 verifier's runtime code hash, checked in the constructor;
       record `VERIFIER_HASH`, `VK_ROOT`, `VERSION`; `verify()` unchanged.
 - [ ] `ZKMLDSAVerifier`: `uint256(committedChainId) != block.chainid` (F-1); document `sigHash` (F-2).
-- [ ] The decided halt (`LOCAL_ONE_WAY_VERIFIER_HALT`): at the verifier wrapper; `ACTIVE → HALTED` only; a
+- [ ] `TD2-COMMON-VERIFIER-HALT` (`LOCAL_ONE_WAY_VERIFIER_HALT`): at the verifier wrapper; `ACTIVE → HALTED` only; a
       halt-only principal (an existing emergency-security authority if it already satisfies the separation, else a
-      new threshold or multisig; no rotation, vkey, upgrade or unhalt power); upstream signals as detection evidence
-      only; recovery only by a new wrapper and the timelocked rotation.
-- [ ] Executable tests of the halt through all four consumers: a valid verification succeeds while `ACTIVE`; the
-      same verification fails closed after `HALTED` through `WalletWallVault`, `WalletWallMultiSigVault`,
-      `StablecoinVaultSimulator` and `PolicyControlBridge`; the halt principal cannot make an invalid proof valid.
-- [ ] The recovery path `WalletWallMultiSigVault` lacks: the timelocked `pqVerifier` rotation the other vaults have,
-      or no haltable wrapper and no real value for it until then (TD1-N11).
+      new threshold or multisig; no rotation, vkey, upgrade or unhalt power, also after any ownership transfer);
+      upstream signals as detection evidence only; recovery only by a new wrapper of an independently established
+      identity (never a fresh deployment of the halted one) and the timelocked rotation; applied to
+      `WalletWallVault`, `StablecoinVaultSimulator` and `PolicyControlBridge`; deployment tooling refuses a haltable
+      wrapper to `WalletWallMultiSigVault`.
+- [ ] Executable tests of the halt through every consumer in its scope: a valid verification succeeds while
+      `ACTIVE`; the same verification fails closed after `HALTED` through `WalletWallVault`,
+      `StablecoinVaultSimulator` and `PolicyControlBridge`; the halt principal cannot make an invalid proof valid or
+      rotate; the halted identity is refused as a recovery target; the multisig vault is refused a haltable wrapper.
+      TD2 states whether recovery-target gating is on chain or by process (TD1-N12) and reports the cut.
+- [ ] `TD2-MULTISIG-ROTATION`, before the halt may reach `WalletWallMultiSigVault`: the ten frozen requirements
+      [above](#the-owners-amendment-the-multisig-vault-needs-a-way-out-first-td1-n11) — at least 172,800 s, only to
+      a wrapper that passed the evidence gates, never instant, never by the halt principal, no unhalt of the old
+      wrapper, the halted-then-rotated and malicious-replacement proofs, the authorization cut recalculated — plus the
+      review's additions, or STOP and return to design rather than weaken the one-way halt. Until then the multisig
+      vault is bound to no part of the SP1 path; no consumer holds real value until both requirements are built.
 - [ ] A generated designation file for `mldsa65-withdrawal` and the CI subject check.
 - [ ] A gated canonical-build workflow (guest lockfile unchanged) plus a second-host release rebuild; both must
       reproduce the designation.
@@ -512,8 +614,9 @@ proving); verification targets only the designated verifier (the CREATE2-authent
 deployment checked by `EXTCODEHASH` and the per-chain execution check), never a gateway route; the downloaded
 `groth16_vk.bin` hashes to `VERIFIER_HASH` `0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696`
 (two different "v6.1.0" keys have existed); and real value additionally needs the decided `DEFECT_RESPONSE_COUPLING`
-(the local one-way verifier halt) built and tested through every consumer in TD2, the recovery path the multisig
-vault lacks, and the implementation lane. Closing the owner decision unblocks no real value.
+built and tested in TD2 — `TD2-COMMON-VERIFIER-HALT` through every consumer in its scope, and
+`TD2-MULTISIG-ROTATION` before the halt may reach the multisig vault — and the implementation lane. Closing the
+owner decision unblocks no real value.
 
 ## Reproduce / check
 
