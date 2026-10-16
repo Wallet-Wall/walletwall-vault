@@ -47,6 +47,7 @@
     "prevalidate:sp1-designation": "hardhat compile",
     "validate:sp1-designation": "tsx scripts/generate-sp1-designation.ts --validate",
     "validate:sp1-registry": "tsx scripts/validate-sp1-registry.ts",
+    "sp1:chain-exec": "hardhat run scripts/check-sp1-chain-execution.ts",
     "zk:adapter": "tsx scripts/generate-zk-verifier-adapter.ts",
     "validate:zk-adapter": "tsx scripts/generate-zk-verifier-adapter.ts --validate",
     "zk:adapter:response": "tsx scripts/generate-zk-adapter-evidence-response.ts",
