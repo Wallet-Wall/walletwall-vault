@@ -303,6 +303,16 @@ export interface WrapperAstFacts {
 }
 
 const isIdent = (n: AstNode | undefined, name: string | undefined) => n?.nodeType === "Identifier" && n.name === name;
+/** A probe `hardhat test --coverage` injected (`__NomicFoundationCoverage.sendHit(...)`), not a statement an author wrote. */
+const isCoverageHit = (s: AstNode | undefined) =>
+  s?.nodeType === "ExpressionStatement" &&
+  s.expression?.nodeType === "FunctionCall" &&
+  s.expression.expression?.nodeType === "MemberAccess" &&
+  s.expression.expression.memberName === "sendHit" &&
+  String(s.expression.expression.expression?.name ?? "").includes("Coverage");
+/** The first statement an author wrote: a block's first one that is no coverage probe, or the lone statement. */
+const firstAuthored = (s: AstNode | undefined): AstNode | undefined =>
+  s?.nodeType === "Block" ? (s.statements ?? []).find((x: AstNode) => !isCoverageHit(x)) : s;
 const isChainId = (n: AstNode | undefined) =>
   n?.nodeType === "MemberAccess" && n.memberName === "chainid" && isIdent(n.expression, "block");
 
@@ -402,7 +412,8 @@ export function wrapperAstFacts(contract: AstNode, abi: readonly AstNode[]): Wra
       }
     });
   }
-  const first = verify?.body?.statements?.[0];
+  const first = firstAuthored(verify?.body);
+  const halting = firstAuthored(first?.trueBody);
 
   return {
     constructorPinsCodehash: checks && stores,
@@ -420,8 +431,8 @@ export function wrapperAstFacts(contract: AstNode, abi: readonly AstNode[]): Wra
     verifyChecksHaltFirst:
       first?.nodeType === "IfStatement" &&
       isIdent(first.condition, "halted") &&
-      first.trueBody?.nodeType === "Return" &&
-      first.trueBody.expression?.value === "false",
+      halting?.nodeType === "Return" &&
+      halting.expression?.value === "false",
     mutatingFunctions: abi
       .filter((e) => e.type === "function" && e.stateMutability !== "view" && e.stateMutability !== "pure")
       .map((e) => String(e.name))

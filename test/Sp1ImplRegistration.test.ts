@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 
 import { ethers } from "./helpers/connection";
 import { deployPinnedSp1Verifier } from "./helpers/sp1PinnedVerifier";
+import { skipWhenInstrumented } from "./helpers/instrumented";
 import { readDesignations } from "../scripts/lib/sp1-designation";
 import { readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
 import { readRegistry, registryErrors, type RegistryDoc } from "../scripts/lib/sp1-registry";
@@ -57,6 +58,7 @@ describe("SP1 implementation lane — registry facts from chain reads", function
   });
 
   it("a registration measured from the chain is the designated wrapper's, and passes the registry's rules", async function () {
+    skipWhenInstrumented(this);
     const { wrapper, deployment } = await deployDesignated();
     const registry = readRegistry(".");
     const fact = await registrationFact(ethers.provider, {
@@ -85,6 +87,7 @@ describe("SP1 implementation lane — registry facts from chain reads", function
   });
 
   it("refuses a transaction that did not deploy the wrapper, and a wrapper no designation names", async function () {
+    skipWhenInstrumented(this);
     const { wrapper } = await deployDesignated();
     const other = await (await deployer.sendTransaction({ to: stranger.address, value: 1n })).wait();
     await assert.rejects(
@@ -121,6 +124,7 @@ describe("SP1 implementation lane — registry facts from chain reads", function
   });
 
   it("a halt measured from its transaction appends the halt fact; a wrapper still ACTIVE is refused one", async function () {
+    skipWhenInstrumented(this);
     const { wrapper, deployment } = await deployDesignated();
     const base = readRegistry(".");
     const registration = await registrationFact(ethers.provider, {

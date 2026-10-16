@@ -16,6 +16,7 @@ import { expect } from "chai";
 import { ethers } from "./helpers/connection";
 import { deployPinnedSp1Verifier } from "./helpers/sp1PinnedVerifier";
 import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
+import { skipWhenInstrumented } from "./helpers/instrumented";
 import {
   WRAPPER_BUILDS_DIR,
   WRAPPER_BUILD_SCHEMA,
@@ -48,6 +49,7 @@ describe("SP1 implementation lane — wrapper build records", function () {
   });
 
   it("the compiled ZKMLDSAVerifier is the latest recorded build, and the records are well formed", function () {
+    skipWhenInstrumented(this);
     expect(currentBuildErrors(".")).to.deep.equal([]);
     expect(wrapperBuildErrors(builds)).to.deep.equal([]);
     expect(builds.length).to.be.greaterThan(0);
@@ -94,6 +96,7 @@ describe("SP1 implementation lane — wrapper build records", function () {
     let runtime: string;
 
     before(async function () {
+      skipWhenInstrumented(this);
       const zk = await (
         await ethers.getContractFactory("ZKMLDSAVerifier")
       ).deploy(await deployPinnedSp1Verifier(), RECEIPT.decisions.PROGRAM_VKEY_DESIGNATION.vkey, TEST_HALT_PRINCIPAL);
@@ -106,15 +109,21 @@ describe("SP1 implementation lane — wrapper build records", function () {
       expect(buildMatching(runtime, builds)?.id).to.equal(latest.id);
     });
 
-    it("any changed byte outside an immutable slot is another build: code, metadata, or the length", function () {
+    it("any changed code byte or length is another build; the metadata trailer is not compared (SP1-TD2's rule)", function () {
       const firstImmutable = Math.min(
         ...Object.values(latest.runtime.immutableReferences)
           .flat()
           .map((r) => r.start),
       );
       expect(matchesBuild(flipByte(runtime, firstImmutable - 1), latest), "code before an immutable").to.equal(false);
-      expect(matchesBuild(flipByte(runtime, latest.runtime.metadataRegionStart + 3), latest), "metadata").to.equal(
-        false,
+      expect(
+        matchesBuild(flipByte(runtime, latest.runtime.metadataRegionStart - 1), latest),
+        "last code byte",
+      ).to.equal(false);
+      // The trailer hashes the compilation job (the sources and remappings Hardhat grouped with the wrapper), so a
+      // fresh compile of the same source can carry another one: inside the IPFS hash it is the same build.
+      expect(matchesBuild(flipByte(runtime, latest.runtime.metadataRegionStart + 12), latest), "metadata").to.equal(
+        true,
       );
       expect(matchesBuild(runtime + "00", latest), "one byte longer").to.equal(false);
       expect(matchesBuild(runtime.slice(0, -2), latest), "one byte shorter").to.equal(false);
@@ -137,15 +146,15 @@ describe("SP1 implementation lane — wrapper build records", function () {
 
   describe("a record that departs from the compiler is refused", function () {
     it("the current compilation must equal the latest record, field by field", function () {
+      skipWhenInstrumented(this);
       const current = buildFromCompilation(".");
       expect(compareCurrentBuild(current, builds)).to.deep.equal([]);
       const cases: [string, (b: WrapperBuild) => void, RegExp][] = [
         ["a template byte", (b) => (b.runtime.template = flipByte(b.runtime.template, 5)), /runtime/],
         ["a pin", (b) => (b.pins.vkRoot = ethers.ZeroHash), /pins/],
-        ["a source digest", (b) => (b.sources[0].sha256 = "0".repeat(64)), /sources/],
-        ["a missing source", (b) => b.sources.pop(), /sources/],
         ["the compiler", (b) => (b.compiler.optimizer.runs = 201), /compiler/],
         ["an immutable position", (b) => (Object.values(b.runtime.immutableReferences)[0][0].start += 1), /runtime/],
+        ["the metadata boundary", (b) => (b.runtime.metadataRegionStart -= 1), /runtime/],
       ];
       for (const [label, tamper, rule] of cases) {
         const changed = clone(current);
@@ -153,6 +162,15 @@ describe("SP1 implementation lane — wrapper build records", function () {
         expect(compareCurrentBuild(changed, builds).join("\n"), label).to.match(rule);
         expect(compareCurrentBuild(changed, builds).join("\n"), label).to.match(/npm run sp1:wrapper-build/);
       }
+      // The same code from another compilation job (another metadata trailer), or from sources that differ only where
+      // the code does not (a comment), is the same build: the record keeps the sources it was built from as provenance.
+      const otherJob = clone(current);
+      otherJob.runtime.template = flipByte(current.runtime.template, current.runtime.metadataRegionStart + 12);
+      otherJob.runtime.templateKeccak = ethers.keccak256(otherJob.runtime.template);
+      expect(compareCurrentBuild(otherJob, builds), "another trailer").to.deep.equal([]);
+      const commented = clone(current);
+      commented.sources[0].sha256 = "0".repeat(64);
+      expect(compareCurrentBuild(commented, builds), "a source that changes no code").to.deep.equal([]);
       expect(compareCurrentBuild(current, []).join("\n")).to.match(/no wrapper build is recorded/);
     });
 
@@ -165,6 +183,18 @@ describe("SP1 implementation lane — wrapper build records", function () {
         ["byte count", (bs) => (bs[0].runtime.bytes += 1), /bytes/],
         ["pin shape", (bs) => (bs[0].pins.sp1VerifierCodehash = "0x1234"), /pins/],
         ["duplicate", (bs) => bs.push(clone(bs[0])), /twice|sequence/],
+        [
+          "the same code recorded again under another trailer",
+          (bs) => {
+            const again = clone(bs[0]);
+            again.id = "zkmldsa-verifier-b2";
+            again.sequence = 2;
+            again.runtime.template = flipByte(again.runtime.template, again.runtime.metadataRegionStart + 12);
+            again.runtime.templateKeccak = ethers.keccak256(again.runtime.template);
+            bs.push(again);
+          },
+          /the same code is recorded twice/,
+        ],
       ];
       for (const [label, tamper, rule] of cases) {
         const changed = clone(builds);
@@ -174,6 +204,7 @@ describe("SP1 implementation lane — wrapper build records", function () {
     });
 
     it("a new build is appended as the next record; an unchanged one appends nothing", function () {
+      skipWhenInstrumented(this);
       const current = buildFromCompilation(".");
       expect(nextBuildRecord(current, builds)).to.equal(null);
       const changed = clone(current);
@@ -183,6 +214,10 @@ describe("SP1 implementation lane — wrapper build records", function () {
       expect(next.sequence).to.equal(latest.sequence + 1);
       expect(next.id).to.equal(`zkmldsa-verifier-b${latest.sequence + 1}`);
       expect(wrapperBuildErrors([...builds, next])).to.deep.equal([]);
+      const trailerOnly = clone(current);
+      trailerOnly.runtime.template = flipByte(current.runtime.template, current.runtime.metadataRegionStart + 12);
+      trailerOnly.runtime.templateKeccak = ethers.keccak256(trailerOnly.runtime.template);
+      expect(nextBuildRecord(trailerOnly, builds), "another trailer appends nothing").to.equal(null);
       expect(WRAPPER_BUILDS_DIR).to.equal("evidence/zk/sp1/wrapper-builds");
     });
   });

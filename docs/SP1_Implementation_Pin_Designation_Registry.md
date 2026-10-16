@@ -150,9 +150,14 @@ change to the wrapper's compiled code would have made every earlier entry "not g
 once, from the compiler's own output, in
 [`evidence/zk/sp1/wrapper-builds/`](../evidence/zk/sp1/wrapper-builds/zkmldsa-verifier-b1.json): the runtime template
 (immutables zero), its keccak, the metadata boundary, the immutables' positions by name, the compiler settings, the
-import closure's sources and the pins read from the AST. A deployed wrapper is judged against the build it was
-deployed from (byte for byte outside its immutables, metadata included), and CI refuses a compiled wrapper that is not
-the latest record (`npm run validate:sp1-wrapper-build`).
+import closure's sources (provenance) and the pins read from the AST. A deployed wrapper is judged against the build
+it was deployed from by SP1-TD2's rule: the same length and metadata boundary, and every byte before the boundary
+outside its immutables. The CBOR metadata trailer is not compared because it hashes the compilation job, not the code:
+Hardhat groups files into jobs, and a job's remappings enter each contract's metadata, so the same source compiled
+fresh (as CI does) or incrementally carries different trailers. CI refuses a compiled wrapper whose code, compiler,
+pins or immutables are not the latest record's (`npm run validate:sp1-wrapper-build`). Under
+`hardhat test --coverage` the instrumented wrapper is no recorded build, so the tests that need a genuine wrapper are
+skipped there; the plain test run and the validators, which CI runs first, check them.
 
 **The registry** ([`evidence/zk/sp1-td2/wrapper-registry.json`](../evidence/zk/sp1-td2/wrapper-registry.json)) is
 migrated in place from SP1-TD2's empty v1 list to a v2 fact log: `WRAPPER_REGISTERED` (chain, address, wrapper build,

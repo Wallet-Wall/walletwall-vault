@@ -26,6 +26,8 @@ import { TD2_RECORD_REL } from "../scripts/lib/sp1-td2-record";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { ROTATION_DELAY, VKEY_A, VKEY_B, deploySp1, deployWrapper } from "./helpers/td2Helpers";
 import { installWrapperOfBuild, laterBuild, registryFromProfiles } from "./helpers/registryHelpers";
+import { skipWhenInstrumented } from "./helpers/instrumented";
+import { decodeSolcMetadataBoundary } from "../scripts/lib/reproducibility-evidence";
 import { matchesBuild, readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
 import {
   CONSUMERS,
@@ -216,6 +218,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
 
   describe("measuring a verifier from the chain", function () {
     it("profiles a haltable wrapper, a non-haltable SP1 verifier, the mock and an account without code", async function () {
+      skipWhenInstrumented(this);
       const p = await profileVerifier(ethers.provider, await haltable.getAddress());
       expect(p).to.include({
         hasCode: true,
@@ -322,23 +325,45 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   });
 
   describe("a target must be a ZKMLDSAVerifier compiled from this tree (the review's look-alike)", function () {
-    it("compares runtime code with the recorded wrapper builds: immutables masked, everything else (metadata included) exact", async function () {
+    it("compares runtime code with the recorded wrapper builds, immutables masked and metadata excluded", async function () {
+      skipWhenInstrumented(this);
       const [build] = readWrapperBuilds();
       const code = await ethers.provider.getCode(await haltable.getAddress());
       expect(matchesBuild(code, build), "a deployed wrapper").to.equal(true);
-      // Other immutables (another verifier, vkey and halt principal) are the same build.
+      // Other immutables (another verifier, vkey and halt principal) are the same code.
       const other = await deployWrapper(await deploySp1(), VKEY_B, otherHaltPrincipal.address);
       expect(matchesBuild(await ethers.provider.getCode(await other.getAddress()), build)).to.equal(true);
-      // Since the implementation lane a wrapper is judged against the exact build it was deployed from (R2-3), so the
-      // metadata (the build's source hash) is compared too: another source is another build, which needs its record.
+      // The metadata trailer is not compared: it hashes the compilation job (the sources and remappings Hardhat grouped
+      // with the wrapper), not the code, so a fresh compile of the same source can carry another trailer...
       const bytes = ethers.getBytes(code);
       const trailer = Uint8Array.from(bytes);
+      // Inside the IPFS source hash: the CBOR map starts a2 64 "ipfs" 58 22, so its payload begins 8 bytes in.
       const cborStart = bytes.length - 2 - ((bytes[bytes.length - 2] << 8) | bytes[bytes.length - 1]);
       trailer[cborStart + 12] ^= 0xff;
-      expect(matchesBuild(ethers.hexlify(trailer), build), "metadata byte changed").to.equal(false);
+      expect(matchesBuild(ethers.hexlify(trailer), build), "metadata byte changed").to.equal(true);
+      // ...but every executable byte is.
       const executable = Uint8Array.from(bytes);
       executable[5] ^= 0x01;
       expect(matchesBuild(ethers.hexlify(executable), build), "code byte changed").to.equal(false);
+      // The length and the metadata boundary must be the build's too. Resizing the metadata's "solc" entry gives a
+      // runtime one byte longer whose metadata still decodes at the same boundary, and one of the same length whose
+      // boundary moved one byte (an extra byte before it): both decode, both are refused.
+      const hex = code.slice(2);
+      const regionStart = hex.length / 2 - 2 - parseInt(hex.slice(-4), 16);
+      const cbor = hex.slice(regionStart * 2, -4);
+      const solcAt = cbor.lastIndexOf("64736f6c6343"); // the text key "solc", then a 3-byte string, last in the map
+      expect(solcAt + 18, "the solc entry ends the map").to.equal(cbor.length);
+      const version = cbor.slice(solcAt + 12);
+      const longer = `${cbor.slice(0, solcAt)}64736f6c6344${version}00`;
+      const shorter = `${cbor.slice(0, solcAt)}64736f6c6342${version.slice(0, 4)}`;
+      const suffix = (c: string) => (c.length / 2).toString(16).padStart(4, "0");
+      const longerRuntime = `0x${hex.slice(0, regionStart * 2)}${longer}${suffix(longer)}`;
+      const shiftedRuntime = `0x${hex.slice(0, regionStart * 2)}00${shorter}${suffix(shorter)}`;
+      expect(decodeSolcMetadataBoundary(longerRuntime)).to.include({ ok: true, regionStart });
+      expect(decodeSolcMetadataBoundary(shiftedRuntime)).to.include({ ok: true, regionStart: regionStart + 1 });
+      expect(shiftedRuntime.length).to.equal(code.length);
+      expect(matchesBuild(longerRuntime, build), "one byte longer").to.equal(false);
+      expect(matchesBuild(shiftedRuntime, build), "boundary moved").to.equal(false);
       for (const notWrapper of [
         await ethers.provider.getCode(await unhaltable.getAddress()),
         await ethers.provider.getCode(await mock.getAddress()),
@@ -357,6 +382,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("refuses a look-alike that reports the designated identity, a halt principal and ACTIVE; admits the genuine wrapper", async function () {
+      skipWhenInstrumented(this);
       const lookalike = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
       const sel = (signature: string) => ethers.id(signature).slice(0, 10);
       await lookalike.program(sel("HALT_PRINCIPAL()"), 1, ethers.zeroPadValue(haltPrincipal.address, 32));
@@ -384,6 +410,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("while it is excluded (no recorded acceptance), deployment tooling refuses WalletWallMultiSigVault a haltable wrapper and any part of the SP1 path; the consumers in scope are not refused it", async function () {
+      skipWhenInstrumented(this);
       for (const td2 of [null, PENDING_RECORD]) {
         await withTree(td2, async (dir) => {
           const options = { ...MOCK_OK, repoRoot: dir, registry: registryFromProfiles(LOCAL, []) };
@@ -406,6 +433,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("while it is excluded, rotation tooling refuses to rotate a deployed multisig vault onto a haltable wrapper; a vault in scope may be", async function () {
+      skipWhenInstrumented(this);
       const multisig = await (
         await ethers.getContractFactory("WalletWallMultiSigVault", admin)
       ).deploy(await mock.getAddress());
@@ -434,6 +462,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("with the owner's acceptance recorded, WalletWallMultiSigVault is held to the common rules, and binds no SP1 identity off a local chain yet", async function () {
+      skipWhenInstrumented(this);
       const bind = (verifier: any, signer: string, options: { allowMockSp1: boolean }) =>
         verifier
           .getAddress()
@@ -543,12 +572,14 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("positive control: a registered wrapper over the designated verifier code with the designated vkey passes on a non-local chain", function () {
+      skipWhenInstrumented(this);
       expect(designated.sp1VerifierCodeKeccak).to.equal(TD1.trustTarget.codeKeccak);
       expect(designated.genuineWrapper).to.equal(true);
       expect(bindingRefusals(registeredRequest(designated))).to.deep.equal([]);
     });
 
     it("refuses another SP1 verifier code or another PROGRAM_VKEY on a non-local chain, and grants no override there", function () {
+      skipWhenInstrumented(this);
       expect(bindingRefusals(registeredRequest(mockSp1Wrapper)).join("\n")).to.match(/matches no designation/);
       const otherVKey = { ...designated, programVKey: VKEY_B };
       expect(bindingRefusals(registeredRequest(otherVKey)).join("\n")).to.match(/matches no designation/);
@@ -569,6 +600,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("refuses a halted target, a recorded halted identity, a fresh deployment of the current halted identity, and a signer that can halt", function () {
+      skipWhenInstrumented(this);
       const cases: [string, BindingRequest, RegExp][] = [
         ["halted target", registeredRequest({ ...designated, halted: true }), /is HALTED/],
         [
@@ -653,11 +685,13 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("refuses a target without code; a registered designated wrapper passes on a local chain without any override", function () {
+      skipWhenInstrumented(this);
       expect(bindingRefusals(registeredRequest({ ...designated, hasCode: false })).join("\n")).to.match(/has no code/);
       expect(bindingRefusals(registeredRequest(designated, { chainId: LOCAL }))).to.deep.equal([]);
     });
 
     it("checks the code hash designated for the chain, falling back to the designation's own only where the chain has none", function () {
+      skipWhenInstrumented(this);
       const other = `0x${"ab".repeat(32)}`;
       const [td1] = readDesignations();
       const designations: Designation[] = [
@@ -718,6 +752,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("end to end: after a vault leaves a halted wrapper, the tooling refuses that identity from the record the vault keeps", async function () {
+      skipWhenInstrumented(this);
       const vault = await (
         await ethers.getContractFactory("WalletWallVault", admin)
       ).deploy(await haltable.getAddress());
@@ -769,6 +804,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("HALTED_IDENTITY_REFUSED_AS_A_RECOVERY_TARGET, process side: on a live vault the tooling refuses a fresh deployment of its halted identity, as the chain does", async function () {
+      skipWhenInstrumented(this);
       const vault = await (
         await ethers.getContractFactory("WalletWallVault", admin)
       ).deploy(await haltable.getAddress());
@@ -801,6 +837,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET, process side: admitted, the multisig vault is refused a fresh deployment of its halted identity by the tooling, as by the chain", async function () {
+      skipWhenInstrumented(this);
       const multisig = await (
         await ethers.getContractFactory("WalletWallMultiSigVault", admin)
       ).deploy(await haltable.getAddress());
@@ -855,6 +892,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
 
   describe("the wrapper registry: one halt reaches every consumer, and a halt is seen by every consumer", function () {
     it("refuses an unregistered wrapper off a local chain, and a second ACTIVE registered wrapper of the same identity", async function () {
+      skipWhenInstrumented(this);
       const target = await profileVerifier(ethers.provider, await haltable.getAddress());
       const designation: Designation = {
         source: "a test designation of the mock program",
@@ -883,6 +921,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("refuses an identity halted at any registered wrapper, for every consumer and even under the local override", async function () {
+      skipWhenInstrumented(this);
       // Consumer A used w1 and left it while it was ACTIVE; w1 was halted later. A consumer that never used w1 is
       // refused a fresh deployment of its identity all the same, because the registry shows the halt.
       const w1 = await deployWrapper(sp1, VKEY_A, haltPrincipal.address);
@@ -920,6 +959,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("tells an ACTIVE twin from a HALTED one: only an ACTIVE twin breaks 'one halt reaches every consumer'", async function () {
+      skipWhenInstrumented(this);
       const target = await profileVerifier(ethers.provider, await haltable.getAddress());
       const designation: Designation = {
         source: "a test designation of the mock program",
@@ -943,6 +983,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("the tooling entry points pass the registry and designations they are given through to the gate", async function () {
+      skipWhenInstrumented(this);
       const target = await profileVerifier(ethers.provider, await haltable.getAddress());
       const designation: Designation = {
         source: "a test designation of the mock program",
@@ -1003,6 +1044,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("the entry points read the registry for the chain their provider is on, from the tree they are given", async function () {
+      skipWhenInstrumented(this);
       const dir = mkdtempSync(join(tmpdir(), "td2-root-"));
       try {
         for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL, ...LANE_EVIDENCE]) {
@@ -1121,6 +1163,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("the review's scenario: a registered wrapper's halt the RPC did not report stops the gate instead of disappearing", async function () {
+      skipWhenInstrumented(this);
       const w1 = await deployWrapper(sp1, VKEY_A, haltPrincipal.address);
       await w1.connect(haltPrincipal).halt();
       const fresh = await haltable.getAddress(); // identity A, ACTIVE
@@ -1212,6 +1255,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     });
 
     it("a genuine wrapper that cannot be measured completely is refused, never skipped", async function () {
+      skipWhenInstrumented(this);
       const target = await profileVerifier(ethers.provider, await haltable.getAddress());
       const local = { chainId: LOCAL, allowMockSp1: true };
       expect(bindingRefusals(request(target, { ...local, registered: [target] })), "positive control").to.deep.equal(
@@ -1258,6 +1302,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
 
   describe("recovery from a halt of the designated identity needs a successor designation", function () {
     it("off a local chain the gate admits no recovery target on SP1-TD1's designation alone, and admits a designated successor", async function () {
+      skipWhenInstrumented(this);
       // The designated wrapper is registered and HALTED (a v6.1.0 defect); the recovery wrapper runs fixed verifier
       // code with the same vkey, registered and ACTIVE. Since the implementation lane pins the verifier's code in the
       // wrapper at compile time, fixed verifier code is a later wrapper build that pins it (recorded as b2 here).

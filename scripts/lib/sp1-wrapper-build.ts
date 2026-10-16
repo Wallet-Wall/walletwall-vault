@@ -12,10 +12,14 @@
  *   - the compiler and settings, and the compilation unit's sources (the import closure) with their sha256;
  *   - the SP1 pins the build enforces, read from the compiler's AST of the constants (and executed by the tests).
  *
- * A deployed runtime matches a build when it has the template's length and equals it byte for byte once the recorded
- * immutable positions are masked — metadata included, so a build from other sources is another build. CI refuses a
- * compiled wrapper that is not the latest recorded build (record it with `npm run sp1:wrapper-build`), and records
- * are append-only (scripts/lib/append-only-history.ts).
+ * A deployed runtime matches a build when it has the template's length and CBOR metadata boundary, and equals it byte
+ * for byte before the boundary once the recorded immutable positions are masked: SP1-TD2's rule. The metadata trailer
+ * is not compared, because it hashes the compilation job rather than the code: Hardhat groups files into jobs, and a
+ * job's remappings enter every contract's metadata, so the same source compiled fresh or incrementally can carry
+ * different trailers. The sources are kept as the build's provenance and not compared: a change that leaves the code
+ * as it is (a comment) is the same build. CI refuses a compiled wrapper whose code, compiler, pins or immutables are
+ * not the latest record's (record it with `npm run sp1:wrapper-build`), a record set holding the same code twice, and
+ * any edit to a published record (scripts/lib/append-only-history.ts).
  *
  * The pure functions here take their inputs as arguments; the readers that touch the repository are separate and take
  * only the repository root, so no caller can hand an authority check a substituted record set by accident.
@@ -26,7 +30,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { getBytes, isHexString, keccak256 } from "ethers";
+import { dataSlice, getBytes, isHexString, keccak256 } from "ethers";
 
 import { decodeSolcMetadataBoundary } from "./reproducibility-evidence";
 
@@ -45,7 +49,7 @@ export const PIN_CONSTANTS = {
   vkRoot: "SP1_VK_ROOT",
   version: "SP1_VERSION",
 } as const;
-const COMPARED_FIELDS = ["schema", "contract", "compiler", "sources", "pins", "runtime"] as const;
+const COMPARED_FIELDS = ["schema", "contract", "compiler", "pins", "runtime"] as const;
 
 export interface ImmutableRef {
   start: number;
@@ -77,19 +81,25 @@ const isWord = (x: unknown) => typeof x === "string" && /^0x[0-9a-f]{64}$/.test(
 // Matching a deployed runtime
 // ---------------------------------------------------------------------------------------------------------
 
-/** Whether `runtime` is a deployment of `build`: the template, byte for byte, outside the recorded immutables. */
+/**
+ * Whether `runtime` is a deployment of `build`: the template's length and metadata boundary, and its bytes before the
+ * boundary outside the recorded immutables. The trailer after the boundary is not compared (it hashes the job).
+ */
 export function matchesBuild(runtime: string, build: WrapperBuild): boolean {
   if (typeof runtime !== "string" || !isHexString(runtime) || runtime === "0x") return false;
   const code = Buffer.from(getBytes(runtime));
   const reference = Buffer.from(getBytes(build.runtime.template));
   if (code.length !== reference.length) return false;
+  const boundary = decodeSolcMetadataBoundary(runtime);
+  const regionStart = build.runtime.metadataRegionStart;
+  if (!boundary.ok || boundary.regionStart !== regionStart) return false;
   for (const refs of Object.values(build.runtime.immutableReferences)) {
     for (const { start, length } of refs) {
       code.fill(0, start, start + length);
       reference.fill(0, start, start + length);
     }
   }
-  return code.equals(reference);
+  return code.subarray(0, regionStart).equals(reference.subarray(0, regionStart));
 }
 
 /** The recorded build `runtime` is a deployment of, latest first; null when it is none of them. */
@@ -106,7 +116,7 @@ export function buildMatching(runtime: string, builds: readonly WrapperBuild[]):
 export function wrapperBuildErrors(builds: readonly WrapperBuild[]): string[] {
   const errors: string[] = [];
   const ids = new Set<string>();
-  const templates = new Set<string>();
+  const codes = new Set<string>();
   builds.forEach((b, i) => {
     const at = `wrapper build ${String(b?.id)}`;
     if (b?.schema !== WRAPPER_BUILD_SCHEMA) errors.push(`${at}: schema must be ${WRAPPER_BUILD_SCHEMA}`);
@@ -139,13 +149,15 @@ export function wrapperBuildErrors(builds: readonly WrapperBuild[]): string[] {
     const length = getBytes(r.template).length;
     if (r.bytes !== length) errors.push(`${at}: runtime.bytes must be the template's length (${length})`);
     if (r.templateKeccak !== keccak256(r.template)) errors.push(`${at}: runtime.templateKeccak is not the template's`);
-    if (templates.has(r.templateKeccak)) errors.push(`${at}: the same build is recorded twice`);
-    templates.add(r.templateKeccak);
     const boundary = decodeSolcMetadataBoundary(r.template);
     const regionStart = boundary.ok ? boundary.regionStart : undefined;
     if (regionStart === undefined || regionStart !== r.metadataRegionStart) {
       errors.push(`${at}: runtime.metadataRegionStart must be the template's CBOR metadata boundary`);
     }
+    // Builds are told apart by their code: two records of the same code would both match one deployment.
+    const code = keccak256(dataSlice(r.template, 0, regionStart ?? length));
+    if (codes.has(code)) errors.push(`${at}: the same code is recorded twice`);
+    codes.add(code);
     for (const [name, refs] of Object.entries(r.immutableReferences ?? {})) {
       for (const ref of refs) {
         const inCode =
@@ -157,13 +169,32 @@ export function wrapperBuildErrors(builds: readonly WrapperBuild[]): string[] {
   return errors;
 }
 
+/** A build as builds are compared: its code before the metadata trailer, not the trailer, and not its sources. */
+function compared(b: WrapperBuild): Record<(typeof COMPARED_FIELDS)[number], unknown> {
+  const { template, metadataRegionStart, bytes, immutableReferences } = b.runtime;
+  return {
+    schema: b.schema,
+    contract: b.contract,
+    compiler: b.compiler,
+    pins: b.pins,
+    runtime: {
+      bytes,
+      metadataRegionStart,
+      immutableReferences,
+      code: typeof template === "string" ? template.slice(0, 2 + 2 * metadataRegionStart) : null,
+    },
+  };
+}
+
 /** How the current compilation departs from the latest recorded build; empty when it is that build. */
 export function compareCurrentBuild(current: WrapperBuild, builds: readonly WrapperBuild[]): string[] {
   if (builds.length === 0) {
     return [`no wrapper build is recorded in ${WRAPPER_BUILDS_DIR}: run npm run sp1:wrapper-build`];
   }
+  const now = compared(current);
   const latest = builds[builds.length - 1];
-  return COMPARED_FIELDS.filter((f) => !same(current[f], latest[f])).map(
+  const recorded = compared(latest);
+  return COMPARED_FIELDS.filter((f) => !same(now[f], recorded[f])).map(
     (f) =>
       `the compiled ${WRAPPER_NAME}'s ${f} differ from the latest recorded build ${latest.id}: record the new build ` +
       `with npm run sp1:wrapper-build (a recorded build is never edited)`,

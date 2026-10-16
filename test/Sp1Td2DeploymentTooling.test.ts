@@ -17,6 +17,7 @@ import { expect } from "chai";
 
 import { ethers } from "./helpers/connection";
 import { VKEY_A, deploySp1, deployWrapper } from "./helpers/td2Helpers";
+import { skipWhenInstrumented } from "./helpers/instrumented";
 import {
   EXPECTED_CHAIN_ID,
   FORBIDDEN_MAINNET_CHAIN_IDS,
@@ -62,6 +63,7 @@ describe("SP1-TD2 deployment tooling", function () {
     });
 
     it("binds a haltable genuine wrapper only under the local override: unregistered and undesignated, it is refused without it", async function () {
+      skipWhenInstrumented(this);
       const wrapper = await deployWrapper(await deploySp1(), VKEY_A, haltPrincipal.address);
       const nonce = await ethers.provider.getTransactionCount(deployer.address);
       await assert.rejects(

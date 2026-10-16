@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import { ethers } from "./helpers/connection";
 import { deployPinnedSp1Verifier, withPinnedSp1Code } from "./helpers/sp1PinnedVerifier";
 import { installWrapperOfBuild, laterBuild, registryFromProfiles } from "./helpers/registryHelpers";
+import { skipWhenInstrumented } from "./helpers/instrumented";
 import { readWrapperBuilds, type WrapperBuild } from "../scripts/lib/sp1-wrapper-build";
 import {
   bindingRefusals,
@@ -53,6 +54,8 @@ describe("SP1 implementation lane — the binding gate on the published record",
     (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(sp1, vkey, principal);
 
   before(async function () {
+    // Every test here binds or refuses a wrapper as a recorded build: none can hold under coverage instrumentation.
+    skipWhenInstrumented(this);
     [admin, haltPrincipal, otherHaltPrincipal] = await ethers.getSigners();
     builds = readWrapperBuilds(".");
     const zk = await wrapperOver(await deployPinnedSp1Verifier(), D1_VKEY, haltPrincipal.address);

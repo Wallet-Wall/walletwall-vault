@@ -27,10 +27,12 @@ import {
   productionBindingStatus,
   readImplReceiptInputs,
   serializeImplReceipt,
+  wrapperAstFacts,
   type ImplReceiptInputs,
 } from "../scripts/lib/sp1-impl-receipt";
-import { readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
+import { compiledWrapper, readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
 import { planWrapperDeployment } from "../scripts/lib/zk-verifier-deployment";
+import { skipWhenInstrumented } from "./helpers/instrumented";
 
 describe("SP1 implementation lane — the implementation receipt", function () {
   this.timeout(300_000);
@@ -48,6 +50,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   };
 
   it("the committed receipt is exactly what the repository derives; an edited value is refused", function () {
+    skipWhenInstrumented(this);
     expect(implReceiptErrors(".")).to.deep.equal([]);
     const derived = deriveImplReceipt(inputs);
     const edited = structuredClone(derived);
@@ -68,6 +71,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   });
 
   it("derives the values the evidence supports", function () {
+    skipWhenInstrumented(this);
     const d1 = readDesignations(".")[0];
     const s = deriveImplReceipt(inputs).statuses;
     expect(s.SP1_DIRECT_VERIFIER_PIN.value).to.equal("CONSTRUCTOR_CODE_HASH_PIN");
@@ -128,6 +132,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   });
 
   it("PRODUCTION_SP1_BINDING_STATUS is ESTABLISHED only when every prerequisite is met; this lane leaves five unmet", function () {
+    skipWhenInstrumented(this);
     const r = deriveImplReceipt(inputs);
     expect(r.productionBinding.prerequisites.filter((p) => !p.met).map((p) => p.id)).to.deep.equal([
       "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
@@ -145,6 +150,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   });
 
   it("evaluates every STOP condition from the same inputs: none is triggered, and a perturbed input triggers its own", function () {
+    skipWhenInstrumented(this);
     const r = deriveImplReceipt(inputs);
     expect(r.stopConditions.map((c) => c.id)).to.deep.equal([...STOP_CONDITION_IDS]);
     expect(r.stopConditions.filter((c) => c.triggered)).to.deep.equal([]);
@@ -216,6 +222,34 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       { path: "contracts/mocks/ChainIdBindingProbe.sol", status: "A" },
       { path: "contracts/verifiers/ZKMLDSAVerifier.sol", status: "M" },
     ]);
+  });
+
+  it("reads the same facts from an instrumented AST: coverage probes are discounted, a look-alike call is not", function () {
+    const { abi, contract } = compiledWrapper(".");
+    const plain = wrapperAstFacts(contract, abi);
+    const probe = (base = "__NomicFoundationCoverage") => ({
+      nodeType: "ExpressionStatement",
+      expression: {
+        nodeType: "FunctionCall",
+        arguments: [],
+        expression: {
+          nodeType: "MemberAccess",
+          memberName: "sendHit",
+          expression: { nodeType: "Identifier", name: base },
+        },
+      },
+    });
+    const instrument = (base?: string) => {
+      const c = structuredClone(contract);
+      const verify = c.nodes.find((n: { name?: string }) => n.name === "verify");
+      const first = verify.body.statements[0];
+      first.trueBody = { nodeType: "Block", statements: [probe(base), first.trueBody] };
+      verify.body.statements.unshift(probe(base));
+      return wrapperAstFacts(c, abi);
+    };
+    expect(instrument()).to.deep.equal(plain);
+    expect(plain.verifyChecksHaltFirst).to.equal(true);
+    expect(instrument("Telemetry").verifyChecksHaltFirst, "a call an author wrote is not a probe").to.equal(false);
   });
 
   it("cites tests that exist and carry the titles it names", function () {

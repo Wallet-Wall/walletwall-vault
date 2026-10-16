@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { deployPinnedSp1Verifier, v610Runtime } from "./helpers/sp1PinnedVerifier";
 import { registryFromProfiles } from "./helpers/registryHelpers";
+import { skipWhenInstrumented } from "./helpers/instrumented";
 import { readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
 import { readWrapperBuilds, type WrapperBuild } from "../scripts/lib/sp1-wrapper-build";
 import { patchPairingToEmptyAccount } from "../scripts/lib/sp1-chain-execution";
@@ -252,6 +253,7 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
 
   describe("deploying, and reading back", function () {
     it("the designated path deploys a wrapper the read-back and the binding gate accept as designated", async function () {
+      skipWhenInstrumented(this);
       const planned = {
         ...planWrapperDeployment(input({ chainId: LOCAL, env: {} })),
         sp1Verifier: await deployPinnedSp1Verifier(),
@@ -282,6 +284,7 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
     });
 
     it("the local test path puts a mock behind a genuine wrapper, labelled, and the gate refuses it off a local chain", async function () {
+      skipWhenInstrumented(this);
       const planned = planWrapperDeployment(input({ chainId: LOCAL, env: { ALLOW_MOCK_SP1: "true" } }));
       const { wrapper, plan } = await deployPlannedWrapper(ethers as any, deployer, planned);
       expect(await readBackErrors(ethers.provider, wrapper, plan, builds)).to.deep.equal([]);
