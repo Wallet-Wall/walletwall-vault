@@ -39,6 +39,9 @@ import {
 import { readWrapperBuilds, type WrapperBuild } from "./sp1-wrapper-build";
 
 export const DESIGNATIONS_DIR = "evidence/zk/sp1/designations";
+/** Each successor's evidence bundle, committed beside it and named after the designation it produced. */
+export const DESIGNATION_EVIDENCE_DIR = "evidence/zk/sp1/designation-evidence";
+export const DESIGNATION_EVIDENCE_SCHEMA = "walletwall.sp1-designation-evidence.v1";
 export const DESIGNATION_SCHEMA = "walletwall.sp1-program-designation.v1";
 export const WITHDRAWAL_PROGRAM = "mldsa65-withdrawal";
 export const SOUNDNESS_NOT_ESTABLISHED = "NOT_ESTABLISHED_BY_DESIGNATION";
@@ -97,9 +100,40 @@ export interface ProgramDesignation {
     realProofOnPinnedKey: { transaction: string; programVKey: string };
   };
   identity: string;
-  evidence: { kind: string; decisionInputsDigest: string; files: FileDigest[] };
+  /** What it was derived from: SP1-TD1's decision evidence (the first) or a committed evidence bundle (successors). */
+  evidence: { kind: string; decisionInputsDigest?: string; bundleDigest?: string; files: FileDigest[] };
   soundness: string;
   doNotPin: { program: string; elfSha256: string | null; vkey: string | null }[];
+}
+
+/** One host's run of the canonical procedure, as its observation recorded it. */
+export interface EvidenceBuild {
+  hostId: string;
+  image: string;
+  guestLockBefore: string;
+  guestLockAfter: string;
+  programs: Record<string, { elfSha256: string; elfBytes: number; vkey: string }>;
+}
+
+/**
+ * The evidence a successor designation is derived from: the same contract the first designation met. The verifier is
+ * either an earlier designation's (`sameAs`, a new program build on the same SP1 verifier) or a full verifier record.
+ */
+export interface DesignationEvidenceBundle {
+  schema: string;
+  program: string;
+  subject: { zkvmGuestTree: string; zkvmHostTree: string; sourceManifest: FileDigest[] };
+  procedure: ProgramDesignation["procedure"];
+  builds: EvidenceBuild[];
+  vkeyRecompute: {
+    tool: string;
+    toolSha256: string;
+    ranOn: string;
+    results: { program: string; elfSha256: string; vkey: string }[];
+  };
+  verifier: { sameAs: string } | ProgramDesignation["verifier"];
+  /** The designation it succeeds and why: authored inputs, bound by the bundle's digest like the rest. */
+  succession: { predecessor: string; reason: string };
 }
 
 const abi = AbiCoder.defaultAbiCoder();
@@ -256,6 +290,186 @@ export function initialDesignationDriftErrors(set: readonly ProgramDesignation[]
 }
 
 // ---------------------------------------------------------------------------------------------------------
+// Successors: a new, independently established identity, from an evidence bundle
+// ---------------------------------------------------------------------------------------------------------
+
+const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+type ProgramOutput = EvidenceBuild["programs"][string];
+
+/**
+ * The next designation, derived from `bundle` and appended after `set`; throws with every way the bundle falls short
+ * of the evidence contract or would alias an earlier identity. Nothing in `set` is changed.
+ */
+export function deriveSuccessorDesignation(
+  bundle: DesignationEvidenceBundle,
+  set: readonly ProgramDesignation[],
+): ProgramDesignation {
+  const problems: string[] = [];
+  const first = set[0];
+  if (!first) problems.push("a successor needs a first designation to succeed");
+  if (bundle?.schema !== DESIGNATION_EVIDENCE_SCHEMA) {
+    problems.push(`the bundle's schema must be ${DESIGNATION_EVIDENCE_SCHEMA}`);
+  }
+  if (bundle !== null && typeof bundle === "object" && "soundness" in bundle) {
+    problems.push("an evidence bundle carries no soundness claim (provenance is not soundness)");
+  }
+  if (bundle?.program !== WITHDRAWAL_PROGRAM) problems.push(`the program must be ${WITHDRAWAL_PROGRAM}`);
+
+  // The canonical procedure, as the first designation: another procedure is another decision.
+  const procedure = bundle?.procedure;
+  if (first && procedure?.id !== first.procedure.id) {
+    problems.push(`the canonical procedure is ${first.procedure.id}; another procedure needs its own decision`);
+  }
+  if (!/@sha256:[0-9a-f]{64}$/.test(String(procedure?.image))) {
+    problems.push("the procedure's image must be pinned by digest, never a mutable tag");
+  }
+  if (procedure?.guestLock !== GUEST_LOCK_POLICY) problems.push(`the guest lock policy must be ${GUEST_LOCK_POLICY}`);
+
+  // The subject, and every host's build of it.
+  const manifest = Array.isArray(bundle?.subject?.sourceManifest) ? bundle.subject.sourceManifest : [];
+  const lock = manifest.find((e) => e.path === GUEST_LOCK_PATH);
+  if (!isTree(bundle?.subject?.zkvmGuestTree) || !isTree(bundle?.subject?.zkvmHostTree) || !lock) {
+    problems.push(`the subject needs both trees and a manifest that includes ${GUEST_LOCK_PATH}`);
+  }
+  if (manifest.some((e) => !isHex64(e?.sha256))) problems.push("every subject file needs its sha256");
+  const builds = Array.isArray(bundle?.builds) ? bundle.builds : [];
+  if (builds.length < 2 || uniq(builds.map((b) => b?.hostId)).length !== builds.length) {
+    problems.push("the ELF and vkey must be reproduced on two hosts, each once");
+  }
+  for (const b of builds) {
+    if (b?.image !== procedure?.image)
+      problems.push(`the build on ${String(b?.hostId)} did not run the procedure's image`);
+    if (!lock || b?.guestLockBefore !== lock.sha256 || b?.guestLockAfter !== lock.sha256) {
+      problems.push(
+        `the build on ${String(b?.hostId)}: the guest lockfile must be the subject's before and after the build (${GUEST_LOCK_POLICY})`,
+      );
+    }
+  }
+  const outputs = builds.map((b) => b?.programs?.[WITHDRAWAL_PROGRAM] ?? null);
+  const w: ProgramOutput | null = outputs[0] ?? null;
+  if (w === null || uniq(outputs.map((o) => JSON.stringify(o))).length !== 1) {
+    problems.push("the hosts must agree on the withdrawal ELF, its size and its vkey");
+  } else if (!isHex64(w.elfSha256) || !isWord(w.vkey) || !(Number.isInteger(w.elfBytes) && w.elfBytes > 0)) {
+    problems.push("the withdrawal ELF needs its sha256 and size, and its vkey a 32-byte word");
+  }
+
+  // The vkey, recomputed from the ELF outside every build.
+  const results = (bundle?.vkeyRecompute?.results ?? []).filter(
+    (r) => r?.program === WITHDRAWAL_PROGRAM && r.elfSha256 === w?.elfSha256,
+  );
+  const agreeing = results.filter((r) => r.vkey === w?.vkey).length;
+  if (results.length > agreeing) problems.push("one ELF maps to two vkeys (PROGRAM_IDENTITY_CONTRADICTION)");
+  else if (agreeing < 1) problems.push("the vkey must be recomputed outside the build from the ELF it designates");
+
+  // The verifier: an earlier designation's, or a full record (which needs its own per-chain evidence).
+  let verifier: ProgramDesignation["verifier"] | null = null;
+  const v = bundle?.verifier as Record<string, unknown> | undefined;
+  if (v && typeof v.sameAs === "string") {
+    const reference = set.find((d) => d.id === v.sameAs);
+    if (!reference) problems.push(`the verifier reference ${v.sameAs} names no designation`);
+    else verifier = clone(reference.verifier);
+  } else if (v && isWord(v.runtimeCodeKeccak)) {
+    verifier = clone(v) as unknown as ProgramDesignation["verifier"];
+    problems.push("a new SP1 verifier needs its own per-chain execution evidence before it can be designated");
+  } else {
+    problems.push("the bundle names no SP1 verifier");
+  }
+
+  // The identity: never one an earlier designation has, whatever the address.
+  const identity =
+    verifier !== null && w !== null && isWord(w.vkey) ? identityOf(verifier.runtimeCodeKeccak, w.vkey) : null;
+  const aliased = identity === null ? undefined : set.find((d) => d.identity === identity);
+  if (aliased) {
+    problems.push(
+      `identity ${identity} is already designated by ${aliased.id}: a successor must be a distinct verifier/program identity`,
+    );
+  }
+  const choice = bundle?.succession;
+  const predecessor = set.find((d) => d.id === choice?.predecessor);
+  if (!predecessor) problems.push(`the predecessor ${String(choice?.predecessor)} is no designation`);
+  if (typeof choice?.reason !== "string" || choice.reason.trim().length === 0) {
+    problems.push("the succession needs a reason");
+  }
+  if (
+    problems.length > 0 ||
+    predecessor === undefined ||
+    w === null ||
+    verifier === null ||
+    identity === null ||
+    !lock ||
+    choice === undefined
+  ) {
+    throw new Error(`the evidence bundle does not designate a successor:\n - ${problems.join("\n - ")}`);
+  }
+
+  const acvp = builds.map((b) => b.programs?.["mldsa65-acvp"] ?? null);
+  const acvpAgreed = acvp[0] !== null && uniq(acvp.map((o) => JSON.stringify(o))).length === 1;
+  const sequence = set.length + 1;
+  return {
+    schema: DESIGNATION_SCHEMA,
+    id: `${WITHDRAWAL_PROGRAM}-d${sequence}`,
+    sequence,
+    program: WITHDRAWAL_PROGRAM,
+    predecessor: { id: predecessor.id, identity: predecessor.identity },
+    succession: { reason: choice.reason },
+    subject: {
+      zkvmGuestTree: bundle.subject.zkvmGuestTree,
+      zkvmHostTree: bundle.subject.zkvmHostTree,
+      sourceManifestSha256: sourceManifestDigest(manifest),
+      guestCargoLockSha256: lock.sha256,
+    },
+    procedure: clone(procedure),
+    elf: { sha256: w.elfSha256, bytes: w.elfBytes },
+    programVKey: w.vkey,
+    vkeyRecomputed: { tool: bundle.vkeyRecompute.tool, agreeing, conflicting: 0, distinctComputations: 1 },
+    hosts: builds.map((b) => b.hostId).sort(),
+    verifier,
+    identity,
+    evidence: { kind: "SP1 designation evidence bundle", bundleDigest: sha256Hex(JSON.stringify(bundle)), files: [] },
+    soundness: SOUNDNESS_NOT_ESTABLISHED,
+    doNotPin: [
+      {
+        program: "mldsa65-acvp",
+        elfSha256: acvpAgreed ? (acvp[0] as ProgramOutput).elfSha256 : null,
+        vkey: acvpAgreed ? (acvp[0] as ProgramOutput).vkey : null,
+      },
+    ],
+  };
+}
+
+/**
+ * Each successor in `set` against the derivation from its own committed bundle (`bundles`, by designation id); the
+ * bundle holds every input, the predecessor and the reason included, so a successor is generated, never edited.
+ */
+export function successorDriftErrors(
+  set: readonly ProgramDesignation[],
+  bundles: Record<string, DesignationEvidenceBundle | undefined>,
+): string[] {
+  const errors: string[] = [];
+  set.forEach((d, i) => {
+    if (i === 0) return;
+    const bundle = bundles[d.id];
+    if (bundle === undefined) {
+      errors.push(`${d.id}: its evidence bundle ${DESIGNATION_EVIDENCE_DIR}/${d.id}.json is missing`);
+      return;
+    }
+    if (sha256Hex(JSON.stringify(bundle)) !== d.evidence?.bundleDigest) {
+      errors.push(`${d.id}: the committed evidence bundle is not the one it was derived from`);
+      return;
+    }
+    try {
+      const derived = deriveSuccessorDesignation(bundle, set.slice(0, i));
+      if (serializeDesignation(derived) !== serializeDesignation(d)) {
+        errors.push(`${d.id} is not what its evidence bundle derives: a designation is generated, never edited`);
+      }
+    } catch (error) {
+      errors.push(`${d.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+  return errors;
+}
+
+// ---------------------------------------------------------------------------------------------------------
 // Rules over the set
 // ---------------------------------------------------------------------------------------------------------
 
@@ -301,6 +515,14 @@ export function designationSetErrors(set: readonly ProgramDesignation[]): string
     if (i === 0) {
       if (d?.predecessor !== null || d?.succession !== null)
         errors.push(`${at}: the first designation has no predecessor`);
+    } else {
+      const earlier = set.slice(0, i).find((e) => e.id === d?.predecessor?.id);
+      if (!earlier || d?.predecessor?.identity !== earlier.identity) {
+        errors.push(`${at}: its predecessor must be an earlier designation, named with that designation's identity`);
+      }
+      if (typeof d?.succession?.reason !== "string" || d.succession.reason.trim().length === 0) {
+        errors.push(`${at}: a successor states the reason it succeeds its predecessor`);
+      }
     }
     const prior = identities.get(d?.identity);
     if (prior !== undefined) errors.push(`${at}: identity ${d.identity} is already designated by ${prior}`);
@@ -391,10 +613,27 @@ export function readDesignations(repoRoot = "."): ProgramDesignation[] {
     .sort((a, b) => a.sequence - b.sequence);
 }
 
+/** The committed evidence bundle of each successor, by designation id (missing ones are absent). */
+export function readDesignationBundles(
+  repoRoot: string,
+  set: readonly ProgramDesignation[],
+): Record<string, DesignationEvidenceBundle | undefined> {
+  const out: Record<string, DesignationEvidenceBundle | undefined> = {};
+  for (const d of set.slice(1)) {
+    const path = resolve(repoRoot, DESIGNATION_EVIDENCE_DIR, `${d.id}.json`);
+    out[d.id] = existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as DesignationEvidenceBundle) : undefined;
+  }
+  return out;
+}
+
 /** The full check of the committed designations in this repository. */
 export function validateDesignationsInRepo(repoRoot = "."): string[] {
   const set = readDesignations(repoRoot);
-  const errors = [...designationSetErrors(set), ...initialDesignationDriftErrors(set, readDecisionContext(repoRoot))];
+  const errors = [
+    ...designationSetErrors(set),
+    ...initialDesignationDriftErrors(set, readDecisionContext(repoRoot)),
+    ...successorDriftErrors(set, readDesignationBundles(repoRoot, set)),
+  ];
   if (set.length > 0) errors.push(...subjectFreshnessErrors(set[set.length - 1], repoRoot));
   const builds = readWrapperBuilds(repoRoot);
   if (builds.length > 0 && compatibleDesignations(builds[builds.length - 1], set).length === 0) {
