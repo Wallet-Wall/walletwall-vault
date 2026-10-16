@@ -338,6 +338,27 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           });
         }
 
+        it(`${c.name}: a current verifier the consumer does probe, burning its gas, costs a rotation or a transfer at most the probe's cap`, async function () {
+          // Installed showing an identity, so the consumer probes it: whether it is halted when it is left (to record
+          // that identity), and its halt principal on an ownership transfer. An uncapped probe would take 63/64 of
+          // whatever gas the owner sends; capped at 50,000, a modest limit is enough.
+          const burner = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+          await burner.program(SEL.SP1_VERIFIER, B.Return, word(await sp1.getAddress()));
+          await burner.program(SEL.PROGRAM_VKEY, B.Return, VKEY_A);
+          await rotateTo(burner);
+          await burner.program(SEL.halted, B.BurnGas, ethers.ZeroHash);
+          await burner.program(SEL.HALT_PRINCIPAL, B.BurnGas, ethers.ZeroHash);
+          await consumer.connect(admin).transferOwnership(successor.address);
+          await consumer.connect(successor).acceptOwnership({ gasLimit: 300_000n });
+          expect(await consumer.owner()).to.equal(successor.address);
+          await consumer.connect(successor).proposePQVerifier(await w2.getAddress());
+          await networkHelpers.time.increase(ROTATION_DELAY);
+          await consumer.connect(successor).applyPQVerifierUpdate({ gasLimit: 400_000n });
+          expect(await consumer.pqVerifier()).to.equal(await w2.getAddress());
+          // The burned probe read as "not halted": nothing was recorded.
+          expect(await consumer.haltedVerifierIdentities(await identityOf(w1))).to.equal(false);
+        });
+
         it(`${c.name}: the 96 KiB answer really returns within the probe's gas cap (it is not another out-of-gas case)`, async function () {
           await programAll(B.ReturnHuge);
           const out = await ethers.provider.call({
@@ -405,8 +426,14 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           await rotateTo(lookalike); // installed showing identity A, ACTIVE
           expect(await consumer.pqVerifierIdentity()).to.equal(await identityOf(w1));
           await lookalike.program(SEL.halted, B.Return, word("0x01"));
-          await rotateTo(w2); // leaving it while it claims a halt: identity A is recorded
+          // ...and now reports identity B, the target's own: what is recorded is the identity it was installed with.
+          await lookalike.program(SEL.PROGRAM_VKEY, B.Return, VKEY_B);
+          await rotateTo(w2); // leaving it while it claims a halt: identity A is recorded, never B
           expect(await consumer.haltedVerifierIdentities(await identityOf(w1))).to.equal(true);
+          expect(
+            await consumer.haltedVerifierIdentities(await identityOf(w2)),
+            "never the identity it reports when it is left",
+          ).to.equal(false);
           await expect(
             consumer
               .connect(admin)
