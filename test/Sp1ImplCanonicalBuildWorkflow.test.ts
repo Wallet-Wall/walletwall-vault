@@ -126,6 +126,16 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
         1,
       ],
       ["the inputs decision failed", { REBUILD: "", ...passing, CHANGES: "failure" }, 1],
+      [
+        "the inputs decision failed after it wrote one",
+        { REBUILD: "false", ...passing, CHANGES: "failure", RECOMPUTE: "skipped", COMPARE: "skipped" },
+        1,
+      ],
+      [
+        "no input changed, but the compare ran and failed",
+        { REBUILD: "false", ...passing, RECOMPUTE: "skipped", COMPARE: "failure" },
+        1,
+      ],
       ["no decision at all (an unknown value is no answer)", { REBUILD: "maybe", ...passing }, 1],
       ["no results at all", {}, 1],
     ];
@@ -138,13 +148,20 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
   it("decides from the diff: every file the checker imports, the subject, the designations, their evidence, the procedure and the workflow are inputs", function () {
     const r = gateScript("inputs", {});
     expect(r.status, r.stderr).to.equal(0);
-    const inputs = JSON.parse(r.stdout) as string[];
-    const covered = (path: string) =>
-      inputs.some((p) => (p.endsWith("/**") ? path.startsWith(p.slice(0, -2)) : path === p));
+    expect(JSON.parse(r.stdout)).to.be.an("array").that.is.not.empty;
+    // The script's own matcher decides, so this test cannot drift from it.
+    const covered = (path: string) => {
+      const m = spawnSync(process.execPath, [resolve(GATE_SCRIPT), "match", path], { encoding: "utf8" });
+      expect(m.status, m.stderr).to.equal(0);
+      return (JSON.parse(m.stdout) as string[]).includes(path);
+    };
     const closure = importClosure("scripts/check-sp1-canonical-build.ts");
     expect(closure).to.include.members(["scripts/lib/sp1-canonical-build.ts", "scripts/lib/sp1-designation.ts"]);
     for (const file of closure) expect(covered(file), `${file} (the checker imports it)`).to.equal(true);
     for (const path of [
+      // git archive honours export-ignore and export-subst wherever a .gitattributes says so (the re-review's A5).
+      ".gitattributes",
+      "zkvm/.gitattributes",
       "zkvm/guest/src/bin/withdrawal.rs",
       "zkvm/host/Cargo.lock",
       "evidence/zk/sp1/designations/mldsa65-withdrawal-d2.json",
@@ -215,6 +232,24 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
       );
     });
 
+    it("sees an input moved out of the subject, a name git would quote, and a .gitattributes (the re-review's A5)", function () {
+      const before = commit("zkvm/guest/src/extra.rs", "// extra\n");
+      git("mv", "zkvm/guest/src/extra.rs", "extra.rs");
+      git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "commit", "-q", "-m", "move out");
+      const moved = git("rev-parse", "HEAD");
+      expect(decide({ EVENT: "pull_request", BASE: before, HEAD: moved }).output, "moved out").to.equal(
+        "rebuild=true\n",
+      );
+      const quoted = commit("zkvm/guest/src/ñ.rs", "// a name git quotes\n");
+      expect(decide({ EVENT: "pull_request", BASE: moved, HEAD: quoted }).output, "a quoted name").to.equal(
+        "rebuild=true\n",
+      );
+      const attributes = commit(".gitattributes", "zkvm/guest/src/extra.rs export-ignore\n");
+      expect(decide({ EVENT: "pull_request", BASE: quoted, HEAD: attributes }).output, ".gitattributes").to.equal(
+        "rebuild=true\n",
+      );
+    });
+
     it("on demand, and for a push with no base (a new branch), it rebuilds", function () {
       expect(decide({ EVENT: "workflow_dispatch", BASE: "", HEAD: "" }).output).to.equal("rebuild=true\n");
       expect(decide({ EVENT: "push", BASE: "0".repeat(40), HEAD: docs }).output).to.equal("rebuild=true\n");
@@ -244,6 +279,10 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
     expect(changes).to.match(/run: node scripts\/sp1-canonical\/ci-gate\.mjs changed$/m);
     const build = jobBlock(wf, "build");
     expect(build).to.match(/^ {4}needs: changes$/m);
+    // Nothing to rebuild needs neither pinned runner image: a retired label cannot fail every pull request (L4).
+    expect(build).to.include(
+      "runs-on: ${{ needs.changes.outputs.rebuild == 'true' && matrix.runner || 'ubuntu-latest' }}",
+    );
     expect(build, "no job-level if: on the matrix job").to.not.match(/^ {4}if:/m);
     const steps = stepsOf(build);
     expect(steps).to.have.length.greaterThan(3);

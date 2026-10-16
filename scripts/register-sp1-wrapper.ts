@@ -29,7 +29,7 @@ async function main() {
     throw new Error(`chain ${chainId} is local: the registry records public deployments only`);
   }
   // The registry this extends is the published one, fetched now, and every record validates.
-  assertPublishedSp1Records(chainId);
+  assertPublishedSp1Records(chainId, ".", { registryMayExtend: true });
   const registry = readRegistry();
   const builds = readWrapperBuilds();
   const wrapper = process.env.WRAPPER_ADDRESS;

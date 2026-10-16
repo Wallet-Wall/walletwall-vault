@@ -3,7 +3,8 @@
  *
  *   registrationFact — a WRAPPER_REGISTERED fact from the deployment transaction's receipt (it created the wrapper,
  *     and who sent it) and the wrapper's measured profile (its recorded build, SP1 verifier and that verifier's code
- *     hash, PROGRAM_VKEY, identity, halt principal, ACTIVE), joined to the designation of that identity.
+ *     hash, PROGRAM_VKEY, identity, halt principal), joined to the designation of that identity; a wrapper already
+ *     halted is registered too, so that its halt can be published (the re-review's L1).
  *   haltFact — a WRAPPER_HALTED fact from the halt transaction's receipt (the wrapper emitted VerifierHalted) and the
  *     wrapper's measured state (HALTED, and still the wrapper its registration records), with the measured identity.
  *
@@ -77,14 +78,19 @@ export async function registrationFact(
   final(`the deployment of ${wrapper}`, receipt.blockNumber, observedAt);
   const p = await profileVerifier(provider, wrapper, input.builds, observedAt.block);
   if (p.wrapperBuild === null) throw new Error(`${wrapper} is no recorded wrapper build`);
+  // A wrapper already HALTED is registered all the same: what a registration records is immutable, and its halt can
+  // only be published once it is registered (the re-review's L1). Until the halt fact follows, the binding gate
+  // refuses it, because the chain shows a halt the registry does not record.
   if (
-    p.halted !== false ||
+    p.halted === null ||
     p.haltPrincipal === null ||
     p.identity === null ||
     p.sp1Verifier === null ||
     p.programVKey === null
   ) {
-    throw new Error(`${wrapper} could not be measured as an ACTIVE wrapper with an identity and a halt principal`);
+    throw new Error(
+      `${wrapper} could not be measured as a wrapper with an identity, a halt principal and a halt state`,
+    );
   }
   const designation = input.designations.find((d) => d.identity === p.identity);
   if (!designation) throw new Error(`no designation has ${wrapper}'s identity ${p.identity}`);

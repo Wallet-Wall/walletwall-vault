@@ -69,6 +69,10 @@ async function main() {
     );
   }
 
+  // Off a local chain the gate reads only the published SP1 records, fetched now from the canonical repository
+  // (scripts/lib/sp1-published-records.ts), and nothing is sent before they are checked.
+  assertPublishedSp1Records(liveChainId);
+
   console.warn(
     "\n⚠️  Prototype only. Not audited. Do not use real funds. " +
       "The PQ verifier deployed here is a MOCK (no real cryptographic verification).\n",
@@ -109,8 +113,6 @@ async function main() {
     console.log(`MockMLDSAVerifier (MOCK) deployed to: ${pqVerifierAddress}`);
   }
 
-  // Off a local chain the gate reads only the published SP1 records, fetched now (scripts/lib/sp1-published-records.ts).
-  assertPublishedSp1Records(liveChainId);
   // SP1-TD2 binding gate: on the SP1 path the vault must sit behind an ACTIVE, haltable wrapper with the SP1-TD1
   // designations that the deployer cannot halt (scripts/lib/verifier-binding.ts).
   await checkDeploymentBinding(ethers.provider, "WalletWallVault", pqVerifierAddress, await deployer.getAddress(), {

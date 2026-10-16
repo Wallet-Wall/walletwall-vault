@@ -56,7 +56,8 @@ jobs:
   build:
     name: Canonical build (${{ matrix.runner }})
     needs: changes
-    runs-on: ${{ matrix.runner }}
+    # Nothing to rebuild needs neither pinned runner image: a retired or degraded label cannot fail every pull request.
+    runs-on: ${{ needs.changes.outputs.rebuild == 'true' && matrix.runner || 'ubuntu-latest' }}
     timeout-minutes: 90
     strategy:
       fail-fast: false

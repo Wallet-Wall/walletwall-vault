@@ -29,6 +29,7 @@ import type { RegistryFact } from "../scripts/lib/sp1-registry";
 import {
   bindingRefusals,
   checkDeploymentBinding,
+  checkRotationBinding,
   profileVerifier,
   readDesignations,
   readHaltScope,
@@ -264,6 +265,35 @@ describe("SP1 implementation lane — the binding gate on the published record",
       }).catch(() => undefined);
       expect(tags.length).to.be.greaterThan(4);
       expect(new Set(tags).size, `read at ${[...new Set(tags)].join(", ")}`).to.equal(1);
+      expect(typeof tags[0]).to.equal("number");
+    });
+
+    it("a rotation reads the consumer's identity, its halted-identity record and both verifiers at that one block (the re-review's L3)", async function () {
+      const vault = await (await ethers.getContractFactory("WalletWallVault")).deploy(designated.address);
+      const next = await wrapperOver(await deployPinnedSp1Verifier(), D1_VKEY, haltPrincipal.address);
+      const tags: unknown[] = [];
+      const recording = new Proxy(ethers.provider, {
+        get(t, prop) {
+          if (prop === "call")
+            return async (tx: { blockTag?: unknown }) => {
+              tags.push(tx.blockTag);
+              return ethers.provider.call(tx as never);
+            };
+          if (prop === "getCode")
+            return async (address: string, tag?: unknown) => {
+              tags.push(tag);
+              return ethers.provider.getCode(address, tag as number);
+            };
+          const value = Reflect.get(t, prop, t);
+          return typeof value === "function" ? value.bind(t) : value;
+        },
+      });
+      await checkRotationBinding(recording, await vault.getAddress(), await next.getAddress(), admin.address, {
+        registry: registryFromProfiles(31337n, [designated]),
+        allowMockSp1: false,
+      }).catch(() => undefined);
+      expect(tags.length).to.be.greaterThan(8);
+      expect(new Set(tags).size, `read at ${[...new Set(tags)].map(String).join(", ")}`).to.equal(1);
       expect(typeof tags[0]).to.equal("number");
     });
   });

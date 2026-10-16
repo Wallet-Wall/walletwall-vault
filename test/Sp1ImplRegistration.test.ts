@@ -179,6 +179,70 @@ describe("SP1 implementation lane — registry facts from chain reads", function
     registry: readRegistry("."),
   });
 
+  it("a wrapper halted before anyone registered it is registered, and its halt recorded with it (the re-review's L1)", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    const zk = await ethers.getContractAt("ZKMLDSAVerifier", wrapper);
+    const halt = await (await zk.connect(haltPrincipal).halt()).wait();
+    const base = readRegistry(".");
+    const registration = await registrationFact(ethers.provider, {
+      wrapper,
+      deploymentTx: deployment,
+      designations: designations(),
+      builds: builds(),
+      registry: base,
+    });
+    const registry: RegistryDoc = { ...base, facts: [registration] };
+    const fact = await haltFact(ethers.provider, {
+      wrapper,
+      haltTx: halt!.hash,
+      reason: "VERIFIER_SOUNDNESS",
+      registry,
+      builds: builds(),
+    });
+    expect(registryErrors({ ...registry, facts: [registration, fact] }, builds(), designations())).to.deep.equal([]);
+  });
+
+  it("refuses what is not this wrapper's: another contract's deployment, an unrecorded build, a halt the chain does not show", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    const { wrapper: another, deployment: anotherDeployment } = await deployDesignated();
+    expect(another).to.not.equal(wrapper);
+    await assert.rejects(
+      registrationFact(ethers.provider, registrationInput(wrapper, anotherDeployment)),
+      /did not deploy/,
+    );
+    await assert.rejects(
+      registrationFact(ethers.provider, { ...registrationInput(wrapper, deployment), builds: [] }),
+      /is no recorded wrapper build/,
+    );
+    // Halted by one transaction; a halt fact naming another is refused, as is a chain that reads it not halted.
+    const registration = await registrationFact(ethers.provider, registrationInput(wrapper, deployment));
+    const registry: RegistryDoc = { ...readRegistry("."), facts: [registration] };
+    const zk = await ethers.getContractAt("ZKMLDSAVerifier", wrapper);
+    const halt = await (await zk.connect(haltPrincipal).halt()).wait();
+    const unrelated = await (await deployer.sendTransaction({ to: stranger.address, value: 1n })).wait();
+    const input = { wrapper, reason: "VERIFIER_SOUNDNESS", registry, builds: builds() };
+    await assert.rejects(haltFact(ethers.provider, { ...input, haltTx: unrelated!.hash }), /emitted no VerifierHalted/);
+    const haltedSelector = ethers.id("halted()").slice(0, 10);
+    const notHalted = withOverrides({
+      call: async (tx: { to?: string; data?: string }) =>
+        tx.data === haltedSelector && ethers.getAddress(String(tx.to)) === wrapper
+          ? ethers.ZeroHash
+          : ethers.provider.call(tx as never),
+    });
+    await assert.rejects(haltFact(notHalted, { ...input, haltTx: halt!.hash }), /is not HALTED/);
+  });
+
+  it("a chain that names no finalized block is no answer either", async function () {
+    skipWhenInstrumented(this);
+    const { wrapper, deployment } = await deployDesignated();
+    const noFinality = withOverrides({
+      getBlock: async (tag: unknown) => (tag === "finalized" ? null : ethers.provider.getBlock(tag as number)),
+    });
+    await assert.rejects(registrationFact(noFinality, registrationInput(wrapper, deployment)), /no finalized block/);
+  });
+
   it("registers only a final deployment: one after the finalized block is refused until it is final", async function () {
     skipWhenInstrumented(this);
     const { wrapper, deployment } = await deployDesignated();

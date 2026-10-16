@@ -521,10 +521,14 @@ export async function checkDeploymentBinding(
 }
 
 /** Identifies a deployed rotating consumer by the EIP-712 domain name it reports; refuses anything else. */
-export async function identifyConsumer(provider: Provider, address: string): Promise<ConsumerName> {
+export async function identifyConsumer(provider: Provider, address: string, blockTag?: number): Promise<ConsumerName> {
   let name: string | undefined;
   try {
-    const out = await provider.call({ to: address, data: selector("eip712Domain()") });
+    const out = await provider.call({
+      to: address,
+      data: selector("eip712Domain()"),
+      ...(blockTag === undefined ? {} : { blockTag }),
+    });
     name = abi.decode(["bytes1", "string", "string", "uint256", "address", "bytes32", "uint256[]"], out)[1] as string;
   } catch {
     name = undefined;
@@ -542,18 +546,20 @@ export async function checkRotationBinding(
   signer: string,
   options: GateOptions,
 ): Promise<{ consumer: ConsumerName; target: VerifierProfile; current: VerifierProfile }> {
-  const consumer = await identifyConsumer(provider, consumerAddress);
+  // Every read at the gate's one block: the consumer, its verifiers, its identity and its halted-identity record.
   const ctx = await context(provider, options);
+  const consumer = await identifyConsumer(provider, consumerAddress, ctx.blockTag);
   const currentAddress = asAddress(await word(provider, consumerAddress, selector("pqVerifier()"), ctx.blockTag));
   if (currentAddress === null) throw new Error(`${consumerAddress} reports no pqVerifier`);
   const current = await profileVerifier(provider, currentAddress, ctx.builds, ctx.blockTag);
   const target = await profileVerifier(provider, newVerifier, ctx.builds, ctx.blockTag);
-  const stored = await word(provider, consumerAddress, selector("pqVerifierIdentity()"));
+  const stored = await word(provider, consumerAddress, selector("pqVerifierIdentity()"), ctx.blockTag);
   let recorded = false;
   if (target.identity !== null) {
     const out = await provider.call({
       to: consumerAddress,
       data: selector("haltedVerifierIdentities(bytes32)") + target.identity.slice(2),
+      blockTag: ctx.blockTag,
     });
     recorded = BigInt(out) !== 0n;
   }

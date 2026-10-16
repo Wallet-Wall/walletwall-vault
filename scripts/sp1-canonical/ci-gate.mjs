@@ -4,6 +4,7 @@
 // a job runs it right after checkout.
 //
 //   node scripts/sp1-canonical/ci-gate.mjs inputs    the paths whose change requires the rebuild, as JSON
+//   node scripts/sp1-canonical/ci-gate.mjs match <path>...   which of the paths are inputs, as JSON
 //   node scripts/sp1-canonical/ci-gate.mjs changed   from EVENT, BASE, HEAD: rebuild=true|false, to $GITHUB_OUTPUT
 //   node scripts/sp1-canonical/ci-gate.mjs gate      from REBUILD, CHANGES, BUILD, RECOMPUTE, COMPARE: exit 0 or 1
 //
@@ -19,7 +20,9 @@ import { pathToFileURL } from "node:url";
 /**
  * What the canonical build reads: the subject, the designations and their evidence, SP1-TD1's procedure, this
  * driver, the workflow, every file the checker imports (test/Sp1ImplCanonicalBuildWorkflow.test.ts follows the
- * imports and fails on one missing here) and the packages that run it. `dir/**` is everything under dir.
+ * imports and fails on one missing here), the packages that run it, and every .gitattributes (git archive honours
+ * export-ignore and export-subst). A pattern ending in a slash and two stars is everything under that directory; one
+ * starting with two stars and a slash is a file of that name in any directory.
  */
 export const INPUTS = [
   "zkvm/guest/**",
@@ -38,12 +41,19 @@ export const INPUTS = [
   ".github/workflows/sp1-canonical-build.yml",
   "package.json",
   "package-lock.json",
+  "**/.gitattributes",
 ];
 
 /** The changed paths that are inputs of the canonical build. */
 export function inputsAmong(paths) {
   return paths.filter((path) =>
-    INPUTS.some((p) => (p.endsWith("/**") ? path.startsWith(p.slice(0, -2)) : path === p)),
+    INPUTS.some((p) =>
+      p.startsWith("**/")
+        ? path === p.slice(3) || path.endsWith(`/${p.slice(3)}`)
+        : p.endsWith("/**")
+          ? path.startsWith(p.slice(0, -2))
+          : path === p,
+    ),
   );
 }
 
@@ -64,11 +74,12 @@ function rebuildFor(env) {
   if (!COMMIT.test(base) || !COMMIT.test(head)) {
     throw new Error(`cannot decide: ${event} needs two commits to compare (base "${base}", head "${head}")`);
   }
-  const changed = execFileSync("git", ["diff", "--name-only", `${base}...${head}`], {
+  // No rename detection (a file moved out of an input is a deletion there) and NUL-separated names (never quoted).
+  const changed = execFileSync("git", ["diff", "--name-only", "--no-renames", "-z", `${base}...${head}`], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   })
-    .split("\n")
+    .split("\0")
     .filter(Boolean);
   const inputs = inputsAmong(changed);
   return inputs.length > 0
@@ -76,17 +87,12 @@ function rebuildFor(env) {
     : { rebuild: false, why: `no input of the canonical build changed (${changed.length} files changed)` };
 }
 
-const RESULTS = ["success", "failure", "cancelled", "skipped"];
-
 /** Why the workflow does not pass; empty when every job the change requires passed. */
 export function gateProblems(env) {
   const result = (key) => env[key] ?? "";
   const named = (key) => result(key) || "no result";
   const problems = [];
   const rebuild = result("REBUILD");
-  for (const key of ["CHANGES", "BUILD", "RECOMPUTE", "COMPARE"]) {
-    if (!RESULTS.includes(result(key))) problems.push(`${key}: ${named(key)} is not a job result`);
-  }
   if (result("CHANGES") !== "success") problems.push(`the inputs decision did not succeed (${named("CHANGES")})`);
   if (rebuild !== "true" && rebuild !== "false") problems.push(`no rebuild decision (${rebuild || "none"})`);
   if (result("BUILD") !== "success") problems.push(`build: ${named("BUILD")}`);
@@ -108,6 +114,10 @@ function main(command) {
     process.stdout.write(`${JSON.stringify(INPUTS)}\n`);
     return 0;
   }
+  if (command === "match") {
+    process.stdout.write(`${JSON.stringify(inputsAmong(process.argv.slice(3)))}\n`);
+    return 0;
+  }
   if (command === "changed") {
     const { rebuild, why } = rebuildFor(process.env);
     console.log(`rebuild=${rebuild}: ${why}`);
@@ -125,7 +135,7 @@ function main(command) {
     console.log("the SP1 canonical build gate passes");
     return 0;
   }
-  console.error("usage: ci-gate.mjs inputs | changed | gate");
+  console.error("usage: ci-gate.mjs inputs | match <path>... | changed | gate");
   return 2;
 }
 
