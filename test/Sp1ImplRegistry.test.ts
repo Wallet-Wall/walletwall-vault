@@ -489,6 +489,20 @@ describe("SP1 implementation lane — the wrapper registry", function () {
       expect(directoryHistoryErrors(dir, d).join("\n")).to.match(/working tree/);
     });
 
+    it("a record path that cannot be read is an error, never read as absent", function () {
+      // A directory where the registry file was: reading it fails, and the failure is not taken for "no registry".
+      rmSync(join(dir, REGISTRY_REL));
+      mkdirSync(join(dir, REGISTRY_REL));
+      expect(() => history()).to.throw(/EISDIR/);
+      // A file where a published directory was: listing it fails the same way.
+      const d = "evidence/zk/sp1/wrapper-builds";
+      write(`${d}/b1.json`, "{}\n");
+      commit("b1");
+      rmSync(join(dir, d), { recursive: true });
+      writeFileSync(join(dir, d), "not a directory\n");
+      expect(() => directoryHistoryErrors(dir, d)).to.throw(/ENOTDIR/);
+    });
+
     it("the working tree is read entry by entry, never through a link: a published subdirectory swapped for a link to an identical copy is refused", function () {
       const d = "evidence/zk/sp1/designation-evidence";
       write(`${d}/sub/x-d1.json`, "{}\n");
