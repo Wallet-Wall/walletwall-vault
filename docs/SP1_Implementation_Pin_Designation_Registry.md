@@ -479,9 +479,16 @@ it looked equivalent; it is not. Off a local chain the mutant runs the mock mode
 refusing, so a malformed value changes the error. A test now pins that no part of the mock mode runs off a local chain
 (`d8478fa9`, test only), and it kills P03 in each of two runs. A confirming pass at `d8478fa9` killed all 223. It
 differs from the first pass only where the new test reaches: P03 is killed, and P02 has the new test as a second
-killer. One later commit touches tests: `9296a4a6` makes two receipt tests skip under coverage instrumentation, a no-op
-in a plain run, which is how the harness runs. The receipt suite's 38 mutants, run again there, are all killed by the
-same tests. No later commit changes code or tests.
+killer. `9296a4a6` makes two receipt tests skip under coverage instrumentation, a no-op in a plain run, which is how
+the harness runs; the receipt suite's 38 mutants, run again there, are all killed by the same tests.
+
+CodeQL then flagged four alerts on the pull request, and `13efa165`–`a6c40f8b` fix them. The generators checked that a
+record was absent and then wrote it, so they now create it exclusively (`O_EXCL`), all-or-nothing. The append-only
+working-tree check stat'ed each entry before reading it, and now reads directory entries once and never through a
+link. One test used an unanchored regex where a substring test was meant. At `a6c40f8b` the mutants of the touched file
+and suite (H01–H07, the fifteen Q mutants) and six new ones for the new code were run: all 28 are killed, every earlier
+killing test still among their killers. With those six the campaign counts 229 mutants, every one killed. No later
+commit changes code or tests.
 
 Three kills come from tests that read source text rather than run it: the published-records check removed from
 `deploy.ts` (U05) or from `register-sp1-wrapper.ts` (U06), and the workflow asking for the pinned runner when nothing
