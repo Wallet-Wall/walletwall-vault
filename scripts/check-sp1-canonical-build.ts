@@ -4,22 +4,27 @@
  *
  * Usage:
  *   npx tsx scripts/check-sp1-canonical-build.ts --build <host-id>=<driver-output-dir> [--build ...]
- *     --recompute <outside-recompute-record> --min-hosts <n> [--designation <id>] [--write <observation.json>]
+ *     --recompute <outside-recompute-record> [--recompute ...] --min-hosts <n> [--designation <id>]
+ *     [--records <dir>]
  *
- * Exits non-zero unless the verdict is REPRODUCED. Reads files only; no network, no transactions.
+ * The observation is derived from the driver's records and the recompute records alone, and names this tree's driver
+ * and checker by sha256. --records writes it as <dir>.raw.json, with the records it was derived from under <dir>/
+ * (builds/<host-id>/, vkey-recompute/): the committed evidence's layout, which canonicalRebuildEvidenceErrors
+ * re-derives. Exits non-zero unless the verdict is REPRODUCED (after writing, so a failure keeps its evidence). Reads
+ * files only; no network, no transactions.
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve } from "node:path";
 
 import {
-  CANONICAL_BUILD_SCHEMA,
-  COMMON_MODE,
   canonicalBuildErrors,
   canonicalBuildVerdict,
+  canonicalToolDigests,
   collectBuild,
+  deriveCanonicalObservation,
   parseVkeyRecompute,
-  type CanonicalBuildObservation,
+  writeCanonicalRecords,
 } from "./lib/sp1-canonical-build";
 import { latestDesignation, readDesignations } from "./lib/sp1-designation";
 
@@ -36,32 +41,31 @@ try {
   const wanted = args("--designation")[0] ?? latestDesignation(designations)?.id;
   const d = designations.find((x) => x.id === wanted);
   if (!d) throw new Error(`no designation ${String(wanted)}`);
+  const minimumHosts = Number(args("--min-hosts")[0] ?? "2");
+  if (!Number.isInteger(minimumHosts) || minimumHosts < 1) {
+    throw new Error(`--min-hosts takes a positive integer, not ${args("--min-hosts")[0]}`);
+  }
   const builds = args("--build").map((spec) => {
     const at = spec.indexOf("=");
     if (at <= 0) throw new Error(`--build takes <host-id>=<dir>, not ${spec}`);
-    return collectBuild(resolve(spec.slice(at + 1)), spec.slice(0, at), d.procedure);
+    return { hostId: spec.slice(0, at), dir: resolve(spec.slice(at + 1)) };
   });
-  const records = args("--recompute").map((file) => parseVkeyRecompute(readFileSync(resolve(file), "utf8")));
-  if (records.length === 0) {
-    throw new Error("--recompute <record> is required: the vkey is recomputed outside the build");
-  }
-  if (new Set(records.map((r) => r.toolSha256)).size !== 1) {
-    throw new Error("the outside recomputes ran different cargo-prove binaries: record them as separate observations");
-  }
-  const minimumHosts = Number(args("--min-hosts")[0] ?? "2");
-  const observation: CanonicalBuildObservation = {
-    schema: CANONICAL_BUILD_SCHEMA,
-    measuredAtUtc: new Date().toISOString(),
+  const recomputeFiles = args("--recompute")
+    .map((file) => resolve(file))
+    .sort((a, b) => basename(a).localeCompare(basename(b)));
+  const observation = deriveCanonicalObservation({
     designation: d.id,
-    builds,
-    vkeyRecompute: { ...records[0], results: records.flatMap((r) => r.results) },
-    commonMode: COMMON_MODE,
-  };
-  const out = args("--write")[0];
-  if (out !== undefined) {
-    mkdirSync(dirname(resolve(out)), { recursive: true });
-    writeFileSync(resolve(out), `${JSON.stringify(observation, null, 2)}\n`);
-    console.log(`wrote ${out}`);
+    builds: builds.map((b) => collectBuild(b.dir, b.hostId)),
+    recomputes: recomputeFiles.map((file) => parseVkeyRecompute(readFileSync(file, "utf8"))),
+    tools: canonicalToolDigests("."),
+  });
+  const records = args("--records")[0];
+  if (records !== undefined) {
+    const dir = resolve(records);
+    writeCanonicalRecords(dir, builds, recomputeFiles);
+    mkdirSync(dirname(dir), { recursive: true });
+    writeFileSync(`${dir}.raw.json`, `${JSON.stringify(observation, null, 2)}\n`);
+    console.log(`wrote ${records}.raw.json, derived from the records under ${records}/`);
   }
   const verdict = canonicalBuildVerdict(observation, d, { minimumHosts });
   const errors = canonicalBuildErrors(observation, d, { minimumHosts });

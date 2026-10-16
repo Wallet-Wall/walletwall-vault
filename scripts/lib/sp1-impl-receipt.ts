@@ -33,6 +33,9 @@ import { isExecutionFailure } from "./rpc-answer";
 import {
   CANONICAL_REBUILD_OBSERVATION_REL,
   canonicalBuildVerdict,
+  canonicalRebuildEvidenceErrors,
+  conflictingVkeyCount,
+  recordsDirOf,
   type CanonicalBuildObservation,
 } from "./sp1-canonical-build";
 import {
@@ -671,6 +674,8 @@ export interface ImplReceiptInputs {
     hosts: string[];
     conflictingVkeys: number;
     lockUnchangedOn: string[];
+    /** Why the committed observation is not what this tree's checker derives from its raw records (F3). */
+    evidenceErrors: string[];
   };
   proving: { status: string | null; errors: string[] };
   ast: WrapperAstFacts;
@@ -784,11 +789,15 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     ...i.designationErrors,
   ]);
 
-  set("CANONICAL_BUILD_STATUS", i.canonical.oneHost, [
+  const canonicalEvidenceValid = i.canonical.evidenceErrors.length === 0;
+  set("CANONICAL_BUILD_STATUS", canonicalEvidenceValid ? i.canonical.oneHost : "EVIDENCE_INVALID", [
     `the frozen subject rebuilt by the canonical procedure on ${i.canonical.hosts.join(", ")}, compared with designation ${i.canonical.designation}: ${i.canonical.oneHost}`,
-    `the release rebuild needs two hosts: the committed evidence gives ${i.canonical.twoHost}; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone and fails on any drift`,
-    `one ELF with another vkey, in a build or the outside recompute: ${i.canonical.conflictingVkeys}`,
+    `the committed observation is what this tree's checker derives from its committed raw records, made with this tree's driver and checker: ${yes(canonicalEvidenceValid)}; the records are what the driver wrote on the machine that ran it (self-attested for a local run)`,
+    `the release rebuild needs two distinct machines: the committed evidence gives ${i.canonical.twoHost}; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone, fails on any drift or incomplete build, and reports the "SP1 canonical build gate" (requiring it is the owner's ruleset change)`,
+    `one ELF with another vkey, in a completed build or the outside recompute: ${i.canonical.conflictingVkeys}`,
     `the guest lockfile was the subject's before and after the build on: ${i.canonical.lockUnchangedOn.join(", ") || "no host"}`,
+    "only PROGRAM_IDENTITY_DRIFT is the STOP; PROCEDURE_DRIFT, INCOMPLETE (a liveness failure: an absent record) and EVIDENCE_INVALID are no reproduction, and no STOP",
+    ...i.canonical.evidenceErrors,
   ]);
 
   const successors = i.designations.filter((x) => x.predecessor !== null);
@@ -924,8 +933,8 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     },
     {
       id: "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
-      met: i.canonical.twoHost === "REPRODUCED",
-      basis: `the committed rebuild evidence, judged for the release (two hosts): ${i.canonical.twoHost}`,
+      met: i.canonical.evidenceErrors.length === 0 && i.canonical.twoHost === "REPRODUCED",
+      basis: `the committed rebuild evidence (valid: ${yes(i.canonical.evidenceErrors.length === 0)}), judged for the release (two distinct machines): ${i.canonical.twoHost}`,
     },
     {
       id: "PER_CHAIN_EXECUTION_CHECK",
@@ -961,7 +970,12 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
   ]);
 
   const stop: Record<(typeof STOP_CONDITION_IDS)[number], [boolean, string]> = {
-    CANONICAL_BUILD_DOES_NOT_REPRODUCE: [i.canonical.oneHost !== "REPRODUCED", `rebuild: ${i.canonical.oneHost}`],
+    // Only a completed rebuild that produced another ELF or vkey shows the designation is not reproduced; an
+    // incomplete build, a procedure that drifted or invalid evidence shows no reproduction, and is not this STOP.
+    CANONICAL_BUILD_DOES_NOT_REPRODUCE: [
+      i.canonical.oneHost === "PROGRAM_IDENTITY_DRIFT" || i.canonical.twoHost === "PROGRAM_IDENTITY_DRIFT",
+      `rebuild: ${i.canonical.oneHost} (one host), ${i.canonical.twoHost} (two)`,
+    ],
     ONE_ELF_CONFLICTING_VKEYS: [
       i.canonical.conflictingVkeys > 0 ||
         i.designations.some((x) => x.vkeyRecomputed.conflicting !== 0) ||
@@ -1125,16 +1139,10 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
   const canonObs = JSON.parse(read(CANONICAL_REBUILD_OBSERVATION_REL).toString("utf8")) as CanonicalBuildObservation;
   const canonDesignation = designations.find((x) => x.id === canonObs.designation);
   if (!canonDesignation) throw new Error(`the rebuild observation names no designation (${canonObs.designation})`);
-  const designatedElf = canonDesignation.elf.sha256;
-  const conflictingVkeys =
-    (canonObs.vkeyRecompute?.results ?? []).filter(
-      (r) => r.elfSha256 === designatedElf && r.vkey !== canonDesignation.programVKey,
-    ).length +
-    canonObs.builds.filter((b) =>
-      Object.values(b.programs ?? {}).some(
-        (p) => p.elfSha256 === designatedElf && p.vkey !== canonDesignation.programVKey,
-      ),
-    ).length;
+  const canonRecords = recordsDirOf(CANONICAL_REBUILD_OBSERVATION_REL);
+  const canonRecordFiles = existsSync(resolve(repoRoot, canonRecords))
+    ? git(repoRoot, ["ls-files", "--", canonRecords]).split("\n").filter(Boolean).sort()
+    : [];
 
   const provingErrors = provingAvailabilityErrors(repoRoot);
   const { abi, contract } = compiledWrapper(repoRoot);
@@ -1159,6 +1167,7 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
     REGISTRY_REL,
     CHAIN_EXECUTION_OBSERVATION_REL,
     CANONICAL_REBUILD_OBSERVATION_REL,
+    ...canonRecordFiles,
     PROVING_ARTIFACTS_OBSERVATION_REL,
     PROVING_AVAILABILITY_REL,
     WRAPPER_SOURCE,
@@ -1199,7 +1208,8 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
       oneHost: canonicalBuildVerdict(canonObs, canonDesignation, { minimumHosts: 1 }),
       twoHost: canonicalBuildVerdict(canonObs, canonDesignation, { minimumHosts: 2 }),
       hosts: canonObs.builds.map((b) => b.hostId),
-      conflictingVkeys,
+      conflictingVkeys: conflictingVkeyCount(canonObs, canonDesignation),
+      evidenceErrors: canonicalRebuildEvidenceErrors(repoRoot),
       lockUnchangedOn: canonObs.builds
         .filter(
           (b) =>

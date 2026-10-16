@@ -6,18 +6,24 @@
 # produced. Everything it needs comes from the designation file — the image digest, and the in-container entrypoint
 # with its sha256 (SP1-TD1's preserved host-build-in-container.sh, run unchanged) — never from a mutable tag or from
 # this script. It records the guest lockfile before and after the build (SP1-TD1 finding TD1-N7: sp1-build builds
-# the guest unlocked, so a changed lockfile is a drift). It compares nothing and decides nothing:
-# scripts/check-sp1-canonical-build.ts compares the observation with the designation.
+# the guest unlocked, so a changed lockfile is a drift), and what ran (driver.txt: its own sha256, the designation
+# file, the image reference, the entrypoint copy's sha256, the start and finish times). It compares nothing and
+# decides nothing: scripts/check-sp1-canonical-build.ts compares the records with the designation.
+#
+# It fails when the build fails (the container's exit status), and when a build that exited 0 left an output missing
+# or a copy out of the container failed: an incomplete build is never passed on as a complete one.
 #
 # Usage: canonical-build.sh <out-dir> <host-id> [designation-file]
 #   Linux (CI) and Git Bash on Windows (Docker Desktop). Needs git, docker, node, sha256sum.
 set -euo pipefail
 OUT="$1"
 HOST_ID="$2"
+DRIVER_SHA="$(sha256sum "${BASH_SOURCE[0]}" | cut -d' ' -f1)"
+STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ROOT="$(git rev-parse --show-toplevel)"
 # By default the latest designation (the highest sequence): the one whose subject CI holds HEAD to.
 latest_designation() {
-  node -e 'const fs=require("fs"),p=require("path");const dir=process.argv[1];const ds=fs.readdirSync(dir).filter((f)=>f.endsWith(".json")).map((f)=>JSON.parse(fs.readFileSync(p.join(dir,f),"utf8")));ds.sort((a,b)=>a.sequence-b.sequence);if(ds.length===0)process.exit(4);process.stdout.write(p.join(dir,ds[ds.length-1].id+".json"))' "$1"
+  node -e 'const fs=require("fs"),p=require("path");const dir=process.argv[1];const ds=fs.readdirSync(dir).filter((f)=>f.endsWith(".json")).map((f)=>JSON.parse(fs.readFileSync(p.join(dir,f),"utf8")));ds.sort((a,b)=>a.sequence-b.sequence);if(ds.length===0)process.exit(4);process.stdout.write(dir+"/"+ds[ds.length-1].id+".json")' "$1"
 }
 DESIGNATION="${3:-$(latest_designation "$ROOT/evidence/zk/sp1/designations")}"
 field() { node -e 'const d=require(process.argv[1]); console.log(process.argv[2].split(".").reduce((o,k)=>o[k],d))' "$DESIGNATION" "$1"; }
@@ -41,16 +47,32 @@ git -C "$ROOT" rev-parse HEAD 'HEAD:zkvm/guest' 'HEAD:zkvm/host' > "$OUT/src/git
 git -C "$ROOT" archive --format=tar -o "$(HOSTPATH "$OUT/src/zkvm-src.tar")" HEAD zkvm/guest zkvm/host
 git -C "$ROOT" show 'HEAD:zkvm/guest/Cargo.lock' | sha256sum | cut -d' ' -f1 > "$OUT/src/guest-lock-at-head.txt"
 cp "$ROOT/$ENTRYPOINT_REL" "$OUT/src/entrypoint.sh"
+COPY_SHA="$(sha256sum "$OUT/src/entrypoint.sh" | cut -d' ' -f1)"
+{
+  echo "driver_sha256=$DRIVER_SHA"
+  echo "designation=${DESIGNATION#"$ROOT"/}"
+  echo "image=$IMAGE"
+  echo "entrypoint=$ENTRYPOINT_REL"
+  echo "entrypoint_sha256=$COPY_SHA"
+  echo "started_utc=$STARTED"
+} > "$OUT/driver.txt"
 
-if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then docker pull "$IMAGE" > "$OUT/pull.log" 2>&1; fi
+if ! docker image inspect "$IMAGE" > /dev/null 2>&1; then
+  docker pull "$IMAGE" > "$OUT/pull.log" 2>&1 || {
+    cat "$OUT/pull.log" >&2
+    echo "could not pull $IMAGE" >&2
+    exit 6
+  }
+fi
 docker image inspect "$IMAGE" --format '{{.Id}} {{json .RepoDigests}} {{.Os}}/{{.Architecture}}' > "$OUT/image.txt"
 docker info --format 'server={{.ServerVersion}} kernel={{.KernelVersion}} os={{.OperatingSystem}} ncpu={{.NCPU}}' > "$OUT/docker-info.txt"
+RUNNER_OS_NAME="${RUNNER_OS-$(uname -s)}"
 {
   echo "host_id=$HOST_ID"
-  echo "runner=${RUNNER_NAME-local} runner_os=${RUNNER_OS-$(uname -s)} image_os=${ImageOS-unset} image_version=${ImageVersion-unset}"
+  echo "runner=${RUNNER_NAME-local} runner_os=$RUNNER_OS_NAME image_os=${ImageOS-unset} image_version=${ImageVersion-unset}"
   echo "run=${GITHUB_RUN_ID-unset}.${GITHUB_RUN_ATTEMPT-unset} sha=${GITHUB_SHA-unset}"
   uname -srm
-  grep -m1 'model name' /proc/cpuinfo 2> /dev/null || echo "cpu=unknown"
+  if [ -r /proc/cpuinfo ]; then grep -m1 'model name' /proc/cpuinfo || echo "cpu=unknown"; else echo "cpu=unknown"; fi
 } > "$OUT/host-identity.txt"
 
 C="sp1-canonical-$(date -u +%Y%m%dT%H%M%SZ)-$$"
@@ -67,12 +89,30 @@ docker start -a "$C" > "$OUT/host/run.log" 2>&1
 RC=$?
 set -e
 echo "container_exit=$RC" >> "$OUT/host/run.log"
-docker cp "$C:/root/out/." "$(HOSTPATH "$OUT/host")" || true
-docker cp "$C:/root/lock-before.txt" "$(HOSTPATH "$OUT/host/lock-before.txt")" || true
-docker cp "$C:/root/lock-after.txt" "$(HOSTPATH "$OUT/host/lock-after.txt")" || true
+
+# Every copy out of the container is attempted and every failure is collected; the container is always removed.
+MISSING=""
+docker cp "$C:/root/out/." "$(HOSTPATH "$OUT/host")" || MISSING="$MISSING host/"
+docker cp "$C:/root/lock-before.txt" "$(HOSTPATH "$OUT/host/lock-before.txt")" || MISSING="$MISSING host/lock-before.txt"
+docker cp "$C:/root/lock-after.txt" "$(HOSTPATH "$OUT/host/lock-after.txt")" || MISSING="$MISSING host/lock-after.txt"
 docker rm "$C" > /dev/null
 rm -f "$OUT/host/mldsa65-host" # keep its sha256 (host-bin-sha256.txt), not the binary
 mkdir -p "$OUT/elf"
-cp "$OUT/host/elf/mldsa65-withdrawal" "$OUT/host/elf/mldsa65-acvp" "$OUT/elf/" 2> /dev/null || true
+for p in mldsa65-withdrawal mldsa65-acvp; do
+  cp "$OUT/host/elf/$p" "$OUT/elf/$p" || MISSING="$MISSING elf/$p"
+done
+for f in elf-sha256.txt elf-size.txt vkey.stdout acvp-vkey.stdout source-sha256.txt env.txt host-bin-sha256.txt \
+  lock-before.txt lock-after.txt; do
+  test -s "$OUT/host/$f" || MISSING="$MISSING host/$f"
+done
+FINISHED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "finished_utc=$FINISHED" >> "$OUT/driver.txt"
 echo "canonical build on $HOST_ID: container exit $RC; outputs in $OUT"
-exit "$RC"
+if [ "$RC" -ne 0 ]; then
+  echo "the build failed (container exit $RC); outputs missing:${MISSING:- none}" >&2
+  exit "$RC"
+fi
+if [ -n "$MISSING" ]; then
+  echo "the build exited 0 but its outputs are missing:$MISSING" >&2
+  exit 5
+fi

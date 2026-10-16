@@ -131,6 +131,33 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     ).to.equal("CHANGED");
   });
 
+  it("the rebuild evidence: only identity drift is the STOP; drift of procedure, an incomplete build or invalid evidence is no reproduction, and no STOP (L-4, F3)", function () {
+    const stop1 = (r: ReturnType<typeof deriveImplReceipt>) =>
+      r.stopConditions.find((c) => c.id === "CANONICAL_BUILD_DOES_NOT_REPRODUCE")!.triggered;
+    const twoHosts = (r: ReturnType<typeof deriveImplReceipt>) =>
+      r.productionBinding.prerequisites.find((p) => p.id === "CANONICAL_RELEASE_REBUILD_TWO_HOSTS")!.met;
+    for (const verdict of ["PROCEDURE_DRIFT", "INCOMPLETE", "INSUFFICIENT_HOSTS"]) {
+      const r = perturbed((i) => (i.canonical.oneHost = verdict));
+      expect(r.statuses.CANONICAL_BUILD_STATUS.value, verdict).to.equal(verdict);
+      expect(stop1(r), `${verdict} is no STOP`).to.equal(false);
+    }
+    expect(
+      stop1(perturbed((i) => (i.canonical.twoHost = "PROGRAM_IDENTITY_DRIFT"))),
+      "drift on either reading",
+    ).to.equal(true);
+    // A two-host rebuild that reproduces counts only from valid evidence (re-derived, bound to this tree's tools).
+    expect(twoHosts(perturbed((i) => (i.canonical.twoHost = "REPRODUCED"))), "the positive control").to.equal(true);
+    const invalid = perturbed((i) => {
+      i.canonical.twoHost = "REPRODUCED";
+      i.canonical.evidenceErrors = ["the observation is not what this tree's checker derives"];
+    });
+    expect(invalid.statuses.CANONICAL_BUILD_STATUS.value).to.equal("EVIDENCE_INVALID");
+    expect(invalid.statuses.CANONICAL_BUILD_STATUS.basis.join("\n")).to.include(
+      "is not what this tree's checker derives",
+    );
+    expect(twoHosts(invalid)).to.equal(false);
+  });
+
   it("PRODUCTION_SP1_BINDING_STATUS is ESTABLISHED only when every prerequisite is met; this lane leaves five unmet", function () {
     skipWhenInstrumented(this);
     const r = deriveImplReceipt(inputs);
@@ -156,7 +183,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     expect(r.stopConditions.filter((c) => c.triggered)).to.deep.equal([]);
     expect(r.verdict).to.equal("BUILT_AND_TESTED_AWAITING_OWNER_REVIEW");
     const cases: [string, (i: ImplReceiptInputs) => void][] = [
-      ["CANONICAL_BUILD_DOES_NOT_REPRODUCE", (i) => (i.canonical.oneHost = "PROCEDURE_DRIFT")],
+      ["CANONICAL_BUILD_DOES_NOT_REPRODUCE", (i) => (i.canonical.oneHost = "PROGRAM_IDENTITY_DRIFT")],
       ["ONE_ELF_CONFLICTING_VKEYS", (i) => (i.canonical.conflictingVkeys = 1)],
       [
         "ONE_ELF_CONFLICTING_VKEYS",

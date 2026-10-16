@@ -2,49 +2,60 @@ name: SP1 canonical build
 
 # SP1-TD1's canonical procedure (PINNED_VENDOR_BUILD), rebuilt from the designated subject and compared with the
 # designation (docs/SP1_Implementation_Pin_Designation_Registry.md):
-#   build            - on two GitHub-hosted runners (different runner images), each in a fresh container of the vendor
-#                      image referenced BY DIGEST (taken from the designation, never a tag), SP1-TD1's preserved
-#                      entrypoint run unchanged, the guest lockfile recorded before and after the build;
+#   changes          - decides from the diff whether an input of the canonical build changed
+#                      (scripts/sp1-canonical/ci-gate.mjs: the subject, the designations and their evidence, the
+#                      procedure, the driver, the checker and everything it imports, the packages, this workflow);
+#   build            - when one did, on two GitHub-hosted runners (different runner images), each in a fresh container
+#                      of the vendor image referenced BY DIGEST (taken from the designation, never a tag), SP1-TD1's
+#                      preserved entrypoint run unchanged, the guest lockfile recorded before and after the build;
 #   vkey-recompute   - on a third runner, from the ELF files only, with Succinct's released cargo-prove v6.3.1 verified
 #                      against its published digest: the vkey recomputed outside every build;
-#   compare          - scripts/check-sp1-canonical-build.ts: fails on ELF, vkey, lockfile, image, entrypoint or subject
-#                      drift, on a conflicting recompute, and on fewer than two agreeing hosts.
-# The cheap check (the subject on disk and at HEAD is the designation's) runs on every pull request in ci.yml through
-# npm run validate:sp1-designation; this expensive rebuild runs when the subject, the designations or the procedure
-# change, on main after such a merge, and on demand for a release. Common mode, by construction: one image, one
-# toolchain, one source archive, one entrypoint, one crate set, one operator; the recompute is the same upstream prover
-# library in another binary distribution.
+#   compare          - scripts/check-sp1-canonical-build.ts: fails on ELF, vkey, lockfile, image, entrypoint, driver
+#                      or subject drift, on a conflicting recompute, on an incomplete build, and on fewer than two
+#                      distinct hosts; uploads the observation with its raw records, in the committed evidence's layout;
+#   gate             - "SP1 canonical build gate": always runs, and passes only when every job the change requires
+#                      passed (a job skipped because the rebuild was required and something failed is no pass).
+# The workflow runs for every pull request, so its gate can be required without leaving unrelated pull requests
+# pending (a path filter would); the matrix job is held back by step conditions, never a job-level if:. Requiring the
+# gate is the owner's ruleset change. The cheap check (the subject on disk and at HEAD is the designation's) runs on
+# every pull request in ci.yml through npm run validate:sp1-designation. Common mode, by construction: one image, one
+# toolchain, one source archive, one entrypoint, one crate set, one operator; the recompute is the same upstream
+# prover library in another binary distribution.
 on:
   pull_request:
-    paths:
-      - "zkvm/guest/**"
-      - "zkvm/host/**"
-      - "evidence/zk/sp1/designations/**"
-      - "evidence/zk/sp1-td1/canonical-procedure/**"
-      - "scripts/sp1-canonical/**"
-      - "scripts/check-sp1-canonical-build.ts"
-      - "scripts/lib/sp1-canonical-build.ts"
-      - ".github/workflows/sp1-canonical-build.yml"
   push:
     branches:
       - main
-    paths:
-      - "zkvm/guest/**"
-      - "zkvm/host/**"
-      - "evidence/zk/sp1/designations/**"
-      - "evidence/zk/sp1-td1/canonical-procedure/**"
-      - "scripts/sp1-canonical/**"
-      - "scripts/check-sp1-canonical-build.ts"
-      - "scripts/lib/sp1-canonical-build.ts"
-      - ".github/workflows/sp1-canonical-build.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: SP1 canonical build inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      rebuild: ${{ steps.decide.outputs.rebuild }}
+    steps:
+      - name: Checkout repository (full history, for the diff)
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Decide whether an input of the canonical build changed
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/sp1-canonical/ci-gate.mjs changed
+
   build:
     name: Canonical build (${{ matrix.runner }})
+    needs: changes
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
@@ -55,16 +66,19 @@ jobs:
           - runner: ubuntu-22.04
     steps:
       - name: Checkout repository
+        if: needs.changes.outputs.rebuild == 'true'
         uses: actions/checkout@v7
         with:
           persist-credentials: false
 
       - name: Set up Node.js (reads the designation)
+        if: needs.changes.outputs.rebuild == 'true'
         uses: actions/setup-node@v7
         with:
           node-version: "22"
 
       - name: Free runner disk for the 7 GB vendor image
+        if: needs.changes.outputs.rebuild == 'true'
         run: |
           df -h /
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
@@ -72,10 +86,11 @@ jobs:
           df -h /
 
       - name: Canonical build of the designated subject (vendor image by digest)
+        if: needs.changes.outputs.rebuild == 'true'
         run: bash scripts/sp1-canonical/canonical-build.sh "$RUNNER_TEMP/canonical" "github-${{ matrix.runner }}"
 
       - name: Upload the build's record and ELFs
-        if: always()
+        if: always() && needs.changes.outputs.rebuild == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: canonical-build-${{ matrix.runner }}
@@ -85,7 +100,8 @@ jobs:
 
   vkey-recompute:
     name: Recompute the vkey outside the build
-    needs: build
+    needs: [changes, build]
+    if: needs.changes.outputs.rebuild == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -112,18 +128,27 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p recompute
-          for build in builds/canonical-build-*; do
-            host="$(basename "$build")"
+          tool_sha256="$(sha256sum "$CARGO_PROVE" | cut -d' ' -f1)"
+          tool_version="$("$CARGO_PROVE" prove --version)"
+          os_name="$(. /etc/os-release && echo "$PRETTY_NAME")"
+          kernel="$(uname -srm)"
+          for runner in ubuntu-24.04 ubuntu-22.04; do
+            build="builds/canonical-build-$runner"
+            record="recompute/canonical-build-$runner.txt"
             {
-              echo "tool_sha256=$(sha256sum "$CARGO_PROVE" | cut -d' ' -f1)"
-              echo "tool_version=$("$CARGO_PROVE" prove --version)"
-              echo "ran_on=$(uname -srm) $(. /etc/os-release; echo "$PRETTY_NAME") github-hosted ${RUNNER_NAME}"
-              for p in mldsa65-withdrawal mldsa65-acvp; do
-                echo "elf_${p}_sha256=$(sha256sum "$build/elf/$p" | cut -d' ' -f1)"
-                echo "vkey_output_${p}=$("$CARGO_PROVE" prove vkey --elf "$build/elf/$p" 2>&1 | tail -3 | tr '\n' ' ')"
-              done
-            } > "recompute/$host.txt"
-            cat "recompute/$host.txt"
+              echo "tool_sha256=$tool_sha256"
+              echo "tool_version=$tool_version"
+              echo "ran_on=$kernel $os_name github-hosted $RUNNER_NAME"
+            } > "$record"
+            for p in mldsa65-withdrawal mldsa65-acvp; do
+              elf="$build/elf/$p"
+              test -s "$elf" || { echo "$elf is missing: the build on $runner did not produce it" >&2; exit 1; }
+              elf_sha256="$(sha256sum "$elf" | cut -d' ' -f1)"
+              vkey_output="$("$CARGO_PROVE" prove vkey --elf "$elf" 2>&1 | tail -3 | tr '\n' ' ')"
+              echo "elf_${p}_sha256=$elf_sha256" >> "$record"
+              echo "vkey_output_${p}=$vkey_output" >> "$record"
+            done
+            cat "$record"
           done
 
       - name: Upload the recompute records
@@ -137,7 +162,8 @@ jobs:
 
   compare:
     name: Compare with the designation
-    needs: [build, vkey-recompute]
+    needs: [changes, build, vkey-recompute]
+    if: needs.changes.outputs.rebuild == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -169,13 +195,37 @@ jobs:
             --recompute artifacts/vkey-recompute/canonical-build-ubuntu-24.04.txt \
             --recompute artifacts/vkey-recompute/canonical-build-ubuntu-22.04.txt \
             --min-hosts 2 \
-            --write "$RUNNER_TEMP/canonical-build-observation.json"
+            --records "$RUNNER_TEMP/canonical-rebuild-github"
 
-      - name: Upload the observation
+      - name: Upload the observation and its raw records (the committed evidence's layout)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: canonical-build-observation
-          path: ${{ runner.temp }}/canonical-build-observation.json
+          name: canonical-rebuild-evidence
+          path: |
+            ${{ runner.temp }}/canonical-rebuild-github.raw.json
+            ${{ runner.temp }}/canonical-rebuild-github
           retention-days: 90
           if-no-files-found: error
+
+  gate:
+    name: SP1 canonical build gate
+    needs: [changes, build, vkey-recompute, compare]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout the decision script
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts/sp1-canonical
+
+      - name: Every job the change requires passed
+        env:
+          REBUILD: ${{ needs.changes.outputs.rebuild }}
+          CHANGES: ${{ needs.changes.result }}
+          BUILD: ${{ needs.build.result }}
+          RECOMPUTE: ${{ needs.vkey-recompute.result }}
+          COMPARE: ${{ needs.compare.result }}
+        run: node scripts/sp1-canonical/ci-gate.mjs gate
