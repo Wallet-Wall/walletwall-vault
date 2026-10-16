@@ -17,6 +17,10 @@
  *      identity (so one halt call reaches every consumer), and match a designation: SP1-TD1's (the SP1 verifier's
  *      runtime code hash per chain and PROGRAM_VKEY) or a successor designation the caller supplies.
  *
+ * Every measurement fails closed: a call the RPC did not answer stops the gate (only the chain's own answer — a
+ * revert, running out of gas, a short return — reads as "no answer", as on chain), and a genuine wrapper that
+ * cannot be measured completely is refused.
+ *
  * The scope and SP1-TD1's designation are read from its decision receipt; the registry from
  * evidence/zk/sp1-td2/wrapper-registry.json. A successor designation is produced by the designation process of
  * the frozen implementation lane; until one exists the gate can admit no recovery from a halt of the designated
@@ -214,13 +218,40 @@ export function matchesWrapperArtifact(runtime: string, artifact: WrapperArtifac
 // Measuring a verifier
 // ---------------------------------------------------------------------------------------------------------
 
-/** One word from a view function, or null when the call fails or returns less than a word (as the guard reads). */
+const EXECUTION_FAILURE =
+  /revert|out of gas|gas required exceeds|invalid opcode|invalid jump|stack (?:under|over)flow|vm execution error/i;
+
+/**
+ * Whether a failed eth_call is the chain's answer — the call ran and reverted or ran out of gas, which the guard
+ * reads as "no answer" — rather than the RPC failing to answer (a rate limit, a timeout, a refused connection).
+ * EIP-1474 code 3 is a revert; a node reports running out of gas (and some clients a revert without data) as a
+ * server error whose message says so. Anything else is not an answer.
+ */
+export function isExecutionFailure(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const { code, message } = error as { code?: unknown; message?: unknown };
+  if (code === 3 || code === "CALL_EXCEPTION") return true;
+  return (
+    (code === -32000 || code === -32015 || code === -32603) &&
+    typeof message === "string" &&
+    EXECUTION_FAILURE.test(message)
+  );
+}
+
+/**
+ * One word from a view function, or null when the call reverts, runs out of gas or returns less than a word (as
+ * the guard reads). A call the RPC did not answer throws: read as "no answer" it would drop refusals that nothing
+ * on chain backs, such as a registered wrapper's halt (the review's R2-2).
+ */
 async function word(provider: Provider, to: string, data: string): Promise<string | null> {
   try {
     const out = await provider.call({ to, data });
     return out.length >= 66 ? `0x${out.slice(2, 66)}` : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isExecutionFailure(error)) return null;
+    throw new Error(`reading ${data.slice(0, 10)} from ${to} got no answer from the chain; refusing to guess one`, {
+      cause: error,
+    });
   }
 }
 
@@ -261,9 +292,10 @@ export async function profileVerifier(
   };
 }
 
-/** The SP1 path: anything reporting the ZK algorithm id, an SP1 identity, or a halt surface. */
+/** The SP1 path: a genuine wrapper, or anything reporting the ZK algorithm id, an SP1 identity, or a halt surface. */
 export function isOnSp1Path(p: VerifierProfile): boolean {
   return (
+    p.genuineWrapper ||
     p.algorithmId === ZK_ALGORITHM_ID ||
     p.sp1Verifier !== null ||
     p.programVKey !== null ||
@@ -276,6 +308,19 @@ export function isOnSp1Path(p: VerifierProfile): boolean {
 export function isHaltable(p: VerifierProfile): boolean {
   return p.haltPrincipal !== null && p.halted !== null;
 }
+
+/**
+ * A genuine wrapper always answers its halt principal and state and has an identity, unless its SP1 verifier has
+ * no code. The gate refuses a genuine wrapper it could not measure completely rather than skip the rules that
+ * need the missing reading.
+ */
+function measuredCompletely(p: VerifierProfile): boolean {
+  return p.haltPrincipal !== null && p.halted !== null && p.identity !== null;
+}
+
+const unmeasured = (p: VerifierProfile, role: string) =>
+  `${role} ${p.address} is a genuine wrapper whose halt principal, halt state or identity could not be measured ` +
+  `(an SP1 verifier without code?): refusing rather than skipping the rules that need it`;
 
 // ---------------------------------------------------------------------------------------------------------
 // The gate (pure)
@@ -315,6 +360,8 @@ export function bindingRefusals(req: BindingRequest): string[] {
     refusals.push(
       `${t.address} is not a ZKMLDSAVerifier compiled from this tree: its runtime code is not the artifact's`,
     );
+  } else if (!measuredCompletely(t)) {
+    refusals.push(unmeasured(t, "the target"));
   }
   if (t.halted) refusals.push(`${t.address} is HALTED: a halted wrapper is never a binding or rotation target`);
   const signer = getAddress(req.signer);
@@ -328,10 +375,14 @@ export function bindingRefusals(req: BindingRequest): string[] {
       `the signer ${req.signer} can halt the current verifier: the halt principal never governs a consumer`,
     );
   }
+  if (req.current?.genuineWrapper && !measuredCompletely(req.current)) {
+    refusals.push(unmeasured(req.current, "the current verifier"));
+  }
 
   for (const r of req.registered) {
     if (!r.genuineWrapper)
       refusals.push(`registered wrapper ${r.address} is not a ZKMLDSAVerifier compiled from this tree`);
+    else if (!measuredCompletely(r)) refusals.push(unmeasured(r, "registered wrapper"));
   }
   if (t.identity !== null) {
     if (req.targetIdentityRecordedHalted) {

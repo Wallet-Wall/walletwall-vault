@@ -135,14 +135,15 @@
     ],
     "byProcess": [
       "the target's runtime code is the compiled ZKMLDSAVerifier (immutables masked, metadata excluded); it is ACTIVE, haltable and not haltable by the signer",
-      "its identity is not that of any halted wrapper in the WalletWall wrapper registry, read live, for every consumer",
+      "its identity is not that of any halted wrapper in the WalletWall wrapper registry, read live, for every consumer; every reading fails closed: one the chain did not answer stops the gate, and a genuine wrapper that cannot be measured completely is refused",
       "without the local override: it is registered and the only ACTIVE registered wrapper of its identity, so one halt call reaches every consumer",
       "without the local override: its SP1 verifier's runtime code hash for the chain and its PROGRAM_VKEY match a designation, SP1-TD1's or a successor's",
       "a consumer the halt's scope excludes is refused any SP1-path target"
     ],
     "notYetEnforced": [
       "a successor designation for a recovery identity (the generated designation file and its CI subject check): until one exists the tooling admits no recovery from a halt of the designated identity off a local chain",
-      "the per-chain execution check (TD1-N8)"
+      "the per-chain execution check (TD1-N8)",
+      "registry entries that record the wrapper build they were deployed from, and a CI check that keeps the registry append-only, before the wrapper's compiled code changes (the review's R2-3)"
     ],
     "why": "a consumer cannot recognise 'passed the evidence gates' on chain without a new authority to say so, and pinning a verifier code hash or a vkey in the consumer would refuse exactly the recovery targets (a fixed verifier has new code, a fixed guest a new vkey)"
   },

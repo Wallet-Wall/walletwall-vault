@@ -14,8 +14,9 @@
  * gate's rules on profiles measured from deployed contracts (the real v6.1.0 bytes included), each refusal with a
  * positive control.
  */
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { expect } from "chai";
 import assert from "node:assert/strict";
@@ -30,6 +31,7 @@ import {
   checkDeploymentBinding,
   checkRotationBinding,
   identifyConsumer,
+  isExecutionFailure,
   isHaltable,
   isOnSp1Path,
   matchesWrapperArtifact,
@@ -728,12 +730,247 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       );
     });
 
+    it("tells an ACTIVE twin from a HALTED one: only an ACTIVE twin breaks 'one halt reaches every consumer'", async function () {
+      const target = await profileVerifier(ethers.provider, await haltable.getAddress());
+      const designation: Designation = {
+        source: "a test designation of the mock program",
+        sp1VerifierCodeKeccak: target.sp1VerifierCodeKeccak!,
+        sp1VerifierCodeKeccakByChain: {},
+        programVKey: VKEY_A,
+      };
+      const twinWrapper = await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address);
+      const activeTwin = await profileVerifier(ethers.provider, await twinWrapper.getAddress());
+      // Under the local override an ACTIVE twin is no refusal at all (registration rules are off there).
+      expect(
+        bindingRefusals(request(target, { chainId: LOCAL, allowMockSp1: true, registered: [target, activeTwin] })),
+      ).to.deep.equal([]);
+      await twinWrapper.connect(otherHaltPrincipal).halt();
+      const haltedTwin = await profileVerifier(ethers.provider, await twinWrapper.getAddress());
+      const refusals = bindingRefusals(
+        request(target, { chainId: LOCAL, designations: [designation], registered: [target, haltedTwin] }),
+      ).join("\n");
+      expect(refusals).to.match(/which is HALTED/);
+      expect(refusals, "a halted twin is not an ACTIVE one").to.not.match(/another ACTIVE registered wrapper/);
+    });
+
+    it("the tooling entry points pass the registry and designations they are given through to the gate", async function () {
+      const target = await profileVerifier(ethers.provider, await haltable.getAddress());
+      const designation: Designation = {
+        source: "a test designation of the mock program",
+        sp1VerifierCodeKeccak: target.sp1VerifierCodeKeccak!,
+        sp1VerifierCodeKeccakByChain: {},
+        programVKey: VKEY_A,
+      };
+      const options = { allowMockSp1: false, registry: [await haltable.getAddress()], designations: [designation] };
+      await checkDeploymentBinding(
+        ethers.provider,
+        "WalletWallVault",
+        await haltable.getAddress(),
+        admin.address,
+        options,
+      );
+      const vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await mock.getAddress());
+      await checkRotationBinding(
+        ethers.provider,
+        await vault.getAddress(),
+        await haltable.getAddress(),
+        admin.address,
+        options,
+      );
+      // Without the designation the same binding is refused.
+      await assert.rejects(
+        checkDeploymentBinding(ethers.provider, "WalletWallVault", await haltable.getAddress(), admin.address, {
+          ...options,
+          designations: undefined,
+        }),
+        /matches no designation/,
+      );
+    });
+
+    it("reads the registry file for the chain it is asked about, and refuses a malformed one", function () {
+      const dir = mkdtempSync(join(tmpdir(), "td2-registry-"));
+      try {
+        mkdirSync(join(dir, "evidence/zk/sp1-td2"), { recursive: true });
+        const write = (doc: unknown) =>
+          writeFileSync(join(dir, "evidence/zk/sp1-td2/wrapper-registry.json"), JSON.stringify(doc));
+        write({
+          schema: WRAPPER_REGISTRY_SCHEMA,
+          entries: [
+            { chainId: "11155111", address: stranger.address.toLowerCase() },
+            { chainId: "84532", address: admin.address },
+          ],
+        });
+        expect(readWrapperRegistry(SEPOLIA, dir)).to.deep.equal([stranger.address]);
+        expect(readWrapperRegistry(84532n, dir)).to.deep.equal([admin.address]);
+        expect(readWrapperRegistry(1n, dir)).to.deep.equal([]);
+        write({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ chainId: "1", address: "0x12" }] });
+        assert.throws(() => readWrapperRegistry(1n, dir), /malformed evidence\/zk\/sp1-td2\/wrapper-registry\.json/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
     it("refuses everything while a registry entry is not a genuine wrapper", async function () {
       const target = await profileVerifier(ethers.provider, await haltable.getAddress());
       const bogus = await profileVerifier(ethers.provider, await unhaltable.getAddress());
       expect(
         bindingRefusals(request(target, { chainId: LOCAL, allowMockSp1: true, registered: [bogus] })).join("\n"),
       ).to.match(/registered wrapper .* is not a ZKMLDSAVerifier compiled from this tree/);
+    });
+  });
+
+  describe("every measurement fails closed (the review's R2-2: an RPC that does not answer is not 'no answer')", function () {
+    const selectorOf = (signature: string) => ethers.id(signature).slice(0, 10);
+    const rpcError = (message: string, code?: number) =>
+      Object.assign(new Error(message), code === undefined ? {} : { code });
+    /** ethers.provider, except that an eth_call of `signature` on `to` fails with `error`. */
+    const flaky = (to: string, signature: string, error: unknown) =>
+      new Proxy(ethers.provider, {
+        get(target, prop) {
+          if (prop === "call") {
+            return async (tx: { to: string; data: string }) => {
+              if (tx.to.toLowerCase() === to.toLowerCase() && tx.data.startsWith(selectorOf(signature))) throw error;
+              return target.call(tx);
+            };
+          }
+          const value = Reflect.get(target, prop, target);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+
+    it("only the chain's own answer reads as no answer: a revert or running out of gas, never an RPC failure", function () {
+      const answers: [string, unknown][] = [
+        ["EIP-1474 revert", rpcError("execution reverted", 3)],
+        ["EIP-1474 revert, any message", rpcError("Transaction reverted without a reason string", 3)],
+        ["ethers' own providers", { code: "CALL_EXCEPTION", message: "missing revert data" }],
+        ["out of gas (EDR, geth)", rpcError("Transaction ran out of gas", -32000)],
+        ["revert without data (geth)", rpcError("execution reverted", -32000)],
+        ["gas cap", rpcError("gas required exceeds allowance (30000000)", -32000)],
+        ["invalid opcode", rpcError("invalid opcode: INVALID", -32000)],
+        ["invalid jump", rpcError("invalid jump destination", -32000)],
+        ["stack underflow", rpcError("stack underflow (0 <=> 1)", -32000)],
+        ["stack overflow", rpcError("stack limit reached 1024 (1023): stack overflow", -32000)],
+        ["Nethermind", rpcError("VM execution error.", -32015)],
+        ["internal error that says it reverted", rpcError("execution reverted: nope", -32603)],
+      ];
+      for (const [label, error] of answers) expect(isExecutionFailure(error), label).to.equal(true);
+      const noAnswers: [string, unknown][] = [
+        ["rate limit (Hardhat's LimitExceededError)", rpcError("Too Many Requests", -32005)],
+        ["rate limit that mentions a revert", rpcError("execution reverted too often: rate limited", -32005)],
+        ["unknown transport failure (Hardhat's UnknownError)", rpcError("fetch failed", -1)],
+        ["refused connection (a HardhatError, no JSON-RPC code)", rpcError("connect ECONNREFUSED 127.0.0.1:8545")],
+        ["a node that lost the state", rpcError("missing trie node", -32000)],
+        ["a node behind", rpcError("header not found", -32000)],
+        ["a bare internal error", rpcError("Internal error", -32603)],
+        ["a server error without a message", { code: -32000 }],
+        ["a server error with a non-text message", { code: -32000, message: 42 }],
+        ["an HTTP status as a code", rpcError("Too Many Requests", 429)],
+        ["null", null],
+        ["a string", "execution reverted"],
+      ];
+      for (const [label, error] of noAnswers) expect(isExecutionFailure(error), label).to.equal(false);
+    });
+
+    it("the review's scenario: a registered wrapper's halt the RPC did not report stops the gate instead of disappearing", async function () {
+      const w1 = await deployWrapper(sp1, VKEY_A, haltPrincipal.address);
+      await w1.connect(haltPrincipal).halt();
+      const fresh = await haltable.getAddress(); // identity A, ACTIVE
+      const options = { ...MOCK_OK, registry: [await w1.getAddress()] };
+      // Positive control: with a provider that answers, the fresh deployment of the halted identity is refused.
+      await assert.rejects(
+        checkDeploymentBinding(ethers.provider, "WalletWallVault", fresh, admin.address, options),
+        /which is HALTED/,
+      );
+      const RATE_LIMITED = rpcError("Too Many Requests", -32005);
+      for (const signature of ["halted()", "SP1_VERIFIER()", "PROGRAM_VKEY()"]) {
+        await assert.rejects(
+          checkDeploymentBinding(
+            flaky(await w1.getAddress(), signature, RATE_LIMITED),
+            "WalletWallVault",
+            fresh,
+            admin.address,
+            options,
+          ),
+          /got no answer from the chain/,
+          signature,
+        );
+      }
+      // The target and the current verifier fail closed the same way, whatever the transport failure looks like.
+      await assert.rejects(
+        checkDeploymentBinding(
+          flaky(fresh, "halted()", rpcError("connect ECONNREFUSED")),
+          "WalletWallVault",
+          fresh,
+          admin.address,
+          MOCK_OK,
+        ),
+        /got no answer from the chain/,
+      );
+      const vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await mock.getAddress());
+      await assert.rejects(
+        checkRotationBinding(
+          flaky(await mock.getAddress(), "halted()", RATE_LIMITED),
+          await vault.getAddress(),
+          fresh,
+          admin.address,
+          MOCK_OK,
+        ),
+        /got no answer from the chain/,
+      );
+      // A revert IS the chain's answer: it reads as no answer, and the genuine wrapper that gave it is refused
+      // because it can no longer be measured completely.
+      await assert.rejects(
+        checkDeploymentBinding(
+          flaky(await w1.getAddress(), "halted()", rpcError("execution reverted", 3)),
+          "WalletWallVault",
+          fresh,
+          admin.address,
+          options,
+        ),
+        /registered wrapper .* could not be measured/,
+      );
+    });
+
+    it("a genuine wrapper that cannot be measured completely is refused, never skipped", async function () {
+      const target = await profileVerifier(ethers.provider, await haltable.getAddress());
+      const local = { chainId: LOCAL, allowMockSp1: true };
+      expect(bindingRefusals(request(target, { ...local, registered: [target] })), "positive control").to.deep.equal(
+        [],
+      );
+      for (const missing of [{ halted: null }, { identity: null }, { haltPrincipal: null }]) {
+        expect(
+          bindingRefusals(request(target, { ...local, registered: [{ ...target, ...missing }] })).join("\n"),
+          `registered ${JSON.stringify(missing)}`,
+        ).to.match(/registered wrapper .* could not be measured/);
+        expect(
+          bindingRefusals(request(target, { ...local, current: { ...target, ...missing } })).join("\n"),
+          `current ${JSON.stringify(missing)}`,
+        ).to.match(/the current verifier .* could not be measured/);
+      }
+      // A target whose identity could not be measured (an SP1 verifier without code reads the same way).
+      expect(
+        bindingRefusals(request({ ...target, sp1VerifierCodeKeccak: null, identity: null }, local)).join("\n"),
+      ).to.match(/the target .* could not be measured/);
+      // A verifier that is not a genuine wrapper legitimately answers nothing (the mock): no refusal for that.
+      const offPath = await profileVerifier(ethers.provider, await mock.getAddress());
+      expect(offPath.halted).to.equal(null);
+      expect(bindingRefusals(request(target, { ...local, current: offPath }))).to.deep.equal([]);
+      // A genuine wrapper is on the SP1 path even if every reading of it failed.
+      const silent = {
+        ...target,
+        algorithmId: null,
+        sp1Verifier: null,
+        sp1VerifierCodeKeccak: null,
+        programVKey: null,
+        haltPrincipal: null,
+        halted: null,
+        identity: null,
+      };
+      expect(isOnSp1Path(silent)).to.equal(true);
+      expect(bindingRefusals(request(silent, local)).join("\n")).to.match(/not haltable/);
+      expect(bindingRefusals(request(silent, { ...local, consumer: "WalletWallMultiSigVault" })).join("\n")).to.match(
+        /may be bound to no part of the SP1 path/,
+      );
     });
   });
 
