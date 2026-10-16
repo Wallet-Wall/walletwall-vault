@@ -95,7 +95,7 @@ describe("SP1 implementation lane — ZKMLDSAVerifier is pinned to the designate
     });
 
     it("refuses in its constructor every target whose runtime is not the pinned code", async function () {
-      const gateway = await deployGateway(gatewayOwner.address);
+      const gateway: any = await deployGateway(gatewayOwner.address);
       const v610 = await deployPinnedSp1Verifier();
       await gateway.connect(gatewayOwner).addRoute(v610);
       // One flipped byte in an otherwise identical runtime, at a fresh address.
@@ -278,7 +278,7 @@ describe("SP1 implementation lane — ZKMLDSAVerifier is pinned to the designate
     it("verify() refuses a proven journal for another chain and accepts this chain's (31337)", async function () {
       const sp1 = await (await ethers.getContractFactory("ProgramBoundMockSP1Verifier")).deploy();
       const sp1Address = await sp1.getAddress();
-      const zk = await withPinnedSp1Code(sp1Address, () => wrap(sp1Address));
+      const zk: any = await withPinnedSp1Code(sp1Address, () => wrap(sp1Address));
       const digest = ethers.id("sp1-impl: F-1 digest");
       const key = ml_dsa65.keygen();
       const signature = ml_dsa65.sign(ethers.getBytes(digest), key.secretKey);

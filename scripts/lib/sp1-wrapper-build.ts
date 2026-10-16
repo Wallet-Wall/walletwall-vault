@@ -142,13 +142,14 @@ export function wrapperBuildErrors(builds: readonly WrapperBuild[]): string[] {
     if (templates.has(r.templateKeccak)) errors.push(`${at}: the same build is recorded twice`);
     templates.add(r.templateKeccak);
     const boundary = decodeSolcMetadataBoundary(r.template);
-    if (!boundary.ok || boundary.regionStart !== r.metadataRegionStart) {
+    const regionStart = boundary.ok ? boundary.regionStart : undefined;
+    if (regionStart === undefined || regionStart !== r.metadataRegionStart) {
       errors.push(`${at}: runtime.metadataRegionStart must be the template's CBOR metadata boundary`);
     }
     for (const [name, refs] of Object.entries(r.immutableReferences ?? {})) {
       for (const ref of refs) {
         const inCode =
-          boundary.ok && ref.start >= 0 && ref.length === 32 && ref.start + ref.length <= boundary.regionStart;
+          regionStart !== undefined && ref.start >= 0 && ref.length === 32 && ref.start + ref.length <= regionStart;
         if (!inCode) errors.push(`${at}: immutable ${name} must sit in the code, before the metadata`);
       }
     }
@@ -254,7 +255,10 @@ export function buildFromCompilation(repoRoot = "."): WrapperBuild {
 
   const template = String(artifact.deployedBytecode).toLowerCase();
   const boundary = decodeSolcMetadataBoundary(template);
-  if (!boundary.ok) throw new Error(`the compiled ${WRAPPER_NAME} runtime has no solc metadata: ${boundary.error}`);
+  const metadataRegionStart = boundary.ok ? boundary.regionStart : undefined;
+  if (metadataRegionStart === undefined) {
+    throw new Error(`the compiled ${WRAPPER_NAME} runtime has no solc metadata: ${String(boundary.error)}`);
+  }
   return {
     schema: WRAPPER_BUILD_SCHEMA,
     id: "",
@@ -278,7 +282,7 @@ export function buildFromCompilation(repoRoot = "."): WrapperBuild {
     runtime: {
       bytes: getBytes(template).length,
       templateKeccak: keccak256(template),
-      metadataRegionStart: boundary.regionStart,
+      metadataRegionStart,
       immutableReferences: Object.fromEntries(
         Object.entries(immutableReferences).sort(([a], [b]) => a.localeCompare(b)),
       ),
