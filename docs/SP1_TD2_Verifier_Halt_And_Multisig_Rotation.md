@@ -190,6 +190,41 @@ which passes the node's error through, but the gate accepts any provider: it now
 ethers keeps in `info.error`, and without one accepts only a call that came back with revert data (tested, with the
 look-alike end to end).
 
+## Mutation testing
+
+A curated campaign of **323 mutants** covers every piece of new contract and tooling code, each run against the
+suites that cover its file, at the PR head's code:
+
+| Code                                                                                | Mutants | Killed  | Equivalent |
+| ----------------------------------------------------------------------------------- | ------- | ------- | ---------- |
+| the halt in `ZKMLDSAVerifier`                                                       | 14      | 14      | 0          |
+| `VerifierRotationGuard`                                                             | 39      | 38      | 1          |
+| the multisig rotation, and the guard's call sites in the three consumers            | 55      | 54      | 1          |
+| the binding gate (scope, measurement, fail-closed reads, code comparison, registry) | 133     | 126     | 7          |
+| the scripts' gate calls                                                             | 14      | 14      | 0          |
+| the deployment helpers                                                              | 16      | 16      | 0          |
+| the TD2 record validator                                                            | 31      | 31      | 0          |
+| the SP1-P1 supersession and its generator                                           | 21      | 21      | 0          |
+| **total**                                                                           | **323** | **314** | **9**      |
+
+**No mutant survived.** The nine equivalents change no output for any input: the halt-principal check against the
+zero address (no caller can be zero; renouncing is disabled), the two verifiers' order in the transfer check
+(symmetric), and in the gate an empty-runtime check the length check already makes, a decode check the boundary
+comparison already makes, masking the artifact's immutables (they are already zero there: 6 of 6), two primitive
+guards the next guard repeats, a string check `isHexString` repeats, and a zero stored identity (an identity is a
+keccak256 digest, never zero).
+
+The first pass, at `23a1834`, left 12 survivors. One was spurious (its mutated file was reverted mid-run) and one
+mutant tested the wrong thing (it added a deployment instead of moving the gate after it; rewritten). Each of the
+other ten led to a stronger test, not a code change; the third review pass's R3-1 is the only code change made
+since, and its mutants are in the final run. Two lessons are worth keeping: with Hardhat's chai matchers loaded,
+`deep.equal` compares addresses case-insensitively, so a checksum assertion has to use `node:assert`; and since the
+consumers store the identity at installation, a rotation never probes a current verifier that showed none, so the
+probe cap is tested where the consumer does probe. Mutants that changed only a refusal's wording or added refusal
+lines were not called equivalent: the tests assert the exact output. The catalog and harness are in the PR's first
+two comments; the run was at `106d177`, and the ten mutants first marked equivalent were re-run at `02280cd`, which
+adds tests only.
+
 ## What TD2 changed outside the two requirements, and why
 
 - **The SP1-P1 STOP receipt is superseded, not restamped (TD1-N4).** Its validator binds `ZKMLDSAVerifier.sol`, which
