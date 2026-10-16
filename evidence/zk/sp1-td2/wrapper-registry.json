@@ -1,5 +1,9 @@
 {
-  "schema": "walletwall.sp1-wrapper-registry.v1",
-  "note": "Every ZKMLDSAVerifier wrapper WalletWall deploys, per chain. The binding gate (scripts/lib/verifier-binding.ts) reads each entry's state live: a halted entry's identity is refused for every consumer, and off a local chain a consumer may be bound only to a registered wrapper that is the sole ACTIVE wrapper of its identity, so one halt call reaches every consumer. Record a wrapper here when it is deployed; never remove a halted one. No wrapper is deployed anywhere yet.",
-  "entries": []
+  "schema": "walletwall.sp1-wrapper-registry.v2",
+  "note": "Every ZKMLDSAVerifier wrapper WalletWall deploys, as numbered facts appended in order and never deleted or rewritten (CI walks this file's whole git history): WRAPPER_REGISTERED records the chain, the address, the wrapper build it was deployed from (evidence/zk/sp1/wrapper-builds/), the designation it serves (evidence/zk/sp1/designations/), the SP1 verifier's runtime code hash, PROGRAM_VKEY, the identity, the halt principal and the deployment; WRAPPER_HALTED records its one-way halt. A halted identity is refused as a registration and as a binding target on every chain. The binding gate (scripts/lib/verifier-binding.ts) also reads each wrapper's state live. Facts are written by scripts/register-sp1-wrapper.ts from chain reads, never by hand. No wrapper is deployed anywhere yet. See docs/SP1_Implementation_Pin_Designation_Registry.md.",
+  "migratedFrom": {
+    "schema": "walletwall.sp1-wrapper-registry.v1",
+    "entries": 0
+  },
+  "facts": []
 }

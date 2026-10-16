@@ -15,17 +15,18 @@
  * gate's rules on profiles measured from deployed contracts (the real v6.1.0 bytes included), each refusal with a
  * positive control.
  */
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { expect } from "chai";
 import assert from "node:assert/strict";
 
-import { decodeSolcMetadataBoundary } from "../scripts/lib/reproducibility-evidence";
 import { TD2_RECORD_REL } from "../scripts/lib/sp1-td2-record";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { ROTATION_DELAY, VKEY_A, VKEY_B, deploySp1, deployWrapper } from "./helpers/td2Helpers";
+import { installWrapperOfBuild, laterBuild, registryFromProfiles } from "./helpers/registryHelpers";
+import { matchesBuild, readWrapperBuilds } from "../scripts/lib/sp1-wrapper-build";
 import {
   CONSUMERS,
   TD1_RECEIPT_REL,
@@ -40,11 +41,9 @@ import {
   isExecutionFailure,
   isHaltable,
   isOnSp1Path,
-  matchesWrapperArtifact,
   profileVerifier,
   readDesignations,
   readHaltScope,
-  readWrapperArtifact,
   readWrapperRegistry,
   wrapperRegistryErrors,
   type BindingRequest,
@@ -68,6 +67,10 @@ const BYTECODE = JSON.parse(
 );
 const SEPOLIA = 11155111n;
 const LOCAL = 31337n;
+/** The implementation lane's evidence the gate reads: the recorded wrapper builds and the designations. */
+const LANE_EVIDENCE = ["evidence/zk/sp1/wrapper-builds", "evidence/zk/sp1/designations"].flatMap((d) =>
+  readdirSync(resolve(d)).map((f) => `${d}/${f}`),
+);
 const MOCK_OK = { allowMockSp1: true };
 
 describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", function () {
@@ -84,20 +87,27 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     mock = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
   });
 
-  const request = (target: VerifierProfile, overrides: Partial<BindingRequest> = {}): BindingRequest => ({
-    consumer: "WalletWallVault",
-    target,
-    chainId: SEPOLIA,
-    signer: admin.address,
-    allowMockSp1: false,
-    current: null,
-    currentIdentity: null,
-    targetIdentityRecordedHalted: false,
-    scope: readHaltScope(),
-    designations: readDesignations(),
-    registered: [],
-    ...overrides,
-  });
+  /** The registry is the one the registered profiles imply (their registrations, and the halts they show). */
+  const request = (target: VerifierProfile, overrides: Partial<BindingRequest> = {}): BindingRequest => {
+    const base = {
+      consumer: "WalletWallVault",
+      target,
+      chainId: SEPOLIA,
+      signer: admin.address,
+      allowMockSp1: false,
+      current: null,
+      currentIdentity: null,
+      targetIdentityRecordedHalted: false,
+      scope: readHaltScope(),
+      designations: readDesignations(),
+      registered: [] as VerifierProfile[],
+      ...overrides,
+    };
+    return { ...base, registry: overrides.registry ?? registryFromProfiles(base.chainId, base.registered) };
+  };
+  /** A registry document that registers `wrappers` on the local chain, as measured now. */
+  const registryOf = async (...wrappers: string[]) =>
+    registryFromProfiles(LOCAL, await Promise.all(wrappers.map((a) => profileVerifier(ethers.provider, a))));
   /** A request for a target that is registered (the only ACTIVE wrapper of its identity) on the chain. */
   const registeredRequest = (target: VerifierProfile, overrides: Partial<BindingRequest> = {}) =>
     request(target, { registered: [target], ...overrides });
@@ -105,7 +115,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   const withTree = async (td2Record: unknown, body: (repoRoot: string) => Promise<void>) => {
     const dir = mkdtempSync(join(tmpdir(), "td2-tree-"));
     try {
-      for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL, WRAPPER_REGISTRY_REL]) {
+      for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL, WRAPPER_REGISTRY_REL, ...LANE_EVIDENCE]) {
         mkdirSync(dirname(join(dir, rel)), { recursive: true });
         copyFileSync(resolve(rel), join(dir, rel));
       }
@@ -175,41 +185,32 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     it("the committed wrapper registry is well formed and empty: no wrapper is deployed anywhere yet", function () {
       const doc = JSON.parse(readFileSync(resolve("evidence/zk/sp1-td2/wrapper-registry.json"), "utf8"));
       expect(wrapperRegistryErrors(doc)).to.deep.equal([]);
-      expect(doc.entries).to.deep.equal([]);
+      expect(doc.schema).to.equal(WRAPPER_REGISTRY_SCHEMA);
+      expect(doc.facts).to.deep.equal([]);
       for (const chain of [1n, 8453n, SEPOLIA, 84532n, LOCAL]) expect(readWrapperRegistry(chain)).to.deep.equal([]);
     });
 
-    it("a registry document is refused unless every entry names a decimal chain id and an address, once", function () {
-      const entry = { chainId: "11155111", address: stranger.address };
-      expect(wrapperRegistryErrors({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [entry] })).to.deep.equal([]);
+    it("a registry document is refused unless every fact names a decimal chain id and a checksummed address, once", async function () {
+      const doc = await registryOf(await haltable.getAddress());
+      expect(wrapperRegistryErrors(doc)).to.deep.equal([]);
+      const fact = doc.facts[0];
       const cases: [string, unknown, RegExp][] = [
         ["not an object", null, /not an object/],
         ["a number", 42, /not an object/],
         ["a string", "a registry", /not an object/],
-        ["another schema", { schema: "x", entries: [] }, /schema must be/],
-        ["no list", { schema: WRAPPER_REGISTRY_SCHEMA, entries: {} }, /entries must be a list/],
+        ["another schema", { ...doc, schema: "x" }, /schema must be/],
+        ["no list", { ...doc, facts: {} }, /facts must be a list/],
+        ["a numeric chain id", { ...doc, facts: [{ ...fact, chainId: 1 }] }, /decimal string/],
+        ["a zero-led chain id", { ...doc, facts: [{ ...fact, chainId: "01" }] }, /decimal string/],
+        ["a malformed address", { ...doc, facts: [{ ...fact, address: "0x12" }] }, /checksummed address/],
         [
-          "a numeric chain id",
-          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ ...entry, chainId: 1 }] },
-          /decimal string/,
+          "a lowercase address",
+          { ...doc, facts: [{ ...fact, address: fact.address.toLowerCase() }] },
+          /checksummed address/,
         ],
-        [
-          "a zero-led chain id",
-          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ ...entry, chainId: "01" }] },
-          /decimal string/,
-        ],
-        [
-          "a malformed address",
-          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ ...entry, address: "0x12" }] },
-          /must be an address/,
-        ],
-        [
-          "a duplicate",
-          { schema: WRAPPER_REGISTRY_SCHEMA, entries: [entry, { ...entry, address: entry.address.toLowerCase() }] },
-          /listed twice/,
-        ],
+        ["a duplicate", { ...doc, facts: [fact, { ...fact, seq: 2 }] }, /already registered/],
       ];
-      for (const [label, doc, rule] of cases) expect(wrapperRegistryErrors(doc).join("\n"), label).to.match(rule);
+      for (const [label, value, rule] of cases) expect(wrapperRegistryErrors(value).join("\n"), label).to.match(rule);
     });
   });
 
@@ -321,51 +322,38 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   });
 
   describe("a target must be a ZKMLDSAVerifier compiled from this tree (the review's look-alike)", function () {
-    it("compares runtime code with the artifact, immutables masked and metadata excluded", async function () {
-      const artifact = readWrapperArtifact();
+    it("compares runtime code with the recorded wrapper builds: immutables masked, everything else (metadata included) exact", async function () {
+      const [build] = readWrapperBuilds();
       const code = await ethers.provider.getCode(await haltable.getAddress());
-      expect(matchesWrapperArtifact(code, artifact), "a deployed wrapper").to.equal(true);
-      // Other immutables (another verifier, vkey and halt principal) are the same code.
+      expect(matchesBuild(code, build), "a deployed wrapper").to.equal(true);
+      // Other immutables (another verifier, vkey and halt principal) are the same build.
       const other = await deployWrapper(await deploySp1(), VKEY_B, otherHaltPrincipal.address);
-      expect(matchesWrapperArtifact(await ethers.provider.getCode(await other.getAddress()), artifact)).to.equal(true);
-      // The metadata trailer (the source hash) is not compared...
+      expect(matchesBuild(await ethers.provider.getCode(await other.getAddress()), build)).to.equal(true);
+      // Since the implementation lane a wrapper is judged against the exact build it was deployed from (R2-3), so the
+      // metadata (the build's source hash) is compared too: another source is another build, which needs its record.
       const bytes = ethers.getBytes(code);
       const trailer = Uint8Array.from(bytes);
-      // Inside the IPFS source hash: the CBOR map starts a2 64 "ipfs" 58 22, so its payload begins 8 bytes in.
       const cborStart = bytes.length - 2 - ((bytes[bytes.length - 2] << 8) | bytes[bytes.length - 1]);
       trailer[cborStart + 12] ^= 0xff;
-      expect(matchesWrapperArtifact(ethers.hexlify(trailer), artifact), "metadata byte changed").to.equal(true);
-      // ...but every executable byte is.
+      expect(matchesBuild(ethers.hexlify(trailer), build), "metadata byte changed").to.equal(false);
       const executable = Uint8Array.from(bytes);
       executable[5] ^= 0x01;
-      expect(matchesWrapperArtifact(ethers.hexlify(executable), artifact), "code byte changed").to.equal(false);
-      // The length and the metadata boundary must be the artifact's too. Resizing the metadata's "solc" entry gives a
-      // runtime one byte longer whose metadata still decodes at the same boundary, and one of the same length whose
-      // boundary moved one byte (an extra byte before it): both decode, both are refused.
-      const hex = code.slice(2);
-      const regionStart = hex.length / 2 - 2 - parseInt(hex.slice(-4), 16);
-      const cbor = hex.slice(regionStart * 2, -4);
-      const solcAt = cbor.lastIndexOf("64736f6c6343"); // the text key "solc", then a 3-byte string, last in the map
-      expect(solcAt + 18, "the solc entry ends the map").to.equal(cbor.length);
-      const version = cbor.slice(solcAt + 12);
-      const longer = `${cbor.slice(0, solcAt)}64736f6c6344${version}00`;
-      const shorter = `${cbor.slice(0, solcAt)}64736f6c6342${version.slice(0, 4)}`;
-      const suffix = (c: string) => (c.length / 2).toString(16).padStart(4, "0");
-      const longerRuntime = `0x${hex.slice(0, regionStart * 2)}${longer}${suffix(longer)}`;
-      const shiftedRuntime = `0x${hex.slice(0, regionStart * 2)}00${shorter}${suffix(shorter)}`;
-      expect(decodeSolcMetadataBoundary(longerRuntime)).to.include({ ok: true, regionStart });
-      expect(decodeSolcMetadataBoundary(shiftedRuntime)).to.include({ ok: true, regionStart: regionStart + 1 });
-      expect(shiftedRuntime.length).to.equal(code.length);
-      expect(matchesWrapperArtifact(longerRuntime, artifact), "one byte longer").to.equal(false);
-      expect(matchesWrapperArtifact(shiftedRuntime, artifact), "boundary moved").to.equal(false);
+      expect(matchesBuild(ethers.hexlify(executable), build), "code byte changed").to.equal(false);
       for (const notWrapper of [
         await ethers.provider.getCode(await unhaltable.getAddress()),
         await ethers.provider.getCode(await mock.getAddress()),
         "0x",
         ethers.hexlify(bytes.slice(0, -1)),
+        `${code}00`,
       ]) {
-        expect(matchesWrapperArtifact(notWrapper, artifact)).to.equal(false);
+        expect(matchesBuild(notWrapper, build)).to.equal(false);
       }
+      const p = await profileVerifier(ethers.provider, await haltable.getAddress());
+      expect([p.genuineWrapper, p.wrapperBuild, p.pinnedSp1VerifierCodehash]).to.deep.equal([
+        true,
+        build.id,
+        build.pins.sp1VerifierCodehash,
+      ]);
     });
 
     it("refuses a look-alike that reports the designated identity, a halt principal and ACTIVE; admits the genuine wrapper", async function () {
@@ -398,7 +386,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     it("while it is excluded (no recorded acceptance), deployment tooling refuses WalletWallMultiSigVault a haltable wrapper and any part of the SP1 path; the consumers in scope are not refused it", async function () {
       for (const td2 of [null, PENDING_RECORD]) {
         await withTree(td2, async (dir) => {
-          const options = { ...MOCK_OK, repoRoot: dir, registry: [] };
+          const options = { ...MOCK_OK, repoRoot: dir, registry: registryFromProfiles(LOCAL, []) };
           const bind = (consumer: "WalletWallMultiSigVault" | "WalletWallVault" | "StablecoinVaultSimulator", v: any) =>
             v
               .getAddress()
@@ -423,7 +411,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       ).deploy(await mock.getAddress());
       const vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await mock.getAddress());
       await withTree(PENDING_RECORD, async (dir) => {
-        const options = { ...MOCK_OK, repoRoot: dir, registry: [] };
+        const options = { ...MOCK_OK, repoRoot: dir, registry: registryFromProfiles(LOCAL, []) };
         await assert.rejects(
           checkRotationBinding(
             ethers.provider,
@@ -671,9 +659,13 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const designations: Designation[] = [
         { ...td1, sp1VerifierCodeKeccakByChain: { ...td1.sp1VerifierCodeKeccakByChain, "11155111": other } },
       ];
-      expect(
-        bindingRefusals(registeredRequest({ ...designated, sp1VerifierCodeKeccak: other }, { designations })),
-      ).to.deep.equal([]);
+      // A designation listing other code for the chain matches that code, but the wrapper's build pins v6.1.0, so off a
+      // local chain a wrapper whose SP1 verifier runs the other code is refused all the same (the pin, not the list).
+      const otherCode = bindingRefusals(
+        registeredRequest({ ...designated, sp1VerifierCodeKeccak: other }, { designations }),
+      );
+      expect(otherCode.join("\n")).to.not.match(/matches no designation/);
+      expect(otherCode.join("\n")).to.match(/not the code its build pins/);
       expect(bindingRefusals(registeredRequest(designated, { designations })).join("\n")).to.match(
         /matches no designation/,
       );
@@ -686,6 +678,8 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         address: stranger.address,
         hasCode: true,
         genuineWrapper: false,
+        wrapperBuild: null,
+        pinnedSp1VerifierCodehash: null,
         algorithmId: null,
         sp1Verifier: null,
         sp1VerifierCodeKeccak: null,
@@ -846,7 +840,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
             {
               ...MOCK_OK,
               repoRoot: dir,
-              registry: [],
+              registry: registryFromProfiles(LOCAL, []),
             },
           ),
           /WalletWallMultiSigVault waits outside the halt/,
@@ -908,14 +902,14 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       await assert.rejects(
         checkRotationBinding(ethers.provider, await vault.getAddress(), await haltable.getAddress(), admin.address, {
           ...MOCK_OK,
-          registry: [await w1.getAddress()],
+          registry: await registryOf(await w1.getAddress()),
         }),
         /which is HALTED/,
       );
       await assert.rejects(
         checkDeploymentBinding(ethers.provider, "WalletWallVault", await haltable.getAddress(), admin.address, {
           ...MOCK_OK,
-          registry: [await w1.getAddress()],
+          registry: await registryOf(await w1.getAddress()),
         }),
         /which is HALTED/,
       );
@@ -952,7 +946,11 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         sp1VerifierCodeKeccakByChain: {},
         programVKey: VKEY_A,
       };
-      const options = { allowMockSp1: false, registry: [await haltable.getAddress()], designations: [designation] };
+      const options = {
+        allowMockSp1: false,
+        registry: await registryOf(await haltable.getAddress()),
+        designations: [designation],
+      };
       await checkDeploymentBinding(
         ethers.provider,
         "WalletWallVault",
@@ -978,25 +976,22 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       );
     });
 
-    it("reads the registry file for the chain it is asked about, and refuses a malformed one", function () {
+    it("reads the registry file for the chain it is asked about, and refuses a malformed one", async function () {
       const dir = mkdtempSync(join(tmpdir(), "td2-registry-"));
       try {
         mkdirSync(join(dir, "evidence/zk/sp1-td2"), { recursive: true });
         const write = (doc: unknown) =>
           writeFileSync(join(dir, "evidence/zk/sp1-td2/wrapper-registry.json"), JSON.stringify(doc));
-        write({
-          schema: WRAPPER_REGISTRY_SCHEMA,
-          entries: [
-            { chainId: "11155111", address: stranger.address.toLowerCase() },
-            { chainId: "84532", address: admin.address },
-          ],
-        });
+        const h = await profileVerifier(ethers.provider, await haltable.getAddress());
+        const sepolia = registryFromProfiles(SEPOLIA, [{ ...h, address: stranger.address }]);
+        const base = registryFromProfiles(84532n, [{ ...h, address: admin.address }]);
+        write({ ...sepolia, facts: [...sepolia.facts, { ...base.facts[0], seq: 2 }] });
         // node:assert, not chai: with Hardhat's chai matchers loaded, deep.equal compares addresses case-insensitively,
         // and the point here is the checksummed spelling.
         assert.deepEqual(readWrapperRegistry(SEPOLIA, dir), [stranger.address]);
         expect(readWrapperRegistry(84532n, dir)).to.deep.equal([admin.address]);
         expect(readWrapperRegistry(1n, dir)).to.deep.equal([]);
-        write({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ chainId: "1", address: "0x12" }] });
+        write({ ...sepolia, facts: [{ ...sepolia.facts[0], chainId: "1", address: "0x12" }] });
         assert.throws(() => readWrapperRegistry(1n, dir), /malformed evidence\/zk\/sp1-td2\/wrapper-registry\.json/);
       } finally {
         rmSync(dir, { recursive: true, force: true });
@@ -1006,18 +1001,15 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     it("the entry points read the registry for the chain their provider is on, from the tree they are given", async function () {
       const dir = mkdtempSync(join(tmpdir(), "td2-root-"));
       try {
-        for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL]) {
+        for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL, ...LANE_EVIDENCE]) {
           mkdirSync(dirname(join(dir, rel)), { recursive: true });
           copyFileSync(resolve(rel), join(dir, rel));
         }
         mkdirSync(dirname(join(dir, WRAPPER_REGISTRY_REL)), { recursive: true });
         const wrapper = await haltable.getAddress();
-        const register = (chainId: string) =>
-          writeFileSync(
-            join(dir, WRAPPER_REGISTRY_REL),
-            JSON.stringify({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ chainId, address: wrapper }] }),
-          );
         const target = await profileVerifier(ethers.provider, wrapper);
+        const register = (chainId: string) =>
+          writeFileSync(join(dir, WRAPPER_REGISTRY_REL), JSON.stringify(registryFromProfiles(chainId, [target])));
         const designation: Designation = {
           source: "a test designation of the mock program",
           sp1VerifierCodeKeccak: target.sp1VerifierCodeKeccak!,
@@ -1128,7 +1120,7 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const w1 = await deployWrapper(sp1, VKEY_A, haltPrincipal.address);
       await w1.connect(haltPrincipal).halt();
       const fresh = await haltable.getAddress(); // identity A, ACTIVE
-      const options = { ...MOCK_OK, registry: [await w1.getAddress()] };
+      const options = { ...MOCK_OK, registry: await registryOf(await w1.getAddress()) };
       // Positive control: with a provider that answers, the fresh deployment of the halted identity is refused.
       await assert.rejects(
         checkDeploymentBinding(ethers.provider, "WalletWallVault", fresh, admin.address, options),
@@ -1263,7 +1255,8 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   describe("recovery from a halt of the designated identity needs a successor designation", function () {
     it("off a local chain the gate admits no recovery target on SP1-TD1's designation alone, and admits a designated successor", async function () {
       // The designated wrapper is registered and HALTED (a v6.1.0 defect); the recovery wrapper runs fixed verifier
-      // code with the same vkey, registered and ACTIVE.
+      // code with the same vkey, registered and ACTIVE. Since the implementation lane pins the verifier's code in the
+      // wrapper at compile time, fixed verifier code is a later wrapper build that pins it (recorded as b2 here).
       const receipt = await (await admin.sendTransaction({ data: BYTECODE.deployments["v6.1.0"].initcode })).wait();
       const designatedWrapper = await deployWrapper(
         { getAddress: async () => receipt.contractAddress },
@@ -1272,16 +1265,20 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       );
       await designatedWrapper.connect(haltPrincipal).halt();
       const fixedVerifier = await (await ethers.getContractFactory("MockSP1Verifier")).deploy();
-      const recoveryWrapper = await deployWrapper(
-        fixedVerifier,
+      const fixedCode = ethers.keccak256(await ethers.provider.getCode(await fixedVerifier.getAddress()));
+      const builds = readWrapperBuilds();
+      const b2 = laterBuild(builds[0], fixedCode, 2);
+      const recoveryWrapper = await installWrapperOfBuild(
+        b2,
+        await fixedVerifier.getAddress(),
         TD1.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
         otherHaltPrincipal.address,
       );
-      const halted = await profileVerifier(ethers.provider, await designatedWrapper.getAddress());
-      const recovery = await profileVerifier(ethers.provider, await recoveryWrapper.getAddress());
+      const halted = await profileVerifier(ethers.provider, await designatedWrapper.getAddress(), [...builds, b2]);
+      const recovery = await profileVerifier(ethers.provider, recoveryWrapper, [...builds, b2]);
       const registered = [halted, recovery];
       expect(bindingRefusals(request(recovery, { registered })).join("\n")).to.match(
-        /matches no designation \(SP1-TD1 decision receipt\): a recovery identity needs a successor designation/,
+        /matches no designation \(mldsa65-withdrawal-d1\): a recovery identity needs a successor designation/,
       );
       const successor: Designation = {
         source: "a successor designation (the designation process's, simulated)",
