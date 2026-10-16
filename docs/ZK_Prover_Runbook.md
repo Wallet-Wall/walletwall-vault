@@ -127,8 +127,8 @@ npx hardhat run scripts/deploy-zk-verifier.ts --network <net>
 `HALT_PRINCIPAL_ADDRESS` is the wrapper's halt-only principal (threshold or multisig control, never the deployer);
 `SP1_DESIGNATION_ID` selects a designation when more than one is accepted. Before any transaction the script refuses a
 mainnet, an override, an unrecorded wrapper build and an identity the registry records as halted on any chain; it
-requires the published records (the registry, the designations, their evidence and the wrapper builds exactly as
-`origin/main` holds them, fetched then) and validates them (content and full git history), then reads the target chain
+requires the published records (the registry, the designations, their evidence and the wrapper builds byte for byte as
+the canonical repository's main holds them, fetched then by URL) and validates them (content and full git history), then reads the target chain
 at one finalized block, fetched once: the designated verifier's runtime code hash, and the per-chain execution check —
 a real v6.1.0 proof accepted, the same proof tampered and an odd-word canary refused with `ProofInvalid` — with the
 canary's positive control run on the in-process EVM. After deploying it reads the wrapper back. An RPC that does not
