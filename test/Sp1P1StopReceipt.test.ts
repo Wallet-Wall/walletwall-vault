@@ -262,6 +262,14 @@ describe("SP1-P1 assurance STOP receipt", function () {
       expect(validateSupersession(record(), receiptBytes())).to.deep.equal([]);
     });
 
+    it("refuses a supersession record that is not an object", function () {
+      for (const value of [42, "superseded", true]) {
+        expect(validateSupersession(value, receiptBytes()), String(value)).to.deep.equal([
+          "the supersession record is not an object",
+        ]);
+      }
+    });
+
     it("a tree without a supersession record reads as not superseded, never as an empty record", function () {
       const dir = mkdtempSync(join(tmpdir(), "sp1-p1-"));
       try {

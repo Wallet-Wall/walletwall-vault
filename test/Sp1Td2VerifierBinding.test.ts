@@ -489,6 +489,11 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(bindingRefusals(registeredRequest(mockSp1Wrapper, { allowMockSp1: true })).join("\n")).to.match(
         /no override exists on chain 11155111/,
       );
+      // ...and asking for it there skips nothing: registration and designation are still weighed.
+      const offLocal = bindingRefusals(request(mockSp1Wrapper, { allowMockSp1: true })).join("\n");
+      for (const rule of [/no override exists/, /not in the WalletWall wrapper registry/, /matches no designation/]) {
+        expect(offLocal).to.match(rule);
+      }
       // The override works only where it is meant to: a local chain.
       expect(bindingRefusals(request(mockSp1Wrapper, { chainId: LOCAL, allowMockSp1: true }))).to.deep.equal([]);
       expect(
@@ -538,6 +543,10 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         ],
       ];
       for (const [label, req, refusal] of cases) expect(bindingRefusals(req).join("\n"), label).to.match(refusal);
+      // A halted registered target is refused for its halt, not again as a halted twin of itself.
+      expect(bindingRefusals(registeredRequest({ ...designated, halted: true })).join("\n")).to.not.match(
+        /has the identity of registered wrapper/,
+      );
       // Positive controls: an ACTIVE current verifier of the same stored identity, and a halted current verifier
       // installed with another identity (whatever it reports now), do not disqualify the target.
       expect(
@@ -566,6 +575,13 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(bindingRefusals(registeredRequest(designated, { consumer: "SomeOtherVault" })).join("\n")).to.match(
         /not a consumer the halt's scope names/,
       );
+      // Each of these refusals is the whole answer: nothing after it is weighed (an unregistered target would add a
+      // refusal otherwise; a target without a halt surface would also read as unmeasured).
+      expect(bindingRefusals(request(designated, { consumer: "SomeOtherVault" }))).to.deep.equal([
+        "SomeOtherVault is not a consumer the halt's scope names; refusing to bind it",
+      ]);
+      expect(bindingRefusals(request(designated, { consumer: "WalletWallMultiSigVault" }))).to.have.length(1);
+      expect(bindingRefusals(registeredRequest(u))).to.have.length(1);
     });
 
     it("refuses a target without code; a registered designated wrapper passes on a local chain without any override", function () {
@@ -988,6 +1004,10 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         ["a bare internal error", rpcError("Internal error", -32603)],
         ["a server error without a message", { code: -32000 }],
         ["a server error with a non-text message", { code: -32000, message: 42 }],
+        [
+          "a server error whose message only stringifies to a revert",
+          { code: -32000, message: { toString: () => "reverted" } },
+        ],
         ["an HTTP status as a code", rpcError("Too Many Requests", 429)],
         // The review's R3-1: ethers calls a rate limit CALL_EXCEPTION too; the node's error says what it was.
         ["ethers: a rate limit", ethersCallException({ code: -32005, message: "daily request count exceeded" })],

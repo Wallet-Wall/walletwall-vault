@@ -414,6 +414,9 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           await hostile.program(SEL.PROGRAM_VKEY, B.Return, VKEY_A);
           await rotateTo(w2); // leaving a verifier that now claims to be a halted wrapper of identity A
           expect(await consumer.haltedVerifierIdentities(await identityOf(w1))).to.equal(false);
+          expect(await consumer.haltedVerifierIdentities(ethers.ZeroHash), "not even the empty identity").to.equal(
+            false,
+          );
           await consumer
             .connect(admin)
             .proposePQVerifier(await (await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address)).getAddress());

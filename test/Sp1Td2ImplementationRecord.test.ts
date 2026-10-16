@@ -151,6 +151,8 @@ describe("SP1-TD2 implementation record", function () {
   });
 
   it("refuses something that is not a record", function () {
-    expect(validateTd2Record(null, CTX)).to.deep.equal(["the record is not an object"]);
+    for (const value of [null, 42, "a record", true]) {
+      expect(validateTd2Record(value, CTX), String(value)).to.deep.equal(["the record is not an object"]);
+    }
   });
 });
