@@ -270,6 +270,19 @@ describe("SP1-P1 assurance STOP receipt", function () {
       );
     });
 
+    it("the historical reading is git's, file by file: at an older commit the zkvm manifest and the runbook differ", function () {
+      // 779c7f06: the guest before the withdrawal-relation remediation (5e09486), its lockfile and sources older.
+      const older = readObservationInputs(".", "779c7f0676bc8bd9e327a0cf8fe3f7e89822ec7d");
+      const live = readObservationInputs(".");
+      expect(sourceManifestDigest(older.sourceFiles)).to.not.equal(sourceManifestDigest(live.sourceFiles));
+      expect(older.sourceFiles.map((f) => f.path)).to.include("zkvm/guest/Cargo.lock");
+      expect(older.zkMldsaVerifierSha256).to.not.equal(live.zkMldsaVerifierSha256);
+      // Positive control: at the historical subject the reading reproduces the receipt's own bindings.
+      const at = readObservationInputs(".", record().historicalSubject);
+      expect(at.sourceFiles).to.deep.equal(committed().repositoryBindings.sourceFiles);
+      expect(at.proverRunbookDirectsToGateway).to.equal(true);
+    });
+
     it("pins the receipt bytes and names its superseding records, SP1-TD1 first", function () {
       const s = record();
       expect(s.receipt).to.equal(RECEIPT_REL);

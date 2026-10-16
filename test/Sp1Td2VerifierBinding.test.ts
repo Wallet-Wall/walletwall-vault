@@ -135,6 +135,16 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         null,
       ]);
       expect(p.programVKey).to.equal(VKEY_A);
+      // A zero halt principal names no one; an SP1 verifier without code has no code hash, so no identity.
+      await m.program(sel("HALT_PRINCIPAL()"), RETURN, ethers.ZeroHash);
+      await m.program(sel("SP1_VERIFIER()"), RETURN, ethers.zeroPadValue(stranger.address, 32));
+      const z = await profileVerifier(ethers.provider, await m.getAddress());
+      expect([z.haltPrincipal, z.sp1Verifier, z.sp1VerifierCodeKeccak, z.identity]).to.deep.equal([
+        null,
+        stranger.address,
+        null,
+        null,
+      ]);
       await m.program(sel("HALT_PRINCIPAL()"), RETURN, ethers.zeroPadValue(admin.address, 32));
       await m.program(sel("halted()"), RETURN, ethers.zeroPadValue("0x01", 32));
       await m.program(sel("SP1_VERIFIER()"), RETURN, ethers.zeroPadValue(await sp1.getAddress(), 32));
@@ -320,6 +330,106 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(bindingRefusals(request(u)).join("\n")).to.match(/not haltable: the halt would not reach WalletWallVault/);
       expect(bindingRefusals(request(designated, { consumer: "SomeOtherVault" })).join("\n")).to.match(
         /not a consumer the halt's scope names/,
+      );
+    });
+
+    it("refuses a target without code; a designated wrapper passes on a local chain without any override", function () {
+      expect(bindingRefusals(request({ ...designated, hasCode: false })).join("\n")).to.match(/has no code/);
+      expect(bindingRefusals(request(designated, { chainId: LOCAL }))).to.deep.equal([]);
+    });
+
+    it("checks the code hash designated for the chain, falling back to the trust target's only where the chain has none", function () {
+      const other = `0x${"ab".repeat(32)}`;
+      const designations = {
+        ...readDesignations(),
+        sp1VerifierCodeKeccakByChain: { ...readDesignations().sp1VerifierCodeKeccakByChain, "11155111": other },
+      };
+      expect(bindingRefusals(request({ ...designated, sp1VerifierCodeKeccak: other }, { designations }))).to.deep.equal(
+        [],
+      );
+      expect(bindingRefusals(request(designated, { designations })).join("\n")).to.match(/not the designated 0xabab/);
+      // A chain the designations do not list falls back to the trust target's code hash.
+      expect(bindingRefusals(request(designated, { designations, chainId: 10_000n }))).to.deep.equal([]);
+    });
+
+    it("anything that answers one part of the SP1 surface is on the SP1 path, and a wrapper needs both halves of the halt surface", function () {
+      const bare: VerifierProfile = {
+        address: stranger.address,
+        hasCode: true,
+        algorithmId: null,
+        sp1Verifier: null,
+        sp1VerifierCodeKeccak: null,
+        programVKey: null,
+        haltPrincipal: null,
+        halted: null,
+        identity: null,
+      };
+      expect(isOnSp1Path(bare), "positive control: nothing answered").to.equal(false);
+      for (const part of [
+        { algorithmId: ZK_ALGORITHM_ID },
+        { sp1Verifier: stranger.address },
+        { programVKey: VKEY_A },
+        { haltPrincipal: haltPrincipal.address },
+        { halted: false },
+      ]) {
+        const p = { ...bare, ...part };
+        expect(isOnSp1Path(p), JSON.stringify(part)).to.equal(true);
+        expect(bindingRefusals(request(p, { consumer: "WalletWallMultiSigVault" })).join("\n")).to.match(
+          /may be bound to no part of the SP1 path/,
+        );
+      }
+      expect(isHaltable({ ...bare, haltPrincipal: haltPrincipal.address })).to.equal(false);
+      expect(isHaltable({ ...bare, halted: false })).to.equal(false);
+      expect(isHaltable({ ...bare, haltPrincipal: haltPrincipal.address, halted: false })).to.equal(true);
+      for (const half of [{ halted: null }, { haltPrincipal: null }]) {
+        expect(bindingRefusals(request({ ...designated, ...half })).join("\n"), JSON.stringify(half)).to.match(
+          /not haltable/,
+        );
+      }
+    });
+
+    it("end to end: after a vault leaves a halted wrapper, the tooling refuses that identity from the record the vault keeps", async function () {
+      const vault = await (
+        await ethers.getContractFactory("WalletWallVault", admin)
+      ).deploy(await haltable.getAddress());
+      const recovery = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
+      await haltable.connect(haltPrincipal).halt();
+      await vault.proposePQVerifier(await recovery.getAddress());
+      await networkHelpers.time.increase(ROTATION_DELAY);
+      await vault.applyPQVerifierUpdate();
+      // The current wrapper is ACTIVE now; only the recorded identity can refuse the redeploy.
+      const fresh = await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address);
+      await assert.rejects(
+        checkRotationBinding(
+          ethers.provider,
+          await vault.getAddress(),
+          await fresh.getAddress(),
+          admin.address,
+          MOCK_OK,
+        ),
+        /has the identity of a halted wrapper WalletWallVault recorded/,
+      );
+      const independent = await deployWrapper(await deploySp1(), VKEY_B, haltPrincipal.address);
+      await checkRotationBinding(
+        ethers.provider,
+        await vault.getAddress(),
+        await independent.getAddress(),
+        admin.address,
+        MOCK_OK,
+      );
+    });
+
+    it("refuses an impostor that reports a consumer's EIP-712 domain but has no verifier", async function () {
+      const impostor = await (await ethers.getContractFactory("Eip712DomainOnlyMock")).deploy("WalletWallVault");
+      await assert.rejects(
+        checkRotationBinding(
+          ethers.provider,
+          await impostor.getAddress(),
+          await haltable.getAddress(),
+          admin.address,
+          MOCK_OK,
+        ),
+        /reports no pqVerifier/,
       );
     });
 

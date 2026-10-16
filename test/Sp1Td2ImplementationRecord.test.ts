@@ -107,6 +107,7 @@ describe("SP1-TD2 implementation record", function () {
       /evidence-gate requirement/,
     ],
     ["TD1-N12 unanswered", (r) => (r.td1N12.answer = "UNKNOWN"), /answer on chain or by process/],
+    ["TD1-N12 answered by neither", (r) => (r.td1N12.answer = "BY_GUESSWORK"), /answer on chain or by process/],
     ["TD1-N12 without its split", (r) => delete r.td1N12.byProcess, /byProcess must be a list/],
     [
       "the multisig rotation called authority-neutral",

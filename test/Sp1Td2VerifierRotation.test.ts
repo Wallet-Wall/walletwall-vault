@@ -476,10 +476,14 @@ describe("SP1-TD2 multisig verifier rotation (TD2-MULTISIG-ROTATION)", function 
     });
 
     it("propose emits, apply waits the full delay, and the proposal clears on apply", async function () {
-      const tx = multisig.connect(admin).proposePQVerifier(await w2.getAddress());
-      await expect(tx).to.emit(multisig, "PQVerifierUpdateProposed");
-      const validAfter = await multisig.pendingPQVerifierValidAfter();
-      expect(validAfter).to.equal(BigInt(await networkHelpers.time.latest()) + BigInt(ROTATION_DELAY));
+      const proposedAt = BigInt(await networkHelpers.time.latest()) + 10n;
+      const validAfter = proposedAt + BigInt(ROTATION_DELAY);
+      const [current, target] = [await w1.getAddress(), await w2.getAddress()];
+      await networkHelpers.time.setNextBlockTimestamp(proposedAt);
+      await expect(multisig.connect(admin).proposePQVerifier(target))
+        .to.emit(multisig, "PQVerifierUpdateProposed")
+        .withArgs(current, target, validAfter);
+      expect(await multisig.pendingPQVerifierValidAfter()).to.equal(validAfter);
       await networkHelpers.time.setNextBlockTimestamp(validAfter - 1n);
       await expect(multisig.connect(admin).applyPQVerifierUpdate())
         .to.be.revertedWithCustomError(multisig, "PQVerifierUpdateNotReady")
@@ -518,6 +522,8 @@ describe("SP1-TD2 multisig verifier rotation (TD2-MULTISIG-ROTATION)", function 
       await expect(multisig.connect(admin).cancelPQVerifierUpdate())
         .to.emit(multisig, "PQVerifierUpdateCancelled")
         .withArgs(await w2.getAddress());
+      expect(await multisig.pendingPQVerifier()).to.equal(ethers.ZeroAddress);
+      expect(await multisig.pendingPQVerifierValidAfter()).to.equal(0n);
     });
 
     it("a re-proposal restarts the delay, and a matured proposal expires after the apply window", async function () {
