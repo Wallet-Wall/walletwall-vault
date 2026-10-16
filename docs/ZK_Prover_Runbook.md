@@ -127,10 +127,12 @@ npx hardhat run scripts/deploy-zk-verifier.ts --network <net>
 `HALT_PRINCIPAL_ADDRESS` is the wrapper's halt-only principal (threshold or multisig control, never the deployer);
 `SP1_DESIGNATION_ID` selects a designation when more than one is accepted. Before any transaction the script refuses a
 mainnet, an override, an unrecorded wrapper build and an identity the registry records as halted on any chain; it
-validates the designations and the registry (content and full git history), then reads the target chain at a
-finalized block: the designated verifier's runtime code hash, and the per-chain execution check — a real v6.1.0 proof
-accepted, the same proof tampered and an odd-word canary refused with `ProofInvalid` — with the canary's positive
-control run on the in-process EVM. After deploying it reads the wrapper back. An RPC that does not answer stops it.
+requires the published records (the registry, the designations, their evidence and the wrapper builds exactly as
+`origin/main` holds them, fetched then) and validates them (content and full git history), then reads the target chain
+at one finalized block, fetched once: the designated verifier's runtime code hash, and the per-chain execution check —
+a real v6.1.0 proof accepted, the same proof tampered and an odd-word canary refused with `ProofInvalid` — with the
+canary's positive control run on the in-process EVM. After deploying it reads the wrapper back. An RPC that does not
+answer, or names no finalized block, stops it; the one provider it reads is believed, so use one you trust.
 
 Record the wrapper in the registry from chain reads (no transaction), and publish the change by pull request:
 
@@ -145,15 +147,18 @@ Then propose it to the vault via the timelocked governance flow
 **Where the designation comes from.** `evidence/zk/sp1/designations/` holds generated designations, never typed ones:
 `mldsa65-withdrawal-d1` binds the zkvm subject, the canonical procedure (the vendor image by digest), the ELF and
 `PROGRAM_VKEY` to SP1Verifier v6.1.0. CI fails when the subject on disk no longer matches the latest designation. A
-change to the guest, the host, a lockfile or SP1 therefore needs a successor designation: rebuild with the canonical
-procedure (`scripts/sp1-canonical/canonical-build.sh`; `.github/workflows/sp1-canonical-build.yml` does it on two
-runners and recomputes the vkey on a third), commit the evidence bundle, and derive it with
+change to the guest, the host or a lockfile therefore needs a successor designation, a program rebuild under the same
+procedure: rebuild with the canonical procedure (`scripts/sp1-canonical/canonical-build.sh`;
+`.github/workflows/sp1-canonical-build.yml` does it on two runners, recomputes the vkey on a third, and reports the
+`SP1 canonical build gate`), commit the evidence bundle, and derive it with
 `npm run sp1:designation -- --successor <bundle.json>`. A successor must be a new identity; the same verifier code
-and vkey at another address is the same identity and is refused.
+and vkey at another address is the same identity and is refused. A change of SP1 itself (its version, the vendor
+image, the verifier) is another procedure or verifier, which this tooling cannot designate: it needs its own decision.
 
 **If the wrapper must be halted.** The halt principal calls `halt()` (one-way). Record it for every chain:
 `WRAPPER_ADDRESS=0x<wrapper> HALT_TX=0x<tx> HALT_REASON=<reason>` with the same script; once published, the tooling
-refuses the identity everywhere. Recovery is a successor identity's wrapper through each consumer's delayed rotation.
+refuses the identity everywhere. Recovery is a successor identity's wrapper through each consumer's delayed rotation;
+a program rebuild can be designated here, a fixed SP1 verifier cannot yet.
 
 **Proving availability (TD1-N9).** The rotation delay protects PqOnly users only while they can prove.
 `PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED`: the v6.1.0 Groth16 artifacts (about 6.21 GB) are not archived by

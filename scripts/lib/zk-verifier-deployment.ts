@@ -34,6 +34,7 @@ import {
   type Verdicts,
 } from "./sp1-chain-execution";
 import { compatibleDesignations, type ProgramDesignation } from "./sp1-designation";
+import { finalizedBlock } from "./sp1-registration";
 import { registryState, type RegistryDoc } from "./sp1-registry";
 import type { WrapperBuild } from "./sp1-wrapper-build";
 import { LOCAL_CHAIN_IDS, profileVerifier } from "./verifier-binding";
@@ -200,16 +201,28 @@ export function planWrapperDeployment(input: PlanInput): WrapperDeploymentPlan {
 /**
  * On the target chain, read-only: the SP1 verifier runs the designated code and gives the required verdicts there, and
  * the canary's positive control fires on `devProvider` (an in-process EVM). Throws on any refusal or RPC failure.
+ *
+ * Every read is at one finalized block, fetched once (review finding L-6): a lagging or reorganizing backend cannot
+ * mix states, and a chain or RPC that names no finalized block stops the deployment (never the latest block instead).
+ * It reads one provider, the deployment's own, and trusts what it reports: a lying RPC is not refused here (AUTH-6);
+ * the committed per-chain observation reads two agreeing providers.
  */
 export async function preDeploymentChecks(
   provider: Provider,
   plan: WrapperDeploymentPlan,
   devProvider: DevProvider,
-): Promise<{ codeKeccak: string; executionPass: true; verdicts: Verdicts; canaryDetects: true }> {
+): Promise<{
+  codeKeccak: string;
+  finalizedBlock: number;
+  executionPass: true;
+  verdicts: Verdicts;
+  canaryDetects: true;
+}> {
   if (plan.designation === null || plan.sp1Verifier === null) {
     throw new Error("only a designated deployment with its SP1 verifier in place is checked");
   }
-  const code = await provider.getCode(plan.sp1Verifier);
+  const at = await finalizedBlock(provider);
+  const code = await provider.getCode(plan.sp1Verifier, at.block);
   const codeKeccak = code === "0x" ? null : keccak256(code);
   if (codeKeccak !== plan.expectedSp1CodeKeccak) {
     throw new Error(
@@ -223,7 +236,7 @@ export async function preDeploymentChecks(
     tampered: { ...designed.tampered, to: sp1 },
     canary: { ...designed.canary, to: sp1 },
   };
-  const result = await runChainExecutionCheck(provider, calls);
+  const result = await runChainExecutionCheck(provider, calls, at.block);
   if (!result.pass) throw new Error(`the per-chain execution check failed: ${result.failures.join("; ")}`);
   const control = await canaryPositiveControl(devProvider, calls.canary.data, plan.expectedSp1CodeKeccak);
   if (!control.detects) {
@@ -231,7 +244,7 @@ export async function preDeploymentChecks(
       `the canary's positive control did not fire (${JSON.stringify(control)}): the check proves nothing`,
     );
   }
-  return { codeKeccak, executionPass: true, verdicts: result.verdicts, canaryDetects: true };
+  return { codeKeccak, finalizedBlock: at.block, executionPass: true, verdicts: result.verdicts, canaryDetects: true };
 }
 
 /** The subset of Hardhat's `ethers` a deployment needs. */

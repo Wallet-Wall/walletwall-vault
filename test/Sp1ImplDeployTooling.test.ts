@@ -66,6 +66,25 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
     ...overrides,
   });
 
+  /** A registry that records d1's identity halted on Base Sepolia. */
+  const haltedOnBaseSepolia = () =>
+    registryFromProfiles(84532n, [
+      {
+        address: stranger.address,
+        hasCode: true,
+        genuineWrapper: true,
+        wrapperBuild: builds[0].id,
+        pinnedSp1VerifierCodehash: builds[0].pins.sp1VerifierCodehash,
+        algorithmId: null,
+        sp1Verifier: d1.verifier.address,
+        sp1VerifierCodeKeccak: d1.verifier.runtimeCodeKeccak,
+        programVKey: d1.programVKey,
+        haltPrincipal: haltPrincipal.address,
+        halted: true,
+        identity: d1.identity,
+      },
+    ]);
+
   describe("planning, before any transaction", function () {
     it("off a local chain the plan is the designation's: its verifier, its vkey, the latest recorded build", function () {
       const plan = planWrapperDeployment(input());
@@ -124,24 +143,15 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
       ],
       [
         "a designation whose identity the registry records halted on any chain",
+        () => input({ registry: haltedOnBaseSepolia() }),
+        /recorded HALTED/,
+      ],
+      [
+        "a designation named explicitly (SP1_DESIGNATION_ID) whose identity the registry records halted (AUTH-5)",
         () =>
           input({
-            registry: registryFromProfiles(84532n, [
-              {
-                address: stranger.address,
-                hasCode: true,
-                genuineWrapper: true,
-                wrapperBuild: builds[0].id,
-                pinnedSp1VerifierCodehash: builds[0].pins.sp1VerifierCodehash,
-                algorithmId: null,
-                sp1Verifier: d1.verifier.address,
-                sp1VerifierCodeKeccak: d1.verifier.runtimeCodeKeccak,
-                programVKey: d1.programVKey,
-                haltPrincipal: haltPrincipal.address,
-                halted: true,
-                identity: d1.identity,
-              },
-            ]),
+            env: { HALT_PRINCIPAL_ADDRESS: haltPrincipal.address, SP1_DESIGNATION_ID: d1.id },
+            registry: haltedOnBaseSepolia(),
           }),
         /recorded HALTED/,
       ],
@@ -200,6 +210,60 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
         executionPass: true,
         canaryDetects: true,
       });
+    });
+
+    it("reads the verifier's code and every verdict at one finalized block, fetched once (L-6)", async function () {
+      const tags: unknown[] = [];
+      let finalizedReads = 0;
+      const recording = new Proxy(ethers.provider, {
+        get(t, prop) {
+          if (prop === "getCode")
+            return (address: string, tag?: unknown) => {
+              tags.push(tag);
+              return t.getCode(address, tag as any);
+            };
+          if (prop === "call")
+            return (tx: any) => {
+              tags.push(tx.blockTag);
+              return t.call(tx);
+            };
+          if (prop === "getBlock")
+            return (tag: any) => {
+              if (tag === "finalized") finalizedReads += 1;
+              return t.getBlock(tag);
+            };
+          const value = Reflect.get(t, prop, t);
+          return typeof value === "function" ? value.bind(t) : value;
+        },
+      });
+      const report = await preDeploymentChecks(recording, localPlan(v610), ethers.provider as any);
+      expect(finalizedReads).to.equal(1);
+      expect(tags, "getCode and the three calls").to.have.length(4);
+      expect([...new Set(tags)]).to.deep.equal([report.finalizedBlock]);
+      expect(report.finalizedBlock).to.equal((await ethers.provider.getBlock("finalized"))!.number);
+    });
+
+    it("a chain or RPC that names no finalized block stops it: no fallback to the latest block (L-6)", async function () {
+      for (const [label, finalized] of [
+        ["no finalized block", async () => null],
+        [
+          "a failing read",
+          async () => Promise.reject(Object.assign(new Error("server response 503"), { code: "SERVER_ERROR" })),
+        ],
+      ] as const) {
+        const noFinality = new Proxy(ethers.provider, {
+          get(t, prop) {
+            if (prop === "getBlock") return (tag: any) => (tag === "finalized" ? finalized() : t.getBlock(tag));
+            const value = Reflect.get(t, prop, t);
+            return typeof value === "function" ? value.bind(t) : value;
+          },
+        });
+        await assert.rejects(
+          preDeploymentChecks(noFinality, localPlan(v610), ethers.provider as any),
+          /no finalized block|503/,
+          label,
+        );
+      }
     });
 
     it("refuses other code at the verifier address, and an address without code", async function () {
