@@ -3,10 +3,11 @@
  * .github/workflows/ci.yml). A static read of the comment-stripped workflow text, like the repository's other
  * workflow guards: what each job runs, what it is pinned to, and when it runs.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { expect } from "chai";
+import { load } from "js-yaml";
 
 const code = (rel: string) =>
   readFileSync(resolve(rel), "utf8")
@@ -97,5 +98,15 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
     }
     expect(buildTest).to.match(/fetch-depth: 0/);
     expect(jobBlock(ci, "zkvm-guest")).to.match(/cargo check --locked --manifest-path zkvm\/guest\/Cargo\.toml/);
+  });
+
+  it("every workflow parses as YAML (a text read cannot see that GitHub would refuse the file)", function () {
+    const dir = resolve(".github/workflows");
+    const files = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f));
+    expect(files).to.include.members(["ci.yml", "sp1-canonical-build.yml"]);
+    for (const f of files) {
+      const doc = load(readFileSync(resolve(dir, f), "utf8")) as { jobs?: unknown };
+      expect(doc?.jobs, f).to.be.an("object");
+    }
   });
 });

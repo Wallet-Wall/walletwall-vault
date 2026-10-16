@@ -238,7 +238,7 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Compile guest (locked: a stale guest lockfile fails here, never re-resolves)
+      - name: Compile guest (locked; a stale guest lockfile fails here, never re-resolves)
         run: cargo check --locked --manifest-path zkvm/guest/Cargo.toml
 
   zkvm-relation-tests:
