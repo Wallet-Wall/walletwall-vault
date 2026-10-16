@@ -87,12 +87,13 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
     expect(compare).to.match(/--min-hosts 2/);
   });
 
-  it("CI runs the cheap checks on every pull request: builds, designations (the subject tripwire), registry history, a locked guest", function () {
+  it("CI runs the cheap checks on every pull request: builds, designations (the subject tripwire), registry history, proving availability, a locked guest", function () {
     const buildTest = jobBlock(ci, "build-test");
     for (const command of [
       "npm run validate:sp1-wrapper-build",
       "npm run validate:sp1-designation",
       "npm run validate:sp1-registry",
+      "npm run validate:sp1-proving-availability",
     ]) {
       expect(buildTest, command).to.include(command);
     }

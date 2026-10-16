@@ -1,0 +1,692 @@
+/**
+ * Proving availability (SP1-TD1 finding TD1-N9; the SP1 implementation lane,
+ * docs/SP1_Implementation_Pin_Designation_Registry.md).
+ *
+ * The pqVerifier rotation's 2-day delay protects a PqOnly user only while they can prove, and a Groth16 proof for
+ * circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (or Succinct's prover network). Upstream hosting them today
+ * is not availability. This module records what can be established without downloading them, and derives the status
+ * from measurements:
+ *
+ *   from the crates zkvm/host/Cargo.lock pins (each .crate's sha256 must be the lockfile's checksum, and members are
+ *     read from those bytes, never from an unpacked source tree): the circuit version, the expected groth16_vk.bin
+ *     (sp1-verifier's embedded key, whose sha256 is the designated VERIFIER_HASH), where the pinned prover fetches the
+ *     artifacts, how it installs them and which files Groth16 proving reads;
+ *   on the proving host: whether the artifacts and the gnark image are present, and which gnark backend the host's
+ *     dependency graph selects;
+ *   in the repository: WalletWall archive records (none; any is refused until a lane defines and validates them).
+ *
+ *   OWNER_DOWNLOAD_REQUIRED — no archive and no local copy: obtaining the artifacts needs a download this lane is not
+ *     authorized to make.
+ *   LOCAL_COPY_NOT_ARCHIVED — a local copy exists, but WalletWall has neither archived nor verified it.
+ *
+ * Neither is availability, which needs a verified archive and an exercised self-hosted proving path (a later,
+ * owner-authorized lane). The artifacts' integrity is never soundness: the designated verifier refuses a proof made
+ * under any other key or circuit, so what they decide is whether a user can prove at all.
+ *
+ * Research prototype. Not audited. Testnet/local only. Do not use real funds.
+ */
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join, relative, resolve, sep } from "node:path";
+import { gunzipSync } from "node:zlib";
+
+import { readDesignations, type ProgramDesignation } from "./sp1-designation";
+
+export const PROVING_AVAILABILITY_REL = "evidence/zk/sp1-impl/proving-availability.json";
+export const PROVING_AVAILABILITY_SCHEMA = "walletwall.sp1-proving-availability.v1";
+export const PROVING_ARTIFACTS_OBSERVATION_REL =
+  "evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json";
+export const PROVING_ARTIFACTS_SCHEMA = "walletwall.sp1-proving-artifacts.v1";
+/** Where WalletWall archive records of the circuit artifacts would live; none exists, and none counts yet. */
+export const PROVING_ARCHIVES_DIR = "evidence/zk/sp1-impl/proving-archives";
+export const HOST_LOCK_REL = "zkvm/host/Cargo.lock";
+export const MEASURE_SCRIPT_REL = "scripts/measure-sp1-proving-artifacts.ts";
+export const GNARK_TREE_COMMAND = "cargo tree --offline --locked -e features -i sp1-recursion-gnark-ffi";
+const TD1_RECEIPT_REL = "evidence/zk/sp1-td1/decision-receipt.json";
+const VK_MEMBER = "vk-artifacts/groth16_vk.bin";
+
+/** The members read from each crate the host lockfile pins. */
+export const MEASURED_MEMBERS: Readonly<Record<string, readonly string[]>> = {
+  "sp1-prover": ["SP1_CIRCUIT_VERSION", "src/build.rs"],
+  "sp1-recursion-gnark-ffi": [
+    "assets/SP1_CIRCUIT_VERSION",
+    "src/ffi/docker.rs",
+    "src/groth16_bn254.rs",
+    "go/sp1/sp1.go",
+    "go/sp1/prove_groth16.go",
+  ],
+  "sp1-verifier": [VK_MEMBER],
+};
+
+const sha256 = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
+
+/** The regular files of a gzip'd tar (a .crate), by path. A corrupt, truncated or ambiguous archive is refused. */
+export function readTarMembers(gz: Uint8Array): Map<string, Buffer> {
+  const tar = gunzipSync(gz);
+  const members = new Map<string, Buffer>();
+  let pendingName: string | null = null;
+  for (let at = 0; at + 512 <= tar.length;) {
+    const h = tar.subarray(at, at + 512);
+    if (h.every((b) => b === 0)) return members;
+    const text = (from: number, len: number) =>
+      h
+        .subarray(from, from + len)
+        .toString("latin1")
+        .split("\0")[0];
+    let sum = 0;
+    for (let i = 0; i < 512; i++) sum += i >= 148 && i < 156 ? 0x20 : h[i];
+    if (parseInt(text(148, 8).trim(), 8) !== sum) throw new Error(`tar header at byte ${at}: checksum mismatch`);
+    if (h[124] & 0x80) throw new Error(`tar header at byte ${at}: a base-256 size is not read`);
+    const size = parseInt(text(124, 12).trim() || "0", 8);
+    const start = at + 512;
+    if (start + size > tar.length) throw new Error(`tar member at byte ${at}: truncated`);
+    const data = tar.subarray(start, start + size);
+    at = start + Math.ceil(size / 512) * 512;
+    const type = String.fromCharCode(h[156]);
+    if (type === "L") {
+      pendingName = data.toString("utf8").split("\0")[0];
+      continue;
+    }
+    if (type === "x") {
+      pendingName = /(?:^|\n)\d+ path=([^\n]*)\n/.exec(data.toString("utf8"))?.[1] ?? pendingName;
+      continue;
+    }
+    // POSIX ustar splits long names into prefix/name; the GNU header uses those bytes for other fields.
+    const posix = text(257, 6) === "ustar" && text(263, 2) === "00";
+    const prefix = posix ? text(345, 155) : "";
+    const name = pendingName ?? (prefix ? `${prefix}/${text(0, 100)}` : text(0, 100));
+    pendingName = null;
+    if (type !== "0" && type !== "\0") continue;
+    if (members.has(name)) throw new Error(`tar member ${name} appears twice`);
+    members.set(name, Buffer.from(data));
+  }
+  throw new Error("the tar archive ends without its end-of-archive block");
+}
+
+export interface LockedCrate {
+  name: string;
+  version: string;
+  checksum: string;
+}
+
+/** The registry crates a Cargo.lock pins, by name; null for a name locked at more than one version. */
+export function lockedCrates(lockText: string): Map<string, LockedCrate | null> {
+  const out = new Map<string, LockedCrate | null>();
+  for (const block of lockText.split(/^\[\[package\]\]\r?$/m).slice(1)) {
+    const field = (k: string) => new RegExp(`^${k} = "([^"]*)"\\r?$`, "m").exec(block)?.[1];
+    const [name, version, checksum] = [field("name"), field("version"), field("checksum")];
+    if (!name || !version || !checksum) continue; // path and git dependencies carry no registry checksum
+    out.set(name, out.has(name) ? null : { name, version, checksum });
+  }
+  return out;
+}
+
+/** The cached .crate of `c`; every cached copy must be the bytes the lockfile pins. */
+function cachedCrate(cargoHome: string, c: LockedCrate): { file: string; bytes: Buffer } {
+  const cache = join(cargoHome, "registry", "cache");
+  const found = existsSync(cache)
+    ? readdirSync(cache)
+        .sort()
+        .map((index) => join(cache, index, `${c.name}-${c.version}.crate`))
+        .filter((f) => existsSync(f))
+    : [];
+  if (found.length === 0) throw new Error(`${c.name} ${c.version} is not in the cargo cache at ${cache}`);
+  for (const file of found) {
+    const digest = sha256(readFileSync(file));
+    if (digest !== c.checksum) {
+      throw new Error(`${file} is not the crate ${HOST_LOCK_REL} pins (sha256 ${digest}, locked ${c.checksum})`);
+    }
+  }
+  return { file: found[0], bytes: readFileSync(found[0]) };
+}
+
+/** What the lane read in the pinned prover's source, re-read from the measured bytes on every measurement. */
+export interface SourceReading {
+  circuitVersion: string;
+  artifactUrl: string;
+  groth16DirEnv: string;
+  groth16DefaultDir: string;
+  circuitModeEnv: string;
+  extractFlags: string;
+  reusesExistingDir: boolean;
+  downloadVerifiesHash: boolean;
+  gnarkImageEnv: string;
+  gnarkImage: string;
+  groth16ProveReads: string[];
+  groth16VkFile: string;
+  groth16Vk: { sha256: string; bytes: number };
+}
+
+const noLonger = (what: string) =>
+  new Error(`the pinned prover's source no longer reads as this lane read it: ${what}`);
+function matchOf(text: string, re: RegExp, what: string): RegExpExecArray {
+  const m = re.exec(text);
+  if (!m) throw noLonger(what);
+  return m;
+}
+/** A top-level Rust or Go function, from its signature to the first closing brace at column 0. */
+function fnBody(text: string, signature: string): string {
+  const start = text.indexOf(signature);
+  const end = start < 0 ? -1 : text.indexOf("\n}", start);
+  if (end < 0) throw noLonger(signature);
+  return text.slice(start, end);
+}
+
+function readSource(read: (crate: string, member: string) => Buffer): SourceReading {
+  const str = (crate: string, member: string) => read(crate, member).toString("utf8");
+  const proverVersion = str("sp1-prover", "SP1_CIRCUIT_VERSION");
+  const gnarkVersion = str("sp1-recursion-gnark-ffi", "assets/SP1_CIRCUIT_VERSION");
+  if (!/^v\d+\.\d+\.\d+$/.test(proverVersion) || proverVersion !== gnarkVersion) {
+    throw new Error(
+      `the circuit version is not one: sp1-prover names ${JSON.stringify(proverVersion)}, sp1-recursion-gnark-ffi ${JSON.stringify(gnarkVersion)}`,
+    );
+  }
+  const v = proverVersion;
+  const build = str("sp1-prover", "src/build.rs");
+  const base = matchOf(build, /pub const CIRCUIT_ARTIFACTS_URL_BASE: &str = "(https:\/\/[^"]+)";/, "the URL base")[1];
+  const install = fnBody(build, "pub async fn install_circuit_artifacts(");
+  matchOf(
+    install,
+    /format!\(\s*"\{CIRCUIT_ARTIFACTS_URL_BASE\}\/\{SP1_CIRCUIT_VERSION\}-\{artifacts_type\}\.tar\.gz"\s*\)/,
+    "the download URL",
+  );
+  const download = fnBody(build, "pub async fn download_file(");
+  const dir = fnBody(build, "pub fn groth16_circuit_artifacts_dir()");
+  const groth16DirEnv = matchOf(dir, /std::env::var\("([A-Z0-9_]+)"\)/, "the artifacts directory variable")[1];
+  const sub = matchOf(dir, /home_dir\.join\("\.sp1"\)\.join\("([^"]+)"\)/, "the default artifacts directory")[1];
+  matchOf(dir, /Ok\(base_path\.join\(SP1_CIRCUIT_VERSION\)\)/, "the versioned artifacts directory");
+  const mode = fnBody(build, "fn use_development_mode()");
+  const circuitModeEnv = matchOf(
+    mode,
+    /std::env::var\("([A-Z0-9_]+)"\)\.unwrap_or\("release"\.to_string\(\)\) == "dev"/,
+    "the development-mode variable",
+  )[1];
+  const docker = str("sp1-recursion-gnark-ffi", "src/ffi/docker.rs");
+  const image = matchOf(
+    docker,
+    /std::env::var\("([A-Z0-9_]+)"\)\s*\.unwrap_or_else\(\|_\| format!\("([^"]+)"\)\)/,
+    "the gnark image",
+  );
+  const vkFile = matchOf(
+    str("sp1-recursion-gnark-ffi", "src/groth16_bn254.rs"),
+    /fn get_vkey_hash\(build_dir: &Path\) -> \[u8; 32\] \{\s*let vkey_path = build_dir\.join\("([^"]+)"\);\s*let vk_bin_bytes = std::fs::read\(vkey_path\)\.unwrap\(\);\s*Sha256::digest\(vk_bin_bytes\)\.into\(\)/,
+    "the vkey hash",
+  )[1];
+  const goNames = new Map(
+    [...str("sp1-recursion-gnark-ffi", "go/sp1/sp1.go").matchAll(/^var (\w+) string = "([^"]+)"/gm)].map((m) => [
+      m[1],
+      m[2],
+    ]),
+  );
+  const prove = fnBody(str("sp1-recursion-gnark-ffi", "go/sp1/prove_groth16.go"), "func ProveGroth16(");
+  const reads = [...prove.matchAll(/dataDir\s*\+\s*"\/"\s*\+\s*(\w+)/g)].map((m) => {
+    const file = goNames.get(m[1]);
+    if (!file) throw noLonger(`the Groth16 prover's file ${m[1]}`);
+    return file;
+  });
+  if (reads.length === 0) throw noLonger("the files Groth16 proving reads");
+  const vk = read("sp1-verifier", VK_MEMBER);
+  return {
+    circuitVersion: v,
+    artifactUrl: `${base}/${v}-groth16.tar.gz`,
+    groth16DirEnv,
+    groth16DefaultDir: `~/.sp1/${sub}/${v}`,
+    circuitModeEnv,
+    extractFlags: matchOf(install, /Command::new\("tar"\)\s*\.args\(\["(-[A-Za-z]+)"/, "the extraction")[1],
+    reusesExistingDir: /if build_dir\.exists\(\)/.test(fnBody(build, "pub async fn try_install_circuit_artifacts(")),
+    downloadVerifiesHash: /sha2|sha256|checksum|digest|verify/i.test(install + download),
+    gnarkImageEnv: image[1],
+    gnarkImage: image[2].replace("{SP1_CIRCUIT_VERSION}", v),
+    groth16ProveReads: [...new Set(reads)].sort(),
+    groth16VkFile: vkFile,
+    groth16Vk: { sha256: sha256(vk), bytes: vk.length },
+  };
+}
+
+/** The sp1-recursion-gnark-ffi features enabled in the host's graph, from `cargo tree -e features -i` output. */
+export function gnarkFeaturesOf(treeOutput: string, version: string): string[] {
+  const lines = treeOutput.split(/\r?\n/);
+  if (lines[0]?.trim() !== `sp1-recursion-gnark-ffi v${version}`) {
+    throw new Error(`not the inverted feature tree of sp1-recursion-gnark-ffi ${version} (${GNARK_TREE_COMMAND})`);
+  }
+  const features = lines.flatMap((l) => /sp1-recursion-gnark-ffi feature "([^"]+)"/.exec(l)?.[1] ?? []);
+  return [...new Set(features)].sort();
+}
+const backendOf = (features: readonly string[]) => (features.includes("native") ? "native" : "docker");
+
+export interface MeasuredCrate {
+  name: string;
+  version: string;
+  lockChecksum: string;
+  crateSha256: string;
+  cacheFile: string;
+  members: Record<string, { sha256: string; bytes: number }>;
+}
+
+export interface ProvingArtifactsObservation {
+  schema: string;
+  measuredAtUtc: string;
+  host: string;
+  tool: { script: string; scriptSha256: string };
+  lockfile: { path: string; sha256: string };
+  crates: MeasuredCrate[];
+  source: SourceReading;
+  gnark: {
+    command: string;
+    output: string;
+    outputSha256: string;
+    features: string[];
+    backend: "docker" | "native";
+    localImages: string[];
+  };
+  local: {
+    circuitsRoot: string;
+    circuitsRootPresent: boolean;
+    circuitsRootEntries: string[];
+    groth16Dir: string;
+    groth16DirPresent: boolean;
+  };
+}
+
+export interface MeasureInput {
+  repoRoot: string;
+  /** The proving host's CARGO_HOME. */
+  cargoHome: string;
+  /** The proving host's home directory. */
+  home: string;
+  hostId: string;
+  cargoTree: { command: string; output: string };
+  /** The proving host's local images of an image repository; must throw when it cannot tell. */
+  localImages: (repository: string) => string[];
+  measuredAtUtc: string;
+  tool: { script: string; scriptSha256: string };
+}
+
+/** Measures, read-only, what can be established about proving availability without the artifacts. */
+export function measureProvingArtifacts(input: MeasureInput): ProvingArtifactsObservation {
+  const lockBytes = readFileSync(resolve(input.repoRoot, HOST_LOCK_REL));
+  const locked = lockedCrates(lockBytes.toString("utf8"));
+  const read = new Map<string, Buffer>();
+  const crates: MeasuredCrate[] = [];
+  for (const [name, wanted] of Object.entries(MEASURED_MEMBERS)) {
+    const lock = locked.get(name);
+    if (!lock) throw new Error(`${HOST_LOCK_REL} pins ${lock === null ? "more than one version of" : "no"} ${name}`);
+    const { file, bytes } = cachedCrate(input.cargoHome, lock);
+    const tar = readTarMembers(bytes);
+    const members: MeasuredCrate["members"] = {};
+    for (const member of wanted) {
+      const b = tar.get(`${name}-${lock.version}/${member}`);
+      if (!b) throw new Error(`${name} ${lock.version} has no ${member}`);
+      members[member] = { sha256: sha256(b), bytes: b.length };
+      read.set(`${name}/${member}`, b);
+    }
+    crates.push({
+      name,
+      version: lock.version,
+      lockChecksum: lock.checksum,
+      crateSha256: sha256(bytes),
+      cacheFile: relative(input.cargoHome, file).split(sep).join("/"),
+      members,
+    });
+  }
+  const source = readSource((crate, member) => read.get(`${crate}/${member}`) as Buffer);
+  const features = gnarkFeaturesOf(
+    input.cargoTree.output,
+    (locked.get("sp1-recursion-gnark-ffi") as LockedCrate).version,
+  );
+  const root = join(input.home, ".sp1", "circuits");
+  const rootPresent = existsSync(root);
+  return {
+    schema: PROVING_ARTIFACTS_SCHEMA,
+    measuredAtUtc: input.measuredAtUtc,
+    host: input.hostId,
+    tool: input.tool,
+    lockfile: { path: HOST_LOCK_REL, sha256: sha256(lockBytes) },
+    crates,
+    source,
+    gnark: {
+      command: input.cargoTree.command,
+      output: input.cargoTree.output,
+      outputSha256: sha256(input.cargoTree.output),
+      features,
+      backend: backendOf(features),
+      localImages: input.localImages(source.gnarkImage.replace(/:[^:/]+$/, "")),
+    },
+    local: {
+      circuitsRoot: "~/.sp1/circuits",
+      circuitsRootPresent: rootPresent,
+      circuitsRootEntries: rootPresent ? readdirSync(root).sort() : [],
+      groth16Dir: source.groth16DefaultDir,
+      groth16DirPresent: existsSync(join(root, "groth16", source.circuitVersion)),
+    },
+  };
+}
+
+/** What a committed observation must satisfy; what it measured on the host cannot be re-read here, only bound. */
+export function provingArtifactsObservationErrors(
+  obs: ProvingArtifactsObservation,
+  designations: readonly ProgramDesignation[],
+  repoRoot = ".",
+): string[] {
+  const errors: string[] = [];
+  if (obs?.schema !== PROVING_ARTIFACTS_SCHEMA)
+    errors.push(`the observation's schema must be ${PROVING_ARTIFACTS_SCHEMA}`);
+  const script = resolve(repoRoot, MEASURE_SCRIPT_REL);
+  if (
+    obs?.tool?.script !== MEASURE_SCRIPT_REL ||
+    !existsSync(script) ||
+    obs.tool.scriptSha256 !== sha256(readFileSync(script))
+  ) {
+    errors.push(`the observation was not made by ${MEASURE_SCRIPT_REL} as committed: re-measure`);
+  }
+  const lockBytes = readFileSync(resolve(repoRoot, HOST_LOCK_REL));
+  if (obs?.lockfile?.path !== HOST_LOCK_REL || obs.lockfile.sha256 !== sha256(lockBytes)) {
+    errors.push(`the observation measured another ${HOST_LOCK_REL}: re-measure`);
+  }
+  const locked = lockedCrates(lockBytes.toString("utf8"));
+  const names = Object.keys(MEASURED_MEMBERS);
+  const crates = Array.isArray(obs?.crates) ? obs.crates : [];
+  if (crates.map((c) => c?.name).join() !== names.join())
+    errors.push(`the observation must measure ${names.join(", ")}`);
+  for (const c of crates) {
+    const lock = locked.get(c?.name);
+    if (!lock || c.version !== lock.version || c.lockChecksum !== lock.checksum || c.crateSha256 !== lock.checksum) {
+      errors.push(`${c?.name}: the measured crate is not the one the lockfile pins`);
+    }
+    for (const member of MEASURED_MEMBERS[c?.name] ?? []) {
+      const m = c?.members?.[member];
+      if (!/^[0-9a-f]{64}$/.test(String(m?.sha256)) || !(Number(m?.bytes) > 0)) {
+        errors.push(`${c?.name}: ${member} is not measured`);
+      }
+    }
+  }
+  const s = obs?.source;
+  const vkMember = crates.find((c) => c?.name === "sp1-verifier")?.members?.[VK_MEMBER];
+  if (!vkMember || s?.groth16Vk?.sha256 !== vkMember.sha256 || s?.groth16Vk?.bytes !== vkMember.bytes) {
+    errors.push(`the expected groth16_vk.bin is not sp1-verifier's measured ${VK_MEMBER}`);
+  }
+  for (const d of designations) {
+    if (`0x${s?.groth16Vk?.sha256}` !== d.verifier.verifierHash) {
+      errors.push(
+        `groth16_vk.bin's sha256 0x${s?.groth16Vk?.sha256} is not ${d.id}'s VERIFIER_HASH ${d.verifier.verifierHash}: the artifacts would serve another verifier`,
+      );
+    }
+    if (s?.circuitVersion !== d.verifier.version) {
+      errors.push(
+        `the pinned prover's circuit version ${s?.circuitVersion} is not ${d.id}'s verifier ${d.verifier.version}`,
+      );
+    }
+  }
+  const shape =
+    typeof s?.artifactUrl === "string" &&
+    s.artifactUrl.startsWith("https://") &&
+    s.artifactUrl.endsWith(`/${s.circuitVersion}-groth16.tar.gz`) &&
+    s.groth16DefaultDir === `~/.sp1/circuits/groth16/${s.circuitVersion}` &&
+    [s.groth16DirEnv, s.circuitModeEnv, s.gnarkImageEnv, s.gnarkImage, s.extractFlags, s.groth16VkFile].every(
+      (x) => typeof x === "string" && x.length > 0,
+    ) &&
+    typeof s.reusesExistingDir === "boolean" &&
+    typeof s.downloadVerifiesHash === "boolean" &&
+    Array.isArray(s.groth16ProveReads) &&
+    s.groth16ProveReads.length > 0;
+  if (!shape) errors.push("the source reading is incomplete");
+  const g = obs?.gnark;
+  let features: string[] | null = null;
+  try {
+    features = gnarkFeaturesOf(
+      String(g?.output),
+      String(crates.find((c) => c?.name === "sp1-recursion-gnark-ffi")?.version),
+    );
+  } catch {
+    features = null;
+  }
+  if (
+    features === null ||
+    g?.command !== GNARK_TREE_COMMAND ||
+    g.outputSha256 !== sha256(String(g.output)) ||
+    JSON.stringify(g.features) !== JSON.stringify(features) ||
+    g.backend !== backendOf(features) ||
+    !Array.isArray(g.localImages)
+  ) {
+    errors.push("the gnark feature tree does not re-read as recorded");
+  }
+  const l = obs?.local;
+  if (
+    typeof l?.circuitsRootPresent !== "boolean" ||
+    typeof l.groth16DirPresent !== "boolean" ||
+    !Array.isArray(l.circuitsRootEntries) ||
+    (l.groth16DirPresent && !l.circuitsRootPresent) ||
+    (!l.circuitsRootPresent && l.circuitsRootEntries.length > 0) ||
+    l.circuitsRoot !== "~/.sp1/circuits" ||
+    l.groth16Dir !== s?.groth16DefaultDir
+  ) {
+    errors.push("the local install is not measured");
+  }
+  return errors;
+}
+
+export type ProvingAvailability = "OWNER_DOWNLOAD_REQUIRED" | "LOCAL_COPY_NOT_ARCHIVED";
+
+/** The records under PROVING_ARCHIVES_DIR, repository-relative. */
+export function archiveRecordsIn(repoRoot = "."): string[] {
+  const dir = resolve(repoRoot, PROVING_ARCHIVES_DIR);
+  return existsSync(dir)
+    ? readdirSync(dir)
+        .sort()
+        .map((f) => `${PROVING_ARCHIVES_DIR}/${f}`)
+    : [];
+}
+
+/** The status, from the measured host and the archive records; no input this lane can produce is availability. */
+export function provingAvailabilityStatus(
+  obs: ProvingArtifactsObservation,
+  archiveRecords: readonly string[],
+): ProvingAvailability {
+  if (archiveRecords.length > 0) {
+    throw new Error(
+      `${archiveRecords.join(", ")}: proving-archive records have no validator in this lane; a lane must define and validate them before they count`,
+    );
+  }
+  return obs.local.groth16DirPresent ? "LOCAL_COPY_NOT_ARCHIVED" : "OWNER_DOWNLOAD_REQUIRED";
+}
+
+interface Td1Finding {
+  id: string;
+  title: string;
+  disposition: string;
+  plan: string;
+}
+
+export interface ProvingAvailabilityRecord {
+  schema: string;
+  finding: Td1Finding & { receipt: { path: string; sha256: string }; dependency: string };
+  status: ProvingAvailability;
+  basis: string[];
+  designations: string[];
+  expectedArtifacts: {
+    circuitVersion: string;
+    upstreamUrl: string;
+    tarball: { file: string; sha256: null; size: string; status: string };
+    members: {
+      file: string;
+      sha256: string | null;
+      bytes?: number;
+      knownFrom?: string;
+      status?: string;
+      role: string;
+    }[];
+    gnark: {
+      backend: string;
+      features: string[];
+      image: string;
+      imageOverrideEnv: string;
+      imageDigest: null;
+      status: string;
+    };
+  };
+  pinnedProver: string[];
+  local: ProvingArtifactsObservation["local"] & { host: string; gnarkImages: string[] };
+  archives: { dir: string; records: number };
+  selfHostedPath: { exercised: false; requirements: string[] };
+  ownerAction: string[];
+  notEstablished: string[];
+  observation: { path: string; sha256: string };
+}
+
+export function deriveProvingAvailability(input: {
+  observation: ProvingArtifactsObservation;
+  observationSha256: string;
+  designations: readonly ProgramDesignation[];
+  td1Receipt: { sha256: string; doc: { findings: Td1Finding[]; offChainLivenessDependencies: string[] } };
+  archiveRecords: readonly string[];
+}): ProvingAvailabilityRecord {
+  const obs = input.observation;
+  const s = obs.source;
+  const v = s.circuitVersion;
+  const finding = input.td1Receipt.doc.findings.find((f) => f.id === "TD1-N9");
+  const dependency = input.td1Receipt.doc.offChainLivenessDependencies.find((d) => /circuit artifacts/.test(d));
+  const size = dependency === undefined ? undefined : /about ([\d.]+ [KMGT]B)/.exec(dependency)?.[1];
+  if (!finding || !dependency || !size) throw new Error("SP1-TD1's receipt no longer states TD1-N9 and its dependency");
+  const status = provingAvailabilityStatus(obs, input.archiveRecords);
+  const verifierCrate = obs.crates.find((c) => c.name === "sp1-verifier") as MeasuredCrate;
+  const tarball = s.artifactUrl.slice(s.artifactUrl.lastIndexOf("/") + 1);
+  const upstream = new URL(s.artifactUrl).host;
+  const vkHash = `0x${s.groth16Vk.sha256}`;
+  const docker = obs.gnark.backend === "docker";
+  const repository = s.gnarkImage.replace(/:[^:/]+$/, "");
+  const verifierCrateName = `sp1-verifier ${verifierCrate.version}`;
+  return {
+    schema: PROVING_AVAILABILITY_SCHEMA,
+    finding: {
+      id: finding.id,
+      receipt: { path: TD1_RECEIPT_REL, sha256: input.td1Receipt.sha256 },
+      title: finding.title,
+      disposition: finding.disposition,
+      plan: finding.plan,
+      dependency,
+    },
+    status,
+    basis: [
+      obs.local.groth16DirPresent
+        ? `a copy is present on ${obs.host} at ${obs.local.groth16Dir}, but WalletWall has neither archived nor verified it`
+        : `the circuit ${v} Groth16 artifacts are absent on ${obs.host}: ${obs.local.groth16Dir} does not exist${obs.local.circuitsRootPresent ? "" : `, nor does ${obs.local.circuitsRoot}`}`,
+      `no WalletWall archive of them is recorded (${PROVING_ARCHIVES_DIR} holds no record)`,
+      ...(status === "OWNER_DOWNLOAD_REQUIRED"
+        ? [
+            `obtaining them needs the download of ${tarball} (about ${size}, per SP1-TD1), which this lane is not authorized to make`,
+          ]
+        : []),
+      `upstream (${upstream}) hosting them is not availability: it can stop, and nothing here relies on what it serves`,
+      `known offline: their ${s.groth16VkFile} must have sha256 ${vkHash} (${s.groth16Vk.bytes} bytes), the key ${verifierCrateName} embeds; that crate is the one ${HOST_LOCK_REL} pins, and the hash is the designated VERIFIER_HASH`,
+    ],
+    designations: input.designations.map((d) => d.id),
+    expectedArtifacts: {
+      circuitVersion: v,
+      upstreamUrl: s.artifactUrl,
+      tarball: {
+        file: tarball,
+        sha256: null,
+        size: `about ${size} (SP1-TD1; not measured here)`,
+        status: "UNKNOWN_UNTIL_ARCHIVED",
+      },
+      members: [
+        {
+          file: s.groth16VkFile,
+          sha256: vkHash,
+          bytes: s.groth16Vk.bytes,
+          knownFrom: `${verifierCrateName} ${VK_MEMBER} (crate sha256 ${verifierCrate.crateSha256}, the ${HOST_LOCK_REL} checksum)`,
+          role: "the verifying key: a proof's selector and vkey hash are its sha256, so a proof made under any other key is refused by the designated verifier",
+        },
+        ...s.groth16ProveReads.map((file) => ({
+          file,
+          sha256: null,
+          status: "UNKNOWN_UNTIL_ARCHIVED",
+          role: "read by Groth16 proving: any other file yields proofs the designated verifier refuses (liveness, never soundness)",
+        })),
+      ],
+      gnark: {
+        backend: obs.gnark.backend,
+        features: obs.gnark.features,
+        image: docker ? s.gnarkImage : "(none: the gnark prover is compiled into the host)",
+        imageOverrideEnv: s.gnarkImageEnv,
+        imageDigest: null,
+        status: "UNKNOWN_UNTIL_ARCHIVED",
+      },
+    },
+    pinnedProver: [
+      `uses $${s.groth16DirEnv}/${v} when set, else ${s.groth16DefaultDir}`,
+      `${s.reusesExistingDir ? "uses an existing directory as it is" : "re-checks an existing directory"}, and downloads ${s.artifactUrl} only when the directory is absent`,
+      `${s.downloadVerifiesHash ? "checks a digest of the download" : "checks no digest of the download"}, and extracts it with tar ${s.extractFlags}${s.extractFlags.includes("P") ? " (absolute member names are kept)" : ""}`,
+      `$${s.circuitModeEnv}=dev switches to development artifacts from another source`,
+      `Groth16 proving reads ${s.groth16ProveReads.join(", ")}; the proof's vkey hash is the sha256 of ${s.groth16VkFile}`,
+      docker
+        ? `the host's dependency graph leaves sp1-recursion-gnark-ffi's native feature off, so the gnark prover runs in docker: ${s.gnarkImage} (a tag, mutable) unless $${s.gnarkImageEnv} names another image`
+        : "the host's dependency graph enables sp1-recursion-gnark-ffi's native feature: the gnark prover is compiled into the host",
+    ],
+    local: { host: obs.host, ...obs.local, gnarkImages: obs.gnark.localImages },
+    archives: { dir: PROVING_ARCHIVES_DIR, records: input.archiveRecords.length },
+    selfHostedPath: {
+      exercised: false,
+      requirements: [
+        `archive ${tarball} once, from an owner-authorized download, with its sha256 and every member's sha256 and size; upstream hosting is no archive`,
+        `accept it only if its ${s.groth16VkFile} has sha256 ${vkHash} and is byte-identical to ${verifierCrateName}'s ${VK_MEMBER}; the other members are checked by proving, never trusted`,
+        "mirror the verified archive to at least two WalletWall-controlled locations, each recorded with the tarball's sha256",
+        docker
+          ? `pin the gnark prover by digest: set $${s.gnarkImageEnv} to ${repository}@sha256:<digest> and archive that image, since ${s.gnarkImage} is a mutable tag`
+          : "pin the native gnark build: its Go toolchain and module digests",
+        `prove only from the archive: place the verified members at $${s.groth16DirEnv}/${v} (the pinned prover then downloads nothing), keep $${s.circuitModeEnv} unset, and check every member's sha256 before each proving session (the prover checks none)`,
+        `exercise it: one Groth16 proof of the designated program made with network egress off (no prover network, no ${upstream}), accepted by the designated verifier on every supported chain (the per-chain check with that proof), with its peak memory and wall time recorded against the 2-day rotation delay`,
+      ],
+    },
+    ownerAction: [
+      `authorize the download of ${tarball} (about ${size})${docker ? " and of the gnark image by digest" : ""}; this lane downloaded nothing`,
+      "name the two archive locations WalletWall controls",
+      "authorize the self-hosted proving run: a real proof, which this lane did not generate",
+    ],
+    notEstablished: [
+      `the tarball's sha256 and the digests of ${s.groth16ProveReads.join(", ")} (never downloaded)`,
+      ...(docker ? ["the gnark image's digest"] : []),
+      "that the self-hosted path proves at all, on what hardware, and within the 2-day rotation delay",
+      "that upstream keeps hosting the artifacts",
+      `the Groth16 trusted setup behind the ${v} key: an upstream assumption the designated verifier inherits, which archiving does not change`,
+    ],
+    observation: { path: PROVING_ARTIFACTS_OBSERVATION_REL, sha256: input.observationSha256 },
+  };
+}
+
+export function serializeProvingAvailability(record: ProvingAvailabilityRecord): string {
+  return `${JSON.stringify(record, null, 2)}\n`;
+}
+
+/** The record the committed evidence derives (throws when the evidence does not derive one). */
+export function provingAvailabilityFromRepo(repoRoot = "."): ProvingAvailabilityRecord {
+  const obsBytes = readFileSync(resolve(repoRoot, PROVING_ARTIFACTS_OBSERVATION_REL));
+  const td1Bytes = readFileSync(resolve(repoRoot, TD1_RECEIPT_REL));
+  return deriveProvingAvailability({
+    observation: JSON.parse(obsBytes.toString("utf8")) as ProvingArtifactsObservation,
+    observationSha256: sha256(obsBytes),
+    designations: readDesignations(repoRoot),
+    td1Receipt: { sha256: sha256(td1Bytes), doc: JSON.parse(td1Bytes.toString("utf8")) },
+    archiveRecords: archiveRecordsIn(repoRoot),
+  });
+}
+
+/** Every reason the committed proving-availability record is not what the committed evidence derives. */
+export function provingAvailabilityErrors(repoRoot = "."): string[] {
+  const obsPath = resolve(repoRoot, PROVING_ARTIFACTS_OBSERVATION_REL);
+  if (!existsSync(obsPath)) return [`${PROVING_ARTIFACTS_OBSERVATION_REL} is missing: measure it`];
+  const obs = JSON.parse(readFileSync(obsPath, "utf8")) as ProvingArtifactsObservation;
+  const errors = provingArtifactsObservationErrors(obs, readDesignations(repoRoot), repoRoot);
+  if (errors.length > 0) return errors;
+  let expected: string;
+  try {
+    expected = serializeProvingAvailability(provingAvailabilityFromRepo(repoRoot));
+  } catch (error) {
+    return [(error as Error).message];
+  }
+  const recordPath = resolve(repoRoot, PROVING_AVAILABILITY_REL);
+  if (!existsSync(recordPath) || readFileSync(recordPath, "utf8") !== expected) {
+    errors.push(`${PROVING_AVAILABILITY_REL} is not what the evidence derives: regenerate it`);
+  }
+  return errors;
+}

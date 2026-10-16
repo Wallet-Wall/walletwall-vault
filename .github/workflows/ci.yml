@@ -79,7 +79,7 @@ jobs:
           # release builds or proves correctly (see docs/ZK_Prover_Runbook.md).
           npm run validate:sp1-pin-parity
 
-      - name: Validate SP1 wrapper builds, designations and registry (deterministic; no network)
+      - name: Validate SP1 wrapper builds, designations, registry and proving availability (deterministic; no network)
         run: |
           set -euo pipefail
           # The compiled ZKMLDSAVerifier must be the latest recorded wrapper build; every designation must regenerate
@@ -88,10 +88,13 @@ jobs:
           # be a designation's; the registry's facts must match the recorded builds and designations; and the
           # registry, designations, evidence bundles and wrapper builds must only ever have been appended to, proved
           # by walking every commit's parents (this job checks out with fetch-depth 0; a shallow clone fails closed).
-          # The expensive two-host rebuild is .github/workflows/sp1-canonical-build.yml.
+          # Proving availability (TD1-N9) must be what its observation derives, for the zkvm/host lockfile at HEAD
+          # (a host lockfile change needs a re-measurement). The expensive two-host rebuild is
+          # .github/workflows/sp1-canonical-build.yml.
           npm run validate:sp1-wrapper-build
           npm run validate:sp1-designation
           npm run validate:sp1-registry
+          npm run validate:sp1-proving-availability
 
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
