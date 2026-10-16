@@ -7,8 +7,9 @@
  * Pure, fast, static reads — no SP1 toolchain, no proving, no network.
  */
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 import { expect } from "chai";
 
@@ -259,6 +260,18 @@ describe("SP1-P1 assurance STOP receipt", function () {
     it("the committed receipt validates in this repository as a superseded record", function () {
       expect(validateCommittedReceiptInRepo()).to.deep.equal([]);
       expect(validateSupersession(record(), receiptBytes())).to.deep.equal([]);
+    });
+
+    it("a tree without a supersession record reads as not superseded, never as an empty record", function () {
+      const dir = mkdtempSync(join(tmpdir(), "sp1-p1-"));
+      try {
+        expect(readSupersession(dir)).to.equal(null);
+        mkdirSync(join(dir, dirname(SUPERSESSION_REL)), { recursive: true });
+        writeFileSync(join(dir, SUPERSESSION_REL), JSON.stringify({ finding: "TD1-N4" }));
+        expect(readSupersession(dir)).to.deep.equal({ finding: "TD1-N4" });
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
 
     it("the in-repository validation refuses a bad supersession, and without one the receipt is not valid live", function () {

@@ -182,6 +182,14 @@ caught each) and found two more medium findings, one low and four informational 
 | R2-3 (low)    | registry entries are judged against today's compiled wrapper, so a later change to `ZKMLDSAVerifier`'s compiled code (a solc bump, the code-hash pin) would make every older entry "not genuine" and refuse every binding on that chain; nothing enforces that the registry is append-only | a residual for the implementation lane, which changes the wrapper's code and owns the CI subject check: each entry must record the build it was deployed from and be judged against it, and CI must keep the registry append-only. The registry is empty, so nothing is blocked yet                                                                                |
 | R2-4 (info)   | the gate checks a halt principal only against the signer; a lost or compromised halt key forces a successor identity off a local chain; a halt on one chain does not refuse the identity on another; an ownership transfer still asks the current verifier for its halt principal live     | stated as residuals below                                                                                                                                                                                                                                                                                                                                          |
 
+A third pass checked the R2-2 fix by execution, against Hardhat's HTTP provider behind a proxy that injected HTTP 429
+and 503, vendor rate limits and timeouts: every one stops the gate. It found one low, latent gap, **R3-1**: ethers'
+own `JsonRpcProvider` reports every failed `eth_call` as `CALL_EXCEPTION`, so a rate limit read as a revert, and a
+look-alike rate-limited on every read passed as off the SP1 path. The repository's scripts use Hardhat's provider,
+which passes the node's error through, but the gate accepts any provider: it now decides on the node's error that
+ethers keeps in `info.error`, and without one accepts only a call that came back with revert data (tested, with the
+look-alike end to end).
+
 ## What TD2 changed outside the two requirements, and why
 
 - **The SP1-P1 STOP receipt is superseded, not restamped (TD1-N4).** Its validator binds `ZKMLDSAVerifier.sol`, which

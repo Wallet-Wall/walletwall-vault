@@ -33,7 +33,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { AbiCoder, getAddress, id, isAddress, keccak256, type Provider } from "ethers";
+import { AbiCoder, getAddress, id, isAddress, isHexString, keccak256, type Provider } from "ethers";
 
 import { decodeSolcMetadataBoundary } from "./reproducibility-evidence";
 
@@ -221,21 +221,34 @@ export function matchesWrapperArtifact(runtime: string, artifact: WrapperArtifac
 const EXECUTION_FAILURE =
   /revert|out of gas|gas required exceeds|invalid opcode|invalid jump|stack (?:under|over)flow|vm execution error/i;
 
-/**
- * Whether a failed eth_call is the chain's answer — the call ran and reverted or ran out of gas, which the guard
- * reads as "no answer" — rather than the RPC failing to answer (a rate limit, a timeout, a refused connection).
- * EIP-1474 code 3 is a revert; a node reports running out of gas (and some clients a revert without data) as a
- * server error whose message says so. Anything else is not an answer.
- */
-export function isExecutionFailure(error: unknown): boolean {
+/** A node's own JSON-RPC error that says the call ran and failed: EIP-1474 code 3, or a server error saying so. */
+function nodeReportsExecutionFailure(error: unknown): boolean {
   if (error === null || typeof error !== "object") return false;
   const { code, message } = error as { code?: unknown; message?: unknown };
-  if (code === 3 || code === "CALL_EXCEPTION") return true;
+  if (code === 3) return true;
   return (
     (code === -32000 || code === -32015 || code === -32603) &&
     typeof message === "string" &&
     EXECUTION_FAILURE.test(message)
   );
+}
+
+/**
+ * Whether a failed eth_call is the chain's answer — the call ran and reverted or ran out of gas, which the guard
+ * reads as "no answer" — rather than the RPC failing to answer (a rate limit, a timeout, a refused connection).
+ * EIP-1474 code 3 is a revert; a node reports running out of gas (and some clients a revert without data) as a
+ * server error whose message says so. Ethers' own JSON-RPC providers turn every failed eth_call into
+ * CALL_EXCEPTION, keeping the node's error in `info.error`: that error decides, and without it only a call that
+ * came back with revert data is an answer (the review's R3-1). Anything else is not an answer.
+ */
+export function isExecutionFailure(error: unknown): boolean {
+  if (error === null || typeof error !== "object") return false;
+  const e = error as { code?: unknown; info?: { error?: unknown } | null; data?: unknown };
+  if (e.code === "CALL_EXCEPTION") {
+    if (e.info?.error !== undefined) return nodeReportsExecutionFailure(e.info.error);
+    return typeof e.data === "string" && isHexString(e.data);
+  }
+  return nodeReportsExecutionFailure(error);
 }
 
 /**

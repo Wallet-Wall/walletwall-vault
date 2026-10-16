@@ -14,17 +14,21 @@
  * gate's rules on profiles measured from deployed contracts (the real v6.1.0 bytes included), each refusal with a
  * positive control.
  */
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { expect } from "chai";
 import assert from "node:assert/strict";
 
+import { decodeSolcMetadataBoundary } from "../scripts/lib/reproducibility-evidence";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { ROTATION_DELAY, VKEY_A, VKEY_B, deploySp1, deployWrapper } from "./helpers/td2Helpers";
 import {
   CONSUMERS,
+  TD1_RECEIPT_REL,
+  WRAPPER_ARTIFACT_REL,
+  WRAPPER_REGISTRY_REL,
   WRAPPER_REGISTRY_SCHEMA,
   ZK_ALGORITHM_ID,
   bindingRefusals,
@@ -128,6 +132,8 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(wrapperRegistryErrors({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [entry] })).to.deep.equal([]);
       const cases: [string, unknown, RegExp][] = [
         ["not an object", null, /not an object/],
+        ["a number", 42, /not an object/],
+        ["a string", "a registry", /not an object/],
         ["another schema", { schema: "x", entries: [] }, /schema must be/],
         ["no list", { schema: WRAPPER_REGISTRY_SCHEMA, entries: {} }, /entries must be a list/],
         [
@@ -222,6 +228,28 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect((await profileVerifier(ethers.provider, await m.getAddress())).halted).to.equal(true);
     });
 
+    it("reads the first word of a longer answer, as the on-chain guard does", async function () {
+      const target = (await haltable.getAddress()).toLowerCase();
+      const longer: Record<string, string> = {
+        [ethers.id("halted()").slice(0, 10)]: ethers.concat([ethers.zeroPadValue("0x01", 32), ethers.ZeroHash]),
+        [ethers.id("algorithmId()").slice(0, 10)]: ethers.concat([ZK_ALGORITHM_ID, ethers.ZeroHash]),
+      };
+      const twoWords = new Proxy(ethers.provider, {
+        get(t, prop) {
+          if (prop === "call") {
+            return async (tx: { to: string; data: string }) =>
+              tx.to.toLowerCase() === target && longer[tx.data.slice(0, 10)] !== undefined
+                ? longer[tx.data.slice(0, 10)]
+                : t.call(tx);
+          }
+          const value = Reflect.get(t, prop, t);
+          return typeof value === "function" ? value.bind(t) : value;
+        },
+      });
+      const p = await profileVerifier(twoWords, target);
+      expect([p.halted, p.algorithmId]).to.deep.equal([true, ZK_ALGORITHM_ID]);
+    });
+
     it("computes the same identity the on-chain guard records and stores", async function () {
       const vault = await (
         await ethers.getContractFactory("WalletWallVault", admin)
@@ -259,6 +287,25 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const executable = Uint8Array.from(bytes);
       executable[5] ^= 0x01;
       expect(matchesWrapperArtifact(ethers.hexlify(executable), artifact), "code byte changed").to.equal(false);
+      // The length and the metadata boundary must be the artifact's too. Resizing the metadata's "solc" entry gives a
+      // runtime one byte longer whose metadata still decodes at the same boundary, and one of the same length whose
+      // boundary moved one byte (an extra byte before it): both decode, both are refused.
+      const hex = code.slice(2);
+      const regionStart = hex.length / 2 - 2 - parseInt(hex.slice(-4), 16);
+      const cbor = hex.slice(regionStart * 2, -4);
+      const solcAt = cbor.lastIndexOf("64736f6c6343"); // the text key "solc", then a 3-byte string, last in the map
+      expect(solcAt + 18, "the solc entry ends the map").to.equal(cbor.length);
+      const version = cbor.slice(solcAt + 12);
+      const longer = `${cbor.slice(0, solcAt)}64736f6c6344${version}00`;
+      const shorter = `${cbor.slice(0, solcAt)}64736f6c6342${version.slice(0, 4)}`;
+      const suffix = (c: string) => (c.length / 2).toString(16).padStart(4, "0");
+      const longerRuntime = `0x${hex.slice(0, regionStart * 2)}${longer}${suffix(longer)}`;
+      const shiftedRuntime = `0x${hex.slice(0, regionStart * 2)}00${shorter}${suffix(shorter)}`;
+      expect(decodeSolcMetadataBoundary(longerRuntime)).to.include({ ok: true, regionStart });
+      expect(decodeSolcMetadataBoundary(shiftedRuntime)).to.include({ ok: true, regionStart: regionStart + 1 });
+      expect(shiftedRuntime.length).to.equal(code.length);
+      expect(matchesWrapperArtifact(longerRuntime, artifact), "one byte longer").to.equal(false);
+      expect(matchesWrapperArtifact(shiftedRuntime, artifact), "boundary moved").to.equal(false);
       for (const notWrapper of [
         await ethers.provider.getCode(await unhaltable.getAddress()),
         await ethers.provider.getCode(await mock.getAddress()),
@@ -711,6 +758,12 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(bindingRefusals(request(target, { ...base, registered: [target, twin] })).join("\n")).to.match(
         /another ACTIVE registered wrapper of .* identity: one halt call must reach every consumer/,
       );
+      // Positive control: an ACTIVE registered wrapper of another identity is no twin.
+      const other = await profileVerifier(
+        ethers.provider,
+        await (await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address)).getAddress(),
+      );
+      expect(bindingRefusals(request(target, { ...base, registered: [target, other] }))).to.deep.equal([]);
     });
 
     it("refuses an identity halted at any registered wrapper, for every consumer and even under the local override", async function () {
@@ -820,11 +873,47 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
             { chainId: "84532", address: admin.address },
           ],
         });
-        expect(readWrapperRegistry(SEPOLIA, dir)).to.deep.equal([stranger.address]);
+        // node:assert, not chai: with Hardhat's chai matchers loaded, deep.equal compares addresses case-insensitively,
+        // and the point here is the checksummed spelling.
+        assert.deepEqual(readWrapperRegistry(SEPOLIA, dir), [stranger.address]);
         expect(readWrapperRegistry(84532n, dir)).to.deep.equal([admin.address]);
         expect(readWrapperRegistry(1n, dir)).to.deep.equal([]);
         write({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ chainId: "1", address: "0x12" }] });
         assert.throws(() => readWrapperRegistry(1n, dir), /malformed evidence\/zk\/sp1-td2\/wrapper-registry\.json/);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it("the entry points read the registry for the chain their provider is on, from the tree they are given", async function () {
+      const dir = mkdtempSync(join(tmpdir(), "td2-root-"));
+      try {
+        for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL]) {
+          mkdirSync(dirname(join(dir, rel)), { recursive: true });
+          copyFileSync(resolve(rel), join(dir, rel));
+        }
+        mkdirSync(dirname(join(dir, WRAPPER_REGISTRY_REL)), { recursive: true });
+        const wrapper = await haltable.getAddress();
+        const register = (chainId: string) =>
+          writeFileSync(
+            join(dir, WRAPPER_REGISTRY_REL),
+            JSON.stringify({ schema: WRAPPER_REGISTRY_SCHEMA, entries: [{ chainId, address: wrapper }] }),
+          );
+        const target = await profileVerifier(ethers.provider, wrapper);
+        const designation: Designation = {
+          source: "a test designation of the mock program",
+          sp1VerifierCodeKeccak: target.sp1VerifierCodeKeccak!,
+          sp1VerifierCodeKeccakByChain: {},
+          programVKey: VKEY_A,
+        };
+        const options = { allowMockSp1: false, repoRoot: dir, designations: [designation] };
+        register(LOCAL.toString());
+        await checkDeploymentBinding(ethers.provider, "WalletWallVault", wrapper, admin.address, options);
+        register("1"); // registered on another chain only
+        await assert.rejects(
+          checkDeploymentBinding(ethers.provider, "WalletWallVault", wrapper, admin.address, options),
+          /not in the WalletWall wrapper registry for chain 31337/,
+        );
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -843,13 +932,21 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
     const selectorOf = (signature: string) => ethers.id(signature).slice(0, 10);
     const rpcError = (message: string, code?: number) =>
       Object.assign(new Error(message), code === undefined ? {} : { code });
-    /** ethers.provider, except that an eth_call of `signature` on `to` fails with `error`. */
-    const flaky = (to: string, signature: string, error: unknown) =>
+    /** How ethers' own JSON-RPC providers report any failed eth_call: CALL_EXCEPTION, the node's error in info. */
+    const ethersCallException = (nodeError: object, data: string | null = null) => ({
+      code: "CALL_EXCEPTION",
+      message: "missing revert data",
+      data,
+      info: { error: nodeError, payload: { method: "eth_call" } },
+    });
+    /** ethers.provider, except that an eth_call of `signature` (any, when omitted) on `to` fails with `error`. */
+    const flaky = (to: string, signature: string | undefined, error: unknown) =>
       new Proxy(ethers.provider, {
         get(target, prop) {
           if (prop === "call") {
             return async (tx: { to: string; data: string }) => {
-              if (tx.to.toLowerCase() === to.toLowerCase() && tx.data.startsWith(selectorOf(signature))) throw error;
+              const selected = signature === undefined || tx.data.startsWith(selectorOf(signature));
+              if (tx.to.toLowerCase() === to.toLowerCase() && selected) throw error;
               return target.call(tx);
             };
           }
@@ -862,7 +959,14 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       const answers: [string, unknown][] = [
         ["EIP-1474 revert", rpcError("execution reverted", 3)],
         ["EIP-1474 revert, any message", rpcError("Transaction reverted without a reason string", 3)],
-        ["ethers' own providers", { code: "CALL_EXCEPTION", message: "missing revert data" }],
+        ["ethers: the node's revert", ethersCallException({ code: 3, message: "execution reverted" }, "0x08c379a0")],
+        [
+          "ethers: the node's revert without data",
+          ethersCallException({ code: -32000, message: "execution reverted" }),
+        ],
+        ["ethers: the node ran out of gas", ethersCallException({ code: -32000, message: "out of gas" })],
+        ["ethers, no node error, revert data", { code: "CALL_EXCEPTION", data: "0x08c379a0" }],
+        ["ethers, no node error, empty revert data", { code: "CALL_EXCEPTION", data: "0x", info: null }],
         ["out of gas (EDR, geth)", rpcError("Transaction ran out of gas", -32000)],
         ["revert without data (geth)", rpcError("execution reverted", -32000)],
         ["gas cap", rpcError("gas required exceeds allowance (30000000)", -32000)],
@@ -885,6 +989,13 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         ["a server error without a message", { code: -32000 }],
         ["a server error with a non-text message", { code: -32000, message: 42 }],
         ["an HTTP status as a code", rpcError("Too Many Requests", 429)],
+        // The review's R3-1: ethers calls a rate limit CALL_EXCEPTION too; the node's error says what it was.
+        ["ethers: a rate limit", ethersCallException({ code: -32005, message: "daily request count exceeded" })],
+        ["ethers: a node behind", ethersCallException({ code: -32000, message: "header not found" })],
+        ["ethers: neither the node's error nor revert data", { code: "CALL_EXCEPTION", data: null }],
+        ["ethers: an info without the node's error", { code: "CALL_EXCEPTION", data: null, info: {} }],
+        ["ethers: revert data that is not hex", { code: "CALL_EXCEPTION", data: "reverted" }],
+        ["ethers: a null node error", { code: "CALL_EXCEPTION", data: null, info: { error: null } }],
         ["null", null],
         ["a string", "execution reverted"],
       ];
@@ -948,6 +1059,37 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
           options,
         ),
         /registered wrapper .* could not be measured/,
+      );
+    });
+
+    it("the review's R3-1: a look-alike rate-limited on every read, the way ethers reports it, is not read as off the SP1 path", async function () {
+      const lookalike = await unhaltable.getAddress(); // reports the ZK algorithm id and an SP1 identity, no halt
+      // Positive control: read, it is on the SP1 path and refused.
+      await assert.rejects(
+        checkDeploymentBinding(ethers.provider, "WalletWallVault", lookalike, admin.address, MOCK_OK),
+        /on the SP1 path but not haltable/,
+      );
+      // Unread, it must not pass as a verifier that answered nothing.
+      const rateLimited = ethersCallException({ code: -32005, message: "daily request count exceeded" });
+      await assert.rejects(
+        checkDeploymentBinding(
+          flaky(lookalike, undefined, rateLimited),
+          "WalletWallVault",
+          lookalike,
+          admin.address,
+          MOCK_OK,
+        ),
+        /got no answer from the chain/,
+      );
+      // The same provider's genuine reverts still read as no answer: the mock answers nothing and is admitted.
+      const reverted = ethersCallException({ code: 3, message: "execution reverted" }, "0x");
+      const plain = await mock.getAddress();
+      await checkDeploymentBinding(
+        flaky(plain, "SP1_VERIFIER()", reverted),
+        "WalletWallVault",
+        plain,
+        admin.address,
+        MOCK_OK,
       );
     });
 
