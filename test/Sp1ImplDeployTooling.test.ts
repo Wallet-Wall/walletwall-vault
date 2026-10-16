@@ -184,6 +184,23 @@ describe("SP1 implementation lane — deploy-zk-verifier takes its inputs only f
       expect(recovered.designation?.id).to.equal("mldsa65-withdrawal-d2");
     });
 
+    it("off a local chain the mock flag is refused and the mock mode never entered, not even to read its PROGRAM_VKEY", function () {
+      const withMock = { ALLOW_MOCK_SP1: "true", PROGRAM_VKEY: "0x00" };
+      // On a local chain the mock mode reads (and here refuses) its PROGRAM_VKEY: the positive control.
+      assert.throws(
+        () => planWrapperDeployment(input({ chainId: LOCAL, env: withMock })),
+        /PROGRAM_VKEY must be a non-zero bytes32 value/,
+      );
+      let refusal = "";
+      try {
+        planWrapperDeployment(input({ env: { HALT_PRINCIPAL_ADDRESS: haltPrincipal.address, ...withMock } }));
+      } catch (error) {
+        refusal = (error as Error).message;
+      }
+      expect(refusal).to.match(/ALLOW_MOCK_SP1 is local-only/);
+      expect(refusal, "no part of the mock mode ran off a local chain").to.not.match(/must be a non-zero bytes32/);
+    });
+
     it("the local test path is the only one that takes a mock, and only with the flag on a local chain", function () {
       const mock = planWrapperDeployment(input({ chainId: LOCAL, env: { ALLOW_MOCK_SP1: "true" } }));
       expect([mock.mode, mock.designation, mock.programVKey]).to.deep.equal([
