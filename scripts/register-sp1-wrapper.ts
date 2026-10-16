@@ -4,8 +4,9 @@ import { resolve } from "node:path";
 import { network } from "hardhat";
 
 import { runScript } from "./lib/run-script";
-import { readDesignations, validateDesignationsInRepo } from "./lib/sp1-designation";
-import { REGISTRY_REL, readRegistry, validateRegistryInRepo } from "./lib/sp1-registry";
+import { readDesignations } from "./lib/sp1-designation";
+import { assertPublishedSp1Records } from "./lib/sp1-published-records";
+import { REGISTRY_REL, readRegistry } from "./lib/sp1-registry";
 import { haltFact, registrationFact } from "./lib/sp1-registration";
 import { readWrapperBuilds } from "./lib/sp1-wrapper-build";
 import { LOCAL_CHAIN_IDS } from "./lib/verifier-binding";
@@ -27,8 +28,8 @@ async function main() {
   if ((LOCAL_CHAIN_IDS as readonly bigint[]).includes(chainId)) {
     throw new Error(`chain ${chainId} is local: the registry records public deployments only`);
   }
-  const published = [...validateDesignationsInRepo(), ...validateRegistryInRepo()];
-  if (published.length > 0) throw new Error(`the published SP1 records are invalid:\n - ${published.join("\n - ")}`);
+  // The registry this extends is the published one, fetched now, and every record validates.
+  assertPublishedSp1Records(chainId);
   const registry = readRegistry();
   const builds = readWrapperBuilds();
   const wrapper = process.env.WRAPPER_ADDRESS;

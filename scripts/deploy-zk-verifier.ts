@@ -2,6 +2,7 @@ import { network } from "hardhat";
 
 import { assertDeployableChain } from "./lib/deployment-guards";
 import { runScript } from "./lib/run-script";
+import { assertPublishedSp1Records } from "./lib/sp1-published-records";
 import type { DevProvider } from "./lib/sp1-chain-execution";
 import { readDesignations, validateDesignationsInRepo } from "./lib/sp1-designation";
 import { readRegistry, validateRegistryInRepo } from "./lib/sp1-registry";
@@ -35,6 +36,8 @@ async function main() {
   const [deployer, localHaltPrincipal] = await ethers.getSigners();
   const chainId = (await ethers.provider.getNetwork()).chainId;
   assertDeployableChain(connection.networkName, chainId);
+  // Off a local chain the designations, builds and registry are the published ones, fetched now.
+  assertPublishedSp1Records(chainId);
 
   const builds = readWrapperBuilds();
   const plan = planWrapperDeployment({

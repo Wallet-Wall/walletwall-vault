@@ -1,5 +1,6 @@
 import { network } from "hardhat";
 
+import { assertPublishedSp1Records } from "./lib/sp1-published-records";
 import { checkDeploymentBinding } from "./lib/verifier-binding";
 
 const ALLOWED_NETWORKS = new Set(["default", "hardhat", "localhost", "sepolia", "base-sepolia"]);
@@ -108,6 +109,8 @@ async function main() {
     console.log(`MockMLDSAVerifier (MOCK) deployed to: ${pqVerifierAddress}`);
   }
 
+  // Off a local chain the gate reads only the published SP1 records, fetched now (scripts/lib/sp1-published-records.ts).
+  assertPublishedSp1Records(liveChainId);
   // SP1-TD2 binding gate: on the SP1 path the vault must sit behind an ACTIVE, haltable wrapper with the SP1-TD1
   // designations that the deployer cannot halt (scripts/lib/verifier-binding.ts).
   await checkDeploymentBinding(ethers.provider, "WalletWallVault", pqVerifierAddress, await deployer.getAddress(), {

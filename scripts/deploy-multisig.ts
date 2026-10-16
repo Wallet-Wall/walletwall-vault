@@ -1,6 +1,7 @@
 import { network } from "hardhat";
 
 import { assertDeployableChain, deployMultisigVault } from "./lib/deployment-guards";
+import { assertPublishedSp1Records } from "./lib/sp1-published-records";
 
 /**
  * Deploys WalletWallMultiSigVault (research prototype).
@@ -26,6 +27,8 @@ async function main() {
   console.log(`Network: ${connection.networkName}`);
   console.log(`Deployer: ${await deployer.getAddress()}`);
 
+  // Off a local chain the binding gate reads only the published SP1 records, fetched now.
+  assertPublishedSp1Records((await ethers.provider.getNetwork()).chainId);
   const { vault, verifierAddress, deployedMockVerifier } = await deployMultisigVault(ethers, deployer, {
     pqcVerifierAddress: process.env.PQC_VERIFIER_ADDRESS,
     allowMockSp1: process.env.ALLOW_MOCK_SP1 === "true",
