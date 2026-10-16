@@ -47,6 +47,26 @@ type Consumer = {
   deploy: (verifier: string, deployer: any) => Promise<any>;
 };
 
+/** MisbehavingVerifierMock behaviours, by ordinal, and the selectors of the halt surface it answers for. */
+const B = {
+  Revert: 0,
+  Return: 1,
+  RevertWithWord: 2,
+  ReturnShort: 3,
+  BurnGas: 4,
+  ReturnHuge: 5,
+  ReturnOwner: 6,
+  ReturnPendingOwner: 7,
+} as const;
+const SEL = {
+  HALT_PRINCIPAL: ethers.id("HALT_PRINCIPAL()").slice(0, 10),
+  halted: ethers.id("halted()").slice(0, 10),
+  SP1_VERIFIER: ethers.id("SP1_VERIFIER()").slice(0, 10),
+  PROGRAM_VKEY: ethers.id("PROGRAM_VKEY()").slice(0, 10),
+} as const;
+/** An address (or small number) as a clean 32-byte word. */
+const word = (value: string) => ethers.zeroPadValue(value, 32);
+
 /** keccak256(abi.encode(EXTCODEHASH(SP1 verifier), PROGRAM_VKEY)), computed from the chain, not from the guard. */
 async function identityOf(wrapper: any): Promise<string> {
   const code = await ethers.provider.getCode(await wrapper.SP1_VERIFIER());
@@ -257,31 +277,31 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
       });
 
       describe("no verifier can veto its own replacement (the guard never strands a consumer)", function () {
-        // Mode ordinals of MisbehavingVerifierMock.
-        const MODE = {
-          Honest: 0,
-          ClaimsConsumerOwner: 1,
-          ClaimsPendingOwner: 2,
-          BurnsGas: 3,
-          ReturnsHugeData: 4,
-          ClaimsHaltedIdentity: 5,
-        };
         let hostile: any;
 
         beforeEach(async function () {
-          hostile = await (
-            await ethers.getContractFactory("MisbehavingVerifierMock")
-          ).deploy(await sp1.getAddress(), VKEY_A);
-          await rotateTo(hostile); // installed through the delayed path while it still behaved
+          hostile = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+          await rotateTo(hostile); // installed through the delayed path while it had no halt surface
         });
 
-        for (const [label, mode] of [
-          ["claims the consumer's owner as its halt principal", MODE.ClaimsConsumerOwner],
-          ["burns all the gas each probe gets", MODE.BurnsGas],
-          ["returns a mebibyte to each probe", MODE.ReturnsHugeData],
+        const programAll = async (behavior: number) => {
+          for (const s of Object.values(SEL)) await hostile.program(s, behavior, ethers.ZeroHash);
+        };
+
+        for (const [label, program] of [
+          [
+            "claims the consumer's owner as its halt principal",
+            async () => hostile.program(SEL.HALT_PRINCIPAL, B.ReturnOwner, ethers.ZeroHash),
+          ],
+          ["burns all the gas each probe gets", async () => programAll(B.BurnGas)],
+          ["returns a mebibyte to each probe", async () => programAll(B.ReturnHuge)],
+          [
+            "reverts with the owner's address as its revert data",
+            async () => hostile.program(SEL.HALT_PRINCIPAL, B.RevertWithWord, word(admin.address)),
+          ],
         ] as const) {
           it(`${c.name}: a current verifier that ${label} cannot stop the owner rotating away from it`, async function () {
-            await hostile.setMode(mode);
+            await program();
             await consumer.connect(admin).proposePQVerifier(await w2.getAddress());
             await networkHelpers.time.increase(ROTATION_DELAY);
             await consumer.connect(admin).applyPQVerifierUpdate({ gasLimit: 2_000_000n });
@@ -290,7 +310,7 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
         }
 
         it(`${c.name}: a current verifier can only delay an ownership transfer (rotating away from it ends the veto)`, async function () {
-          await hostile.setMode(MODE.ClaimsPendingOwner);
+          await hostile.program(SEL.HALT_PRINCIPAL, B.ReturnPendingOwner, ethers.ZeroHash);
           await consumer.connect(admin).transferOwnership(successor.address);
           await expect(consumer.connect(successor).acceptOwnership()).to.be.revertedWithCustomError(
             consumer,
@@ -302,7 +322,9 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
         });
 
         it(`${c.name}: the documented residual: an installed verifier can make the consumer record one identity as halted, never every identity`, async function () {
-          await hostile.setMode(MODE.ClaimsHaltedIdentity);
+          await hostile.program(SEL.halted, B.Return, word("0x01"));
+          await hostile.program(SEL.SP1_VERIFIER, B.Return, word(await sp1.getAddress()));
+          await hostile.program(SEL.PROGRAM_VKEY, B.Return, VKEY_A);
           await rotateTo(w2); // leaving a verifier that claims to be a halted wrapper of identity A
           const claimed = await identityOf(w1); // w1 is identity A
           expect(await consumer.haltedVerifierIdentities(claimed)).to.equal(true);
@@ -313,6 +335,68 @@ describe("SP1-TD2 verifier rotation: halt principal and halted identity (every r
           // Bounded: any other identity is still admissible.
           const otherB = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
           await consumer.connect(admin).proposePQVerifier(await otherB.getAddress());
+        });
+      });
+
+      describe("a malformed answer reads as no answer (a probe never invents a halt principal, a halt or an identity)", function () {
+        let target: any;
+        beforeEach(async function () {
+          target = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+        });
+        const dirty = (address: string) => ethers.toBeHex(BigInt(address) | (1n << 200n), 32);
+        const proposeTarget = async () => consumer.connect(admin).proposePQVerifier(await target.getAddress());
+
+        it(`${c.name}: positive control: a well-formed halt principal naming the owner is refused`, async function () {
+          await target.program(SEL.HALT_PRINCIPAL, B.Return, word(admin.address));
+          await expect(proposeTarget()).to.be.revertedWithCustomError(consumer, "HaltPrincipalCannotGovern");
+        });
+
+        it(`${c.name}: a halt principal word with dirty upper bits, or a failed call carrying the owner's address, names no one`, async function () {
+          await target.program(SEL.HALT_PRINCIPAL, B.Return, dirty(admin.address));
+          await proposeTarget();
+          await target.program(SEL.HALT_PRINCIPAL, B.RevertWithWord, word(admin.address));
+          await proposeTarget();
+          expect(await consumer.pendingPQVerifier()).to.equal(await target.getAddress());
+        });
+
+        it(`${c.name}: positive control: a well-formed halted() is refused; a one-byte answer, or a failed call carrying 1, is not a halt`, async function () {
+          await target.program(SEL.halted, B.Return, word("0x01"));
+          await expect(proposeTarget()).to.be.revertedWithCustomError(consumer, "HaltedVerifierTarget");
+          await target.program(SEL.halted, B.ReturnShort, ethers.toBeHex(1n << 248n, 32));
+          await proposeTarget();
+          await target.program(SEL.halted, B.RevertWithWord, word("0x01"));
+          await proposeTarget();
+        });
+
+        it(`${c.name}: an identity needs two well-formed answers: a dirty, failed or missing half is no identity`, async function () {
+          await w1.connect(haltPrincipal).halt();
+          const sp1Word = word(await sp1.getAddress());
+          // Positive control: two well-formed halves naming identity A are refused while A is halted.
+          await target.program(SEL.SP1_VERIFIER, B.Return, sp1Word);
+          await target.program(SEL.PROGRAM_VKEY, B.Return, VKEY_A);
+          await expect(proposeTarget()).to.be.revertedWithCustomError(consumer, "HaltedVerifierIdentity");
+          for (const [sp1Answer, vkeyAnswer] of [
+            [
+              [B.Return, dirty(await sp1.getAddress())],
+              [B.Return, VKEY_A],
+            ],
+            [
+              [B.RevertWithWord, sp1Word],
+              [B.Return, VKEY_A],
+            ],
+            [
+              [B.Return, sp1Word],
+              [B.RevertWithWord, VKEY_A],
+            ],
+            [
+              [B.Return, sp1Word],
+              [B.Revert, ethers.ZeroHash],
+            ],
+          ] as const) {
+            await target.program(SEL.SP1_VERIFIER, sp1Answer[0], sp1Answer[1]);
+            await target.program(SEL.PROGRAM_VKEY, vkeyAnswer[0], vkeyAnswer[1]);
+            await proposeTarget();
+          }
         });
       });
     });

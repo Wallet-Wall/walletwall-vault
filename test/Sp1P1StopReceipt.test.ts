@@ -263,7 +263,7 @@ describe("SP1-P1 assurance STOP receipt", function () {
 
     it("the tripwire really fired: the working tree's ZKMLDSAVerifier.sol no longer matches the binding, its historical subject does", function () {
       const live = validateCommittedReceipt(committed(), readObservationInputs());
-      expect(live.join(" | ")).to.match(/ZKMLDSAVerifier.sol changed/);
+      expect(live.join(" | ")).to.match(/ZKMLDSAVerifier\.sol changed/);
       const s = record();
       expect(readObservationInputs(".", s.historicalSubject).zkMldsaVerifierSha256).to.equal(
         committed().repositoryBindings.zkMldsaVerifierSha256,

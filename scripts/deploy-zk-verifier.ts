@@ -1,4 +1,5 @@
 import { network } from "hardhat";
+import { resolveHaltPrincipal } from "./lib/deployment-guards";
 import { runScript } from "./lib/run-script";
 
 /**
@@ -54,18 +55,11 @@ async function main() {
     throw new Error("PROGRAM_VKEY must be a non-zero bytes32 value");
   }
 
-  let haltPrincipal = process.env.HALT_PRINCIPAL_ADDRESS;
-  if (!haltPrincipal) {
-    if (!isLocalNetwork || !localHaltPrincipal) {
-      throw new Error(
-        "HALT_PRINCIPAL_ADDRESS is required: the wrapper's one-way halt needs its halt-only principal (a local chain defaults to the second local account).",
-      );
-    }
-    haltPrincipal = localHaltPrincipal.address;
-  }
-  if (!ethers.isAddress(haltPrincipal) || haltPrincipal === ethers.ZeroAddress) {
-    throw new Error("HALT_PRINCIPAL_ADDRESS must be a non-zero address");
-  }
+  const haltPrincipal = resolveHaltPrincipal(
+    process.env.HALT_PRINCIPAL_ADDRESS,
+    isLocalNetwork,
+    localHaltPrincipal?.address,
+  );
   if ((await ethers.provider.getCode(haltPrincipal)) === "0x") {
     console.warn(
       "Note: the halt principal is an externally owned account (one key). The frozen design prefers threshold or multisig control.",

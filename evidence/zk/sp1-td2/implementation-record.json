@@ -52,7 +52,8 @@
           "id": "EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER",
           "enforcedBy": "PROCESS",
           "tests": [
-            "test/Sp1Td2VerifierBinding.test.ts"
+            "test/Sp1Td2VerifierBinding.test.ts",
+            "test/Sp1Td2DeploymentTooling.test.ts"
           ]
         }
       ],

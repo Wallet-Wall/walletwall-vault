@@ -11,40 +11,41 @@ interface IOwnable2StepView {
 
 /**
  * @title MisbehavingVerifierMock
- * @notice TEST ONLY. A verifier an owner installed through the delayed path that then turns hostile toward the
- *         SP1-TD2 rotation guard's probes, to prove no current verifier can veto its own replacement (strand a
- *         consumer) and to make the guard's documented residual executable. It verifies nothing.
+ * @notice TEST ONLY. A verifier whose halt surface (HALT_PRINCIPAL, halted, SP1_VERIFIER, PROGRAM_VKEY) answers
+ *         however a test programs it, per function: to prove that no current verifier can veto its own replacement
+ *         through the SP1-TD2 rotation guard's probes (strand a consumer), that a malformed answer reads as no answer,
+ *         and to make the guard's documented residual executable. It verifies nothing.
  *
- *         Honest              — no halt surface (every probe reverts), like a mock or an attestation verifier.
- *         ClaimsConsumerOwner — reports the calling consumer's owner as its halt principal.
- *         ClaimsPendingOwner  — reports the calling consumer's pending owner as its halt principal.
- *         BurnsGas            — every probe runs until it is out of gas.
- *         ReturnsHugeData     — every probe returns a mebibyte.
- *         ClaimsHaltedIdentity — reports itself HALTED with the identity it was constructed with.
+ *         Revert           — revert with no data (the default: no halt surface, like a mock or attestation verifier).
+ *         Return           — return the programmed word.
+ *         RevertWithWord   — revert with the programmed word as 32 bytes of revert data.
+ *         ReturnShort      — return only the first byte of the programmed word.
+ *         BurnGas          — run until out of gas.
+ *         ReturnHuge       — return a mebibyte.
+ *         ReturnOwner      — return the calling consumer's owner().
+ *         ReturnPendingOwner — return the calling consumer's pendingOwner().
  */
 contract MisbehavingVerifierMock is IPQCVerifier {
-    enum Mode {
-        Honest,
-        ClaimsConsumerOwner,
-        ClaimsPendingOwner,
-        BurnsGas,
-        ReturnsHugeData,
-        ClaimsHaltedIdentity
+    enum Behavior {
+        Revert,
+        Return,
+        RevertWithWord,
+        ReturnShort,
+        BurnGas,
+        ReturnHuge,
+        ReturnOwner,
+        ReturnPendingOwner
     }
 
-    Mode public mode;
-    address public immutable claimedSp1Verifier;
-    bytes32 public immutable claimedProgramVKey;
-
-    error NotSupported();
-
-    constructor(address sp1Verifier, bytes32 programVKey) {
-        claimedSp1Verifier = sp1Verifier;
-        claimedProgramVKey = programVKey;
+    struct Answer {
+        Behavior behavior;
+        bytes32 word;
     }
 
-    function setMode(Mode newMode) external {
-        mode = newMode;
+    mapping(bytes4 selector => Answer) public answers;
+
+    function program(bytes4 selector, Behavior behavior, bytes32 word) external {
+        answers[selector] = Answer(behavior, word);
     }
 
     function algorithmId() external pure override returns (bytes32) {
@@ -56,32 +57,30 @@ contract MisbehavingVerifierMock is IPQCVerifier {
     }
 
     function HALT_PRINCIPAL() external view returns (address) {
-        _misbehave();
-        if (mode == Mode.ClaimsConsumerOwner) return IOwnable2StepView(msg.sender).owner();
-        if (mode == Mode.ClaimsPendingOwner) return IOwnable2StepView(msg.sender).pendingOwner();
-        revert NotSupported();
+        _answer();
     }
 
     function halted() external view returns (bool) {
-        _misbehave();
-        if (mode == Mode.ClaimsHaltedIdentity) return true;
-        revert NotSupported();
+        _answer();
     }
 
     function SP1_VERIFIER() external view returns (address) {
-        _misbehave();
-        if (mode == Mode.ClaimsHaltedIdentity) return claimedSp1Verifier;
-        revert NotSupported();
+        _answer();
     }
 
     function PROGRAM_VKEY() external view returns (bytes32) {
-        _misbehave();
-        if (mode == Mode.ClaimsHaltedIdentity) return claimedProgramVKey;
-        revert NotSupported();
+        _answer();
     }
 
-    function _misbehave() private view {
-        if (mode == Mode.BurnsGas) {
+    /// @dev Ends the call according to the programmed answer for msg.sig; never returns normally.
+    function _answer() private view {
+        Answer memory a = answers[msg.sig];
+        bytes32 word = a.word;
+        if (a.behavior == Behavior.ReturnOwner) word = bytes32(uint256(uint160(IOwnable2StepView(msg.sender).owner())));
+        if (a.behavior == Behavior.ReturnPendingOwner) {
+            word = bytes32(uint256(uint160(IOwnable2StepView(msg.sender).pendingOwner())));
+        }
+        if (a.behavior == Behavior.BurnGas) {
             uint256 spin;
             while (gasleft() > 0) {
                 unchecked {
@@ -89,9 +88,26 @@ contract MisbehavingVerifierMock is IPQCVerifier {
                 }
             }
         }
-        if (mode == Mode.ReturnsHugeData) {
-            assembly {
-                return(0, 0x100000)
+        Behavior behavior = a.behavior;
+        assembly {
+            switch behavior
+            case 0 {
+                revert(0, 0)
+            }
+            case 2 {
+                mstore(0x00, word)
+                revert(0x00, 0x20)
+            }
+            case 3 {
+                mstore(0x00, word)
+                return(0x00, 0x01)
+            }
+            case 5 {
+                return(0x00, 0x100000)
+            }
+            default {
+                mstore(0x00, word)
+                return(0x00, 0x20)
             }
         }
     }

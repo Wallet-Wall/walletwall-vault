@@ -118,6 +118,31 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect((await profileVerifier(ethers.provider, await haltable.getAddress())).halted).to.equal(true);
     });
 
+    it("reads a malformed answer as no answer, as the on-chain guard does (positive control: well-formed answers are read)", async function () {
+      const m = await (await ethers.getContractFactory("MisbehavingVerifierMock")).deploy();
+      const sel = (signature: string) => ethers.id(signature).slice(0, 10);
+      const [RETURN, REVERT_WITH_WORD, RETURN_SHORT] = [1, 2, 3];
+      await m.program(sel("HALT_PRINCIPAL()"), RETURN, ethers.toBeHex(BigInt(admin.address) | (1n << 200n), 32));
+      await m.program(sel("halted()"), RETURN_SHORT, ethers.toBeHex(1n << 248n, 32));
+      await m.program(sel("SP1_VERIFIER()"), REVERT_WITH_WORD, ethers.zeroPadValue(await sp1.getAddress(), 32));
+      await m.program(sel("PROGRAM_VKEY()"), RETURN, VKEY_A);
+      const p = await profileVerifier(ethers.provider, await m.getAddress());
+      expect([p.haltPrincipal, p.halted, p.sp1Verifier, p.sp1VerifierCodeKeccak, p.identity]).to.deep.equal([
+        null,
+        null,
+        null,
+        null,
+        null,
+      ]);
+      expect(p.programVKey).to.equal(VKEY_A);
+      await m.program(sel("HALT_PRINCIPAL()"), RETURN, ethers.zeroPadValue(admin.address, 32));
+      await m.program(sel("halted()"), RETURN, ethers.zeroPadValue("0x01", 32));
+      await m.program(sel("SP1_VERIFIER()"), RETURN, ethers.zeroPadValue(await sp1.getAddress(), 32));
+      const q = await profileVerifier(ethers.provider, await m.getAddress());
+      expect([q.haltPrincipal, q.halted, q.sp1Verifier]).to.deep.equal([admin.address, true, await sp1.getAddress()]);
+      expect(q.identity).to.equal((await profileVerifier(ethers.provider, await haltable.getAddress())).identity);
+    });
+
     it("computes the same identity the on-chain guard records", async function () {
       const vault = await (
         await ethers.getContractFactory("WalletWallVault", admin)
@@ -203,17 +228,21 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
 
     it("the scripts that bind a consumer go through the gate, naming the consumer they deploy", function () {
       const source = (rel: string) => readFileSync(resolve(rel), "utf8");
+      // deploy.ts gates the vault itself; deploy-multisig.ts runs deployMultisigVault, which gates the multisig vault
+      // (exercised in test/Sp1Td2DeploymentTooling.test.ts). Each gate runs before its consumer is deployed.
       expect(source("scripts/deploy.ts")).to.match(/checkDeploymentBinding\(\s*ethers\.provider,\s*"WalletWallVault",/);
-      expect(source("scripts/deploy-multisig.ts")).to.match(
-        /checkDeploymentBinding\(\s*ethers\.provider,\s*"WalletWallMultiSigVault",/,
-      );
-      // The gate runs before the consumer is deployed, so a refusal costs no deployment.
+      expect(source("scripts/deploy-multisig.ts")).to.match(/deployMultisigVault\(/);
+      expect(source("scripts/deploy-multisig.ts")).to.not.match(/getContractFactory\(/);
+      const lib = source("scripts/lib/deployment-guards.ts");
+      expect(lib).to.match(/checkDeploymentBinding\(\s*ethers\.provider,\s*"WalletWallMultiSigVault",/);
       for (const [rel, factory] of [
         ["scripts/deploy.ts", '"WalletWallVault"'],
-        ["scripts/deploy-multisig.ts", '"WalletWallMultiSigVault"'],
+        ["scripts/lib/deployment-guards.ts", '"WalletWallMultiSigVault"'],
       ]) {
-        const s = source(rel);
-        expect(s.indexOf("checkDeploymentBinding("), rel).to.be.lessThan(s.indexOf(`getContractFactory(${factory}`));
+        const text = source(rel);
+        expect(text.indexOf("checkDeploymentBinding("), rel).to.be.lessThan(
+          text.indexOf(`getContractFactory(${factory}`),
+        );
       }
       const propose = source("scripts/propose-verifier-update.ts");
       expect(propose).to.match(/checkRotationBinding\(/);
