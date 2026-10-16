@@ -508,15 +508,19 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       // The wrapper deployment passes the resolved halt principal, and nothing else, as the third argument.
       const zk = source("scripts/deploy-zk-verifier.ts");
       // ...resolved from the operator's HALT_PRINCIPAL_ADDRESS, defaulting only on a local chain and only to the second
-      // local account, never the deployer.
-      expect(zk).to.match(
-        /const haltPrincipal = resolveHaltPrincipal\(\s*process\.env\.HALT_PRINCIPAL_ADDRESS,\s*isLocalNetwork,\s*localHaltPrincipal\?\.address,\s*\);/,
-      );
-      expect(zk).to.match(
-        /const isLocalNetwork = chainNetwork\.chainId === 31337n \|\| chainNetwork\.chainId === 1337n;/,
-      );
+      // local account, never the deployer. Since the implementation lane the script plans through
+      // scripts/lib/zk-verifier-deployment.ts (designation-only inputs), which resolves and deploys it.
       expect(zk).to.match(/const \[deployer, localHaltPrincipal\] = await ethers\.getSigners\(\);/);
-      expect(zk).to.match(/ZKMLDSAVerifier\.deploy\(sp1VerifierAddress, programVKey, haltPrincipal\)/);
+      expect(zk).to.match(
+        /planWrapperDeployment\(\{\s*chainId,\s*env: process\.env,\s*deployer: deployer\.address,\s*localHaltPrincipal: localHaltPrincipal\?\.address,/,
+      );
+      const plan = source("scripts/lib/zk-verifier-deployment.ts");
+      expect(plan).to.match(
+        /haltPrincipal = resolveHaltPrincipal\(env\.HALT_PRINCIPAL_ADDRESS, local, input\.localHaltPrincipal\);/,
+      );
+      expect(plan).to.match(/const local = isLocal\(chainId\);/);
+      expect(plan).to.match(/LOCAL_CHAIN_IDS as readonly bigint\[\]\)\.includes\(chainId\)/);
+      expect(plan).to.match(/factory\.deploy\(sp1, plan\.programVKey, plan\.haltPrincipal\)/);
     });
   });
 

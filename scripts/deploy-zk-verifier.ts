@@ -1,78 +1,94 @@
 import { network } from "hardhat";
-import { resolveHaltPrincipal } from "./lib/deployment-guards";
+
+import { assertDeployableChain } from "./lib/deployment-guards";
 import { runScript } from "./lib/run-script";
+import type { DevProvider } from "./lib/sp1-chain-execution";
+import { readDesignations, validateDesignationsInRepo } from "./lib/sp1-designation";
+import { readRegistry, validateRegistryInRepo } from "./lib/sp1-registry";
+import { currentBuildErrors, readWrapperBuilds } from "./lib/sp1-wrapper-build";
+import {
+  deployPlannedWrapper,
+  planWrapperDeployment,
+  preDeploymentChecks,
+  readBackErrors,
+} from "./lib/zk-verifier-deployment";
 
 /**
- * Deploys a ZKMLDSAVerifier wrapper.
+ * Deploys a ZKMLDSAVerifier wrapper with designation-only inputs (the SP1 implementation lane;
+ * docs/SP1_Implementation_Pin_Designation_Registry.md, scripts/lib/zk-verifier-deployment.ts).
  *
- * SP1-TD2: every wrapper carries a one-way halt held by HALT_PRINCIPAL_ADDRESS, the WalletWall emergency halt
- * principal (halt-only; threshold or multisig control preferred over one online key; never a consumer's owner,
- * which the consumers also refuse on chain). It is required on every non-local chain; on a local chain it
- * defaults to the second local account, so the deployer (who usually deploys the vault too) is not the halt
- * principal. The pinned SP1 verifier, the vkey designation and the per-chain execution check are the frozen
- * implementation lane's (docs/SP1_TD1_Trust_Target_Program_Identity.md, "Next lane").
+ * Off a local chain the SP1 verifier, its runtime code hash and PROGRAM_VKEY come only from an accepted designation
+ * (evidence/zk/sp1/designations/; SP1_DESIGNATION_ID selects one when several are accepted), the wrapper only from the
+ * latest recorded build, and the one-way halt's principal from HALT_PRINCIPAL_ADDRESS (halt-only; threshold or multisig
+ * control preferred; never the deployer). SP1_VERIFIER_ADDRESS, PROGRAM_VKEY and ALLOW_MOCK_SP1 are refused there.
+ * Before deploying it validates the designations and the registry (content and append-only history), measures the
+ * designated verifier's code and the per-chain execution verdicts on the target chain, and runs the canary's positive
+ * control on the in-process EVM; after deploying it reads the wrapper back. Mainnets are refused.
+ *
+ * A local chain (31337/1337) deploys the designated verifier's real bytes; with ALLOW_MOCK_SP1=true it then puts an
+ * always-accepting mock behind the genuine wrapper — TEST ONLY, refused by the binding gate off a local chain.
+ * The new wrapper is not registered here: record it with scripts/register-sp1-wrapper.ts, from chain reads.
  */
 async function main() {
-  const { ethers } = await network.create();
-
+  const connection = await network.create();
+  const { ethers } = connection;
   const [deployer, localHaltPrincipal] = await ethers.getSigners();
-  const chainNetwork = await ethers.provider.getNetwork();
-  console.log("Deploying ZKMLDSAVerifier with account:", deployer.address);
+  const chainId = (await ethers.provider.getNetwork()).chainId;
+  assertDeployableChain(connection.networkName, chainId);
 
-  let sp1VerifierAddress = process.env.SP1_VERIFIER_ADDRESS;
-  const allowMock = process.env.ALLOW_MOCK_SP1 === "true";
-  const isLocalNetwork = chainNetwork.chainId === 31337n || chainNetwork.chainId === 1337n;
+  const builds = readWrapperBuilds();
+  const plan = planWrapperDeployment({
+    chainId,
+    env: process.env,
+    deployer: deployer.address,
+    localHaltPrincipal: localHaltPrincipal?.address,
+    designations: readDesignations(),
+    builds,
+    currentBuildErrors: currentBuildErrors(),
+    registry: readRegistry(),
+  });
+  console.log(`Deploying ZKMLDSAVerifier (${plan.mode}) on chain ${chainId} with account ${deployer.address}`);
 
-  if (sp1VerifierAddress) {
-    const verifierCode = await ethers.provider.getCode(sp1VerifierAddress);
-    if (verifierCode === "0x") {
-      throw new Error("SP1_VERIFIER_ADDRESS must reference a deployed contract");
-    }
+  if (plan.mode !== "LOCAL_TEST_MOCK") {
+    const published = [...validateDesignationsInRepo(), ...validateRegistryInRepo()];
+    if (published.length > 0)
+      throw new Error(`refusing to deploy: the published SP1 records are invalid:\n - ${published.join("\n - ")}`);
+  }
+  let deployable = plan;
+  if (plan.mode === "DESIGNATED") {
+    const local = await network.create("default");
+    const report = await preDeploymentChecks(ethers.provider, plan, local.ethers.provider as unknown as DevProvider);
+    console.log(
+      `SP1 verifier ${plan.sp1Verifier}: code ${report.codeKeccak}; verdicts ${JSON.stringify(report.verdicts)}`,
+    );
+  }
+  const deployed = await deployPlannedWrapper(ethers, deployer, deployable);
+  deployable = deployed.plan;
+  if (plan.mode === "LOCAL_DESIGNATED") {
+    const report = await preDeploymentChecks(ethers.provider, deployable, ethers.provider as unknown as DevProvider);
+    console.log(`local SP1 verifier ${deployable.sp1Verifier}: verdicts ${JSON.stringify(report.verdicts)}`);
+  }
+  const mismatches = await readBackErrors(ethers.provider, deployed.wrapper, deployable, builds);
+  if (mismatches.length > 0)
+    throw new Error(`the deployed wrapper is not the planned one:\n - ${mismatches.join("\n - ")}`);
+
+  console.log("ZKMLDSAVerifier deployed to:", deployed.wrapper);
+  console.log("Wrapper build:", deployable.build.id);
+  console.log("SP1 verifier:", deployable.sp1Verifier);
+  console.log("Program vKey:", deployable.programVKey, deployable.designation ? `(${deployable.designation.id})` : "");
+  console.log("Halt principal:", deployable.haltPrincipal);
+  if (plan.mode === "LOCAL_TEST_MOCK") {
+    console.warn(
+      "TEST ONLY: an always-accepting MockSP1Verifier now runs behind this wrapper; it verifies nothing real.",
+    );
   } else {
-    if (!allowMock || !isLocalNetwork) {
-      throw new Error(
-        "SP1_VERIFIER_ADDRESS is required. Mock deployment is allowed only on a local chain with ALLOW_MOCK_SP1=true.",
-      );
-    }
-
-    const MockSP1Verifier = await ethers.getContractFactory("MockSP1Verifier");
-    const mockSp1 = await MockSP1Verifier.deploy();
-    await mockSp1.waitForDeployment();
-    sp1VerifierAddress = await mockSp1.getAddress();
-    console.warn("TEST ONLY: deployed always-accepting MockSP1Verifier to:", sp1VerifierAddress);
+    console.log("Next: record it in the registry with scripts/register-sp1-wrapper.ts (chain reads, no transaction).");
   }
-
-  let programVKey = process.env.PROGRAM_VKEY;
-  if (!programVKey) {
-    if (!allowMock || !isLocalNetwork) {
-      throw new Error(
-        "PROGRAM_VKEY is required. A mock verification key is allowed only on a local chain with ALLOW_MOCK_SP1=true.",
-      );
-    }
-    programVKey = ethers.keccak256(ethers.toUtf8Bytes("TEST_ONLY_MOCK_VKEY"));
-  }
-  if (!ethers.isHexString(programVKey, 32) || programVKey === ethers.ZeroHash) {
-    throw new Error("PROGRAM_VKEY must be a non-zero bytes32 value");
-  }
-
-  const haltPrincipal = resolveHaltPrincipal(
-    process.env.HALT_PRINCIPAL_ADDRESS,
-    isLocalNetwork,
-    localHaltPrincipal?.address,
-  );
-  if ((await ethers.provider.getCode(haltPrincipal)) === "0x") {
+  if ((await ethers.provider.getCode(deployable.haltPrincipal)) === "0x") {
     console.warn(
       "Note: the halt principal is an externally owned account (one key). The frozen design prefers threshold or multisig control.",
     );
   }
-
-  const ZKMLDSAVerifier = await ethers.getContractFactory("ZKMLDSAVerifier");
-  const zkVerifier = await ZKMLDSAVerifier.deploy(sp1VerifierAddress, programVKey, haltPrincipal);
-  await zkVerifier.waitForDeployment();
-
-  console.log("ZKMLDSAVerifier deployed to:", await zkVerifier.getAddress());
-  console.log("Program vKey:", programVKey);
-  console.log("Halt principal:", haltPrincipal);
 }
 
 runScript(main);
