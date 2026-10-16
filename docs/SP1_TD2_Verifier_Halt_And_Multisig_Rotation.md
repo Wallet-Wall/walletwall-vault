@@ -251,20 +251,21 @@ look-alike end to end).
 
 ## Mutation testing
 
-A curated campaign of **323 mutants** covers every piece of new contract and tooling code, each run against the
-suites that cover its file, at the PR head's code:
+A curated campaign of **351 mutants** covers every piece of new contract and tooling code, each run against the
+suites that cover its file, at the code of `12a8b4a`, the commit that records the owner's decision:
 
 | Code                                                                                | Mutants | Killed  | Equivalent |
 | ----------------------------------------------------------------------------------- | ------- | ------- | ---------- |
 | the halt in `ZKMLDSAVerifier`                                                       | 14      | 14      | 0          |
 | `VerifierRotationGuard`                                                             | 39      | 38      | 1          |
 | the multisig rotation, and the guard's call sites in the three consumers            | 55      | 54      | 1          |
-| the binding gate (scope, measurement, fail-closed reads, code comparison, registry) | 133     | 126     | 7          |
+| the binding gate (scope, measurement, fail-closed reads, code comparison, registry) | 135     | 128     | 7          |
 | the scripts' gate calls                                                             | 14      | 14      | 0          |
 | the deployment helpers                                                              | 16      | 16      | 0          |
-| the TD2 record validator                                                            | 31      | 31      | 0          |
+| the TD2 record validator, the owner's decision included                             | 47      | 47      | 0          |
+| admission through a TD2 gate                                                        | 10      | 10      | 0          |
 | the SP1-P1 supersession and its generator                                           | 21      | 21      | 0          |
-| **total**                                                                           | **323** | **314** | **9**      |
+| **total**                                                                           | **351** | **342** | **9**      |
 
 **No mutant survived.** The nine equivalents change no output for any input: the halt-principal check against the
 zero address (no caller can be zero; renouncing is disabled), the two verifiers' order in the transfer check
@@ -275,14 +276,18 @@ keccak256 digest, never zero).
 
 The first pass, at `23a1834`, left 12 survivors. One was spurious (its mutated file was reverted mid-run) and one
 mutant tested the wrong thing (it added a deployment instead of moving the gate after it; rewritten). Each of the
-other ten led to a stronger test, not a code change; the third review pass's R3-1 is the only code change made
-since, and its mutants are in the final run. Two lessons are worth keeping: with Hardhat's chai matchers loaded,
+other ten led to a stronger test, not a code change; until the owner's decision, the third review pass's R3-1 was
+the only code change, and its mutants are in the final run. Two lessons are worth keeping: with Hardhat's chai matchers loaded,
 `deep.equal` compares addresses case-insensitively, so a checksum assertion has to use `node:assert`; and since the
 consumers store the identity at installation, a rotation never probes a current verifier that showed none, so the
 probe cap is tested where the consumer does probe. Mutants that changed only a refusal's wording or added refusal
-lines were not called equivalent: the tests assert the exact output. The catalog and harness are in the PR's first
-two comments; the run was at `106d177`, and the ten mutants first marked equivalent were re-run at `02280cd`, which
-adds tests only.
+lines were not called equivalent: the tests assert the exact output.
+
+Recording the owner's decision changed tooling and validator code (the scope the gate reads, the admission
+functions, the validator's closed-decision rules) and no contract byte, so the whole campaign was rerun at
+`12a8b4a` with 28 new mutants for that code. Among them: each condition of the admission dropped; the decision
+checked against anything but the owner's terms; the record skipped, required, or ignored; the frozen scope returned;
+the admitted consumer left excluded. Every one was killed. The catalog and harness are in the PR's comments.
 
 ## What TD2 changed outside the two requirements, and why
 
