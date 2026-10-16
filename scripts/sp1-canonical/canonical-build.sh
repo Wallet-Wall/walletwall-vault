@@ -15,7 +15,11 @@ set -euo pipefail
 OUT="$1"
 HOST_ID="$2"
 ROOT="$(git rev-parse --show-toplevel)"
-DESIGNATION="${3:-$ROOT/evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json}"
+# By default the latest designation (the highest sequence): the one whose subject CI holds HEAD to.
+latest_designation() {
+  node -e 'const fs=require("fs"),p=require("path");const dir=process.argv[1];const ds=fs.readdirSync(dir).filter((f)=>f.endsWith(".json")).map((f)=>JSON.parse(fs.readFileSync(p.join(dir,f),"utf8")));ds.sort((a,b)=>a.sequence-b.sequence);if(ds.length===0)process.exit(4);process.stdout.write(p.join(dir,ds[ds.length-1].id+".json"))' "$1"
+}
+DESIGNATION="${3:-$(latest_designation "$ROOT/evidence/zk/sp1/designations")}"
 field() { node -e 'const d=require(process.argv[1]); console.log(process.argv[2].split(".").reduce((o,k)=>o[k],d))' "$DESIGNATION" "$1"; }
 IMAGE="$(field procedure.image)"
 ENTRYPOINT_REL="$(field procedure.entrypoint.path)"

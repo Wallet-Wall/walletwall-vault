@@ -14,7 +14,7 @@ import { join, resolve } from "node:path";
 
 import { expect } from "chai";
 
-import { readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
+import { latestDesignation, readDesignations, type ProgramDesignation } from "../scripts/lib/sp1-designation";
 import {
   CANONICAL_REBUILD_OBSERVATION_REL,
   canonicalBuildErrors,
@@ -55,6 +55,20 @@ describe("SP1 implementation lane — the canonical build against the designatio
     });
     // One host here (the workstation); SP1-TD1's designation was established on two, and the workflow rebuilds on two.
     expect(canonicalBuildVerdict(committed, d1, { minimumHosts: 2 })).to.equal("INSUFFICIENT_HOSTS");
+  });
+
+  it("the release rebuild checks the latest designation, whose subject is HEAD's: the driver and the checker default to it", function () {
+    const set = readDesignations(".");
+    expect(latestDesignation(set)?.id).to.equal(set[set.length - 1].id);
+    const successor = { ...clone(set[0]), id: "mldsa65-withdrawal-d2", sequence: 2 };
+    expect(latestDesignation([set[0], successor])?.id, "a successor").to.equal("mldsa65-withdrawal-d2");
+    expect(latestDesignation([successor, set[0]])?.id, "in any order").to.equal("mldsa65-withdrawal-d2");
+    expect(latestDesignation([])).to.equal(undefined);
+    const checker = readFileSync(resolve("scripts/check-sp1-canonical-build.ts"), "utf8");
+    expect(checker).to.match(/args\("--designation"\)\[0\] \?\? latestDesignation\(designations\)\?\.id/);
+    const driver = readFileSync(resolve("scripts/sp1-canonical/canonical-build.sh"), "utf8");
+    expect(driver).to.not.match(/mldsa65-withdrawal-d1\.json/);
+    expect(driver).to.match(/sequence/);
   });
 
   it("collects a build from the driver's outputs, as the driver writes them", function () {

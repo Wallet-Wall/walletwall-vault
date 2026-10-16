@@ -21,7 +21,7 @@ import {
   parseVkeyRecompute,
   type CanonicalBuildObservation,
 } from "./lib/sp1-canonical-build";
-import { readDesignations } from "./lib/sp1-designation";
+import { latestDesignation, readDesignations } from "./lib/sp1-designation";
 
 function args(name: string): string[] {
   const out: string[] = [];
@@ -33,7 +33,7 @@ function args(name: string): string[] {
 
 try {
   const designations = readDesignations();
-  const wanted = args("--designation")[0] ?? designations[0]?.id;
+  const wanted = args("--designation")[0] ?? latestDesignation(designations)?.id;
   const d = designations.find((x) => x.id === wanted);
   if (!d) throw new Error(`no designation ${String(wanted)}`);
   const builds = args("--build").map((spec) => {

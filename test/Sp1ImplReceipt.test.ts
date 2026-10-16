@@ -79,7 +79,7 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     expect(s.PROGRAM_IDENTITY_DECISION.value).to.equal("PINNED_VENDOR_BUILD");
     expect(s.PROGRAM_VKEY_DESIGNATION.value).to.equal(`${d1.id}: ${d1.programVKey}`);
     expect(s.CANONICAL_BUILD_STATUS.value).to.equal("REPRODUCED");
-    expect(s.SUCCESSOR_DESIGNATION_STATUS.value).to.equal("SUCCESSOR_PATH_READY_NONE_DESIGNATED");
+    expect(s.SUCCESSOR_DESIGNATION_STATUS.value).to.equal("PROGRAM_REBUILD_SUCCESSORS_ONLY_NONE_DESIGNATED");
     expect(s.REGISTRY_APPEND_ONLY_STATUS.value).to.equal("APPEND_ONLY_ON_FULL_HISTORY");
     expect(s.REGISTRY_BUILD_PROVENANCE_STATUS.value).to.equal("BUILD_RECORDED_PER_FACT");
     expect(s.CROSS_CHAIN_HALTED_IDENTITY_STATUS.value).to.equal("REPOSITORY_PUBLISHED_HALT_REFUSED_ON_EVERY_CHAIN");
@@ -158,6 +158,11 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     const cases: [string, (i: ImplReceiptInputs) => void][] = [
       ["CANONICAL_BUILD_DOES_NOT_REPRODUCE", (i) => (i.canonical.oneHost = "PROCEDURE_DRIFT")],
       ["ONE_ELF_CONFLICTING_VKEYS", (i) => (i.canonical.conflictingVkeys = 1)],
+      [
+        "ONE_ELF_CONFLICTING_VKEYS",
+        (i) =>
+          i.designationErrors.push("designations a and b: one ELF maps to two vkeys (PROGRAM_IDENTITY_CONTRADICTION)"),
+      ],
       ["CHAINS_DISAGREE_ON_RUNTIME_IDENTITY", (i) => (i.chainExecution.codes = ["0x01", "0x02"])],
       ["PER_CHAIN_VERDICTS_DIVERGE", (i) => (i.chainExecution.verdictsAsRequired = false)],
       ["PIN_BYPASSABLE_VIA_GATEWAY_ROUTING", (i) => (i.ast.sp1CallTargets = ["gateway"])],

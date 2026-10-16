@@ -664,7 +664,14 @@ export interface ImplReceiptInputs {
     verdictsAsRequired: boolean;
     chains: { chainId: string; block: number; codeKeccak: string; verdicts: Record<string, string> }[];
   };
-  canonical: { designation: string; oneHost: string; twoHost: string; hosts: string[]; conflictingVkeys: number };
+  canonical: {
+    designation: string;
+    oneHost: string;
+    twoHost: string;
+    hosts: string[];
+    conflictingVkeys: number;
+    lockUnchangedOn: string[];
+  };
   proving: { status: string | null; errors: string[] };
   ast: WrapperAstFacts;
   journalTypesAtBase: string[];
@@ -771,7 +778,8 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     `generated from SP1-TD1's evidence, regenerating byte for byte, with the zkvm subject at HEAD the designated one: ${yes(i.designationErrors.length === 0)}`,
     `subject guest tree ${d?.subject.zkvmGuestTree}, host tree ${d?.subject.zkvmHostTree}, guest lockfile ${d?.subject.guestCargoLockSha256}`,
     `procedure ${d?.procedure.id}: ${d?.procedure.image}`,
-    `ELF sha256 ${d?.elf.sha256} (${d?.elf.bytes} bytes) → PROGRAM_VKEY ${d?.programVKey}, recomputed outside the build by ${d?.vkeyRecomputed.tool} (${d?.vkeyRecomputed.agreeing} agreeing, ${d?.vkeyRecomputed.conflicting} conflicting) on ${d?.hosts.join(" and ")}`,
+    `ELF sha256 ${d?.elf.sha256} (${d?.elf.bytes} bytes) → PROGRAM_VKEY ${d?.programVKey}, built and reproduced on ${d?.hosts.join(" and ")}; recomputed from the ELF outside the build containers by ${d?.vkeyRecomputed.tool}: ${d?.vkeyRecomputed.agreeing} agreeing results of ${d?.vkeyRecomputed.distinctComputations} computation(s), ${d?.vkeyRecomputed.conflicting} conflicting`,
+    `its guest lock policy (${d?.procedure.guestLock}) is the frozen procedure's: SP1-TD1's hosts hashed the lockfile before their builds only; this lane's rebuild measured it after (CANONICAL_BUILD_STATUS)`,
     `identity ${d?.identity} = keccak256(abi.encode(verifier runtime code hash, PROGRAM_VKEY)); soundness: ${d?.soundness}`,
     ...i.designationErrors,
   ]);
@@ -780,6 +788,7 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     `the frozen subject rebuilt by the canonical procedure on ${i.canonical.hosts.join(", ")}, compared with designation ${i.canonical.designation}: ${i.canonical.oneHost}`,
     `the release rebuild needs two hosts: the committed evidence gives ${i.canonical.twoHost}; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone and fails on any drift`,
     `one ELF with another vkey, in a build or the outside recompute: ${i.canonical.conflictingVkeys}`,
+    `the guest lockfile was the subject's before and after the build on: ${i.canonical.lockUnchangedOn.join(", ") || "no host"}`,
   ]);
 
   const successors = i.designations.filter((x) => x.predecessor !== null);
@@ -788,12 +797,14 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
     !passed(i.probes.identityReuse)
       ? "IDENTITY_REUSE_NOT_REFUSED"
       : successors.length === 0
-        ? "SUCCESSOR_PATH_READY_NONE_DESIGNATED"
+        ? "PROGRAM_REBUILD_SUCCESSORS_ONLY_NONE_DESIGNATED"
         : `SUCCESSORS_DESIGNATED: ${successors.map((x) => x.id).join(", ")}`,
     [
       `successor designations: ${successors.length === 0 ? "none" : successors.map((x) => `${x.id} (succeeds ${String(x.predecessor?.id)})`).join(", ")}`,
       probeLine(i.probes.identityReuse),
-      "a successor is derived from a committed evidence bundle meeting the first designation's contract, names its predecessor and its reason, and leaves every earlier file byte-identical",
+      "a successor is a program rebuild: a new subject under the first designation's procedure, field for field, on a designated verifier; it names its predecessor and its reason, and leaves every earlier file byte-identical",
+      "its ELF and vkey are what its evidence bundle reports until the canonical-build workflow, which compares with the latest designation, rebuilds that subject on two runners",
+      "a new SP1 verifier cannot be designated by this tooling (it needs a trust-target derivation as SP1-TD1's): recovery from a halt for a verifier defect waits for that lane",
     ],
   );
 
@@ -952,8 +963,10 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
   const stop: Record<(typeof STOP_CONDITION_IDS)[number], [boolean, string]> = {
     CANONICAL_BUILD_DOES_NOT_REPRODUCE: [i.canonical.oneHost !== "REPRODUCED", `rebuild: ${i.canonical.oneHost}`],
     ONE_ELF_CONFLICTING_VKEYS: [
-      i.canonical.conflictingVkeys > 0 || i.designations.some((x) => x.vkeyRecomputed.conflicting !== 0),
-      `conflicting vkeys for a designated ELF: ${i.canonical.conflictingVkeys} in the rebuild evidence`,
+      i.canonical.conflictingVkeys > 0 ||
+        i.designations.some((x) => x.vkeyRecomputed.conflicting !== 0) ||
+        i.designationErrors.some((e) => e.includes("PROGRAM_IDENTITY_CONTRADICTION")),
+      `conflicting vkeys for a designated ELF: ${i.canonical.conflictingVkeys} in the rebuild evidence; across the designations: ${i.designationErrors.filter((e) => e.includes("PROGRAM_IDENTITY_CONTRADICTION")).length}`,
     ],
     CHAINS_DISAGREE_ON_RUNTIME_IDENTITY: [
       i.chainExecution.codes.length !== 1 || s.SP1_VERIFIER_RUNTIME_HASH.value === "INCONSISTENT",
@@ -1187,6 +1200,13 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
       twoHost: canonicalBuildVerdict(canonObs, canonDesignation, { minimumHosts: 2 }),
       hosts: canonObs.builds.map((b) => b.hostId),
       conflictingVkeys,
+      lockUnchangedOn: canonObs.builds
+        .filter(
+          (b) =>
+            b.guestLockBefore === canonDesignation.subject.guestCargoLockSha256 &&
+            b.guestLockAfter === canonDesignation.subject.guestCargoLockSha256,
+        )
+        .map((b) => b.hostId),
     },
     proving: {
       status: provingErrors.length === 0 ? provingAvailabilityFromRepo(repoRoot).status : null,

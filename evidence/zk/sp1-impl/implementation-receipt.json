@@ -64,7 +64,8 @@
         "generated from SP1-TD1's evidence, regenerating byte for byte, with the zkvm subject at HEAD the designated one: yes",
         "subject guest tree f61fdc6c8785df742857574c5dbf47aa62283c49, host tree 30f72596c430974bf8113892bf41c26dce3629f3, guest lockfile 87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
         "procedure vendor-image-host-flow: ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
-        "ELF sha256 2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a (206504 bytes) → PROGRAM_VKEY 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc, recomputed outside the build by cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z) (3 agreeing, 0 conflicting) on developer-workstation and github-hosted-runner",
+        "ELF sha256 2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a (206504 bytes) → PROGRAM_VKEY 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc, built and reproduced on developer-workstation and github-hosted-runner; recomputed from the ELF outside the build containers by cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z): 3 agreeing results of 1 computation(s), 0 conflicting",
+        "its guest lock policy (UNCHANGED_BY_THE_BUILD) is the frozen procedure's: SP1-TD1's hosts hashed the lockfile before their builds only; this lane's rebuild measured it after (CANONICAL_BUILD_STATUS)",
         "identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 = keccak256(abi.encode(verifier runtime code hash, PROGRAM_VKEY)); soundness: NOT_ESTABLISHED_BY_DESIGNATION"
       ],
       "verifiedBy": [
@@ -87,7 +88,8 @@
       "basis": [
         "the frozen subject rebuilt by the canonical procedure on developer-workstation, compared with designation mldsa65-withdrawal-d1: REPRODUCED",
         "the release rebuild needs two hosts: the committed evidence gives INSUFFICIENT_HOSTS; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone and fails on any drift",
-        "one ELF with another vkey, in a build or the outside recompute: 0"
+        "one ELF with another vkey, in a build or the outside recompute: 0",
+        "the guest lockfile was the subject's before and after the build on: developer-workstation"
       ],
       "verifiedBy": [
         {
@@ -101,11 +103,13 @@
       ]
     },
     "SUCCESSOR_DESIGNATION_STATUS": {
-      "value": "SUCCESSOR_PATH_READY_NONE_DESIGNATED",
+      "value": "PROGRAM_REBUILD_SUCCESSORS_ONLY_NONE_DESIGNATED",
       "basis": [
         "successor designations: none",
         "probe: designation mldsa65-withdrawal-d2: mldsa65-withdrawal-d1's verifier code and PROGRAM_VKEY at another address: positive control accepted yes; refused yes (designation mldsa65-withdrawal-d2: identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 is already designated by mldsa65-withdrawal-d1)",
-        "a successor is derived from a committed evidence bundle meeting the first designation's contract, names its predecessor and its reason, and leaves every earlier file byte-identical"
+        "a successor is a program rebuild: a new subject under the first designation's procedure, field for field, on a designated verifier; it names its predecessor and its reason, and leaves every earlier file byte-identical",
+        "its ELF and vkey are what its evidence bundle reports until the canonical-build workflow, which compares with the latest designation, rebuilds that subject on two runners",
+        "a new SP1 verifier cannot be designated by this tooling (it needs a trust-target derivation as SP1-TD1's): recovery from a halt for a verifier defect waits for that lane"
       ],
       "verifiedBy": [
         {
@@ -355,7 +359,7 @@
       "id": "ONE_ELF_CONFLICTING_VKEYS",
       "condition": "one ELF maps to conflicting vkeys",
       "triggered": false,
-      "basis": "conflicting vkeys for a designated ELF: 0 in the rebuild evidence"
+      "basis": "conflicting vkeys for a designated ELF: 0 in the rebuild evidence; across the designations: 0"
     },
     {
       "id": "CHAINS_DISAGREE_ON_RUNTIME_IDENTITY",

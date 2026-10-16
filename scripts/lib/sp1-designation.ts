@@ -143,6 +143,41 @@ const isHex64 = (x: unknown) => typeof x === "string" && /^[0-9a-f]{64}$/.test(x
 const isTree = (x: unknown) => typeof x === "string" && /^[0-9a-f]{40}$/.test(x);
 const uniq = <T>(xs: T[]) => [...new Set(xs)];
 
+/** A subject as subjects are compared: its two trees, and its source manifest's digest. */
+interface SubjectKey {
+  guest: unknown;
+  host: unknown;
+  manifest: unknown;
+}
+const subjectKey = (s: ProgramDesignation["subject"] | undefined): SubjectKey => ({
+  guest: s?.zkvmGuestTree,
+  host: s?.zkvmHostTree,
+  manifest: s?.sourceManifestSha256,
+});
+/** The same zkvm sources: both trees, or the manifest of the sources on disk. */
+const sameSubject = (a: SubjectKey, b: SubjectKey) =>
+  (typeof a.guest === "string" && a.guest === b.guest && a.host === b.host) ||
+  (typeof a.manifest === "string" && a.manifest === b.manifest);
+/** SP1 pins as releases compare: sorted by crate, values trimmed (key order and padding are not another release). */
+const canonicalPins = (sp1: Record<string, string> | undefined) =>
+  JSON.stringify(
+    Object.entries(sp1 ?? {})
+      .map(([k, v]) => [k.trim(), String(v).trim()])
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+/** JSON with every object's keys sorted, so key order never makes two equal records differ. */
+const canonicalJson = (x: unknown): string =>
+  JSON.stringify(x, (_k, v) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)))
+      : v,
+  );
+
+/** The designation with the highest sequence: the one whose subject CI holds HEAD to. */
+export function latestDesignation(set: readonly ProgramDesignation[]): ProgramDesignation | undefined {
+  return [...set].sort((a, b) => a.sequence - b.sequence).at(-1);
+}
+
 /** The identity the consumers store and compare on chain (VerifierRotationGuard.identityOf). */
 export function identityOf(runtimeCodeKeccak: string, programVKey: string): string {
   return keccak256(abi.encode(["bytes32", "bytes32"], [runtimeCodeKeccak, programVKey]));
@@ -315,15 +350,15 @@ export function deriveSuccessorDesignation(
   }
   if (bundle?.program !== WITHDRAWAL_PROGRAM) problems.push(`the program must be ${WITHDRAWAL_PROGRAM}`);
 
-  // The canonical procedure, as the first designation: another procedure is another decision.
+  // The canonical procedure is the first designation's, field for field (its image pinned by digest, its platform,
+  // manifest, config, entrypoint, driver, SP1 pins, target and guest lock policy): another one is another decision.
   const procedure = bundle?.procedure;
-  if (first && procedure?.id !== first.procedure.id) {
-    problems.push(`the canonical procedure is ${first.procedure.id}; another procedure needs its own decision`);
+  if (first && JSON.stringify(procedure) !== JSON.stringify(first.procedure)) {
+    problems.push(
+      `the procedure must be the first designation's (${first.procedure.id}, ${first.procedure.image}) field for ` +
+        "field: another procedure needs its own decision",
+    );
   }
-  if (!/@sha256:[0-9a-f]{64}$/.test(String(procedure?.image))) {
-    problems.push("the procedure's image must be pinned by digest, never a mutable tag");
-  }
-  if (procedure?.guestLock !== GUEST_LOCK_POLICY) problems.push(`the guest lock policy must be ${GUEST_LOCK_POLICY}`);
 
   // The subject, and every host's build of it.
   const manifest = Array.isArray(bundle?.subject?.sourceManifest) ? bundle.subject.sourceManifest : [];
@@ -332,6 +367,20 @@ export function deriveSuccessorDesignation(
     problems.push(`the subject needs both trees and a manifest that includes ${GUEST_LOCK_PATH}`);
   }
   if (manifest.some((e) => !isHex64(e?.sha256))) problems.push("every subject file needs its sha256");
+  // Under the same procedure an earlier subject builds that designation's ELF: a bundle naming it can only alias that
+  // identity or contradict its measured build, so a successor is a new subject (a program rebuild).
+  const claimed: SubjectKey = {
+    guest: bundle?.subject?.zkvmGuestTree,
+    host: bundle?.subject?.zkvmHostTree,
+    manifest: sourceManifestDigest(manifest),
+  };
+  const earlier = set.find((d) => sameSubject(subjectKey(d.subject), claimed));
+  if (earlier) {
+    problems.push(
+      `the subject is ${earlier.id}'s: under the same procedure it builds ${earlier.id}'s ELF, so a successor needs a ` +
+        "new subject (a program rebuild)",
+    );
+  }
   const builds = Array.isArray(bundle?.builds) ? bundle.builds : [];
   if (builds.length < 2 || uniq(builds.map((b) => b?.hostId)).length !== builds.length) {
     problems.push("the ELF and vkey must be reproduced on two hosts, each once");
@@ -353,7 +402,10 @@ export function deriveSuccessorDesignation(
     problems.push("the withdrawal ELF needs its sha256 and size, and its vkey a 32-byte word");
   }
 
-  // The vkey, recomputed from the ELF outside every build.
+  // The vkey, recomputed from the ELF outside every build, by a tool named by its digest.
+  if (!isHex64(bundle?.vkeyRecompute?.toolSha256)) {
+    problems.push("the outside recompute must name its tool's sha256 (the binary that recomputed the vkey)");
+  }
   const results = (bundle?.vkeyRecompute?.results ?? []).filter(
     (r) => r?.program === WITHDRAWAL_PROGRAM && r.elfSha256 === w?.elfSha256,
   );
@@ -370,7 +422,10 @@ export function deriveSuccessorDesignation(
     else verifier = clone(reference.verifier);
   } else if (v && isWord(v.runtimeCodeKeccak)) {
     verifier = clone(v) as unknown as ProgramDesignation["verifier"];
-    problems.push("a new SP1 verifier needs its own per-chain execution evidence before it can be designated");
+    problems.push(
+      "a new SP1 verifier cannot be designated by this tooling: it needs its own trust-target derivation, as SP1-TD1's " +
+        "for v6.1.0 (a real proof on it, its CREATE2-authenticated initcode, per-chain execution evidence)",
+    );
   } else {
     problems.push("the bundle names no SP1 verifier");
   }
@@ -421,7 +476,13 @@ export function deriveSuccessorDesignation(
     procedure: clone(procedure),
     elf: { sha256: w.elfSha256, bytes: w.elfBytes },
     programVKey: w.vkey,
-    vkeyRecomputed: { tool: bundle.vkeyRecompute.tool, agreeing, conflicting: 0, distinctComputations: 1 },
+    // One bundle carries one recompute (one tool, one run): its results agree, or the bundle was refused above.
+    vkeyRecomputed: {
+      tool: bundle.vkeyRecompute.tool,
+      agreeing,
+      conflicting: results.length - agreeing,
+      distinctComputations: 1,
+    },
     hosts: builds.map((b) => b.hostId).sort(),
     verifier,
     identity,
@@ -528,13 +589,13 @@ export function designationSetErrors(set: readonly ProgramDesignation[]): string
     if (prior !== undefined) errors.push(`${at}: identity ${d.identity} is already designated by ${prior}`);
     else identities.set(d?.identity, d?.id);
   });
-  // One ELF built with the same SP1 release can have one vkey only.
+  // One ELF built with the same SP1 release can have one vkey only, however the release's pins are spelled.
   for (const a of set) {
     for (const b of set) {
       if (
         a !== b &&
         a.elf?.sha256 === b.elf?.sha256 &&
-        JSON.stringify(a.procedure?.sp1) === JSON.stringify(b.procedure?.sp1)
+        canonicalPins(a.procedure?.sp1) === canonicalPins(b.procedure?.sp1)
       ) {
         if (a.programVKey !== b.programVKey && a.sequence < b.sequence) {
           errors.push(`designations ${a.id} and ${b.id}: one ELF maps to two vkeys (PROGRAM_IDENTITY_CONTRADICTION)`);
@@ -542,6 +603,19 @@ export function designationSetErrors(set: readonly ProgramDesignation[]): string
       }
     }
   }
+  // One subject under one procedure is one build: designating it twice can only alias or contradict.
+  set.forEach((a, i) => {
+    for (const b of set.slice(i + 1)) {
+      if (
+        sameSubject(subjectKey(a.subject), subjectKey(b.subject)) &&
+        canonicalJson(a.procedure) === canonicalJson(b.procedure)
+      ) {
+        errors.push(
+          `designations ${a.id} and ${b.id} share a subject under one procedure: one build, two designations`,
+        );
+      }
+    }
+  });
   return errors;
 }
 
