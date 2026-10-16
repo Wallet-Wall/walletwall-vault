@@ -79,6 +79,25 @@ jobs:
           # release builds or proves correctly (see docs/ZK_Prover_Runbook.md).
           npm run validate:sp1-pin-parity
 
+      - name: Validate SP1 wrapper builds, designations, registry and proving availability (deterministic; no network)
+        run: |
+          set -euo pipefail
+          # The compiled ZKMLDSAVerifier must be the latest recorded wrapper build; every designation must regenerate
+          # from its evidence; the zkvm subject at HEAD and on disk must be the latest designation's (the stale-vkey
+          # tripwire: a guest, host or lockfile change needs a new designation); the wrapper's pinned SP1 verifier must
+          # be a designation's; the registry's facts must match the recorded builds and designations; and the
+          # registry, designations, evidence bundles and wrapper builds must only ever have been appended to, proved
+          # by walking every commit's parents (this job checks out with fetch-depth 0; a shallow clone fails closed).
+          # Proving availability (TD1-N9) must be what its observation derives, for the zkvm/host lockfile at HEAD
+          # (a host lockfile change needs a re-measurement), and the implementation receipt must be exactly what all of
+          # the above, the compiled wrapper's AST and the lane's probes derive. The expensive two-host rebuild is
+          # .github/workflows/sp1-canonical-build.yml.
+          npm run validate:sp1-wrapper-build
+          npm run validate:sp1-designation
+          npm run validate:sp1-registry
+          npm run validate:sp1-proving-availability
+          npm run validate:sp1-impl-receipt
+
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
 
@@ -224,8 +243,8 @@ jobs:
           rustup toolchain install stable --profile minimal
           rustup default stable
 
-      - name: Compile guest
-        run: cargo check --manifest-path zkvm/guest/Cargo.toml
+      - name: Compile guest (locked; a stale guest lockfile fails here, never re-resolves)
+        run: cargo check --locked --manifest-path zkvm/guest/Cargo.toml
 
   zkvm-relation-tests:
     name: Native guest relation tests (no SP1 toolchain)

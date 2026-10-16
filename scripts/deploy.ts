@@ -1,5 +1,6 @@
 import { network } from "hardhat";
 
+import { assertPublishedSp1Records } from "./lib/sp1-published-records";
 import { checkDeploymentBinding } from "./lib/verifier-binding";
 
 const ALLOWED_NETWORKS = new Set(["default", "hardhat", "localhost", "sepolia", "base-sepolia"]);
@@ -67,6 +68,10 @@ async function main() {
         `points at the correct ${connection.networkName} endpoint.`,
     );
   }
+
+  // Off a local chain the gate reads only the published SP1 records, fetched now from the canonical repository
+  // (scripts/lib/sp1-published-records.ts), and nothing is sent before they are checked.
+  assertPublishedSp1Records(liveChainId);
 
   console.warn(
     "\n⚠️  Prototype only. Not audited. Do not use real funds. " +

@@ -1,0 +1,203 @@
+{
+  "schema": "walletwall.sp1-program-designation.v1",
+  "id": "mldsa65-withdrawal-d1",
+  "sequence": 1,
+  "program": "mldsa65-withdrawal",
+  "predecessor": null,
+  "succession": null,
+  "subject": {
+    "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+    "sourceManifestSha256": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+    "guestCargoLockSha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48"
+  },
+  "procedure": {
+    "id": "vendor-image-host-flow",
+    "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+    "platform": "linux/amd64",
+    "linuxAmd64Manifest": "sha256:7c1c8201de6f63e3f1fb9075bd9a67a4c5fc8c2d546d11a5ff71587bb51e6eb3",
+    "config": "sha256:aedac539617deeb11fb7fbac9270de9f8d0b021214eab05db672b2f0b181f796",
+    "entrypoint": {
+      "path": "evidence/zk/sp1-td1/canonical-procedure/host-build-in-container.sh",
+      "sha256": "dd0384751156b5e61d59c166ff09a80b3abdfcab576080b9f7be3603ac520f2d"
+    },
+    "driver": {
+      "path": "evidence/zk/sp1-td1/canonical-procedure/observe.sh",
+      "sha256": "cf650fd0b4890751f65ea43260c15cf68c5ce8a99ea9faf4723a62050d7252b1"
+    },
+    "sp1": {
+      "sp1-zkvm": "=6.3.1",
+      "sp1-sdk": "=6.3.1",
+      "sp1-build": "=6.3.1",
+      "circuitVersion": "v6.1.0"
+    },
+    "target": "riscv64im-succinct-zkvm-elf",
+    "guestLock": "UNCHANGED_BY_THE_BUILD"
+  },
+  "elf": {
+    "sha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+    "bytes": 206504
+  },
+  "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+  "vkeyRecomputed": {
+    "tool": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z)",
+    "agreeing": 3,
+    "conflicting": 0,
+    "distinctComputations": 1
+  },
+  "hosts": [
+    "developer-workstation",
+    "github-hosted-runner"
+  ],
+  "verifier": {
+    "version": "v6.1.0",
+    "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+    "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+    "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+    "vkRoot": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+    "create2": {
+      "deploymentTx": "0xa2270e27bccef81cf20602e8566e6fc6d5d49fddc63a7bb16fe53c280043cc3d",
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000009",
+      "initcodeKeccak": "0x2b4eb4fe475628cdaffe6c75b27664ae7da9e55131fc82d7590eb668df6bc8c3",
+      "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+      "authenticated": true
+    },
+    "measuredChains": [
+      {
+        "chainId": "1",
+        "block": 26197902,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      },
+      {
+        "chainId": "8453",
+        "block": 52638886,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11920409,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      },
+      {
+        "chainId": "84532",
+        "block": 48149325,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      }
+    ],
+    "chainExecution": [
+      {
+        "chainId": "1",
+        "block": 26198573,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "8453",
+        "block": 52642929,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11921074,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "84532",
+        "block": 48153351,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      }
+    ],
+    "chainCallsBound": true,
+    "canaryHasPositiveControl": true,
+    "realProofOnPinnedKey": {
+      "transaction": "0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4",
+      "programVKey": "0x006cd47fd23937a6d247696cace28c22d2c6a8280447e6ac45a3571de232d6e3"
+    }
+  },
+  "identity": "0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8",
+  "evidence": {
+    "kind": "SP1-TD1 decision evidence",
+    "decisionInputsDigest": "e641ea7ab549db211691f9ddc6cb4ccb8136b42eb0e1f37e810f3ec3ec818919",
+    "files": [
+      {
+        "path": "evidence/zk/sp1-p1/observations/program-identity.raw.json",
+        "sha256": "19fe2cec6fbd5bc3edda5db0943e9101dd9a41d8ae32646a43d8fabb63e853dc"
+      },
+      {
+        "path": "evidence/zk/sp1-p1/observations/verifier-gateway.raw.json",
+        "sha256": "b23c37c8c3c3c2733a21ae26fad4fb305580f7dde823c0070970e00e70dfc5cf"
+      },
+      {
+        "path": "evidence/zk/sp1-p1/stop-receipt.json",
+        "sha256": "736de05c80062190def543de267630e7c36ed04fba383d3620c782bfd47ec124"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/host-build-in-container.sh",
+        "sha256": "dd0384751156b5e61d59c166ff09a80b3abdfcab576080b9f7be3603ac520f2d"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/observe.sh",
+        "sha256": "cf650fd0b4890751f65ea43260c15cf68c5ce8a99ea9faf4723a62050d7252b1"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/workstation-driver-envB-run.sh",
+        "sha256": "3c46287adadca8ee87f80dad85ea17530c555248ffc100e10763baec00d39e63"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/measurement/00-preregistration.txt",
+        "sha256": "3e6860c71e291e53102d0a33a637655aac714b56fcdc1c1977aee09fa309725f"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/measurement/remap-build.sh",
+        "sha256": "b0543ff370b21aa4bfd434623abffb56473fc6c757c4c45d436453c2741f088b"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
+        "sha256": "8f582dc268e754e61df15a956c79a891d9654a6f99aa393716d25e2f1a990e3a"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
+        "sha256": "5db307e574f5f1a86214cfc2de9b5627e9e048cb8f716e961fa370a40c153275"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/deployment-bytecode.raw.json",
+        "sha256": "79ea2bac9ac8311578e8c0644c658db9309cf5f7068bd075eff5737ff723fce1"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
+        "sha256": "451e0720d4ba92eb72b4e9037bad8adbabb68a91878ff44b46a4809dfb958832"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/mainnet-v610-proof.raw.json",
+        "sha256": "f14b76e39c29c6d053d7b3a29769ebe9d1ad12b8e30c33f993b2014ce5690601"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/route-timeline.raw.json",
+        "sha256": "cae924531b2cad09bfef44ba27c42fddf250e34466afad8b78656b440685857e"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/upstream-proof-fixture.raw.json",
+        "sha256": "4f7cd9ea2e1215710651c24e9f396f8905338f9edd0a2f0255a12a8f3e5b5118"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/vendor-image.raw.json",
+        "sha256": "0758d47141036a3a34ee4c710455c056da037b30695a51a9f2788f58fe9e5103"
+      }
+    ]
+  },
+  "soundness": "NOT_ESTABLISHED_BY_DESIGNATION",
+  "doNotPin": [
+    {
+      "program": "mldsa65-acvp",
+      "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+      "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+    }
+  ]
+}

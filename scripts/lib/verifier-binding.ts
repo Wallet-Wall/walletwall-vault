@@ -1,6 +1,7 @@
 /**
  * SP1-TD2 binding gate: which PQ verifier the deployment and rotation tooling lets a WalletWall consumer be bound
- * to (docs/SP1_TD2_Verifier_Halt_And_Multisig_Rotation.md).
+ * to (docs/SP1_TD2_Verifier_Halt_And_Multisig_Rotation.md; extended by the SP1 implementation lane,
+ * docs/SP1_Implementation_Pin_Designation_Registry.md).
  *
  * Two jobs, both process rather than chain:
  *
@@ -11,40 +12,61 @@
  *      so the TD2 record admits it and it is held to every rule below, like the others. A consumer inside the
  *      scope, if it is on the SP1 path at all, must verify through a haltable wrapper, or the halt would not reach
  *      it (a bypass, not a scope choice).
- *   2. Recovery-target gating (TD1-N12). A target on the SP1 path must be a ZKMLDSAVerifier compiled from this
- *      tree (its runtime code, immutables masked and metadata excluded, is the artifact's), ACTIVE, not haltable by
- *      the signer, and of no identity that is halted — at this consumer (its stored and recorded identities) or at
- *      any wrapper in the WalletWall wrapper registry for the chain, whose state is read live. On any chain where
- *      the local override does not apply it must also be registered, be the only ACTIVE registered wrapper of its
- *      identity (so one halt call reaches every consumer), and match a designation: SP1-TD1's (the SP1 verifier's
- *      runtime code hash per chain and PROGRAM_VKEY) or a successor designation the caller supplies.
+ *   2. Recovery-target gating (TD1-N12). A target on the SP1 path must be a ZKMLDSAVerifier of a recorded wrapper
+ *      build (its runtime is that build's template outside the immutable slots, metadata included), ACTIVE, not
+ *      haltable by the signer, and of no identity that is halted — at this consumer (its stored and recorded
+ *      identities), at any wrapper in the WalletWall registry for the chain (state read live), or anywhere the
+ *      registry records a halt of it, on ANY chain. On any chain where the local override does not apply it must
+ *      also be registered, be the only ACTIVE registered wrapper of its identity (so one halt call reaches every
+ *      consumer), match a designation (evidence/zk/sp1/designations/: the first, or a successor), and, off a local
+ *      chain, its SP1 verifier must run the very code its build pins (a wrapper whose constructor pin was bypassed
+ *      is never bound).
+ *
+ * The registry (evidence/zk/sp1-td2/wrapper-registry.json, a v2 fact log) must agree with the chain: a registered
+ * wrapper must run the build its registration records (R2-3: judged against its own build, never today's), a halt
+ * the registry records but the chain does not show refuses (one of them is wrong), and a halt the chain shows but the
+ * registry does not record refuses until it is published, because the registry is how every other chain learns of it.
  *
  * Every measurement fails closed: a call the RPC did not answer stops the gate (only the chain's own answer — a
  * revert, running out of gas, a short return — reads as "no answer", as on chain), and a genuine wrapper that
- * cannot be measured completely is refused.
+ * cannot be measured completely is refused. The gate checks the registry's own rules; its cross-references to the
+ * builds and designations, and its append-only history, are checked by CI and by the deployment tooling.
  *
- * The scope is SP1-TD1's with the admissions the TD2 record holds; SP1-TD1's designation is read from its decision
- * receipt; the registry from
- * evidence/zk/sp1-td2/wrapper-registry.json. A successor designation is produced by the designation process of
- * the frozen implementation lane; until one exists the gate can admit no recovery from a halt of the designated
- * identity on a chain without the local override, and says so. The chain enforces part of (2) on its own
- * (contracts/verifiers/VerifierRotationGuard.sol); an owner who skips this tooling can still install any
- * code-bearing verifier after the delay. That is the authorization cut the TD2 doc reports.
+ * The chain enforces part of (2) on its own (contracts/verifiers/VerifierRotationGuard.sol); an owner who skips this
+ * tooling can still install any code-bearing verifier after the delay. That is the authorization cut the TD2 doc
+ * reports.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { AbiCoder, getAddress, id, isAddress, isHexString, keccak256, type Provider } from "ethers";
+import { AbiCoder, getAddress, id, keccak256, type Provider } from "ethers";
 
-import { decodeSolcMetadataBoundary } from "./reproducibility-evidence";
+import { isExecutionFailure } from "./rpc-answer";
+import { readDesignations as readProgramDesignations } from "./sp1-designation";
+import {
+  REGISTRY_REL,
+  REGISTRY_SCHEMA,
+  readRegistry,
+  registryShapeErrors,
+  registryState,
+  type RegistryDoc,
+} from "./sp1-registry";
 import { TD2_RECORD_REL, admittedConsumers, effectiveHaltScope } from "./sp1-td2-record";
+import {
+  WRAPPER_ARTIFACT_REL as BUILD_ARTIFACT_REL,
+  buildMatching,
+  readWrapperBuilds,
+  type WrapperBuild,
+} from "./sp1-wrapper-build";
+
+export { isExecutionFailure } from "./rpc-answer";
 
 export const TD1_RECEIPT_REL = "evidence/zk/sp1-td1/decision-receipt.json";
-export const WRAPPER_REGISTRY_REL = "evidence/zk/sp1-td2/wrapper-registry.json";
-export const WRAPPER_REGISTRY_SCHEMA = "walletwall.sp1-wrapper-registry.v1";
-export const WRAPPER_ARTIFACT_REL = "artifacts/contracts/verifiers/ZKMLDSAVerifier.sol/ZKMLDSAVerifier.json";
+export const WRAPPER_REGISTRY_REL = REGISTRY_REL;
+export const WRAPPER_REGISTRY_SCHEMA = REGISTRY_SCHEMA;
+export const WRAPPER_ARTIFACT_REL = BUILD_ARTIFACT_REL;
 export const ZK_ALGORITHM_ID = id("ZK-ML-DSA-65");
 /** Chains where a mock SP1 verifier may stand in (with an explicit flag), and nowhere else. */
 export const LOCAL_CHAIN_IDS = [31337n, 1337n] as const;
@@ -78,18 +100,16 @@ export interface Designation {
   programVKey: string;
 }
 
-/** The compiled wrapper a target's runtime code must be: deployed bytecode and its immutables' positions. */
-export interface WrapperArtifact {
-  deployedBytecode: string;
-  immutableReferences: Record<string, { start: number; length: number }[]>;
-}
-
 /** What a verifier is, measured from the chain (never from what an operator says it is). */
 export interface VerifierProfile {
   address: string;
   hasCode: boolean;
-  /** Its runtime code is the ZKMLDSAVerifier artifact's, immutables masked and metadata excluded. */
+  /** Its runtime code is a recorded ZKMLDSAVerifier build's (wrapperBuild names it). */
   genuineWrapper: boolean;
+  /** The recorded wrapper build its runtime matches (evidence/zk/sp1/wrapper-builds/), or null. */
+  wrapperBuild: string | null;
+  /** The SP1 verifier runtime code hash that build pins (its SP1_VERIFIER_CODEHASH), or null. */
+  pinnedSp1VerifierCodehash: string | null;
   algorithmId: string | null;
   sp1Verifier: string | null;
   sp1VerifierCodeKeccak: string | null;
@@ -118,6 +138,8 @@ export interface BindingRequest {
   designations: Designation[];
   /** Every WalletWall wrapper registered for this chain, profiled live. */
   registered: VerifierProfile[];
+  /** The WalletWall registry's facts, every chain's: registrations, their builds, and the recorded halts. */
+  registry: RegistryDoc;
 }
 
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
@@ -125,7 +147,7 @@ const ZERO_WORD = `0x${"0".repeat(64)}`;
 const abi = AbiCoder.defaultAbiCoder();
 
 // ---------------------------------------------------------------------------------------------------------
-// Inputs: the SP1-TD1 receipt, the wrapper registry, the compiled wrapper
+// Inputs: the SP1-TD1 receipt (scope), the designations, the wrapper registry, the recorded builds
 // ---------------------------------------------------------------------------------------------------------
 
 function td1Receipt(repoRoot: string): any {
@@ -145,44 +167,23 @@ export function readHaltScope(repoRoot = "."): HaltScope {
   return effectiveHaltScope(scope, admitted);
 }
 
-/** SP1-TD1's designation: the trust target's runtime code hash (and per chain) and the program's PROGRAM_VKEY. */
+/**
+ * The designations (evidence/zk/sp1/designations/, generated from evidence): each one's SP1 verifier runtime code
+ * hash (and per measured chain) and PROGRAM_VKEY. The first is SP1-TD1's; successors follow.
+ */
 export function readDesignations(repoRoot = "."): Designation[] {
-  const r = td1Receipt(repoRoot);
-  return [
-    {
-      source: "SP1-TD1 decision receipt",
-      sp1VerifierCodeKeccak: r.trustTarget.codeKeccak,
-      sp1VerifierCodeKeccakByChain: Object.fromEntries(
-        r.trustTarget.chains.map((c: { chainId: string; codeKeccak: string }) => [c.chainId, c.codeKeccak]),
-      ),
-      programVKey: r.decisions.PROGRAM_VKEY_DESIGNATION.vkey,
-    },
-  ];
+  return readProgramDesignations(repoRoot).map((d) => ({
+    source: d.id,
+    sp1VerifierCodeKeccak: d.verifier.runtimeCodeKeccak,
+    sp1VerifierCodeKeccakByChain: Object.fromEntries(d.verifier.measuredChains.map((c) => [c.chainId, c.codeKeccak])),
+    programVKey: d.programVKey,
+  }));
 }
 
-/** Problems with a wrapper registry document; empty means well formed. */
+/** Problems with a wrapper registry document by its own rules; empty means well formed. */
 export function wrapperRegistryErrors(value: unknown): string[] {
-  const errors: string[] = [];
-  const r = value as { schema?: unknown; entries?: unknown } | null;
-  if (r === null || typeof r !== "object") return ["the wrapper registry is not an object"];
-  if (r.schema !== WRAPPER_REGISTRY_SCHEMA)
-    errors.push(`the wrapper registry's schema must be ${WRAPPER_REGISTRY_SCHEMA}`);
-  if (!Array.isArray(r.entries)) return [...errors, "the wrapper registry's entries must be a list"];
-  const seen = new Set<string>();
-  for (const e of r.entries as { chainId?: unknown; address?: unknown }[]) {
-    if (typeof e?.chainId !== "string" || !/^[1-9][0-9]*$/.test(e.chainId)) {
-      errors.push(`registry entry ${JSON.stringify(e)}: chainId must be a decimal string`);
-      continue;
-    }
-    if (typeof e.address !== "string" || !isAddress(e.address)) {
-      errors.push(`registry entry ${JSON.stringify(e)}: address must be an address`);
-      continue;
-    }
-    const key = `${e.chainId}:${getAddress(e.address)}`;
-    if (seen.has(key)) errors.push(`registry entry ${key} is listed twice`);
-    seen.add(key);
-  }
-  return errors;
+  if (value === null || typeof value !== "object") return ["the wrapper registry is not an object"];
+  return registryShapeErrors(value as RegistryDoc);
 }
 
 /** The registered WalletWall wrapper addresses for `chainId`; throws on a malformed registry. */
@@ -190,83 +191,21 @@ export function readWrapperRegistry(chainId: bigint, repoRoot = "."): string[] {
   const doc = JSON.parse(readFileSync(resolve(repoRoot, WRAPPER_REGISTRY_REL), "utf8")) as unknown;
   const errors = wrapperRegistryErrors(doc);
   if (errors.length > 0) throw new Error(`malformed ${WRAPPER_REGISTRY_REL}:\n - ${errors.join("\n - ")}`);
-  return (doc as { entries: { chainId: string; address: string }[] }).entries
-    .filter((e) => e.chainId === chainId.toString())
-    .map((e) => getAddress(e.address));
-}
-
-/** The compiled ZKMLDSAVerifier (run `npx hardhat compile` first). */
-export function readWrapperArtifact(repoRoot = "."): WrapperArtifact {
-  const a = JSON.parse(readFileSync(resolve(repoRoot, WRAPPER_ARTIFACT_REL), "utf8"));
-  return { deployedBytecode: a.deployedBytecode, immutableReferences: a.immutableReferences ?? {} };
-}
-
-/**
- * Whether `runtime` is the artifact's runtime code: the same length, the same CBOR metadata boundary, and the
- * same bytes before it once every immutable's position is masked. The metadata (which hashes the source,
- * comments included) is excluded; executable code is not.
- */
-export function matchesWrapperArtifact(runtime: string, artifact: WrapperArtifact): boolean {
-  if (runtime === "0x" || runtime.length !== artifact.deployedBytecode.length) return false;
-  const expected = decodeSolcMetadataBoundary(artifact.deployedBytecode);
-  const actual = decodeSolcMetadataBoundary(runtime);
-  if (!expected.ok || !actual.ok || expected.regionStart !== actual.regionStart) return false;
-  const code = Buffer.from(runtime.slice(2), "hex");
-  const reference = Buffer.from(artifact.deployedBytecode.slice(2), "hex");
-  for (const refs of Object.values(artifact.immutableReferences)) {
-    for (const { start, length } of refs) {
-      code.fill(0, start, start + length);
-      reference.fill(0, start, start + length);
-    }
-  }
-  return code.subarray(0, expected.regionStart).equals(reference.subarray(0, expected.regionStart));
+  return registryState(doc as RegistryDoc).registeredOn(chainId.toString());
 }
 
 // ---------------------------------------------------------------------------------------------------------
 // Measuring a verifier
 // ---------------------------------------------------------------------------------------------------------
 
-const EXECUTION_FAILURE =
-  /revert|out of gas|gas required exceeds|invalid opcode|invalid jump|stack (?:under|over)flow|vm execution error/i;
-
-/** A node's own JSON-RPC error that says the call ran and failed: EIP-1474 code 3, or a server error saying so. */
-function nodeReportsExecutionFailure(error: unknown): boolean {
-  if (error === null || typeof error !== "object") return false;
-  const { code, message } = error as { code?: unknown; message?: unknown };
-  if (code === 3) return true;
-  return (
-    (code === -32000 || code === -32015 || code === -32603) &&
-    typeof message === "string" &&
-    EXECUTION_FAILURE.test(message)
-  );
-}
-
-/**
- * Whether a failed eth_call is the chain's answer — the call ran and reverted or ran out of gas, which the guard
- * reads as "no answer" — rather than the RPC failing to answer (a rate limit, a timeout, a refused connection).
- * EIP-1474 code 3 is a revert; a node reports running out of gas (and some clients a revert without data) as a
- * server error whose message says so. Ethers' own JSON-RPC providers turn every failed eth_call into
- * CALL_EXCEPTION, keeping the node's error in `info.error`: that error decides, and without it only a call that
- * came back with revert data is an answer (the review's R3-1). Anything else is not an answer.
- */
-export function isExecutionFailure(error: unknown): boolean {
-  if (error === null || typeof error !== "object") return false;
-  const e = error as { code?: unknown; info?: { error?: unknown } | null; data?: unknown };
-  if (e.code === "CALL_EXCEPTION") {
-    if (e.info?.error !== undefined) return nodeReportsExecutionFailure(e.info.error);
-    return typeof e.data === "string" && isHexString(e.data);
-  }
-  return nodeReportsExecutionFailure(error);
-}
-
 /**
  * One word from a view function, or null when the call reverts, runs out of gas or returns less than a word (as
  * the guard reads). A call the RPC did not answer throws: read as "no answer" it would drop refusals that nothing
  * on chain backs, such as a registered wrapper's halt (the review's R2-2).
  */
-async function word(provider: Provider, to: string, data: string): Promise<string | null> {
+async function word(provider: Provider, to: string, data: string, blockTag?: number): Promise<string | null> {
   try {
-    const out = await provider.call({ to, data });
+    const out = await provider.call({ to, data, ...(blockTag === undefined ? {} : { blockTag }) });
     return out.length >= 66 ? `0x${out.slice(2, 66)}` : null;
   } catch (error) {
     if (isExecutionFailure(error)) return null;
@@ -284,23 +223,27 @@ const asAddress = (w: string | null) =>
 export async function profileVerifier(
   provider: Provider,
   address: string,
-  artifact: WrapperArtifact = readWrapperArtifact(),
+  builds: readonly WrapperBuild[] = readWrapperBuilds(),
+  blockTag?: number,
 ): Promise<VerifierProfile> {
-  const code = await provider.getCode(address);
-  const sp1Verifier = asAddress(await word(provider, address, selector("SP1_VERIFIER()")));
-  const programVKey = await word(provider, address, selector("PROGRAM_VKEY()"));
-  const haltPrincipal = asAddress(await word(provider, address, selector("HALT_PRINCIPAL()")));
-  const haltedWord = await word(provider, address, selector("halted()"));
+  const code = await provider.getCode(address, blockTag);
+  const sp1Verifier = asAddress(await word(provider, address, selector("SP1_VERIFIER()"), blockTag));
+  const programVKey = await word(provider, address, selector("PROGRAM_VKEY()"), blockTag);
+  const haltPrincipal = asAddress(await word(provider, address, selector("HALT_PRINCIPAL()"), blockTag));
+  const haltedWord = await word(provider, address, selector("halted()"), blockTag);
   let sp1VerifierCodeKeccak: string | null = null;
   if (sp1Verifier !== null) {
-    const sp1Code = await provider.getCode(sp1Verifier);
+    const sp1Code = await provider.getCode(sp1Verifier, blockTag);
     sp1VerifierCodeKeccak = sp1Code === "0x" ? null : keccak256(sp1Code);
   }
+  const build = buildMatching(code, builds);
   return {
     address: getAddress(address),
     hasCode: code !== "0x",
-    genuineWrapper: matchesWrapperArtifact(code, artifact),
-    algorithmId: await word(provider, address, selector("algorithmId()")),
+    genuineWrapper: build !== null,
+    wrapperBuild: build === null ? null : build.id,
+    pinnedSp1VerifierCodehash: build === null ? null : build.pins.sp1VerifierCodehash,
+    algorithmId: await word(provider, address, selector("algorithmId()"), blockTag),
     sp1Verifier,
     sp1VerifierCodeKeccak,
     programVKey,
@@ -379,7 +322,7 @@ export function bindingRefusals(req: BindingRequest): string[] {
   }
   if (!t.genuineWrapper) {
     refusals.push(
-      `${t.address} is not a ZKMLDSAVerifier compiled from this tree: its runtime code is not the artifact's`,
+      `${t.address} is not a ZKMLDSAVerifier compiled from this tree: its runtime code is no recorded wrapper build's`,
     );
   } else if (!measuredCompletely(t)) {
     refusals.push(unmeasured(t, "the target"));
@@ -400,10 +343,50 @@ export function bindingRefusals(req: BindingRequest): string[] {
     refusals.push(unmeasured(req.current, "the current verifier"));
   }
 
+  // The registry for this chain, against the chain: genuine, measurable, the build of record, the same halt state.
+  const chain = req.chainId.toString();
+  const state = registryState(req.registry);
   for (const r of req.registered) {
     if (!r.genuineWrapper)
       refusals.push(`registered wrapper ${r.address} is not a ZKMLDSAVerifier compiled from this tree`);
     else if (!measuredCompletely(r)) refusals.push(unmeasured(r, "registered wrapper"));
+    const fact = state.registration(chain, r.address);
+    // A fact is a measurement: every field it records must still be what the chain reports.
+    if (fact !== undefined) {
+      for (const [field, recorded, live] of [
+        ["identity", fact.identity, r.identity],
+        ["PROGRAM_VKEY", fact.programVKey, r.programVKey],
+        ["SP1 verifier", fact.sp1Verifier?.address, r.sp1Verifier],
+        ["SP1 verifier code", fact.sp1Verifier?.runtimeCodeKeccak, r.sp1VerifierCodeKeccak],
+        ["halt principal", fact.haltPrincipal, r.haltPrincipal],
+      ] as const) {
+        if (recorded !== live) {
+          refusals.push(
+            `registered wrapper ${r.address}: the registry records ${field} ${String(recorded)}, but the chain reports ` +
+              `${String(live)}: the registry or the RPC is wrong; refusing rather than guessing`,
+          );
+        }
+      }
+    }
+    if (fact !== undefined && r.wrapperBuild !== null && fact.wrapperBuild !== r.wrapperBuild) {
+      refusals.push(
+        `registered wrapper ${r.address} runs build ${r.wrapperBuild}, not the build its registration records ` +
+          `(${String(fact.wrapperBuild)})`,
+      );
+    }
+    const recorded = state.recordedHalted(chain, r.address);
+    if (recorded && r.halted === false) {
+      refusals.push(
+        `the registry records ${r.address} HALTED but the chain reports it ACTIVE: the registry or the RPC is wrong; ` +
+          `refusing rather than guessing`,
+      );
+    }
+    if (!recorded && r.halted === true) {
+      refusals.push(
+        `${r.address} is HALTED on chain ${chain} but the registry does not record it: append its WRAPPER_HALTED ` +
+          `fact (the registry is how every other chain learns of a halt) before binding here`,
+      );
+    }
   }
   if (t.identity !== null) {
     if (req.targetIdentityRecordedHalted) {
@@ -416,6 +399,13 @@ export function bindingRefusals(req: BindingRequest): string[] {
       if (r.halted && r.identity === t.identity && r.address !== t.address) {
         refusals.push(`${t.address} has the identity of registered wrapper ${r.address}, which is HALTED`);
       }
+    }
+    // A halt anywhere the registry records it refuses the identity everywhere (the cross-chain residual of SP1-TD2).
+    for (const h of state.haltsOfIdentity(t.identity)) {
+      refusals.push(
+        `${t.address}'s identity ${t.identity} is recorded HALTED in the WalletWall registry (fact #${h.seq}: ` +
+          `${h.address} on chain ${h.chainId}, ${h.reason}): a halted identity is never a binding target, on any chain`,
+      );
     }
   }
 
@@ -445,6 +435,19 @@ export function bindingRefusals(req: BindingRequest): string[] {
         `successor designation from the designation process`,
     );
   }
+  // The pin is a constant of the build, and the constructor checks it; off a local chain the code behind a wrapper
+  // must still be that pinned code, so a deployment that skipped the constructor's check is never bound.
+  if (
+    !local &&
+    t.genuineWrapper &&
+    t.sp1VerifierCodeKeccak !== null &&
+    t.sp1VerifierCodeKeccak !== t.pinnedSp1VerifierCodehash
+  ) {
+    refusals.push(
+      `${t.address}: its SP1 verifier runs code ${t.sp1VerifierCodeKeccak}, not the code its build pins ` +
+        `(${String(t.pinnedSp1VerifierCodehash)}): a wrapper whose constructor pin was bypassed is never bound`,
+    );
+  }
   return refusals;
 }
 
@@ -463,20 +466,27 @@ export function assertBindable(req: BindingRequest): void {
 export interface GateOptions {
   allowMockSp1: boolean;
   repoRoot?: string;
-  /** Designations to accept; SP1-TD1's by default. A successor designation is the designation process's. */
+  /** Designations to accept; the committed ones by default. A successor designation is the designation process's. */
   designations?: Designation[];
-  /** Registered wrapper addresses for this chain; the committed registry by default. */
-  registry?: string[];
+  /** The registry's facts; the committed registry by default. */
+  registry?: RegistryDoc;
 }
 
 async function context(provider: Provider, options: GateOptions) {
   const chainId = (await provider.getNetwork()).chainId;
-  const artifact = readWrapperArtifact(options.repoRoot);
-  const addresses = options.registry ?? readWrapperRegistry(chainId, options.repoRoot);
-  const registered = await Promise.all(addresses.map((a) => profileVerifier(provider, a, artifact)));
+  // Every wrapper the gate reads is read at one block, so no two answers come from different chain states.
+  const blockTag = await provider.getBlockNumber();
+  const builds = readWrapperBuilds(options.repoRoot);
+  const registry = options.registry ?? readRegistry(options.repoRoot ?? ".");
+  const malformed = wrapperRegistryErrors(registry);
+  if (malformed.length > 0) throw new Error(`malformed ${WRAPPER_REGISTRY_REL}:\n - ${malformed.join("\n - ")}`);
+  const addresses = registryState(registry).registeredOn(chainId.toString());
+  const registered = await Promise.all(addresses.map((a) => profileVerifier(provider, a, builds, blockTag)));
   return {
     chainId,
-    artifact,
+    blockTag,
+    builds,
+    registry,
     registered,
     scope: readHaltScope(options.repoRoot),
     designations: options.designations ?? readDesignations(options.repoRoot),
@@ -492,7 +502,7 @@ export async function checkDeploymentBinding(
   options: GateOptions,
 ): Promise<VerifierProfile> {
   const ctx = await context(provider, options);
-  const target = await profileVerifier(provider, verifier, ctx.artifact);
+  const target = await profileVerifier(provider, verifier, ctx.builds, ctx.blockTag);
   assertBindable({
     consumer,
     target,
@@ -505,15 +515,20 @@ export async function checkDeploymentBinding(
     scope: ctx.scope,
     designations: ctx.designations,
     registered: ctx.registered,
+    registry: ctx.registry,
   });
   return target;
 }
 
 /** Identifies a deployed rotating consumer by the EIP-712 domain name it reports; refuses anything else. */
-export async function identifyConsumer(provider: Provider, address: string): Promise<ConsumerName> {
+export async function identifyConsumer(provider: Provider, address: string, blockTag?: number): Promise<ConsumerName> {
   let name: string | undefined;
   try {
-    const out = await provider.call({ to: address, data: selector("eip712Domain()") });
+    const out = await provider.call({
+      to: address,
+      data: selector("eip712Domain()"),
+      ...(blockTag === undefined ? {} : { blockTag }),
+    });
     name = abi.decode(["bytes1", "string", "string", "uint256", "address", "bytes32", "uint256[]"], out)[1] as string;
   } catch {
     name = undefined;
@@ -531,18 +546,20 @@ export async function checkRotationBinding(
   signer: string,
   options: GateOptions,
 ): Promise<{ consumer: ConsumerName; target: VerifierProfile; current: VerifierProfile }> {
-  const consumer = await identifyConsumer(provider, consumerAddress);
-  const currentAddress = asAddress(await word(provider, consumerAddress, selector("pqVerifier()")));
-  if (currentAddress === null) throw new Error(`${consumerAddress} reports no pqVerifier`);
+  // Every read at the gate's one block: the consumer, its verifiers, its identity and its halted-identity record.
   const ctx = await context(provider, options);
-  const current = await profileVerifier(provider, currentAddress, ctx.artifact);
-  const target = await profileVerifier(provider, newVerifier, ctx.artifact);
-  const stored = await word(provider, consumerAddress, selector("pqVerifierIdentity()"));
+  const consumer = await identifyConsumer(provider, consumerAddress, ctx.blockTag);
+  const currentAddress = asAddress(await word(provider, consumerAddress, selector("pqVerifier()"), ctx.blockTag));
+  if (currentAddress === null) throw new Error(`${consumerAddress} reports no pqVerifier`);
+  const current = await profileVerifier(provider, currentAddress, ctx.builds, ctx.blockTag);
+  const target = await profileVerifier(provider, newVerifier, ctx.builds, ctx.blockTag);
+  const stored = await word(provider, consumerAddress, selector("pqVerifierIdentity()"), ctx.blockTag);
   let recorded = false;
   if (target.identity !== null) {
     const out = await provider.call({
       to: consumerAddress,
       data: selector("haltedVerifierIdentities(bytes32)") + target.identity.slice(2),
+      blockTag: ctx.blockTag,
     });
     recorded = BigInt(out) !== 0n;
   }
@@ -558,6 +575,7 @@ export async function checkRotationBinding(
     scope: ctx.scope,
     designations: ctx.designations,
     registered: ctx.registered,
+    registry: ctx.registry,
   });
   return { consumer, target, current };
 }

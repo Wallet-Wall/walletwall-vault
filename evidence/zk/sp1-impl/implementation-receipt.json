@@ -1,0 +1,750 @@
+{
+  "schema": "walletwall.sp1-impl-receipt.v1",
+  "lane": "SP1-IMPL",
+  "verdict": "BUILT_AND_TESTED_AWAITING_OWNER_REVIEW",
+  "baseCommit": "4ffd92cafeff7d4c5b6adc9ba16a58f8ef43defc",
+  "statuses": {
+    "SP1_DIRECT_VERIFIER_PIN": {
+      "value": "CONSTRUCTOR_CODE_HASH_PIN",
+      "basis": [
+        "the compiler's AST: the constructor reverts UndesignatedSP1Verifier unless the target's codehash is SP1_VERIFIER_CODEHASH, and stores that target as SP1_VERIFIER: yes",
+        "SP1_VERIFIER is immutable; verify() calls out only to contract ISP1Verifier.verifyProof and contract ZKMLDSAVerifier.decodeProofPayload, the proof check on SP1_VERIFIER: no gateway, route or selector indirection",
+        "the compiled wrapper is the latest recorded build zkmldsa-verifier-b1: yes; its pin 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd is designation mldsa65-withdrawal-d1's verifier code: yes",
+        "checked once, at construction: SP1-TD1's runtime scan of the pinned verifier found forbidden opcodes [], so its code cannot change after the check"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "refuses in its constructor every target whose runtime is not the pinned code"
+        },
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "accepts the real v6.1.0 bytes at two different addresses and binds each address immutably"
+        },
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "adding an accept-all route, failing to replace v6.1.0's, and freezing it leave the forged withdrawal refused"
+        }
+      ]
+    },
+    "SP1_VERIFIER_RUNTIME_HASH": {
+      "value": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "basis": [
+        "designation mldsa65-withdrawal-d1: 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd (SP1Verifier v6.1.0 at 0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2)",
+        "wrapper build zkmldsa-verifier-b1 pins 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "SP1-TD1's trust target: 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "measured at finalized blocks on chains 1, 8453, 84532, 11155111: 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "records the pinned identity: each constant is SP1-TD1's measurement and what the pinned bytes report"
+        },
+        {
+          "test": "test/Sp1ImplChainExecution.test.ts",
+          "title": "covers every supported deployment chain (and the trust target's mainnets), each through two agreeing providers"
+        }
+      ]
+    },
+    "PROGRAM_IDENTITY_DECISION": {
+      "value": "PINNED_VENDOR_BUILD",
+      "basis": [
+        "SP1-TD1's decision (evidence/zk/sp1-td1/decision-receipt.json, which validates against its evidence: yes)"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplDesignation.test.ts",
+          "title": "binds subject → digest-pinned procedure → lockfile → ELF → vkey → verifier, as SP1-TD1 measured them"
+        }
+      ]
+    },
+    "PROGRAM_VKEY_DESIGNATION": {
+      "value": "mldsa65-withdrawal-d1: 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+      "basis": [
+        "generated from SP1-TD1's evidence, regenerating byte for byte, with the zkvm subject at HEAD the designated one: yes",
+        "subject guest tree f61fdc6c8785df742857574c5dbf47aa62283c49, host tree 30f72596c430974bf8113892bf41c26dce3629f3, guest lockfile 87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
+        "procedure vendor-image-host-flow: ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "ELF sha256 2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a (206504 bytes) → PROGRAM_VKEY 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc, built and reproduced on developer-workstation and github-hosted-runner; recomputed from the ELF outside the build containers by cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z): 3 agreeing results of 1 computation(s), 0 conflicting",
+        "its guest lock policy (UNCHANGED_BY_THE_BUILD) is the frozen procedure's: SP1-TD1's hosts hashed the lockfile before their builds only; this lane's rebuild measured it after (CANONICAL_BUILD_STATUS)",
+        "identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 = keccak256(abi.encode(verifier runtime code hash, PROGRAM_VKEY)); soundness: NOT_ESTABLISHED_BY_DESIGNATION"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplDesignation.test.ts",
+          "title": "the committed first designation is the derivation from SP1-TD1's evidence, byte for byte"
+        },
+        {
+          "test": "test/Sp1ImplDesignation.test.ts",
+          "title": "a hand-edited value in the committed designation is drift, whatever the field"
+        },
+        {
+          "test": "test/Sp1ImplDesignation.test.ts",
+          "title": "the zkvm subject on disk and at HEAD must be the latest designation's (the stale-vkey tripwire)"
+        }
+      ]
+    },
+    "CANONICAL_BUILD_STATUS": {
+      "value": "REPRODUCED",
+      "basis": [
+        "the frozen subject rebuilt by the canonical procedure on developer-workstation, compared with designation mldsa65-withdrawal-d1: REPRODUCED",
+        "the committed observation is what this tree's checker derives from its committed raw records, made with this tree's driver and checker: yes; the records are what the driver wrote on the machine that ran it (self-attested for a local run)",
+        "the release rebuild needs two distinct machines: the committed evidence gives INSUFFICIENT_HOSTS; .github/workflows/sp1-canonical-build.yml rebuilds on two runners, recomputes the vkey on another from the ELFs alone, fails on any drift or incomplete build, and reports the \"SP1 canonical build gate\" (requiring it is the owner's ruleset change)",
+        "one ELF with another vkey, in a completed build or the outside recompute: 0",
+        "the guest lockfile was the subject's before and after the build on: developer-workstation",
+        "only PROGRAM_IDENTITY_DRIFT is the STOP; PROCEDURE_DRIFT, INCOMPLETE (a liveness failure: an absent record) and EVIDENCE_INVALID are no reproduction, and no STOP"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplCanonicalBuild.test.ts",
+          "title": "the committed rebuild of the frozen subject reproduces the designated ELF and vkey, lockfile unchanged"
+        },
+        {
+          "test": "test/Sp1ImplCanonicalBuildWorkflow.test.ts",
+          "title": "fails unless both hosts and the recompute reproduce the designation"
+        }
+      ]
+    },
+    "SUCCESSOR_DESIGNATION_STATUS": {
+      "value": "PROGRAM_REBUILD_SUCCESSORS_ONLY_NONE_DESIGNATED",
+      "basis": [
+        "successor designations: none",
+        "probe: designation mldsa65-withdrawal-d2: mldsa65-withdrawal-d1's verifier code and PROGRAM_VKEY at another address: positive control accepted yes; refused yes (designation mldsa65-withdrawal-d2: identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 is already designated by mldsa65-withdrawal-d1)",
+        "a successor is a program rebuild: a new subject under the first designation's procedure, field for field, on a designated verifier; it names its predecessor and its reason, and leaves every earlier file byte-identical",
+        "its ELF and vkey are what its evidence bundle reports until the canonical-build workflow, which compares with the latest designation, rebuilds that subject on two runners",
+        "a new SP1 verifier cannot be designated by this tooling (it needs a trust-target derivation as SP1-TD1's): recovery from a halt for a verifier defect waits for that lane"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplSuccessorDesignation.test.ts",
+          "title": "a genuinely new identity is designated next, naming its predecessor and why, and earlier files are untouched"
+        },
+        {
+          "test": "test/Sp1ImplSuccessorDesignation.test.ts",
+          "title": "the same verifier code and the same PROGRAM_VKEY are refused: a redeployment of the halted identity"
+        },
+        {
+          "test": "test/Sp1ImplSuccessorDesignation.test.ts",
+          "title": "changing only the verifier's address is the same identity, refused"
+        }
+      ]
+    },
+    "REGISTRY_APPEND_ONLY_STATUS": {
+      "value": "APPEND_ONLY_ON_FULL_HISTORY",
+      "basis": [
+        "every parent edge of every commit reachable from HEAD, and the working tree, only extends evidence/zk/sp1-td2/wrapper-registry.json, the designations, their evidence bundles and the wrapper builds: yes",
+        "a shallow clone cannot show that, and fails closed",
+        "probe: a published halt fact dropped from the registry by a later commit, seen by the history walk: positive control accepted yes; refused yes (evidence/zk/sp1-td2/wrapper-registry.json at commit c378798ba016 (against parent 112cfeb37963): it removed or rewrote a published fact (facts may only be appended))",
+        "a rewrite of main itself is outside any walk: main's ruleset forbids force pushes and deletion with nobody to bypass it, as measured at 2026-10-16T17:42:37.488Z (evidence/zk/sp1-impl/observations/main-ruleset.raw.json): yes; whoever administers the repository can change that, and only the next measurement would show it"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplRegistry.test.ts",
+          "title": "refuses a rewrite made on a side branch and merged, and a merge that resolves by dropping a fact"
+        },
+        {
+          "test": "test/Sp1ImplRegistry.test.ts",
+          "title": "refuses to judge without the full history: a shallow clone fails closed"
+        },
+        {
+          "test": "test/Sp1ImplRegistry.test.ts",
+          "title": "this repository's own history keeps the registry, designations, bundles and builds append-only"
+        }
+      ]
+    },
+    "REGISTRY_BUILD_PROVENANCE_STATUS": {
+      "value": "BUILD_RECORDED_PER_FACT",
+      "basis": [
+        "evidence/zk/sp1-td2/wrapper-registry.json (walletwall.sp1-wrapper-registry.v2) holds 0 fact(s); a registration names the recorded wrapper build it was deployed from, and a wrapper is judged against that build, never today's compile (SP1-TD2 residual R2-3)",
+        "recorded builds: zkmldsa-verifier-b1; the compiled wrapper is the latest: yes"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplBindingGate.test.ts",
+          "title": "a later recorded build leaves an earlier deployment genuine"
+        },
+        {
+          "test": "test/Sp1ImplBindingGate.test.ts",
+          "title": "a registration that records another build than the code runs is refused"
+        },
+        {
+          "test": "test/Sp1ImplWrapperBuild.test.ts",
+          "title": "an old build stays the build of the wrappers deployed from it after the contract changes"
+        }
+      ]
+    },
+    "CROSS_CHAIN_HALTED_IDENTITY_STATUS": {
+      "value": "REPOSITORY_PUBLISHED_HALT_REFUSED_ON_EVERY_CHAIN",
+      "basis": [
+        "probe: mldsa65-withdrawal-d1's identity, halted on chain 11155111, registered at another address on chain 84532: positive control accepted yes; refused yes (registry fact #3: identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 was halted (fact #2 on chain 11155111); a halted identity is never registered again, on any chain)",
+        "probe: a deployment on chain 84532 of mldsa65-withdrawal-d1's identity, halted on chain 11155111: positive control accepted yes; refused yes (no accepted designation for the recorded wrapper build (mldsa65-withdrawal-d1: identity recorded HALTED (fact #2, chain 11155111, VERIFIER_SOUNDNESS)))",
+        "halt facts recorded: 0",
+        "a WRAPPER_HALTED fact, published by pull request, refuses its identity on every chain (registry, deployment plan, binding gate); it can only refuse: no oracle, no on-chain registry, no new principal",
+        "liveness: another chain's tooling learns of a halt only once its fact is published; the halt principal's procedure must halt each chain's wrapper of the identity"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplBindingGate.test.ts",
+          "title": "refused on Sepolia when the registry records its halt on Base Sepolia, though the Sepolia wrapper is ACTIVE"
+        },
+        {
+          "test": "test/Sp1ImplBindingGate.test.ts",
+          "title": "end to end: the deployment entry point refuses it from a registry that records the halt only on another chain"
+        }
+      ]
+    },
+    "PER_CHAIN_EXECUTION_CHECK": {
+      "value": "PASSED",
+      "basis": [
+        "chain 1, finalized block 26205755: real success, tampered revert 0x7fcdd1f4, canary revert 0x7fcdd1f4",
+        "chain 8453, finalized block 52686124: real success, tampered revert 0x7fcdd1f4, canary revert 0x7fcdd1f4",
+        "chain 84532, finalized block 48196557: real success, tampered revert 0x7fcdd1f4, canary revert 0x7fcdd1f4",
+        "chain 11155111, finalized block 11927959: real success, tampered revert 0x7fcdd1f4, canary revert 0x7fcdd1f4",
+        "required (constants of the check): real success, tampered revert 0x7fcdd1f4, canary revert 0x7fcdd1f4; two agreeing providers per chain; the canary's positive control fires"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplChainExecution.test.ts",
+          "title": "the same code whose pairing calls reach an empty account accepts the canary, and fails the check"
+        },
+        {
+          "test": "test/Sp1ImplChainExecution.test.ts",
+          "title": "an RPC that does not answer gives no verdict: the check throws, it never reads a failure as a refusal"
+        },
+        {
+          "test": "test/Sp1ImplDeployTooling.test.ts",
+          "title": "refuses a chain where the same code gives other verdicts (its pairing precompile broken), by execution"
+        }
+      ]
+    },
+    "F1_CHAIN_ID_FIX": {
+      "value": "FULL_WIDTH_WRAPPER_ONLY",
+      "basis": [
+        "conversions of block.chainid to a narrower type in the wrapper: 0",
+        "verify() hands block.chainid itself to _chainIdMatches, which compares uint256(committed) == chainId: yes",
+        "the journal decodes as (bytes32, bytes32, bytes32, uint64, address), at the base 4ffd92cafeff7d4c5b6adc9ba16a58f8ef43defc as (bytes32, bytes32, bytes32, uint64, address)",
+        "the zkvm subject is the designated one, so the guest, the ELF and PROGRAM_VKEY are unchanged: yes",
+        "F-2 stays informational: the journal's signature hash is not checked, and no authorization fact depends on which valid signature was used"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "ids that differ only above bit 63 no longer collide (the truncating rule matched them)"
+        },
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "verify() refuses a proven journal for another chain and accepts this chain's (31337)"
+        },
+        {
+          "test": "test/Sp1ImplVerifierPin.test.ts",
+          "title": "the journal and the authorization are unchanged: 160 bytes with a uint64 tag, and EIP-712 binds the full id"
+        }
+      ]
+    },
+    "TD2_HALT_INVARIANTS_PRESERVED": {
+      "value": "PRESERVED",
+      "basis": [
+        "SP1-TD2's record validates against SP1-TD1 and the repository: yes",
+        "the wrapper's state-changing functions: halt; HALT_PRINCIPAL is immutable",
+        "halted is written once, in halt(), only to true: yes; verify() first returns false when halted: yes",
+        "contract sources changed since the base 4ffd92cafeff7d4c5b6adc9ba16a58f8ef43defc: A contracts/mocks/ChainIdBindingProbe.sol, M contracts/verifiers/ZKMLDSAVerifier.sol (the lane's own: the wrapper and its F-1 probe; no consumer, rotation guard or delay)"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1Td2VerifierHalt.test.ts",
+          "title": "the source writes `halted` in exactly one place, halt(), and only ever to true"
+        },
+        {
+          "test": "test/Sp1Td2VerifierHalt.test.ts",
+          "title": "FAILS_CLOSED_AFTER_HALT_THROUGH_EVERY_CONSUMER_IN_SCOPE: one halt call refuses all three consumers at once"
+        },
+        {
+          "test": "test/Sp1Td2VerifierRotation.test.ts",
+          "title": "the delay and the apply window are the repository's (172,800 s and 14 days, WalletWallVault's constants)"
+        }
+      ]
+    },
+    "MULTISIG_AUTHORIZATION_CLASS_PRESERVED": {
+      "value": "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+      "basis": [
+        "SP1-TD2's authorization cut classifies the multisig vault owner's delayed rotation NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL (the owner accepted it), never authority-neutral",
+        "no contract outside the wrapper changed, so the multisig vault, its 172,800 s rotation and its cut are SP1-TD2's: yes"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1Td2VerifierRotation.test.ts",
+          "title": "the cut, executed: through the full delay the owner CAN install an accept-all verifier, which voids every tenant's PQ factor but not its ECDSA quorum"
+        }
+      ]
+    },
+    "PROVING_AVAILABILITY": {
+      "value": "OWNER_DOWNLOAD_REQUIRED",
+      "basis": [
+        "evidence/zk/sp1-impl/proving-availability.json, derived from evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json: OWNER_DOWNLOAD_REQUIRED",
+        "availability needs a verified WalletWall archive of the circuit artifacts and an exercised self-hosted proving path; upstream hosting them is not availability"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplProvingAvailability.test.ts",
+          "title": "the committed observation and record re-derive, and the status is OWNER_DOWNLOAD_REQUIRED"
+        },
+        {
+          "test": "test/Sp1ImplProvingAvailability.test.ts",
+          "title": "a WalletWall archive record is refused until a lane validates it; a local copy is not availability"
+        }
+      ]
+    },
+    "PRODUCTION_SP1_BINDING_STATUS": {
+      "value": "NOT_ESTABLISHED",
+      "basis": [
+        "prerequisites unmet: CANONICAL_RELEASE_REBUILD_TWO_HOSTS, REGISTERED_ACTIVE_WRAPPER, REAL_WALLETWALL_PROOF, PROVING_AVAILABILITY, OWNER_REVIEW_AND_MERGE",
+        "provenance says which verifier and program these are; it does not say they are sound"
+      ],
+      "verifiedBy": [
+        {
+          "test": "test/Sp1ImplReceipt.test.ts",
+          "title": "PRODUCTION_SP1_BINDING_STATUS is ESTABLISHED only when every prerequisite is met; this lane leaves five unmet"
+        }
+      ]
+    }
+  },
+  "productionBinding": {
+    "status": "NOT_ESTABLISHED",
+    "prerequisites": [
+      {
+        "id": "RECORDS_VALID",
+        "met": true,
+        "reachableInThisLane": true,
+        "basis": "every record validates (TD1, TD2, designations, builds, registry, chain execution, canonical rebuild, proving, ruleset): yes"
+      },
+      {
+        "id": "DIRECT_VERIFIER_PIN",
+        "reachableInThisLane": true,
+        "met": true,
+        "basis": "SP1_DIRECT_VERIFIER_PIN is CONSTRUCTOR_CODE_HASH_PIN"
+      },
+      {
+        "id": "PROGRAM_VKEY_DESIGNATION",
+        "reachableInThisLane": true,
+        "met": true,
+        "basis": "PROGRAM_VKEY_DESIGNATION is mldsa65-withdrawal-d1: 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+      },
+      {
+        "id": "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
+        "reachableInThisLane": true,
+        "met": false,
+        "basis": "the committed rebuild evidence (valid: yes), judged for the release (two distinct machines): INSUFFICIENT_HOSTS; of the latest designation, mldsa65-withdrawal-d1"
+      },
+      {
+        "id": "PER_CHAIN_EXECUTION_CHECK",
+        "reachableInThisLane": true,
+        "met": true,
+        "basis": "PER_CHAIN_EXECUTION_CHECK is PASSED"
+      },
+      {
+        "id": "REGISTERED_ACTIVE_WRAPPER",
+        "reachableInThisLane": true,
+        "met": false,
+        "basis": "registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds"
+      },
+      {
+        "id": "REAL_WALLETWALL_PROOF",
+        "met": false,
+        "reachableInThisLane": false,
+        "basis": "evidence/zk/sp1-real-proof holds no record, and no lane yet validates one: a WalletWall proof of the designated program, generated (the circuit download is the owner's to authorize) and verified by the designated verifier, needs that later lane"
+      },
+      {
+        "id": "PROVING_AVAILABILITY",
+        "met": false,
+        "reachableInThisLane": false,
+        "basis": "PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED: this lane derives only OWNER_DOWNLOAD_REQUIRED or LOCAL_COPY_NOT_ARCHIVED, never availability; a verified WalletWall archive of the circuit artifacts and an exercised proving path need a later lane"
+      },
+      {
+        "id": "OWNER_REVIEW_AND_MERGE",
+        "met": false,
+        "reachableInThisLane": false,
+        "basis": "a receipt cannot attest its own review: the owner reviews and merges after this lane generates it"
+      },
+      {
+        "id": "NO_STOP_TRIGGERED",
+        "met": true,
+        "reachableInThisLane": true,
+        "basis": "STOP conditions triggered: none"
+      }
+    ]
+  },
+  "stopConditions": [
+    {
+      "id": "CANONICAL_BUILD_DOES_NOT_REPRODUCE",
+      "condition": "the canonical build does not reproduce the designated ELF and vkey",
+      "triggered": false,
+      "basis": "rebuild: REPRODUCED (one host), INSUFFICIENT_HOSTS (two)"
+    },
+    {
+      "id": "ONE_ELF_CONFLICTING_VKEYS",
+      "condition": "one ELF maps to conflicting vkeys",
+      "triggered": false,
+      "basis": "conflicting vkeys for a designated ELF: 0 in the rebuild evidence; across the designations: 0"
+    },
+    {
+      "id": "CHAINS_DISAGREE_ON_RUNTIME_IDENTITY",
+      "condition": "supported chains disagree on the SP1 verifier's runtime identity",
+      "triggered": false,
+      "basis": "distinct verifier code hashes across the measured chains: 1"
+    },
+    {
+      "id": "PER_CHAIN_VERDICTS_DIVERGE",
+      "condition": "the per-chain execution verdicts diverge",
+      "triggered": false,
+      "basis": "every chain gives the required verdicts: yes"
+    },
+    {
+      "id": "PIN_BYPASSABLE_VIA_GATEWAY_ROUTING",
+      "condition": "the code-hash pin can be bypassed through gateway routing",
+      "triggered": false,
+      "basis": "the proof check calls only the immutable, constructor-pinned SP1_VERIFIER: yes"
+    },
+    {
+      "id": "PRODUCTION_VALUES_OVERRIDABLE",
+      "condition": "production values can be overridden off a local chain",
+      "triggered": false,
+      "basis": "override probes refused with their controls accepted: 6 of 6"
+    },
+    {
+      "id": "REGISTRY_HISTORY_REWRITABLE_UNDETECTED",
+      "condition": "registry history can be rewritten without detection",
+      "triggered": false,
+      "basis": "probe: a published halt fact dropped from the registry by a later commit, seen by the history walk: positive control accepted yes; refused yes (evidence/zk/sp1-td2/wrapper-registry.json at commit c378798ba016 (against parent 112cfeb37963): it removed or rewrote a published fact (facts may only be appended)); main's history protected by its ruleset: yes (observed 2026-10-16T17:42:37.488Z)"
+    },
+    {
+      "id": "HALTED_IDENTITY_REPUBLISHABLE_BY_ADDRESS_CHANGE",
+      "condition": "a halted identity can be republished by changing an address",
+      "triggered": false,
+      "basis": "identity is keccak256(code hash, PROGRAM_VKEY), address-free; the reuse and halted-identity probes refuse with their controls accepted"
+    },
+    {
+      "id": "CROSS_CHAIN_FIX_NEEDS_NEW_MUTABLE_PRINCIPAL",
+      "condition": "the cross-chain fix needs a new mutable authorization principal",
+      "triggered": false,
+      "basis": "the wrapper's only mutator is halt(), and no contract outside the wrapper changed: the cross-chain refusal is repository-published data"
+    },
+    {
+      "id": "F1_CHANGES_GUEST_ELF_VKEY_OR_PROOF_FORMAT",
+      "condition": "F-1 changes the guest, the ELF, the vkey or the proof format",
+      "triggered": false,
+      "basis": "F1_CHAIN_ID_FIX is FULL_WIDTH_WRAPPER_ONLY; the zkvm subject at HEAD is the designated one: yes (a designation that does not validate otherwise is EVIDENCE_INVALID)"
+    },
+    {
+      "id": "RPC_FAILURE_FAILS_OPEN",
+      "condition": "an RPC failure becomes fail-open",
+      "triggered": false,
+      "basis": "probe: an RPC rate limit (-32005) read as the chain's answer: positive control accepted yes; refused yes (a rate limit is not the chain's answer: no verdict); probe: a finalized-block read that fails (503), taken as a block to observe the facts at: positive control accepted yes; refused yes (server response 503 Service Unavailable); probe: a chain that names no finalized block, taken as a block to observe the facts at: positive control accepted yes; refused yes (the chain gave no finalized block to observe the facts at)"
+    },
+    {
+      "id": "TD2_INVARIANTS_WEAKENED",
+      "condition": "SP1-TD2's invariants are weakened",
+      "triggered": false,
+      "basis": "TD2_HALT_INVARIANTS_PRESERVED is PRESERVED"
+    },
+    {
+      "id": "BYTECODE_EXCEEDS_BUDGET",
+      "condition": "a contract's runtime exceeds its size budget (EIP-170)",
+      "triggered": false,
+      "basis": "every gated contract's runtime is within EIP-170: yes"
+    }
+  ],
+  "authorizationDelta": {
+    "value": "NONE_BEYOND_TD2",
+    "basis": [
+      "the wrapper's only state-changing function is halt(), SP1-TD2's: yes",
+      "no consumer, rotation guard or vault contract changed: yes",
+      "the code-hash pin and F-1 only narrow what verifies; designations, the registry, the deployment plan and the per-chain check are process and liveness, holding no authorization"
+    ]
+  },
+  "realValue": {
+    "blocked": true,
+    "blockers": [
+      "CANONICAL_RELEASE_REBUILD_TWO_HOSTS: the committed rebuild evidence (valid: yes), judged for the release (two distinct machines): INSUFFICIENT_HOSTS; of the latest designation, mldsa65-withdrawal-d1",
+      "REGISTERED_ACTIVE_WRAPPER: registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds",
+      "REAL_WALLETWALL_PROOF: evidence/zk/sp1-real-proof holds no record, and no lane yet validates one: a WalletWall proof of the designated program, generated (the circuit download is the owner's to authorize) and verified by the designated verifier, needs that later lane",
+      "PROVING_AVAILABILITY: PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED: this lane derives only OWNER_DOWNLOAD_REQUIRED or LOCAL_COPY_NOT_ARCHIVED, never availability; a verified WalletWall archive of the circuit artifacts and an exercised proving path need a later lane",
+      "OWNER_REVIEW_AND_MERGE: a receipt cannot attest its own review: the owner reviews and merges after this lane generates it"
+    ]
+  },
+  "soundness": "NOT_ESTABLISHED_BY_PROVENANCE",
+  "probes": {
+    "overrides": [
+      {
+        "probe": "an override of SP1_VERIFIER_ADDRESS (Succinct's gateway) on chain 11155111",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no override exists on chain 11155111: SP1_VERIFIER_ADDRESS is set, but the SP1 verifier and PROGRAM_VKEY come only from a designation"
+      },
+      {
+        "probe": "an override of PROGRAM_VKEY on chain 11155111",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no override exists on chain 11155111: PROGRAM_VKEY is set, but the SP1 verifier and PROGRAM_VKEY come only from a designation"
+      },
+      {
+        "probe": "an override of ALLOW_MOCK_SP1 on chain 11155111",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no override exists on chain 11155111: ALLOW_MOCK_SP1 is local-only"
+      },
+      {
+        "probe": "an override of SP1_VERIFIER_ADDRESS (Succinct's gateway) on chain 84532",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no override exists on chain 84532: SP1_VERIFIER_ADDRESS is set, but the SP1 verifier and PROGRAM_VKEY come only from a designation"
+      },
+      {
+        "probe": "an override of PROGRAM_VKEY on chain 84532",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no override exists on chain 84532: PROGRAM_VKEY is set, but the SP1 verifier and PROGRAM_VKEY come only from a designation"
+      },
+      {
+        "probe": "an override of ALLOW_MOCK_SP1 on chain 84532",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no override exists on chain 84532: ALLOW_MOCK_SP1 is local-only"
+      }
+    ],
+    "haltedIdentity": {
+      "registry": {
+        "probe": "mldsa65-withdrawal-d1's identity, halted on chain 11155111, registered at another address on chain 84532",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "registry fact #3: identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 was halted (fact #2 on chain 11155111); a halted identity is never registered again, on any chain"
+      },
+      "deployPlan": {
+        "probe": "a deployment on chain 84532 of mldsa65-withdrawal-d1's identity, halted on chain 11155111",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "no accepted designation for the recorded wrapper build (mldsa65-withdrawal-d1: identity recorded HALTED (fact #2, chain 11155111, VERIFIER_SOUNDNESS))"
+      }
+    },
+    "identityReuse": {
+      "probe": "designation mldsa65-withdrawal-d2: mldsa65-withdrawal-d1's verifier code and PROGRAM_VKEY at another address",
+      "controlAccepted": true,
+      "attackRefused": true,
+      "refusal": "designation mldsa65-withdrawal-d2: identity 0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8 is already designated by mldsa65-withdrawal-d1"
+    },
+    "rpc": {
+      "probe": "an RPC rate limit (-32005) read as the chain's answer",
+      "controlAccepted": true,
+      "attackRefused": true,
+      "refusal": "a rate limit is not the chain's answer: no verdict"
+    },
+    "registryHistory": {
+      "probe": "a published halt fact dropped from the registry by a later commit, seen by the history walk",
+      "controlAccepted": true,
+      "attackRefused": true,
+      "refusal": "evidence/zk/sp1-td2/wrapper-registry.json at commit c378798ba016 (against parent 112cfeb37963): it removed or rewrote a published fact (facts may only be appended)"
+    },
+    "finality": [
+      {
+        "probe": "a finalized-block read that fails (503), taken as a block to observe the facts at",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "server response 503 Service Unavailable"
+      },
+      {
+        "probe": "a chain that names no finalized block, taken as a block to observe the facts at",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "the chain gave no finalized block to observe the facts at"
+      }
+    ]
+  },
+  "wrapperAst": {
+    "constructorPinsCodehash": true,
+    "immutables": {
+      "SP1_VERIFIER": "immutable",
+      "PROGRAM_VKEY": "immutable",
+      "HALT_PRINCIPAL": "immutable"
+    },
+    "verifyExternalCalls": [
+      "contract ISP1Verifier.verifyProof",
+      "contract ZKMLDSAVerifier.decodeProofPayload"
+    ],
+    "sp1CallTargets": [
+      "SP1_VERIFIER"
+    ],
+    "chainIdNarrowings": 0,
+    "chainIdComparedFullWidth": true,
+    "journalTypes": [
+      "bytes32",
+      "bytes32",
+      "bytes32",
+      "uint64",
+      "address"
+    ],
+    "haltSetsOnlyTrue": true,
+    "verifyChecksHaltFirst": true,
+    "mutatingFunctions": [
+      "halt"
+    ]
+  },
+  "contractsChangedSinceBase": [
+    {
+      "path": "contracts/mocks/ChainIdBindingProbe.sol",
+      "status": "A"
+    },
+    {
+      "path": "contracts/verifiers/ZKMLDSAVerifier.sol",
+      "status": "M"
+    }
+  ],
+  "runtimeSizes": [
+    {
+      "name": "WalletWallVault",
+      "runtimeBytes": 24136,
+      "withinLimit": true
+    },
+    {
+      "name": "StablecoinVaultSimulator",
+      "runtimeBytes": 23732,
+      "withinLimit": true
+    },
+    {
+      "name": "WalletWallMultiSigVault",
+      "runtimeBytes": 10578,
+      "withinLimit": true
+    },
+    {
+      "name": "MockMLDSAVerifier",
+      "runtimeBytes": 569,
+      "withinLimit": true
+    },
+    {
+      "name": "AttestationPQCVerifier",
+      "runtimeBytes": 3289,
+      "withinLimit": true
+    },
+    {
+      "name": "ImmutableAttestationPQCVerifier",
+      "runtimeBytes": 2653,
+      "withinLimit": true
+    },
+    {
+      "name": "ZKMLDSAVerifier",
+      "runtimeBytes": 2708,
+      "withinLimit": true
+    }
+  ],
+  "evidence": [
+    {
+      "path": "evidence/zk/sp1-td1/decision-receipt.json",
+      "sha256": "ec0de76770e7ce19744ff4457618eb9e16b227cdd594b70adec31cd5290b28f3"
+    },
+    {
+      "path": "evidence/zk/sp1-td2/implementation-record.json",
+      "sha256": "af2f0f3021c6f05368507a16f48837aaf99215af6d2cd46a1a1253274545a6dc"
+    },
+    {
+      "path": "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json",
+      "sha256": "8a491628d559a23a38537cd54030df271d2fc18728830d85dd9ffc25117cdb17"
+    },
+    {
+      "path": "evidence/zk/sp1/wrapper-builds/zkmldsa-verifier-b1.json",
+      "sha256": "331428383600f64bd93643bfc9ad261c1e9777603ef3c43f0e27d241747d8e6b"
+    },
+    {
+      "path": "evidence/zk/sp1-td2/wrapper-registry.json",
+      "sha256": "b298a06a40f36e306138ad3ee0aa55dbf505fbae440a6c5f22efc01aafac4a5b"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/chain-execution.raw.json",
+      "sha256": "f8051eb2372d0cc855078ccb4aa65223f8956d993f8035376f08592296b5eb19"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation.raw.json",
+      "sha256": "f537e2bbdd3cedd1a353c32793d13bb5796ab8d286d89f3930731eab894efaeb"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/docker-info.txt",
+      "sha256": "e113ca4215e4fb169970db044dbbb998abd6e93ff5f63423c5e99f52622fd861"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/driver.txt",
+      "sha256": "c75a8b8e6b6bcf186858ec88ba4bc69e6cf4e3d91948841ad7fa3b7a2ab0b338"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host-identity.txt",
+      "sha256": "af4dcec296638fe70fc8b0b5b23367e3ccffe24499251afea9ab3aebf6c49184"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/acvp-vkey.stdout",
+      "sha256": "14acbdcd98442348a115a1cdd1fb5a3f9f4b12ded507fc31a796fe5fa1b6f432"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/elf-sha256.txt",
+      "sha256": "85bfe5a93f8c462d0ce2b22e97d9274def7b74428736681bd4443625c6ca70a2"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/elf-size.txt",
+      "sha256": "2819320e8c9f45859d5199d0aec2876e0fefd6dd92fa655cf56e2a2005262d68"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/env.txt",
+      "sha256": "5bf58941cb3a4b7490e2ec0de0b873c575fb074ee1a0884b97d7a7e5a49e8f24"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/host-bin-sha256.txt",
+      "sha256": "a4482428c32b0c2a3d60d97caaa49ab426b883f51800d6d6fc936998c66be65e"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/lock-after.txt",
+      "sha256": "c40c74800a96302af821884d7a52288a7019f18a63bf0947916ac3f2b6232580"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/lock-before.txt",
+      "sha256": "c40c74800a96302af821884d7a52288a7019f18a63bf0947916ac3f2b6232580"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/run.log",
+      "sha256": "55a5e5095c59528fd483f784f056625dfdcb8e712f056fec0d4868ceb4c7cb1c"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/source-sha256.txt",
+      "sha256": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/vkey.stdout",
+      "sha256": "e694dc48cb7ddecd79c1201e570e791071c607153e7575bdc10622811b213f81"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/image.txt",
+      "sha256": "db575357ca06f546391d85907d82ba5009023160437cc34a5dfa8cce699be0d1"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/src/git-ids.txt",
+      "sha256": "41dc0873f0997f763bd818e18305d5be72e60dbc0048f8132e3f0bad9c9f89aa"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/src/guest-lock-at-head.txt",
+      "sha256": "c40c74800a96302af821884d7a52288a7019f18a63bf0947916ac3f2b6232580"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/vkey-recompute/developer-workstation.txt",
+      "sha256": "c660a3321eea2d51111d6b52d824cb3fbf40911d45be08fcaeca9218e73b9285"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json",
+      "sha256": "8c83e8894bfe53787e411959396506ddb6320a507ac3408394addfe1def84593"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/proving-availability.json",
+      "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/main-ruleset.raw.json",
+      "sha256": "2d9041cbd190a6f83a92e0e5c6f9222ec81ddfaa6fae24ce9da3d9221c55a025"
+    },
+    {
+      "path": "contracts/verifiers/ZKMLDSAVerifier.sol",
+      "sha256": "e5a294c49a58732d86c3b62a38c19cde0b10b3178e32f632aae9c50791a3f106"
+    }
+  ]
+}

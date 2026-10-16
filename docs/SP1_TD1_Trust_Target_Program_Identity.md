@@ -620,6 +620,12 @@ built and tested in TD2 — `TD2-COMMON-VERIFIER-HALT` through every consumer in
 `TD2-MULTISIG-ROTATION` before the halt may reach the multisig vault — and the implementation lane. Closing the
 owner decision unblocks no real value.
 
+> [!NOTE]
+> The implementation lane built this list on 2026-10-16:
+> [SP1_Implementation_Pin_Designation_Registry.md](SP1_Implementation_Pin_Designation_Registry.md) and its generated
+> receipt, `evidence/zk/sp1-impl/implementation-receipt.json`. Proving availability is recorded as
+> `OWNER_DOWNLOAD_REQUIRED`, and no production SP1 binding exists. SP1-TD1's decisions and receipt are unchanged.
+
 ## Reproduce / check
 
 ```bash

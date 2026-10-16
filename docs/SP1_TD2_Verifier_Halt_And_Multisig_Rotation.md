@@ -345,6 +345,16 @@ the admitted consumer left excluded. Every one was killed. The catalog and harne
 >   proving availability (TD1-N9).
 > - `WalletWallVault` grew to 24,136 runtime bytes (440 below EIP-170) and `StablecoinVaultSimulator` to 23,732.
 
+> [!NOTE]
+> **The implementation lane (2026-10-16),
+> [SP1_Implementation_Pin_Designation_Registry.md](SP1_Implementation_Pin_Designation_Registry.md).** The residuals
+> above are TD2's as built; TD2's contracts, record and tests are unchanged. That lane builds everything under "Not in
+> TD2", with proving availability recorded as `OWNER_DOWNLOAD_REQUIRED`, and addresses three residuals: a registry
+> entry now names the wrapper build it was deployed from, and the registry is proved append-only on the full git
+> history (R2-3); a halt the registry records refuses its identity on every chain, as repository-published data
+> rather than a new principal or a cross-chain RPC; and a recovery identity can now be designated as a successor,
+> though none is yet. The other residuals stand.
+
 ## Reproduce / check
 
 ```bash

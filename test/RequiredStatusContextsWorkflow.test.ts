@@ -33,7 +33,9 @@ const WORKFLOWS_DIR = resolve(".github/workflows");
  * The status contexts that ruleset 21256062 ("Protect main — required assurance gates") requires on main. The ruleset
  * lives in GitHub, not in this tree, so it is mirrored by hand: the first nine are the contexts it required on
  * 2026-09-17, all from GitHub Actions (integration 15368). The relation-test context is listed ahead of the ruleset: a
- * context must be reportable before anything requires it. Update this list whenever the required checks change.
+ * context must be reportable before anything requires it. So is the SP1 canonical build gate (the SP1 implementation
+ * lane): an aggregator that always runs, so a designation's rebuild can gate a merge once the owner requires it.
+ * Update this list whenever the required checks change.
  */
 const REQUIRED_CONTEXTS = [
   "check-version",
@@ -46,6 +48,7 @@ const REQUIRED_CONTEXTS = [
   "Analyze (javascript-typescript)",
   "Analyze (rust)",
   "Native guest relation tests (no SP1 toolchain)",
+  "SP1 canonical build gate",
 ];
 
 /** GitHub's default pull_request activity types; a trigger that drops one stops re-running on some head updates. */
@@ -209,10 +212,18 @@ function inventory(workflows: Workflow[]): { reporters: Map<string, Job[]>; unmo
   return { reporters, unmodeled };
 }
 
+/**
+ * A job-level `if: always()` (bare or as `${{ always() }}`, nothing more): GitHub runs the job once its dependencies
+ * end, whatever their results (failed, skipped or cancelled), so needs: delays its report but cannot withhold it.
+ */
+const ALWAYS = /^(?:\$\{\{\s*)?always\(\)(?:\s*\}\})?$/;
+
 /** Why `job` might never report `context` on a pull request to main; empty when nothing can hold it back. */
 function holdsBack(job: Job, context: string): string[] {
   const reasons: string[] = [];
-  if (job.needs) reasons.push("needs: other jobs (dependency chains are not modeled by this guard)");
+  if (job.needs && !(job.condition !== null && ALWAYS.test(job.condition))) {
+    reasons.push("needs: other jobs, without if: always() (dependency chains are not modeled by this guard)");
+  }
   if (job.condition !== null && /\bvars\s*[.[]/.test(job.condition)) {
     reasons.push(`job-level if: reads a repository variable (${job.condition})`);
   }
@@ -299,6 +310,35 @@ describe("Ruleset guard — required status contexts are reported for every pull
       const [job] = inventory([gated]).reporters.get("check-version")!;
       expect(job.condition).to.not.equal(null);
       expect(holdsBack(job, "check-version")).to.deep.equal([]);
+    });
+
+    it("lets needs: stand only on an always() aggregator, which runs whatever its dependencies' results", function () {
+      const chained = synthetic([
+        "on:",
+        "  pull_request:",
+        "jobs:",
+        "  gate:",
+        "    name: Gate",
+        "    needs: [build, compare]",
+        "    if: always()",
+        "  wrapped:",
+        "    name: Wrapped",
+        "    needs: build",
+        "    if: ${{ always() }}",
+        "  plain:",
+        "    name: Plain",
+        "    needs: build",
+        "  narrowed:",
+        "    name: Narrowed",
+        "    needs: build",
+        "    if: always() && github.event_name == 'push'",
+      ]);
+      const { reporters } = inventory([chained]);
+      const reasons = (name: string) => holdsBack(reporters.get(name)![0], name);
+      expect(reasons("Gate")).to.deep.equal([]);
+      expect(reasons("Wrapped")).to.deep.equal([]);
+      expect(reasons("Plain"), "skipped when a dependency fails").to.have.lengthOf(1);
+      expect(reasons("Narrowed"), "always() and more is not always()").to.have.lengthOf(1);
     });
 
     it("reports a pull_request trigger narrowed by paths or by branches that omit main", function () {

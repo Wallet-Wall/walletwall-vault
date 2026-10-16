@@ -14,6 +14,11 @@
       "lane": "SP1-TD2",
       "record": "evidence/zk/sp1-td2/implementation-record.json",
       "reason": "changed contracts/verifiers/ZKMLDSAVerifier.sol, a file this receipt binds, to add the owner-decided local one-way verifier halt; the receipt is pinned and validated at its last live commit instead of being restamped"
+    },
+    {
+      "lane": "SP1-IMPL",
+      "record": "evidence/zk/sp1-impl/implementation-receipt.json",
+      "reason": "changed contracts/verifiers/ZKMLDSAVerifier.sol (the SP1 verifier code-hash pin and F-1) and rewrote section 4 of docs/ZK_Prover_Runbook.md, both files this receipt binds, so that the runbook no longer directs SP1_VERIFIER_ADDRESS at the gateway; the receipt stays pinned and validated at its last live commit instead of being restamped"
     }
   ]
 }

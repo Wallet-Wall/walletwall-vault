@@ -1,5 +1,6 @@
 import { network } from "hardhat";
 import { runScript } from "./lib/run-script";
+import { assertPublishedSp1Records } from "./lib/sp1-published-records";
 import { checkRotationBinding } from "./lib/verifier-binding";
 
 /**
@@ -43,6 +44,8 @@ async function main() {
   }
 
   const [proposer] = await ethers.getSigners();
+  // Off a local chain the binding gate reads only the published SP1 records, fetched now.
+  assertPublishedSp1Records((await ethers.provider.getNetwork()).chainId);
   const { consumer } = await checkRotationBinding(
     ethers.provider,
     vaultAddress,
