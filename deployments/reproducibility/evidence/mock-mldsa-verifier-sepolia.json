@@ -119,6 +119,7 @@
       "contracts/mocks/AlwaysTruePQCVerifier.sol": "0xf91d509aa751811f2fe771c1ea47642bd60ce7bbcefc3b0f1906ba8587cfedcb",
       "contracts/mocks/AssuranceCallMutants.sol": "0xe00a9e1a86f915c01e0aba9d5e90e22ef7ecc18e2378318946aec78d5c06fdac",
       "contracts/mocks/AssuranceGuardianWriteMutants.sol": "0x76a6b95281a7c5dbec642275c7c4f67e0a6a290c02804317c3b95b2346e00290",
+      "contracts/mocks/ChainIdBindingProbe.sol": "0xc9d174228153b7c0e2e3b3cefbeffaf8c0273ab881310b1ff9b3757b44117d43",
       "contracts/mocks/DailySpendAdmissionMocks.sol": "0x045b3800a51550d95ce5a390464b2bffe4203e330d26082ca77fd18d5ab85147",
       "contracts/mocks/Eip712DomainOnlyMock.sol": "0x510a3135b43b6e95985fd92891ba0037a911518b3356802130fb7c252cc01816",
       "contracts/mocks/ForceSend.sol": "0xd2b7f2b06341c35914666c4103cd33bd1f368af668f1a2280a5e26bebca69d5f",
@@ -142,7 +143,7 @@
       "contracts/verifiers/IHaltableVerifier.sol": "0xd699afb62c719b4a89340faf68cbd9c4cc7548c1594b405d090cc78ddfd65d45",
       "contracts/verifiers/ImmutableAttestationPQCVerifier.sol": "0x1f8e4d4bc2fc55d8146df787d945abc996b970f503fcd23608e78958d0bad6fe",
       "contracts/verifiers/VerifierRotationGuard.sol": "0x35d0593ae4476a3ec4f9f13554b9801dee4671b9d90fd45ac901b02f726d87ff",
-      "contracts/verifiers/ZKMLDSAVerifier.sol": "0xee1139e0dd8148c6fe5a9a1d1aebd0db21c9d8b5f8e3ec0acb40be984ef4d5b3",
+      "contracts/verifiers/ZKMLDSAVerifier.sol": "0x25f2c4d83d8a82db04e3e75a81097b476022811650db5958c4552efdf885f5de",
       "contracts/WalletWallMultiSigVault.sol": "0x5001fa2ff2979d11a7987682f331c22f4993ff043c97ec0cd1f8b2b4fc594167",
       "contracts/WalletWallVault.sol": "0xd3c0380578b975a6d5e974a8202673230757a680656a3f1cf08f7193a3c91dc6"
     },
@@ -202,117 +203,117 @@
         "typeString": "contract IERC20"
       },
       {
-        "astId": "20399",
+        "astId": "20436",
         "name": "expectedBalance",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "20401",
+        "astId": "20438",
         "name": "expectedAmount",
         "sourceFile": "contracts/mocks/PolicyRevalidationMocks.sol",
         "typeString": "uint256"
       },
       {
-        "astId": "20803",
+        "astId": "20840",
         "name": "VERIFIER_HASH",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "bytes32"
       },
       {
-        "astId": "20829",
+        "astId": "20866",
         "name": "VERIFIER_HASH",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "bytes32"
       },
       {
-        "astId": "20906",
+        "astId": "20943",
         "name": "GATEWAY",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "address"
       },
       {
-        "astId": "20908",
+        "astId": "20945",
         "name": "SELECTOR",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "bytes4"
       },
       {
-        "astId": "20982",
+        "astId": "21019",
         "name": "GATEWAY",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "address"
       },
       {
-        "astId": "20984",
+        "astId": "21021",
         "name": "SELECTOR",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "bytes4"
       },
       {
-        "astId": "21163",
+        "astId": "21200",
         "name": "GATEWAY",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "address"
       },
       {
-        "astId": "21165",
+        "astId": "21202",
         "name": "SELECTOR",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "bytes4"
       },
       {
-        "astId": "21167",
+        "astId": "21204",
         "name": "VERIFIER",
         "sourceFile": "contracts/mocks/Sp1TrustTargetProbes.sol",
         "typeString": "address"
       },
       {
-        "astId": "21298",
+        "astId": "21335",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/mocks/UnhaltableZkVerifierMock.sol",
         "typeString": "address"
       },
       {
-        "astId": "21300",
+        "astId": "21337",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/mocks/UnhaltableZkVerifierMock.sol",
         "typeString": "bytes32"
       },
       {
-        "astId": "22033",
+        "astId": "22070",
         "name": "POLICY_CONTROL_BRIDGE",
         "sourceFile": "contracts/policies/DailySpendLimitPolicy.sol",
         "typeString": "address"
       },
       {
-        "astId": "24903",
+        "astId": "24940",
         "name": "attestor",
         "sourceFile": "contracts/verifiers/ImmutableAttestationPQCVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "25482",
+        "astId": "25535",
         "name": "SP1_VERIFIER",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       },
       {
-        "astId": "25486",
+        "astId": "25539",
         "name": "PROGRAM_VKEY",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "bytes32"
       },
       {
-        "astId": "25490",
+        "astId": "25543",
         "name": "HALT_PRINCIPAL",
         "sourceFile": "contracts/verifiers/ZKMLDSAVerifier.sol",
         "typeString": "address"
       }
     ],
-    "compilerInputHash": "0xce89c32524414b66f430ffb5da770ea1aa3c47b6b2440edc3ce309a6e9a5dd96",
-    "headCommit": "757c8654c3d35b7227e46e96b9b1f3058f05efdf",
-    "capturedAt": "2026-10-16T03:02:31.341Z"
+    "compilerInputHash": "0xf6e56c206d1ffa653cb51fa19718ec8a822f9c3310f0d6ea8a2fa3902dd95c53",
+    "headCommit": "9a560da6d35ca81a75b01079892a67098b2094d0",
+    "capturedAt": "2026-10-16T20:32:06.295Z"
   },
   "liveRuntime": {
     "address": "0x4736138c99e0619D06663D971C8cD347de186F6d",
