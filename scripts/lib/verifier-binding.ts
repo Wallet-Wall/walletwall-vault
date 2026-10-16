@@ -47,7 +47,8 @@ export const CONSUMER_BY_DOMAIN_NAME: Record<string, ConsumerName> = {
 
 export interface HaltScope {
   applies: string[];
-  excludedUntilRecoverable: { consumer: string; gate: string; interim: string }[];
+  /** Each exclusion names its gate, its interim and the owner amendment that authorized it (SP1-TD1 #215). */
+  excludedUntilRecoverable: { consumer: string; gate: string; interim: string; authorizedBy: string }[];
 }
 
 export interface Designations {
@@ -204,8 +205,9 @@ export function bindingRefusals(req: BindingRequest): string[] {
 
   if (excluded) {
     refusals.push(
-      `${req.consumer} waits outside the halt for ${excluded.gate} (interim ${excluded.interim}): it may be bound ` +
-        `to no part of the SP1 path${isHaltable(t) ? ", and a haltable wrapper would lock its funds" : ""}`,
+      `${req.consumer} waits outside the halt for ${excluded.gate} (interim ${excluded.interim}, authorized by ` +
+        `${excluded.authorizedBy}): it may be bound to no part of the SP1 path` +
+        `${isHaltable(t) ? ", and a haltable wrapper would lock its funds" : ""}`,
     );
     return refusals;
   }

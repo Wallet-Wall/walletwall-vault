@@ -5,7 +5,7 @@
   "baseCommit": "69ea579809bf7fc7190e8bc07fd5f043667f786d",
   "td1Receipt": {
     "path": "evidence/zk/sp1-td1/decision-receipt.json",
-    "sha256": "0440c3807e8d3848a6db00bedde6a70d81b4caeb3af14c9414ec98580f1867e5"
+    "sha256": "ec0de76770e7ce19744ff4457618eb9e16b227cdd594b70adec31cd5290b28f3"
   },
   "requirements": [
     {
@@ -192,7 +192,8 @@
       {
         "consumer": "WalletWallMultiSigVault",
         "gate": "TD2-MULTISIG-ROTATION",
-        "interim": "NOT_BOUND_TO_THE_SP1_PATH"
+        "interim": "NOT_BOUND_TO_THE_SP1_PATH",
+        "authorizedBy": "TD1-N11-PREREQUISITE"
       }
     ]
   },

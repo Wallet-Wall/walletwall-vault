@@ -82,7 +82,12 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
         "WalletWallVault",
       ]);
       expect(readHaltScope().excludedUntilRecoverable).to.deep.equal([
-        { consumer: "WalletWallMultiSigVault", gate: "TD2-MULTISIG-ROTATION", interim: "NOT_BOUND_TO_THE_SP1_PATH" },
+        {
+          consumer: "WalletWallMultiSigVault",
+          gate: "TD2-MULTISIG-ROTATION",
+          interim: "NOT_BOUND_TO_THE_SP1_PATH",
+          authorizedBy: "TD1-N11-PREREQUISITE",
+        },
       ]);
       expect([...CONSUMERS].sort()).to.deep.equal([...TD1.decisions.DEFECT_RESPONSE_COUPLING.measuredConsumers].sort());
     });
