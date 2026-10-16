@@ -23,6 +23,7 @@ import { ethers, networkHelpers } from "./helpers/connection";
 import { WITHDRAWAL_TYPES, withdrawalDomain } from "./helpers/vaultHelpers";
 import { ProverClient } from "../scripts/prover-client";
 import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
+import { withPinnedSp1Code } from "./helpers/sp1PinnedVerifier";
 
 const OBS = "evidence/zk/sp1-td1/observations";
 const readJson = (rel: string) => JSON.parse(readFileSync(resolve(rel), "utf8"));
@@ -213,8 +214,16 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
   const acceptAll = async (verifierHash: string) =>
     (await ethers.getContractFactory("AcceptAllRouteVerifierProbe")).deploy(verifierHash);
   const rogueHash = (selector: string) => ethers.zeroPadBytes(selector, 32).slice(0, 10) + "ab".repeat(28);
-  const zkVerifier = async (sp1Verifier: string) =>
-    (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(sp1Verifier, PROGRAM_VKEY, TEST_HALT_PRINCIPAL);
+  // SP1-TD1 measured these options before ZKMLDSAVerifier was pinned. Over anything but the pinned code the probes
+  // build the wrapper as it was then (withPinnedSp1Code: the code swap stands in for the missing pin), which is the
+  // design the implementation lane's constructor pin removes; test/Sp1ImplVerifierPin.test.ts shows the refusal.
+  const zkVerifier = async (sp1Verifier: string) => {
+    const factory = await ethers.getContractFactory("ZKMLDSAVerifier");
+    const deploy = () => factory.deploy(sp1Verifier, PROGRAM_VKEY, TEST_HALT_PRINCIPAL);
+    return (await runtimeKeccak(sp1Verifier)) === MAINNET.verifiers["v6.1.0"].codeKeccak
+      ? deploy()
+      : withPinnedSp1Code(sp1Verifier, deploy);
+  };
   const payload = (publicValues: string, proofBytes: string) =>
     ethers.AbiCoder.defaultAbiCoder().encode(["bytes", "bytes"], [publicValues, proofBytes]);
   /** A journal that claims `publicKey` signed `digest`: anyone can write one; only a proof makes it count. */
@@ -791,7 +800,8 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
         ["another verifier version", await v600.getAddress()],
         ["an accept-all verifier answering to the v6.1.0 selector", await rogue.getAddress()],
       ]) {
-        await expect(pinned(target), label).to.be.revertedWithCustomError(factory, "SP1VerifierCodeMismatch");
+        // Since the implementation lane the production wrapper's own constructor pin refuses these first.
+        await expect(pinned(target), label).to.be.revertedWithCustomError(factory, "UndesignatedSP1Verifier");
       }
       expect(FACTS.A_directCodePinned).to.include({
         acceptsCanonicalCode: true,

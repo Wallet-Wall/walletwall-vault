@@ -9,6 +9,7 @@ import { ethers, networkHelpers } from "./helpers/connection";
 import { WITHDRAWAL_TYPES, withdrawalDomain } from "./helpers/vaultHelpers";
 import { ProverClient } from "../scripts/prover-client";
 import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
+import { withPinnedSp1Code } from "./helpers/sp1PinnedVerifier";
 
 /**
  * The withdrawal relation through every PQ consumer of a ZKMLDSAVerifier: WalletWallVault withdrawals
@@ -139,9 +140,11 @@ describe("ZKMLDSAVerifier consumers: the withdrawal relation through the vault, 
   beforeEach(async function () {
     [admin, owner, attacker, recipient, pauser] = await ethers.getSigners();
     sp1 = await (await ethers.getContractFactory("ProgramBoundMockSP1Verifier")).deploy();
-    const zkVerifier = await (
-      await ethers.getContractFactory("ZKMLDSAVerifier")
-    ).deploy(await sp1.getAddress(), WITHDRAWAL_PROGRAM_VKEY, TEST_HALT_PRINCIPAL);
+    const sp1Address = await sp1.getAddress();
+    const factory = await ethers.getContractFactory("ZKMLDSAVerifier");
+    const zkVerifier = await withPinnedSp1Code(sp1Address, () =>
+      factory.deploy(sp1Address, WITHDRAWAL_PROGRAM_VKEY, TEST_HALT_PRINCIPAL),
+    );
     vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await zkVerifier.getAddress());
     chainId = (await ethers.provider.getNetwork()).chainId;
     verifierAddress = await zkVerifier.getAddress();

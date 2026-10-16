@@ -23,6 +23,7 @@ import { resolve } from "node:path";
 import { expect } from "chai";
 
 import { ethers } from "./helpers/connection";
+import { withPinnedSp1Code } from "./helpers/sp1PinnedVerifier";
 import { findContract, loadSourceAst, walkAst, type AstNode } from "./helpers/solidityAst";
 import { WITHDRAWAL_TYPES, withdrawalDomain } from "./helpers/vaultHelpers";
 import { simulatorDomain } from "./helpers/simulatorHelpers";
@@ -90,10 +91,10 @@ describe("SP1-TD2 common verifier halt (TD2-COMMON-VERIFIER-HALT)", function () 
 
     it("refuses a zero halt principal at construction (the breaker would be uncallable forever)", async function () {
       const factory = await ethers.getContractFactory("ZKMLDSAVerifier");
-      await expect(factory.deploy(await sp1.getAddress(), VKEY_A, ethers.ZeroAddress)).to.be.revertedWithCustomError(
-        factory,
-        "ZeroHaltPrincipal",
-      );
+      const address = await sp1.getAddress();
+      await expect(
+        withPinnedSp1Code(address, () => factory.deploy(address, VKEY_A, ethers.ZeroAddress)),
+      ).to.be.revertedWithCustomError(factory, "ZeroHaltPrincipal");
     });
 
     it("only the halt principal can halt; the halt emits VerifierHalted and sets HALTED", async function () {

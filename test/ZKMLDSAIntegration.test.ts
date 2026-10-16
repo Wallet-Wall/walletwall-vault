@@ -4,6 +4,7 @@ import { ethers } from "./helpers/connection";
 import { MLDSASigner } from "../pqc/ml-dsa";
 import { ProverClient } from "../scripts/prover-client";
 import { signWithdrawalRequest } from "./helpers/vaultHelpers";
+import { withPinnedSp1Code } from "./helpers/sp1PinnedVerifier";
 import {
   deployMockZkVerifier,
   encodeMockProof,
@@ -118,8 +119,9 @@ describe("ZKMLDSAVerifier Integration", function () {
 
   it("rejects a zero program verification key", async function () {
     const ZKMLDSAVerifier = await ethers.getContractFactory("ZKMLDSAVerifier");
+    const sp1 = await mockSp1Verifier.getAddress();
     await expect(
-      ZKMLDSAVerifier.deploy(await mockSp1Verifier.getAddress(), ethers.ZeroHash, TEST_HALT_PRINCIPAL),
+      withPinnedSp1Code(sp1, () => ZKMLDSAVerifier.deploy(sp1, ethers.ZeroHash, TEST_HALT_PRINCIPAL)),
     ).to.be.revertedWithCustomError(ZKMLDSAVerifier, "InvalidProgramVKey");
   });
 

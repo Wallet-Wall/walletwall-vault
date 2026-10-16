@@ -30,11 +30,36 @@ interface ISP1Verifier {
  *      advisory, a disclosure) are evidence for the halt principal, never inputs to this contract.
  *      Recovery is a new wrapper of an independently established identity, installed through each
  *      consumer's own timelocked rotation ({VerifierRotationGuard} refuses the halted identity).
+ *
+ *      DIRECT IMMUTABLE SP1 VERIFIER (decided in SP1-TD1, built in the SP1 implementation lane; see
+ *      docs/SP1_Implementation_Pin_Designation_Registry.md). The constructor accepts only an SP1 verifier
+ *      whose runtime code is Succinct's Groth16 SP1Verifier {SP1_VERSION}: its runtime code hash
+ *      {SP1_VERIFIER_CODEHASH} is a compile-time constant, so neither the deployer nor anyone later can
+ *      bind the wrapper to the owner-mutable SP1VerifierGateway, another SP1 version, a mock or an
+ *      accept-all contract. The pinned code has no reachable SELFDESTRUCT, DELEGATECALL, CALLCODE or
+ *      state write (SP1-TD1's runtime scan), so the code at SP1_VERIFIER cannot change after this check,
+ *      and nothing here can change SP1_VERIFIER. A code hash pins bytes, not behaviour: each chain's
+ *      precompiles decide the verdicts, which the deployment tooling's per-chain execution check measures.
+ *      Identity provenance is not soundness: the pin says which verifier this is, not that it is sound.
  */
 contract ZKMLDSAVerifier is IPQCVerifier, IHaltableVerifier {
     bytes32 public constant ALGORITHM_ID = keccak256("ZK-ML-DSA-65");
 
-    /// @notice The SP1 Verifier contract address.
+    /// @notice Runtime code hash (EXTCODEHASH) of the only SP1 verifier this wrapper accepts: Succinct's
+    ///         Groth16 SP1Verifier v6.1.0 (CREATE2 address 0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2 on
+    ///         Ethereum, Base, Sepolia and Base Sepolia). Checked against the generated SP1 designation in CI.
+    bytes32 public constant SP1_VERIFIER_CODEHASH = 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd;
+
+    /// @notice VERIFIER_HASH() the pinned verifier reports (its proofs' 4-byte selector is the prefix).
+    bytes32 public constant SP1_VERIFIER_HASH = 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696;
+
+    /// @notice VK_ROOT() the pinned verifier reports.
+    bytes32 public constant SP1_VK_ROOT = 0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352;
+
+    /// @notice VERSION() the pinned verifier reports.
+    string public constant SP1_VERSION = "v6.1.0";
+
+    /// @notice The SP1 Verifier contract address: fixed here, its code fixed by {SP1_VERIFIER_CODEHASH}.
     address public immutable override SP1_VERIFIER;
 
     /// @notice The verification key for the ML-DSA-65 guest program.
@@ -50,6 +75,8 @@ contract ZKMLDSAVerifier is IPQCVerifier, IHaltableVerifier {
     event VerifierHalted(address indexed haltPrincipal);
 
     error InvalidSP1Verifier();
+    /// @notice `sp1Verifier`'s runtime code (hash `codehash`) is not the designated verifier's.
+    error UndesignatedSP1Verifier(address sp1Verifier, bytes32 codehash);
     error InvalidProgramVKey();
     error InvalidProof();
     /// @notice A zero halt principal would leave the breaker uncallable forever.
@@ -59,6 +86,9 @@ contract ZKMLDSAVerifier is IPQCVerifier, IHaltableVerifier {
 
     constructor(address _sp1Verifier, bytes32 _programVKey, address _haltPrincipal) {
         if (_sp1Verifier.code.length == 0) revert InvalidSP1Verifier();
+        if (_sp1Verifier.codehash != SP1_VERIFIER_CODEHASH) {
+            revert UndesignatedSP1Verifier(_sp1Verifier, _sp1Verifier.codehash);
+        }
         if (_programVKey == bytes32(0)) revert InvalidProgramVKey();
         if (_haltPrincipal == address(0)) revert ZeroHaltPrincipal();
         SP1_VERIFIER = _sp1Verifier;
@@ -119,7 +149,7 @@ contract ZKMLDSAVerifier is IPQCVerifier, IHaltableVerifier {
 
         if (committedDigest != digest) return false;
         if (committedPkHash != keccak256(publicKey)) return false;
-        if (committedChainId != uint64(block.chainid)) return false;
+        if (!_chainIdMatches(committedChainId, block.chainid)) return false;
         if (committedVerifier != address(this)) return false;
 
         // Verify the proof against the SP1 Verifier
@@ -131,8 +161,23 @@ contract ZKMLDSAVerifier is IPQCVerifier, IHaltableVerifier {
     }
 
     /**
+     * @dev SP1-P1 finding F-1: the journal's chain id (a uint64 the guest commits unchecked, so a proof-routing
+     *      tag) is compared with the FULL 256-bit chain id. Narrowing block.chainid to 64 bits would make a
+     *      journal for chain id x match on chain x + k * 2^64; at full width a chain id of 2^64 or more matches
+     *      no journal and fails closed. Authorization binds the chain through each consumer's EIP-712 digest,
+     *      which always used the full id. Contract-only: the guest, the ELF, PROGRAM_VKEY and the journal are
+     *      unchanged.
+     */
+    function _chainIdMatches(uint64 committed, uint256 chainId) internal pure returns (bool) {
+        return uint256(committed) == chainId;
+    }
+
+    /**
      * @dev External pure decoder so verify() can catch malformed dynamic ABI offsets
      *      and preserve the IPQCVerifier false-on-invalid contract.
+     *      The journal's third word, the signature hash, is non-authoritative and deliberately unchecked
+     *      (SP1-P1 finding F-2): any valid signature over the digest authorizes, and replay is stopped by the
+     *      digest's nonce and deadline, so no authorization fact depends on which signature was used.
      */
     function decodeProofPayload(
         bytes calldata proof

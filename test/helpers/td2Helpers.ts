@@ -10,6 +10,7 @@
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 
 import { ethers } from "./connection";
+import { withPinnedSp1Code } from "./sp1PinnedVerifier";
 import { ProverClient } from "../../scripts/prover-client";
 
 export const ABI = ethers.AbiCoder.defaultAbiCoder();
@@ -36,8 +37,11 @@ export async function deploySp1(): Promise<any> {
   return (await ethers.getContractFactory("ProgramBoundMockSP1Verifier")).deploy();
 }
 
+/** The genuine ZKMLDSAVerifier over a stand-in SP1 verifier, which keeps its address, code and state. */
 export async function deployWrapper(sp1: any, vkey: string, haltPrincipal: string): Promise<any> {
-  return (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(await sp1.getAddress(), vkey, haltPrincipal);
+  const address = await sp1.getAddress();
+  const factory = await ethers.getContractFactory("ZKMLDSAVerifier");
+  return withPinnedSp1Code(address, () => factory.deploy(address, vkey, haltPrincipal));
 }
 
 /**
