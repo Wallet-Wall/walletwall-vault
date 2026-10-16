@@ -300,7 +300,9 @@ describe("SP1 implementation lane — the canonical-build workflow and the CI ch
     expect(build).to.match(
       /bash scripts\/sp1-canonical\/canonical-build\.sh "\$RUNNER_TEMP\/canonical" "github-\$\{\{ matrix\.runner \}\}"/,
     );
-    expect(wf).to.not.match(/ghcr\.io\/succinctlabs\/sp1/);
+    expect(wf.includes("ghcr.io/succinctlabs/sp1"), "the workflow names no vendor image; the driver reads it").to.equal(
+      false,
+    );
     const driver = readFileSync(resolve("scripts/sp1-canonical/canonical-build.sh"), "utf8");
     expect(driver).to.match(/IMAGE="\$\(field procedure\.image\)"/);
     expect(driver).to.match(/case "\$IMAGE" in \*@sha256:\*\)/);
