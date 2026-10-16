@@ -1,0 +1,181 @@
+name: SP1 canonical build
+
+# SP1-TD1's canonical procedure (PINNED_VENDOR_BUILD), rebuilt from the designated subject and compared with the
+# designation (docs/SP1_Implementation_Pin_Designation_Registry.md):
+#   build            - on two GitHub-hosted runners (different runner images), each in a fresh container of the vendor
+#                      image referenced BY DIGEST (taken from the designation, never a tag), SP1-TD1's preserved
+#                      entrypoint run unchanged, the guest lockfile recorded before and after the build;
+#   vkey-recompute   - on a third runner, from the ELF files only, with Succinct's released cargo-prove v6.3.1 verified
+#                      against its published digest: the vkey recomputed outside every build;
+#   compare          - scripts/check-sp1-canonical-build.ts: fails on ELF, vkey, lockfile, image, entrypoint or subject
+#                      drift, on a conflicting recompute, and on fewer than two agreeing hosts.
+# The cheap check (the subject on disk and at HEAD is the designation's) runs on every pull request in ci.yml through
+# npm run validate:sp1-designation; this expensive rebuild runs when the subject, the designations or the procedure
+# change, on main after such a merge, and on demand for a release. Common mode, by construction: one image, one
+# toolchain, one source archive, one entrypoint, one crate set, one operator; the recompute is the same upstream prover
+# library in another binary distribution.
+on:
+  pull_request:
+    paths:
+      - "zkvm/guest/**"
+      - "zkvm/host/**"
+      - "evidence/zk/sp1/designations/**"
+      - "evidence/zk/sp1-td1/canonical-procedure/**"
+      - "scripts/sp1-canonical/**"
+      - "scripts/check-sp1-canonical-build.ts"
+      - "scripts/lib/sp1-canonical-build.ts"
+      - ".github/workflows/sp1-canonical-build.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "zkvm/guest/**"
+      - "zkvm/host/**"
+      - "evidence/zk/sp1/designations/**"
+      - "evidence/zk/sp1-td1/canonical-procedure/**"
+      - "scripts/sp1-canonical/**"
+      - "scripts/check-sp1-canonical-build.ts"
+      - "scripts/lib/sp1-canonical-build.ts"
+      - ".github/workflows/sp1-canonical-build.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Canonical build (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js (reads the designation)
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
+      - name: Free runner disk for the 7 GB vendor image
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          docker image prune -af > /dev/null
+          df -h /
+
+      - name: Canonical build of the designated subject (vendor image by digest)
+        run: bash scripts/sp1-canonical/canonical-build.sh "$RUNNER_TEMP/canonical" "github-${{ matrix.runner }}"
+
+      - name: Upload the build's record and ELFs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-build-${{ matrix.runner }}
+          path: ${{ runner.temp }}/canonical
+          retention-days: 90
+          if-no-files-found: error
+
+  vkey-recompute:
+    name: Recompute the vkey outside the build
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Download the builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: canonical-build-*
+          path: builds
+
+      - name: Released cargo-prove v6.3.1, verified against its published digest
+        run: |
+          set -euo pipefail
+          curl -fsSL -o cargo-prove.tar.gz \
+            https://github.com/succinctlabs/sp1/releases/download/v6.3.1/cargo_prove_v6.3.1_linux_amd64.tar.gz
+          echo "c9d6ee7667fa9e0a2302324a6bb0295c55f6acf0e17a242ad11ee45767bb08df  cargo-prove.tar.gz" | sha256sum -c -
+          mkdir -p tool
+          tar -xzf cargo-prove.tar.gz -C tool
+          bin="$(find tool -type f -name cargo-prove | head -1)"
+          test -n "$bin"
+          chmod +x "$bin"
+          echo "CARGO_PROVE=$PWD/$bin" >> "$GITHUB_ENV"
+
+      - name: Recompute each ELF's vkey (the ELF files only; no source, no build environment)
+        run: |
+          set -euo pipefail
+          mkdir -p recompute
+          for build in builds/canonical-build-*; do
+            host="$(basename "$build")"
+            {
+              echo "tool_sha256=$(sha256sum "$CARGO_PROVE" | cut -d' ' -f1)"
+              echo "tool_version=$("$CARGO_PROVE" prove --version)"
+              echo "ran_on=$(uname -srm) $(. /etc/os-release; echo "$PRETTY_NAME") github-hosted ${RUNNER_NAME}"
+              for p in mldsa65-withdrawal mldsa65-acvp; do
+                echo "elf_${p}_sha256=$(sha256sum "$build/elf/$p" | cut -d' ' -f1)"
+                echo "vkey_output_${p}=$("$CARGO_PROVE" prove vkey --elf "$build/elf/$p" 2>&1 | tail -3 | tr '\n' ' ')"
+              done
+            } > "recompute/$host.txt"
+            cat "recompute/$host.txt"
+          done
+
+      - name: Upload the recompute records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vkey-recompute
+          path: recompute
+          retention-days: 90
+          if-no-files-found: error
+
+  compare:
+    name: Compare with the designation
+    needs: [build, vkey-recompute]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download the builds and recomputes
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Compare every host and the recompute with the designation (two hosts required)
+        run: |
+          set -euo pipefail
+          npx tsx scripts/check-sp1-canonical-build.ts \
+            --build github-ubuntu-24.04=artifacts/canonical-build-ubuntu-24.04 \
+            --build github-ubuntu-22.04=artifacts/canonical-build-ubuntu-22.04 \
+            --recompute artifacts/vkey-recompute/canonical-build-ubuntu-24.04.txt \
+            --recompute artifacts/vkey-recompute/canonical-build-ubuntu-22.04.txt \
+            --min-hosts 2 \
+            --write "$RUNNER_TEMP/canonical-build-observation.json"
+
+      - name: Upload the observation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-build-observation
+          path: ${{ runner.temp }}/canonical-build-observation.json
+          retention-days: 90
+          if-no-files-found: error
