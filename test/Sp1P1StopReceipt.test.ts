@@ -327,7 +327,7 @@ describe("SP1-P1 assurance STOP receipt", function () {
       const s = record();
       expect(s.receipt).to.equal(RECEIPT_REL);
       expect(s.finding).to.equal("TD1-N4");
-      expect(s.supersededBy.map((r) => r.lane)).to.deep.equal(["SP1-TD1", "SP1-TD2"]);
+      expect(s.supersededBy.map((r) => r.lane)).to.deep.equal(["SP1-TD1", "SP1-TD2", "SP1-IMPL"]);
       expect(s.supersededBy[0].record).to.equal("evidence/zk/sp1-td1/decision-receipt.json");
     });
 

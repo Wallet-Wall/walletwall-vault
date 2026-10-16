@@ -9,7 +9,7 @@
 This is the off-chain half that was missing from the ZK path: tooling to compile the
 guest, run the feasibility cycle benchmark, extract the real program verification key,
 and generate a real Groth16 proof for on-chain verification. The default test/CI path
-still uses `MockSP1Verifier` and a mock vKey — none of this runs in CI.
+still uses `MockSP1Verifier` and a mock vKey; of this, only the gated canonical rebuild (§4) runs in CI.
 
 ## Components
 
@@ -41,7 +41,7 @@ cargo prove --version
 
 Keep the SP1 versions aligned across all three crates: `zkvm/guest` (`sp1-zkvm`),
 `zkvm/host` (`sp1-sdk`, `sp1-build`). They are pinned to the same release; bump them
-together and re-extract the vKey afterwards.
+together; the new subject then needs a successor designation (§4), never a pasted vKey.
 
 ### Host lock file
 
@@ -92,13 +92,13 @@ cargo run --release --manifest-path zkvm/host/Cargo.toml -- vkey
 # -> {"vkey": "0x..."}
 ```
 
-This bytes32 is the withdrawal program's vkey, the only value `ZKMLDSAVerifier.PROGRAM_VKEY` may
-pin (never `acvp-vkey`). It changes whenever the withdrawal program or the SP1 version changes.
+This bytes32 is your build's withdrawal vkey. A deployment pins only a designated one (§4): a local
+build can differ, since its ELF embeds local paths. Never pin `acvp-vkey`; the vkey changes with the program or SP1.
 
 ## 3. Generate a real proof
 
-Configure a prover. Local proving needs significant CPU/GPU; the Succinct Prover
-Network is the practical option:
+Configure a prover. Self-hosted proving needs the circuit v6.1.0 artifacts, which WalletWall has not archived
+(§4, proving availability); the Succinct Prover Network is the hosted option:
 
 ```bash
 export SP1_PROVER=network
@@ -111,22 +111,59 @@ From TypeScript, `ProverClient.generateProof(...)` does the same and returns the
 payload `ZKMLDSAVerifier.verify` expects. Build the host first
 (`cargo build --release --manifest-path zkvm/host/Cargo.toml`) or set `SP1_HOST_BIN`.
 
-## 4. Deploy against a real SP1 verifier
+## 4. Deploy against the designated SP1 verifier
 
-`scripts/deploy-zk-verifier.ts` deploys `ZKMLDSAVerifier(sp1Verifier, programVKey)`.
-For a real deployment, point `SP1_VERIFIER_ADDRESS` at the canonical SP1 Groth16
-verifier gateway for your network (from Succinct's `sp1-contracts` deployments) and
-`PROGRAM_VKEY` at the value from step 2 — **never** the mock. The mock is permitted
-only on local chains with `ALLOW_MOCK_SP1=true`.
+`scripts/deploy-zk-verifier.ts` deploys `ZKMLDSAVerifier(sp1Verifier, programVKey, haltPrincipal)` from a designation.
+Off a local chain the SP1 verifier and `PROGRAM_VKEY` come only from the selected designation (never Succinct's
+`SP1VerifierGateway`, whose owner can change what its routes accept), and the wrapper's constructor refuses any
+verifier whose runtime code is not the pinned SP1Verifier v6.1.0. `SP1_VERIFIER_ADDRESS`, `PROGRAM_VKEY` and
+`ALLOW_MOCK_SP1` are refused there. The mock is permitted only on local chains with `ALLOW_MOCK_SP1=true` (TEST ONLY).
 
 ```bash
-SP1_VERIFIER_ADDRESS=0x<canonical-sp1-groth16-gateway> \
-PROGRAM_VKEY=0x<vkey-from-step-2> \
+HALT_PRINCIPAL_ADDRESS=0x<halt-only-principal> \
 npx hardhat run scripts/deploy-zk-verifier.ts --network <net>
+```
+
+`HALT_PRINCIPAL_ADDRESS` is the wrapper's halt-only principal (threshold or multisig control, never the deployer);
+`SP1_DESIGNATION_ID` selects a designation when more than one is accepted. Before any transaction the script refuses a
+mainnet, an override, an unrecorded wrapper build and an identity the registry records as halted on any chain; it
+validates the designations and the registry (content and full git history), then reads the target chain at a
+finalized block: the designated verifier's runtime code hash, and the per-chain execution check — a real v6.1.0 proof
+accepted, the same proof tampered and an odd-word canary refused with `ProofInvalid` — with the canary's positive
+control run on the in-process EVM. After deploying it reads the wrapper back. An RPC that does not answer stops it.
+
+Record the wrapper in the registry from chain reads (no transaction), and publish the change by pull request:
+
+```bash
+WRAPPER_ADDRESS=0x<wrapper> DEPLOYMENT_TX=0x<tx> \
+npx hardhat run scripts/register-sp1-wrapper.ts --network <net>
 ```
 
 Then propose it to the vault via the timelocked governance flow
 (`scripts/propose-verifier-update.ts`) and review during the delay.
+
+**Where the designation comes from.** `evidence/zk/sp1/designations/` holds generated designations, never typed ones:
+`mldsa65-withdrawal-d1` binds the zkvm subject, the canonical procedure (the vendor image by digest), the ELF and
+`PROGRAM_VKEY` to SP1Verifier v6.1.0. CI fails when the subject on disk no longer matches the latest designation. A
+change to the guest, the host, a lockfile or SP1 therefore needs a successor designation: rebuild with the canonical
+procedure (`scripts/sp1-canonical/canonical-build.sh`; `.github/workflows/sp1-canonical-build.yml` does it on two
+runners and recomputes the vkey on a third), commit the evidence bundle, and derive it with
+`npm run sp1:designation -- --successor <bundle.json>`. A successor must be a new identity; the same verifier code
+and vkey at another address is the same identity and is refused.
+
+**If the wrapper must be halted.** The halt principal calls `halt()` (one-way). Record it for every chain:
+`WRAPPER_ADDRESS=0x<wrapper> HALT_TX=0x<tx> HALT_REASON=<reason>` with the same script; once published, the tooling
+refuses the identity everywhere. Recovery is a successor identity's wrapper through each consumer's delayed rotation.
+
+**Proving availability (TD1-N9).** The rotation delay protects PqOnly users only while they can prove.
+`PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED`: the v6.1.0 Groth16 artifacts (about 6.21 GB) are not archived by
+WalletWall, and none are installed on the proving host. Their `groth16_vk.bin` must hash to `VERIFIER_HASH`
+`0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696` (the key `sp1-verifier` 6.3.1 embeds). The
+pinned prover downloads them only when `$SP1_GROTH16_CIRCUIT_PATH/v6.1.0` is absent and checks no digest, so a
+self-hosted path places a verified archive there, keeps `SP1_CIRCUIT_MODE` unset, and pins the gnark image
+(`SP1_GNARK_IMAGE`) by digest. The requirements and the owner's actions are in
+`evidence/zk/sp1-impl/proving-availability.json`; see
+[SP1_Implementation_Pin_Designation_Registry.md](SP1_Implementation_Pin_Designation_Registry.md).
 
 ## 5. Run the gated E2E / differential test
 
@@ -158,6 +195,10 @@ implementation. Scope and limits: [ACVP_Guest_Results.md](ACVP_Guest_Results.md)
 ## What this still does not establish
 
 - No audit of the guest, the host, or the SP1 verifier contract.
+- No WalletWall proof of the designated program has been generated, and no wrapper is deployed or registered on any
+  chain; `PRODUCTION_SP1_BINDING_STATUS` is `NOT_ESTABLISHED`
+  (`evidence/zk/sp1-impl/implementation-receipt.json`).
+- Designations and the code-hash pin establish which verifier and program a wrapper binds, not that they are sound.
 - The committed ACVP set is a 6-vector subset, not the complete NIST ACVP vector
   set; passing it is conformance evidence, not full FIPS 204 conformance.
 - Gas and proving-time figures must be measured, not assumed, before publishing.
