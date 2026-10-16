@@ -5,7 +5,7 @@
  * B1. Deployment credentials belong to the one-shot deployment job. The persistent node serves Hardhat's in-memory
  *     chain 31337 and the dev container only keeps a shell alive for `docker compose exec`; neither reads one.
  *     hardhat.config.ts reads DEPLOYER_PRIVATE_KEY only as the account of the sepolia and base-sepolia HTTP networks
- *     and the RPC URLs only as their endpoints, scripts/deploy.ts alone reads PQC_VERIFIER_ADDRESS, and nothing reads
+ *     and the RPC URLs only as their endpoints, only the deploy scripts read PQC_VERIFIER_ADDRESS, and nothing reads
  *     ETHERSCAN_API_KEY. The RPC URLs count as credentials because docs/DIGITALOCEAN_DEPLOYMENT.md tells operators to
  *     swap in private endpoints, which embed an API key. So every service other than the deployment job:
  *     - declares no env_file: it injects every key of the file, which this guard cannot see;

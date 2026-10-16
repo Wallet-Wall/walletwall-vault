@@ -14,7 +14,7 @@
  */
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 export const SP1_P1_STOP_RECEIPT_SCHEMA = "walletwall.sp1-p1-stop-receipt.v1";
@@ -878,11 +878,17 @@ export function validateReceiptRules(value: unknown): string[] {
   return errors;
 }
 
-export function readObservationInputs(repoRoot = "."): ReceiptInputs {
+/**
+ * The receipt's inputs: the committed observations (always the working tree's: they must never change) and the
+ * repository bytes it binds — from the working tree while the receipt is live, or from git at `at` (a commit)
+ * once it is superseded and validated as a historical record.
+ */
+export function readObservationInputs(repoRoot = ".", at?: string): ReceiptInputs {
   const read = (rel: string) => readFileSync(resolve(repoRoot, rel));
+  const bound = (rel: string) => (at === undefined ? read(rel) : gitBytes(repoRoot, at, rel));
   const idBytes = read(PROGRAM_IDENTITY_OBSERVATIONS_REL);
   const gwBytes = read(VERIFIER_GATEWAY_OBSERVATIONS_REL);
-  const runbook = read(PROVER_RUNBOOK_REL).toString("utf8");
+  const runbook = bound(PROVER_RUNBOOK_REL).toString("utf8");
   return {
     identity: JSON.parse(idBytes.toString("utf8")) as ProgramIdentityObservations,
     gateway: JSON.parse(gwBytes.toString("utf8")) as VerifierGatewayObservations,
@@ -890,10 +896,130 @@ export function readObservationInputs(repoRoot = "."): ReceiptInputs {
       { path: PROGRAM_IDENTITY_OBSERVATIONS_REL, sha256: sha256Hex(idBytes) },
       { path: VERIFIER_GATEWAY_OBSERVATIONS_REL, sha256: sha256Hex(gwBytes) },
     ],
-    sourceFiles: workingTreeSourceManifest(repoRoot),
-    zkMldsaVerifierSha256: sha256Hex(read(ZK_VERIFIER_SOURCE_REL)),
+    sourceFiles: at === undefined ? workingTreeSourceManifest(repoRoot) : commitSourceManifest(repoRoot, at),
+    zkMldsaVerifierSha256: sha256Hex(bound(ZK_VERIFIER_SOURCE_REL)),
     proverRunbookDirectsToGateway: /canonical SP1 Groth16\s+verifier gateway/.test(runbook),
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Supersession (SP1-TD1 finding TD1-N4)
+// ---------------------------------------------------------------------------------------------------------
+//
+// This receipt records a STOP, and its validator binds the files the lanes after it had to change
+// (ZKMLDSAVerifier.sol, the runbook). Restamping it to new bytes would erase what it proved. Once the questions it
+// stopped on were decided (SP1-TD1) and the next lane changed a bound file (SP1-TD2 added the verifier halt to
+// ZKMLDSAVerifier.sol), the receipt is marked superseded instead: its exact bytes are pinned, and every binding is
+// re-checked at the commit where it was last live, read from git. The receipt itself is never rewritten.
+
+export const SUPERSESSION_REL = "evidence/zk/sp1-p1/supersession.json";
+export const SUPERSESSION_SCHEMA = "walletwall.sp1-p1-supersession.v1";
+export const SUPERSESSION_FINDING = "TD1-N4";
+
+export interface Supersession {
+  schema: string;
+  receipt: string;
+  /** sha256 of the committed receipt bytes: the record is pinned, not restamped. */
+  receiptSha256: string;
+  /** A commit at which the receipt was live: its bindings hold there against the tree, read from git. */
+  historicalSubject: string;
+  finding: string;
+  /** The records that supersede it, in order; the first is the decision that answered the STOP. */
+  supersededBy: { lane: string; record: string; reason: string }[];
+}
+
+function git(repoRoot: string, args: string[]): Buffer {
+  return execFileSync("git", args, {
+    cwd: resolve(repoRoot),
+    maxBuffer: 64 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+/** A file's bytes at `commit`, read from git. */
+export function gitBytes(repoRoot: string, commit: string, rel: string): Buffer {
+  return git(repoRoot, ["show", `${commit}:${rel}`]);
+}
+
+/** Per-file manifest of the zkvm guest/host sources at `commit`, in `workingTreeSourceManifest`'s path order. */
+export function commitSourceManifest(repoRoot: string, commit: string): { path: string; sha256: string }[] {
+  const listed = git(repoRoot, ["ls-tree", "-r", "-z", "--name-only", commit, "--", ...SUBJECT_SOURCE_DIRS])
+    .toString("utf8")
+    .split("\0")
+    .filter(Boolean);
+  return listed.map((p) => ({ path: p, sha256: sha256Hex(gitBytes(repoRoot, commit, p)) }));
+}
+
+/** The supersession record, or null while the receipt is live. */
+export function readSupersession(repoRoot = "."): unknown {
+  let text: string;
+  try {
+    text = readFileSync(resolve(repoRoot, SUPERSESSION_REL), "utf8");
+  } catch {
+    return null;
+  }
+  return JSON.parse(text) as unknown;
+}
+
+/** Errors in a supersession record, checked against the committed receipt bytes and the repository's history. */
+export function validateSupersession(value: unknown, receiptBytes: Buffer, repoRoot = "."): string[] {
+  const errors: string[] = [];
+  const s = value as Partial<Supersession> | null;
+  if (s === null || typeof s !== "object") return ["the supersession record is not an object"];
+  if (s.schema !== SUPERSESSION_SCHEMA) errors.push(`supersession schema must be ${SUPERSESSION_SCHEMA}`);
+  if (s.receipt !== RECEIPT_REL) errors.push(`supersession must name ${RECEIPT_REL}`);
+  if (s.finding !== SUPERSESSION_FINDING) errors.push(`supersession must cite ${SUPERSESSION_FINDING}`);
+  if (s.receiptSha256 !== sha256Hex(receiptBytes)) {
+    errors.push(
+      "the committed receipt is not the bytes the supersession pinned (a superseded receipt is never restamped)",
+    );
+  }
+  const commit =
+    typeof s.historicalSubject === "string" && /^[0-9a-f]{40}$/.test(s.historicalSubject) ? s.historicalSubject : null;
+  if (commit === null) {
+    errors.push("historicalSubject must be a full commit id");
+  } else {
+    let then: Buffer | null = null;
+    try {
+      then = gitBytes(repoRoot, commit, RECEIPT_REL);
+    } catch {
+      then = null;
+    }
+    if (then === null) errors.push(`the receipt is not in the repository at ${commit} (or the commit is unavailable)`);
+    else if (!then.equals(receiptBytes)) errors.push(`the receipt at ${commit} is not the committed receipt`);
+  }
+  if (!Array.isArray(s.supersededBy) || s.supersededBy.length === 0) {
+    errors.push("supersededBy must name at least one superseding record");
+  } else {
+    if (s.supersededBy[0]?.lane !== "SP1-TD1")
+      errors.push("the first superseding record is SP1-TD1, which decided the STOP");
+    for (const r of s.supersededBy) {
+      if (typeof r?.lane !== "string" || typeof r.reason !== "string" || r.reason.length === 0) {
+        errors.push("each superseding record has a lane and a reason");
+      }
+      if (typeof r?.record !== "string" || !existsSync(resolve(repoRoot, r.record))) {
+        errors.push(`superseding record ${String(r?.record)} does not exist`);
+      }
+    }
+  }
+  return errors;
+}
+
+/** The inputs the committed receipt is validated against: the working tree, or its historical subject once superseded. */
+export function receiptInputsInRepo(repoRoot = "."): ReceiptInputs {
+  const s = readSupersession(repoRoot) as Partial<Supersession> | null;
+  return readObservationInputs(repoRoot, s === null ? undefined : s.historicalSubject);
+}
+
+/** The full check of the committed receipt in this repository: live against the working tree, or as superseded. */
+export function validateCommittedReceiptInRepo(repoRoot = "."): string[] {
+  const receiptBytes = readFileSync(resolve(repoRoot, RECEIPT_REL));
+  const committed = JSON.parse(receiptBytes.toString("utf8")) as unknown;
+  const supersession = readSupersession(repoRoot);
+  if (supersession === null) return validateCommittedReceipt(committed, readObservationInputs(repoRoot));
+  const errors = validateSupersession(supersession, receiptBytes, repoRoot);
+  if (errors.length > 0) return errors;
+  return validateCommittedReceipt(committed, receiptInputsInRepo(repoRoot));
 }
 
 /**

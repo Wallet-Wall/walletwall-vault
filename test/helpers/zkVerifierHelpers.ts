@@ -3,12 +3,19 @@ import { ProverClient } from "../../scripts/prover-client";
 
 export const MOCK_PROGRAM_VKEY = ethers.keccak256(ethers.toUtf8Bytes("MOCK_VKEY"));
 
+/** A halt principal no test signer controls (SP1-TD2): tests that are not about the halt never halt. */
+export const TEST_HALT_PRINCIPAL = ethers.getAddress(ethers.dataSlice(ethers.id("test halt principal"), 12));
+
 export async function deployMockZkVerifier() {
   const MockSP1Verifier = await ethers.getContractFactory("MockSP1Verifier");
   const mockSp1Verifier = await MockSP1Verifier.deploy();
 
   const ZKMLDSAVerifier = await ethers.getContractFactory("ZKMLDSAVerifier");
-  const zkVerifier = await ZKMLDSAVerifier.deploy(await mockSp1Verifier.getAddress(), MOCK_PROGRAM_VKEY);
+  const zkVerifier = await ZKMLDSAVerifier.deploy(
+    await mockSp1Verifier.getAddress(),
+    MOCK_PROGRAM_VKEY,
+    TEST_HALT_PRINCIPAL,
+  );
 
   return { mockSp1Verifier, zkVerifier };
 }

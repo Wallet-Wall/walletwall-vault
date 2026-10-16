@@ -12,8 +12,9 @@
  * (`probeFacts`), which the TD1 decision validator consumes: if an execution and the recorded fact
  * disagree, this suite fails. No network, no SP1 toolchain, no proving.
  */
-import { readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import { expect } from "chai";
 import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
@@ -21,6 +22,7 @@ import { ml_dsa65 } from "@noble/post-quantum/ml-dsa.js";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { WITHDRAWAL_TYPES, withdrawalDomain } from "./helpers/vaultHelpers";
 import { ProverClient } from "../scripts/prover-client";
+import { TEST_HALT_PRINCIPAL } from "./helpers/zkVerifierHelpers";
 
 const OBS = "evidence/zk/sp1-td1/observations";
 const readJson = (rel: string) => JSON.parse(readFileSync(resolve(rel), "utf8"));
@@ -212,7 +214,7 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
     (await ethers.getContractFactory("AcceptAllRouteVerifierProbe")).deploy(verifierHash);
   const rogueHash = (selector: string) => ethers.zeroPadBytes(selector, 32).slice(0, 10) + "ab".repeat(28);
   const zkVerifier = async (sp1Verifier: string) =>
-    (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(sp1Verifier, PROGRAM_VKEY);
+    (await ethers.getContractFactory("ZKMLDSAVerifier")).deploy(sp1Verifier, PROGRAM_VKEY, TEST_HALT_PRINCIPAL);
   const payload = (publicValues: string, proofBytes: string) =>
     ethers.AbiCoder.defaultAbiCoder().encode(["bytes", "bytes"], [publicValues, proofBytes]);
   /** A journal that claims `publicKey` signed `digest`: anyone can write one; only a proof makes it count. */
@@ -436,18 +438,16 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
 
   describe("the consumers a verifier-level halt must reach (source scan)", function () {
     it("finds every contract that verifies through an IPQCVerifier, and how each can replace its verifier", function () {
-      const solidity = (dir: string): string[] =>
-        readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-          e.isDirectory()
-            ? e.name === "mocks"
-              ? []
-              : solidity(join(dir, e.name))
-            : e.name.endsWith(".sol")
-              ? [join(dir, e.name)]
-              : [],
-        );
+      // These are facts about the subject TD1 measured. SP1-TD2 changed the consumers (the multisig vault gained
+      // its delayed rotation), so the scan reads TD1's subject commit from git rather than the working tree; the
+      // current tree is measured by TD2's own scan (test/Sp1Td2VerifierHalt.test.ts). Needs full history, as CI has.
+      const subject: string = readJson("evidence/zk/sp1-td1/decision-receipt.json").subject.baseCommit;
+      const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
       // A consumer calls .verify(...) on a verifier it holds or reads; an implementer is a verifier, not a consumer.
-      const sources = solidity("contracts").map((path) => readFileSync(path, "utf8"));
+      const sources = git("ls-tree", "-r", "--name-only", subject, "--", "contracts")
+        .split("\n")
+        .filter((path) => path.endsWith(".sol") && !path.split("/").includes("mocks"))
+        .map((path) => git("show", `${subject}:${path}`));
       const consumers = sources
         .filter((s) => /\.verify\(/.test(s) && !/\bcontract\s+\w+\s+is\s+[^{]*\bIPQCVerifier\b/.test(s))
         .map((s) => ({ name: /^contract\s+(\w+)/m.exec(s)![1], source: s }));
@@ -768,7 +768,12 @@ describe("SP1-TD1 trust-target probes (exact mainnet verifier and gateway bytes)
   describe("Option A — ZKMLDSAVerifier bound directly to the immutable verifier, pinned by code hash", function () {
     const V610_CODEHASH = MAINNET.verifiers["v6.1.0"].codeKeccak;
     const pinned = async (target: string) =>
-      (await ethers.getContractFactory("ZKMLDSAVerifierCodePinnedProbe")).deploy(target, PROGRAM_VKEY, V610_CODEHASH);
+      (await ethers.getContractFactory("ZKMLDSAVerifierCodePinnedProbe")).deploy(
+        target,
+        PROGRAM_VKEY,
+        V610_CODEHASH,
+        TEST_HALT_PRINCIPAL,
+      );
 
     it("the code pin accepts the canonical verifier code at any address and refuses every other code", async function () {
       const factory = await ethers.getContractFactory("ZKMLDSAVerifierCodePinnedProbe");

@@ -6,6 +6,7 @@
  *
  * Pure, fast, static reads — no SP1 toolchain, no proving, no network.
  */
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -22,9 +23,15 @@ import {
   deriveProgramIdentityVerdict,
   deriveProgramIsolation,
   readObservationInputs,
+  readSupersession,
+  receiptInputsInRepo,
   sourceManifestDigest,
+  SUPERSESSION_REL,
   validateCommittedReceipt,
+  validateCommittedReceiptInRepo,
   validateReceiptRules,
+  validateSupersession,
+  type Supersession,
   type EnvironmentObservation,
   type ReceiptInputs,
   type Sp1P1StopReceipt,
@@ -68,7 +75,8 @@ function env(
 
 describe("SP1-P1 assurance STOP receipt", function () {
   before(function () {
-    INPUTS = readObservationInputs();
+    // Superseded (TD1-N4): the repository bytes the receipt binds are read at its historical subject.
+    INPUTS = receiptInputsInRepo();
   });
 
   describe("committed receipt", function () {
@@ -242,6 +250,72 @@ describe("SP1-P1 assurance STOP receipt", function () {
         ).to.equal(true);
       });
     }
+  });
+
+  describe("superseded, never restamped (SP1-TD1 finding TD1-N4)", function () {
+    const receiptBytes = () => readFileSync(resolve(RECEIPT_REL));
+    const record = () => clone(readSupersession() as Supersession);
+
+    it("the committed receipt validates in this repository as a superseded record", function () {
+      expect(validateCommittedReceiptInRepo()).to.deep.equal([]);
+      expect(validateSupersession(record(), receiptBytes())).to.deep.equal([]);
+    });
+
+    it("the tripwire really fired: the working tree's ZKMLDSAVerifier.sol no longer matches the binding, its historical subject does", function () {
+      const live = validateCommittedReceipt(committed(), readObservationInputs());
+      expect(live.join(" | ")).to.match(/ZKMLDSAVerifier.sol changed/);
+      const s = record();
+      expect(readObservationInputs(".", s.historicalSubject).zkMldsaVerifierSha256).to.equal(
+        committed().repositoryBindings.zkMldsaVerifierSha256,
+      );
+    });
+
+    it("pins the receipt bytes and names its superseding records, SP1-TD1 first", function () {
+      const s = record();
+      expect(s.receipt).to.equal(RECEIPT_REL);
+      expect(s.finding).to.equal("TD1-N4");
+      expect(s.supersededBy.map((r) => r.lane)).to.deep.equal(["SP1-TD1", "SP1-TD2"]);
+      expect(s.supersededBy[0].record).to.equal("evidence/zk/sp1-td1/decision-receipt.json");
+    });
+
+    it("refuses a restamped receipt, a foreign record and a subject where the receipt was not live", function () {
+      const cases: [string, (s: Supersession) => void, RegExp][] = [
+        ["another schema", (s) => (s.schema = "walletwall.sp1-p1-supersession.v0"), /schema must be/],
+        ["another receipt", (s) => (s.receipt = "evidence/zk/sp1-td1/decision-receipt.json"), /must name/],
+        ["another finding", (s) => (s.finding = "TD1-N5"), /must cite TD1-N4/],
+        ["restamped bytes", (s) => (s.receiptSha256 = HEX("0")), /never restamped/],
+        ["not a commit id", (s) => (s.historicalSubject = "main"), /full commit id/],
+        [
+          "a commit before the receipt existed",
+          (s) => (s.historicalSubject = "6463caee352beda7a27009d29f1a48b42b063fd8"),
+          /not in the repository at 6463caee/,
+        ],
+        [
+          "a commit with earlier receipt bytes",
+          // d75c091: the receipt's first commit, before the common-mode cross-checks changed it.
+          (s) => (s.historicalSubject = "d75c091b693e48022b4238d8b08a37f720c21f47"),
+          /is not the committed receipt/,
+        ],
+        ["no superseding record", (s) => (s.supersededBy = []), /at least one/],
+        ["SP1-TD1 not first", (s) => s.supersededBy.reverse(), /first superseding record is SP1-TD1/],
+        ["a record that does not exist", (s) => (s.supersededBy[1].record = "docs/NOPE.md"), /does not exist/],
+        ["a record without a reason", (s) => (s.supersededBy[1].reason = ""), /a lane and a reason/],
+      ];
+      for (const [label, mutate, rule] of cases) {
+        const s = record();
+        mutate(s);
+        expect(validateSupersession(s, receiptBytes()).join(" | "), label).to.match(rule);
+      }
+    });
+
+    it("the generator refuses to rewrite a superseded receipt", function () {
+      const run = spawnSync(process.execPath, ["--import", "tsx", "scripts/generate-sp1-p1-stop-receipt.ts"], {
+        encoding: "utf8",
+      });
+      expect(run.status).to.not.equal(0);
+      expect(run.stderr).to.include(`superseded (${SUPERSESSION_REL}) and is never restamped`);
+      expect(readFileSync(resolve(RECEIPT_REL)).equals(receiptBytes())).to.equal(true);
+    });
   });
 
   describe("drift and stale subjects are refused", function () {

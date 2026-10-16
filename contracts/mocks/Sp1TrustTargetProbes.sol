@@ -118,7 +118,8 @@ contract RoutePinnedGatewayProbe is ISP1Verifier {
  *         recognised at any address. The code hash alone does not fix the accepted relation on a chain
  *         whose precompiles differ; that is a per-chain execution check, not something a pin can see.
  *         The implementation lane bakes the expected hash in as a constant; the probe takes it as an
- *         argument so a test can exercise both outcomes.
+ *         argument so a test can exercise both outcomes. Since SP1-TD2 the wrapper also takes a halt
+ *         principal; the probes run it ACTIVE, where verify() is the logic TD1 measured.
  */
 contract ZKMLDSAVerifierCodePinnedProbe is ZKMLDSAVerifier {
     error SP1VerifierCodeMismatch(bytes32 actual, bytes32 expected);
@@ -126,8 +127,9 @@ contract ZKMLDSAVerifierCodePinnedProbe is ZKMLDSAVerifier {
     constructor(
         address sp1Verifier,
         bytes32 programVKey,
-        bytes32 expectedSp1VerifierCodehash
-    ) ZKMLDSAVerifier(sp1Verifier, programVKey) {
+        bytes32 expectedSp1VerifierCodehash,
+        address haltPrincipal
+    ) ZKMLDSAVerifier(sp1Verifier, programVKey, haltPrincipal) {
         bytes32 actual = sp1Verifier.codehash;
         if (actual != expectedSp1VerifierCodehash) revert SP1VerifierCodeMismatch(actual, expectedSp1VerifierCodehash);
     }

@@ -1,5 +1,7 @@
 import { network } from "hardhat";
 
+import { checkDeploymentBinding } from "./lib/verifier-binding";
+
 const ALLOWED_NETWORKS = new Set(["default", "hardhat", "localhost", "sepolia", "base-sepolia"]);
 
 // Expected chain ID for each supported Hardhat network. Used to detect a
@@ -105,6 +107,12 @@ async function main() {
     pqVerifierAddress = await pqVerifier.getAddress();
     console.log(`MockMLDSAVerifier (MOCK) deployed to: ${pqVerifierAddress}`);
   }
+
+  // SP1-TD2 binding gate: on the SP1 path the vault must sit behind an ACTIVE, haltable wrapper with the SP1-TD1
+  // designations that the deployer cannot halt (scripts/lib/verifier-binding.ts).
+  await checkDeploymentBinding(ethers.provider, "WalletWallVault", pqVerifierAddress, await deployer.getAddress(), {
+    allowMockSp1: process.env.ALLOW_MOCK_SP1 === "true",
+  });
 
   // Deploy the vault, wired to the PQ verifier trust boundary.
   const WalletWallVault = await ethers.getContractFactory("WalletWallVault", deployer);
