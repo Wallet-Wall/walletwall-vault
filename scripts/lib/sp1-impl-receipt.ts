@@ -23,12 +23,20 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
-import { getAddress } from "ethers";
+import { getAddress, type Provider } from "ethers";
 
 import { collectReports } from "../validate-bytecode-size";
+import { fileHistoryErrors } from "./append-only-history";
+import {
+  MAIN_RULESET_OBSERVATION_REL,
+  historyProtectionGaps,
+  readRulesetObservation,
+  rulesetObservationErrors,
+} from "./main-ruleset";
 import { isExecutionFailure } from "./rpc-answer";
 import {
   CANONICAL_REBUILD_OBSERVATION_REL,
@@ -63,13 +71,16 @@ import {
   MIGRATED_FROM,
   REGISTRY_REL,
   REGISTRY_SCHEMA,
+  REGISTRY_V1_SCHEMA,
   readRegistry,
   registryErrors,
+  registryExtensionErrors,
   registryState,
   validateRegistryInRepo,
   type RegistryDoc,
   type RegistryFact,
 } from "./sp1-registry";
+import { finalizedBlock } from "./sp1-registration";
 import { readDecisionContext, validateCommittedDecisionReceipt } from "./sp1-td1-decision";
 import { TD1_RECEIPT_REL, TD2_RECORD_REL, validateCommittedTd2Record } from "./sp1-td2-record";
 import {
@@ -479,6 +490,27 @@ function runProbe(probe: string, control: () => void, attack: () => void, reason
   const line = message.split("\n").find((l) => reason.test(l)) ?? "";
   return { probe, controlAccepted, attackRefused: line !== "", refusal: line.replace(/^\s*-\s*/, "").trim() };
 }
+async function runProbeAsync(
+  probe: string,
+  control: () => Promise<void>,
+  attack: () => Promise<void>,
+  reason: RegExp,
+): Promise<ProbeResult> {
+  let controlAccepted = true;
+  try {
+    await control();
+  } catch {
+    controlAccepted = false;
+  }
+  let message = "";
+  try {
+    await attack();
+  } catch (error) {
+    message = messageOf(error);
+  }
+  const line = message.split("\n").find((l) => reason.test(l)) ?? "";
+  return { probe, controlAccepted, attackRefused: line !== "", refusal: line.replace(/^\s*-\s*/, "").trim() };
+}
 const noErrors = (errors: string[]) => {
   if (errors.length > 0) throw new Error(errors.join("\n"));
 };
@@ -628,6 +660,115 @@ export function probeIdentityReuse(designations: readonly ProgramDesignation[]):
   );
 }
 
+/**
+ * STOP 7 rests on the history walk itself (scripts/lib/append-only-history.ts with the registry's extension rule), run
+ * on a throwaway repository: a history that only appends facts passes, and one whose later commit drops a published
+ * halt is refused. A walk that saw nothing would fail the probe, so its "no violation" on this repository means
+ * something. (A rewrite of main itself is outside any walk: main's ruleset is measured for that.)
+ */
+export function probeRegistryHistory(
+  designations: readonly ProgramDesignation[],
+  builds: readonly WrapperBuild[],
+): ProbeResult {
+  const d = designations[0];
+  const build = builds[builds.length - 1];
+  const [a] = SUPPORTED_DEPLOYMENT_CHAINS;
+  const registered = probeRegistration(1, a, PROBE.wrapperA, d, build);
+  const halted = probeHalt(2, a, PROBE.wrapperA, d);
+  const text = (doc: unknown) => `${JSON.stringify(doc, null, 2)}\n`;
+  const v1 = text({ schema: REGISTRY_V1_SCHEMA, entries: [] });
+  const walk = (versions: string[]) => {
+    const repo = mkdtempSync(join(tmpdir(), "sp1-receipt-registry-probe-"));
+    try {
+      const run = (...args: string[]) =>
+        execFileSync(
+          "git",
+          [
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=probe@example.invalid",
+            "-c",
+            "user.name=probe",
+            ...args,
+          ],
+          // Fixed identities and times: the same versions give the same commits, so the refusal it records is stable.
+          {
+            cwd: repo,
+            stdio: "pipe",
+            env: {
+              ...process.env,
+              GIT_AUTHOR_DATE: "2026-01-01T00:00:00Z",
+              GIT_COMMITTER_DATE: "2026-01-01T00:00:00Z",
+              GIT_COMMITTER_NAME: "probe",
+              GIT_COMMITTER_EMAIL: "probe@example.invalid",
+            },
+          },
+        );
+      run("init", "-q");
+      versions.forEach((version, k) => {
+        mkdirSync(dirname(join(repo, REGISTRY_REL)), { recursive: true });
+        writeFileSync(join(repo, REGISTRY_REL), version);
+        run("add", "-A");
+        run("commit", "-q", "-m", `registry version ${k}`);
+      });
+      noErrors(fileHistoryErrors(repo, REGISTRY_REL, registryExtensionErrors));
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
+  };
+  return runProbe(
+    "a published halt fact dropped from the registry by a later commit, seen by the history walk",
+    () => walk([v1, text(probeRegistry([registered])), text(probeRegistry([registered, halted]))]),
+    () =>
+      walk([
+        v1,
+        text(probeRegistry([registered])),
+        text(probeRegistry([registered, halted])),
+        text(probeRegistry([registered])),
+      ]),
+    /removed or rewrote a published fact/,
+  );
+}
+
+/**
+ * A finalized-block read that fails, or a chain that names no finalized block, must leave a fact unobserved: never
+ * read as some other block (review finding L-7; L-3 was a fallback to the latest block). The probe providers answer
+ * "latest" either way, so a fallback would resolve, and the probe would see it.
+ */
+export async function probeFinalityReads(): Promise<ProbeResult[]> {
+  const provider = (finalized: () => Promise<unknown>) =>
+    ({
+      getBlock: async (tag: unknown) => (tag === "finalized" ? finalized() : { number: 130, hash: word("44") }),
+    }) as unknown as Provider;
+  const healthy = provider(async () => ({ number: 120, hash: word("33") }));
+  const read = async (p: Provider) => {
+    const at = await finalizedBlock(p);
+    if (at.block !== 120) throw new Error(`observed at block ${at.block}, not the finalized block`);
+  };
+  return [
+    await runProbeAsync(
+      "a finalized-block read that fails (503), taken as a block to observe the facts at",
+      () => read(healthy),
+      () =>
+        read(
+          provider(async () => {
+            throw Object.assign(new Error("server response 503 Service Unavailable"), { code: "SERVER_ERROR" });
+          }),
+        ),
+      /503/,
+    ),
+    await runProbeAsync(
+      "a chain that names no finalized block, taken as a block to observe the facts at",
+      () => read(healthy),
+      () => read(provider(async () => null)),
+      /no finalized block/,
+    ),
+  ];
+}
+
 /** A rate limit must not read as the chain's answer; the chain's own revert must. */
 export function probeRpcFailClosed(): ProbeResult {
   return runProbe(
@@ -687,7 +828,11 @@ export interface ImplReceiptInputs {
     haltedIdentity: { registry: ProbeResult; deployPlan: ProbeResult };
     identityReuse: ProbeResult;
     rpc: ProbeResult;
+    registryHistory: ProbeResult;
+    finality: ProbeResult[];
   };
+  /** Main's ruleset as measured (scripts/lib/main-ruleset.ts): why the record is none, and the gaps it shows. */
+  ruleset: { observedAtUtc: string; errors: string[]; gaps: string[] };
   evidence: { path: string; sha256: string }[];
 }
 
@@ -699,6 +844,8 @@ interface StatusEntry {
 interface Prerequisite {
   id: string;
   met: boolean;
+  /** False when no evidence this lane can produce meets it (a later lane, or the owner, must). */
+  reachableInThisLane: boolean;
   basis: string;
 }
 
@@ -820,6 +967,10 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
   set("REGISTRY_APPEND_ONLY_STATUS", i.registryErrors.length === 0 ? "APPEND_ONLY_ON_FULL_HISTORY" : "VIOLATED", [
     `every parent edge of every commit reachable from HEAD, and the working tree, only extends ${REGISTRY_REL}, the designations, their evidence bundles and the wrapper builds: ${yes(i.registryErrors.length === 0)}`,
     "a shallow clone cannot show that, and fails closed",
+    probeLine(i.probes.registryHistory),
+    `a rewrite of main itself is outside any walk: main's ruleset forbids force pushes and deletion with nobody to bypass it, as measured at ${i.ruleset.observedAtUtc || "(no measurement)"} (${MAIN_RULESET_OBSERVATION_REL}): ${yes(i.ruleset.errors.length === 0 && i.ruleset.gaps.length === 0)}; whoever administers the repository can change that, and only the next measurement would show it`,
+    ...i.ruleset.gaps,
+    ...i.ruleset.errors,
     ...i.registryErrors,
   ]);
 
@@ -879,7 +1030,6 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
 
   const outsideLane = !same(i.contractsChanged, LANE_CONTRACT_CHANGES);
   const td2Holds =
-    i.td2.errors.length === 0 &&
     same(i.ast.mutatingFunctions, ["halt"]) &&
     i.ast.haltSetsOnlyTrue &&
     i.ast.verifyChecksHaltFirst &&
@@ -887,7 +1037,15 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
   const changed = i.contractsChanged.map((c) => `${c.status} ${c.path}`).join(", ");
   set(
     "TD2_HALT_INVARIANTS_PRESERVED",
-    outsideLane ? "CHANGED_OUTSIDE_THE_WRAPPER" : td2Holds ? "PRESERVED" : "WEAKENED",
+    // What the code shows decides PRESERVED or WEAKENED; a TD2 record that does not validate is invalid evidence
+    // (TD2_RECORD_INVALID: no STOP, and the verdict is EVIDENCE_INVALID), never a demonstrated weakening.
+    outsideLane
+      ? "CHANGED_OUTSIDE_THE_WRAPPER"
+      : !td2Holds
+        ? "WEAKENED"
+        : i.td2.errors.length > 0
+          ? "TD2_RECORD_INVALID"
+          : "PRESERVED",
     [
       `SP1-TD2's record validates against SP1-TD1 and the repository: ${yes(i.td2.errors.length === 0)}`,
       `the wrapper's state-changing functions: ${i.ast.mutatingFunctions.join(", ")}; HALT_PRINCIPAL is ${i.ast.immutables.HALT_PRINCIPAL}`,
@@ -920,54 +1078,22 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
       i.designations.some((x) => x.identity === f.identity) &&
       registryState(i.registry).haltsOfIdentity(f.identity).length === 0,
   );
-  const prerequisites: Prerequisite[] = [
-    {
-      id: "DIRECT_VERIFIER_PIN",
-      met: s.SP1_DIRECT_VERIFIER_PIN.value === "CONSTRUCTOR_CODE_HASH_PIN",
-      basis: `SP1_DIRECT_VERIFIER_PIN is ${s.SP1_DIRECT_VERIFIER_PIN.value}`,
-    },
-    {
-      id: "PROGRAM_VKEY_DESIGNATION",
-      met: i.designationErrors.length === 0,
-      basis: `PROGRAM_VKEY_DESIGNATION is ${s.PROGRAM_VKEY_DESIGNATION.value}`,
-    },
-    {
-      id: "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
-      met: i.canonical.evidenceErrors.length === 0 && i.canonical.twoHost === "REPRODUCED",
-      basis: `the committed rebuild evidence (valid: ${yes(i.canonical.evidenceErrors.length === 0)}), judged for the release (two distinct machines): ${i.canonical.twoHost}`,
-    },
-    {
-      id: "PER_CHAIN_EXECUTION_CHECK",
-      met: s.PER_CHAIN_EXECUTION_CHECK.value === "PASSED",
-      basis: `PER_CHAIN_EXECUTION_CHECK is ${s.PER_CHAIN_EXECUTION_CHECK.value}`,
-    },
-    {
-      id: "REGISTERED_ACTIVE_WRAPPER",
-      met: active.length > 0 && i.registryErrors.length === 0,
-      basis: `registrations of a designated identity on a supported deployment chain, never recorded halted: ${active.length}; the registry validates, content and history: ${yes(i.registryErrors.length === 0)}; the binding gate reconciles each fact with the chain when it binds`,
-    },
-    {
-      id: "REAL_WALLETWALL_PROOF",
-      met: false,
-      basis: `${REAL_PROOF_RECORDS_DIR} holds no record: no WalletWall proof of the designated program has been generated and verified by the designated verifier`,
-    },
-    {
-      id: "PROVING_AVAILABILITY",
-      met: i.proving.status === "ESTABLISHED",
-      basis: `PROVING_AVAILABILITY is ${s.PROVING_AVAILABILITY.value}`,
-    },
-    {
-      id: "OWNER_REVIEW_AND_MERGE",
-      met: false,
-      basis: "a receipt cannot attest its own review: the owner reviews and merges after it is generated",
-    },
-  ];
-  const binding = productionBindingStatus(prerequisites);
-  const unmet = prerequisites.filter((p) => !p.met);
-  set("PRODUCTION_SP1_BINDING_STATUS", binding, [
-    `prerequisites unmet: ${unmet.length === 0 ? "none" : unmet.map((p) => p.id).join(", ")}`,
-    "provenance says which verifier and program these are; it does not say they are sound",
-  ]);
+  // Every validator's record, by source: a receipt over invalid records shows nothing (review finding F6).
+  const recordFailures = (
+    [
+      ["TD1_RECEIPT", i.td1.errors],
+      ["TD2_RECORD", i.td2.errors],
+      ["DESIGNATIONS", i.designationErrors],
+      ["WRAPPER_BUILDS", i.buildErrors],
+      ["REGISTRY", i.registryErrors],
+      ["CHAIN_EXECUTION", i.chainExecution.errors],
+      ["CANONICAL_REBUILD", i.canonical.evidenceErrors],
+      ["PROVING", i.proving.errors],
+      ["RULESET", i.ruleset.errors],
+    ] as const
+  )
+    .filter(([, errors]) => errors.length > 0)
+    .map(([source]) => source);
 
   const stop: Record<(typeof STOP_CONDITION_IDS)[number], [boolean, string]> = {
     // Only a completed rebuild that produced another ELF or vkey shows the designation is not reproduced; an
@@ -1002,9 +1128,11 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
       !i.probes.overrides.every(passed),
       `override probes refused with their controls accepted: ${i.probes.overrides.filter(passed).length} of ${i.probes.overrides.length}`,
     ],
+    // A rewrite inside the history is the walk's to see (the probe shows it can); a rewrite of main itself is the
+    // ruleset's to forbid (measured). A violation the walk did detect is invalid evidence (REGISTRY), not this STOP.
     REGISTRY_HISTORY_REWRITABLE_UNDETECTED: [
-      i.registryErrors.length > 0,
-      `the append-only proof over the full history passes: ${yes(i.registryErrors.length === 0)}`,
+      !passed(i.probes.registryHistory) || i.ruleset.gaps.length > 0,
+      `${probeLine(i.probes.registryHistory)}; main's history protected by its ruleset (observed ${i.ruleset.observedAtUtc || "never"}): ${i.ruleset.gaps.length === 0 ? "yes" : `no: ${i.ruleset.gaps.join("; ")}`}`,
     ],
     HALTED_IDENTITY_REPUBLISHABLE_BY_ADDRESS_CHANGE: [
       !(
@@ -1022,9 +1150,12 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
       f1 === "PROOF_FORMAT_CHANGED" || f1 === "GUEST_CHANGE_NOT_EXCLUDED",
       `F1_CHAIN_ID_FIX is ${f1}`,
     ],
-    RPC_FAILURE_FAILS_OPEN: [!passed(i.probes.rpc), probeLine(i.probes.rpc)],
+    RPC_FAILURE_FAILS_OPEN: [
+      !(passed(i.probes.rpc) && i.probes.finality.length > 0 && i.probes.finality.every(passed)),
+      [i.probes.rpc, ...i.probes.finality].map(probeLine).join("; "),
+    ],
     TD2_INVARIANTS_WEAKENED: [
-      s.TD2_HALT_INVARIANTS_PRESERVED.value !== "PRESERVED",
+      ["WEAKENED", "CHANGED_OUTSIDE_THE_WRAPPER"].includes(s.TD2_HALT_INVARIANTS_PRESERVED.value),
       `TD2_HALT_INVARIANTS_PRESERVED is ${s.TD2_HALT_INVARIANTS_PRESERVED.value}`,
     ],
     BYTECODE_EXCEEDS_BUDGET: [
@@ -1040,11 +1171,86 @@ export function deriveImplReceipt(i: ImplReceiptInputs): ImplReceipt {
   }));
   const triggered = stopConditions.filter((c) => c.triggered).map((c) => c.id);
 
+  const prerequisites: Prerequisite[] = [
+    {
+      id: "RECORDS_VALID",
+      met: recordFailures.length === 0,
+      reachableInThisLane: true,
+      basis: `every record validates (TD1, TD2, designations, builds, registry, chain execution, canonical rebuild, proving, ruleset): ${recordFailures.length === 0 ? "yes" : `no: ${recordFailures.join(", ")}`}`,
+    },
+    {
+      id: "DIRECT_VERIFIER_PIN",
+      reachableInThisLane: true,
+      met: s.SP1_DIRECT_VERIFIER_PIN.value === "CONSTRUCTOR_CODE_HASH_PIN",
+      basis: `SP1_DIRECT_VERIFIER_PIN is ${s.SP1_DIRECT_VERIFIER_PIN.value}`,
+    },
+    {
+      id: "PROGRAM_VKEY_DESIGNATION",
+      reachableInThisLane: true,
+      met: i.designationErrors.length === 0,
+      basis: `PROGRAM_VKEY_DESIGNATION is ${s.PROGRAM_VKEY_DESIGNATION.value}`,
+    },
+    {
+      id: "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
+      reachableInThisLane: true,
+      met: i.canonical.evidenceErrors.length === 0 && i.canonical.twoHost === "REPRODUCED",
+      basis: `the committed rebuild evidence (valid: ${yes(i.canonical.evidenceErrors.length === 0)}), judged for the release (two distinct machines): ${i.canonical.twoHost}`,
+    },
+    {
+      id: "PER_CHAIN_EXECUTION_CHECK",
+      reachableInThisLane: true,
+      met: s.PER_CHAIN_EXECUTION_CHECK.value === "PASSED",
+      basis: `PER_CHAIN_EXECUTION_CHECK is ${s.PER_CHAIN_EXECUTION_CHECK.value}`,
+    },
+    {
+      id: "REGISTERED_ACTIVE_WRAPPER",
+      reachableInThisLane: true,
+      met: active.length > 0 && i.registryErrors.length === 0,
+      basis: `registrations of a designated identity on a supported deployment chain, never recorded halted: ${active.length}; the registry validates, content and history: ${yes(i.registryErrors.length === 0)}; the binding gate reconciles each fact with the chain when it binds`,
+    },
+    {
+      id: "REAL_WALLETWALL_PROOF",
+      met: false,
+      reachableInThisLane: false,
+      basis: `${REAL_PROOF_RECORDS_DIR} holds no record, and no lane yet validates one: a WalletWall proof of the designated program, generated (the circuit download is the owner's to authorize) and verified by the designated verifier, needs that later lane`,
+    },
+    {
+      id: "PROVING_AVAILABILITY",
+      met: false,
+      reachableInThisLane: false,
+      basis: `PROVING_AVAILABILITY is ${s.PROVING_AVAILABILITY.value}: this lane derives only OWNER_DOWNLOAD_REQUIRED or LOCAL_COPY_NOT_ARCHIVED, never availability; a verified WalletWall archive of the circuit artifacts and an exercised proving path need a later lane`,
+    },
+    {
+      id: "OWNER_REVIEW_AND_MERGE",
+      met: false,
+      reachableInThisLane: false,
+      basis: "a receipt cannot attest its own review: the owner reviews and merges after this lane generates it",
+    },
+    {
+      id: "NO_STOP_TRIGGERED",
+      met: triggered.length === 0,
+      reachableInThisLane: true,
+      basis: `STOP conditions triggered: ${triggered.length === 0 ? "none" : triggered.join(", ")}`,
+    },
+  ];
+  const binding = productionBindingStatus(prerequisites);
+  const unmet = prerequisites.filter((p) => !p.met);
+  set("PRODUCTION_SP1_BINDING_STATUS", binding, [
+    `prerequisites unmet: ${unmet.length === 0 ? "none" : unmet.map((p) => p.id).join(", ")}`,
+    "provenance says which verifier and program these are; it does not say they are sound",
+  ]);
+
   const delta = same(i.ast.mutatingFunctions, ["halt"]) && !outsideLane;
   return {
     schema: IMPL_RECEIPT_SCHEMA,
     lane: IMPL_LANE,
-    verdict: triggered.length > 0 ? `STOP: ${triggered.join(", ")}` : "BUILT_AND_TESTED_AWAITING_OWNER_REVIEW",
+    // A STOP outranks invalid evidence, which outranks a lane that is built and tested (review finding F6).
+    verdict:
+      triggered.length > 0
+        ? `STOP: ${triggered.join(", ")}`
+        : recordFailures.length > 0
+          ? `EVIDENCE_INVALID: ${recordFailures.join(", ")}`
+          : "BUILT_AND_TESTED_AWAITING_OWNER_REVIEW",
     baseCommit: i.baseCommit,
     statuses: Object.fromEntries(STATUS_KEYS.map((k) => [k, s[k]])) as Record<StatusKey, StatusEntry>,
     productionBinding: { status: binding, prerequisites },
@@ -1103,14 +1309,72 @@ const jsonFiles = (repoRoot: string, dir: string) =>
         .map((f) => `${dir}/${f}`)
     : [];
 
-/** Everything the derivation needs, read from the repository at `repoRoot` (compile first). */
-export function readImplReceiptInputs(repoRoot: string, baseCommit: string): ImplReceiptInputs {
-  if (!/^[0-9a-f]{40}$/.test(String(baseCommit))) throw new Error("the base commit must be a full commit id");
+/** The commit that last wrote the committed receipt; HEAD when the receipt is uncommitted (being generated). */
+export function receiptCommit(repoRoot = "."): string {
+  const uncommitted = git(repoRoot, ["status", "--porcelain", "--", IMPL_RECEIPT_REL]).trim() !== "";
+  const last = uncommitted ? "" : git(repoRoot, ["log", "-1", "--format=%H", "--", IMPL_RECEIPT_REL]).trim();
+  return last || git(repoRoot, ["rev-parse", "HEAD"]).trim();
+}
+
+/**
+ * Why `base` is not the receipt's base (review finding F5). The base decides which contract sources changed and what
+ * the journal decoded as before, so it is verified, never taken from the receipt: it must be a published main commit
+ * (on origin/main's first-parent history), an ancestor of HEAD, and the latest main commit in the history of `at`,
+ * the commit that wrote the receipt. That holds where the lane wrote it, at a pull request's synthetic merge, and on
+ * main after the merge; a lane commit, or an older main commit (one that would hide a revert), is refused. Without
+ * origin/main and its history nothing is judged.
+ */
+export function baseCommitErrors(repoRoot: string, base: string, at: string): string[] {
+  if (!/^[0-9a-f]{40}$/.test(String(base))) return ["the base commit must be a full commit id"];
+  const list = (args: string[]) => git(repoRoot, args).split("\n").filter(Boolean);
+  let mainline: string[];
   try {
-    git(repoRoot, ["merge-base", "--is-ancestor", baseCommit, "HEAD"]);
+    mainline = list(["rev-list", "--first-parent", "origin/main"]);
   } catch {
-    throw new Error(`the base ${baseCommit} is not an ancestor of HEAD, or the history is unavailable`);
+    return [
+      "origin/main is not available, with its history: the base cannot be verified, and the receipt is not judged",
+    ];
   }
+  const errors: string[] = [];
+  const index = mainline.indexOf(base);
+  if (index === -1) {
+    errors.push(`the base ${base} is no commit of origin/main's first-parent history: only a published main is a base`);
+  }
+  try {
+    git(repoRoot, ["merge-base", "--is-ancestor", base, "HEAD"]);
+  } catch {
+    errors.push(`the base ${base} is not an ancestor of HEAD, or the history is unavailable`);
+  }
+  if (index > 0) {
+    let since: Set<string>;
+    try {
+      since = new Set(list(["rev-list", at, `^${base}`]));
+    } catch {
+      return [...errors, `cannot read the history of ${at}`];
+    }
+    const self = git(repoRoot, ["rev-parse", "--verify", `${at}^{commit}`]).trim();
+    const later = mainline.slice(0, index).find((c) => since.has(c) && c !== self);
+    if (later !== undefined) {
+      errors.push(
+        `the base ${base} is not the latest main commit in the history of ${at}: ${later} is later; regenerate the ` +
+          "receipt (npm run sp1-impl:receipt)",
+      );
+    }
+  }
+  return errors;
+}
+
+/**
+ * Everything the derivation needs, read from the repository at `repoRoot` (compile first). The base is verified at
+ * `at`: HEAD when generating, the commit that wrote the receipt when validating it.
+ */
+export async function readImplReceiptInputs(
+  repoRoot: string,
+  baseCommit: string,
+  at = "HEAD",
+): Promise<ImplReceiptInputs> {
+  const baseErrors = baseCommitErrors(repoRoot, baseCommit, at);
+  if (baseErrors.length > 0) throw new Error(baseErrors.join("; "));
   if (jsonFiles(repoRoot, REAL_PROOF_RECORDS_DIR).length > 0) {
     throw new Error(
       `${REAL_PROOF_RECORDS_DIR}: real-proof records have no validator in this lane; a lane must define and validate them before they count`,
@@ -1158,6 +1422,15 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
     (c: { principal?: string }) => c?.principal === MULTISIG_OWNER,
   );
 
+  const rulesetObs = readRulesetObservation(repoRoot);
+  const rulesetErrors =
+    rulesetObs === null ? [`no observation at ${MAIN_RULESET_OBSERVATION_REL}`] : rulesetObservationErrors(rulesetObs);
+  const ruleset = {
+    observedAtUtc: String(rulesetObs?.observedAtUtc ?? ""),
+    errors: rulesetErrors,
+    gaps: rulesetObs !== null && rulesetErrors.length === 0 ? historyProtectionGaps(rulesetObs) : [],
+  };
+
   const evidenceFiles = [
     TD1_RECEIPT_REL,
     TD2_RECORD_REL,
@@ -1170,6 +1443,7 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
     ...canonRecordFiles,
     PROVING_ARTIFACTS_OBSERVATION_REL,
     PROVING_AVAILABILITY_REL,
+    MAIN_RULESET_OBSERVATION_REL,
     WRAPPER_SOURCE,
   ];
 
@@ -1231,13 +1505,16 @@ export function readImplReceiptInputs(repoRoot: string, baseCommit: string): Imp
       haltedIdentity: probeHaltedIdentityElsewhere(designations, builds),
       identityReuse: probeIdentityReuse(designations),
       rpc: probeRpcFailClosed(),
+      registryHistory: probeRegistryHistory(designations, builds),
+      finality: await probeFinalityReads(),
     },
+    ruleset,
     evidence: evidenceFiles.map((path) => ({ path, sha256: sha256(read(path)) })),
   };
 }
 
 /** Every reason the committed receipt is not what the repository derives (its base is the committed one). */
-export function implReceiptErrors(repoRoot = "."): string[] {
+export async function implReceiptErrors(repoRoot = "."): Promise<string[]> {
   const path = resolve(repoRoot, IMPL_RECEIPT_REL);
   if (!existsSync(path)) return [`${IMPL_RECEIPT_REL} is missing: generate it with npm run sp1-impl:receipt`];
   const text = readFileSync(path, "utf8");
@@ -1248,7 +1525,10 @@ export function implReceiptErrors(repoRoot = "."): string[] {
     return [`${IMPL_RECEIPT_REL} is not JSON`];
   }
   try {
-    return compareReceipt(text, deriveImplReceipt(readImplReceiptInputs(repoRoot, base)));
+    return compareReceipt(
+      text,
+      deriveImplReceipt(await readImplReceiptInputs(repoRoot, base, receiptCommit(repoRoot))),
+    );
   } catch (error) {
     return [messageOf(error)];
   }

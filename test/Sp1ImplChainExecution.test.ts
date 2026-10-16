@@ -91,15 +91,21 @@ describe("SP1 implementation lane — the per-chain execution check", function (
     });
 
     it("the canary's positive control fires (and would fail if the canary could not see a missing precompile)", async function () {
-      const control = await canaryPositiveControl(ethers.provider, at(verifier).canary.data);
+      const codehash = d1().verifier.runtimeCodeKeccak;
+      const control = await canaryPositiveControl(ethers.provider, at(verifier).canary.data, codehash);
       expect(control).to.deep.equal({
         pinnedCode: `revert ${PROOF_INVALID}`,
         withoutPairingPrecompile: "success",
         detects: true,
       });
       // A "canary" that is a valid proof would be accepted by both: no detector at all.
-      const notACanary = await canaryPositiveControl(ethers.provider, at(verifier).real.data);
+      const notACanary = await canaryPositiveControl(ethers.provider, at(verifier).real.data, codehash);
       expect(notACanary.detects).to.equal(false);
+      // The code it installs is the designation's, checked by hash: there is no default to fall back on.
+      await assert.rejects(
+        canaryPositiveControl(ethers.provider, at(verifier).canary.data, ethers.ZeroHash),
+        /is not the designated verifier's/,
+      );
     });
 
     it("an accept-all verifier fails: tampering must be refused, and with ProofInvalid exactly", async function () {
@@ -190,6 +196,28 @@ describe("SP1 implementation lane — the per-chain execution check", function (
       ],
       ["another proof source", (o) => (o.proofSource.sha256 = "00".repeat(32)), /proof source/],
       ["another verifier", (o) => (o.verifier.address = ethers.ZeroAddress), /verifier/],
+      // Review finding F7: the control is judged from its recorded verdicts, never from its flag (P5).
+      [
+        "a positive control whose verdicts show it did not fire, flagged as firing",
+        (o) =>
+          (o.canaryPositiveControl = { pinnedCode: "success", withoutPairingPrecompile: "revert 0x", detects: true }),
+        /positive control did not fire/,
+      ],
+      [
+        "a positive control that fired, flagged as not firing",
+        (o) => (o.canaryPositiveControl.detects = false),
+        /positive control/,
+      ],
+      [
+        "a measurement by a script that is not this tree's",
+        (o) => (o.tool.scriptSha256 = "00".repeat(32)),
+        /not made by scripts\/check-sp1-chain-execution\.ts as committed/,
+      ],
+      [
+        "a measurement by another script",
+        (o) => (o.tool.script = "scripts/no-such-script.ts"),
+        /not made by scripts\/check-sp1-chain-execution\.ts as committed/,
+      ],
     ];
     for (const [label, change, rule] of refused) {
       it(`refuses ${label}`, function () {

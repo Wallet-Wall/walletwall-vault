@@ -8,8 +8,12 @@
  * conditions are evaluated from the same inputs, and PRODUCTION_SP1_BINDING_STATUS is ESTABLISHED only when every
  * prerequisite is met — which nothing this lane produces does.
  */
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+
 import { expect } from "chai";
-import { readFileSync } from "node:fs";
 
 import { SUPPORTED_DEPLOYMENT_CHAINS } from "../scripts/lib/sp1-chain-execution";
 import { readDesignations } from "../scripts/lib/sp1-designation";
@@ -17,15 +21,19 @@ import {
   IMPL_RECEIPT_REL,
   STATUS_KEYS,
   STOP_CONDITION_IDS,
+  baseCommitErrors,
   compareReceipt,
   deriveImplReceipt,
   implReceiptErrors,
   probeHaltedIdentityElsewhere,
   probeIdentityReuse,
+  probeFinalityReads,
   probeOverrides,
+  probeRegistryHistory,
   probeRpcFailClosed,
   productionBindingStatus,
   readImplReceiptInputs,
+  receiptCommit,
   serializeImplReceipt,
   wrapperAstFacts,
   type ImplReceiptInputs,
@@ -39,8 +47,8 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   const committed = () => JSON.parse(readFileSync(IMPL_RECEIPT_REL, "utf8"));
   let inputs: ImplReceiptInputs;
 
-  before(function () {
-    inputs = readImplReceiptInputs(".", committed().baseCommit);
+  before(async function () {
+    inputs = await readImplReceiptInputs(".", committed().baseCommit);
   });
 
   const perturbed = (change: (i: ImplReceiptInputs) => void) => {
@@ -49,9 +57,9 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     return deriveImplReceipt(i);
   };
 
-  it("the committed receipt is exactly what the repository derives; an edited value is refused", function () {
+  it("the committed receipt is exactly what the repository derives; an edited value is refused", async function () {
     skipWhenInstrumented(this);
-    expect(implReceiptErrors(".")).to.deep.equal([]);
+    expect(await implReceiptErrors(".")).to.deep.equal([]);
     const derived = deriveImplReceipt(inputs);
     const edited = structuredClone(derived);
     edited.statuses.PROVING_AVAILABILITY.value = "ESTABLISHED";
@@ -194,11 +202,18 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       ["PER_CHAIN_VERDICTS_DIVERGE", (i) => (i.chainExecution.verdictsAsRequired = false)],
       ["PIN_BYPASSABLE_VIA_GATEWAY_ROUTING", (i) => (i.ast.sp1CallTargets = ["gateway"])],
       ["PRODUCTION_VALUES_OVERRIDABLE", (i) => (i.probes.overrides[0].attackRefused = false)],
-      ["REGISTRY_HISTORY_REWRITABLE_UNDETECTED", (i) => (i.registryErrors = ["shallow"])],
+      ["REGISTRY_HISTORY_REWRITABLE_UNDETECTED", (i) => (i.probes.registryHistory.attackRefused = false)],
+      ["REGISTRY_HISTORY_REWRITABLE_UNDETECTED", (i) => (i.probes.registryHistory.controlAccepted = false)],
+      [
+        "REGISTRY_HISTORY_REWRITABLE_UNDETECTED",
+        (i) => (i.ruleset.gaps = ["force pushes to main are not refused (no non_fast_forward rule)"]),
+      ],
       ["HALTED_IDENTITY_REPUBLISHABLE_BY_ADDRESS_CHANGE", (i) => (i.probes.identityReuse.attackRefused = false)],
       ["CROSS_CHAIN_FIX_NEEDS_NEW_MUTABLE_PRINCIPAL", (i) => i.ast.mutatingFunctions.push("setRegistry")],
       ["F1_CHANGES_GUEST_ELF_VKEY_OR_PROOF_FORMAT", (i) => (i.designationErrors = ["subject"])],
       ["RPC_FAILURE_FAILS_OPEN", (i) => (i.probes.rpc.attackRefused = false)],
+      ["RPC_FAILURE_FAILS_OPEN", (i) => (i.probes.finality[0].attackRefused = false)],
+      ["RPC_FAILURE_FAILS_OPEN", (i) => (i.probes.finality[1].attackRefused = false)],
       ["TD2_INVARIANTS_WEAKENED", (i) => (i.ast.haltSetsOnlyTrue = false)],
       ["BYTECODE_EXCEEDS_BUDGET", (i) => (i.sizes[0].withinLimit = false)],
     ];
@@ -209,6 +224,57 @@ describe("SP1 implementation lane — the implementation receipt", function () {
         id,
       ).to.include(id);
       expect(stopped.verdict, id).to.match(/^STOP:/);
+    }
+  });
+
+  it("a finalized-block read that fails, or names no block, is never read as a block to observe at (L-7)", async function () {
+    const probes = await probeFinalityReads();
+    expect(probes).to.have.length(2);
+    for (const p of probes) expect(p, p.probe).to.deep.include({ controlAccepted: true, attackRefused: true });
+    const refusals = probes.map((p) => p.refusal).join(" | ");
+    expect(refusals).to.match(/503/);
+    expect(refusals).to.match(/no finalized block/);
+  });
+
+  it("the verdict is gated on valid evidence: a STOP outranks invalid records, which outrank BUILT_AND_TESTED (F6)", function () {
+    const records = (r: ReturnType<typeof deriveImplReceipt>) =>
+      r.productionBinding.prerequisites.find((p) => p.id === "RECORDS_VALID")!.met;
+    const cases: [string, (i: ImplReceiptInputs) => void][] = [
+      ["TD1_RECEIPT", (i) => (i.td1.errors = ["x"])],
+      ["TD2_RECORD", (i) => (i.td2.errors = ["x"])],
+      ["WRAPPER_BUILDS", (i) => (i.buildErrors = ["x"])],
+      ["REGISTRY", (i) => (i.registryErrors = ["x"])],
+      ["CHAIN_EXECUTION", (i) => (i.chainExecution.errors = ["x"])],
+      ["CANONICAL_REBUILD", (i) => (i.canonical.evidenceErrors = ["x"])],
+      ["PROVING", (i) => (i.proving.errors = ["x"])],
+      ["RULESET", (i) => (i.ruleset.errors = ["x"])],
+    ];
+    for (const [source, change] of cases) {
+      const r = perturbed(change);
+      expect(r.verdict, source).to.equal(`EVIDENCE_INVALID: ${source}`);
+      expect(records(r), source).to.equal(false);
+    }
+    const both = perturbed((i) => {
+      i.td1.errors = ["x"];
+      i.probes.registryHistory.attackRefused = false;
+    });
+    expect(both.verdict).to.equal("STOP: REGISTRY_HISTORY_REWRITABLE_UNDETECTED");
+    expect(both.productionBinding.prerequisites.find((p) => p.id === "NO_STOP_TRIGGERED")!.met).to.equal(false);
+    const clean = deriveImplReceipt(inputs);
+    expect(records(clean)).to.equal(true);
+    expect(clean.productionBinding.prerequisites.find((p) => p.id === "NO_STOP_TRIGGERED")!.met).to.equal(true);
+  });
+
+  it("names the prerequisites no evidence in this lane can meet: PRODUCTION_SP1_BINDING_STATUS cannot be ESTABLISHED here (F6)", function () {
+    const r = deriveImplReceipt(inputs);
+    expect(r.productionBinding.prerequisites.filter((p) => !p.reachableInThisLane).map((p) => p.id)).to.deep.equal([
+      "REAL_WALLETWALL_PROOF",
+      "PROVING_AVAILABILITY",
+      "OWNER_REVIEW_AND_MERGE",
+    ]);
+    for (const p of r.productionBinding.prerequisites.filter((x) => !x.reachableInThisLane)) {
+      expect(p.met, p.id).to.equal(false);
+      expect(p.basis, p.id).to.match(/lane/);
     }
   });
 
@@ -223,6 +289,9 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     expect(halted.deployPlan).to.deep.include({ controlAccepted: true, attackRefused: true });
     expect(probeIdentityReuse(ds)).to.deep.include({ controlAccepted: true, attackRefused: true });
     expect(probeRpcFailClosed()).to.deep.include({ controlAccepted: true, attackRefused: true });
+    // STOP 7 rests on the history walk itself, run on a throwaway repository: an append passes, a dropped halt does not.
+    expect(probeRegistryHistory(ds, builds)).to.deep.include({ controlAccepted: true, attackRefused: true });
+    expect(probeRegistryHistory(ds, builds).refusal).to.match(/removed or rewrote a published fact/);
     // A decision function that refuses everything fails its control: its refusals prove nothing.
     const refuseAll = (() => {
       throw new Error("no override exists anywhere");
@@ -291,5 +360,126 @@ describe("SP1 implementation lane — the implementation receipt", function () {
         expect(readFileSync(c.test, "utf8"), `${k}: ${c.test}`).to.include(`it("${c.title}"`);
       }
     }
+  });
+
+  describe("the base is verified, never self-asserted (review finding F5)", function () {
+    // main: m0 - m1 - m2 (first parent); the lane forks at m1, writes the receipt at l1, then l2; main moves to m2.
+    let repo: string;
+    const ids: Record<string, string> = {};
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" }).trim();
+    const commit = (name: string, rel: string) => {
+      mkdirSync(dirname(join(repo, rel)), { recursive: true });
+      writeFileSync(join(repo, rel), `${name}\n`);
+      git("add", "-A");
+      git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "commit", "-q", "-m", name);
+      ids[name] = git("rev-parse", "HEAD");
+    };
+    before(function () {
+      repo = mkdtempSync(join(tmpdir(), "sp1-receipt-base-"));
+      git("init", "-q", "-b", "main");
+      commit("m0", "README.md");
+      commit("m1", "contracts/A.sol");
+      git("checkout", "-q", "-b", "lane");
+      commit("l1", IMPL_RECEIPT_REL);
+      commit("l2", "contracts/B.sol");
+      git("checkout", "-q", "main");
+      commit("m2", "docs/notes.md");
+      git("update-ref", "refs/remotes/origin/main", ids.m2);
+      git("checkout", "-q", "lane");
+    });
+    after(function () {
+      rmSync(repo, { recursive: true, force: true });
+    });
+
+    it("the fork point is the base, though main has moved on; the receipt's commit is the one that wrote it", function () {
+      expect(receiptCommit(repo)).to.equal(ids.l1);
+      expect(baseCommitErrors(repo, ids.m1, receiptCommit(repo))).to.deep.equal([]);
+    });
+
+    it("refuses a lane commit as the base (P9: a base chosen to hide a change)", function () {
+      expect(baseCommitErrors(repo, ids.l1, receiptCommit(repo)).join("\n")).to.match(/no commit of origin\/main/);
+    });
+
+    it("refuses an older main commit than the latest one in the receipt's history (a base chosen to hide a revert)", function () {
+      expect(baseCommitErrors(repo, ids.m0, receiptCommit(repo)).join("\n")).to.match(
+        new RegExp(`not the latest main commit .*${ids.m1} is later`),
+      );
+    });
+
+    it("refuses a base HEAD does not descend from, and a base that is no full commit id", function () {
+      expect(baseCommitErrors(repo, ids.m2, receiptCommit(repo)).join("\n")).to.match(/not an ancestor of HEAD/);
+      expect(baseCommitErrors(repo, "m1", receiptCommit(repo)).join("\n")).to.match(/full commit id/);
+    });
+
+    it("holds at the pull request's synthetic merge, and on main after the merge", function () {
+      git("checkout", "-q", "--detach", ids.m2);
+      git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "merge", "-q", "--no-ff", "-m", "M", "lane");
+      try {
+        expect(receiptCommit(repo), "the merge leaves the receipt as the lane wrote it").to.equal(ids.l1);
+        expect(baseCommitErrors(repo, ids.m1, receiptCommit(repo))).to.deep.equal([]);
+        git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"));
+        expect(baseCommitErrors(repo, ids.m1, receiptCommit(repo)), "merged into main").to.deep.equal([]);
+      } finally {
+        git("update-ref", "refs/remotes/origin/main", ids.m2);
+        git("checkout", "-q", "lane");
+      }
+    });
+
+    it("a lane that merged main must regenerate: the receipt written before the merge has the old base", function () {
+      git("checkout", "-q", "-b", "synced", "lane");
+      git(
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "user.name=test",
+        "merge",
+        "-q",
+        "--no-ff",
+        "-m",
+        "sync",
+        "main",
+      );
+      try {
+        commit("l3", IMPL_RECEIPT_REL);
+        expect(receiptCommit(repo)).to.equal(ids.l3);
+        expect(baseCommitErrors(repo, ids.m1, ids.l3).join("\n")).to.match(new RegExp(`${ids.m2} is later`));
+        expect(baseCommitErrors(repo, ids.m2, ids.l3)).to.deep.equal([]);
+      } finally {
+        git("checkout", "-q", "lane");
+      }
+    });
+
+    it("after a squash merge of a lane brought up to date, the squash commit's receipt holds against its first parent", function () {
+      // The ruleset requires a branch to be up to date: the lane synced at m2 and wrote its receipt again (l3, base m2).
+      git("checkout", "-q", "--detach", ids.m2);
+      git("merge", "-q", "--squash", "synced");
+      git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "commit", "-q", "-m", "S");
+      const squash = git("rev-parse", "HEAD");
+      git("update-ref", "refs/remotes/origin/main", squash);
+      try {
+        expect(receiptCommit(repo), "the squash commit wrote the receipt on main").to.equal(squash);
+        expect(baseCommitErrors(repo, ids.m2, squash)).to.deep.equal([]);
+        expect(baseCommitErrors(repo, ids.m1, squash).join("\n")).to.match(new RegExp(`${ids.m2} is later`));
+      } finally {
+        git("update-ref", "refs/remotes/origin/main", ids.m2);
+        git("checkout", "-q", "lane");
+      }
+    });
+
+    it("an uncommitted receipt is judged at HEAD, and without origin/main nothing is judged (fail closed)", function () {
+      writeFileSync(join(repo, IMPL_RECEIPT_REL), "regenerated\n");
+      try {
+        expect(receiptCommit(repo)).to.equal(ids.l2);
+      } finally {
+        git("checkout", "-q", "--", IMPL_RECEIPT_REL);
+      }
+      git("update-ref", "-d", "refs/remotes/origin/main");
+      try {
+        expect(baseCommitErrors(repo, ids.m1, ids.l1).join("\n")).to.match(/origin\/main is not available/);
+      } finally {
+        git("update-ref", "refs/remotes/origin/main", ids.m2);
+      }
+    });
   });
 });

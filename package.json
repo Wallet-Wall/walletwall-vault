@@ -51,6 +51,7 @@
     "sp1:register-wrapper": "hardhat run scripts/register-sp1-wrapper.ts",
     "sp1:measure-proving-artifacts": "tsx scripts/measure-sp1-proving-artifacts.ts",
     "sp1:proving-availability": "tsx scripts/generate-sp1-proving-availability.ts",
+    "sp1:measure-main-ruleset": "tsx scripts/measure-main-ruleset.ts",
     "validate:sp1-proving-availability": "tsx scripts/generate-sp1-proving-availability.ts --validate",
     "presp1-impl:receipt": "hardhat compile",
     "sp1-impl:receipt": "tsx scripts/generate-sp1-impl-receipt.ts",

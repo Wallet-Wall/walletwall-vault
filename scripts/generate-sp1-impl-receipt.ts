@@ -21,9 +21,9 @@ import {
   serializeImplReceipt,
 } from "./lib/sp1-impl-receipt";
 
-try {
+async function main() {
   if (process.argv.includes("--validate")) {
-    const errors = implReceiptErrors(".");
+    const errors = await implReceiptErrors(".");
     if (errors.length > 0) throw new Error(`the implementation receipt is invalid:\n - ${errors.join("\n - ")}`);
     console.log(`OK: ${IMPL_RECEIPT_REL} is what the repository derives.`);
   } else {
@@ -32,14 +32,16 @@ try {
       at !== -1
         ? String(process.argv[at + 1])
         : execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
-    const receipt = deriveImplReceipt(readImplReceiptInputs(".", base));
+    const receipt = deriveImplReceipt(await readImplReceiptInputs(".", base));
     mkdirSync(dirname(resolve(IMPL_RECEIPT_REL)), { recursive: true });
     writeFileSync(resolve(IMPL_RECEIPT_REL), serializeImplReceipt(receipt));
     console.log(
       `${IMPL_RECEIPT_REL}: ${receipt.verdict}; PRODUCTION_SP1_BINDING_STATUS ${receipt.statuses.PRODUCTION_SP1_BINDING_STATUS.value}`,
     );
   }
-} catch (error) {
+}
+
+main().catch((error: unknown) => {
   console.error(error instanceof Error ? error.message : error);
   process.exitCode = 1;
-}
+});

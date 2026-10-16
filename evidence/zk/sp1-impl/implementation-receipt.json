@@ -132,7 +132,9 @@
       "value": "APPEND_ONLY_ON_FULL_HISTORY",
       "basis": [
         "every parent edge of every commit reachable from HEAD, and the working tree, only extends evidence/zk/sp1-td2/wrapper-registry.json, the designations, their evidence bundles and the wrapper builds: yes",
-        "a shallow clone cannot show that, and fails closed"
+        "a shallow clone cannot show that, and fails closed",
+        "probe: a published halt fact dropped from the registry by a later commit, seen by the history walk: positive control accepted yes; refused yes (evidence/zk/sp1-td2/wrapper-registry.json at commit c378798ba016 (against parent 112cfeb37963): it removed or rewrote a published fact (facts may only be appended))",
+        "a rewrite of main itself is outside any walk: main's ruleset forbids force pushes and deletion with nobody to bypass it, as measured at 2026-10-16T17:42:37.488Z (evidence/zk/sp1-impl/observations/main-ruleset.raw.json): yes; whoever administers the repository can change that, and only the next measurement would show it"
       ],
       "verifiedBy": [
         {
@@ -309,44 +311,64 @@
     "status": "NOT_ESTABLISHED",
     "prerequisites": [
       {
+        "id": "RECORDS_VALID",
+        "met": true,
+        "reachableInThisLane": true,
+        "basis": "every record validates (TD1, TD2, designations, builds, registry, chain execution, canonical rebuild, proving, ruleset): yes"
+      },
+      {
         "id": "DIRECT_VERIFIER_PIN",
+        "reachableInThisLane": true,
         "met": true,
         "basis": "SP1_DIRECT_VERIFIER_PIN is CONSTRUCTOR_CODE_HASH_PIN"
       },
       {
         "id": "PROGRAM_VKEY_DESIGNATION",
+        "reachableInThisLane": true,
         "met": true,
         "basis": "PROGRAM_VKEY_DESIGNATION is mldsa65-withdrawal-d1: 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
       },
       {
         "id": "CANONICAL_RELEASE_REBUILD_TWO_HOSTS",
+        "reachableInThisLane": true,
         "met": false,
         "basis": "the committed rebuild evidence (valid: yes), judged for the release (two distinct machines): INSUFFICIENT_HOSTS"
       },
       {
         "id": "PER_CHAIN_EXECUTION_CHECK",
+        "reachableInThisLane": true,
         "met": true,
         "basis": "PER_CHAIN_EXECUTION_CHECK is PASSED"
       },
       {
         "id": "REGISTERED_ACTIVE_WRAPPER",
+        "reachableInThisLane": true,
         "met": false,
         "basis": "registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds"
       },
       {
         "id": "REAL_WALLETWALL_PROOF",
         "met": false,
-        "basis": "evidence/zk/sp1-real-proof holds no record: no WalletWall proof of the designated program has been generated and verified by the designated verifier"
+        "reachableInThisLane": false,
+        "basis": "evidence/zk/sp1-real-proof holds no record, and no lane yet validates one: a WalletWall proof of the designated program, generated (the circuit download is the owner's to authorize) and verified by the designated verifier, needs that later lane"
       },
       {
         "id": "PROVING_AVAILABILITY",
         "met": false,
-        "basis": "PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED"
+        "reachableInThisLane": false,
+        "basis": "PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED: this lane derives only OWNER_DOWNLOAD_REQUIRED or LOCAL_COPY_NOT_ARCHIVED, never availability; a verified WalletWall archive of the circuit artifacts and an exercised proving path need a later lane"
       },
       {
         "id": "OWNER_REVIEW_AND_MERGE",
         "met": false,
-        "basis": "a receipt cannot attest its own review: the owner reviews and merges after it is generated"
+        "reachableInThisLane": false,
+        "basis": "a receipt cannot attest its own review: the owner reviews and merges after this lane generates it"
+      },
+      {
+        "id": "NO_STOP_TRIGGERED",
+        "met": true,
+        "reachableInThisLane": true,
+        "basis": "STOP conditions triggered: none"
       }
     ]
   },
@@ -391,7 +413,7 @@
       "id": "REGISTRY_HISTORY_REWRITABLE_UNDETECTED",
       "condition": "registry history can be rewritten without detection",
       "triggered": false,
-      "basis": "the append-only proof over the full history passes: yes"
+      "basis": "probe: a published halt fact dropped from the registry by a later commit, seen by the history walk: positive control accepted yes; refused yes (evidence/zk/sp1-td2/wrapper-registry.json at commit c378798ba016 (against parent 112cfeb37963): it removed or rewrote a published fact (facts may only be appended)); main's history protected by its ruleset (observed 2026-10-16T17:42:37.488Z): yes"
     },
     {
       "id": "HALTED_IDENTITY_REPUBLISHABLE_BY_ADDRESS_CHANGE",
@@ -415,7 +437,7 @@
       "id": "RPC_FAILURE_FAILS_OPEN",
       "condition": "an RPC failure becomes fail-open",
       "triggered": false,
-      "basis": "probe: an RPC rate limit (-32005) read as the chain's answer: positive control accepted yes; refused yes (a rate limit is not the chain's answer: no verdict)"
+      "basis": "probe: an RPC rate limit (-32005) read as the chain's answer: positive control accepted yes; refused yes (a rate limit is not the chain's answer: no verdict); probe: a finalized-block read that fails (503), taken as a block to observe the facts at: positive control accepted yes; refused yes (server response 503 Service Unavailable); probe: a chain that names no finalized block, taken as a block to observe the facts at: positive control accepted yes; refused yes (the chain gave no finalized block to observe the facts at)"
     },
     {
       "id": "TD2_INVARIANTS_WEAKENED",
@@ -443,9 +465,9 @@
     "blockers": [
       "CANONICAL_RELEASE_REBUILD_TWO_HOSTS: the committed rebuild evidence (valid: yes), judged for the release (two distinct machines): INSUFFICIENT_HOSTS",
       "REGISTERED_ACTIVE_WRAPPER: registrations of a designated identity on a supported deployment chain, never recorded halted: 0; the registry validates, content and history: yes; the binding gate reconciles each fact with the chain when it binds",
-      "REAL_WALLETWALL_PROOF: evidence/zk/sp1-real-proof holds no record: no WalletWall proof of the designated program has been generated and verified by the designated verifier",
-      "PROVING_AVAILABILITY: PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED",
-      "OWNER_REVIEW_AND_MERGE: a receipt cannot attest its own review: the owner reviews and merges after it is generated"
+      "REAL_WALLETWALL_PROOF: evidence/zk/sp1-real-proof holds no record, and no lane yet validates one: a WalletWall proof of the designated program, generated (the circuit download is the owner's to authorize) and verified by the designated verifier, needs that later lane",
+      "PROVING_AVAILABILITY: PROVING_AVAILABILITY is OWNER_DOWNLOAD_REQUIRED: this lane derives only OWNER_DOWNLOAD_REQUIRED or LOCAL_COPY_NOT_ARCHIVED, never availability; a verified WalletWall archive of the circuit artifacts and an exercised proving path need a later lane",
+      "OWNER_REVIEW_AND_MERGE: a receipt cannot attest its own review: the owner reviews and merges after this lane generates it"
     ]
   },
   "soundness": "NOT_ESTABLISHED_BY_PROVENANCE",
@@ -513,7 +535,27 @@
       "controlAccepted": true,
       "attackRefused": true,
       "refusal": "a rate limit is not the chain's answer: no verdict"
-    }
+    },
+    "registryHistory": {
+      "probe": "a published halt fact dropped from the registry by a later commit, seen by the history walk",
+      "controlAccepted": true,
+      "attackRefused": true,
+      "refusal": "evidence/zk/sp1-td2/wrapper-registry.json at commit c378798ba016 (against parent 112cfeb37963): it removed or rewrote a published fact (facts may only be appended)"
+    },
+    "finality": [
+      {
+        "probe": "a finalized-block read that fails (503), taken as a block to observe the facts at",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "server response 503 Service Unavailable"
+      },
+      {
+        "probe": "a chain that names no finalized block, taken as a block to observe the facts at",
+        "controlAccepted": true,
+        "attackRefused": true,
+        "refusal": "the chain gave no finalized block to observe the facts at"
+      }
+    ]
   },
   "wrapperAst": {
     "constructorPinsCodehash": true,
@@ -695,6 +737,10 @@
     {
       "path": "evidence/zk/sp1-impl/proving-availability.json",
       "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/main-ruleset.raw.json",
+      "sha256": "2d9041cbd190a6f83a92e0e5c6f9222ec81ddfaa6fae24ce9da3d9221c55a025"
     },
     {
       "path": "contracts/verifiers/ZKMLDSAVerifier.sol",

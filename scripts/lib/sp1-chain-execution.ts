@@ -31,6 +31,8 @@ import type { ProgramDesignation } from "./sp1-designation";
 
 export const CHAIN_EXECUTION_OBSERVATION_REL = "evidence/zk/sp1-impl/observations/chain-execution.raw.json";
 export const CHAIN_EXECUTION_SCHEMA = "walletwall.sp1-chain-execution.v1";
+/** The script that makes the measurement; the observation names it by sha256, and must name this tree's. */
+export const CHAIN_EXECUTION_SCRIPT_REL = "scripts/check-sp1-chain-execution.ts";
 /** The real v6.1.0 proof SP1-TD1 took from a successful mainnet call into the pinned verifier. */
 export const REAL_PROOF_REL = "evidence/zk/sp1-td1/observations/mainnet-v610-proof.raw.json";
 /** SP1-TD1's CREATE2-authenticated initcode of the verifier, for the positive control on a development chain. */
@@ -153,7 +155,7 @@ export type DevProvider = Provider & { send(method: string, params: unknown[]): 
 export async function canaryPositiveControl(
   provider: DevProvider,
   canaryData: string,
-  runtimeCodeKeccak = "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+  runtimeCodeKeccak: string,
   repoRoot = ".",
 ): Promise<{ pinnedCode: string; withoutPairingPrecompile: string; detects: boolean }> {
   const initcode = JSON.parse(readFileSync(resolve(repoRoot, VERIFIER_BYTECODE_REL), "utf8")).deployments["v6.1.0"]
@@ -247,7 +249,30 @@ export function chainExecutionObservationErrors(
       errors.push(`the observation's ${name} calldata is not the call rebuilt from committed evidence`);
     }
   }
-  if (obs?.canaryPositiveControl?.detects !== true) errors.push("the canary's positive control did not fire");
+  // The control is judged from its recorded verdicts, never from its flag (review finding F7).
+  const control = obs?.canaryPositiveControl;
+  if (
+    control?.pinnedCode !== REQUIRED_VERDICTS.canary ||
+    control?.withoutPairingPrecompile !== "success" ||
+    control?.detects !== true
+  ) {
+    errors.push(
+      `the canary's positive control did not fire: the pinned code gave ${String(control?.pinnedCode)} ` +
+        `(required ${REQUIRED_VERDICTS.canary}), without the pairing precompile ${String(control?.withoutPairingPrecompile)} ` +
+        `(required success), recorded as detecting: ${String(control?.detects)}`,
+    );
+  }
+  let script = "";
+  try {
+    script = sha256Hex(readFileSync(resolve(repoRoot, CHAIN_EXECUTION_SCRIPT_REL)));
+  } catch {
+    script = "(unreadable)";
+  }
+  if (obs?.tool?.script !== CHAIN_EXECUTION_SCRIPT_REL || obs.tool.scriptSha256 !== script) {
+    errors.push(
+      `the observation was not made by ${CHAIN_EXECUTION_SCRIPT_REL} as committed (sha256 ${script}): re-measure`,
+    );
+  }
   const codes = new Set<string>();
   for (const chainId of [...SUPPORTED_DEPLOYMENT_CHAINS, ...TRUST_TARGET_ONLY_CHAINS]) {
     const c = obs?.chains?.[chainId];
