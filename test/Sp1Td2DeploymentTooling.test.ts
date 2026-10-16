@@ -2,9 +2,12 @@
  * SP1-TD2 deployment tooling (scripts/lib/deployment-guards.ts), the code scripts/deploy-multisig.ts and
  * scripts/deploy-zk-verifier.ts run:
  *
- *   EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER at the tool's entry point — deployMultisigVault refuses a haltable
- *     wrapper (and any SP1-path verifier) for WalletWallMultiSigVault before sending a transaction, and deploys the
- *     vault on the mock or another off-path verifier (positive controls).
+ *   The binding gate at the tool's entry point — deployMultisigVault gates WalletWallMultiSigVault before sending a
+ *     transaction. Admitted to the halt's scope through TD2-MULTISIG-ROTATION (the owner's acceptance, 2026-10-16),
+ *     it is held to the common rules: an SP1-path verifier the halt would not reach, or one the deployer can halt, is
+ *     refused, and off the local override nothing unregistered binds; a haltable genuine wrapper deploys locally, as
+ *     do the mock and other off-path verifiers. (While it was excluded the gate refused it every SP1-path verifier:
+ *     test/Sp1Td2VerifierBinding.test.ts.)
  *   The halt principal is explicit off a local chain, and on a local chain it is not the deployer.
  *   The chain guard refuses unsupported networks, mainnets and a mismatched RPC.
  */
@@ -29,32 +32,49 @@ describe("SP1-TD2 deployment tooling", function () {
     [deployer, haltPrincipal, other] = await ethers.getSigners();
   });
 
-  describe("deployMultisigVault: EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER at the tool's entry point", function () {
-    it("refuses a haltable wrapper for the multisig vault before sending any transaction", async function () {
-      const wrapper = await deployWrapper(await deploySp1(), VKEY_A, haltPrincipal.address);
-      const nonce = await ethers.provider.getTransactionCount(deployer.address);
-      await assert.rejects(
-        deployMultisigVault(ethers, deployer, { pqcVerifierAddress: await wrapper.getAddress(), allowMockSp1: true }),
-        /WalletWallMultiSigVault waits outside the halt for TD2-MULTISIG-ROTATION/,
-      );
-      expect(await ethers.provider.getTransactionCount(deployer.address), "nothing was sent").to.equal(nonce);
-    });
-
-    it("refuses a non-haltable SP1-path verifier too, and an address that is not one", async function () {
+  describe("deployMultisigVault: the binding gate at the tool's entry point (the multisig vault admitted)", function () {
+    it("refuses an SP1-path verifier the halt would not reach, or one the deployer can halt, before sending any transaction", async function () {
+      const sp1 = await deploySp1();
       const unhaltable = await (
         await ethers.getContractFactory("UnhaltableZkVerifierMock")
-      ).deploy(await (await deploySp1()).getAddress(), VKEY_A);
+      ).deploy(await sp1.getAddress(), VKEY_A);
+      const ownWrapper = await deployWrapper(sp1, VKEY_A, deployer.address);
+      const nonce = await ethers.provider.getTransactionCount(deployer.address);
       await assert.rejects(
         deployMultisigVault(ethers, deployer, {
           pqcVerifierAddress: await unhaltable.getAddress(),
           allowMockSp1: true,
         }),
-        /may be bound to no part of the SP1 path/,
+        /not haltable: the halt would not reach WalletWallMultiSigVault/,
       );
+      await assert.rejects(
+        deployMultisigVault(ethers, deployer, {
+          pqcVerifierAddress: await ownWrapper.getAddress(),
+          allowMockSp1: true,
+        }),
+        /halt principal never governs a consumer/,
+      );
+      expect(await ethers.provider.getTransactionCount(deployer.address), "nothing was sent").to.equal(nonce);
       await assert.rejects(
         deployMultisigVault(ethers, deployer, { pqcVerifierAddress: "0x1234", allowMockSp1: true }),
         /PQC_VERIFIER_ADDRESS is not a valid address/,
       );
+    });
+
+    it("binds a haltable genuine wrapper only under the local override: unregistered and undesignated, it is refused without it", async function () {
+      const wrapper = await deployWrapper(await deploySp1(), VKEY_A, haltPrincipal.address);
+      const nonce = await ethers.provider.getTransactionCount(deployer.address);
+      await assert.rejects(
+        deployMultisigVault(ethers, deployer, { pqcVerifierAddress: await wrapper.getAddress(), allowMockSp1: false }),
+        /not in the WalletWall wrapper registry for chain 31337.*matches no designation/s,
+      );
+      expect(await ethers.provider.getTransactionCount(deployer.address), "nothing was sent").to.equal(nonce);
+      const deployed = await deployMultisigVault(ethers, deployer, {
+        pqcVerifierAddress: await wrapper.getAddress(),
+        allowMockSp1: true,
+      });
+      expect(await deployed.vault.pqVerifier()).to.equal(await wrapper.getAddress());
+      expect(await deployed.vault.owner()).to.equal(deployer.address);
     });
 
     it("positive controls: deploys on a fresh mock when no verifier is named, or on a named off-path verifier", async function () {

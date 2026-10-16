@@ -52,8 +52,7 @@
           "id": "EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER",
           "enforcedBy": "PROCESS",
           "tests": [
-            "test/Sp1Td2VerifierBinding.test.ts",
-            "test/Sp1Td2DeploymentTooling.test.ts"
+            "test/Sp1Td2VerifierBinding.test.ts"
           ]
         }
       ],
@@ -75,7 +74,32 @@
       "id": "TD2-MULTISIG-ROTATION",
       "consumer": "WalletWallMultiSigVault",
       "status": "BUILT_AND_TESTED",
-      "haltAdmission": "OWNER_DECISION_PENDING",
+      "haltAdmission": "ACCEPTED_SUBJECT_TO_FROZEN_SP1_BINDING_GATES",
+      "ownerDecision": {
+        "decidedBy": "owner",
+        "date": "2026-10-16",
+        "TD2_MULTISIG_ROTATION_AUTHORIZATION_DECISION": "ACCEPTED",
+        "MULTISIG_ROTATION_AUTHORITY_CLASS": "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+        "HALT_ADMISSION": "ACCEPTED_SUBJECT_TO_FROZEN_SP1_BINDING_GATES",
+        "reasoning": [
+          "`WalletWallMultiSigVault` needs a recoverable verifier transition before a one-way verifier halt can safely apply to it.",
+          "The owner already exists, but delayed `pqVerifier` rotation is still a new authorization capability and must remain classified that way.",
+          "The rotation remains owner-only, subject to the existing 172,800-second delay and 14-day apply window.",
+          "The owner cannot move funds by virtue of the rotation alone.",
+          "The halt principal must never be able to rotate, become the consumer owner, or gain any verifier-selection/widening authority, including after ownership transfer.",
+          "A halted verifier identity may never be restored by deploying a fresh wrapper with the same verifier identity / `PROGRAM_VKEY`.",
+          "This acceptance does not waive TD1-N12, designation, code-hash, registry, per-chain execution, or successor-identity gates."
+        ],
+        "doesNotWaive": [
+          "TD1-N12",
+          "designation",
+          "code-hash",
+          "registry",
+          "per-chain execution",
+          "successor identity"
+        ],
+        "operationalConsequence": "WalletWallMultiSigVault joins the halt's scope through TD2-MULTISIG-ROTATION, as SP1-TD1 froze: the binding gate holds it to the same rules as the other consumers in scope (a haltable genuine wrapper, ACTIVE, not haltable by the signer, of no halted identity; off a local chain registered, the sole ACTIVE wrapper of its identity and designated) instead of refusing it every SP1-path verifier. It binds no production SP1 identity: no wrapper is registered on any chain, and the frozen implementation lane and real-value gates still stand."
+      },
       "measured": {
         "minimumDelaySeconds": 172800,
         "applyWindowSeconds": 1209600,
@@ -121,7 +145,7 @@
         "never": "WEAKEN_THE_ONE_WAY_HALT",
         "text": "if adding verifier rotation to WalletWallMultiSigVault creates an unacceptable authorization cut, STOP TD2-MULTISIG-ROTATION and return to design rather than weakening the one-way halt"
       },
-      "stopConditionEvaluation": "NOT_FOUND_UNACCEPTABLE_BY_TD2_OWNER_DECIDES"
+      "stopConditionEvaluation": "NOT_FOUND_UNACCEPTABLE_BY_TD2_ACCEPTED_BY_THE_OWNER"
     }
   ],
   "td1N12": {
@@ -138,7 +162,7 @@
       "its identity is not that of any halted wrapper in the WalletWall wrapper registry, read live, for every consumer; every reading fails closed: one the chain did not answer stops the gate, and a genuine wrapper that cannot be measured completely is refused",
       "without the local override: it is registered and the only ACTIVE registered wrapper of its identity, so one halt call reaches every consumer",
       "without the local override: its SP1 verifier's runtime code hash for the chain and its PROGRAM_VKEY match a designation, SP1-TD1's or a successor's",
-      "a consumer the halt's scope excludes is refused any SP1-path target"
+      "a consumer the halt's scope excludes is refused any SP1-path target (none since the owner admitted WalletWallMultiSigVault through TD2-MULTISIG-ROTATION on 2026-10-16; it is gated like the other consumers)"
     ],
     "notYetEnforced": [
       "a successor designation for a recovery identity (the generated designation file and its CI subject check): until one exists the tooling admits no recovery from a halt of the designated identity off a local chain",
@@ -199,6 +223,15 @@
       }
     ]
   },
+  "effectiveHaltScope": {
+    "applies": [
+      "PolicyControlBridge",
+      "StablecoinVaultSimulator",
+      "WalletWallMultiSigVault",
+      "WalletWallVault"
+    ],
+    "excludedUntilRecoverable": []
+  },
   "supersedes": [
     {
       "record": "evidence/zk/sp1-p1/stop-receipt.json",
@@ -209,8 +242,7 @@
   "realValue": {
     "blocked": true,
     "blockers": [
-      "the owner's review of both TD2 requirements as built and tested",
-      "the owner's decision on the multisig vault's authorization cut and its admission to the halt's scope",
+      "the owner's review and merge of TD2 (PR #216) as built and tested",
       "the frozen implementation lane: the SP1 verifier code-hash pin in the wrapper, F-1, the designation file and CI subject check, the canonical-build workflow, deploy-zk-verifier's per-chain execution check, the runbook rewrite, proving availability",
       "a real WalletWall proof (the real-proof lane)"
     ]

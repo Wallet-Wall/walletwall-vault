@@ -6,7 +6,9 @@
  * stop condition and the halt's scope must be TD1's exactly (TD2 builds what TD1 froze and re-decides nothing), the
  * TD1 receipt must be the bytes the record bound (TD2 does not rewrite it), every cited test file must exist and
  * name the proof it is cited for, the multisig vault's rotation can only be classified as new authority, and real
- * value stays blocked.
+ * value stays blocked. The owner's decision on the multisig rotation (accepted, 2026-10-16) is held to the owner's
+ * exact terms, and the scope it produces (SP1-TD1's, with the multisig vault admitted through its gate) is the one
+ * the binding gate reads.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
@@ -20,6 +22,53 @@ export const TD1_RECEIPT_REL = "evidence/zk/sp1-td1/decision-receipt.json";
 export const SP1_P1_SUPERSESSION_REL = "evidence/zk/sp1-p1/supersession.json";
 const ENFORCEMENT = ["CODE", "PROCESS", "CODE_AND_PROCESS"];
 const NEW_AUTHORITY = "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL";
+/** The owner's decision on TD2-MULTISIG-ROTATION (2026-10-16), in the owner's terms. */
+export const AUTHORIZATION_ACCEPTED = "ACCEPTED";
+export const HALT_ADMISSION_ACCEPTED = "ACCEPTED_SUBJECT_TO_FROZEN_SP1_BINDING_GATES";
+export const ACCEPTED_EVALUATION = "NOT_FOUND_UNACCEPTABLE_BY_TD2_ACCEPTED_BY_THE_OWNER";
+/** The frozen gates the owner's acceptance does not waive, as the owner listed them. */
+export const NOT_WAIVED = [
+  "TD1-N12",
+  "designation",
+  "code-hash",
+  "registry",
+  "per-chain execution",
+  "successor identity",
+];
+
+export interface ScopeShape {
+  applies: string[];
+  excludedUntilRecoverable: { consumer: string; gate: string }[];
+}
+
+/**
+ * The consumers a TD2 record admits to the halt's scope through a TD2 gate: the gate is built and tested, and the
+ * owner accepted both its authorization cut and the admission. SP1-TD1 froze that a consumer it excluded "joins the
+ * scope only through" its gate; nothing else admits one.
+ */
+export function admittedConsumers(record: unknown): { consumer: string; gate: string }[] {
+  const requirements: any[] = Array.isArray((record as any)?.requirements) ? (record as any).requirements : [];
+  return requirements
+    .filter(
+      (g) =>
+        g?.status === "BUILT_AND_TESTED" &&
+        typeof g.consumer === "string" &&
+        g.haltAdmission === HALT_ADMISSION_ACCEPTED &&
+        g.ownerDecision?.HALT_ADMISSION === HALT_ADMISSION_ACCEPTED &&
+        g.ownerDecision?.TD2_MULTISIG_ROTATION_AUTHORIZATION_DECISION === AUTHORIZATION_ACCEPTED,
+    )
+    .map((g) => ({ consumer: g.consumer, gate: g.id }));
+}
+
+/** SP1-TD1's halt scope with each exclusion its gate admitted moved into the scope; every other exclusion stays. */
+export function effectiveHaltScope<S extends ScopeShape>(scope: S, admitted: { consumer: string; gate: string }[]): S {
+  const joins = (e: { consumer: string; gate: string }) =>
+    admitted.some((a) => a.consumer === e.consumer && a.gate === e.gate);
+  return {
+    applies: [...scope.applies, ...scope.excludedUntilRecoverable.filter(joins).map((e) => e.consumer)].sort(),
+    excludedUntilRecoverable: scope.excludedUntilRecoverable.filter((e) => !joins(e)).map((e) => ({ ...e })),
+  } as S;
+}
 
 export interface Td2RecordContext {
   td1ReceiptBytes: Buffer;
@@ -88,10 +137,30 @@ export function validateTd2Record(value: unknown, ctx: Td2RecordContext): string
   if (gate && gateFrozen) {
     if (!same(gate.stopCondition, gateFrozen.stopCondition))
       errors.push("TD2-MULTISIG-ROTATION: the stop condition must be SP1-TD1's, verbatim");
-    if (gate.haltAdmission !== "OWNER_DECISION_PENDING") {
+    // The owner's decision, closed on 2026-10-16: recorded exactly, never relabelled, waiving no frozen gate.
+    const d = gate.ownerDecision ?? {};
+    if (d.decidedBy !== "owner" || typeof d.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(d.date)) {
+      errors.push("TD2-MULTISIG-ROTATION: the owner's decision names who decided it and when");
+    }
+    if (d.TD2_MULTISIG_ROTATION_AUTHORIZATION_DECISION !== AUTHORIZATION_ACCEPTED) {
       errors.push(
-        "TD2-MULTISIG-ROTATION: admitting the multisig vault to the halt's scope is the owner's decision, still pending",
+        `TD2-MULTISIG-ROTATION: the owner decided TD2_MULTISIG_ROTATION_AUTHORIZATION_DECISION = ${AUTHORIZATION_ACCEPTED}`,
       );
+    }
+    if (d.MULTISIG_ROTATION_AUTHORITY_CLASS !== NEW_AUTHORITY) {
+      errors.push(`TD2-MULTISIG-ROTATION: the accepted rotation stays ${NEW_AUTHORITY}, never authority-neutral`);
+    }
+    if (d.HALT_ADMISSION !== HALT_ADMISSION_ACCEPTED || gate.haltAdmission !== HALT_ADMISSION_ACCEPTED) {
+      errors.push(`TD2-MULTISIG-ROTATION: the owner decided HALT_ADMISSION = ${HALT_ADMISSION_ACCEPTED}`);
+    }
+    if (!same(d.doesNotWaive, NOT_WAIVED)) {
+      errors.push(`TD2-MULTISIG-ROTATION: the acceptance waives none of ${NOT_WAIVED.join(", ")}`);
+    }
+    if (!Array.isArray(d.reasoning) || d.reasoning.length === 0) {
+      errors.push("TD2-MULTISIG-ROTATION: the owner's reasoning is recorded with the decision");
+    }
+    if (gate.stopConditionEvaluation !== ACCEPTED_EVALUATION) {
+      errors.push(`TD2-MULTISIG-ROTATION: the stop condition's evaluation is ${ACCEPTED_EVALUATION}`);
     }
     const m = gate.measured ?? {};
     const inv = gateFrozen.invariants;
@@ -132,6 +201,9 @@ export function validateTd2Record(value: unknown, ctx: Td2RecordContext): string
   }
 
   if (!same(r.haltScope, dc.haltDesign.haltScope)) errors.push("haltScope must be SP1-TD1's: TD2 changes no scope");
+  if (!same(r.effectiveHaltScope, effectiveHaltScope(dc.haltDesign.haltScope, admittedConsumers(r)))) {
+    errors.push("effectiveHaltScope must be SP1-TD1's scope with exactly the owner's admissions applied");
+  }
   if (r.realValue?.blocked !== true || !Array.isArray(r.realValue?.blockers) || r.realValue.blockers.length === 0) {
     errors.push("real value stays blocked, with its blockers named");
   }

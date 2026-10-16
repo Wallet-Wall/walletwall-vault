@@ -2,9 +2,10 @@
  * SP1-TD2 — the binding gate in the deployment and rotation tooling (scripts/lib/verifier-binding.ts;
  * docs/SP1_TD2_Verifier_Halt_And_Multisig_Rotation.md).
  *
- *   EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER — WalletWallMultiSigVault, kept outside the halt until its gate
- *     TD2-MULTISIG-ROTATION is built, tested and admitted by the owner, is refused a haltable wrapper (and any other
- *     part of the SP1 path) by the deployment and rotation tooling; the consumers in scope are not.
+ *   EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER — a consumer the halt's scope excludes is refused a haltable wrapper
+ *     (and any other part of the SP1 path) by the deployment and rotation tooling; the consumers in scope are not.
+ *     WalletWallMultiSigVault was that consumer until its gate TD2-MULTISIG-ROTATION: without the owner's recorded
+ *     acceptance it still is; with it (the TD2 record, 2026-10-16) it joins the scope and is held to the rules below.
  *   TD1-N12, recovery-target gating BY PROCESS — a target on the SP1 path must be a ZKMLDSAVerifier compiled from
  *     this tree, ACTIVE, not haltable by the signer, of no identity halted at the consumer or at any wrapper in the
  *     registry; and, without the local override, registered, the only ACTIVE registered wrapper of its identity,
@@ -22,6 +23,7 @@ import { expect } from "chai";
 import assert from "node:assert/strict";
 
 import { decodeSolcMetadataBoundary } from "../scripts/lib/reproducibility-evidence";
+import { TD2_RECORD_REL } from "../scripts/lib/sp1-td2-record";
 import { ethers, networkHelpers } from "./helpers/connection";
 import { ROTATION_DELAY, VKEY_A, VKEY_B, deploySp1, deployWrapper } from "./helpers/td2Helpers";
 import {
@@ -51,6 +53,16 @@ import {
 } from "../scripts/lib/verifier-binding";
 
 const TD1 = JSON.parse(readFileSync(resolve("evidence/zk/sp1-td1/decision-receipt.json"), "utf8"));
+const TD2_RECORD = JSON.parse(readFileSync(resolve(TD2_RECORD_REL), "utf8"));
+/** The halt's scope as SP1-TD1 froze it: the multisig vault excluded until TD2-MULTISIG-ROTATION. */
+const FROZEN_SCOPE = TD1.decisions.DEFECT_RESPONSE_COUPLING.haltDesign.haltScope;
+/** The TD2 record as it stood before the owner's acceptance. */
+const PENDING_RECORD = (() => {
+  const r = JSON.parse(JSON.stringify(TD2_RECORD));
+  r.requirements[1].haltAdmission = "OWNER_DECISION_PENDING";
+  delete r.requirements[1].ownerDecision;
+  return r;
+})();
 const BYTECODE = JSON.parse(
   readFileSync(resolve("evidence/zk/sp1-td1/observations/deployment-bytecode.raw.json"), "utf8"),
 );
@@ -89,17 +101,33 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
   /** A request for a target that is registered (the only ACTIVE wrapper of its identity) on the chain. */
   const registeredRequest = (target: VerifierProfile, overrides: Partial<BindingRequest> = {}) =>
     request(target, { registered: [target], ...overrides });
+  /** Runs `body` on a copy of the inputs the gate reads, with the given TD2 record (or none) in place of the tree's. */
+  const withTree = async (td2Record: unknown, body: (repoRoot: string) => Promise<void>) => {
+    const dir = mkdtempSync(join(tmpdir(), "td2-tree-"));
+    try {
+      for (const rel of [TD1_RECEIPT_REL, WRAPPER_ARTIFACT_REL, WRAPPER_REGISTRY_REL]) {
+        mkdirSync(dirname(join(dir, rel)), { recursive: true });
+        copyFileSync(resolve(rel), join(dir, rel));
+      }
+      if (td2Record !== null) {
+        mkdirSync(dirname(join(dir, TD2_RECORD_REL)), { recursive: true });
+        writeFileSync(join(dir, TD2_RECORD_REL), JSON.stringify(td2Record));
+      }
+      await body(dir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  };
 
   describe("inputs come from the SP1-TD1 receipt and the wrapper registry, never typed", function () {
-    it("the halt scope is the owner's amended scope: three consumers, the multisig vault excluded under its own gate", function () {
-      const frozen = TD1.decisions.DEFECT_RESPONSE_COUPLING.haltDesign.haltScope;
-      expect(readHaltScope()).to.deep.equal(frozen);
-      expect(readHaltScope().applies).to.deep.equal([
+    it("the halt scope is SP1-TD1's, with the multisig vault admitted through TD2-MULTISIG-ROTATION by the owner's recorded acceptance", function () {
+      // SP1-TD1 froze three consumers in the scope and the multisig vault outside it, until its gate.
+      expect(FROZEN_SCOPE.applies).to.deep.equal([
         "PolicyControlBridge",
         "StablecoinVaultSimulator",
         "WalletWallVault",
       ]);
-      expect(readHaltScope().excludedUntilRecoverable).to.deep.equal([
+      expect(FROZEN_SCOPE.excludedUntilRecoverable).to.deep.equal([
         {
           consumer: "WalletWallMultiSigVault",
           gate: "TD2-MULTISIG-ROTATION",
@@ -107,7 +135,31 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
           authorizedBy: "TD1-N11-PREREQUISITE",
         },
       ]);
+      // The owner accepted the gate (2026-10-16, in the TD2 record): the four consumers are in the scope, none outside.
+      expect(readHaltScope()).to.deep.equal({
+        applies: ["PolicyControlBridge", "StablecoinVaultSimulator", "WalletWallMultiSigVault", "WalletWallVault"],
+        excludedUntilRecoverable: [],
+      });
+      expect(readHaltScope()).to.deep.equal(TD2_RECORD.effectiveHaltScope);
       expect([...CONSUMERS].sort()).to.deep.equal([...TD1.decisions.DEFECT_RESPONSE_COUPLING.measuredConsumers].sort());
+    });
+
+    it("only the owner's recorded acceptance admits the multisig vault: without a TD2 record, or with the decision pending, the exclusion holds", async function () {
+      await withTree(null, async (dir) => {
+        expect(readHaltScope(dir)).to.deep.equal(FROZEN_SCOPE);
+      });
+      await withTree(PENDING_RECORD, async (dir) => {
+        expect(readHaltScope(dir)).to.deep.equal(FROZEN_SCOPE);
+      });
+      await withTree(TD2_RECORD, async (dir) => {
+        expect(readHaltScope(dir)).to.deep.equal(TD2_RECORD.effectiveHaltScope);
+      });
+      // A record that cannot be read stops the gate rather than admitting or excluding anyone silently.
+      await withTree(null, async (dir) => {
+        mkdirSync(dirname(join(dir, TD2_RECORD_REL)), { recursive: true });
+        writeFileSync(join(dir, TD2_RECORD_REL), "{ not json");
+        assert.throws(() => readHaltScope(dir), SyntaxError);
+      });
     });
 
     it("SP1-TD1's designation is the trust target's code hash (per chain) and the designated PROGRAM_VKEY", function () {
@@ -343,67 +395,89 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       );
     });
 
-    it("deployment tooling refuses WalletWallMultiSigVault a haltable wrapper, and the consumers in scope are not refused it", async function () {
-      await assert.rejects(
-        checkDeploymentBinding(
-          ethers.provider,
-          "WalletWallMultiSigVault",
-          await haltable.getAddress(),
-          admin.address,
-          MOCK_OK,
-        ),
-        /WalletWallMultiSigVault waits outside the halt for TD2-MULTISIG-ROTATION.*haltable wrapper would lock its funds/s,
-      );
-      // Positive controls: the same wrapper for each consumer in scope that is deployed bound to a verifier...
-      for (const consumer of ["WalletWallVault", "StablecoinVaultSimulator"] as const) {
-        await checkDeploymentBinding(ethers.provider, consumer, await haltable.getAddress(), admin.address, MOCK_OK);
+    it("while it is excluded (no recorded acceptance), deployment tooling refuses WalletWallMultiSigVault a haltable wrapper and any part of the SP1 path; the consumers in scope are not refused it", async function () {
+      for (const td2 of [null, PENDING_RECORD]) {
+        await withTree(td2, async (dir) => {
+          const options = { ...MOCK_OK, repoRoot: dir, registry: [] };
+          const bind = (consumer: "WalletWallMultiSigVault" | "WalletWallVault" | "StablecoinVaultSimulator", v: any) =>
+            v
+              .getAddress()
+              .then((a: string) => checkDeploymentBinding(ethers.provider, consumer, a, admin.address, options));
+          await assert.rejects(
+            bind("WalletWallMultiSigVault", haltable),
+            /WalletWallMultiSigVault waits outside the halt for TD2-MULTISIG-ROTATION.*haltable wrapper would lock its funds/s,
+          );
+          // Its interim is NOT_BOUND_TO_THE_SP1_PATH: a non-haltable SP1 verifier is refused too.
+          await assert.rejects(bind("WalletWallMultiSigVault", unhaltable), /may be bound to no part of the SP1 path/);
+          // Positive controls: the same wrapper for each consumer in scope, and the multisig vault off the SP1 path.
+          for (const consumer of ["WalletWallVault", "StablecoinVaultSimulator"] as const)
+            await bind(consumer, haltable);
+          await bind("WalletWallMultiSigVault", mock);
+        });
       }
-      // ...and the multisig vault itself, off the SP1 path (the mock verifier).
-      await checkDeploymentBinding(
-        ethers.provider,
-        "WalletWallMultiSigVault",
-        await mock.getAddress(),
-        admin.address,
-        MOCK_OK,
-      );
     });
 
-    it("refuses the multisig vault any part of the SP1 path, a non-haltable SP1 verifier included (its interim is NOT_BOUND_TO_THE_SP1_PATH)", async function () {
-      await assert.rejects(
-        checkDeploymentBinding(
-          ethers.provider,
-          "WalletWallMultiSigVault",
-          await unhaltable.getAddress(),
-          admin.address,
-          MOCK_OK,
-        ),
-        /may be bound to no part of the SP1 path/,
-      );
-    });
-
-    it("rotation tooling refuses to rotate a deployed multisig vault onto a haltable wrapper; a vault in scope may be", async function () {
+    it("while it is excluded, rotation tooling refuses to rotate a deployed multisig vault onto a haltable wrapper; a vault in scope may be", async function () {
       const multisig = await (
         await ethers.getContractFactory("WalletWallMultiSigVault", admin)
       ).deploy(await mock.getAddress());
-      await assert.rejects(
-        checkRotationBinding(
+      const vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await mock.getAddress());
+      await withTree(PENDING_RECORD, async (dir) => {
+        const options = { ...MOCK_OK, repoRoot: dir, registry: [] };
+        await assert.rejects(
+          checkRotationBinding(
+            ethers.provider,
+            await multisig.getAddress(),
+            await haltable.getAddress(),
+            admin.address,
+            options,
+          ),
+          /WalletWallMultiSigVault waits outside the halt/,
+        );
+        const ok = await checkRotationBinding(
           ethers.provider,
-          await multisig.getAddress(),
+          await vault.getAddress(),
           await haltable.getAddress(),
           admin.address,
-          MOCK_OK,
-        ),
-        /WalletWallMultiSigVault waits outside the halt/,
+          options,
+        );
+        expect(ok.consumer).to.equal("WalletWallVault");
+      });
+    });
+
+    it("with the owner's acceptance recorded, WalletWallMultiSigVault is held to the common rules, and binds no SP1 identity off a local chain yet", async function () {
+      const bind = (verifier: any, signer: string, options: { allowMockSp1: boolean }) =>
+        verifier
+          .getAddress()
+          .then((a: string) => checkDeploymentBinding(ethers.provider, "WalletWallMultiSigVault", a, signer, options));
+      // A haltable genuine wrapper, as for every consumer in scope (locally, with the override)...
+      await bind(haltable, admin.address, MOCK_OK);
+      // ...never an SP1-path verifier the halt would not reach, a wrapper the signer can halt, or a halted one.
+      await assert.rejects(
+        bind(unhaltable, admin.address, MOCK_OK),
+        /not haltable: the halt would not reach WalletWallMultiSigVault/,
       );
-      const vault = await (await ethers.getContractFactory("WalletWallVault", admin)).deploy(await mock.getAddress());
+      await assert.rejects(bind(haltable, haltPrincipal.address, MOCK_OK), /halt principal never governs a consumer/);
+      const halted = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
+      await halted.connect(otherHaltPrincipal).halt();
+      await assert.rejects(bind(halted, admin.address, MOCK_OK), /is HALTED/);
+      // Without the local override it is refused like the others: nothing is registered or designated for it.
+      await assert.rejects(
+        bind(haltable, admin.address, { allowMockSp1: false }),
+        /not in the WalletWall wrapper registry for chain 31337.*matches no designation/s,
+      );
+      // The rotation tooling now rotates a deployed multisig vault onto a haltable wrapper, as for a vault in scope.
+      const multisig = await (
+        await ethers.getContractFactory("WalletWallMultiSigVault", admin)
+      ).deploy(await mock.getAddress());
       const ok = await checkRotationBinding(
         ethers.provider,
-        await vault.getAddress(),
+        await multisig.getAddress(),
         await haltable.getAddress(),
         admin.address,
         MOCK_OK,
       );
-      expect(ok.consumer).to.equal("WalletWallVault");
+      expect(ok.consumer).to.equal("WalletWallMultiSigVault");
     });
 
     it("the scripts that bind a consumer go through the gate, naming the consumer they deploy", function () {
@@ -580,7 +654,9 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       expect(bindingRefusals(request(designated, { consumer: "SomeOtherVault" }))).to.deep.equal([
         "SomeOtherVault is not a consumer the halt's scope names; refusing to bind it",
       ]);
-      expect(bindingRefusals(request(designated, { consumer: "WalletWallMultiSigVault" }))).to.have.length(1);
+      expect(
+        bindingRefusals(request(designated, { consumer: "WalletWallMultiSigVault", scope: FROZEN_SCOPE })),
+      ).to.have.length(1);
       expect(bindingRefusals(registeredRequest(u))).to.have.length(1);
     });
 
@@ -628,9 +704,9 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       ]) {
         const p = { ...bare, ...part };
         expect(isOnSp1Path(p), JSON.stringify(part)).to.equal(true);
-        expect(bindingRefusals(request(p, { consumer: "WalletWallMultiSigVault" })).join("\n")).to.match(
-          /may be bound to no part of the SP1 path/,
-        );
+        expect(
+          bindingRefusals(request(p, { consumer: "WalletWallMultiSigVault", scope: FROZEN_SCOPE })).join("\n"),
+        ).to.match(/may be bound to no part of the SP1 path/);
       }
       expect(isHaltable({ ...bare, haltPrincipal: haltPrincipal.address })).to.equal(false);
       expect(isHaltable({ ...bare, halted: false })).to.equal(false);
@@ -726,14 +802,13 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       await vault.proposePQVerifier(await recovery.getAddress());
     });
 
-    it("HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET, process side: while excluded, the multisig vault is refused every SP1 target, a fresh deployment of a halted identity included", async function () {
+    it("HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET, process side: admitted, the multisig vault is refused a fresh deployment of its halted identity by the tooling, as by the chain", async function () {
       const multisig = await (
         await ethers.getContractFactory("WalletWallMultiSigVault", admin)
-      ).deploy(await mock.getAddress());
+      ).deploy(await haltable.getAddress());
       await haltable.connect(haltPrincipal).halt();
       const fresh = await deployWrapper(sp1, VKEY_A, otherHaltPrincipal.address);
-      const recovery = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
-      for (const target of [haltable, fresh, recovery]) {
+      for (const target of [haltable, fresh]) {
         await assert.rejects(
           checkRotationBinding(
             ethers.provider,
@@ -742,14 +817,41 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
             admin.address,
             MOCK_OK,
           ),
-          /WalletWallMultiSigVault waits outside the halt/,
+          /is HALTED|fresh deployment of the halted identity/,
         );
       }
-      // Positive control: the gate's rules admit an off-path verifier for it (the rotation script itself proposes ZK
-      // targets only, so it cannot rotate the multisig vault while it is excluded).
-      const otherMock = await (await ethers.getContractFactory("MockMLDSAVerifier")).deploy();
-      const profile = await profileVerifier(ethers.provider, await otherMock.getAddress());
-      expect(bindingRefusals(request(profile, { consumer: "WalletWallMultiSigVault" }))).to.deep.equal([]);
+      await expect(multisig.proposePQVerifier(await fresh.getAddress())).to.be.revertedWithCustomError(
+        multisig,
+        "HaltedVerifierIdentity",
+      );
+      // Positive control: an independent identity passes both.
+      const recovery = await deployWrapper(sp1, VKEY_B, otherHaltPrincipal.address);
+      const ok = await checkRotationBinding(
+        ethers.provider,
+        await multisig.getAddress(),
+        await recovery.getAddress(),
+        admin.address,
+        MOCK_OK,
+      );
+      expect(ok.consumer).to.equal("WalletWallMultiSigVault");
+      await multisig.proposePQVerifier(await recovery.getAddress());
+      // While it was excluded the tooling refused it every SP1 target, the independent identity included.
+      await withTree(PENDING_RECORD, async (dir) => {
+        await assert.rejects(
+          checkRotationBinding(
+            ethers.provider,
+            await multisig.getAddress(),
+            await recovery.getAddress(),
+            admin.address,
+            {
+              ...MOCK_OK,
+              repoRoot: dir,
+              registry: [],
+            },
+          ),
+          /WalletWallMultiSigVault waits outside the halt/,
+        );
+      });
     });
   });
 
@@ -1150,9 +1252,11 @@ describe("SP1-TD2 verifier binding gate (deployment and rotation tooling)", func
       };
       expect(isOnSp1Path(silent)).to.equal(true);
       expect(bindingRefusals(request(silent, local)).join("\n")).to.match(/not haltable/);
-      expect(bindingRefusals(request(silent, { ...local, consumer: "WalletWallMultiSigVault" })).join("\n")).to.match(
-        /may be bound to no part of the SP1 path/,
-      );
+      expect(
+        bindingRefusals(request(silent, { ...local, consumer: "WalletWallMultiSigVault", scope: FROZEN_SCOPE })).join(
+          "\n",
+        ),
+      ).to.match(/may be bound to no part of the SP1 path/);
     });
   });
 

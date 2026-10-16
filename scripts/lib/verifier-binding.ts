@@ -5,10 +5,12 @@
  * Two jobs, both process rather than chain:
  *
  *   1. The halt's scope is enforced, not only stated (EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER). A consumer
- *      the owner kept outside the halt (WalletWallMultiSigVault, until its gate TD2-MULTISIG-ROTATION is built,
- *      tested and its cut accepted) may be bound to no part of the SP1 path — a haltable wrapper least of all,
- *      since a halt would lock it. A consumer inside the scope, if it is on the SP1 path at all, must verify
- *      through a haltable wrapper, or the halt would not reach it (a bypass, not a scope choice).
+ *      the owner keeps outside the halt may be bound to no part of the SP1 path — a haltable wrapper least of all,
+ *      since a halt would lock it. WalletWallMultiSigVault was that consumer until its gate TD2-MULTISIG-ROTATION;
+ *      the owner accepted the gate on 2026-10-16 (HALT_ADMISSION = ACCEPTED_SUBJECT_TO_FROZEN_SP1_BINDING_GATES),
+ *      so the TD2 record admits it and it is held to every rule below, like the others. A consumer inside the
+ *      scope, if it is on the SP1 path at all, must verify through a haltable wrapper, or the halt would not reach
+ *      it (a bypass, not a scope choice).
  *   2. Recovery-target gating (TD1-N12). A target on the SP1 path must be a ZKMLDSAVerifier compiled from this
  *      tree (its runtime code, immutables masked and metadata excluded, is the artifact's), ACTIVE, not haltable by
  *      the signer, and of no identity that is halted — at this consumer (its stored and recorded identities) or at
@@ -21,7 +23,8 @@
  * revert, running out of gas, a short return — reads as "no answer", as on chain), and a genuine wrapper that
  * cannot be measured completely is refused.
  *
- * The scope and SP1-TD1's designation are read from its decision receipt; the registry from
+ * The scope is SP1-TD1's with the admissions the TD2 record holds; SP1-TD1's designation is read from its decision
+ * receipt; the registry from
  * evidence/zk/sp1-td2/wrapper-registry.json. A successor designation is produced by the designation process of
  * the frozen implementation lane; until one exists the gate can admit no recovery from a halt of the designated
  * identity on a chain without the local override, and says so. The chain enforces part of (2) on its own
@@ -30,12 +33,13 @@
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { AbiCoder, getAddress, id, isAddress, isHexString, keccak256, type Provider } from "ethers";
 
 import { decodeSolcMetadataBoundary } from "./reproducibility-evidence";
+import { TD2_RECORD_REL, admittedConsumers, effectiveHaltScope } from "./sp1-td2-record";
 
 export const TD1_RECEIPT_REL = "evidence/zk/sp1-td1/decision-receipt.json";
 export const WRAPPER_REGISTRY_REL = "evidence/zk/sp1-td2/wrapper-registry.json";
@@ -128,13 +132,17 @@ function td1Receipt(repoRoot: string): any {
   return JSON.parse(readFileSync(resolve(repoRoot, TD1_RECEIPT_REL), "utf8"));
 }
 
-/** The owner-decided halt scope (SP1-TD1 DEFECT_RESPONSE_COUPLING.haltDesign.haltScope, as amended). */
+/**
+ * The owner-decided halt scope: SP1-TD1's (DEFECT_RESPONSE_COUPLING.haltDesign.haltScope, as amended), with each
+ * consumer it excluded until a TD2 gate admitted once the TD2 record shows that gate built and tested and the owner's
+ * acceptance (SP1-TD1: WalletWallMultiSigVault "joins the scope only through TD2-MULTISIG-ROTATION"). Without a TD2
+ * record nothing is admitted, so the exclusion holds.
+ */
 export function readHaltScope(repoRoot = "."): HaltScope {
-  const scope = td1Receipt(repoRoot).decisions.DEFECT_RESPONSE_COUPLING.haltDesign.haltScope;
-  return {
-    applies: [...scope.applies],
-    excludedUntilRecoverable: scope.excludedUntilRecoverable.map((e: any) => ({ ...e })),
-  };
+  const scope = td1Receipt(repoRoot).decisions.DEFECT_RESPONSE_COUPLING.haltDesign.haltScope as HaltScope;
+  const record = resolve(repoRoot, TD2_RECORD_REL);
+  const admitted = existsSync(record) ? admittedConsumers(JSON.parse(readFileSync(record, "utf8"))) : [];
+  return effectiveHaltScope(scope, admitted);
 }
 
 /** SP1-TD1's designation: the trust target's runtime code hash (and per chain) and the program's PROGRAM_VKEY. */
