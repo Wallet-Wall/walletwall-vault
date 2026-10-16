@@ -1,0 +1,1838 @@
+{
+  "schema": "walletwall.sp1-td1-decision-receipt.v1",
+  "artifactType": "sp1-td1-trust-target-program-identity-decision",
+  "lane": "SP1-TD1 verifier trust target + canonical program identity",
+  "verdict": "DESIGN_DECIDED",
+  "generatedAt": "2026-10-15T00:00:00.000Z",
+  "subject": {
+    "repository": "Wallet-Wall/walletwall-vault",
+    "baseCommit": "72b6554632335bfc7487f7dc7e9b3f44cdde0c0b",
+    "baseTree": "e83e83d6de28b5e66897f0244645e2ee288473c8",
+    "mergedPredecessor": {
+      "pr": 212,
+      "lane": "SP1-P1",
+      "mergeCommit": "72b6554632335bfc7487f7dc7e9b3f44cdde0c0b",
+      "head": "4cd5cfb45b8b0bee28599fc166a7e26b58696757"
+    },
+    "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+    "zkvmSourceManifestSha256": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c"
+  },
+  "evidence": {
+    "files": [
+      {
+        "path": "evidence/zk/sp1-p1/stop-receipt.json",
+        "sha256": "736de05c80062190def543de267630e7c36ed04fba383d3620c782bfd47ec124"
+      },
+      {
+        "path": "evidence/zk/sp1-p1/observations/program-identity.raw.json",
+        "sha256": "19fe2cec6fbd5bc3edda5db0943e9101dd9a41d8ae32646a43d8fabb63e853dc"
+      },
+      {
+        "path": "evidence/zk/sp1-p1/observations/verifier-gateway.raw.json",
+        "sha256": "b23c37c8c3c3c2733a21ae26fad4fb305580f7dde823c0070970e00e70dfc5cf"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/chain-execution.raw.json",
+        "sha256": "8f582dc268e754e61df15a956c79a891d9654a6f99aa393716d25e2f1a990e3a"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/chain-state.raw.json",
+        "sha256": "5db307e574f5f1a86214cfc2de9b5627e9e048cb8f716e961fa370a40c153275"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/deployment-bytecode.raw.json",
+        "sha256": "79ea2bac9ac8311578e8c0644c658db9309cf5f7068bd075eff5737ff723fce1"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/local-remap-build.raw.json",
+        "sha256": "451e0720d4ba92eb72b4e9037bad8adbabb68a91878ff44b46a4809dfb958832"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/mainnet-v610-proof.raw.json",
+        "sha256": "f14b76e39c29c6d053d7b3a29769ebe9d1ad12b8e30c33f993b2014ce5690601"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/route-timeline.raw.json",
+        "sha256": "cae924531b2cad09bfef44ba27c42fddf250e34466afad8b78656b440685857e"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/upstream-proof-fixture.raw.json",
+        "sha256": "4f7cd9ea2e1215710651c24e9f396f8905338f9edd0a2f0255a12a8f3e5b5118"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/observations/vendor-image.raw.json",
+        "sha256": "0758d47141036a3a34ee4c710455c056da037b30695a51a9f2788f58fe9e5103"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/host-build-in-container.sh",
+        "sha256": "dd0384751156b5e61d59c166ff09a80b3abdfcab576080b9f7be3603ac520f2d"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/observe.sh",
+        "sha256": "cf650fd0b4890751f65ea43260c15cf68c5ce8a99ea9faf4723a62050d7252b1"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/canonical-procedure/workstation-driver-envB-run.sh",
+        "sha256": "3c46287adadca8ee87f80dad85ea17530c555248ffc100e10763baec00d39e63"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/measurement/remap-build.sh",
+        "sha256": "b0543ff370b21aa4bfd434623abffb56473fc6c757c4c45d436453c2741f088b"
+      },
+      {
+        "path": "evidence/zk/sp1-td1/measurement/00-preregistration.txt",
+        "sha256": "3e6860c71e291e53102d0a33a637655aac714b56fcdc1c1977aee09fa309725f"
+      }
+    ],
+    "probeSuite": "test/Sp1Td1TrustTargetProbes.test.ts"
+  },
+  "trustTarget": {
+    "version": "v6.1.0",
+    "verifier": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+    "selector": "0x4388a21c",
+    "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+    "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+    "vkRoot": "0x002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f25352",
+    "chains": [
+      {
+        "chainId": "1",
+        "block": 26197902,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      },
+      {
+        "chainId": "8453",
+        "block": 52638886,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11920409,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      },
+      {
+        "chainId": "84532",
+        "block": 48149325,
+        "codeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "providersAgree": true
+      }
+    ],
+    "create2": {
+      "tx": "0xa2270e27bccef81cf20602e8566e6fc6d5d49fddc63a7bb16fe53c280043cc3d",
+      "salt": "0x0000000000000000000000000000000000000000000000000000000000000009",
+      "initcodeKeccak": "0x2b4eb4fe475628cdaffe6c75b27664ae7da9e55131fc82d7590eb668df6bc8c3",
+      "derived": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+      "authenticated": true
+    },
+    "sp1p1Attribution": {
+      "ownCompileEqualsChain": true,
+      "vkConstantsJoined": true,
+      "sourcifyExactMainnet": true
+    },
+    "runtime": {
+      "forbiddenOpcodes": [],
+      "probeBytesEqualMainnet": true,
+      "reachableEnvironmentReads": {
+        "EXTCODESIZE": 1
+      },
+      "constantCallTargets": [
+        "0x05",
+        "0x06",
+        "0x07",
+        "0x08"
+      ],
+      "computedCallTargets": 2,
+      "metadataIsSolcCbor": true
+    },
+    "chainExecution": [
+      {
+        "chainId": "1",
+        "block": 26198573,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "8453",
+        "block": 52642929,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11921074,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      },
+      {
+        "chainId": "84532",
+        "block": 48153351,
+        "providersAgree": true,
+        "verdictsAsExpected": true
+      }
+    ],
+    "chainCallsBound": true,
+    "canaryHasPositiveControl": true,
+    "realProofOnPinnedKey": {
+      "transaction": "0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4",
+      "programVKey": "0x006cd47fd23937a6d247696cace28c22d2c6a8280447e6ac45a3571de232d6e3",
+      "verifiedInProbe": true,
+      "established": true
+    },
+    "circuitVersionMatchesSubject": true,
+    "established": true,
+    "failures": []
+  },
+  "gatewayPosture": {
+    "chains": [
+      {
+        "chainId": "1",
+        "block": 26197902,
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "proxySlotsSet": false,
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "ownerKind": "Safe 1.3.0 2-of-3 (0 modules, no guard)",
+        "ownerSafeSigners": [
+          "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+          "0x72Ff26D9517324eEFA89A48B75c5df41132c4f54",
+          "0x9395e83720bf2D8ac6435f9c520b48E289Cb8885"
+        ],
+        "liveRoutes": [
+          {
+            "selector": "0x4388a21c",
+            "version": "v6.1.0"
+          }
+        ],
+        "frozenRoutes": [
+          {
+            "selector": "0x09069090",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0xa4594c59",
+            "version": "v5.0.0"
+          }
+        ],
+        "targetRoutedLive": true,
+        "extraLiveRoutes": [],
+        "stateCorroborated": true
+      },
+      {
+        "chainId": "11155111",
+        "block": 11920409,
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "proxySlotsSet": false,
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "ownerKind": "EOA (single key)",
+        "ownerSafeSigners": [],
+        "liveRoutes": [
+          {
+            "selector": "0x11b6a09d",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x4388a21c",
+            "version": "v6.1.0"
+          }
+        ],
+        "frozenRoutes": [
+          {
+            "selector": "0x09069090",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x2b4aeaf7",
+            "version": "v6.1.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "version": "v5.0.0"
+          }
+        ],
+        "targetRoutedLive": true,
+        "extraLiveRoutes": [
+          {
+            "selector": "0x11b6a09d",
+            "version": "v4.0.0-rc.3"
+          }
+        ],
+        "stateCorroborated": true
+      },
+      {
+        "chainId": "8453",
+        "block": 52638886,
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "proxySlotsSet": false,
+        "owner": "0xCafEf00d348Adbd57c37d1B77e0619C6244C6878",
+        "ownerKind": "Safe 1.3.0 2-of-3 (0 modules, no guard)",
+        "ownerSafeSigners": [
+          "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+          "0x72Ff26D9517324eEFA89A48B75c5df41132c4f54",
+          "0x9395e83720bf2D8ac6435f9c520b48E289Cb8885"
+        ],
+        "liveRoutes": [
+          {
+            "selector": "0x4388a21c",
+            "version": "v6.1.0"
+          }
+        ],
+        "frozenRoutes": [
+          {
+            "selector": "0x09069090",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0x11b6a09d",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0xa4594c59",
+            "version": "v5.0.0"
+          }
+        ],
+        "targetRoutedLive": true,
+        "extraLiveRoutes": [],
+        "stateCorroborated": true
+      },
+      {
+        "chainId": "84532",
+        "block": 48149325,
+        "gateway": "0x397A5f7f3dBd538f23DE225B51f532c34448dA9B",
+        "codeKeccak": "0x11612dc6695484a4dfcac5ae1a7bcb093f891eb93d8aa9ddeca7f24a1f3b7d57",
+        "proxySlotsSet": false,
+        "owner": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126",
+        "ownerKind": "EOA (single key)",
+        "ownerSafeSigners": [],
+        "liveRoutes": [
+          {
+            "selector": "0x11b6a09d",
+            "version": "v4.0.0-rc.3"
+          },
+          {
+            "selector": "0x4388a21c",
+            "version": "v6.1.0"
+          }
+        ],
+        "frozenRoutes": [
+          {
+            "selector": "0x09069090",
+            "version": "v3.0.0"
+          },
+          {
+            "selector": "0x0e78f4db",
+            "version": "v6.0.0"
+          },
+          {
+            "selector": "0xa4594c59",
+            "version": "v5.0.0"
+          }
+        ],
+        "targetRoutedLive": true,
+        "extraLiveRoutes": [
+          {
+            "selector": "0x11b6a09d",
+            "version": "v4.0.0-rc.3"
+          }
+        ],
+        "stateCorroborated": true
+      }
+    ],
+    "selectorsProbed": 36,
+    "sameCodeOnEveryChain": true,
+    "routeHistoryIndexerGap": {
+      "chainId": "11155111",
+      "tx": "0xf7f547a987db9a472e8ce81f33e2a644b1141ee2cd7b46ac2f7377df3ace4db3",
+      "selector": "0xa4594c59",
+      "missingFromSp1P1History": true,
+      "indexerHasLog": false
+    }
+  },
+  "options": [
+    {
+      "id": "A",
+      "decisionValue": "DIRECT_IMMUTABLE_VERIFIER",
+      "label": "ZKMLDSAVerifier bound directly to the immutable SP1Verifier v6.1.0, pinned by runtime code hash",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "sp1Verifier"
+      ],
+      "pins": [
+        "verifierCode"
+      ],
+      "verifierCodeMutable": false,
+      "gatewayCodeMutable": null,
+      "routeRegistry": false,
+      "proxyOrAdmin": "none",
+      "acceptedRelationMutableOutsideTimelock": false,
+      "widen": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "disable": [],
+      "upstreamGovernanceDependency": "none",
+      "walletwallGovernanceDependency": "timelocked pqVerifier rotation only",
+      "requiresRedeployToUpgrade": true,
+      "trustRootIndependentlyReproducible": true,
+      "crossChainIdentity": "one runtime code hash 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd and the same proof verdicts on every measured chain (1, 8453, 11155111, 84532); any other chain needs the execution check first",
+      "authorizationCut": "only WalletWall vault owner (timelocked pqVerifier rotation), after 172800s",
+      "livenessCut": "none",
+      "newAttackSurface": "none added: the consumer already calls ISP1Verifier; the pin is one EXTCODEHASH comparison at construction",
+      "operationalComplexity": "a new wrapper per SP1 circuit release, applied through the vault's timelocked pqVerifier rotation; WalletWall watches upstream advisories and gateway freezes as signals",
+      "defectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders"
+      ],
+      "viable": true,
+      "rejectedBecause": null
+    },
+    {
+      "id": "AF",
+      "decisionValue": "DIRECT_IMMUTABLE_VERIFIER",
+      "label": "A, plus fail-closed when the upstream gateway freezes the pinned selector (read-only coupling)",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "upstream freeze-bit check (read-only)",
+        "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "sp1Verifier",
+        "upstreamFreezeBit"
+      ],
+      "pins": [
+        "verifierCode",
+        "selector",
+        "routeVerifier",
+        "gatewayCode"
+      ],
+      "verifierCodeMutable": false,
+      "gatewayCodeMutable": false,
+      "routeRegistry": false,
+      "proxyOrAdmin": "upstream Ownable owner, read for its freeze bit only (no proxy)",
+      "acceptedRelationMutableOutsideTimelock": false,
+      "widen": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "disable": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "upstreamGovernanceDependency": "liveness",
+      "walletwallGovernanceDependency": "timelocked pqVerifier rotation only",
+      "requiresRedeployToUpgrade": true,
+      "trustRootIndependentlyReproducible": true,
+      "crossChainIdentity": "one runtime code hash 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd and the same proof verdicts on every measured chain (1, 8453, 11155111, 84532); any other chain needs the execution check first; the freeze bit ties each chain to its gateway owner (1: Safe 1.3.0 2-of-3 (0 modules, no guard); 11155111: EOA (single key); 8453: Safe 1.3.0 2-of-3 (0 modules, no guard); 84532: EOA (single key))",
+      "authorizationCut": "only WalletWall vault owner (timelocked pqVerifier rotation), after 172800s",
+      "livenessCut": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (delay 0s); upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (delay 0s)",
+      "newAttackSurface": "one read of the gateway's route table per verification; a per-chain gateway address",
+      "operationalComplexity": "as A, plus the gateway address per chain; a routine upstream deprecation freeze of v6.1.0 stops verification until WalletWall rotates",
+      "defectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+        "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
+        "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
+      ],
+      "viable": true,
+      "rejectedBecause": null
+    },
+    {
+      "id": "B",
+      "decisionValue": "SELECTOR_PINNED_GATEWAY",
+      "label": "Succinct's gateway, with WalletWall pinning the selector, the route's verifier and both code hashes",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "route-pinning check",
+        "SP1VerifierGateway",
+        "SP1Verifier v6.1.0"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
+      ],
+      "pins": [
+        "selector",
+        "routeVerifier",
+        "gatewayCode",
+        "verifierCode"
+      ],
+      "verifierCodeMutable": false,
+      "gatewayCodeMutable": false,
+      "routeRegistry": true,
+      "proxyOrAdmin": "upstream Ownable owner (no proxy)",
+      "acceptedRelationMutableOutsideTimelock": false,
+      "widen": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "disable": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "upstreamGovernanceDependency": "liveness",
+      "walletwallGovernanceDependency": "timelocked pqVerifier rotation only",
+      "requiresRedeployToUpgrade": true,
+      "trustRootIndependentlyReproducible": true,
+      "crossChainIdentity": "per-chain owner and route table (1: Safe 1.3.0 2-of-3 (0 modules, no guard); 11155111: EOA (single key); 8453: Safe 1.3.0 2-of-3 (0 modules, no guard); 84532: EOA (single key)); extra live routes on 11155111 (v4.0.0-rc.3), 84532 (v4.0.0-rc.3)",
+      "authorizationCut": "only WalletWall vault owner (timelocked pqVerifier rotation), after 172800s",
+      "livenessCut": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (delay 0s); upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (delay 0s)",
+      "newAttackSurface": "a pinning layer plus the gateway's routing code in the accepted path; per-chain gateway addresses",
+      "operationalComplexity": "per-chain gateway address and route check at deployment; the same per-release redeploy as A",
+      "defectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+        "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
+        "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
+      ],
+      "viable": true,
+      "rejectedBecause": null
+    },
+    {
+      "id": "B0",
+      "decisionValue": "SELECTOR_PINNED_GATEWAY",
+      "label": "Succinct's gateway with a selector-only pin (the naive variant)",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "selector check",
+        "SP1VerifierGateway",
+        "selector's route"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
+      ],
+      "pins": [
+        "selector"
+      ],
+      "verifierCodeMutable": false,
+      "gatewayCodeMutable": false,
+      "routeRegistry": true,
+      "proxyOrAdmin": "upstream Ownable owner (no proxy)",
+      "acceptedRelationMutableOutsideTimelock": true,
+      "widen": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        },
+        {
+          "principal": "upstream gateway owner on any chain where the pinned selector is not yet routed",
+          "lever": "addRoute (route squat)",
+          "scope": "authorization",
+          "chains": [
+            "any chain not measured here"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "disable": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "upstreamGovernanceDependency": "authorization",
+      "walletwallGovernanceDependency": "timelocked pqVerifier rotation only",
+      "requiresRedeployToUpgrade": true,
+      "trustRootIndependentlyReproducible": false,
+      "crossChainIdentity": "per-chain owner and route table (1: Safe 1.3.0 2-of-3 (0 modules, no guard); 11155111: EOA (single key); 8453: Safe 1.3.0 2-of-3 (0 modules, no guard); 84532: EOA (single key)); extra live routes on 11155111 (v4.0.0-rc.3), 84532 (v4.0.0-rc.3)",
+      "authorizationCut": "ANY ONE OF: upstream gateway owner on any chain where the pinned selector is not yet routed via addRoute (route squat) (delay 0s)",
+      "livenessCut": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (delay 0s); upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (delay 0s)",
+      "newAttackSurface": "fails open on any chain where the pinned selector is not yet routed: the owner registers any verifier under it",
+      "operationalComplexity": "as B, without the checks that make it safe",
+      "defectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+        "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
+        "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
+      ],
+      "viable": false,
+      "rejectedBecause": "a principal outside WalletWall's timelocked rotation can widen the accepted relation: upstream gateway owner on any chain where the pinned selector is not yet routed via addRoute (route squat) (delay 0s)"
+    },
+    {
+      "id": "C",
+      "decisionValue": "WALLETWALL_GOVERNED_GATEWAY",
+      "label": "A WalletWall-owned instance of the gateway code",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "WalletWall SP1VerifierGateway",
+        "any route its admin adds"
+      ],
+      "components": [
+        "walletwallGateway",
+        "sp1Verifier"
+      ],
+      "pins": [],
+      "verifierCodeMutable": false,
+      "gatewayCodeMutable": false,
+      "routeRegistry": true,
+      "proxyOrAdmin": "WalletWall Ownable admin (no proxy)",
+      "acceptedRelationMutableOutsideTimelock": true,
+      "widen": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        },
+        {
+          "principal": "WalletWall gateway admin",
+          "lever": "gatewayAdminAddRoute",
+          "scope": "authorization",
+          "chains": [
+            "every chain the WalletWall gateway is deployed to"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "disable": [
+        {
+          "principal": "WalletWall gateway admin",
+          "lever": "gatewayAdminFreezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "every chain the WalletWall gateway is deployed to"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "upstreamGovernanceDependency": "none",
+      "walletwallGovernanceDependency": "timelocked pqVerifier rotation AND an instant gateway admin",
+      "requiresRedeployToUpgrade": false,
+      "trustRootIndependentlyReproducible": false,
+      "crossChainIdentity": "per-chain owner and route table (1: Safe 1.3.0 2-of-3 (0 modules, no guard); 11155111: EOA (single key); 8453: Safe 1.3.0 2-of-3 (0 modules, no guard); 84532: EOA (single key)); extra live routes on 11155111 (v4.0.0-rc.3), 84532 (v4.0.0-rc.3)",
+      "authorizationCut": "ANY ONE OF: WalletWall gateway admin via gatewayAdminAddRoute (delay 0s)",
+      "livenessCut": "WalletWall gateway admin via gatewayAdminFreezeRoute (delay 0s)",
+      "newAttackSurface": "a second, instant verifier-replacement path that bypasses PQ_VERIFIER_UPDATE_DELAY and GOVERNANCE_GRACE_PERIOD",
+      "operationalComplexity": "a new privileged key or Safe to operate and monitor; route hygiene per chain",
+      "defectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+        "WalletWall gateway admin via gatewayAdminFreezeRoute (fail-closed at once, at the holder's discretion)"
+      ],
+      "viable": false,
+      "rejectedBecause": "a principal outside WalletWall's timelocked rotation can widen the accepted relation: WalletWall gateway admin via gatewayAdminAddRoute (delay 0s)"
+    },
+    {
+      "id": "D",
+      "decisionValue": "UPSTREAM_GATEWAY_OWNER_ACCEPTED",
+      "label": "Succinct's gateway, unpinned (what docs/ZK_Prover_Runbook.md section 4 directs today)",
+      "path": [
+        "WalletWall consumer",
+        "ZKMLDSAVerifier",
+        "SP1VerifierGateway",
+        "any live route the prover selects"
+      ],
+      "components": [
+        "upstreamGateway",
+        "sp1Verifier"
+      ],
+      "pins": [],
+      "verifierCodeMutable": false,
+      "gatewayCodeMutable": false,
+      "routeRegistry": true,
+      "proxyOrAdmin": "upstream Ownable owner (no proxy)",
+      "acceptedRelationMutableOutsideTimelock": true,
+      "widen": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        },
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "addRoute",
+          "scope": "authorization",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": false
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "addRoute",
+          "scope": "authorization",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "disable": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "upstreamGovernanceDependency": "authorization",
+      "walletwallGovernanceDependency": "timelocked pqVerifier rotation only",
+      "requiresRedeployToUpgrade": false,
+      "trustRootIndependentlyReproducible": false,
+      "crossChainIdentity": "per-chain owner and route table (1: Safe 1.3.0 2-of-3 (0 modules, no guard); 11155111: EOA (single key); 8453: Safe 1.3.0 2-of-3 (0 modules, no guard); 84532: EOA (single key)); extra live routes on 11155111 (v4.0.0-rc.3), 84532 (v4.0.0-rc.3)",
+      "authorizationCut": "ANY ONE OF: upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via addRoute (delay 0s); upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via addRoute (delay 0s)",
+      "livenessCut": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (delay 0s); upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (delay 0s)",
+      "newAttackSurface": "every live route on every chain is in the accepted relation, including deprecated or release-candidate verifiers",
+      "operationalComplexity": "lowest: one address per chain, upgrades without WalletWall action",
+      "defectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+        "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
+        "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
+      ],
+      "viable": false,
+      "rejectedBecause": "a principal outside WalletWall's timelocked rotation can widen the accepted relation: upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via addRoute (delay 0s); upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via addRoute (delay 0s)"
+    }
+  ],
+  "programIdentity": {
+    "environments": [
+      {
+        "id": "A",
+        "hostId": "developer-workstation",
+        "family": "repository-local",
+        "image": null,
+        "platform": null,
+        "embeddedCargoHome": "/home/sirmrdrgod/.cargo",
+        "manifestDigest": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+        "withdrawal": {
+          "elfSha256": "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a",
+          "elfBytes": 206600,
+          "vkey": "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+        },
+        "acvp": {
+          "elfSha256": "c29e31fbf572d4c7c38f0bfaa16515ad407e76aabf7e7f10c922076149c04a89",
+          "vkey": "0x00217f15120057e91d1de1cf672a9c3588aecd098690d96899ee1e09a77f17d5"
+        }
+      },
+      {
+        "id": "B-host",
+        "hostId": "developer-workstation",
+        "family": "vendor-image",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "platform": "linux/amd64",
+        "embeddedCargoHome": "/root/.cargo",
+        "manifestDigest": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      },
+      {
+        "id": "B-docker",
+        "hostId": "developer-workstation",
+        "family": "vendor-image",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "platform": "linux/amd64",
+        "embeddedCargoHome": "/root/.cargo",
+        "manifestDigest": null,
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": null
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": null
+        }
+      },
+      {
+        "id": "C-host",
+        "hostId": "github-hosted-runner",
+        "family": "vendor-image",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "platform": "linux/amd64",
+        "embeddedCargoHome": "/root/.cargo",
+        "manifestDigest": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      },
+      {
+        "id": "C-docker",
+        "hostId": "github-hosted-runner",
+        "family": "vendor-image",
+        "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+        "platform": "linux/amd64",
+        "embeddedCargoHome": "/root/.cargo",
+        "manifestDigest": null,
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": null
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": null
+        }
+      },
+      {
+        "id": "TD1-P-local",
+        "hostId": "developer-workstation",
+        "family": "repository-local",
+        "image": null,
+        "platform": null,
+        "embeddedCargoHome": "/home/sirmrdrgod/.cargo",
+        "manifestDigest": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+        "withdrawal": {
+          "elfSha256": "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a",
+          "elfBytes": 206600,
+          "vkey": "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+        },
+        "acvp": {
+          "elfSha256": "c29e31fbf572d4c7c38f0bfaa16515ad407e76aabf7e7f10c922076149c04a89",
+          "vkey": "0x00217f15120057e91d1de1cf672a9c3588aecd098690d96899ee1e09a77f17d5"
+        }
+      },
+      {
+        "id": "TD1-P-remap",
+        "hostId": "developer-workstation",
+        "family": "repository-local-remapped",
+        "image": null,
+        "platform": null,
+        "embeddedCargoHome": "/root/.cargo",
+        "manifestDigest": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+        "withdrawal": {
+          "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+          "elfBytes": 206504,
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        },
+        "acvp": {
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      }
+    ],
+    "families": [
+      {
+        "family": "repository-local",
+        "environments": [
+          "A",
+          "TD1-P-local"
+        ],
+        "hosts": [
+          "developer-workstation"
+        ],
+        "withdrawalElfs": [
+          "ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a"
+        ],
+        "withdrawalVkeys": [
+          "0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597"
+        ],
+        "embeddedCargoHomes": [
+          "/home/sirmrdrgod/.cargo"
+        ],
+        "imagesDigestPinned": false,
+        "manifestsFresh": true,
+        "reproducedOnIndependentHosts": false
+      },
+      {
+        "family": "vendor-image",
+        "environments": [
+          "B-host",
+          "B-docker",
+          "C-host",
+          "C-docker"
+        ],
+        "hosts": [
+          "developer-workstation",
+          "github-hosted-runner"
+        ],
+        "withdrawalElfs": [
+          "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a"
+        ],
+        "withdrawalVkeys": [
+          "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        ],
+        "embeddedCargoHomes": [
+          "/root/.cargo"
+        ],
+        "imagesDigestPinned": true,
+        "manifestsFresh": true,
+        "reproducedOnIndependentHosts": true
+      },
+      {
+        "family": "repository-local-remapped",
+        "environments": [
+          "TD1-P-remap"
+        ],
+        "hosts": [
+          "developer-workstation"
+        ],
+        "withdrawalElfs": [
+          "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a"
+        ],
+        "withdrawalVkeys": [
+          "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc"
+        ],
+        "embeddedCargoHomes": [
+          "/root/.cargo"
+        ],
+        "imagesDigestPinned": false,
+        "manifestsFresh": true,
+        "reproducedOnIndependentHosts": false
+      }
+    ],
+    "contradictions": [],
+    "vendorImage": {
+      "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+      "indexDigestVerified": true,
+      "linuxAmd64Manifest": "sha256:7c1c8201de6f63e3f1fb9075bd9a67a4c5fc8c2d546d11a5ff71587bb51e6eb3",
+      "config": "sha256:aedac539617deeb11fb7fbac9270de9f8d0b021214eab05db672b2f0b181f796",
+      "mutableTagCurrentlyResolvesToPin": true
+    },
+    "canonicalProcedureScriptsPreserved": true,
+    "candidates": [
+      {
+        "decisionValue": "PINNED_VENDOR_BUILD",
+        "family": "vendor-image",
+        "role": "canonical candidate",
+        "established": true,
+        "reason": "one ELF and vkey on 2 independent hosts (developer-workstation, github-hosted-runner), digest-pinned, fresh subject"
+      },
+      {
+        "decisionValue": "REPRODUCIBLE_REPO_BUILD",
+        "family": "repository-local",
+        "role": "canonical candidate",
+        "established": false,
+        "reason": "one identity per builder: the ELF embeds the builder's own CARGO_HOME (/home/sirmrdrgod/.cargo), observed on 1 host(s)"
+      },
+      {
+        "decisionValue": "OTHER_ESTABLISHED_PROCEDURE",
+        "family": "repository-local-remapped",
+        "role": "cross-check only (pre-registered: depends on a separately installed toolchain and the builder's own path)",
+        "established": false,
+        "reason": "pre-registered as a cross-check only; never the canonical definition"
+      }
+    ],
+    "decision": "PINNED_VENDOR_BUILD"
+  },
+  "upstreamTimeline": {
+    "advisory": {
+      "id": "GHSA-63x8-x938-vx33 / CVE-2026-40323",
+      "url": "https://github.com/succinctlabs/sp1/security/advisories/GHSA-63x8-x938-vx33",
+      "title": "SP1 V6 Recursion Circuit Row-Count Binding Gap",
+      "published": "2026-04-11",
+      "severity": "High",
+      "affected": ">= 6.0.0, <= 6.0.2",
+      "patched": "6.1.0",
+      "onChainVerifierImpactStated": false,
+      "routeFreezeStated": false,
+      "retrievedAtUtc": "2026-10-15",
+      "note": "Fetched from the advisory page; it does not say whether the on-chain Groth16/PLONK verifiers are affected and says nothing about gateway routes. TD1 claims no exploitability; it records only the timing."
+    },
+    "advisedVersionRouteFrozenUtc": "2026-10-09T06:14:59.000Z",
+    "daysFromAdvisoryToFreeze": 181,
+    "advisedFreezeBatchedWithUnaffectedVersionSeconds": 108,
+    "brokenBuildFreezeHours": 21.4
+  },
+  "decisions": {
+    "SP1_TRUST_TARGET_DECISION": "DIRECT_IMMUTABLE_VERIFIER",
+    "SP1_TRUST_TARGET_OPTION": "A",
+    "PROGRAM_IDENTITY_DECISION": "PINNED_VENDOR_BUILD",
+    "AUTHORIZATION_AUTHORITY_DELTA": {
+      "classification": "NO_NEW_AUTHORIZATION_PRINCIPAL",
+      "baseline": "option D (Succinct's gateway, unpinned (what docs/ZK_Prover_Runbook.md section 4 directs today))",
+      "removed": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "addRoute",
+          "scope": "authorization",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": false
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "addRoute",
+          "scope": "authorization",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "added": [],
+      "retained": [
+        {
+          "principal": "WalletWall vault owner (timelocked pqVerifier rotation)",
+          "lever": "pqVerifierRotation",
+          "scope": "authorization",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 172800,
+          "governed": true,
+          "protectiveOnVerifierDefect": false
+        }
+      ],
+      "inheritedByEveryOption": "each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)",
+      "proposedForTd2": [
+        {
+          "principal": "WALLETWALL_MULTISIG_VAULT_OWNER",
+          "capabilities": [
+            "PQ_VERIFIER_ROTATION"
+          ],
+          "classification": "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+          "status": "PROPOSED_FOR_TD2"
+        }
+      ]
+    },
+    "LIVENESS_DEPENDENCY": {
+      "onChainExternal": [],
+      "removedVersusBaseline": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "offChain": [
+        "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's.",
+        "Rebuilding the canonical ELF needs the vendor image (ghcr.io, by digest) and crates.io for the locked crate set; the digest and Cargo.lock checksums protect integrity, not availability.",
+        "A PqOnly user's exit during the 2-day rotation window needs a proof, so the timelock protects them only while proving is available (TD1-N9)."
+      ],
+      "inheritedByEveryOption": "each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)"
+    },
+    "LIVENESS_AUTHORITY_DELTA": {
+      "classification": "WALLETWALL_EMERGENCY_HALT_PRINCIPAL_ADDED_HALT_ONLY",
+      "added": [
+        {
+          "principal": "WalletWall emergency halt principal (WALLETWALL_EMERGENCY_HALT_PRINCIPAL)",
+          "lever": "verifierHalt",
+          "scope": "liveness",
+          "chains": [
+            "every chain WalletWall deploys to"
+          ],
+          "delaySeconds": 0,
+          "governed": true,
+          "protectiveOnVerifierDefect": true
+        }
+      ],
+      "removedVersusBaseline": [
+        {
+          "principal": "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "1",
+            "8453"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        },
+        {
+          "principal": "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))",
+          "lever": "freezeRoute",
+          "scope": "liveness",
+          "chains": [
+            "11155111",
+            "84532"
+          ],
+          "delaySeconds": 0,
+          "governed": false,
+          "protectiveOnVerifierDefect": true
+        }
+      ]
+    },
+    "UPGRADE_MODEL": "EXPLICIT_REDEPLOY_AND_TIMELOCKED_ROTATION",
+    "CROSS_CHAIN_MODEL": "CODE_HASH_PIN_WITH_PER_CHAIN_EXECUTION_CHECK",
+    "PROGRAM_VKEY_DESIGNATION": {
+      "status": "DESIGNATED",
+      "program": "mldsa65-withdrawal",
+      "procedure": "vendor-image-host-flow",
+      "image": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+      "subjectManifestSha256": "877fbcb28bd7f68eecb5ee9b2e4436e6ae069989a83239d4f54d7cee393e320c",
+      "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+      "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+      "sp1": {
+        "sp1-zkvm": "=6.3.1",
+        "sp1-sdk": "=6.3.1",
+        "sp1-build": "=6.3.1",
+        "circuitVersion": "v6.1.0"
+      },
+      "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+      "elfBytes": 206504,
+      "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+      "independentHosts": [
+        "developer-workstation",
+        "github-hosted-runner"
+      ],
+      "environments": [
+        "B-host",
+        "B-docker",
+        "C-host",
+        "C-docker"
+      ],
+      "crossCheck": {
+        "tool": "cargo-prove sp1 (8252c29 2026-06-25T11:50:01.543258355Z)",
+        "agreeing": 3,
+        "conflicting": 0,
+        "distinctComputations": 1
+      },
+      "reproducedOutsideVendorImage": true,
+      "doNotPin": [
+        {
+          "program": "mldsa65-acvp",
+          "elfSha256": "165883fa8681507d92f97eb879030c41f10d2592c3dce229fa951f8ec91fc8e0",
+          "vkey": "0x00516cd6333c30f52557608680aa5e10e228856610ce7cba616640af56a93bd7"
+        }
+      ],
+      "reason": "designated"
+    },
+    "DEFECT_RESPONSE_COUPLING": {
+      "status": "DECIDED",
+      "decision": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+      "mechanism": "LOCAL_ONE_WAY_VERIFIER_HALT",
+      "decidedBy": "owner",
+      "decidedOn": "2026-10-15",
+      "decidedOptionDefectResponse": [
+        "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders"
+      ],
+      "viableAlternatives": [
+        {
+          "id": "AF",
+          "defectResponse": [
+            "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+            "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
+            "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
+          ],
+          "externalLivenessPrincipals": [
+            "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+            "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))"
+          ]
+        },
+        {
+          "id": "B",
+          "defectResponse": [
+            "WalletWall's own pauses, one per consumer of the verifier: each WalletWallVault, WalletWallMultiSigVault and StablecoinVaultSimulator deployment's owner-held pause() (gating its PQ-verifying entrypoints) and the PolicyControlBridge's one-way pause() (EMERGENCY_PAUSER) — liveness only; manual, several holders",
+            "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard)) via freezeRoute (fail-closed at once, at the holder's discretion)",
+            "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key)) via freezeRoute (fail-closed at once, at the holder's discretion)"
+          ],
+          "externalLivenessPrincipals": [
+            "upstream gateway owner 0xCafEf00d348Adbd57c37d1B77e0619C6244C6878 (Safe 1.3.0 2-of-3 (0 modules, no guard))",
+            "upstream gateway owner 0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 (EOA (single key))"
+          ]
+        }
+      ],
+      "choices": [
+        {
+          "id": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+          "options": [
+            "A"
+          ],
+          "description": "no upstream lever in the accepted path. WalletWall detects (upstream advisories, gateway RouteFrozen events, CVEs, verifier-repository disclosures and watcher findings are evidence only) and fails every consumer of the verifier that can recover from it closed through one local, one-way, halt-only circuit breaker at the verifier wrapper (a consumer that cannot, WalletWallMultiSigVault, waits outside it for TD2-MULTISIG-ROTATION); recovery only by a new wrapper and the timelocked rotation"
+        },
+        {
+          "id": "UPSTREAM_FREEZE_FAIL_CLOSED",
+          "options": [
+            "AF"
+          ],
+          "description": "not chosen. AF: A's direct binding plus a read-only check of the upstream gateway's freeze bit for the pinned selector; upstream's freeze would fail every consumer closed at once, at the cost of making the gateway owners a WalletWall liveness principal on every chain, tied to one gateway instance. B realizes the same coupling through the gateway's routing code (same principals, longer path) and is not offered"
+        }
+      ],
+      "recommendation": "WALLETWALL_DETECT_AND_FAIL_CLOSED",
+      "rationale": "owner decision 2026-10-15: keep the direct binding to the immutable, code-pinned SP1 v6.1.0 verifier, with no dependency on the Succinct gateway for authorization or automatic liveness control; fail closed through a local, one-way, halt-only circuit breaker at the WalletWall verifier wrapper, so every consumer (PolicyControlBridge included) fails closed through one mechanism; recover only through the explicit replacement path. AF (UPSTREAM_FREEZE_FAIL_CLOSED) is not chosen, and upstream signals never become a WalletWall authority; amended the same day (TD1-N11 a prerequisite): the halt applies only to consumers that can recover from it, and WalletWallMultiSigVault waits outside it for TD2-MULTISIG-ROTATION",
+      "requiredBeforeRealValue": true,
+      "haltDesign": {
+        "location": "VERIFIER_WRAPPER",
+        "states": [
+          "ACTIVE",
+          "HALTED"
+        ],
+        "initialState": "ACTIVE",
+        "transitions": [
+          {
+            "from": "ACTIVE",
+            "to": "HALTED",
+            "trigger": "HALT_PRINCIPAL_CALL"
+          }
+        ],
+        "haltPrincipal": {
+          "id": "WALLETWALL_EMERGENCY_HALT_PRINCIPAL",
+          "powers": [
+            "HALT"
+          ],
+          "selection": "prefer an existing WalletWall emergency-security authority that already satisfies the separation (the PolicyControlBridge EMERGENCY_PAUSER role pattern: halt-only and one-way); otherwise a new authority scoped to the halt; threshold or multisig control preferred over a single online EOA; never the vault owner (holds the pqVerifier rotation and a reversible pause), never the upstream gateway owner"
+        },
+        "wrapperIdentity": {
+          "sp1Verifier": "IMMUTABLE",
+          "programVKey": "IMMUTABLE"
+        },
+        "detectionSignals": [
+          "RouteFrozen",
+          "security advisories",
+          "CVEs",
+          "verifier-repository disclosures",
+          "watcher findings"
+        ],
+        "detectionSignalsControlState": false,
+        "recovery": "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION",
+        "td2Tests": [
+          "positive control, through each consumer in the halt's scope (WalletWallVault, StablecoinVaultSimulator and PolicyControlBridge): a valid verification succeeds while ACTIVE",
+          "after HALTED, the same otherwise-valid verification fails closed through every consumer in the scope; WalletWallMultiSigVault joins the scope only through TD2-MULTISIG-ROTATION, with its own halted-then-rotated proof",
+          "adversarial: no action of the halt principal makes an invalid proof valid, changes SP1_VERIFIER or PROGRAM_VKEY, selects another verifier, adds or removes a route, invokes a rotation (also after any ownership transfer), bypasses verification or restores it",
+          "no transition out of HALTED exists, and no upstream signal (RouteFrozen, advisory, CVE, disclosure, watcher finding) moves the state",
+          "recovery only by a new wrapper with independently established verifier and program identity, through the normal evidence gates and the timelocked rotation; a fresh deployment of the halted identity is refused as a recovery target",
+          "negative: binding WalletWallMultiSigVault to a haltable wrapper is refused (deployment tooling), until TD2-MULTISIG-ROTATION"
+        ],
+        "recoveryIdentity": "INDEPENDENTLY_ESTABLISHED_NEVER_THE_HALTED_ONE",
+        "haltScope": {
+          "applies": [
+            "PolicyControlBridge",
+            "StablecoinVaultSimulator",
+            "WalletWallVault"
+          ],
+          "excludedUntilRecoverable": [
+            {
+              "consumer": "WalletWallMultiSigVault",
+              "gate": "TD2-MULTISIG-ROTATION",
+              "interim": "NOT_BOUND_TO_THE_SP1_PATH"
+            }
+          ]
+        }
+      },
+      "measuredConsumers": [
+        "PolicyControlBridge",
+        "StablecoinVaultSimulator",
+        "WalletWallMultiSigVault",
+        "WalletWallVault"
+      ],
+      "consumersWithoutRecoveryPath": [
+        "WalletWallMultiSigVault"
+      ],
+      "recoveryByConsumer": [
+        {
+          "consumer": "PolicyControlBridge",
+          "route": "ITS_CONSUMERS_TIMELOCKED_ROTATION",
+          "rotationDelaySeconds": null,
+          "halt": "APPLIED",
+          "gate": null
+        },
+        {
+          "consumer": "StablecoinVaultSimulator",
+          "route": "OWN_TIMELOCKED_ROTATION",
+          "rotationDelaySeconds": 172800,
+          "halt": "APPLIED",
+          "gate": null
+        },
+        {
+          "consumer": "WalletWallMultiSigVault",
+          "route": "NONE",
+          "rotationDelaySeconds": null,
+          "halt": "EXCLUDED_UNTIL_RECOVERABLE",
+          "gate": "TD2-MULTISIG-ROTATION"
+        },
+        {
+          "consumer": "WalletWallVault",
+          "route": "OWN_TIMELOCKED_ROTATION",
+          "rotationDelaySeconds": 172800,
+          "halt": "APPLIED",
+          "gate": null
+        }
+      ],
+      "multisigOwnerOnlyFunctions": [
+        "pause",
+        "unpause"
+      ],
+      "amendments": [
+        {
+          "id": "TD1-N11-PREREQUISITE",
+          "by": "owner",
+          "on": "2026-10-15",
+          "summary": "the halt must not be applied to WalletWallMultiSigVault until it has a recoverable verifier transition (TD2-MULTISIG-ROTATION, frozen); recovery is not claimed for all four consumers; the halt principal, the multisig vault's owner and the proposed multisig rotation are accounted apart; real value waits for the rotation path and the common halt, both built and tested"
+        }
+      ],
+      "authorityAccounting": {
+        "haltPrincipal": {
+          "principal": "WALLETWALL_EMERGENCY_HALT_PRINCIPAL",
+          "capabilities": [
+            "HALT"
+          ],
+          "scope": "liveness",
+          "widensAuthorization": false
+        },
+        "vaultOwnerToday": {
+          "principal": "WALLETWALL_VAULT_OWNER",
+          "capabilities": [
+            "PQ_VERIFIER_ROTATION",
+            "pause",
+            "unpause"
+          ],
+          "scope": "authorization",
+          "widensAuthorization": true,
+          "status": "RETAINED",
+          "note": "each WalletWallVault and StablecoinVaultSimulator deployment's owner: its timelocked pqVerifier rotation (172,800 s; the recovery path for the consumers in the halt's scope) is the governed lever the decision retains, and its pause is reversible. The halt principal is never this principal"
+        },
+        "multisigOwnerToday": {
+          "principal": "WALLETWALL_MULTISIG_VAULT_OWNER",
+          "capabilities": [
+            "pause",
+            "unpause"
+          ],
+          "scope": "liveness",
+          "widensAuthorization": false,
+          "note": "the onlyOwner functions it declares are pause() and unpause() (the inherited Ownable2Step transfer hands over only these; renounceOwnership is disabled); it cannot change the verifier, which is set once in the constructor"
+        },
+        "proposedMultisigRotation": {
+          "principal": "WALLETWALL_MULTISIG_VAULT_OWNER",
+          "capabilities": [
+            "PQ_VERIFIER_ROTATION"
+          ],
+          "scope": "authorization",
+          "widensAuthorization": true,
+          "classification": "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+          "status": "PROPOSED_FOR_TD2",
+          "requires": [
+            "separate authority accounting",
+            "executable review"
+          ],
+          "note": "the contract's single owner could, after the delay, point the vault at any verifier, an accept-all one included, voiding every tenant's p-of-q PQ signatures at once and leaving each withdrawal guarded by the tenant's m-of-n ECDSA signatures alone. While the old wrapper is halted no tenant can withdraw at all (every exit needs a PQ signature), so the delay gives no exit during recovery and the target gating is the only check (TD1-N12). That is a widening lever even though its holder already exists, so it is not authority-neutral; TD2 recalculates this cut and stops if it is unacceptable"
+        }
+      },
+      "td2Requirements": [
+        {
+          "id": "TD2-COMMON-VERIFIER-HALT",
+          "status": "FROZEN_FOR_TD2",
+          "summary": "build the local one-way verifier halt at the WalletWall wrapper and test it through every consumer in its scope (see haltDesign.td2Tests)",
+          "excludedConsumersRefusedAHaltableWrapper": [
+            "WalletWallMultiSigVault"
+          ],
+          "executableProofs": [
+            "VALID_VERIFICATION_WHILE_ACTIVE",
+            "FAILS_CLOSED_AFTER_HALT_THROUGH_EVERY_CONSUMER_IN_SCOPE",
+            "HALT_PRINCIPAL_CANNOT_MAKE_AN_INVALID_PROOF_VALID",
+            "HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER",
+            "HALTED_IDENTITY_REFUSED_AS_A_RECOVERY_TARGET",
+            "EXCLUDED_CONSUMER_REFUSED_A_HALTABLE_WRAPPER"
+          ],
+          "reviewAdditions": [
+            "the exclusion is enforced, not only stated: deployment tooling refuses to bind a consumer kept outside the halt to a haltable wrapper, with a negative test; until its gate WalletWallMultiSigVault is bound to no part of the SP1 path (any other interim, such as a non-haltable pinned wrapper, is an owner decision)",
+            "a fresh deployment of the halted identity (the same SP1 verifier code hash and PROGRAM_VKEY) is refused as a recovery target: a halt is one-way for the identity, not only for the wrapper instance",
+            "the halt principal cannot rotate, also after any ownership transfer: TD2 states whether code or an operational check enforces it, and tests it",
+            "TD1-N12: while a wrapper is halted the rotation delay gives no exit, so TD2 states whether recovery-target gating is enforced on chain or by process for the vaults in scope, and counts the answer in the authorization cut it reports to the owner"
+          ]
+        },
+        {
+          "id": "TD2-MULTISIG-ROTATION",
+          "consumer": "WalletWallMultiSigVault",
+          "status": "FROZEN_FOR_TD2",
+          "summary": "give WalletWallMultiSigVault a recoverable verifier transition before the halt may be applied to it",
+          "items": [
+            "design and implement an explicit delayed pqVerifier replacement path for WalletWallMultiSigVault",
+            "prefer the repository's existing 172,800-second verifier-rotation semantics unless independent review establishes a stronger compatible mechanism",
+            "rotation must target a new wrapper whose verifier code hash and PROGRAM_VKEY designation have already passed the SP1 evidence gates",
+            "no instantaneous verifier replacement",
+            "no halt principal may invoke rotation",
+            "no HALTED -> ACTIVE transition on the old wrapper",
+            "executably prove that after the old wrapper is halted the MultiSig cannot withdraw through it, and that after the authorized delay and a rotation to a fresh valid wrapper the same valid authorization succeeds",
+            "prove that a malicious or accept-all replacement cannot be activated outside the authorized delayed path",
+            "recalculate the authorization cut introduced by giving the MultiSig administrative authority verifier-rotation power; do not label it authority-neutral merely because the principal already existed",
+            "keep real-value readiness blocked until this recovery path and the common verifier halt are both implemented and tested"
+          ],
+          "reviewAdditions": [
+            "the recalculated cut accounts for TD1-N12: while the old wrapper is halted no tenant can withdraw, so the delay gives no exit and the target gating (item 3) is the only check; TD2 states whether that gating is enforced on chain or by process",
+            "a fresh deployment of the halted identity is refused as a rotation target (item 6 at the level of the identity)",
+            "the halt principal cannot rotate, also after any ownership transfer (item 5 made executable)"
+          ],
+          "invariants": {
+            "minimumDelaySeconds": 172800,
+            "instantReplacement": false,
+            "invokableByHaltPrincipal": false,
+            "targetMustPassEvidenceGates": true,
+            "oldWrapperUnhalt": false
+          },
+          "executableProofs": [
+            "HALTED_THEN_ROTATED_WITHDRAWAL_SUCCEEDS",
+            "MALICIOUS_REPLACEMENT_BLOCKED_OUTSIDE_DELAYED_PATH",
+            "HALT_PRINCIPAL_CANNOT_ROTATE_EVEN_AFTER_AN_OWNERSHIP_TRANSFER",
+            "HALTED_IDENTITY_REFUSED_AS_A_ROTATION_TARGET"
+          ],
+          "stopCondition": {
+            "when": "UNACCEPTABLE_AUTHORIZATION_CUT",
+            "then": "STOP_AND_RETURN_TO_DESIGN",
+            "never": "WEAKEN_THE_ONE_WAY_HALT",
+            "text": "if adding verifier rotation to WalletWallMultiSigVault creates an unacceptable authorization cut, STOP TD2-MULTISIG-ROTATION and return to design rather than weakening the one-way halt"
+          }
+        }
+      ]
+    },
+    "DEFECT_RESPONSE_MECHANISM": "LOCAL_ONE_WAY_VERIFIER_HALT",
+    "HALT_REVERSIBILITY": "ONE_WAY",
+    "RECOVERY": "NEW_WRAPPER_PLUS_TIMELOCKED_ROTATION_WITHIN_HALT_SCOPE",
+    "UPSTREAM_GATEWAY_OWNER": "NOT_A_WALLETWALL_AUTHORITY",
+    "REAL_VALUE_BLOCKER": "TD2_IMPLEMENTATION_NOT_YET_BUILT",
+    "REAL_VALUE_REQUIREMENTS": [
+      "TD2-COMMON-VERIFIER-HALT",
+      "TD2-MULTISIG-ROTATION"
+    ],
+    "IMPLEMENTATION_REQUIRED": {
+      "required": true,
+      "plan": [
+        "ZKMLDSAVerifier: compile-time pin of the SP1 verifier's runtime code hash (and record VERIFIER_HASH, VK_ROOT, VERSION) checked in the constructor; keep the verify() logic unchanged",
+        "ZKMLDSAVerifier: compare uint256(committedChainId) with block.chainid (F-1); document sigHash as non-authoritative (F-2)",
+        "Defect response (decided 2026-10-15: WALLETWALL_DETECT_AND_FAIL_CLOSED via LOCAL_ONE_WAY_VERIFIER_HALT), as TD2-COMMON-VERIFIER-HALT: a halt at the WalletWall verifier wrapper with ACTIVE -> HALTED only; a halt-only principal (an existing emergency-security authority if it already satisfies the separation, else a new threshold or multisig; no rotation, vkey, upgrade or unhalt power, also after any ownership transfer); upstream signals as detection evidence only; recovery only by a new wrapper and the timelocked rotation, never to a fresh deployment of the halted identity; applied to WalletWallVault, StablecoinVaultSimulator and PolicyControlBridge, tested through each (valid verification while ACTIVE, the same verification fails closed after HALTED, the halt principal cannot make an invalid proof valid); deployment tooling refuses a haltable wrapper to WalletWallMultiSigVault until TD2-MULTISIG-ROTATION",
+        "TD2-MULTISIG-ROTATION (prerequisite for applying the halt to WalletWallMultiSigVault): an explicit delayed pqVerifier replacement path (at least the repository's 172,800 s), targeting only a new wrapper that has passed the SP1 evidence gates; no instantaneous replacement; no halt principal may invoke it; no HALTED -> ACTIVE on the old wrapper, and no fresh deployment of the halted identity as the target; executable proofs (halted then rotated, the same valid authorization succeeds; a malicious or accept-all replacement cannot be activated outside the delayed path; the halt principal cannot rotate); a recalculated authorization cut, never labelled authority-neutral, that accounts for the missing exit while halted (TD1-N12); STOP and return to design if that cut is unacceptable",
+        "Designation file for mldsa65-withdrawal (generated from build observations, never typed) plus a CI check that fails when the zkvm subject no longer matches it",
+        "A gated canonical-build workflow (vendor image by digest; guest lockfile unchanged after the build, TD1-N7) and a second-host release rebuild; both ELF and vkey must equal the designation, vkey recomputed by cargo-prove outside the build",
+        "scripts/deploy-zk-verifier.ts: take PROGRAM_VKEY only from the designation and the SP1 verifier only from the trust-target designation, check EXTCODEHASH and run the per-chain execution check (real proof accepted, tampered and odd-word canary refused) on the target chain, refuse overrides on non-local chains, read back after deployment",
+        "Docs: rewrite the runbook section 4 and ZK_Verifier_Production.md in the TD1 terms (F-3); mark the SP1-P1 STOP receipt superseded rather than restamped (TD1-N4)",
+        "Proving availability: archive the v6.1.0 circuit artifacts by hash (their groth16_vk.bin sha256 must equal VERIFIER_HASH) and keep a self-hosted proving path (TD1-N9)"
+      ]
+    },
+    "REAL_PROOF_LANE_UNBLOCKED": {
+      "value": true,
+      "basis": [
+        "trust target DIRECT_IMMUTABLE_VERIFIER (option A) with established code identity",
+        "PROGRAM_VKEY designated by PINNED_VENDOR_BUILD (0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc)",
+        "circuit v6.1.0 matches the subject's SP1 pins"
+      ],
+      "preconditions": [
+        "the owner approves the v6.1.0 Groth16 circuit download (an owner gate, not a trust gate)",
+        "the proof is generated for the designated ELF: its sha256 is checked against the designation before proving (a default local build embeds the builder's CARGO_HOME and yields a different program)",
+        "verification targets the designated trust target only: the CREATE2-authenticated v6.1.0 bytes (in a local EVM) or a chain deployment checked by EXTCODEHASH and by the per-chain execution check, never a gateway route",
+        "the downloaded circuit artifacts are the pinned key's: sha256(groth16_vk.bin) must equal VERIFIER_HASH 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 (two different 'v6.1.0' keys have existed)",
+        "no real value: the lane is for testnet/local proofs; real value additionally needs the decided DEFECT_RESPONSE_COUPLING built and tested in TD2 — TD2-COMMON-VERIFIER-HALT (the local one-way verifier halt, through every consumer in its scope) and TD2-MULTISIG-ROTATION (WalletWallMultiSigVault's delayed verifier rotation, without which the halt may not reach it: TD1-N11) — and the frozen implementation lane"
+      ]
+    }
+  },
+  "claims": {
+    "TRUST_TARGET_CODE_IDENTITY": {
+      "status": "ESTABLISHED",
+      "basis": "runtime 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd on 4 chains (two providers each), CREATE2-authenticated initcode, SP1-P1 own compile + Sourcify + VK join, no reachable state/code-changing opcode or state/environment read beyond its own code size, constant call targets only BN254/modexp precompiles, and the same verdicts on every measured chain"
+    },
+    "PINNED_VERIFYING_KEY_REAL_PROOF": {
+      "status": "ESTABLISHED",
+      "basis": "a real v6.1.0 proof from mainnet transaction 0x508db9c61a70400710d883241e83b42f9544ba363c5a82959e0db184d5cef3f4 (program 0x006cd47fd23937a6d247696cace28c22d2c6a8280447e6ac45a3571de232d6e3, not WalletWall's) verifies on the CREATE2-authenticated bytes in the probe suite and by eth_call on every measured chain; its tampered copy and an odd-word canary are refused"
+    },
+    "DIRECT_AND_GATEWAY_VERIFICATION_EQUIVALENT": {
+      "status": "ESTABLISHED",
+      "basis": "the gateway forwards the consumer's tuple unchanged; a real upstream v6 proof verifies directly and through it, tampering is rejected identically, v6.1.0 pre-checks revert identically; the v6.0.0 and v6.1.0 wrappers share every non-constant statement"
+    },
+    "UNPINNED_GATEWAY_OWNER_CAN_WIDEN": {
+      "status": "ESTABLISHED",
+      "basis": "executed on the mainnet gateway bytes: after one addRoute by the owner, a forged journal drains a PqOnly WalletWallVault through the unmodified ZKMLDSAVerifier"
+    },
+    "DECIDED_TARGET_HAS_NO_EXTERNAL_LEVER": {
+      "status": "ESTABLISHED",
+      "basis": "option A: external authorization levers 0, external liveness levers 0, beyond each chain's own governance (precompile semantics; on an L2, its upgrade keys) — inherited by every option, invisible to any pin; the per-chain execution check must be repeated after a chain changes its precompiles (TD1-N8)"
+    },
+    "CANONICAL_PROGRAM_IDENTITY": {
+      "status": "ESTABLISHED",
+      "basis": "PINNED_VENDOR_BUILD: one ELF and vkey on 2 independent hosts (developer-workstation, github-hosted-runner), digest-pinned, fresh subject | REPRODUCIBLE_REPO_BUILD: one identity per builder: the ELF embeds the builder's own CARGO_HOME (/home/sirmrdrgod/.cargo), observed on 1 host(s) | OTHER_ESTABLISHED_PROCEDURE: pre-registered as a cross-check only; never the canonical definition"
+    },
+    "PROGRAM_VKEY_DESIGNATED": {
+      "status": "ESTABLISHED",
+      "basis": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc for ELF 2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a (206504 B) on 2 hosts; outside cross-check 3 agreeing results from 1 distinct (binary, machine) computation, 0 conflicting"
+    },
+    "IDENTITY_REPRODUCED_OUTSIDE_VENDOR_IMAGE": {
+      "status": "ESTABLISHED",
+      "basis": "a WSL build with a separately installed sp1up toolchain and only the vendor-supported --remap-path-prefix flag reproduced the designated ELF and vkey byte for byte (pre-registered; cross-check role only)"
+    },
+    "VKEY_DERIVATION_ALGORITHM_INDEPENDENT": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "every vkey here comes from Succinct's sp1-prover: mldsa65-host inside each build environment, and the released cargo-prove binary run on the workstation (SP1-P1's cross-check and TD1's remap probe) — binary- and machine-level independence only; a WalletWall proof verifying on the pinned verifier is the next join"
+    },
+    "GATEWAY_ROUTE_HISTORY_COMPLETE": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "the Sepolia RouteFrozen 0xa4594c59 in tx 0xf7f547a987db9a472e8ce81f33e2a644b1141ee2cd7b46ac2f7377df3ace4db3 is absent from the SP1-P1 indexer history and the indexer lacks its log; enumerating a mutable route table is not needed under a code-pinned target"
+    },
+    "DEFECT_RESPONSE_PATH": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "decided by the owner on 2026-10-15: WALLETWALL_DETECT_AND_FAIL_CLOSED via LOCAL_ONE_WAY_VERIFIER_HALT; not built — until TD2 builds the halt, only WalletWall's manual pauses, one per consumer, fail a defect closed; TD2 tests it through every consumer in its scope (PolicyControlBridge, StablecoinVaultSimulator, WalletWallVault); WalletWallMultiSigVault has no recovery path and stays off a haltable wrapper until TD2-MULTISIG-ROTATION"
+    },
+    "REAL_SP1_PROOF_GENERATED": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "out of scope for TD1: no circuit download, no prover run"
+    },
+    "REAL_SP1_PROOF_VERIFIED": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "no WalletWall proof exists; the real proofs exercised are third parties' (upstream's v6 fixture, and a v6.1.0 proof from a mainnet transaction), as controls for the verifier and its key"
+    },
+    "PRODUCTION_READINESS": {
+      "status": "NOT_ESTABLISHED",
+      "basis": "design lane; unaudited prototype; implementation, real proof and audit outstanding"
+    }
+  },
+  "findings": [
+    {
+      "id": "F-1",
+      "source": "SP1-P1",
+      "title": "uint64(block.chainid) truncation in ZKMLDSAVerifier.verify",
+      "disposition": "NO_AUTHORIZATION_IMPACT",
+      "practicalImpact": "none: every measured or targeted chain id is far below 2^64, and every consumer's EIP-712 digest binds the full 256-bit chainid (WalletWallVault, WalletWallMultiSigVault, PolicyControlBridge and StablecoinVaultSimulator all use _hashTypedDataV4)",
+      "securityImpact": "the journal chain_id is prover-chosen stdin the guest never checks, so it is a proof-routing tag, not a binding; authorization binds chain identity only through the digest. The truncation makes the verifier's own tag compare modulo 2^64.",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "implementation lane: compare uint256(committedChainId) with block.chainid (fail closed at or above 2^64); a contract-only change, no guest, ELF or vkey change"
+    },
+    {
+      "id": "F-2",
+      "source": "SP1-P1",
+      "title": "journal sigHash not checked on chain",
+      "disposition": "NON_AUTHORITATIVE_INFORMATIONAL",
+      "practicalImpact": "none",
+      "securityImpact": "authorization is 'the key behind pkHash signed exactly this digest'; any valid signature over the digest authorizes, and replay is prevented by the digest's nonce and deadline, so no authorization fact depends on which signature was used. No document claims the ZK path binds the signature hash (those claims describe AttestationPQCVerifier).",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "document sigHash as non-authoritative in the implementation lane; removing it would change the guest, ELF, vkey and journal ABI for no security gain"
+    },
+    {
+      "id": "F-3",
+      "source": "SP1-P1",
+      "title": "'immutable trust root' conflates address and relation immutability",
+      "disposition": "RESOLVED_BY_DEFINITION",
+      "practicalImpact": "misleading operator guidance while the runbook points at the gateway",
+      "securityImpact": "the accepted relation is immutable only if no principal other than WalletWall's timelocked rotation can widen it; an immutable address in front of a mutable route table is not",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "implementation lane rewrites docs/ZK_Verifier_Production.md and the runbook section 4 in these terms (both are bytes the SP1-P1 STOP receipt binds; see TD1-N4)"
+    },
+    {
+      "id": "F-4",
+      "source": "SP1-P1",
+      "title": "testnet gateway owned by one EOA with a live release-candidate route",
+      "disposition": "TESTNET_POSTURE_NOT_PRODUCTION",
+      "practicalImpact": "on Sepolia and Base Sepolia (TD1-N5) one key controls the route table and v4.0.0-rc.3 is live",
+      "securityImpact": "a single key can widen every unpinned consumer on both testnets; acceptable only for no-value experiments that name that key as an authority, and unnecessary because the same immutable v6.1.0 code is deployed at the same address there",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "testnet deployments bind directly to v6.1.0 like production; no testnet exception"
+    },
+    {
+      "id": "TD1-N1",
+      "source": "SP1-TD1",
+      "title": "SP1-P1's route history from the Blockscout indexer was incomplete",
+      "disposition": "EVIDENCE_QUALITY_CORRECTION",
+      "practicalImpact": "the Sepolia RouteFrozen for v5.0.0 (block 11874717) is in the RPC receipt but absent from Blockscout's logs for that transaction",
+      "securityImpact": "enumerating a mutable route table from an indexer is not a completeness proof; under the TD1 design no route outside the pinned code identity matters",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "none needed beyond recording it; SP1-P1's frozen receipt is not rewritten"
+    },
+    {
+      "id": "TD1-N2",
+      "source": "SP1-TD1",
+      "title": "SP1-P1 recorded the v6.1.1 tag as lightweight",
+      "disposition": "EVIDENCE_QUALITY_CORRECTION",
+      "practicalImpact": "v6.1.1 is an annotated tag carrying a PGP signature block (unverified here); v6.0.0 and v6.1.0 are lightweight",
+      "securityImpact": "none on the decision: provenance rests on byte equality, CREATE2 and code-hash measurements, not on tag signatures",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "none"
+    },
+    {
+      "id": "TD1-N3",
+      "source": "SP1-TD1",
+      "title": "one key spans testnet sole ownership and a mainnet Safe seat",
+      "disposition": "COMMON_MODE_NOTED",
+      "practicalImpact": "0xBaB2c2aF5b91695e65955DA60d63aD1b2aE81126 is the sole owner on Sepolia and Base Sepolia and one of the three signers of the 2-of-3 Safe on Ethereum and Base",
+      "securityImpact": "its compromise grants full testnet route control and half of the mainnet threshold; relevant only to options that leave the gateway owner in the accepted path",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "none for WalletWall under the TD1 design"
+    },
+    {
+      "id": "TD1-N4",
+      "source": "SP1-TD1",
+      "title": "the SP1-P1 STOP validator is a live tripwire on the files the next lane must change",
+      "disposition": "PROCESS_CONSTRAINT",
+      "practicalImpact": "validate:sp1-p1-receipt binds the sha256 of contracts/verifiers/ZKMLDSAVerifier.sol and requires the runbook to direct SP1_VERIFIER_ADDRESS at the gateway",
+      "securityImpact": "none; but restamping a spent STOP receipt would erase what it proved",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "implementation lane marks the SP1-P1 receipt superseded (historical bindings) instead of restamping it"
+    },
+    {
+      "id": "TD1-N5",
+      "source": "SP1-TD1",
+      "title": "Base Sepolia mirrors Sepolia's posture",
+      "disposition": "TESTNET_POSTURE_NOT_PRODUCTION",
+      "practicalImpact": "the gateway on WalletWall's second testnet is owned by the same single EOA and also routes v4.0.0-rc.3 live",
+      "securityImpact": "as F-4",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "as F-4"
+    },
+    {
+      "id": "TD1-N6",
+      "source": "SP1-TD1",
+      "title": "upstream freezes are discretionary: fast for a broken build, a deprecation batch for an advised version",
+      "disposition": "UPSTREAM_FREEZE_IS_DISCRETIONARY",
+      "practicalImpact": "the broken first v6.1.0 build was frozen on Sepolia 21.4 hours after it was routed; the advised v6.0.0 route (GHSA-63x8-x938-vx33, 2026-04-11) was frozen on mainnet 181 days later, 108 s after the unaffected v5.0.0 route, i.e. as a deprecation batch",
+      "securityImpact": "a freeze is dual-use: it stops valid proofs (liveness) and, when the verifier itself is unsound, forged ones (protection). Its timing is upstream's choice, and a routine deprecation freeze is near-certain over a deployment's life. Whether WalletWall couples to it is an explicit owner decision (DEFECT_RESPONSE_COUPLING), not a property this lane can settle. TD1 claims no exploitability of the on-chain v6.0.0 verifier.",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "decided 2026-10-15: WALLETWALL_DETECT_AND_FAIL_CLOSED, as a local one-way halt at the verifier wrapper; upstream signals are detection evidence only and never a WalletWall authority"
+    },
+    {
+      "id": "TD1-N7",
+      "source": "SP1-TD1 review",
+      "title": "the host flow builds the guest without --locked",
+      "disposition": "PROCEDURE_GAP",
+      "practicalImpact": "zkvm/host/build.rs calls sp1_build::build_program, whose BuildArgs.locked defaults to false; the host's --locked does not reach the nested guest build. The measured host-flow ELFs equal the --locked docker-mode ELFs on both hosts",
+      "securityImpact": "a stale guest lockfile would re-resolve from crates.io silently instead of failing; the designated identity is unaffected",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "canonical workflow: assert zkvm/guest/Cargo.lock unchanged after the build, or build with BuildArgs.locked = true"
+    },
+    {
+      "id": "TD1-N8",
+      "source": "SP1-TD1 review",
+      "title": "the same code hash is not the same relation on a chain whose precompiles differ",
+      "disposition": "PER_CHAIN_CHECK_REQUIRED",
+      "practicalImpact": "the Groth16 verifier ANDs the pairing call's success with the first output word; on a chain without the 0x08 precompile the call succeeds and the word is still the first input word, so an odd word passes. The odd-word canary reverts, and a real v6.1.0 proof verifies, on all four measured chains",
+      "securityImpact": "the code-hash pin is necessary, not sufficient; precompile semantics are chain-governed (an L2's upgrade keys can change them), an implicit authority every option shares",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "deploy tooling: per-chain execution check (real proof accepted, tampered and odd-word canary refused) before deploying, and periodically after"
+    },
+    {
+      "id": "TD1-N9",
+      "source": "SP1-TD1 review",
+      "title": "the rotation delay protects PqOnly users only if they can prove within it",
+      "disposition": "LIVENESS_INTERACTION_NOTED",
+      "practicalImpact": "the 2-day pqVerifier rotation gives users time to exit, but a PqOnly exit needs a proof, i.e. Succinct's v6.1.0 artifacts or prover network during that window",
+      "securityImpact": "the timelock's protection depends on an off-chain liveness dependency",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "archive the v6.1.0 circuit artifacts by hash and keep a self-hosted proving path before real value"
+    },
+    {
+      "id": "TD1-N10",
+      "source": "TD1 second adversarial review",
+      "title": "four consumers verify through the PQ verifier, each with its own fail-closed holder",
+      "disposition": "DEFECT_RESPONSE_IS_MULTI_CONSUMER",
+      "practicalImpact": "under A, failing closed on a verifier defect takes the pause() of every vault deployment (owner-held) and the policy bridge's one-way pause() (EMERGENCY_PAUSER); pausing a vault does not stop the bridge, which reads the consumer's pqVerifier",
+      "securityImpact": "a soundness defect in the pinned verifier stays exploitable through any consumer whose holder has not acted",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "decided: one local, one-way halt at the verifier wrapper, applied to every consumer that can recover from it (WalletWallVault, StablecoinVaultSimulator and PolicyControlBridge; WalletWallMultiSigVault only after TD2-MULTISIG-ROTATION), built and tested in TD2"
+    },
+    {
+      "id": "TD1-N11",
+      "source": "TD1 owner-decision review (contracts/WalletWallMultiSigVault.sol)",
+      "title": "WalletWallMultiSigVault has no verifier rotation and no exit that avoids PQ verification",
+      "disposition": "PREREQUISITE_FOR_THE_HALT",
+      "practicalImpact": "its pqVerifier is set once in the constructor and withdraw() needs at least one PQ signature through it, so a one-way halt of its wrapper would lock its funds: the decided recovery (a new wrapper and the timelocked rotation) does not exist for it",
+      "securityImpact": "none for authorization; a permanent liveness loss for that consumer if its wrapper is halted",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "TD2-MULTISIG-ROTATION: the halt is not applied to WalletWallMultiSigVault until it has an explicit delayed pqVerifier replacement path (a new authorization capability for its owner, accounted and reviewed separately); until then it is bound to no part of the SP1 path and its owner's pause is its only fail-closed lever; real value stays blocked, for every consumer, until both that path and the common halt are built and tested"
+    },
+    {
+      "id": "TD1-N12",
+      "source": "TD1 amendment review (contracts/WalletWallVault.sol, StablecoinVaultSimulator.sol, WalletWallMultiSigVault.sol)",
+      "title": "while a wrapper is halted, the rotation delay gives no one an exit",
+      "disposition": "RECOVERY_TARGET_UNCHECKED_BY_EXIT",
+      "practicalImpact": "every PQ-gated withdrawal fails while the wrapper is halted (WalletWallVault and StablecoinVaultSimulator in PqOnly or Hybrid mode, and every multisig vault, whose pqThreshold is at least one), so those users cannot leave during the 172,800 s rotation that recovery runs through; guardian recovery replaces credentials but withdraws nothing; today's rotation accepts any code-bearing target",
+      "securityImpact": "during recovery the rotation target is the vault owner's choice alone, unchecked by exit; for the multisig vault an accept-all target would leave each withdrawal guarded by its tenant's ECDSA signatures alone",
+      "repairBeforeRealProof": false,
+      "guestOrVkeyChange": false,
+      "plan": "TD2 states whether recovery-target gating (only a wrapper whose code hash and PROGRAM_VKEY designation passed the SP1 evidence gates) is enforced on chain or by process, tests it, and counts the answer in the authorization cut: for the multisig vault in TD2-MULTISIG-ROTATION (an unacceptable cut stops it), for the vaults in scope in the cut reported to the owner"
+    }
+  ],
+  "offChainLivenessDependencies": [
+    "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's.",
+    "Rebuilding the canonical ELF needs the vendor image (ghcr.io, by digest) and crates.io for the locked crate set; the digest and Cargo.lock checksums protect integrity, not availability.",
+    "A PqOnly user's exit during the 2-day rotation window needs a proof, so the timelock protects them only while proving is available (TD1-N9)."
+  ]
+}

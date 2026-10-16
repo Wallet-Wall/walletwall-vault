@@ -1,0 +1,312 @@
+{
+  "schema": "walletwall.sp1-td1-route-timeline.v1",
+  "measuredAtUtc": "2026-10-15T13:53:42.843Z",
+  "tool": {
+    "script": "route-timeline.cjs",
+    "scriptSha256": "d174c6a388c57e1c9d640caacdad451ed2c12aeb3a0a0b989adaf9eac5907c95",
+    "node": "v24.16.0"
+  },
+  "upstreamAdvisory": {
+    "id": "GHSA-63x8-x938-vx33 / CVE-2026-40323",
+    "url": "https://github.com/succinctlabs/sp1/security/advisories/GHSA-63x8-x938-vx33",
+    "title": "SP1 V6 Recursion Circuit Row-Count Binding Gap",
+    "published": "2026-04-11",
+    "severity": "High",
+    "affected": ">= 6.0.0, <= 6.0.2",
+    "patched": "6.1.0",
+    "onChainVerifierImpactStated": false,
+    "routeFreezeStated": false,
+    "retrievedAtUtc": "2026-10-15",
+    "note": "Fetched from the advisory page; it does not say whether the on-chain Groth16/PLONK verifiers are affected and says nothing about gateway routes. TD1 claims no exploitability; it records only the timing."
+  },
+  "events": [
+    {
+      "chainId": 1,
+      "block": 21632034,
+      "event": "RouteFrozen",
+      "selector": "0x09069090",
+      "version": "v3.0.0",
+      "blockHash": "0xc4b7841f136ac32c484039fc0dfb0886690b2e786b54806e058f7dfd2eae6f44",
+      "timestamp": 1736970023,
+      "utc": "2025-01-15T19:40:23.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://ethereum-rpc.publicnode.com",
+          "hash": "0xc4b7841f136ac32c484039fc0dfb0886690b2e786b54806e058f7dfd2eae6f44",
+          "timestamp": 1736970023
+        },
+        {
+          "url": "https://eth.drpc.org",
+          "hash": "0xc4b7841f136ac32c484039fc0dfb0886690b2e786b54806e058f7dfd2eae6f44",
+          "timestamp": 1736970023
+        }
+      ]
+    },
+    {
+      "chainId": 1,
+      "block": 22775718,
+      "event": "RouteFrozen",
+      "selector": "0x11b6a09d",
+      "version": "v4.0.0-rc.3",
+      "blockHash": "0x1c827f72df6a3cf694a11be986cd43c426fafdcb7d1c8092ae0c874e68c2dd8b",
+      "timestamp": 1750785371,
+      "utc": "2025-06-24T17:16:11.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://ethereum-rpc.publicnode.com",
+          "hash": "0x1c827f72df6a3cf694a11be986cd43c426fafdcb7d1c8092ae0c874e68c2dd8b",
+          "timestamp": 1750785371
+        },
+        {
+          "url": "https://eth.drpc.org",
+          "hash": "0x1c827f72df6a3cf694a11be986cd43c426fafdcb7d1c8092ae0c874e68c2dd8b",
+          "timestamp": 1750785371
+        }
+      ]
+    },
+    {
+      "chainId": 1,
+      "block": 24486035,
+      "event": "RouteAdded",
+      "selector": "0x0e78f4db",
+      "version": "v6.0.0",
+      "blockHash": "0xc9186540ba750b0fd5a51e93bb6d64343cbb7ca988b39288e8d979d5f445c4a7",
+      "timestamp": 1771445567,
+      "utc": "2026-02-18T20:12:47.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://ethereum-rpc.publicnode.com",
+          "hash": "0xc9186540ba750b0fd5a51e93bb6d64343cbb7ca988b39288e8d979d5f445c4a7",
+          "timestamp": 1771445567
+        },
+        {
+          "url": "https://eth.drpc.org",
+          "hash": "0xc9186540ba750b0fd5a51e93bb6d64343cbb7ca988b39288e8d979d5f445c4a7",
+          "timestamp": 1771445567
+        }
+      ]
+    },
+    {
+      "chainId": 1,
+      "block": 24894712,
+      "event": "RouteAdded",
+      "selector": "0x4388a21c",
+      "version": "v6.1.0",
+      "blockHash": "0x0893dc9496ac1ba5fa64cb8fd6fe6589ada67105979b75205b1381519bfce025",
+      "timestamp": 1776370439,
+      "utc": "2026-04-16T20:13:59.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://ethereum-rpc.publicnode.com",
+          "hash": "0x0893dc9496ac1ba5fa64cb8fd6fe6589ada67105979b75205b1381519bfce025",
+          "timestamp": 1776370439
+        },
+        {
+          "url": "https://eth.drpc.org",
+          "hash": "0x0893dc9496ac1ba5fa64cb8fd6fe6589ada67105979b75205b1381519bfce025",
+          "timestamp": 1776370439
+        }
+      ]
+    },
+    {
+      "chainId": 1,
+      "block": 26152982,
+      "event": "RouteFrozen",
+      "selector": "0xa4594c59",
+      "version": "v5.0.0",
+      "blockHash": "0x92050d6c894646f3b3bd95d5293ac1a624f257eae64cfc58895b0afe30345b74",
+      "timestamp": 1791526391,
+      "utc": "2026-10-09T06:13:11.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://ethereum-rpc.publicnode.com",
+          "hash": "0x92050d6c894646f3b3bd95d5293ac1a624f257eae64cfc58895b0afe30345b74",
+          "timestamp": 1791526391
+        },
+        {
+          "url": "https://eth.drpc.org",
+          "hash": "0x92050d6c894646f3b3bd95d5293ac1a624f257eae64cfc58895b0afe30345b74",
+          "timestamp": 1791526391
+        }
+      ]
+    },
+    {
+      "chainId": 1,
+      "block": 26152991,
+      "event": "RouteFrozen",
+      "selector": "0x0e78f4db",
+      "version": "v6.0.0",
+      "blockHash": "0x03c3e01bb05368450279ff9b59d05c4e0552ae4d7c7de08bf31bfc5a80129c37",
+      "timestamp": 1791526499,
+      "utc": "2026-10-09T06:14:59.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://ethereum-rpc.publicnode.com",
+          "hash": "0x03c3e01bb05368450279ff9b59d05c4e0552ae4d7c7de08bf31bfc5a80129c37",
+          "timestamp": 1791526499
+        },
+        {
+          "url": "https://eth.drpc.org",
+          "hash": "0x03c3e01bb05368450279ff9b59d05c4e0552ae4d7c7de08bf31bfc5a80129c37",
+          "timestamp": 1791526499
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 10288046,
+      "event": "RouteAdded",
+      "selector": "0x0e78f4db",
+      "version": "v6.0.0",
+      "blockHash": "0x33f44c40b3a2a0adda6cb6b669175cea948865859a0ce69c1b0f7ebccb60e87f",
+      "timestamp": 1771445784,
+      "utc": "2026-02-18T20:16:24.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0x33f44c40b3a2a0adda6cb6b669175cea948865859a0ce69c1b0f7ebccb60e87f",
+          "timestamp": 1771445784
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0x33f44c40b3a2a0adda6cb6b669175cea948865859a0ce69c1b0f7ebccb60e87f",
+          "timestamp": 1771445784
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 10653682,
+      "event": "RouteAdded",
+      "selector": "0x2b4aeaf7",
+      "version": "v6.1.0 first build (broken)",
+      "blockHash": "0xa4118c7202cd0d7c4c1f23cc2c78249900dcac4d4b9f0b56bd07c8325a7e564b",
+      "timestamp": 1776116196,
+      "utc": "2026-04-13T21:36:36.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0xa4118c7202cd0d7c4c1f23cc2c78249900dcac4d4b9f0b56bd07c8325a7e564b",
+          "timestamp": 1776116196
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0xa4118c7202cd0d7c4c1f23cc2c78249900dcac4d4b9f0b56bd07c8325a7e564b",
+          "timestamp": 1776116196
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 10659903,
+      "event": "RouteFrozen",
+      "selector": "0x2b4aeaf7",
+      "version": "v6.1.0 first build (broken)",
+      "blockHash": "0x24fddd89632115fa01608e1d1b94abbc40e8c0de22f08bc0608f5531b214ba8c",
+      "timestamp": 1776193356,
+      "utc": "2026-04-14T19:02:36.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0x24fddd89632115fa01608e1d1b94abbc40e8c0de22f08bc0608f5531b214ba8c",
+          "timestamp": 1776193356
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0x24fddd89632115fa01608e1d1b94abbc40e8c0de22f08bc0608f5531b214ba8c",
+          "timestamp": 1776193356
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 10660378,
+      "event": "RouteAdded",
+      "selector": "0x4388a21c",
+      "version": "v6.1.0",
+      "blockHash": "0xc0e1338ee8b23cba2deed98609265a337e8948aa8263dc201c8674d0eb6f7b40",
+      "timestamp": 1776199296,
+      "utc": "2026-04-14T20:41:36.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0xc0e1338ee8b23cba2deed98609265a337e8948aa8263dc201c8674d0eb6f7b40",
+          "timestamp": 1776199296
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0xc0e1338ee8b23cba2deed98609265a337e8948aa8263dc201c8674d0eb6f7b40",
+          "timestamp": 1776199296
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 11874717,
+      "event": "RouteFrozen",
+      "selector": "0xa4594c59",
+      "version": "v5.0.0",
+      "blockHash": "0xe6dcc5dd1c32d70c5292f8db82e1985a68c7efbbf7c9adc23508ffb880980cb6",
+      "timestamp": 1791517272,
+      "utc": "2026-10-09T03:41:12.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0xe6dcc5dd1c32d70c5292f8db82e1985a68c7efbbf7c9adc23508ffb880980cb6",
+          "timestamp": 1791517272
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0xe6dcc5dd1c32d70c5292f8db82e1985a68c7efbbf7c9adc23508ffb880980cb6",
+          "timestamp": 1791517272
+        }
+      ]
+    },
+    {
+      "chainId": 11155111,
+      "block": 11874735,
+      "event": "RouteFrozen",
+      "selector": "0x0e78f4db",
+      "version": "v6.0.0",
+      "blockHash": "0xe8bfeb2bc90ddf5a0d38ebf54ad51eb7ebd330a39e37bd57d0936b7be8c8dcd1",
+      "timestamp": 1791517488,
+      "utc": "2026-10-09T03:44:48.000Z",
+      "providersRead": 2,
+      "providersAgree": true,
+      "reads": [
+        {
+          "url": "https://sepolia.drpc.org",
+          "hash": "0xe8bfeb2bc90ddf5a0d38ebf54ad51eb7ebd330a39e37bd57d0936b7be8c8dcd1",
+          "timestamp": 1791517488
+        },
+        {
+          "url": "https://ethereum-sepolia-rpc.publicnode.com",
+          "hash": "0xe8bfeb2bc90ddf5a0d38ebf54ad51eb7ebd330a39e37bd57d0936b7be8c8dcd1",
+          "timestamp": 1791517488
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+SP1-TD1 Candidate B probe — pre-registration (written before any build)
+Date (UTC): 2026-10-15
+Subject: main 72b6554632335bfc7487f7dc7e9b3f44cdde0c0b, zkvm/guest tree f61fdc6c8785df742857574c5dbf47aa62283c49,
+         zkvm/host tree 30f72596c430974bf8113892bf41c26dce3629f3 (identical to the SP1-P1 subject).
+Host: developer workstation, WSL2 Ubuntu (the SP1-P1 environment-A host), sp1up toolchain zbBELn4Gb9,
+      cargo-prove 8252c29 (= sp1 v6.3.1). Fresh work dir and fresh CARGO_TARGET_DIR per build.
+
+Procedure P-local: `cargo prove build --locked` in zkvm/guest (sp1-build 6.3.1 local mode, default flags).
+Procedure P-remap: identical, plus the vendor-supported BuildArgs.rustflags entry
+    --remap-path-prefix=$HOME/.cargo=/root/.cargo
+  (sp1-build appends BuildArgs.rustflags to its own CARGO_ENCODED_RUSTFLAGS; rustc documents
+  --remap-path-prefix). No source, manifest, lockfile or toolchain change; no binary rewriting.
+
+Expected (from SP1-P1 evidence):
+  P-local  -> withdrawal ELF ce057748f2f26b308e400835218280ed817758d62acaf1330800f2aa2a66513a (206,600 B),
+              vkey 0x00eea6d622ce8cddee6387d922090de9710f844a977332a36c22c2651d040597 (environment A identity).
+              This is the positive control: the probe reproduces the known local identity.
+Hypothesis under test:
+  P-remap  -> withdrawal ELF 2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a (206,504 B),
+              vkey 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc (vendor identity),
+              i.e. the builder's CARGO_HOME prefix is the ONLY difference between the two procedures.
+Falsifiers: P-remap ELF != 2adddae7 (record which bytes/sections differ); P-local != ce057748 (probe invalid).
+Interpretation rule fixed in advance: even if P-remap reproduces the vendor identity, it does NOT become the
+canonical procedure (it depends on a separately installed toolchain and on the developer's own path); it is
+recorded only as (a) evidence that the canonical identity is reproducible outside the vendor image, and
+(b) a candidate developer cross-check.
