@@ -10,7 +10,7 @@
  * is not the proof; the history is.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -487,6 +487,23 @@ describe("SP1 implementation lane — the wrapper registry", function () {
       git("reset", "-q", "--hard", "HEAD~1");
       rmSync(join(dir, d, "x-d1.json"));
       expect(directoryHistoryErrors(dir, d).join("\n")).to.match(/working tree/);
+    });
+
+    it("the working tree is read entry by entry, never through a link: a published subdirectory swapped for a link to an identical copy is refused", function () {
+      const d = "evidence/zk/sp1/designation-evidence";
+      write(`${d}/sub/x-d1.json`, "{}\n");
+      commit("d1 evidence");
+      expect(directoryHistoryErrors(dir, d), "the positive control").to.deep.equal([]);
+      // An identical copy outside the published directory, and the published subdirectory replaced by a link to it
+      // (a junction needs no privilege on Windows; on Linux the type is ignored and it is a symlink).
+      const copy = join(dir, "elsewhere");
+      mkdirSync(copy);
+      writeFileSync(join(copy, "x-d1.json"), "{}\n");
+      rmSync(join(dir, d, "sub"), { recursive: true });
+      symlinkSync(copy, join(dir, d, "sub"), "junction");
+      expect(directoryHistoryErrors(dir, d).join("\n")).to.match(
+        /working tree[^\n]*sub\/x-d1\.json was removed or renamed/,
+      );
     });
   });
 

@@ -16,7 +16,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { type Dirent, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /** Given the older and newer content of a record (null: absent), every way the newer one fails to extend it. */
@@ -118,7 +118,7 @@ export function fileHistoryErrors(repoRoot: string, rel: string, rule: Extension
   }
   const path = resolve(repoRoot, rel);
   const head = blob(repoRoot, objectIds(repoRoot, ["HEAD"], rel).get("HEAD") ?? null);
-  const disk = existsSync(path) ? readFileSync(path, "utf8") : null;
+  const disk = readIfPresent(path);
   if (head !== disk) for (const e of rule(head, disk)) errors.push(`${rel} in the working tree (against HEAD): ${e}`);
   return errors;
 }
@@ -141,14 +141,36 @@ function gitBlobId(bytes: Buffer): string {
     .digest("hex");
 }
 
+/** A file's text, or null when nothing is there: one read, so no earlier check can go stale before it. */
+function readIfPresent(path: string): string | null {
+  try {
+    return readFileSync(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+/**
+ * The git blob id of every regular file under `root`, read entry by entry: the type is the directory entry's own, so
+ * there is no separate check to go stale, and a link is never followed. Anything that is neither a regular file nor a
+ * directory (a link above all) never matches a published record.
+ */
 function diskFiles(root: string, prefix = ""): Map<string, string> {
   const files = new Map<string, string>();
-  if (!existsSync(root)) return files;
-  for (const name of readdirSync(root)) {
-    const full = join(root, name);
-    const rel = prefix === "" ? name : `${prefix}/${name}`;
-    if (statSync(full).isDirectory()) for (const [p, id] of diskFiles(full, rel)) files.set(p, id);
-    else files.set(rel, gitBlobId(readFileSync(full)));
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return files;
+    throw error;
+  }
+  for (const entry of entries) {
+    const full = join(root, entry.name);
+    const rel = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+    if (entry.isDirectory()) for (const [p, id] of diskFiles(full, rel)) files.set(p, id);
+    else if (entry.isFile()) files.set(rel, gitBlobId(readFileSync(full)));
+    else files.set(rel, "not a regular file");
   }
   return files;
 }
