@@ -89,12 +89,14 @@ jobs:
           # registry, designations, evidence bundles and wrapper builds must only ever have been appended to, proved
           # by walking every commit's parents (this job checks out with fetch-depth 0; a shallow clone fails closed).
           # Proving availability (TD1-N9) must be what its observation derives, for the zkvm/host lockfile at HEAD
-          # (a host lockfile change needs a re-measurement). The expensive two-host rebuild is
+          # (a host lockfile change needs a re-measurement), and the implementation receipt must be exactly what all of
+          # the above, the compiled wrapper's AST and the lane's probes derive. The expensive two-host rebuild is
           # .github/workflows/sp1-canonical-build.yml.
           npm run validate:sp1-wrapper-build
           npm run validate:sp1-designation
           npm run validate:sp1-registry
           npm run validate:sp1-proving-availability
+          npm run validate:sp1-impl-receipt
 
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck

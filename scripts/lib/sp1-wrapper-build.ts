@@ -181,7 +181,7 @@ export function nextBuildRecord(current: WrapperBuild, builds: readonly WrapperB
 // Reading the compiler's output and the records
 // ---------------------------------------------------------------------------------------------------------
 
-type AstNode = Record<string, any>;
+export type AstNode = Record<string, any>;
 
 function walk(node: unknown, visit: (n: AstNode) => void): void {
   if (Array.isArray(node)) node.forEach((n) => walk(n, visit));
@@ -190,6 +190,21 @@ function walk(node: unknown, visit: (n: AstNode) => void): void {
     if (typeof n.nodeType === "string") visit(n);
     for (const value of Object.values(n)) if (value !== null && typeof value === "object") walk(value, visit);
   }
+}
+export { walk as walkAst };
+
+/** The compiled wrapper's ABI and its contract's AST, from the build info its artifact names (compile first). */
+export function compiledWrapper(repoRoot = "."): { abi: AstNode[]; contract: AstNode } {
+  const artifact = JSON.parse(readFileSync(resolve(repoRoot, WRAPPER_ARTIFACT_REL), "utf8"));
+  const output = JSON.parse(
+    readFileSync(resolve(repoRoot, BUILD_INFO_DIR, `${String(artifact.buildInfoId)}.output.json`), "utf8"),
+  ).output;
+  let contract: AstNode | undefined;
+  walk(output.sources[`${PROJECT_PREFIX}${WRAPPER_SOURCE}`]?.ast, (n) => {
+    if (n.nodeType === "ContractDefinition" && n.name === WRAPPER_NAME) contract = n;
+  });
+  if (!contract) throw new Error(`no ${WRAPPER_NAME} contract in the build info`);
+  return { abi: artifact.abi as AstNode[], contract };
 }
 
 function literalValue(name: string, value: AstNode | undefined): string {
