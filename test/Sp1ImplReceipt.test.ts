@@ -535,6 +535,29 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       expect(baseDriftErrors(repo, ids.m2), "the receipt generated again, against m2").to.deep.equal([]);
     });
 
+    it("a journal main changed is drift too, though the contracts read the same against both commits", function () {
+      rmSync(repo, { recursive: true, force: true });
+      repo = mkdtempSync(join(tmpdir(), "sp1-receipt-journal-drift-"));
+      git("init", "-q", "-b", "main");
+      commit("c0", { [VAULT]: "vault A\n", [WRAPPER]: "abi.decode(publicValues, (uint64))\n// w0\n" });
+      git("checkout", "-q", "-b", "lane");
+      commit("l1", { [IMPL_RECEIPT_REL]: "receipt\n", [WRAPPER]: "abi.decode(publicValues, (uint64))\n// lane\n" });
+      git("checkout", "-q", "main");
+      commit("c1", { [WRAPPER]: "abi.decode(publicValues, (uint32))\n// w0\n" });
+      git("update-ref", "refs/remotes/origin/main", ids.c1);
+      git("checkout", "-q", "lane");
+      try {
+        git("merge", "-q", "-m", "sync", ids.c1);
+      } catch {
+        // the wrappers conflict: keep the lane's
+      }
+      commit("sync", { [WRAPPER]: "abi.decode(publicValues, (uint64))\n// lane\n" });
+      expect(git("rev-list", "--parents", "-n", "1", "HEAD").split(" ")).to.have.length(3);
+      expect(baseDriftErrors(repo, ids.c0).join("\n")).to.match(
+        new RegExp(`against ${ids.c1}, the latest main commit in HEAD's history`),
+      );
+    });
+
     it("on main itself the commit that wrote the receipt decides (baseCommitErrors), not HEAD's history", function () {
       git("checkout", "-q", "--detach", ids.m2);
       git("merge", "-q", "--no-ff", "-m", "merge the lane", "lane");
