@@ -1,0 +1,114 @@
+name: SP1 circuit acquisition (measurement)
+
+# SP1-PA2B, owner-authorized: one of the two independent acquisitions of SP1's Groth16 circuit v6.1.0 archive
+# (docs/SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md). A GitHub-hosted runner is a different machine on a
+# different network path from the developer workstation, so its download is an independent observation. It:
+#   - downloads v6.1.0-groth16.tar.gz over HTTPS into the runner's temp directory (data only: never executed, never
+#     extracted with tar(1));
+#   - measures its sha256 and length with two independent tools (coreutils, OpenSSL) and inspects it with the
+#     PA2A inspector (scripts/sp1-circuit-archive-inspect.ts, designation d1's anchor from this checkout);
+#   - resolves ghcr.io/succinctlabs/sp1-gnark:v6.1.0 to its immutable digest from the registry, without pulling;
+#   - uploads the measurement (not the archive) as an artifact.
+# It proves nothing, runs no prover, writes to no chain and changes nothing in the repository. It never runs on pull
+# requests: only when pushed to a measure/sp1-circuit-acquisition* branch, or dispatched.
+on:
+  push:
+    branches:
+      - "measure/sp1-circuit-acquisition*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    name: Acquire and measure the circuit archive (GitHub-hosted runner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ARCHIVE_URL: https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz
+      GNARK_TAG: ghcr.io/succinctlabs/sp1-gnark:v6.1.0
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download the archive (data only)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          mkdir -p "$out/archive"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$out/started.txt"
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 -sS \
+            -D "$out/headers.txt" -o "$out/archive/v6.1.0-groth16.tar.gz" \
+            -w '{"http_code":%{http_code},"size_download":%{size_download},"remote_ip":"%{remote_ip}","url_effective":"%{url_effective}","time_total":%{time_total}}\n' \
+            "$ARCHIVE_URL" > "$out/transfer.json"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$out/finished.txt"
+          cat "$out/transfer.json"
+          tr -d '\r' < "$out/headers.txt"
+
+      - name: Measure with coreutils and OpenSSL
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          f="$out/archive/v6.1.0-groth16.tar.gz"
+          stat -c %s "$f" | tee "$out/bytes.txt"
+          sha256sum "$f" | cut -d' ' -f1 | tee "$out/sha256-coreutils.txt"
+          openssl dgst -sha256 -r "$f" | cut -d' ' -f1 | tee "$out/sha256-openssl.txt"
+          test "$(cat "$out/sha256-coreutils.txt")" = "$(cat "$out/sha256-openssl.txt")"
+
+      - name: Inspect with the PA2A inspector (designation d1's anchor)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          status=0
+          npm run --silent sp1:circuit-archive:inspect -- --archive "$out/archive/v6.1.0-groth16.tar.gz" \
+            > "$out/inspect.json" 2> "$out/inspect.stderr" || status=$?
+          echo "$status" > "$out/inspect-exit.txt"
+          cat "$out/inspect.json" "$out/inspect.stderr"
+
+      - name: Resolve the gnark image tag to its digest (registry only, no pull)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          docker buildx imagetools inspect "$GNARK_TAG" --raw > "$out/gnark-index.raw"
+          docker buildx imagetools inspect "$GNARK_TAG" --format '{{json .Manifest}}' > "$out/gnark-manifest.json"
+          sha256sum "$out/gnark-index.raw" | cut -d' ' -f1 | tee "$out/gnark-index-sha256.txt"
+          cat "$out/gnark-manifest.json"
+
+      - name: Record the runner
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          {
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "image_os=${ImageOS:-}"
+            echo "image_version=${ImageVersion:-}"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "sha=$GITHUB_SHA"
+            uname -a
+          } | tee "$out/runner.txt"
+          rm -rf "$out/archive"
+
+      - name: Upload the measurement (never the archive)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-circuit-acquisition-github-hosted-runner
+          path: |
+            ${{ runner.temp }}/acquisition
+            !${{ runner.temp }}/acquisition/archive
+          retention-days: 90
+
+      - name: Fail when the PA2A inspector refused the archive
+        run: test "$(cat "$RUNNER_TEMP/acquisition/inspect-exit.txt")" = "0"
