@@ -8,7 +8,8 @@
  *   2. the archive is extracted again into a fresh private staging directory beside the target (one filesystem, so the
  *      last step is one rename), creating each file exclusively (O_CREAT|O_EXCL) and each directory once;
  *   3. the bytes extracted must be the bytes authenticated, and the staged tree, re-read from disk, must be exactly the
- *      record's members (no link, no special file, no extra file or directory, groth16_vk.bin the anchor's);
+ *      record's members (no link, no special file, no extra file or directory, groth16_vk.bin the anchor's): the
+ *      record's AppleDouble metadata is hashed and checked as it is read and never written, so never installed;
  *   4. the tree is made read-only and renamed into place; a target that exists is refused, never merged or replaced.
  *
  * Any failure removes the staging directory and leaves the target path untouched. There is no force, merge or
@@ -286,9 +287,11 @@ export async function installCircuitArchive(input: InstallInput): Promise<Instal
       }
       return { write: (chunk) => writeAll(fd, chunk, rel), close: () => closeSync(fd) };
     };
+    // AppleDouble entries are hashed and checked by the parser but never reach openFile: never extracted.
     const extracted = await scanArchive(input.archivePath, {
       limits,
       expect: new Map(record.members.map((m) => [m.path, m])),
+      expectMetadata: new Map(record.metadata.map((m) => [m.path, m])),
       openFile,
       onDirectory: ensureDir,
     });

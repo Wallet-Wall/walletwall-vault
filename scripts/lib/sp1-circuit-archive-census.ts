@@ -367,7 +367,8 @@ export async function censusArchive(path: string): Promise<Census> {
   } finally {
     await fh.close();
   }
-  if (state !== "end") throw new Error("census: the stream ends before an end-of-archive block");
+  // `state` is assigned inside the closures above, which narrowing does not see.
+  if ((state as string) !== "end") throw new Error("census: the stream ends before an end-of-archive block");
   return {
     schema: CENSUS_SCHEMA,
     archive: { bytes: rawBytes, sha256: raw.digest("hex") },

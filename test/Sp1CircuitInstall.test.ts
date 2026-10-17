@@ -27,13 +27,17 @@ import { join } from "node:path";
 
 import { VK_FILE } from "../scripts/lib/sp1-circuit-archive";
 import {
+  APPLEDOUBLE_BODY,
   SAFE_FILES,
   SYNTHETIC_ANCHOR,
+  UPSTREAM_SHAPED_FILES,
+  appleDoubleMetadata,
   gz,
   safeEntries,
   safeTar,
   syntheticRecord,
   tarBytes,
+  upstreamShapedEntries,
 } from "../scripts/lib/sp1-circuit-fixtures";
 import {
   STAGING_PREFIX,
@@ -87,6 +91,42 @@ describe("SP1-PA2A circuit install", function () {
         expect(statSync(join(s.target, "extra")).mode & 0o777).to.equal(0o555);
       }
       expect(verifyInstalledCircuit(s.root, record, anchor).members).to.deep.equal(record.members);
+    });
+
+    it("in the upstream shape installs its members only: no AppleDouble file and no provenance reach the tree", async function () {
+      const upArchive = gz(tarBytes(upstreamShapedEntries()));
+      const upRecord = syntheticRecord(
+        upArchive,
+        UPSTREAM_SHAPED_FILES,
+        anchor,
+        appleDoubleMetadata(UPSTREAM_SHAPED_FILES),
+      );
+      const s = setup(upArchive);
+      const result = await install(s, { record: upRecord });
+      expect(result.members.map((m) => m.path)).to.deep.equal(upRecord.members.map((m) => m.path));
+      const { files, directories } = walkTree(s.target, "CIRCUIT_INTEGRITY_FAILED");
+      expect(files).to.deep.equal(upRecord.members.map((m) => m.path));
+      expect(files.some((f) => f.startsWith("._"))).to.equal(false);
+      expect(directories).to.deep.equal([]);
+      for (const f of files) expect(readFileSync(join(s.target, f)).equals(APPLEDOUBLE_BODY), f).to.equal(false);
+      expect(verifyInstalledCircuit(s.root, upRecord, anchor).members).to.deep.equal(upRecord.members);
+    });
+
+    it("an AppleDouble file planted in an upstream-shaped installation fails re-verification", async function () {
+      const upArchive = gz(tarBytes(upstreamShapedEntries()));
+      const upRecord = syntheticRecord(
+        upArchive,
+        UPSTREAM_SHAPED_FILES,
+        anchor,
+        appleDoubleMetadata(UPSTREAM_SHAPED_FILES),
+      );
+      const s = setup(upArchive);
+      await install(s, { record: upRecord });
+      chmodSync(s.target, 0o755);
+      writeFileSync(join(s.target, "._groth16_vk.bin"), APPLEDOUBLE_BODY);
+      expect(await refusalOf(() => verifyInstalledCircuit(s.root, upRecord, anchor))).to.equal(
+        "CIRCUIT_INTEGRITY_FAILED (UNEXPECTED_MEMBER)",
+      );
     });
   });
 
