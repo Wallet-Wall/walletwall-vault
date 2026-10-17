@@ -106,6 +106,45 @@ reaches the other contracts' compiled code without changing a source, and the re
 can write to a clone's `.git` (a forged commit-graph, say) defeats any check run in it; CI's fresh clone is the one that
 counts. The binding proves which bytes were merged, not that they are sound.
 
+## Adversarial review
+
+An independent review attacked the binding before publication, each attack run against the module on throwaway
+repositories. It found no HIGH or CRITICAL finding:
+
+| Finding | Severity | Resolution |
+| --- | --- | --- |
+| git resolves the short name `origin/main` to a tag, a branch or a file of that name before the remote-tracking ref, and CI fetches tags: a pushed tag could choose "main", and so the merge and head the binding names | MEDIUM | main is read only as `refs/remotes/origin/main`, in the binding, the base rule and the generator; tests show each shadow moving git's answer and none moving the binding's |
+| `--no-replace-objects` leaves grafts (`info/grafts`, `GIT_GRAFT_FILE`) honoured | LOW | every git read of the binding and of the base rule points `GIT_GRAFT_FILE` at a file that does not exist; tested with both |
+| a receipt removed and restored on main (a rebase merge) made "entered main once" fail forever | LOW, availability | bound to the first merge, which an append-only main never moves; restored bytes are judged as any descendant's |
+| "reviewed subject" claims a review git cannot show | LOW | the record states it attests topology and bytes, not who reviewed or merged; `OWNER_REVIEW_AND_MERGE` stays as published |
+| `contracts/` pins sources, not compiled code | LOW, as before | stated in the residuals above |
+| the base rule's own git reads honoured replace refs; a CRLF clone's drift was named as a protected change | INFO | the base rule reads the objects themselves too (tested); a CRLF-only drift is named so |
+
+The review found none of the following, each tried: laundering unreviewed bytes into a descendant through content
+edits, untracked or assume-unchanged files, removals or case-only renames; binding through a squash, rebase,
+fast-forward, octopus, swapped-parent or lane-side merge, an evil merge, a replace ref, a shallow clone, or a missing or
+stale `origin/main`; a check that passes on a git error.
+
+## Mutation testing
+
+A curated campaign of **66 mutants** on the final bytes covers each check named above:
+- reading main and its objects (the full ref, replace refs, grafts, shallow clones, a missing origin/main, unreadable ancestry);
+- where the receipt entered main and through which topology;
+- the reviewed-head anchor, the receipt digest, the tree identity, and the historical base versus the reviewed subject;
+- A2 at the merge;
+- the committed record;
+- every descendant check, committed and on disk;
+- the base-precedes-its-receipt rule, the glue that judges a tree only through the binding, a validator that trusts main or bypasses the binding, the genuine-STOP condition, and the CLI.
+
+Each mutant is one edit, applied alone in a separate detached worktree, run against the two receipt suites, and its bytes restored and re-hashed afterwards. Results: **66 killed, none survived, none invalid, no flaky kill.**
+
+Three mutants were killed only through the receipt suite's before-all hook. Each was checked to fail for its own reason:
+- every base read as carrying the receipt;
+- the base judged at HEAD, which is the original bug's own message;
+- the merge used as the base.
+
+Two earlier rounds shaped the code. The first ran 25 mutants on an earlier commit, all killed, and was stopped when the review's fixes changed the code. The second found one survivor: once the binding named the first introduction, "its first parent lacks the receipt" was implied. That conjunct was designed out rather than called equivalent. The catalog and harness are in the pull request's comments.
+
 ## Reproduce / check
 
 ```bash
