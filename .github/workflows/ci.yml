@@ -79,6 +79,18 @@ jobs:
           # release builds or proves correctly (see docs/ZK_Prover_Runbook.md).
           npm run validate:sp1-pin-parity
 
+      - name: Validate the zkvm/host RustSec advisory record (deterministic; no network, no cargo)
+        run: |
+          set -euo pipefail
+          # evidence/zk/sp1-impl/host-lockfile-advisories.json must be what designation d1's zkvm/host subject, the
+          # committed observation and the reviewed claims in scripts/lib/sp1-host-advisories.ts derive. A host tree,
+          # Cargo.toml or Cargo.lock change, a broken assumption (a new sp1-sdk feature; a network-only, aws-lc, brotli
+          # or cuda crate; another proof kind), a successor designation or a proving-availability change fails here
+          # until the findings are re-measured and reassessed. It passes on ASSESSMENT_VALID, which never means the
+          # dependencies are safe: the dependency status printed beside it stays NOT_DEPENDENCY_SAFE while any RustSec
+          # vulnerability is locked. Live RustSec drift is .github/workflows/rustsec-audit.yml's (reporting only).
+          npm run validate:sp1-host-advisories
+
       - name: Validate SP1 wrapper builds, designations, registry and proving availability (deterministic; no network)
         run: |
           set -euo pipefail
@@ -97,18 +109,6 @@ jobs:
           npm run validate:sp1-registry
           npm run validate:sp1-proving-availability
           npm run validate:sp1-impl-receipt
-
-      - name: Validate the zkvm/host RustSec advisory record (deterministic; no network, no cargo)
-        run: |
-          set -euo pipefail
-          # evidence/zk/sp1-impl/host-lockfile-advisories.json must be what designation d1's zkvm/host subject, the
-          # committed observation and the reviewed claims in scripts/lib/sp1-host-advisories.ts derive. A host tree,
-          # Cargo.toml or Cargo.lock change, a broken assumption (a new sp1-sdk feature; a network-only, aws-lc, brotli
-          # or cuda crate; another proof kind), a successor designation or a proving-availability change fails here
-          # until the findings are re-measured and reassessed. It passes on ASSESSMENT_VALID, which never means the
-          # dependencies are safe: the dependency status printed beside it stays NOT_DEPENDENCY_SAFE while any RustSec
-          # vulnerability is locked. Live RustSec drift is .github/workflows/rustsec-audit.yml's (reporting only).
-          npm run validate:sp1-host-advisories
 
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck

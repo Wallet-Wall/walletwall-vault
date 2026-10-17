@@ -7,6 +7,8 @@
 > This is not a security waiver: every finding below is still locked in `zkvm/host/Cargo.lock`, and nothing here
 > patches, updates or suppresses anything.
 
+Research prototype. Not audited. Testnet/local only. Do not use real funds.
+
 | | |
 |---|---|
 | Record (generated, never hand-edited) | [`evidence/zk/sp1-impl/host-lockfile-advisories.json`](../evidence/zk/sp1-impl/host-lockfile-advisories.json) |
