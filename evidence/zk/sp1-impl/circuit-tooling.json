@@ -1,6 +1,7 @@
 {
   "schema": "walletwall.sp1-circuit-tooling.v1",
   "lane": "SP1-PA2A",
+  "amendment": "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
   "state": "TOOLING_READY_NO_ARTIFACT",
   "states": [
     {
@@ -45,10 +46,10 @@
     }
   },
   "archiveRecord": {
-    "schema": "walletwall.sp1-proving-archive.v1",
+    "schema": "walletwall.sp1-proving-archive.v2",
     "jsonSchema": {
-      "path": "evidence/zk/schema/sp1-proving-archive.v1.schema.json",
-      "sha256": "679da63215958766189993a67d613e338bf276040c188913dd01a982cca799e8"
+      "path": "evidence/zk/schema/sp1-proving-archive.v2.schema.json",
+      "sha256": "e0cb829dee4ce214840b4780e1458b4bb9b51b64785d663c48fa7c04b2870dd9"
     },
     "authoritativeDir": "evidence/zk/sp1-impl/proving-archives",
     "productionRecords": 0,
@@ -60,7 +61,90 @@
     ],
     "minAcquisitions": 2,
     "minMirrors": 2,
-    "sourceUrlAndTag": "PROVENANCE_ONLY"
+    "sourceUrlAndTag": "PROVENANCE_ONLY",
+    "ignoredMetadata": {
+      "appleDouble": {
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA",
+        "rule": "a path with any \"._\" component is never a member; it is ignored only as ._. (describing the root directory) or \"._<name>\" (<name> a canonical root-level name, not itself AppleDouble-shaped, describing the regular file <name>), a regular file with no PAX header, one of these bodies, immediately followed by the entry it describes; never extracted, never installed; recorded in the record's metadata",
+        "bodies": [
+          {
+            "bytes": 163,
+            "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0"
+          }
+        ]
+      },
+      "provenance": {
+        "disposition": "IGNORED_PROVENANCE_METADATA",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "value": {
+          "hex": "0102002d0e23b75bfde87a",
+          "bytes": 11,
+          "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        },
+        "entries": [
+          {
+            "path": ".",
+            "kind": "directory"
+          },
+          {
+            "path": "Groth16Verifier.sol",
+            "kind": "file"
+          },
+          {
+            "path": "SP1VerifierGroth16.sol",
+            "kind": "file"
+          },
+          {
+            "path": "constraints.json",
+            "kind": "file"
+          },
+          {
+            "path": "groth16_circuit.bin",
+            "kind": "file"
+          },
+          {
+            "path": "groth16_pk.bin",
+            "kind": "file"
+          },
+          {
+            "path": "groth16_vk.bin",
+            "kind": "file"
+          },
+          {
+            "path": "groth16_witness.json",
+            "kind": "file"
+          }
+        ],
+        "rule": "the key's raw value must be exactly this value (never decoded, interpreted or applied), on these entries only (by path and kind), at most once each, and on all of them once on any; every other PAX key and value stays strict UTF-8"
+      },
+      "derivedFrom": {
+        "observations": [
+          {
+            "path": "evidence/zk/sp1-impl/observations/circuit-archive-census-developer-workstation.raw.json",
+            "sha256": "e39376dd569ded2c8293b140f20752603fe3706149dd0c756ce3fb4780c5cc40"
+          },
+          {
+            "path": "evidence/zk/sp1-impl/observations/circuit-archive-census-github-hosted-runner.raw.json",
+            "sha256": "e39376dd569ded2c8293b140f20752603fe3706149dd0c756ce3fb4780c5cc40"
+          }
+        ],
+        "archive": {
+          "bytes": 6211807514,
+          "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+        },
+        "tarEntries": 24,
+        "appleDoubleEntries": [
+          "._.",
+          "._groth16_vk.bin",
+          "._groth16_circuit.bin",
+          "._SP1VerifierGroth16.sol",
+          "._groth16_pk.bin",
+          "._Groth16Verifier.sol",
+          "._constraints.json",
+          "._groth16_witness.json"
+        ]
+      }
+    }
   },
   "upstream": {
     "observation": {
@@ -573,13 +657,15 @@
       },
       {
         "path": "test/fixtures/sp1-proving-archives/synthetic-safe.record.json",
-        "sha256": "853f2f2761acef7ad874ee18f3de7926e5764a31fb6375412f5935ebe6250ecc"
+        "sha256": "e09ed2ea3cbd6b99e74324a17c8d7c1458d3b1fc74a9a58ebb1616408e14e884"
       }
     ],
     "safe": [
       "inspected against its record: 5 members, sha256 9823fe742e085aef484f620e30918aa690ed93249494e12c74d0e9b6fa98c15f",
       "installed and re-verified at <root>/v6.1.0",
       "a second installation is refused: INSTALL_TARGET_EXISTS (EXISTS)",
+      "the upstream-shaped archive inspected against its record: 7 members; 8 AppleDouble entries and 8 provenance records ignored",
+      "installed it: the tree holds its 7 members only, no AppleDouble file",
       "the gate passes with the image present by digest; the child gets only DOCKER_CONTEXT,PATH,SP1_GNARK_IMAGE,SP1_GROTH16_CIRCUIT_PATH,SP1_PROVER"
     ],
     "hostile": [
@@ -952,6 +1038,351 @@
         "id": "I09",
         "title": "wrong member length refused at its header (its declared bytes are never read)",
         "refusal": "ARCHIVE_MEMBER_MISMATCH (SIZE_MISMATCH)"
+      },
+      {
+        "id": "M01",
+        "title": "the verifying key smuggled as ._groth16_vk.bin",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)"
+      },
+      {
+        "id": "M02",
+        "title": "the policy's length with another body",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)"
+      },
+      {
+        "id": "M03",
+        "title": "a size no accepted body has, refused at its header (its declared bytes are never read)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)"
+      },
+      {
+        "id": "M04",
+        "title": "a nested ._ name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M05",
+        "title": "AppleDouble of an AppleDouble name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M06",
+        "title": "a bare ._",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M07",
+        "title": "a trailing dot after ._ (Windows drops it)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M08",
+        "title": "._.. (a traversal spelled as metadata)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M09",
+        "title": "a non-ASCII lookalike of a member's name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M10",
+        "title": "a ._ component in the POSIX prefix",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M11",
+        "title": "a ._ name inside __MACOSX/ (zip-style metadata)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
+        "id": "M12",
+        "title": "the record's ._ name of 101 bytes, its 99-byte companion a member",
+        "refusal": "RECORD_INVALID (METADATA_PATH_INVALID)"
+      },
+      {
+        "id": "M13",
+        "title": "an AppleDouble name as a directory",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_NOT_A_FILE)"
+      },
+      {
+        "id": "M14",
+        "title": "an AppleDouble symlink to the verifying key",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (SYMLINK)"
+      },
+      {
+        "id": "M15",
+        "title": "an AppleDouble hard link to the verifying key",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (HARDLINK)"
+      },
+      {
+        "id": "M16",
+        "title": "an AppleDouble entry with a setuid mode",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (SPECIAL_MODE_BITS)"
+      },
+      {
+        "id": "M17",
+        "title": "a PAX header before an AppleDouble entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITH_PAX)"
+      },
+      {
+        "id": "M18",
+        "title": "a PAX path renaming an AppleDouble entry to the verifying key",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_PATH_MISMATCH)"
+      },
+      {
+        "id": "M19",
+        "title": "a PAX path renaming the verifying key to an AppleDouble name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_PATH_MISMATCH)"
+      },
+      {
+        "id": "M20",
+        "title": "an orphan: another member follows",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M21",
+        "title": "followed by a case variant of its companion",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M22",
+        "title": "followed by a directory of its companion's name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M23",
+        "title": "._. followed by a file, not the root",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M37",
+        "title": "._. followed by a file named ./ (the root's name, not the root directory)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M24",
+        "title": "after its companion, the archive ending",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M25",
+        "title": "after its companion, another member following",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M26",
+        "title": "a duplicate AppleDouble entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DUPLICATE_PATH)"
+      },
+      {
+        "id": "M27",
+        "title": "a duplicate normalized ._.",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DUPLICATE_PATH)"
+      },
+      {
+        "id": "M28",
+        "title": "AppleDouble entries colliding by case",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (CASE_COLLISION)"
+      },
+      {
+        "id": "M29",
+        "title": "metadata the record does not name",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_METADATA)"
+      },
+      {
+        "id": "M30",
+        "title": "metadata the record names, absent from the archive",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (MISSING_METADATA)"
+      },
+      {
+        "id": "M31",
+        "title": "the record naming an AppleDouble entry as a member",
+        "refusal": "RECORD_INVALID (APPLEDOUBLE_AS_MEMBER)"
+      },
+      {
+        "id": "M32",
+        "title": "the record giving metadata another disposition",
+        "refusal": "RECORD_INVALID (METADATA_DISPOSITION)"
+      },
+      {
+        "id": "M33",
+        "title": "the record's metadata describing no member",
+        "refusal": "RECORD_INVALID (METADATA_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "M34",
+        "title": "the record's metadata with another body",
+        "refusal": "RECORD_INVALID (METADATA_BODY_UNEXPECTED)"
+      },
+      {
+        "id": "M35",
+        "title": "the record's metadata outside the policy (nested)",
+        "refusal": "RECORD_INVALID (METADATA_PATH_INVALID)"
+      },
+      {
+        "id": "M36",
+        "title": "other macOS metadata (.DS_Store) stays an ordinary entry, refused unless the record names it",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_MEMBER)"
+      },
+      {
+        "id": "X01",
+        "title": "the provenance key with other binary bytes",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_VALUE_UNEXPECTED)"
+      },
+      {
+        "id": "X02",
+        "title": "the provenance value with one byte changed",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_VALUE_UNEXPECTED)"
+      },
+      {
+        "id": "X03",
+        "title": "a UTF-8 value under the provenance key (its base64 text)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_VALUE_UNEXPECTED)"
+      },
+      {
+        "id": "X04",
+        "title": "the provenance value with one byte more",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_VALUE_UNEXPECTED)"
+      },
+      {
+        "id": "X05",
+        "title": "the provenance value with one byte less",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_VALUE_UNEXPECTED)"
+      },
+      {
+        "id": "X06",
+        "title": "the right bytes on an uncharacterized member",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_ON_UNCHARACTERIZED_ENTRY)"
+      },
+      {
+        "id": "X07",
+        "title": "the right bytes on a nested member named like a characterized one",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_ON_UNCHARACTERIZED_ENTRY)"
+      },
+      {
+        "id": "X08",
+        "title": "the right bytes on a case variant of a characterized name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_ON_UNCHARACTERIZED_ENTRY)"
+      },
+      {
+        "id": "X09",
+        "title": "the right bytes on a directory named like a characterized file",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_ON_UNCHARACTERIZED_ENTRY)"
+      },
+      {
+        "id": "X10",
+        "title": "the right bytes on a file named ./ (the root's path, not the root directory)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_ON_UNCHARACTERIZED_ENTRY)"
+      },
+      {
+        "id": "X11",
+        "title": "the right bytes on an AppleDouble entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_ON_UNCHARACTERIZED_ENTRY)"
+      },
+      {
+        "id": "X12",
+        "title": "an extra occurrence: the root entry repeated",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_REPEATED)"
+      },
+      {
+        "id": "X13",
+        "title": "an extra occurrence: a second PAX header for one entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_REPEATED)"
+      },
+      {
+        "id": "X14",
+        "title": "a missing occurrence: one characterized file without it",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_OCCURRENCE_MISSING)"
+      },
+      {
+        "id": "X15",
+        "title": "a missing occurrence: the root without it",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_OCCURRENCE_MISSING)"
+      },
+      {
+        "id": "X16",
+        "title": "a lone occurrence",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PROVENANCE_OCCURRENCE_MISSING)"
+      },
+      {
+        "id": "X17",
+        "title": "a suffix lookalike key with the binary value",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X18",
+        "title": "a truncated lookalike key with the binary value",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X19",
+        "title": "a case lookalike key with the binary value",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X20",
+        "title": "the LIBARCHIVE twin key with the raw bytes",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X21",
+        "title": "a lookalike key with a leading space",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X22",
+        "title": "the binary value under another metadata key (comment)",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X23",
+        "title": "the provenance bytes as a path",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X24",
+        "title": "the provenance bytes as a size",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X25",
+        "title": "the provenance bytes as a linkpath",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X26",
+        "title": "a key that is not UTF-8",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X27",
+        "title": "the provenance key twice in one PAX header",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_DUPLICATE_KEY)"
+      },
+      {
+        "id": "X28",
+        "title": "a provenance PAX header describing no entry",
+        "refusal": "ARCHIVE_CORRUPT (DANGLING_PAX)"
+      },
+      {
+        "id": "X29",
+        "title": "provenance in a PAX global header",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_GLOBAL_HEADER)"
+      },
+      {
+        "id": "X30",
+        "title": "a provenance record beside a renaming path record",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_PATH_MISMATCH)"
+      },
+      {
+        "id": "X31",
+        "title": "a provenance PAX header cannot stand in for an AppleDouble entry's companion",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
+      },
+      {
+        "id": "X32",
+        "title": "the provenance record before a PAX header's other records keeps them strict",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
       }
     ],
     "gate": [
@@ -1008,14 +1439,15 @@
     "a flooding host is killed, not its docker child or container; a run has no overall time limit (proofs take hours)",
     "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
     "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
-    "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority"
+    "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
+    "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants"
   ],
   "notEstablished": [
-    "any real v6.1.0-groth16.tar.gz: none was downloaded, so its sha256, length and member set are unknown (REQUIRED_MEMBERS is the floor SP1 reads, not the measured set)",
-    "the gnark image's digest: not measured, and not fetched to complete this lane",
+    "an accepted record of v6.1.0-groth16.tar.gz: its bytes were acquired on two hosts and every entry censused (the observations above), but no record exists, and passing the amended inspector on both copies is the acquisition lane's evidence, not this one's",
+    "the gnark image's digest: no committed observation, and the image is never pulled here",
     "two independent acquisitions, two WalletWall mirrors, and a record in evidence/zk/sp1-impl/proving-archives",
     "that the self-hosted path proves at all, or within the rotation delay",
     "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound"
   ],
-  "next": "owner-authorized two-host circuit acquisition, digest agreement, gnark-image digest acquisition and WalletWall mirroring; still not a proof lane"
+  "next": "SP1-PA2B resumes only after this amendment merges and both independently acquired copies pass the merged inspector unchanged: then the gnark image by digest, WalletWall mirroring and the record; still not a proof lane"
 }

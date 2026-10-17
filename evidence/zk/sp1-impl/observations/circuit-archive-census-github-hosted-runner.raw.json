@@ -1,0 +1,1013 @@
+{
+  "schema": "walletwall.sp1-circuit-archive-census.v1",
+  "archive": {
+    "bytes": 6211807514,
+    "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+  },
+  "tar": {
+    "decompressedBytes": 8415018496,
+    "entries": 24,
+    "endOfArchiveOffset": 8415017472,
+    "trailingZeroBytes": 1024
+  },
+  "entries": [
+    {
+      "index": 0,
+      "headerOffset": 0,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "._.",
+      "prefix": "",
+      "linkname": "",
+      "path": "._.",
+      "mode": "0755",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1776283477,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 1,
+      "headerOffset": 1024,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "PaxHeader/currentdir",
+      "prefix": "",
+      "linkname": "",
+      "path": "PaxHeader/currentdir",
+      "mode": "0755",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1776283477,
+      "size": 136,
+      "dataSha256": "61bc2f8ae7bed0f78a0a0001c880e7ccfd7dc214a51dabf30eb1bee036f4d28f",
+      "pax": [
+        {
+          "key": "mtime",
+          "valueBytes": 20,
+          "valueSha256": "1ae9024bc426096ddb882809bc844d5639fce8c286dfd00fd8d4ab87b914b2f4"
+        },
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 2,
+      "headerOffset": 2048,
+      "typeflag": "5",
+      "magic": "7573746172003030",
+      "name": "./",
+      "prefix": "",
+      "linkname": "",
+      "path": "./",
+      "mode": "0755",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1776283477,
+      "size": 0,
+      "dataSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "pax": [
+        {
+          "key": "mtime",
+          "valueBytes": 20,
+          "valueSha256": "1ae9024bc426096ddb882809bc844d5639fce8c286dfd00fd8d4ab87b914b2f4"
+        },
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 3,
+      "headerOffset": 2560,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._groth16_vk.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._groth16_vk.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777490,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 4,
+      "headerOffset": 3584,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/groth16_vk.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/groth16_vk.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777490,
+      "size": 106,
+      "dataSha256": "b0d2cf2f3c26b59791fea7cac542f71d9dbeb1370ab054d98ca5ebb96f77e1fa",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 5,
+      "headerOffset": 4608,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./groth16_vk.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./groth16_vk.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777490,
+      "size": 492,
+      "dataSha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 6,
+      "headerOffset": 5632,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._groth16_circuit.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._groth16_circuit.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775616340,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 7,
+      "headerOffset": 6656,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/groth16_circuit.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/groth16_circuit.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775616340,
+      "size": 106,
+      "dataSha256": "b0d2cf2f3c26b59791fea7cac542f71d9dbeb1370ab054d98ca5ebb96f77e1fa",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 8,
+      "headerOffset": 7680,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./groth16_circuit.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./groth16_circuit.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775616340,
+      "size": 2437991441,
+      "dataSha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 9,
+      "headerOffset": 2438000128,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._SP1VerifierGroth16.sol",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._SP1VerifierGroth16.sol",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1776284930,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 10,
+      "headerOffset": 2438001152,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/SP1VerifierGroth16.sol",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/SP1VerifierGroth16.sol",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1776284930,
+      "size": 136,
+      "dataSha256": "031cbcded81e2e07be95c6d9b1bc04ce6124e5ccf82bffc1b5a8371ba9c2d480",
+      "pax": [
+        {
+          "key": "mtime",
+          "valueBytes": 20,
+          "valueSha256": "22f97f55be9eb46c6b748bb3569a416ee54629d6f482d1f3d49cad4ade3205f6"
+        },
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 11,
+      "headerOffset": 2438002176,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./SP1VerifierGroth16.sol",
+      "prefix": "",
+      "linkname": "",
+      "path": "./SP1VerifierGroth16.sol",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1776284930,
+      "size": 3236,
+      "dataSha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0",
+      "pax": [
+        {
+          "key": "mtime",
+          "valueBytes": 20,
+          "valueSha256": "22f97f55be9eb46c6b748bb3569a416ee54629d6f482d1f3d49cad4ade3205f6"
+        },
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 12,
+      "headerOffset": 2438006272,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._groth16_pk.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._groth16_pk.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777481,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 13,
+      "headerOffset": 2438007296,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/groth16_pk.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/groth16_pk.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777481,
+      "size": 106,
+      "dataSha256": "b0d2cf2f3c26b59791fea7cac542f71d9dbeb1370ab054d98ca5ebb96f77e1fa",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 14,
+      "headerOffset": 2438008320,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./groth16_pk.bin",
+      "prefix": "",
+      "linkname": "",
+      "path": "./groth16_pk.bin",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777481,
+      "size": 5862173061,
+      "dataSha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 15,
+      "headerOffset": 8300182016,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._Groth16Verifier.sol",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._Groth16Verifier.sol",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777570,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 16,
+      "headerOffset": 8300183040,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/Groth16Verifier.sol",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/Groth16Verifier.sol",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777570,
+      "size": 106,
+      "dataSha256": "b0d2cf2f3c26b59791fea7cac542f71d9dbeb1370ab054d98ca5ebb96f77e1fa",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 17,
+      "headerOffset": 8300184064,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./Groth16Verifier.sol",
+      "prefix": "",
+      "linkname": "",
+      "path": "./Groth16Verifier.sol",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775777570,
+      "size": 26770,
+      "dataSha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 18,
+      "headerOffset": 8300211712,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._constraints.json",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._constraints.json",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775615477,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 19,
+      "headerOffset": 8300212736,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/constraints.json",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/constraints.json",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775615477,
+      "size": 106,
+      "dataSha256": "b0d2cf2f3c26b59791fea7cac542f71d9dbeb1370ab054d98ca5ebb96f77e1fa",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 20,
+      "headerOffset": 8300213760,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./constraints.json",
+      "prefix": "",
+      "linkname": "",
+      "path": "./constraints.json",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775615477,
+      "size": 111997113,
+      "dataSha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 21,
+      "headerOffset": 8412211712,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./._groth16_witness.json",
+      "prefix": "",
+      "linkname": "",
+      "path": "./._groth16_witness.json",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775615477,
+      "size": 163,
+      "dataSha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "pax": [],
+      "appleDouble": {
+        "magic": "0x00051607",
+        "version": "0x00020000",
+        "filler": "Mac OS X        ",
+        "entries": [
+          {
+            "id": 9,
+            "offset": 50,
+            "length": 113
+          },
+          {
+            "id": 2,
+            "offset": 163,
+            "length": 0
+          }
+        ],
+        "attributes": [
+          {
+            "name": "com.apple.provenance",
+            "bytes": 11,
+            "sha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+          }
+        ],
+        "error": null
+      }
+    },
+    {
+      "index": 22,
+      "headerOffset": 8412212736,
+      "typeflag": "x",
+      "magic": "7573746172003030",
+      "name": "./PaxHeader/groth16_witness.json",
+      "prefix": "",
+      "linkname": "",
+      "path": "./PaxHeader/groth16_witness.json",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775615477,
+      "size": 106,
+      "dataSha256": "b0d2cf2f3c26b59791fea7cac542f71d9dbeb1370ab054d98ca5ebb96f77e1fa",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    },
+    {
+      "index": 23,
+      "headerOffset": 8412213760,
+      "typeflag": "0",
+      "magic": "7573746172003030",
+      "name": "./groth16_witness.json",
+      "prefix": "",
+      "linkname": "",
+      "path": "./groth16_witness.json",
+      "mode": "0644",
+      "uid": 501,
+      "gid": 0,
+      "uname": "fakedev9999",
+      "gname": "wheel",
+      "mtime": 1775615477,
+      "size": 2802920,
+      "dataSha256": "ee2ac8e094712a87ec3b0dc50ed39704aa90ee066ce4c5bf6160d54f04014c94",
+      "pax": [
+        {
+          "key": "LIBARCHIVE.xattr.com.apple.provenance",
+          "valueBytes": 15,
+          "valueSha256": "ae7f7b27125cfb8b6a8a7dec331b01280c776250badaa1035d14aadc03ba5339"
+        },
+        {
+          "key": "SCHILY.xattr.com.apple.provenance",
+          "valueBytes": 11,
+          "valueSha256": "a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d"
+        }
+      ],
+      "appleDouble": null
+    }
+  ],
+  "appleDouble": [
+    {
+      "path": "._.",
+      "index": 0,
+      "typeflag": "0",
+      "mode": "0755",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": ".",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._groth16_vk.bin",
+      "index": 3,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "groth16_vk.bin",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._groth16_circuit.bin",
+      "index": 6,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "groth16_circuit.bin",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._SP1VerifierGroth16.sol",
+      "index": 9,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "SP1VerifierGroth16.sol",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._groth16_pk.bin",
+      "index": 12,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "groth16_pk.bin",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._Groth16Verifier.sol",
+      "index": 15,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "Groth16Verifier.sol",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._constraints.json",
+      "index": 18,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "constraints.json",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    },
+    {
+      "path": "._groth16_witness.json",
+      "index": 21,
+      "typeflag": "0",
+      "mode": "0644",
+      "size": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "companion": "groth16_witness.json",
+      "companionPresent": true,
+      "companionFollows": true,
+      "sameAsOther": [],
+      "caseFoldSameAsOther": [],
+      "windowsNameSameAsOther": [],
+      "parentOfOther": [],
+      "otherIsParent": []
+    }
+  ]
+}
