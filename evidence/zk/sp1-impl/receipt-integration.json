@@ -1,0 +1,39 @@
+{
+  "schema": "walletwall.sp1-impl-receipt-integration.v1",
+  "note": "The SP1 implementation receipt after its merge: its historical lane base, the head its pull request merged (the reviewed subject) and the merge commit that brought those bytes into main (the integrated subject), derived from git by scripts/lib/sp1-impl-receipt-integration.ts and checked by npm run validate:sp1-impl-receipt. A descendant is judged against the integrated subject; the historical receipt is never rewritten.",
+  "historicalReceipt": {
+    "path": "evidence/zk/sp1-impl/implementation-receipt.json",
+    "sha256": "b9f34d4531417015ae84475b76e98bb1444ff90f703a55b9e37c073ed8eba575",
+    "lane": "SP1-IMPL",
+    "historicalLaneBase": "4ffd92cafeff7d4c5b6adc9ba16a58f8ef43defc",
+    "writtenAt": "9693072a36b189037e062c0389f9bad801473db0"
+  },
+  "reviewedSubject": {
+    "commit": "2964b51c462adeb608f1297e54f6da653582082c",
+    "tree": "1d640c7abe8ccd060066c104779129eb664d8484"
+  },
+  "integratedSubject": {
+    "commit": "74bbb0d9775f6ba532dafc5187e87dd45e3fa004",
+    "method": "MERGE_COMMIT",
+    "parents": [
+      "4ffd92cafeff7d4c5b6adc9ba16a58f8ef43defc",
+      "2964b51c462adeb608f1297e54f6da653582082c"
+    ],
+    "tree": "1d640c7abe8ccd060066c104779129eb664d8484"
+  },
+  "descendantDriftBaseline": {
+    "commit": "74bbb0d9775f6ba532dafc5187e87dd45e3fa004",
+    "subject": [
+      {
+        "path": "contracts",
+        "type": "tree",
+        "id": "439e0cd50c5f55a0570e207e8c35eceb259b3714"
+      },
+      {
+        "path": "evidence/zk/sp1-impl/implementation-receipt.json",
+        "type": "blob",
+        "id": "5cba75950b712614b34f8cdf8517ebc4b6be3ca0"
+      }
+    ]
+  }
+}

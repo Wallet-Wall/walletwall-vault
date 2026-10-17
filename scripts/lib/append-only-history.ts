@@ -135,7 +135,7 @@ function treeFiles(repoRoot: string, treeId: string | null): Map<string, string>
 }
 
 /** git's blob id of a file's bytes, so the working tree compares with the history exactly. */
-function gitBlobId(bytes: Buffer): string {
+export function gitBlobId(bytes: Buffer): string {
   return createHash("sha1")
     .update(Buffer.concat([Buffer.from(`blob ${bytes.length}\0`), bytes]))
     .digest("hex");
@@ -156,7 +156,7 @@ function readIfPresent(path: string): string | null {
  * there is no separate check to go stale, and a link is never followed. Anything that is neither a regular file nor a
  * directory (a link above all) never matches a published record.
  */
-function diskFiles(root: string, prefix = ""): Map<string, string> {
+export function diskFiles(root: string, prefix = ""): Map<string, string> {
   const files = new Map<string, string>();
   let entries: Dirent[];
   try {
