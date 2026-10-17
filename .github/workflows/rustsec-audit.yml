@@ -1,0 +1,118 @@
+name: RustSec advisory drift
+
+# A networked REPORTING job. It is deliberately not a required status check (ruleset 21256062 does not name it, and it
+# must not be added without the owner's explicit approval): a RustSec, GitHub or crates.io outage must never block an
+# unrelated merge. The blocking, offline gate is `npm run validate:sp1-host-advisories` in ci.yml's build-test job.
+#
+# It re-measures the four committed Rust lockfiles (scripts/measure-sp1-host-advisories.ts) against a fresh checkout of
+# the RustSec advisory database, with the pinned cargo-audit, and reconciles the result with the committed record
+# (evidence/zk/sp1-impl/host-lockfile-advisories.json) by exact advisory id, kind, crate, version and lockfile
+# (scripts/check-rustsec-drift.ts). Which step fails says what happened:
+#   the fetch steps or "Measure": infrastructure or tooling; the lockfiles are unmeasured, which is never read as clean;
+#   "Reconcile": exit 1 SECURITY_DRIFT (a new or changed advisory, another crate version or lockfile, or a changed
+#     graph, feature, source or fix fact), exit 2 RECORD_CLEANUP_REQUIRED (a recorded finding RustSec no longer
+#     reports), exit 3 AUDIT_UNAVAILABLE (no usable measurement reached it).
+# The weekly schedule exists because RustSec changes while this repository does not; pull requests and main pushes run
+# it only when a Rust manifest or lockfile, the record or its tooling changes.
+#
+# It changes nothing: cargo runs on a git-archive copy of HEAD:zkvm, so no lockfile is written; nothing is committed;
+# no dependency is updated (HOST_LOCKFILE_REMEDIATION = DEFER_TO_NEXT_PROGRAM_REBUILD).
+
+on:
+  schedule:
+    # Wednesdays at 11:29 UTC.
+    - cron: "29 11 * * 3"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "zkvm/**/Cargo.toml"
+      - "zkvm/**/Cargo.lock"
+      - "evidence/zk/sp1-impl/host-lockfile-advisories.json"
+      - "evidence/zk/sp1-impl/observations/host-advisories-*.raw.json"
+      - "scripts/lib/sp1-host-advisories.ts"
+      - "scripts/measure-sp1-host-advisories.ts"
+      - "scripts/check-rustsec-drift.ts"
+      - ".github/workflows/rustsec-audit.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "zkvm/**/Cargo.toml"
+      - "zkvm/**/Cargo.lock"
+      - "evidence/zk/sp1-impl/host-lockfile-advisories.json"
+      - "evidence/zk/sp1-impl/observations/host-advisories-*.raw.json"
+      - "scripts/lib/sp1-host-advisories.ts"
+      - "scripts/measure-sp1-host-advisories.ts"
+      - "scripts/check-rustsec-drift.ts"
+      - ".github/workflows/rustsec-audit.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rustsec-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  drift:
+    name: RustSec advisory drift (reporting; not a required check)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The release scripts/lib/sp1-host-advisories.ts measures with (CARGO_AUDIT_VERSION); the measurement refuses any other.
+      CARGO_AUDIT_VERSION: "0.22.2"
+      CARGO_NET_RETRY: "6"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          # The Hardhat 3 CLI requires Node >= 22.13.0 (its MIN_SUPPORTED_NODE_VERSION).
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install stable Rust and the pinned cargo-audit
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          # Built from crates.io at exactly the pinned release, with its own lockfile: no third-party action.
+          cargo install cargo-audit --version "=${CARGO_AUDIT_VERSION}" --locked
+          cargo audit --version
+
+      - name: Fetch the RustSec advisory database (infrastructure; a failure here is not a finding)
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/rustsec/advisory-db.git "$RUNNER_TEMP/advisory-db"
+          git -C "$RUNNER_TEMP/advisory-db" log -1 --format='advisory-db %H %cI'
+
+      - name: Fetch the locked crates (infrastructure; a failure here is not a finding)
+        run: |
+          set -euo pipefail
+          for crate in host guest relation-tests evidence-validator; do
+            cargo fetch --locked --manifest-path "zkvm/$crate/Cargo.toml"
+          done
+
+      - name: Measure (cargo audit --no-yanked, crates.io yanked status, cargo tree, pinned crate sources)
+        run: |
+          set -euo pipefail
+          npx tsx scripts/measure-sp1-host-advisories.ts --db "$RUNNER_TEMP/advisory-db" \
+            --host github-hosted-runner --out "$RUNNER_TEMP/rustsec-live.json"
+
+      - name: Reconcile with the committed record (exit 1 drift, 2 cleanup, 3 unavailable)
+        if: ${{ !cancelled() }}
+        run: npx tsx scripts/check-rustsec-drift.ts --live "$RUNNER_TEMP/rustsec-live.json"
+
+      - name: Keep the live observation
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustsec-live-observation
+          path: ${{ runner.temp }}/rustsec-live.json
+          if-no-files-found: ignore
+          retention-days: 30

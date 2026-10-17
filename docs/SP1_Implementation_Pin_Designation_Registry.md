@@ -570,3 +570,11 @@ Read-only measurements (network): `SP1_CHAIN_EXEC_WRITE=1 npm run sp1:chain-exec
 <out> <host-id>` rebuilds the subject with Docker, and `npx tsx scripts/check-sp1-canonical-build.ts --build
 <host-id>=<out> --recompute <record> --min-hosts 1 --records <dir>` writes the observation with its raw records. None
 downloads the circuit.
+
+## Host lockfile advisories (after this lane)
+
+`cargo audit` of `zkvm/host/Cargo.lock` reports RustSec findings this lane left as they were: fixing any of them
+changes d1's host subject. The owner deferred them to the next program rebuild (`HOST_LOCKFILE_REMEDIATION =
+DEFER_TO_NEXT_PROGRAM_REBUILD`); what was assessed, and why each is or is not reachable, is
+[docs/SP1_Host_Lockfile_Advisories.md](SP1_Host_Lockfile_Advisories.md), checked offline by
+`npm run validate:sp1-host-advisories` and for drift by `.github/workflows/rustsec-audit.yml`.
