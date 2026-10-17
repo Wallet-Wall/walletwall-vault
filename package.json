@@ -58,6 +58,7 @@
     "validate:sp1-host-advisories": "tsx scripts/generate-sp1-host-advisories.ts --validate",
     "sp1:rustsec-drift": "tsx scripts/check-rustsec-drift.ts",
     "sp1:circuit-archive:inspect": "tsx scripts/sp1-circuit-archive-inspect.ts",
+    "sp1:circuit-archive:census": "tsx scripts/sp1-circuit-archive-census.ts",
     "sp1:circuit-install": "tsx scripts/sp1-circuit-install.ts",
     "sp1:prove:archive-only": "tsx scripts/sp1-prove-archive-only.ts",
     "sp1:measure-circuit-upstream": "tsx scripts/measure-sp1-circuit-upstream.ts",
