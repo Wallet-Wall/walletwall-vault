@@ -673,7 +673,8 @@ describe("SP1 host advisory record — the observation", function () {
   });
 
   it("the observation was made with the pinned cargo-audit", function () {
-    expect(REPO.observation?.tool.cargoAudit).to.match(new RegExp(` ${CARGO_AUDIT_VERSION.replace(/\./g, "\\.")}$`));
+    const tool = REPO.observation?.tool.cargoAudit ?? "";
+    expect(tool.endsWith(` ${CARGO_AUDIT_VERSION}`), tool).to.equal(true);
     const s = fresh();
     (s.observation as NonNullable<AdvisoryState["observation"]>).tool.cargoAudit = "cargo-audit-audit 0.21.0";
     expect(codes(hostAdvisoryVerdict(s))).to.include("OBSERVATION_MALFORMED");
