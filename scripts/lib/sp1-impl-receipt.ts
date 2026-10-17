@@ -83,6 +83,13 @@ import {
   type RegistryDoc,
   type RegistryFact,
 } from "./sp1-registry";
+import {
+  IMPL_RECEIPT_INTEGRATION_REL,
+  MAIN_REF,
+  descendantDriftErrors,
+  gitObjects,
+  receiptIntegrationErrors,
+} from "./sp1-impl-receipt-integration";
 import { finalizedBlock } from "./sp1-registration";
 import { readDecisionContext, validateCommittedDecisionReceipt } from "./sp1-td1-decision";
 import { TD1_RECEIPT_REL, TD2_RECORD_REL, validateCommittedTd2Record } from "./sp1-td2-record";
@@ -1309,12 +1316,14 @@ export function compareReceipt(text: string, derived: ImplReceipt): string[] {
     (k) => !same(committed[k], (derived as unknown as Record<string, unknown>)[k]),
   );
   return [
-    `${IMPL_RECEIPT_REL} is not what the repository derives (${differing.join(", ") || "formatting"}): regenerate it with npm run sp1-impl:receipt`,
+    `${IMPL_RECEIPT_REL} is not what the repository derives (${differing.join(", ") || "formatting"}): what changed ` +
+      "needs new evidence: the historical receipt is never regenerated (docs/SP1_Impl_Receipt_Integration.md)",
   ];
 }
 
+/** git, reading the objects themselves (no replace ref, no graft), as the integration binding reads them. */
 function git(repoRoot: string, args: string[]): string {
-  return execFileSync("git", ["-C", resolve(repoRoot), ...args], { encoding: "utf8" });
+  return gitObjects(repoRoot, args).toString("utf8");
 }
 
 const jsonFiles = (repoRoot: string, dir: string) =>
@@ -1325,7 +1334,11 @@ const jsonFiles = (repoRoot: string, dir: string) =>
         .map((f) => `${dir}/${f}`)
     : [];
 
-/** The commit that last wrote the committed receipt; HEAD when the receipt is uncommitted (being generated). */
+/**
+ * The commit that last wrote the committed receipt, as of HEAD; HEAD when the receipt is uncommitted (being
+ * generated). Its lane validated the receipt there. After the merge the binding names the writer as of the reviewed
+ * head instead (readBoundReceiptInputs): a descendant that rewrote and restored the receipt moves this, not that.
+ */
 export function receiptCommit(repoRoot = "."): string {
   const uncommitted = git(repoRoot, ["status", "--porcelain", "--", IMPL_RECEIPT_REL]).trim() !== "";
   const last = uncommitted ? "" : git(repoRoot, ["log", "-1", "--format=%H", "--", IMPL_RECEIPT_REL]).trim();
@@ -1333,25 +1346,47 @@ export function receiptCommit(repoRoot = "."): string {
 }
 
 /**
+ * Whether `rev` carries the receipt. A commit git cannot read carries nothing it can show; such a base also fails the
+ * rule's other checks (it is on no first-parent history git can read), so reading it as "carries none" passes nothing.
+ */
+function carriesReceipt(repoRoot: string, rev: string): boolean {
+  try {
+    git(repoRoot, ["cat-file", "-e", `${rev}:${IMPL_RECEIPT_REL}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Why `base` is not the receipt's base (review finding F5). The base decides which contract sources changed and what
  * the journal decoded as before, so it is verified, never taken from the receipt: it must be a published main commit
  * (on origin/main's first-parent history), an ancestor of HEAD, and the latest main commit in the history of `at`,
  * the commit that wrote the receipt. That holds where the lane wrote it, at a pull request's synthetic merge, and on
- * main after the merge; a lane commit, or an older main commit (one that would hide a revert), is refused. Without
- * origin/main and its history nothing is judged.
+ * main after the merge; a lane commit, or an older main commit (one that would hide a revert), is refused. A base
+ * that already carries the receipt (the lane's own merge, or any main after it) is refused too: a lane's base precedes
+ * its receipt, and against such a base the lane's own changes read as none (the false STOP). Without origin/main and
+ * its history nothing is judged.
  */
 export function baseCommitErrors(repoRoot: string, base: string, at: string): string[] {
   if (!/^[0-9a-f]{40}$/.test(String(base))) return ["the base commit must be a full commit id"];
   const list = (args: string[]) => git(repoRoot, args).split("\n").filter(Boolean);
   let mainline: string[];
   try {
-    mainline = list(["rev-list", "--first-parent", "origin/main"]);
+    mainline = list(["rev-list", "--first-parent", MAIN_REF]);
   } catch {
     return [
       "origin/main is not available, with its history: the base cannot be verified, and the receipt is not judged",
     ];
   }
   const errors: string[] = [];
+  if (carriesReceipt(repoRoot, base)) {
+    errors.push(
+      `the base ${base} already carries ${IMPL_RECEIPT_REL}: a lane's base precedes its receipt. Once merged, the ` +
+        "receipt is historical and never regenerated: npm run validate:sp1-impl-receipt judges a descendant against " +
+        `its integrated subject (${IMPL_RECEIPT_INTEGRATION_REL})`,
+    );
+  }
   const index = mainline.indexOf(base);
   if (index === -1) {
     errors.push(`the base ${base} is no commit of origin/main's first-parent history: only a published main is a base`);
@@ -1405,51 +1440,11 @@ function contractsChangedSince(repoRoot: string, rev: string): { path: string; s
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** The journal the wrapper decoded at `rev`; a commit without the wrapper's source names none. */
-function journalTypesAt(repoRoot: string, rev: string): string[] {
-  try {
-    return journalTypesInSource(git(repoRoot, ["show", `${rev}:${WRAPPER_SOURCE}`]));
-  } catch {
-    return ["(no wrapper source)"];
-  }
-}
-
-/**
- * Off main, HEAD's history can hold a main commit later than the base (the lane merged main; a pull request's
- * synthetic merge). What the receipt states against its base — the contract sources changed, the journal there —
- * must then read the same against that commit; otherwise a change main made and this tree undoes is hidden behind the
- * older base (the re-review's A2). On main itself the commit that wrote the receipt decides (baseCommitErrors).
- */
-export function baseDriftErrors(repoRoot: string, base: string): string[] {
-  const list = (args: string[]) => git(repoRoot, args).split("\n").filter(Boolean);
-  let mainline: string[];
-  try {
-    mainline = list(["rev-list", "--first-parent", "origin/main"]);
-  } catch {
-    return [
-      "origin/main is not available, with its history: the base cannot be verified, and the receipt is not judged",
-    ];
-  }
-  if (mainline.includes(git(repoRoot, ["rev-parse", "HEAD"]).trim())) return [];
-  const index = mainline.indexOf(base);
-  if (index <= 0) return [];
-  const since = new Set(list(["rev-list", "HEAD", `^${base}`]));
-  const later = mainline.slice(0, index).find((c) => since.has(c));
-  if (later === undefined) return [];
-  const facts = (rev: string) =>
-    JSON.stringify({ contracts: contractsChangedSince(repoRoot, rev), journal: journalTypesAt(repoRoot, rev) });
-  return facts(base) === facts(later)
-    ? []
-    : [
-        `main moved after the base ${base}: against ${later}, the latest main commit in HEAD's history, the contract ` +
-          "sources changed since the base and the journal there read otherwise (a change main made and this tree " +
-          "undoes would be hidden): generate the receipt again (npm run sp1-impl:receipt)",
-      ];
-}
-
 /**
  * Everything the derivation needs, read from the repository at `repoRoot` (compile first). The base is verified at
- * `at`: HEAD when generating, the commit that wrote the receipt when validating it.
+ * `at`: HEAD when generating, the commit that wrote the receipt (as of its reviewed head) when validating it. Whether
+ * main moved under the receipt after its base (the re-review's A2) is the integration binding's to judge
+ * (readBoundReceiptInputs), against the merge that carried the reviewed subject into main.
  */
 export async function readImplReceiptInputs(
   repoRoot: string,
@@ -1458,8 +1453,6 @@ export async function readImplReceiptInputs(
 ): Promise<ImplReceiptInputs> {
   const baseErrors = baseCommitErrors(repoRoot, baseCommit, at);
   if (baseErrors.length > 0) throw new Error(baseErrors.join("; "));
-  const drift = baseDriftErrors(repoRoot, baseCommit);
-  if (drift.length > 0) throw new Error(drift.join("; "));
   if (jsonFiles(repoRoot, REAL_PROOF_RECORDS_DIR).length > 0) {
     throw new Error(
       `${REAL_PROOF_RECORDS_DIR}: real-proof records have no validator in this lane; a lane must define and validate them before they count`,
@@ -1586,22 +1579,30 @@ export async function readImplReceiptInputs(
   };
 }
 
-/** Every reason the committed receipt is not what the repository derives (its base is the committed one). */
+/**
+ * The inputs the committed receipt is judged by after its merge. This tree is first bound to the receipt's integrated
+ * subject (scripts/lib/sp1-impl-receipt-integration.ts): the committed binding must be what git derives, HEAD must
+ * descend from the merge, and HEAD and the working tree must carry its contracts and the receipt byte for byte. The
+ * receipt is then derived from its historical lane base, verified where the lane wrote it, as the binding names them:
+ * never from the receipt's own text, and never against HEAD's history, which now holds the merge itself.
+ */
+export async function readBoundReceiptInputs(repoRoot = "."): Promise<ImplReceiptInputs> {
+  const { errors, record } = receiptIntegrationErrors(repoRoot, IMPL_RECEIPT_REL);
+  if (record === null) throw new Error(errors.join("; "));
+  const drift = descendantDriftErrors(repoRoot, record.descendantDriftBaseline);
+  if (drift.length > 0) throw new Error(drift.join("; "));
+  return readImplReceiptInputs(
+    repoRoot,
+    record.historicalReceipt.historicalLaneBase,
+    record.historicalReceipt.writtenAt,
+  );
+}
+
+/** Every reason the committed receipt is not what the repository derives, judged as readBoundReceiptInputs binds it. */
 export async function implReceiptErrors(repoRoot = "."): Promise<string[]> {
-  const path = resolve(repoRoot, IMPL_RECEIPT_REL);
-  if (!existsSync(path)) return [`${IMPL_RECEIPT_REL} is missing: generate it with npm run sp1-impl:receipt`];
-  const text = readFileSync(path, "utf8");
-  let base: string;
   try {
-    base = String((JSON.parse(text) as { baseCommit?: unknown }).baseCommit);
-  } catch {
-    return [`${IMPL_RECEIPT_REL} is not JSON`];
-  }
-  try {
-    return compareReceipt(
-      text,
-      deriveImplReceipt(await readImplReceiptInputs(repoRoot, base, receiptCommit(repoRoot))),
-    );
+    const inputs = await readBoundReceiptInputs(repoRoot);
+    return compareReceipt(readFileSync(resolve(repoRoot, IMPL_RECEIPT_REL), "utf8"), deriveImplReceipt(inputs));
   } catch (error) {
     return [messageOf(error)];
   }

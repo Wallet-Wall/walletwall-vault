@@ -9,6 +9,7 @@
  * prerequisite is met — which nothing this lane produces does.
  */
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -22,7 +23,6 @@ import {
   STATUS_KEYS,
   STOP_CONDITION_IDS,
   baseCommitErrors,
-  baseDriftErrors,
   compareReceipt,
   deriveImplReceipt,
   implReceiptErrors,
@@ -33,6 +33,7 @@ import {
   probeRegistryHistory,
   probeRpcFailClosed,
   productionBindingStatus,
+  readBoundReceiptInputs,
   readImplReceiptInputs,
   receiptCommit,
   rulesetInput,
@@ -40,6 +41,7 @@ import {
   wrapperAstFacts,
   type ImplReceiptInputs,
 } from "../scripts/lib/sp1-impl-receipt";
+import { receiptIntegrationErrors } from "../scripts/lib/sp1-impl-receipt-integration";
 import { compiledWrapper, readWrapperBuilds, walkAst } from "../scripts/lib/sp1-wrapper-build";
 import { MAIN_RULESET_OBSERVATION_REL } from "../scripts/lib/main-ruleset";
 import type { Provider } from "ethers";
@@ -52,7 +54,9 @@ describe("SP1 implementation lane — the implementation receipt", function () {
   let inputs: ImplReceiptInputs;
 
   before(async function () {
-    inputs = await readImplReceiptInputs(".", committed().baseCommit);
+    // What the validator derives the committed receipt from: its historical base, judged where its lane wrote it,
+    // with this tree bound to the receipt's integrated subject (never HEAD's history, which now holds the merge).
+    inputs = await readBoundReceiptInputs(".");
   });
 
   const perturbed = (change: (i: ImplReceiptInputs) => void) => {
@@ -480,91 +484,97 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     }
   });
 
-  describe("after main moves, what the receipt states against its base must hold against the newer main (the re-review's A2)", function () {
-    // main: m0 (vault A, wrapper w0) - m1 (docs) - m2 (vault B); the lane forks at m0 and changes the wrapper (l1).
-    const VAULT = "contracts/WalletWallVault.sol";
-    const WRAPPER = "contracts/verifiers/ZKMLDSAVerifier.sol";
-    let repo: string;
-    const ids: Record<string, string> = {};
-    const git = (...args: string[]) =>
-      execFileSync(
-        "git",
-        ["-c", "core.autocrlf=false", "-c", "user.email=t@example.invalid", "-c", "user.name=t", ...args],
-        {
-          cwd: repo,
-          encoding: "utf8",
+  describe("after the merge, the receipt is historical: judged against its integrated subject, never regenerated", function () {
+    // #219 as git records its merge (GitHub merged the pull request with a merge commit): written here from that
+    // measurement, never read from the code under test.
+    const LANE_BASE = "4ffd92cafeff7d4c5b6adc9ba16a58f8ef43defc";
+    const REVIEWED_HEAD = "2964b51c462adeb608f1297e54f6da653582082c";
+    const MERGE = "74bbb0d9775f6ba532dafc5187e87dd45e3fa004";
+    const WRITTEN_AT = "9693072a36b189037e062c0389f9bad801473db0";
+    const TREE = "1d640c7abe8ccd060066c104779129eb664d8484";
+    const CONTRACTS_TREE = "439e0cd50c5f55a0570e207e8c35eceb259b3714";
+    const RECEIPT_BLOB = "5cba75950b712614b34f8cdf8517ebc4b6be3ca0";
+    const triggered = (r: ReturnType<typeof deriveImplReceipt>) =>
+      r.stopConditions.filter((c) => c.triggered).map((c) => c.id);
+
+    it("the committed binding names #219's merge commit, the head it merged and the receipt's historical base, kept apart", function () {
+      const { errors, record } = receiptIntegrationErrors(".", IMPL_RECEIPT_REL);
+      expect(errors).to.deep.equal([]);
+      expect(record).to.deep.include({
+        historicalReceipt: {
+          path: IMPL_RECEIPT_REL,
+          sha256: createHash("sha256").update(readFileSync(IMPL_RECEIPT_REL)).digest("hex"),
+          lane: "SP1-IMPL",
+          historicalLaneBase: LANE_BASE,
+          writtenAt: WRITTEN_AT,
         },
-      ).trim();
-    const commit = (name: string, files: Record<string, string>) => {
-      for (const [rel, text] of Object.entries(files)) {
-        mkdirSync(dirname(join(repo, rel)), { recursive: true });
-        writeFileSync(join(repo, rel), text);
+        reviewedSubject: { commit: REVIEWED_HEAD, tree: TREE },
+        integratedSubject: { commit: MERGE, method: "MERGE_COMMIT", parents: [LANE_BASE, REVIEWED_HEAD], tree: TREE },
+        descendantDriftBaseline: {
+          commit: MERGE,
+          subject: [
+            { path: "contracts", type: "tree", id: CONTRACTS_TREE },
+            { path: IMPL_RECEIPT_REL, type: "blob", id: RECEIPT_BLOB },
+          ],
+        },
+      });
+      expect(committed().baseCommit, "the receipt still names where its lane began").to.equal(LANE_BASE);
+    });
+
+    it("this tree, a descendant of the merge, derives the committed receipt and none of the false STOP", function () {
+      skipWhenInstrumented(this);
+      const r = deriveImplReceipt(inputs);
+      expect(serializeImplReceipt(r)).to.equal(readFileSync(IMPL_RECEIPT_REL, "utf8"));
+      expect(r.baseCommit, "the historical lane base, not the merge").to.equal(LANE_BASE);
+      expect(r.contractsChangedSinceBase, "the lane's own change set").to.deep.equal([
+        { path: "contracts/mocks/ChainIdBindingProbe.sol", status: "A" },
+        { path: "contracts/verifiers/ZKMLDSAVerifier.sol", status: "M" },
+      ]);
+      expect(r.statuses.TD2_HALT_INVARIANTS_PRESERVED.value).to.equal("PRESERVED");
+      expect(r.statuses.MULTISIG_AUTHORIZATION_CLASS_PRESERVED.value).to.equal(
+        "NEW_AUTHORIZATION_CAPABILITY_FOR_AN_EXISTING_PRINCIPAL",
+      );
+      expect(r.statuses.SUCCESSOR_DESIGNATION_STATUS.value).to.equal("PROGRAM_REBUILD_SUCCESSORS_ONLY_NONE_DESIGNATED");
+      expect(r.authorizationDelta.value).to.equal("NONE_BEYOND_TD2");
+      expect(triggered(r)).to.deep.equal([]);
+    });
+
+    it("the false STOP's input is refused: a base that already carries the receipt (the merge, or main after it) is no lane base", async function () {
+      const mergeBase = execFileSync("git", ["merge-base", "HEAD", "refs/remotes/origin/main"], {
+        encoding: "utf8",
+      }).trim();
+      expect(
+        execFileSync("git", ["cat-file", "-t", `${mergeBase}:${IMPL_RECEIPT_REL}`], { encoding: "utf8" }).trim(),
+        "the premise: the base the generator would pick carries the receipt",
+      ).to.equal("blob");
+      for (const base of [MERGE, mergeBase]) {
+        let refusal = "";
+        try {
+          await readImplReceiptInputs(".", base);
+        } catch (error) {
+          refusal = (error as Error).message;
+        }
+        expect(refusal, base).to.match(
+          /already carries evidence\/zk\/sp1-impl\/implementation-receipt\.json: a lane's base precedes its receipt/,
+        );
       }
-      git("add", "-A");
-      git("commit", "-q", "-m", name);
-      ids[name] = git("rev-parse", "HEAD");
-    };
-    beforeEach(function () {
-      repo = mkdtempSync(join(tmpdir(), "sp1-receipt-drift-"));
-      git("init", "-q", "-b", "main");
-      commit("m0", { [VAULT]: "vault A\n", [WRAPPER]: "wrapper w0\n" });
-      git("checkout", "-q", "-b", "lane");
-      commit("l1", { [IMPL_RECEIPT_REL]: "receipt\n", [WRAPPER]: "wrapper w1\n" });
-      git("checkout", "-q", "main");
-      commit("m1", { "docs/notes.md": "notes\n" });
-      commit("m2", { [VAULT]: "vault B\n" });
-      git("update-ref", "refs/remotes/origin/main", ids.m2);
-      git("checkout", "-q", "lane");
-    });
-    afterEach(function () {
-      rmSync(repo, { recursive: true, force: true });
     });
 
-    it("a lane that merged a main commit touching no contract keeps its base (the positive control)", function () {
-      git("merge", "-q", "--no-ff", "-m", "sync docs", ids.m1);
-      expect(baseDriftErrors(repo, ids.m0)).to.deep.equal([]);
-    });
-
-    it("a lane that merged main's contract change and reverted it is refused: the old base would hide the revert", function () {
-      git("merge", "-q", "--no-ff", "-m", "sync vault", ids.m2);
-      commit("l3", { [VAULT]: "vault A\n" });
-      expect(git("diff", "--name-only", ids.l1, "HEAD", "--", "contracts"), "the contracts are l1's again").to.equal(
-        "",
+    it("a genuine change still derives its STOP: a contract outside the wrapper, a new mutator, a weakened halt", function () {
+      skipWhenInstrumented(this);
+      const outside = perturbed((i) => i.contractsChanged.push({ path: "contracts/WalletWallVault.sol", status: "M" }));
+      expect(triggered(outside)).to.deep.equal([
+        "CROSS_CHAIN_FIX_NEEDS_NEW_MUTABLE_PRINCIPAL",
+        "TD2_INVARIANTS_WEAKENED",
+      ]);
+      expect(triggered(perturbed((i) => i.ast.mutatingFunctions.push("setVerifier")))).to.include(
+        "CROSS_CHAIN_FIX_NEEDS_NEW_MUTABLE_PRINCIPAL",
       );
-      expect(baseDriftErrors(repo, ids.m0).join("\n")).to.match(
-        new RegExp(`against ${ids.m2}, the latest main commit in HEAD's history`),
-      );
-      expect(baseDriftErrors(repo, ids.m2), "the receipt generated again, against m2").to.deep.equal([]);
-    });
-
-    it("a journal main changed is drift too, though the contracts read the same against both commits", function () {
-      rmSync(repo, { recursive: true, force: true });
-      repo = mkdtempSync(join(tmpdir(), "sp1-receipt-journal-drift-"));
-      git("init", "-q", "-b", "main");
-      commit("c0", { [VAULT]: "vault A\n", [WRAPPER]: "abi.decode(publicValues, (uint64))\n// w0\n" });
-      git("checkout", "-q", "-b", "lane");
-      commit("l1", { [IMPL_RECEIPT_REL]: "receipt\n", [WRAPPER]: "abi.decode(publicValues, (uint64))\n// lane\n" });
-      git("checkout", "-q", "main");
-      commit("c1", { [WRAPPER]: "abi.decode(publicValues, (uint32))\n// w0\n" });
-      git("update-ref", "refs/remotes/origin/main", ids.c1);
-      git("checkout", "-q", "lane");
-      try {
-        git("merge", "-q", "-m", "sync", ids.c1);
-      } catch {
-        // the wrappers conflict: keep the lane's
-      }
-      commit("sync", { [WRAPPER]: "abi.decode(publicValues, (uint64))\n// lane\n" });
-      expect(git("rev-list", "--parents", "-n", "1", "HEAD").split(" ")).to.have.length(3);
-      expect(baseDriftErrors(repo, ids.c0).join("\n")).to.match(
-        new RegExp(`against ${ids.c1}, the latest main commit in HEAD's history`),
-      );
-    });
-
-    it("on main itself the commit that wrote the receipt decides (baseCommitErrors), not HEAD's history", function () {
-      git("checkout", "-q", "--detach", ids.m2);
-      git("merge", "-q", "--no-ff", "-m", "merge the lane", "lane");
-      git("update-ref", "refs/remotes/origin/main", git("rev-parse", "HEAD"));
-      expect(baseDriftErrors(repo, ids.m0)).to.deep.equal([]);
+      expect(triggered(perturbed((i) => (i.ast.haltSetsOnlyTrue = false)))).to.deep.equal(["TD2_INVARIANTS_WEAKENED"]);
+      // On a descendant the committed receipt then no longer matches, and the refusal never says to regenerate it.
+      const refusal = compareReceipt(readFileSync(IMPL_RECEIPT_REL, "utf8"), outside).join("\n");
+      expect(refusal).to.match(/not what the repository derives/);
+      expect(refusal).to.match(/needs new evidence: the historical receipt is never regenerated/);
     });
   });
 
@@ -618,6 +628,54 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       expect(baseCommitErrors(repo, "m1", receiptCommit(repo)).join("\n")).to.match(/full commit id/);
     });
 
+    it("judges the base against refs/remotes/origin/main only: a tag named origin/main shadows nothing", function () {
+      git("tag", "origin/main", ids.m0);
+      try {
+        expect(git("rev-parse", "origin/main"), "the premise: the tag wins the short name").to.equal(ids.m0);
+        expect(baseCommitErrors(repo, ids.m1, ids.l1)).to.deep.equal([]);
+      } finally {
+        git("tag", "-d", "origin/main");
+      }
+    });
+
+    it("reads the objects themselves: a replace ref cannot hide a later main commit from the base rule", function () {
+      const fake = git(
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "user.name=test",
+        "commit-tree",
+        git("rev-parse", `${ids.l1}^{tree}`),
+        "-p",
+        ids.m0,
+        "-m",
+        "l1",
+      );
+      git("replace", ids.l1, fake);
+      try {
+        expect(git("rev-parse", `${ids.l1}^1`), "the premise: git shows l1 forked at m0").to.equal(ids.m0);
+        expect(baseCommitErrors(repo, ids.m0, ids.l1).join("\n")).to.match(new RegExp(`${ids.m1} is later`));
+      } finally {
+        git("replace", "-d", ids.l1);
+      }
+    });
+
+    it("refuses a base that already carries the receipt: a lane's base precedes its receipt (the false STOP's base)", function () {
+      git("checkout", "-q", "--detach", ids.m2);
+      git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "merge", "-q", "--no-ff", "-m", "M", "lane");
+      const merged = git("rev-parse", "HEAD");
+      git("update-ref", "refs/remotes/origin/main", merged);
+      try {
+        expect(baseCommitErrors(repo, merged, merged).join("\n")).to.match(
+          /already carries evidence\/zk\/sp1-impl\/implementation-receipt\.json: a lane's base precedes its receipt/,
+        );
+        expect(baseCommitErrors(repo, ids.m1, ids.l1), "the lane's own base: the positive control").to.deep.equal([]);
+      } finally {
+        git("update-ref", "refs/remotes/origin/main", ids.m2);
+        git("checkout", "-q", "lane");
+      }
+    });
+
     it("holds at the pull request's synthetic merge, and on main after the merge", function () {
       git("checkout", "-q", "--detach", ids.m2);
       git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "merge", "-q", "--no-ff", "-m", "M", "lane");
@@ -656,8 +714,10 @@ describe("SP1 implementation lane — the implementation receipt", function () {
       }
     });
 
-    it("after a squash merge of a lane brought up to date, the squash commit's receipt holds against its first parent", function () {
+    it("after a squash merge of a lane brought up to date, the base rule alone holds against the squash's first parent", function () {
       // The ruleset requires a branch to be up to date: the lane synced at m2 and wrote its receipt again (l3, base m2).
+      // The base rule only: the integration binding refuses a squash, whose parents name no reviewed head
+      // (test/Sp1ImplReceiptIntegration.test.ts).
       git("checkout", "-q", "--detach", ids.m2);
       git("merge", "-q", "--squash", "synced");
       git("-c", "user.email=test@example.invalid", "-c", "user.name=test", "commit", "-q", "-m", "S");
