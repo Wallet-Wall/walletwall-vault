@@ -12,6 +12,7 @@ import { expect } from "chai";
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   ADVISORIES_DOC_REL,
@@ -1071,5 +1072,260 @@ describe("SP1 host advisory record — the owner-facing doc", function () {
     expect(doc).to.include("`HOST_LOCKFILE_REMEDIATION = DEFER_TO_NEXT_PROGRAM_REBUILD`");
     expect(doc).to.include("It does not make a vulnerable dependency non-vulnerable.");
     expect(doc).to.include("This is not a security waiver");
+  });
+});
+
+describe("SP1 host advisory record — each check refuses on its own", function () {
+  const assumption = (id: string) => ASSUMPTIONS.find((a) => a.id === id) as (typeof ASSUMPTIONS)[number];
+  const inputOf = (s: AdvisoryState, over: Record<string, unknown> = {}) => ({
+    hostManifestText: s.hostManifestText,
+    hostMainText: s.hostMainText,
+    hostLock: parseCargoLock(s.locks.host as string),
+    provingAvailability: s.provingAvailability?.doc ?? null,
+    archiveRecords: s.archiveRecords,
+    ...over,
+  });
+  const obsOf = (s: AdvisoryState) => s.observation as NonNullable<AdvisoryState["observation"]>;
+
+  it("a lockfile package without a version is refused, not skipped", function () {
+    expect(() => parseCargoLock('[[package]]\nname = "a"\n\n[[package]]\nname = "b"\nversion = "1.0.0"\n')).to.throw(
+      "no name or version",
+    );
+  });
+
+  it("an unversioned dependency entry names only the single locked version", function () {
+    const lock = parseCargoLock(
+      '[[package]]\nname = "a"\nversion = "1.0.0"\ndependencies = [\n "b",\n]\n\n[[package]]\nname = "b"\nversion = "1.0.0"\n',
+    );
+    expect(directDependents(lock, "b", "1.0.0")).to.deep.equal(["a@1.0.0"]);
+    expect(directDependents(lock, "b", "2.0.0")).to.deep.equal([]);
+  });
+
+  it("an escaped quote does not end a Rust string", function () {
+    const src = 'let s = "a\\" // still a string"; // a comment';
+    expect(stripRustComments(src)).to.equal('let s = "a\\" // still a string"; ');
+  });
+
+  it("half a blocking requirement is no requirement", function () {
+    expect(() =>
+      preciseProbeOf('error: failed to select a version for the requirement `x = "^1"`\n', "x", "1.0.0"),
+    ).to.throw("neither updated nor named");
+    expect(() => preciseProbeOf("required by package `p v1.0.0`\n", "x", "1.0.0")).to.throw(
+      "neither updated nor named",
+    );
+  });
+
+  it("a one-part caret requirement spans its major version", function () {
+    expect(satisfies("0.5.0", "^0")).to.equal(true);
+    expect(satisfies("1.0.0", "^0")).to.equal(false);
+    expect(satisfies("1.9.0", "^1")).to.equal(true);
+  });
+
+  it("a warning RustSec marks with another informational kind is refused", function () {
+    const lock = parseCargoLock(REPO.locks.host as string);
+    const report = structuredClone(hostAudit(REPO));
+    report.warnings.unsound[0].advisory.informational = "unmaintained";
+    expect(() => auditFindingsOf(report, "host", lock)).to.throw("RustSec marks it unmaintained");
+  });
+
+  it("A_HOST_MANIFEST refuses a new dependency or build-dependency within the known tables", function () {
+    const s = fresh();
+    const dep = (s.hostManifestText as string).replace('anyhow = "1.0"', 'anyhow = "1.0"\ntracing = "0.1"');
+    expect(dep).to.not.equal(s.hostManifestText);
+    expect(assumption("A_HOST_MANIFEST").evaluate(inputOf(s, { hostManifestText: dep })).holds).to.equal(false);
+    const build = `${s.hostManifestText}cc = "1"\n`;
+    expect(assumption("A_HOST_MANIFEST").evaluate(inputOf(s, { hostManifestText: build })).holds).to.equal(false);
+  });
+
+  it("A_HOST_SOURCE refuses a second Groth16 call, another proof kind beside it, and a prover not from the environment", function () {
+    const s = fresh();
+    const main = s.hostMainText as string;
+    const a = assumption("A_HOST_SOURCE");
+    expect(a.evaluate(inputOf(s)).holds).to.equal(true);
+    const twice = `${main}\nfn again(c: C) { c.prove(&pk, stdin).groth16().run(); }\n`;
+    expect(a.evaluate(inputOf(s, { hostMainText: twice })).holds).to.equal(false);
+    const plonk = `${main}\nfn other(c: C) { c.prove(&pk, stdin).plonk().run(); }\n`;
+    expect(a.evaluate(inputOf(s, { hostMainText: plonk })).holds).to.equal(false);
+    const fixed = main.split("ProverClient::from_env()").join("ProverClient::builder().cpu().build()");
+    expect(a.evaluate(inputOf(s, { hostMainText: fixed })).holds).to.equal(false);
+  });
+
+  it("A_LOCK_BACKTRACE_WITHOUT_RUZSTD refuses any dependent of ruzstd but object", function () {
+    const s = fresh();
+    const lock = parseCargoLock(s.locks.host as string);
+    const a = assumption("A_LOCK_BACKTRACE_WITHOUT_RUZSTD");
+    const withUser = lock.map((p) =>
+      p.name === "tracing" ? { ...p, dependencies: [...p.dependencies, "ruzstd"] } : p,
+    );
+    expect(a.evaluate(inputOf(s, { hostLock: withUser })).holds).to.equal(false);
+  });
+
+  it("source-fact expectations: onlyIn refuses a match elsewhere, absent refuses zero files, count is exact", function () {
+    const fact = (id: string) => SOURCE_FACTS.find((f) => f.id === id) as (typeof SOURCE_FACTS)[number];
+    const obs = (id: string, members: { path: string; matches: number }[]) => ({
+      id,
+      pattern: fact(id).pattern,
+      flags: fact(id).flags,
+      crates: [
+        {
+          crate: "c",
+          version: "1.0.0",
+          checksum: "x",
+          members: members.map((m) => ({ ...m, sha256: "0".repeat(64) })),
+        },
+      ],
+    });
+    const only = fact("SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS");
+    const both = obs(only.id, [
+      { path: "src/build.rs", matches: 1 },
+      { path: "src/a.rs", matches: 1 },
+    ]);
+    expect(sourceFactResult(only, both).holds).to.equal(false);
+    const absent = fact("SF_PROVER_NO_CATCH_UNWIND");
+    expect(sourceFactResult(absent, obs(absent.id, [{ path: "src/a.rs", matches: 0 }])).holds).to.equal(true);
+    expect(sourceFactResult(absent, obs(absent.id, [])).holds, "zero files read").to.equal(false);
+    const count = fact("SF_SDK_UNGATED_PROVERS");
+    expect(sourceFactResult(count, obs(count.id, [{ path: "src/blocking/env/mod.rs", matches: 3 }])).holds).to.equal(
+      true,
+    );
+    expect(sourceFactResult(count, obs(count.id, [{ path: "src/blocking/env/mod.rs", matches: 4 }])).holds).to.equal(
+      false,
+    );
+  });
+
+  it("a feature fact refuses a required feature that is not enabled", function () {
+    const s = fresh();
+    const rustls = obsOf(s).lockfiles[0].features.find((f) => f.spec === "rustls@0.23.40") as { output: string };
+    rustls.output = rustls.output
+      .split("\n")
+      .filter((l) => !/^\d+rustls feature "ring"/.test(l))
+      .join("\n");
+    const r = evidenceResults(s, parseCargoLock(s.locks.host as string)).get("F_RUSTLS_RING_ONLY");
+    expect(r?.holds).to.equal(false);
+    expect(r?.observed).to.include("missing ring");
+  });
+
+  it("a claim resting on evidence that was never measured supports nothing", function () {
+    const s = fresh();
+    const claims = CLAIMS.map((c) =>
+      c.id === "RUSTSEC-2026-0346" ? { ...c, requires: ["SF_NO_CUSTOM_SESSION_STORE", "SF_NEVER_MEASURED"] } : c,
+    );
+    const f = deriveRecordWith(s, claims).findings.find((x) => x.key === R0346);
+    expect(f?.reachability).to.equal("UNSUPPORTED");
+  });
+
+  it("a REACHABLE finding is flagged as reachable on the frozen proving path", function () {
+    const s = fresh();
+    const claims = CLAIMS.map((c) =>
+      c.id === "RUSTSEC-2026-0285"
+        ? { ...c, reachability: "REACHABLE" as const, requires: [], condition: undefined }
+        : c,
+    );
+    const r = deriveRecordWith(s, claims);
+    expect(r.findings.find((x) => x.key === R0285)?.reachableInFrozenProvingPath).to.equal(true);
+    expect(r.findings.filter((x) => x.reachableInFrozenProvingPath).map((x) => x.key)).to.deep.equal([R0285]);
+    expect(deriveHostAdvisoryRecord(s).findings.every((x) => !x.reachableInFrozenProvingPath)).to.equal(true);
+  });
+
+  it("a compatible update that reaches no patched version is not a fix", function () {
+    const f: MeasuredFinding = {
+      lockfile: "host",
+      kind: "vulnerability",
+      id: "RUSTSEC-2026-0001",
+      crate: "c",
+      version: "1.0.0",
+      advisory: {
+        title: "t",
+        date: "2026-01-01",
+        categories: [],
+        cvss: null,
+        informational: null,
+        withdrawn: null,
+        patched: [">=2.0.0"],
+        unaffected: [],
+        functions: null,
+        url: null,
+      },
+    };
+    const update = "    Updating c v1.0.0 -> v1.0.3\nwarning: not updating lockfile due to dry run\n";
+    let probed = "";
+    const fix = fixFactsOf(f, update, (spec, v) => {
+      probed = `${spec} ${v}`;
+      return 'failed to select a version for the requirement `c = "^1.0"`\nrequired by package `p v1.0.0`\n';
+    });
+    expect(probed).to.equal("c@1.0.0 2.0.0");
+    expect(fix).to.include({ lockfileOnly: false, upstreamBlocked: true });
+  });
+
+  for (const [what, edit, says] of [
+    [
+      "a source fact read from a crate the lockfile does not pin",
+      (s: AdvisoryState) => (obsOf(s).sourceFacts[0].crates[0].checksum = "0".repeat(64)),
+      "is not the crate zkvm/host/Cargo.lock pins",
+    ],
+    [
+      "an index check that did not cover every registry package",
+      (s: AdvisoryState) => (obsOf(s).index.registryPackagesChecked -= 1),
+      "the index check must cover",
+    ],
+    [
+      "yanked status from another source",
+      (s: AdvisoryState) => (obsOf(s).index.base = "https://example.invalid/"),
+      "yanked status must come from",
+    ],
+    [
+      "a lockfile audited against another database",
+      (s: AdvisoryState) => (hostAudit(s).database["advisory-count"] -= 1),
+      "another advisory database",
+    ],
+    [
+      "package counts that are not the lockfile's",
+      (s: AdvisoryState) => (obsOf(s).lockfiles[0].packages += 1),
+      "the package counts are not the lockfile's",
+    ],
+    [
+      "a precise probe the plan does not call for",
+      (s: AdvisoryState) =>
+        obsOf(s).lockfiles[0].precise.push({ ...obsOf(s).lockfiles[0].precise[0], version: "0.99.0" }),
+      "the precise probes must be exactly",
+    ],
+  ] as const) {
+    it(`an observation with ${what} is malformed`, function () {
+      const s = fresh();
+      edit(s);
+      const v = hostAdvisoryVerdict(s);
+      expect(codes(v)).to.include("OBSERVATION_MALFORMED");
+      expect(messages(v, "OBSERVATION_MALFORMED")).to.include(says);
+    });
+  }
+
+  it("a record whose bucket lists are not derived is refused even when every finding's bucket is", function () {
+    const s = fresh();
+    const r = recordOf(s);
+    r.buckets.SHOULD_FIX_BEFORE_PRODUCTION = r.buckets.SHOULD_FIX_BEFORE_PRODUCTION.slice(1);
+    setRecord(s, r);
+    const v = hostAdvisoryVerdict(s);
+    expect(messages(v, "RECORD_BUCKET_NOT_DERIVED")).to.include("the bucket lists are not derived");
+  });
+
+  it("a finding whose identity is restated under its key is refused", function () {
+    const s = fresh();
+    const r = recordOf(s);
+    r.findings.find((x: { key: string }) => x.key === R0346).kind = "unsound";
+    setRecord(s, r);
+    expect(codes(hostAdvisoryVerdict(s))).to.include("RECORD_FINDING_NOT_DERIVED");
+  });
+
+  it("the validate CLI exits 1 with both statuses when the check fails", function () {
+    this.timeout(120_000);
+    // From test/, the repository-relative paths resolve to nothing: no observation, no record, no designation.
+    const r = spawnSync(
+      process.execPath,
+      ["--import", "tsx", join(process.cwd(), "scripts", "generate-sp1-host-advisories.ts"), "--validate"],
+      { cwd: join(process.cwd(), "test"), encoding: "utf8" },
+    );
+    expect(r.status, r.stdout).to.equal(1);
+    expect(r.stderr).to.include("RECORD_INVALID (dependency status UNKNOWN):");
+    expect(r.stderr).to.include("[OBSERVATION_MISSING]");
   });
 });

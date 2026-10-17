@@ -16,6 +16,7 @@ import { join } from "node:path";
 import {
   DRIFT_EXIT,
   advisoryStateFromRepo,
+  fixStateOf,
   rustsecDrift,
   type AdvisoryObservation,
   type DriftReport,
@@ -237,6 +238,69 @@ describe("RustSec drift — reconciling a fresh measurement with the committed r
     expect(new Set(Object.values(DRIFT_EXIT)).size).to.equal(4);
     expect(DRIFT_EXIT).to.deep.equal({ MATCH: 0, SECURITY_DRIFT: 1, RECORD_CLEANUP_REQUIRED: 2, AUDIT_UNAVAILABLE: 3 });
   });
+
+  it("a live measurement whose lockfiles are not the four named ones is AUDIT_UNAVAILABLE", function () {
+    const o = live();
+    (o.lockfiles[3] as { id: string }).id = "other";
+    expect(rustsecDrift(RECORD, o, LOCKS).verdict).to.equal("AUDIT_UNAVAILABLE");
+  });
+
+  it("graph drift is reported for a changed role alone and for changed dependents alone", function () {
+    const role = live();
+    const t = role.lockfiles[0].trees.find((x) => x.spec === "memmap2@0.9.10") as { output: string };
+    t.output = t.output
+      .split("\n")
+      .map((l) => l.replace(/^(1\S+ v\S+)/, "$1 (proc-macro)"))
+      .join("\n");
+    const byRole = rustsecDrift(RECORD, role, LOCKS);
+    expect(keys(byRole, "GRAPH_DRIFT")).to.deep.equal(["host RUSTSEC-2026-0186 memmap2@0.9.10"]);
+    expect(byRole.items.find((i) => i.type === "GRAPH_DRIFT")?.detail).to.include("role PROC_MACRO_ONLY");
+    const deps = live();
+    const u = deps.lockfiles[0].trees.find((x) => x.spec === "memmap2@0.9.10") as { output: string };
+    u.output = `${u.output}1newcomer v1.0.0\n2mldsa65-host v0.1.0 (zkvm/host) (*)\n`;
+    const byDeps = rustsecDrift(RECORD, deps, LOCKS);
+    expect(keys(byDeps, "GRAPH_DRIFT")).to.deep.equal(["host RUSTSEC-2026-0186 memmap2@0.9.10"]);
+    expect(byDeps.items.find((i) => i.type === "GRAPH_DRIFT")?.detail).to.include("newcomer@1.0.0");
+  });
+
+  it("fix drift is reported between every two fix states", function () {
+    const blockedToNone = live();
+    for (const w of audit(blockedToNone).warnings.unsound.filter((x: any) => x.package.name === "lru")) {
+      w.versions.patched = [];
+    }
+    const a = rustsecDrift(RECORD, blockedToNone, LOCKS);
+    expect(keys(a, "FIX_DRIFT")).to.deep.equal([
+      "host RUSTSEC-2026-0002 lru@0.12.5",
+      "host RUSTSEC-2026-0253 lru@0.12.5",
+    ]);
+    expect(a.items.find((i) => i.type === "FIX_DRIFT")?.detail).to.equal(
+      "fix availability changed from UPSTREAM_BLOCKED to NO_PATCHED_RELEASE",
+    );
+    const fixToNone = live();
+    audit(fixToNone).vulnerabilities.list.find((x: any) => x.advisory.id === "RUSTSEC-2026-0346").versions.patched = [];
+    expect(keys(rustsecDrift(RECORD, fixToNone, LOCKS), "FIX_DRIFT")).to.deep.equal([
+      "host RUSTSEC-2026-0346 rustls@0.23.40",
+    ]);
+  });
+
+  it("a fix state is exactly one of three, and a fix in none or two of them is refused", function () {
+    const base = { compatibleVersion: null, alsoChanges: [], lowestPatched: null, blockedBy: null };
+    expect(fixStateOf({ ...base, lockfileOnly: true, upstreamBlocked: false, noPatchedRelease: false })).to.equal(
+      "LOCKFILE_ONLY",
+    );
+    expect(fixStateOf({ ...base, lockfileOnly: false, upstreamBlocked: true, noPatchedRelease: false })).to.equal(
+      "UPSTREAM_BLOCKED",
+    );
+    expect(fixStateOf({ ...base, lockfileOnly: false, upstreamBlocked: false, noPatchedRelease: true })).to.equal(
+      "NO_PATCHED_RELEASE",
+    );
+    expect(() =>
+      fixStateOf({ ...base, lockfileOnly: false, upstreamBlocked: false, noPatchedRelease: false }),
+    ).to.throw("0 states");
+    expect(() => fixStateOf({ ...base, lockfileOnly: true, upstreamBlocked: true, noPatchedRelease: false })).to.throw(
+      "2 states",
+    );
+  });
 });
 
 describe("RustSec drift — the check-rustsec-drift CLI", function () {
@@ -277,5 +341,11 @@ describe("RustSec drift — the check-rustsec-drift CLI", function () {
     expect(cleanup.stdout).to.include("::warning title=RustSec DISAPPEARED::");
     expect(run("missing.json", null).status).to.equal(3);
     expect(run("garbage.json", "{ not json").status).to.equal(3);
+  });
+
+  it("exits 3 (unavailable), never 0, when it cannot run at all", function () {
+    const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/check-rustsec-drift.ts"], { encoding: "utf8" });
+    expect(r.status).to.equal(3);
+    expect(r.stderr).to.include("--live <observation.json> is required");
   });
 });

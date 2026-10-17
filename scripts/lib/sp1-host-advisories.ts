@@ -809,16 +809,15 @@ export const ASSUMPTIONS: readonly Assumption[] = [
   {
     id: "A_LOCK_BACKTRACE_WITHOUT_RUZSTD",
     statement:
-      "in zkvm/host/Cargo.lock backtrace does not depend on ruzstd (its own zstd path is off) and object is ruzstd's only dependent",
+      "in zkvm/host/Cargo.lock object is ruzstd's only dependent: backtrace does not depend on it, so backtrace's own zstd path is off",
     evaluate(input) {
-      const bt = input.hostLock.filter((p) => p.name === "backtrace");
-      const rz = input.hostLock.filter((p) => p.name === "ruzstd");
-      const btUses = bt.filter((p) => p.dependencies.some((d) => d.split(" ")[0] === "ruzstd"));
-      const users = rz.flatMap((p) => directDependents(input.hostLock, p.name, p.version));
-      const holds = btUses.length === 0 && users.every((u) => u.startsWith("object@"));
+      // "backtrace does not depend on ruzstd" is implied: a backtrace that did would be one of ruzstd's dependents.
+      const users = input.hostLock
+        .filter((p) => p.name === "ruzstd")
+        .flatMap((p) => directDependents(input.hostLock, p.name, p.version));
       return {
-        holds,
-        observed: `backtrace depending on ruzstd: ${btUses.length}; ruzstd's dependents: ${users.join(", ") || "none"}`,
+        holds: users.every((u) => u.startsWith("object@")),
+        observed: `ruzstd's dependents: ${users.join(", ") || "none"}`,
       };
     },
   },
@@ -2825,6 +2824,20 @@ export const DRIFT_EXIT: Readonly<Record<DriftVerdict, number>> = {
   AUDIT_UNAVAILABLE: 3,
 };
 
+/**
+ * A finding's fix availability as one state: fixFactsOf sets exactly one of lockfileOnly, upstreamBlocked and
+ * noPatchedRelease, so comparing the three flags one by one would make each comparison redundant with the others.
+ */
+export function fixStateOf(fix: FixFacts): "LOCKFILE_ONLY" | "UPSTREAM_BLOCKED" | "NO_PATCHED_RELEASE" {
+  const states = [
+    fix.lockfileOnly && "LOCKFILE_ONLY",
+    fix.upstreamBlocked && "UPSTREAM_BLOCKED",
+    fix.noPatchedRelease && "NO_PATCHED_RELEASE",
+  ].filter((s): s is "LOCKFILE_ONLY" | "UPSTREAM_BLOCKED" | "NO_PATCHED_RELEASE" => typeof s === "string");
+  if (states.length !== 1) throw new Error(`fix facts in ${states.length} states at once: ${JSON.stringify(fix)}`);
+  return states[0];
+}
+
 /** The advisory fields whose change can change a classification; a reworded description does not. */
 const comparedAdvisory = (a: AdvisoryProjection | null) =>
   a && {
@@ -2921,8 +2934,8 @@ export function rustsecDrift(
               "RustSec changed a field that can change the classification (title, categories, cvss, informational, withdrawn, ranges or functions)",
           });
         }
+        // The role carries `compiled` (NOT_COMPILED exactly when not compiled), so it is not compared again.
         if (
-          f.compiled !== l.compiled ||
           f.dependency.role !== l.dependency.role ||
           !same(f.dependency.directDependents, l.dependency.directDependents)
         ) {
@@ -2933,16 +2946,12 @@ export function rustsecDrift(
             detail: `cargo tree now says compiled=${l.compiled}, role ${l.dependency.role}, dependents ${l.dependency.directDependents.join(", ") || "none"}`,
           });
         }
-        if (
-          f.fix.lockfileOnly !== l.fix.lockfileOnly ||
-          f.fix.upstreamBlocked !== l.fix.upstreamBlocked ||
-          f.fix.noPatchedRelease !== l.fix.noPatchedRelease
-        ) {
+        if (fixStateOf(f.fix) !== fixStateOf(l.fix)) {
           items.push({
             type: "FIX_DRIFT",
             lockfile: spec.id,
             key: f.key,
-            detail: `fix availability changed: lockfile-only ${l.fix.lockfileOnly}, upstream-blocked ${l.fix.upstreamBlocked}, no patched release ${l.fix.noPatchedRelease}`,
+            detail: `fix availability changed from ${fixStateOf(f.fix)} to ${fixStateOf(l.fix)}`,
           });
         }
         continue;

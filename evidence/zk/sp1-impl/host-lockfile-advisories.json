@@ -1558,9 +1558,9 @@
     {
       "id": "A_LOCK_BACKTRACE_WITHOUT_RUZSTD",
       "kind": "assumption",
-      "statement": "in zkvm/host/Cargo.lock backtrace does not depend on ruzstd (its own zstd path is off) and object is ruzstd's only dependent",
+      "statement": "in zkvm/host/Cargo.lock object is ruzstd's only dependent: backtrace does not depend on it, so backtrace's own zstd path is off",
       "holds": true,
-      "observed": "backtrace depending on ruzstd: 0; ruzstd's dependents: object@0.37.3"
+      "observed": "ruzstd's dependents: object@0.37.3"
     },
     {
       "id": "A_HOST_SOURCE",
