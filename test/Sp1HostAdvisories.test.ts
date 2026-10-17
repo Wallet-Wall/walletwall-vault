@@ -10,6 +10,7 @@
  */
 import { expect } from "chai";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 
 import {
@@ -53,6 +54,7 @@ import {
   treeFactsOf,
   updateChangesOf,
   updateProbeOf,
+  validationReport,
   yankedPackages,
   type AdvisoryState,
   type Claim,
@@ -175,6 +177,43 @@ describe("SP1 host advisory record — assessment validity is not dependency saf
     const s = fresh();
     s.locks.host = `${s.locks.host}\n`;
     expect(hostAdvisoryVerdict(s).dependencyStatus).to.equal("UNKNOWN");
+  });
+
+  it("the check passes on ASSESSMENT_VALID alone and always prints the dependency status beside it", function () {
+    const ok = validationReport(hostAdvisoryVerdict(fresh()));
+    expect(ok.pass).to.equal(true);
+    expect(ok.lines[0]).to.match(/^ASSESSMENT_VALID: evidence\/zk\/sp1-impl\/host-lockfile-advisories\.json is what /);
+    expect(ok.lines[1]).to.match(
+      /^DEPENDENCY_STATUS: NOT_DEPENDENCY_SAFE: zkvm\/host\/Cargo\.lock locks 12 RustSec vulnerabilities and 3 unsound crates \(\+1 yanked, 6 unmaintained\); DEFERRED_TO_NEXT_PROGRAM_REBUILD, nothing is patched\. A valid assessment is not a fix\.$/,
+    );
+    expect(ok.lines[2]).to.equal(
+      "BUCKETS: MUST_FIX_BEFORE_REAL_PROVING 0 | SHOULD_FIX_BEFORE_PRODUCTION 8 | NOT_REACHABLE_OR_UPSTREAM_ONLY 14 (17 of 22 compiled)",
+    );
+    const s = fresh();
+    s.headHostTree = "0".repeat(40);
+    const bad = validationReport(hostAdvisoryVerdict(s));
+    expect(bad.pass).to.equal(false);
+    expect(bad.lines[0]).to.equal("REASSESSMENT_REQUIRED (dependency status NOT_DEPENDENCY_SAFE):");
+    expect(bad.lines.some((l) => l.startsWith(" - [SUBJECT_TREE_CHANGED] "))).to.equal(true);
+    const t = fresh();
+    t.recordText = "{}";
+    const invalidRecord = validationReport(hostAdvisoryVerdict(t));
+    expect(invalidRecord.pass).to.equal(false);
+    expect(invalidRecord.lines[0]).to.equal("RECORD_INVALID (dependency status NOT_DEPENDENCY_SAFE):");
+  });
+
+  it("npm run validate:sp1-host-advisories exits 0 on the committed repository and prints both verdicts", function () {
+    this.timeout(120_000);
+    const r = spawnSync(
+      process.execPath,
+      ["--import", "tsx", "scripts/generate-sp1-host-advisories.ts", "--validate"],
+      {
+        encoding: "utf8",
+      },
+    );
+    expect(r.status, r.stderr).to.equal(0);
+    expect(r.stdout).to.match(/^ASSESSMENT_VALID: /m);
+    expect(r.stdout).to.match(/^DEPENDENCY_STATUS: NOT_DEPENDENCY_SAFE: /m);
   });
 });
 

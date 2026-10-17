@@ -2524,9 +2524,12 @@ function recordIssues(committed: Record<string, any>, derived: HostAdvisoryRecor
       ),
     );
   }
-  if (
-    !same(committed.subject?.files, derived.subject.files) ||
-    committed.subject?.zkvmHostTree !== derived.subject.zkvmHostTree
+  // Only a record that binds a subject can describe an earlier one; a record without that binding is malformed.
+  if (!Array.isArray(committed.subject?.files) || typeof committed.subject?.zkvmHostTree !== "string") {
+    issues.push(invalid("RECORD_MALFORMED", "the record binds no zkvm/host tree and file digests"));
+  } else if (
+    !same(committed.subject.files, derived.subject.files) ||
+    committed.subject.zkvmHostTree !== derived.subject.zkvmHostTree
   ) {
     issues.push(stale("SUBJECT_FILE_CHANGED", "the record's zkvm/host tree or file digests are not today's: reassess"));
   }
@@ -2740,6 +2743,41 @@ export function evaluateHostAdvisories(state: AdvisoryState, claims: readonly Cl
       ? "RECORD_INVALID"
       : "ASSESSMENT_VALID";
   return { assessment, dependencyStatus, issues, derived };
+}
+
+/** The summary lines of a record: the dependency status first, never the assessment alone. */
+export function recordSummary(r: HostAdvisoryRecord): string[] {
+  const c = r.assessment.counts;
+  const k = c.byKind;
+  return [
+    `DEPENDENCY_STATUS: ${r.assessment.dependencyStatus}: zkvm/host/Cargo.lock locks ${k.vulnerability} RustSec vulnerabilities and ${k.unsound} unsound crates (+${k.yanked} yanked, ${k.unmaintained} unmaintained); ${r.remediation.status}, nothing is patched. A valid assessment is not a fix.`,
+    `BUCKETS: MUST_FIX_BEFORE_REAL_PROVING ${r.buckets.MUST_FIX_BEFORE_REAL_PROVING.length} | SHOULD_FIX_BEFORE_PRODUCTION ${r.buckets.SHOULD_FIX_BEFORE_PRODUCTION.length} | NOT_REACHABLE_OR_UPSTREAM_ONLY ${r.buckets.NOT_REACHABLE_OR_UPSTREAM_ONLY.length} (${c.compiled} of ${c.findings} compiled)`,
+    `COMPANIONS: ${r.companionLockfiles.map((x) => `${x.path} ${x.vulnerabilities} vulnerabilities, ${x.warnings} warnings`).join("; ")}`,
+  ];
+}
+
+/**
+ * What `npm run validate:sp1-host-advisories` prints and whether it passes: it passes on ASSESSMENT_VALID alone,
+ * and every report, passing or not, names the dependency status, so a green check is never read as "fixed".
+ */
+export function validationReport(v: Verdict): { pass: boolean; lines: string[] } {
+  if (v.assessment !== "ASSESSMENT_VALID" || v.derived === null) {
+    return {
+      pass: false,
+      lines: [
+        `${v.assessment} (dependency status ${v.dependencyStatus}):`,
+        ...v.issues.map((i) => ` - [${i.code}] ${i.message}`),
+      ],
+    };
+  }
+  const r = v.derived;
+  return {
+    pass: true,
+    lines: [
+      `ASSESSMENT_VALID: ${HOST_ADVISORIES_REL} is what designation ${r.subject.designation.id}'s zkvm/host subject (HEAD tree ${r.subject.zkvmHostTree}), the observation (advisory-db ${r.assessment.database.lastCommit}) and the claims derive.`,
+      ...recordSummary(r),
+    ],
+  };
 }
 
 // ---------------------------------------------------------------------------------------------------------
