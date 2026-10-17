@@ -794,6 +794,17 @@ describe("SP1 implementation receipt — the integration binding after the merge
       expect(repo.git("status", "--porcelain", "--", RECEIPT), "the historical receipt is untouched").to.equal("");
     });
 
+    it("a tag named origin/main cannot make the CLI generate the receipt again on main against the old base", function () {
+      mergeLane(repo);
+      repo.git("tag", "origin/main", repo.ids.m0);
+      expect(repo.git("merge-base", "HEAD", "origin/main"), "the premise: the short name names the old base").to.equal(
+        repo.ids.m0,
+      );
+      const regenerated = cli();
+      expect(regenerated.status).to.equal(1);
+      expect(regenerated.stderr).to.match(/already carries evidence\/zk\/sp1-impl\/implementation-receipt\.json/);
+    });
+
     it("the CLI's validation fails, with the binding's reason, where the binding does not hold", function () {
       mergeLane(repo);
       const run = cli("--validate");
