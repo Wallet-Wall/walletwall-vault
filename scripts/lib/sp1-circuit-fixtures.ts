@@ -670,5 +670,17 @@ export function hostileCases(): HostileCase[] {
       record: () => syntheticRecord(safe, SAFE_FILES),
       expect: { code: "ARCHIVE_DIGEST_MISMATCH", reason: "SHA256" },
     },
+    {
+      id: "I09",
+      title: "wrong member length refused at its header (its declared bytes are never read)",
+      archive: gz(
+        tarBytes(
+          safeEntries().map((s) => (s.name === "./groth16_pk.bin" ? { ...s, size: 1 << 30 } : s)),
+          { end: false },
+        ),
+      ),
+      record: "auto",
+      expect: member("SIZE_MISMATCH"),
+    },
   ];
 }

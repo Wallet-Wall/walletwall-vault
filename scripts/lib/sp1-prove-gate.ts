@@ -45,10 +45,8 @@ export const REFUSED_ENV: Readonly<Record<string, string>> = {
   SP1_PLONK_CIRCUIT_PATH: "ALTERNATE_CIRCUIT_PATH",
   WITHOUT_VK_VERIFICATION: "VK_VERIFICATION_OFF",
   SKIP_SIMULATION: "PROVER_NETWORK",
-  NETWORK_PRIVATE_KEY: "PROVER_NETWORK",
-  NETWORK_RPC_URL: "PROVER_NETWORK",
 };
-/** Any other NETWORK_* variable is the prover network's too. */
+/** Every NETWORK_* variable (NETWORK_PRIVATE_KEY, NETWORK_RPC_URL, ...) is the prover network's. */
 export const REFUSED_ENV_PREFIX = "NETWORK_";
 /** Process basics passed through when the caller sets them. DOCKER_HOST only as a local socket (checked below). */
 export const PASS_THROUGH_ENV: readonly string[] = [

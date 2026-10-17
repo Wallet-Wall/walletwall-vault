@@ -10,7 +10,7 @@
  */
 import { expect } from "chai";
 import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -320,6 +320,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
       expect(run(["a", "directory"], ["a/x", "file"], ["a", "directory"])).to.equal("DUPLICATE_PATH");
       expect(run(["a", "file"], ["A", "file"])).to.equal("CASE_COLLISION");
       expect(run(["D/x", "file"], ["d/y", "file"])).to.equal("CASE_COLLISION");
+      expect(run(["d/x", "file"], ["D/y", "file"])).to.equal("CASE_COLLISION");
       expect(run(["d/x", "file"], ["D", "directory"])).to.equal("CASE_COLLISION");
       expect(run(["d", "file"], ["d", "directory"])).to.equal("FILE_DIRECTORY_COLLISION");
       expect(run(["d", "directory"], ["d", "file"])).to.equal("FILE_DIRECTORY_COLLISION");
@@ -377,6 +378,11 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
       expect(p.members.map((m) => m.path)).to.deep.equal(SAFE_FILES.map(([n]) => n));
       expect(p.members.map((m) => m.sha256)).to.deep.equal(SAFE_FILES.map(([, d]) => sha256(d)));
       expect(p.directories).to.deep.equal(["extra"]);
+    });
+    it("reads a NUL typeflag (pre-POSIX writers) as a regular file", function () {
+      const tar = tarBytes([{ name: "old.bin", data: "old", type: "\0" }]);
+      expect(tar[156]).to.equal(0);
+      expect(parse(tar).members.map((m) => [m.path, m.bytes])).to.deep.equal([["old.bin", 3]]);
     });
     it("reads GNU headers, a base-256 size, a PAX path equal to the name, a 100-byte name and zero padding", function () {
       const name = "n".repeat(100);
@@ -470,7 +476,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
           ids.some((i) => i.startsWith(group)),
           group,
         ).to.equal(true);
-      expect(ids.length).to.equal(70);
+      expect(ids.length).to.equal(71);
     });
   });
 
@@ -513,6 +519,11 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
       expect(
         await refusalOf(() => inspectArchive(same, { anchor, afterMeasure: () => writeFileSync(same, other) })),
       ).to.equal("ARCHIVE_CHANGED_DURING_USE (REREAD)");
+      const swapped = write(safeGz, "c.tar.gz");
+      const toDirectory = () => (rmSync(swapped), mkdirSync(swapped));
+      expect(await refusalOf(() => inspectArchive(swapped, { anchor, afterMeasure: toDirectory }))).to.equal(
+        "ARCHIVE_UNREADABLE (NOT_A_FILE)",
+      );
     });
 
     it("refuses a missing archive and a directory", async function () {

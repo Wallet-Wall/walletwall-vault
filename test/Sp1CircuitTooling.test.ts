@@ -162,7 +162,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(r.provingAvailability.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(0);
-      expect(r.selfTest.hostile).to.have.length(70);
+      expect(r.selfTest.hostile).to.have.length(71);
       expect(r.selfTest.productionAnchorRefusesFixtures).to.deep.equal(["SUBJECT_MISMATCH", "VK_MISMATCH"]);
       expect(STATES.filter((s) => s.reachableInThisLane).map((s) => s.state)).to.deep.equal([
         "TOOLING_NOT_PRESENT",
@@ -187,6 +187,20 @@ describe("SP1-PA2A circuit tooling contract", function () {
       writeFileSync(join(repo, TOOLING_REL), "{}\n");
       expect(await toolingErrors(repo)).to.deep.equal([
         `${TOOLING_REL} is not what the evidence and the self-test derive: regenerate it`,
+      ]);
+    });
+
+    it("refuses to derive anything while proving availability is other than OWNER_DOWNLOAD_REQUIRED", async function () {
+      this.timeout(120_000);
+      const repo = dirs.make();
+      for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock"]) {
+        cpSync(resolve(p), join(repo, p), { recursive: true });
+      }
+      const pa = JSON.parse(read(PROVING_AVAILABILITY_REL).toString("utf8"));
+      pa.status = "LOCAL_COPY_NOT_ARCHIVED";
+      writeFileSync(join(repo, PROVING_AVAILABILITY_REL), JSON.stringify(pa));
+      expect(await toolingErrors(repo)).to.deep.equal([
+        "proving availability is LOCAL_COPY_NOT_ARCHIVED: this lane leaves it OWNER_DOWNLOAD_REQUIRED, and a change needs its own lane",
       ]);
     });
 
@@ -304,6 +318,16 @@ describe("SP1-PA2A circuit tooling contract", function () {
       writeFileSync(join(dir, "real.json"), "{}");
       symlinkOrSkip(this, join(dir, "real.json"), join(dir, "link.json"), "file");
       expect(authoritativeRecordError(join(dir, "link.json"), repo)).to.equal("NOT_A_FILE");
+    });
+    it("is resolved through links: a proving-archives directory that is a link elsewhere holds no record", function () {
+      const repo = dirs.make();
+      const outside = dirs.make();
+      writeFileSync(join(outside, "r.json"), "{}");
+      mkdirSync(join(repo, PROVING_ARCHIVES_DIR, ".."), { recursive: true });
+      symlinkOrSkip(this, outside, join(repo, PROVING_ARCHIVES_DIR), "dir");
+      expect(authoritativeRecordError(join(repo, PROVING_ARCHIVES_DIR, "r.json"), repo)).to.equal(
+        "OUTSIDE_PROVING_ARCHIVES",
+      );
     });
   });
 

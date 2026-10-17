@@ -501,8 +501,6 @@
       "DOCKER_CONTEXT": "default"
     },
     "refused": [
-      "NETWORK_PRIVATE_KEY",
-      "NETWORK_RPC_URL",
       "SKIP_SIMULATION",
       "SP1_CIRCUIT_MODE",
       "SP1_PLONK_CIRCUIT_PATH",
@@ -931,6 +929,11 @@
         "id": "I08",
         "title": "record correct, archive altered (same length)",
         "refusal": "ARCHIVE_DIGEST_MISMATCH (SHA256)"
+      },
+      {
+        "id": "I09",
+        "title": "wrong member length refused at its header (its declared bytes are never read)",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (SIZE_MISMATCH)"
       }
     ],
     "gate": [

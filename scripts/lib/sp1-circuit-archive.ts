@@ -406,10 +406,10 @@ export class MemberTree {
     return null;
   }
 
-  /** The reason the finished tree is refused (a directory entry with no member beneath it), or null. */
+  /** The reason the finished tree is refused (a directory with no member beneath it), or null. */
   finish(): string | null {
     for (const n of this.nodes.values()) {
-      if (n.kind === "directory" && n.explicit && !n.hasFile) return "EMPTY_DIRECTORY";
+      if (n.kind === "directory" && !n.hasFile) return "EMPTY_DIRECTORY";
     }
     return null;
   }
@@ -473,7 +473,8 @@ export function parsePax(data: Buffer, at: number): Map<string, string> {
     const sp = data.indexOf(0x20, i);
     const lenText = sp < 0 ? "" : data.toString("latin1", i, sp);
     const end = i + Number(lenText);
-    if (!/^[1-9][0-9]*$/.test(lenText) || end > data.length || data[end - 1] !== 0x0a) {
+    // A record running past the data ends on undefined, never on "\n".
+    if (!/^[1-9][0-9]*$/.test(lenText) || data[end - 1] !== 0x0a) {
       throw corrupt("PAX_MALFORMED", `PAX header at byte ${at}: a malformed record`);
     }
     const rec = data.subarray(sp + 1, end - 1);
@@ -878,7 +879,7 @@ export async function inspectArchive(
     limits: opts.limits ?? DEFAULT_LIMITS,
     expect: record ? new Map(record.members.map((m) => [m.path, m])) : undefined,
   });
-  if (scan.raw.sha256 !== first.sha256 || scan.raw.bytes !== first.bytes) {
+  if (scan.raw.sha256 !== first.sha256) {
     throw refuse("ARCHIVE_CHANGED_DURING_USE", "REREAD", "the bytes parsed are not the bytes authenticated");
   }
   if (record) {

@@ -9,7 +9,9 @@
  */
 import { expect } from "chai";
 import { chmodSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
+
+import { CircuitToolingError } from "../scripts/lib/sp1-circuit-archive";
 
 import { SAFE_FILES, SYNTHETIC_ANCHOR, gz, safeTar, syntheticRecord } from "../scripts/lib/sp1-circuit-fixtures";
 import { installCircuitArchive } from "../scripts/lib/sp1-circuit-install";
@@ -384,11 +386,26 @@ describe("SP1-PA2A archive-only prove gate", function () {
           runArchiveOnlyProve(w.input({ circuitRoot: "circuits" }), { images: present, spawn: s.spawn }),
         ),
       ).to.equal("CIRCUIT_ROOT_INVALID (RELATIVE)");
+      // An absolute root with a trailing separator verifies on disk, but SP1 would be given another spelling of it.
+      expect(
+        await refusalOf(() =>
+          runArchiveOnlyProve(w.input({ circuitRoot: `${w.root}${sep}` }), { images: present, spawn: s.spawn }),
+        ),
+      ).to.equal("CIRCUIT_ROOT_INVALID (NOT_NORMALIZED)");
       expect(s.calls).to.have.length(0);
     });
   });
 
   describe("after the host runs", function () {
+    it("an oversized output reported by the spawner stays PROOF_OUTPUT_REFUSED", async function () {
+      const w = await world();
+      const s = spy(async () => {
+        throw new CircuitToolingError("PROOF_OUTPUT_REFUSED", "OUTPUT_TOO_LARGE", "synthetic");
+      });
+      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn }))).to.equal(
+        "PROOF_OUTPUT_REFUSED (OUTPUT_TOO_LARGE)",
+      );
+    });
     it("a non-zero exit is PROVER_FAILED", async function () {
       const w = await world();
       const s = spy({ status: 3 });
@@ -463,6 +480,31 @@ describe("SP1-PA2A archive-only prove gate", function () {
   });
 
   describe("spawnHost (a real child process)", function () {
+    it("kills a child whose stdout passes 64 MiB at once, instead of buffering it", async function () {
+      this.timeout(20_000);
+      const w = await world();
+      const script = join(w.work, "flood.cjs");
+      // Writes just over the cap, then would idle for a minute: only a kill ends it within the test's timeout.
+      writeFileSync(
+        script,
+        "const b = Buffer.alloc(1 << 20, 97); let n = 65; const go = () => { while (n > 0) { n--; if (!process.stdout.write(b)) return process.stdout.once('drain', go); } setTimeout(() => {}, 60000); }; go();",
+      );
+      const started = Date.now();
+      expect(
+        await refusalOf(() =>
+          spawnHost({
+            executable: process.execPath,
+            args: [script],
+            env: {},
+            dropped: [],
+            circuitDir: "",
+            imageRef,
+            record,
+          }),
+        ),
+      ).to.equal("PROOF_OUTPUT_REFUSED (OUTPUT_TOO_LARGE)");
+      expect(Date.now() - started).to.be.lessThan(15_000);
+    });
     it("runs without a shell, with exactly the given environment, and reports the exit status", async function () {
       const w = await world();
       const script = join(w.work, "print-env.cjs");

@@ -266,6 +266,15 @@ describe("SP1-PA2A circuit install", function () {
       noStaging(s.root);
     });
 
+    it("an empty target that appears during installation is refused too (POSIX rename would replace it)", async function () {
+      const s = setup();
+      expect(await refusalOf(() => install(s, { hooks: { afterStaging: () => mkdirSync(s.target) } }))).to.equal(
+        "INSTALL_TARGET_EXISTS (APPEARED)",
+      );
+      expect(readdirSync(s.target)).to.deep.equal([]);
+      noStaging(s.root);
+    });
+
     it("a target that appears at the rename itself is refused, and kept", async function () {
       const s = setup();
       const make = () => (mkdirSync(s.target), writeFileSync(join(s.target, "theirs"), "theirs"));

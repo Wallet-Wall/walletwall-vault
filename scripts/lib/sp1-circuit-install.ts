@@ -58,14 +58,8 @@ const READ_CHUNK = 4 * 1024 * 1024;
 /** Never follow a final-component link, and never block on a FIFO swapped in for a file (POSIX; 0 on Windows). */
 const OPEN_READ = constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0);
 
-function lstatOrNull(path: string): Stats | null {
-  try {
-    return lstatSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    throw error;
-  }
-}
+/** lstat, or undefined when nothing is there (any other failure throws). A link is never a directory to lstat. */
+const lstatOrNull = (path: string): Stats | undefined => lstatSync(path, { throwIfNoEntry: false });
 
 const toFs = (root: string, rel: string) => (rel === "" ? root : join(root, ...rel.split("/")));
 
@@ -157,14 +151,11 @@ export function verifyInstalledCircuit(
   if (!isAbsolute(circuitRoot)) throw refuse("CIRCUIT_ROOT_INVALID", "RELATIVE", `${circuitRoot} is not absolute`);
   const root = lstatOrNull(circuitRoot);
   if (!root) throw refuse("CIRCUIT_ARCHIVE_NOT_INSTALLED", "ROOT_ABSENT", `${circuitRoot} does not exist`);
-  if (root.isSymbolicLink() || !root.isDirectory()) {
-    throw refuse("CIRCUIT_ROOT_INVALID", "NOT_A_DIRECTORY", `${circuitRoot} is not a directory`);
-  }
+  if (!root.isDirectory()) throw refuse("CIRCUIT_ROOT_INVALID", "NOT_A_DIRECTORY", `${circuitRoot} is not a directory`);
   const circuitDir = join(circuitRoot, anchor.circuitVersion);
   const dir = lstatOrNull(circuitDir);
   if (!dir) throw refuse("CIRCUIT_ARCHIVE_NOT_INSTALLED", "CIRCUIT_ABSENT", `${circuitDir} does not exist`);
-  if (dir.isSymbolicLink() || !dir.isDirectory())
-    throw refuse(code, "NOT_A_DIRECTORY", `${circuitDir} is not a directory`);
+  if (!dir.isDirectory()) throw refuse(code, "NOT_A_DIRECTORY", `${circuitDir} is not a directory`);
   return { circuitDir, members: verifyTree(circuitDir, record, anchor, code) };
 }
 
@@ -226,9 +217,8 @@ export async function installCircuitArchive(input: InstallInput): Promise<Instal
   if (!isAbsolute(root)) throw refuse("INSTALL_DESTINATION_INVALID", "RELATIVE", `${root} is not absolute`);
   const rootStat = lstatOrNull(root);
   if (!rootStat) throw refuse("INSTALL_DESTINATION_INVALID", "ABSENT", `${root} does not exist`);
-  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+  if (!rootStat.isDirectory())
     throw refuse("INSTALL_DESTINATION_INVALID", "NOT_A_DIRECTORY", `${root} is not a directory`);
-  }
   const version = input.anchor.circuitVersion;
   const target = join(root, version);
   if (lstatOrNull(target))
@@ -240,6 +230,7 @@ export async function installCircuitArchive(input: InstallInput): Promise<Instal
 
   // 2. A fresh private staging directory beside the target.
   const staging = mkdtempSync(join(root, `.${version}${STAGING_PREFIX}`));
+  let members: ScannedMember[];
   try {
     chmodSync(staging, 0o700);
     input.hooks?.afterStaging?.(staging);
@@ -276,10 +267,10 @@ export async function installCircuitArchive(input: InstallInput): Promise<Instal
     });
 
     // 3. The bytes extracted are the bytes authenticated, and the staged tree is exactly the record.
-    if (extracted.raw.sha256 !== record.archive.sha256 || extracted.raw.bytes !== record.archive.bytes) {
+    if (extracted.raw.sha256 !== record.archive.sha256) {
       throw refuse("ARCHIVE_CHANGED_DURING_USE", "REREAD", "the bytes extracted are not the bytes authenticated");
     }
-    verifyTree(staging, record, input.anchor, "INSTALL_FAILED");
+    members = verifyTree(staging, record, input.anchor, "INSTALL_FAILED");
 
     // 4. Read-only, then the one rename; an existing target is refused.
     chmodTree(staging, 0o444, 0o555);
@@ -300,7 +291,6 @@ export async function installCircuitArchive(input: InstallInput): Promise<Instal
     throw refuse(e.code, e.reason, `${e.message}; the staging directory ${staging} could not be removed: ${left}`);
   }
 
-  // What SP1 will find, checked as the prove gate checks it.
-  const { circuitDir, members } = verifyInstalledCircuit(root, record, input.anchor);
-  return { circuitDir, archive: inspected.archive, members };
+  // The tree renamed into place is the staged tree just verified; the prove gate re-hashes it before every session.
+  return { circuitDir: target, archive: inspected.archive, members };
 }
