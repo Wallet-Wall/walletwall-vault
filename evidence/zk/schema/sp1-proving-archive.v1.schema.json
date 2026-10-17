@@ -1,0 +1,135 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "walletwall.sp1-proving-archive.v1",
+  "title": "WalletWall SP1 proving-archive record (v1)",
+  "description": "The record a later, owner-authorized acquisition lane produces from MEASURED bytes for one SP1 Groth16 circuit archive. The shape only: scripts/lib/sp1-circuit-archive.ts archiveRecordErrors is the validator, and it also binds the subject to the designation, requires agreeing acquisitions from distinct hosts, two mirrors naming the archive's sha256, a digest-pinned gnark image, canonical sorted member paths and a groth16_vk.bin with the designated VERIFIER_HASH. Source URLs and image tags are provenance, never authority. A record counts only in evidence/zk/sp1-impl/proving-archives, which holds none. Research prototype; not audited; testnet/local only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "subject", "archive", "acquisitions", "members", "gnark", "mirrors"],
+  "properties": {
+    "schema": { "const": "walletwall.sp1-proving-archive.v1" },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["circuitSystem", "circuitVersion", "designation", "programVKey", "verifier", "verifyingKey"],
+      "properties": {
+        "circuitSystem": { "const": "groth16" },
+        "circuitVersion": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+        "designation": { "type": "string", "minLength": 1 },
+        "programVKey": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+        "verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "runtimeCodeKeccak", "verifierHash"],
+          "properties": {
+            "version": { "type": "string" },
+            "runtimeCodeKeccak": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "verifierHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+          }
+        },
+        "verifyingKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "bytes"],
+          "properties": {
+            "file": { "const": "groth16_vk.bin" },
+            "sha256": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+            "bytes": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "archive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "format", "bytes", "sha256", "acquiredAtUtc", "sourceUrl", "sourceUrlRole"],
+      "properties": {
+        "file": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.tar\\.gz$" },
+        "format": { "const": "tar+gzip" },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "acquiredAtUtc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+        "sourceUrl": { "type": "string", "pattern": "^https://" },
+        "sourceUrlRole": { "const": "PROVENANCE_ONLY" }
+      }
+    },
+    "acquisitions": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["host", "observedAtUtc", "bytes", "sha256", "agreement"],
+        "properties": {
+          "host": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$" },
+          "observedAtUtc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "agreement": { "const": "AGREES" }
+        }
+      }
+    },
+    "members": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "bytes", "sha256"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$", "maxLength": 100 },
+          "bytes": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "gnark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "tag", "tagRole", "digest", "observation", "mirror"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": "string", "minLength": 1 },
+        "tagRole": { "const": "PROVENANCE_ONLY" },
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "observedAtUtc", "method"],
+          "properties": {
+            "host": { "type": "string" },
+            "observedAtUtc": { "type": "string" },
+            "method": { "type": "string", "minLength": 1 }
+          }
+        },
+        "mirror": {
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["location", "digest"],
+              "properties": {
+                "location": { "type": "string", "minLength": 1 },
+                "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "mirrors": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["location", "sha256"],
+        "properties": {
+          "location": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

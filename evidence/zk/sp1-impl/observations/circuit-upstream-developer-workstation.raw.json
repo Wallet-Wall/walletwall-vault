@@ -1,0 +1,514 @@
+{
+  "schema": "walletwall.sp1-circuit-upstream.v1",
+  "measuredAtUtc": "2026-10-17T17:00:12Z",
+  "host": "developer-workstation",
+  "tool": {
+    "script": "scripts/measure-sp1-circuit-upstream.ts",
+    "scriptSha256": "5eca94ac1c3456c1837ca929ad3099ef71ffe96893f22dbce3b6bbe6c179fb39"
+  },
+  "lockfile": {
+    "path": "zkvm/host/Cargo.lock",
+    "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+  },
+  "crates": [
+    {
+      "name": "slop-air",
+      "version": "6.3.1",
+      "checksum": "447a04cb85d3dabad2bb07034e9393419566a5f0bf9c34f746a04469782be963",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-algebra",
+      "version": "6.3.1",
+      "checksum": "8c112cafd4c5c374d267a48c8976d12fca3b0f2cc2e44e6fb1343808310b4fc6",
+      "rustSources": 3
+    },
+    {
+      "name": "slop-alloc",
+      "version": "6.3.1",
+      "checksum": "1eaa537343a6b95b7c0d4e1f5355a4da7428ae5e2f65b62167295226a9a6f7a5",
+      "rustSources": 10
+    },
+    {
+      "name": "slop-baby-bear",
+      "version": "6.3.1",
+      "checksum": "129dff87e6accaf7238f605c536d76049c2bff1f6fa6d032ac56985c27c646be",
+      "rustSources": 2
+    },
+    {
+      "name": "slop-basefold",
+      "version": "6.3.1",
+      "checksum": "ee7b22007e82917494db0e87fbb277d6c1796106572333ed53019be629ad5cd3",
+      "rustSources": 4
+    },
+    {
+      "name": "slop-basefold-prover",
+      "version": "6.3.1",
+      "checksum": "6e5bb7b2f76cd38f1ecc42caeaee66841a9cb7cf802df1b5257874b5e773a3ec",
+      "rustSources": 4
+    },
+    {
+      "name": "slop-bn254",
+      "version": "6.3.1",
+      "checksum": "ea991a652ea2e55f0523649f5c9efbfb32cf9fdcc2bf3b3580b4343a94379503",
+      "rustSources": 2
+    },
+    {
+      "name": "slop-challenger",
+      "version": "6.3.1",
+      "checksum": "33b33f1eaadcd4159157758b0edcf1c14f470915f85c648e660e4740ff83e921",
+      "rustSources": 2
+    },
+    {
+      "name": "slop-commit",
+      "version": "6.3.1",
+      "checksum": "076e7f6d03a74a62024342eb5ef13719eae1adcfebb5232cfe8858ebc67f4d33",
+      "rustSources": 3
+    },
+    {
+      "name": "slop-dft",
+      "version": "6.3.1",
+      "checksum": "e2c742ca70828453dd3c154ad63816a987d27a7c454c19e9428b03fbdf4f118c",
+      "rustSources": 2
+    },
+    {
+      "name": "slop-fri",
+      "version": "6.3.1",
+      "checksum": "274f15a2a2508af5e1071ac890b672ad5b7727efba4bc1b33b33efd06045c02c",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-futures",
+      "version": "6.3.1",
+      "checksum": "04717ab01c1202613436caf70948f3e7157bb4c35084817879787c98d62c87e9",
+      "rustSources": 7
+    },
+    {
+      "name": "slop-jagged",
+      "version": "6.3.1",
+      "checksum": "5aaf578d92dc05de1cd4fa7dc9ffeca918df20cda868326528ec0e81d9c153b1",
+      "rustSources": 15
+    },
+    {
+      "name": "slop-keccak-air",
+      "version": "6.3.1",
+      "checksum": "b9d2c1565483d5363ffa431b510778c5bef7c423ed21cee95440721de0372213",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-koala-bear",
+      "version": "6.3.1",
+      "checksum": "8795ee9a92ecf0a604c0e3ed20e80bbc38772310c0622f94a2e1b66ca2455cb8",
+      "rustSources": 2
+    },
+    {
+      "name": "slop-matrix",
+      "version": "6.3.1",
+      "checksum": "50770150d6d5efc2ac3d20def5a6db2ca9d021defc74a414613174cfe40d96e1",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-maybe-rayon",
+      "version": "6.3.1",
+      "checksum": "d9dc27cfc5036caca9642a71827c6b99b917fcd195285788d04f9b25f5df590e",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-merkle-tree",
+      "version": "6.3.1",
+      "checksum": "9bb16c7104504683851c4aea91b9b4d28ac8fc643ecd21d798da894889c261df",
+      "rustSources": 4
+    },
+    {
+      "name": "slop-multilinear",
+      "version": "6.3.1",
+      "checksum": "e46a58b8c6c7ab9fbb7dc55c68269b1d1d722beb23af8d6a1091c15877328145",
+      "rustSources": 11
+    },
+    {
+      "name": "slop-poseidon2",
+      "version": "6.3.1",
+      "checksum": "25561d9ecf4bcf1aa2e800560ac557bff6dad943b9dc5cd0e8427fceca1e8c65",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-primitives",
+      "version": "6.3.1",
+      "checksum": "f6b24ad70b49f40d6acfe7b1ccf042db25820abe305a4c2232f15204f63f0227",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-stacked",
+      "version": "6.3.1",
+      "checksum": "9e7197d135a012724c2988e2c3a643a54eddbdaa0570b2540b55f39337b437cf",
+      "rustSources": 4
+    },
+    {
+      "name": "slop-sumcheck",
+      "version": "6.3.1",
+      "checksum": "4bcf5bf842f895678f170cc36ac7c4bc6521e7c119d24b2c0793f4bbcbe0d3d4",
+      "rustSources": 7
+    },
+    {
+      "name": "slop-symmetric",
+      "version": "6.3.1",
+      "checksum": "94e580d03bb5383aca1c12579a8a24b838afb12eb356439e740cba34904b6864",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-tensor",
+      "version": "6.3.1",
+      "checksum": "4d4288b17090a89f1669437b7d4435b48da0e4a904669205c9b5d85afbf47176",
+      "rustSources": 7
+    },
+    {
+      "name": "slop-uni-stark",
+      "version": "6.3.1",
+      "checksum": "632cac9d74df33a49efd2ba559ab51171020d9a27c375abb29846f078fa50ad6",
+      "rustSources": 1
+    },
+    {
+      "name": "slop-utils",
+      "version": "6.3.1",
+      "checksum": "c772904088f4b52275b7faedfa70fdb14dba514c3c4165b8ddb6bbad3b0eb67b",
+      "rustSources": 2
+    },
+    {
+      "name": "slop-whir",
+      "version": "6.3.1",
+      "checksum": "52f5c2e680078bfcfa0b782ce3512c06b8fcf8e3bc373c6c291e32395580e780",
+      "rustSources": 4
+    },
+    {
+      "name": "sp1-build",
+      "version": "6.3.1",
+      "checksum": "b86f0b3b6f39976825b472e2967e212b4e36f6dc395c74076b25b2ed52c605dd",
+      "rustSources": 7
+    },
+    {
+      "name": "sp1-core-executor",
+      "version": "6.3.1",
+      "checksum": "c4dcb59c94af4b470b005468d7c089208bc2ac834363193a8cdc2418e60a211a",
+      "rustSources": 115
+    },
+    {
+      "name": "sp1-core-executor-runner",
+      "version": "6.3.1",
+      "checksum": "170ac89e5233e23cff58ad32f7cbbeced26c3ce190207d6b1c7c1f699525b655",
+      "rustSources": 4
+    },
+    {
+      "name": "sp1-core-executor-runner-binary",
+      "version": "6.3.1",
+      "checksum": "704fef851e9f123f669ef04045fcff122453b0ca6942cd00b61d27c291c71a87",
+      "rustSources": 2
+    },
+    {
+      "name": "sp1-core-machine",
+      "version": "6.3.1",
+      "checksum": "20eaef541ed947056b37a7c16a149090a8c2a3e0d1e5f31fd1b0d688f1e9d96e",
+      "rustSources": 177
+    },
+    {
+      "name": "sp1-curves",
+      "version": "6.3.1",
+      "checksum": "93c3a16e1af983f60fb99176d340a401581677e63b7b1439ca034e83ca29476d",
+      "rustSources": 13
+    },
+    {
+      "name": "sp1-derive",
+      "version": "6.3.1",
+      "checksum": "3a34fe6b15dd14b498a3a4491c86ec2415bb70bac23571b18df1d15ac63c7bf8",
+      "rustSources": 5
+    },
+    {
+      "name": "sp1-hypercube",
+      "version": "6.3.1",
+      "checksum": "0a088f69335f9a594783d9ad3453be5f6f3abcc90b2387be57fb819acc3da203",
+      "rustSources": 65
+    },
+    {
+      "name": "sp1-jit",
+      "version": "6.3.1",
+      "checksum": "65367f7b364358c1d7514a063177fa8131219a5cf24beb1be5547b0a043ff5ba",
+      "rustSources": 14
+    },
+    {
+      "name": "sp1-primitives",
+      "version": "6.3.1",
+      "checksum": "421b4590a89bf7c263f8a64844a4034ee8cb73c351498911ce0acd18da6b5ed2",
+      "rustSources": 7
+    },
+    {
+      "name": "sp1-prover",
+      "version": "6.3.1",
+      "checksum": "ee3b14f599150ddbd3d3829ec4080dc9e10d6dac66e9741260d5a5a116fbcb02",
+      "rustSources": 38
+    },
+    {
+      "name": "sp1-prover-types",
+      "version": "6.3.1",
+      "checksum": "a0f0f1c83a25f309c404c61eaca7a0ccb62557042263c8b268f0df1c13d1fd94",
+      "rustSources": 5
+    },
+    {
+      "name": "sp1-recursion-circuit",
+      "version": "6.3.1",
+      "checksum": "10edc1eeca25c63957a49516b4daccfe05e7564f75111a7a2d6642367c7bb5c6",
+      "rustSources": 36
+    },
+    {
+      "name": "sp1-recursion-compiler",
+      "version": "6.3.1",
+      "checksum": "44e968795d47837d58dfec2d650ae72b128722a37096faadff6ac20f5cc716c5",
+      "rustSources": 18
+    },
+    {
+      "name": "sp1-recursion-executor",
+      "version": "6.3.1",
+      "checksum": "28918f6630db8b7dfca815ac97fb0e4442319e52aa5edb813e6e368059e28e93",
+      "rustSources": 10
+    },
+    {
+      "name": "sp1-recursion-gnark-ffi",
+      "version": "6.3.1",
+      "checksum": "a0a020c7309bb3c62c34a1c9183106a7923e480b05b66c8a1d3419dc9b78d485",
+      "rustSources": 9
+    },
+    {
+      "name": "sp1-recursion-machine",
+      "version": "6.3.1",
+      "checksum": "a1abf661a1ee1f0abb3737c14086a9e2127cbd88392c290ac1622455bd757d1f",
+      "rustSources": 23
+    },
+    {
+      "name": "sp1-sdk",
+      "version": "6.3.1",
+      "checksum": "ac474619d83bd48d3bec8ffea7e620c6f490223a399f3ff8ad4826c146c25bef",
+      "rustSources": 63
+    },
+    {
+      "name": "sp1-verifier",
+      "version": "6.3.1",
+      "checksum": "b6dbb411abb1ea167f9b0b082c95f62ede26ab7ba72349770292a60dc0e9a673",
+      "rustSources": 24
+    }
+  ],
+  "environment": {
+    "CC_riscv32im_succinct_zkvm_elf": [
+      "sp1-build"
+    ],
+    "CC_riscv64im_succinct_zkvm_elf": [
+      "sp1-build"
+    ],
+    "DUMP_ELF_OUTPUT": [
+      "sp1-core-executor"
+    ],
+    "ELEMENT_THRESHOLD": [
+      "sp1-core-executor"
+    ],
+    "GAS_TRACE_CHUNK_SLOTS": [
+      "sp1-core-executor"
+    ],
+    "GAS_TRACE_CHUNK_THRESHOLD": [
+      "sp1-core-executor"
+    ],
+    "HEIGHT_THRESHOLD": [
+      "sp1-core-executor"
+    ],
+    "HOME": [
+      "sp1-build"
+    ],
+    "MEMORY_LIMIT": [
+      "sp1-core-executor"
+    ],
+    "MINIMAL_TRACE_CHUNK_THRESHOLD": [
+      "sp1-core-executor"
+    ],
+    "NETWORK_PRIVATE_KEY": [
+      "sp1-sdk"
+    ],
+    "NETWORK_RPC_URL": [
+      "sp1-sdk"
+    ],
+    "OUT_DIR": [
+      "sp1-core-executor"
+    ],
+    "RUSTC_WORKSPACE_WRAPPER": [
+      "sp1-build"
+    ],
+    "RUST_LOGGER": [
+      "slop-utils",
+      "sp1-core-machine"
+    ],
+    "SHARD_SIZE": [
+      "sp1-core-executor"
+    ],
+    "SKIP_SIMULATION": [
+      "sp1-sdk"
+    ],
+    "SP1_CIRCUIT_MODE": [
+      "sp1-prover"
+    ],
+    "SP1_DOCKER_IMAGE": [
+      "sp1-build"
+    ],
+    "SP1_DUMP": [
+      "sp1-sdk"
+    ],
+    "SP1_GNARK_IMAGE": [
+      "sp1-recursion-gnark-ffi"
+    ],
+    "SP1_GROTH16_CIRCUIT_PATH": [
+      "sp1-prover"
+    ],
+    "SP1_PLONK_CIRCUIT_PATH": [
+      "sp1-prover"
+    ],
+    "SP1_PROVER": [
+      "sp1-sdk"
+    ],
+    "SP1_RECORD_MAX_ARITY_INPUT": [
+      "sp1-prover"
+    ],
+    "SP1_RECORD_SHRINK_INPUT": [
+      "sp1-prover"
+    ],
+    "SP1_RECORD_WRITE_DIR": [
+      "sp1-prover"
+    ],
+    "SP1_RECORD_WRITE_FREQUENCY": [
+      "sp1-prover"
+    ],
+    "SP1_SKIP_PROGRAM_BUILD": [
+      "sp1-build"
+    ],
+    "SP1_WORKER_CORE_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_DEFERRED_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_GAS_EXECUTOR_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_GLOBAL_MEMORY_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_MAX_COMPOSE_ARITY": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_MAX_REDUCE_ARITY": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NORMALIZE_PROGRAM_CACHE_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUMBER_OF_GAS_EXECUTORS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUMBER_OF_SEND_SPLICE_WORKERS_PER_SPLICE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_CORE_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_DEFERRED_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_PREPARE_REDUCE_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_RECURSION_EXECUTOR_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_RECURSION_PROVER_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_SETUP_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_NUM_SPLICING_WORKERS": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_PREPARE_REDUCE_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_RECURSION_EXECUTOR_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_RECURSION_PROVER_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_SETUP_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_SPLICING_BUFFER_SIZE": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_USE_FIXED_PK": [
+      "sp1-prover"
+    ],
+    "SP1_WORKER_VERIFY_INTERMEDIATES": [
+      "sp1-prover"
+    ],
+    "TRACE_CHUNK_SLOTS": [
+      "sp1-core-executor"
+    ],
+    "TRACE_FILE": [
+      "sp1-core-executor"
+    ],
+    "TRACE_SAMPLE_RATE": [
+      "sp1-core-executor"
+    ],
+    "WITHOUT_VK_VERIFICATION": [
+      "sp1-prover"
+    ]
+  },
+  "nonLiteralEnvironmentReads": [
+    "sp1-build/src/command/local.rs:101"
+  ],
+  "facts": {
+    "circuitVersion": "v6.1.0",
+    "groth16Dir": {
+      "env": "SP1_GROTH16_CIRCUIT_PATH",
+      "valueUsedVerbatim": true,
+      "joinsVersion": true,
+      "fallback": "~/.sp1/circuits/groth16"
+    },
+    "install": {
+      "onlyWhenAbsent": true,
+      "verifiesDigest": false,
+      "extractFlags": "-Pxzf",
+      "url": "https://sp1-circuits.s3-us-east-2.amazonaws.com"
+    },
+    "circuitMode": {
+      "env": "SP1_CIRCUIT_MODE",
+      "devValue": "dev"
+    },
+    "prover": {
+      "env": "SP1_PROVER",
+      "default": "cpu",
+      "modes": [
+        "cpu",
+        "cuda",
+        "light",
+        "mock",
+        "network"
+      ]
+    },
+    "gnark": {
+      "env": "SP1_GNARK_IMAGE",
+      "defaultImage": "ghcr.io/succinctlabs/sp1-gnark:v6.1.0",
+      "dockerRunArgs": [
+        "run",
+        "--rm"
+      ],
+      "pullFlag": false,
+      "mountSpec": "{src}:{dest}"
+    }
+  }
+}

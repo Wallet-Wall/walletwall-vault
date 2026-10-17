@@ -110,6 +110,17 @@ jobs:
           npm run validate:sp1-proving-availability
           npm run validate:sp1-impl-receipt
 
+      - name: Validate the SP1 circuit tooling (deterministic; no network, no docker, no circuit archive)
+        run: |
+          set -euo pipefail
+          # SP1-PA2A: evidence/zk/sp1-impl/circuit-tooling.json must be what designation d1, the proving-availability
+          # record, the observation of the pinned SP1 crates and a self-test over the synthetic fixtures derive: every
+          # hostile archive in the catalog is refused, only a verified tree is installed, the archive-only prove gate
+          # refuses a missing or hostile input before anything runs, d1's anchor refuses every fixture, and no archive
+          # record exists. It never downloads the circuit, pulls an image or proves, and never moves proving
+          # availability (still OWNER_DOWNLOAD_REQUIRED: tooling is not an artifact).
+          npm run validate:sp1-circuit-tooling
+
       - name: Typecheck (tsc --noEmit)
         run: npm run typecheck
 

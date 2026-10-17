@@ -45,6 +45,9 @@ lerna-debug.log*
 # Docker image exports (large binary files, not for version control)
 *.tar.gz
 *.tar
+# ...except SP1-PA2A's synthetic test archives. A real circuit archive (v6.1.0-groth16.tar.gz) stays ignored everywhere,
+# test/fixtures included: it is mirrored by WalletWall, never committed.
+!test/fixtures/sp1-proving-archives/synthetic-*.tar.gz
 
 # Raw Slither JSON emitted by the vNext Kernel workflow's single scan (alongside the SARIF).
 # It is an INPUT to the triage gate, never an artifact to commit: it embeds filename_absolute,
