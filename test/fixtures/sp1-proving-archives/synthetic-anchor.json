@@ -1,0 +1,18 @@
+{
+  "synthetic": true,
+  "note": "SP1-PA2A test fixture. Not a designation, not a verifying key, never evidence of proving availability.",
+  "anchor": {
+    "designation": "synthetic-fixture-not-a-designation",
+    "circuitVersion": "v6.1.0",
+    "programVKey": "0x5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f5f",
+    "verifier": {
+      "version": "v6.1.0",
+      "runtimeCodeKeccak": "0x5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+      "verifierHash": "0xf60633aaf2c215d7bce2d4642900152750e66b77133075c734c14b51337d7c74"
+    },
+    "verifyingKey": {
+      "sha256": "0xf60633aaf2c215d7bce2d4642900152750e66b77133075c734c14b51337d7c74",
+      "bytes": 73
+    }
+  }
+}

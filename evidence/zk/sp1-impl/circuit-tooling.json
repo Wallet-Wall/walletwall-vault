@@ -1,0 +1,995 @@
+{
+  "schema": "walletwall.sp1-circuit-tooling.v1",
+  "lane": "SP1-PA2A",
+  "state": "TOOLING_READY_NO_ARTIFACT",
+  "states": [
+    {
+      "state": "TOOLING_NOT_PRESENT",
+      "meaning": "no WalletWall archive inspection, installer or prove gate exists (main before SP1-PA2A)",
+      "reachableInThisLane": true
+    },
+    {
+      "state": "TOOLING_READY_NO_ARTIFACT",
+      "meaning": "the inspection, installer and archive-only prove gate exist and pass their self-test, and no WalletWall archive record exists",
+      "reachableInThisLane": true
+    },
+    {
+      "state": "ARCHIVED_VERIFIED_UNEXERCISED",
+      "meaning": "an owner-authorized acquisition produced an accepted record (two agreeing hosts, two WalletWall mirrors, the gnark image by digest); no proof has been made from it",
+      "reachableInThisLane": false
+    },
+    {
+      "state": "SELF_HOSTED_PATH_EXERCISED",
+      "meaning": "a real Groth16 proof was made through this gate from the archive, egress off, and accepted by the designated verifier",
+      "reachableInThisLane": false
+    }
+  ],
+  "provingAvailability": {
+    "path": "evidence/zk/sp1-impl/proving-availability.json",
+    "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee",
+    "status": "OWNER_DOWNLOAD_REQUIRED",
+    "unchangedByThisTooling": true
+  },
+  "anchor": {
+    "designation": "mldsa65-withdrawal-d1",
+    "circuitVersion": "v6.1.0",
+    "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "verifier": {
+      "version": "v6.1.0",
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    },
+    "verifyingKey": {
+      "sha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "bytes": 492
+    }
+  },
+  "archiveRecord": {
+    "schema": "walletwall.sp1-proving-archive.v1",
+    "jsonSchema": {
+      "path": "evidence/zk/schema/sp1-proving-archive.v1.schema.json",
+      "sha256": "679da63215958766189993a67d613e338bf276040c188913dd01a982cca799e8"
+    },
+    "authoritativeDir": "evidence/zk/sp1-impl/proving-archives",
+    "productionRecords": 0,
+    "requiredMembers": [
+      "constraints.json",
+      "groth16_circuit.bin",
+      "groth16_pk.bin",
+      "groth16_vk.bin"
+    ],
+    "minAcquisitions": 2,
+    "minMirrors": 2,
+    "sourceUrlAndTag": "PROVENANCE_ONLY"
+  },
+  "upstream": {
+    "observation": {
+      "path": "evidence/zk/sp1-impl/observations/circuit-upstream-developer-workstation.raw.json",
+      "sha256": "4f1169a13b89d5d73f9196262533f761431f534f71d1d3749bc8a3742ba58ca3",
+      "measuredAtUtc": "2026-10-17T15:52:21Z"
+    },
+    "crates": 47,
+    "censusScope": "literal environment reads in the src/ of every sp1-* and slop-* crate the host lockfile pins; other crates' reads (dirs, reqwest, tracing) are outside it and reach the host only through the pass-through list",
+    "reviewedNonLiteralReads": [
+      "sp1-build/src/command/local.rs:101"
+    ],
+    "readings": [
+      "circuit v6.1.0: $SP1_GROTH16_CIRCUIT_PATH/v6.1.0 when set (the value used verbatim: empty or relative resolves against SP1's working directory), else ~/.sp1/circuits/groth16/v6.1.0",
+      "the circuit is downloaded from https://sp1-circuits.s3-us-east-2.amazonaws.com only when that directory is absent; no digest is checked; extraction is tar -Pxzf",
+      "$SP1_CIRCUIT_MODE=dev selects development artifacts from another source",
+      "$SP1_PROVER selects the prover (cpu, cuda, light, mock, network), cpu when unset",
+      "the gnark prover runs as docker run --rm -v {src}:{dest} <image>, the image $SP1_GNARK_IMAGE or ghcr.io/succinctlabs/sp1-gnark:v6.1.0 (a mutable tag); no --pull flag, so an absent image is pulled"
+    ],
+    "environment": [
+      {
+        "name": "CC_riscv32im_succinct_zkvm_elf",
+        "readBy": [
+          "sp1-build"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "CC_riscv64im_succinct_zkvm_elf",
+        "readBy": [
+          "sp1-build"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "DUMP_ELF_OUTPUT",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "ELEMENT_THRESHOLD",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "GAS_TRACE_CHUNK_SLOTS",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "GAS_TRACE_CHUNK_THRESHOLD",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "HEIGHT_THRESHOLD",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "HOME",
+        "readBy": [
+          "sp1-build"
+        ],
+        "gate": "PASSED"
+      },
+      {
+        "name": "MEMORY_LIMIT",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "MINIMAL_TRACE_CHUNK_THRESHOLD",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "NETWORK_PRIVATE_KEY",
+        "readBy": [
+          "sp1-sdk"
+        ],
+        "gate": "REFUSED"
+      },
+      {
+        "name": "NETWORK_RPC_URL",
+        "readBy": [
+          "sp1-sdk"
+        ],
+        "gate": "REFUSED"
+      },
+      {
+        "name": "OUT_DIR",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "RUSTC_WORKSPACE_WRAPPER",
+        "readBy": [
+          "sp1-build"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "RUST_LOGGER",
+        "readBy": [
+          "slop-utils",
+          "sp1-core-machine"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SHARD_SIZE",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SKIP_SIMULATION",
+        "readBy": [
+          "sp1-sdk"
+        ],
+        "gate": "REFUSED"
+      },
+      {
+        "name": "SP1_CIRCUIT_MODE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "REFUSED"
+      },
+      {
+        "name": "SP1_DOCKER_IMAGE",
+        "readBy": [
+          "sp1-build"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_DUMP",
+        "readBy": [
+          "sp1-sdk"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_GNARK_IMAGE",
+        "readBy": [
+          "sp1-recursion-gnark-ffi"
+        ],
+        "gate": "FROZEN"
+      },
+      {
+        "name": "SP1_GROTH16_CIRCUIT_PATH",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "FROZEN"
+      },
+      {
+        "name": "SP1_PLONK_CIRCUIT_PATH",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "REFUSED"
+      },
+      {
+        "name": "SP1_PROVER",
+        "readBy": [
+          "sp1-sdk"
+        ],
+        "gate": "FROZEN"
+      },
+      {
+        "name": "SP1_RECORD_MAX_ARITY_INPUT",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_RECORD_SHRINK_INPUT",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_RECORD_WRITE_DIR",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_RECORD_WRITE_FREQUENCY",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_SKIP_PROGRAM_BUILD",
+        "readBy": [
+          "sp1-build"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_CORE_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_DEFERRED_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_GAS_EXECUTOR_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_GLOBAL_MEMORY_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_MAX_COMPOSE_ARITY",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_MAX_REDUCE_ARITY",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NORMALIZE_PROGRAM_CACHE_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUMBER_OF_GAS_EXECUTORS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUMBER_OF_SEND_SPLICE_WORKERS_PER_SPLICE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_CORE_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_DEFERRED_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_PREPARE_REDUCE_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_RECURSION_EXECUTOR_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_RECURSION_PROVER_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_SETUP_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_NUM_SPLICING_WORKERS",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_PREPARE_REDUCE_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_RECURSION_EXECUTOR_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_RECURSION_PROVER_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_SEND_SPLICE_INPUT_BUFFER_SIZE_PER_SPLICE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_SETUP_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_SPLICING_BUFFER_SIZE",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_USE_FIXED_PK",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "SP1_WORKER_VERIFY_INTERMEDIATES",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "TRACE_CHUNK_SLOTS",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "TRACE_FILE",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "TRACE_SAMPLE_RATE",
+        "readBy": [
+          "sp1-core-executor"
+        ],
+        "gate": "DROPPED"
+      },
+      {
+        "name": "WITHOUT_VK_VERIFICATION",
+        "readBy": [
+          "sp1-prover"
+        ],
+        "gate": "REFUSED"
+      }
+    ]
+  },
+  "gate": {
+    "order": [
+      "the archive record is accepted for the designation",
+      "the circuit root is absolute, normalized and mount-safe",
+      "the caller's environment: frozen values identical or absent, refused variables absent",
+      "the host executable and the inputs are regular files",
+      "the gnark image is in the local docker store by its digest (offline inspection, never a pull)",
+      "<root>/<circuit version> is re-hashed and must be exactly the record's members",
+      "only then is the host spawned (no shell, the constructed environment only)",
+      "after it exits: the installation is re-hashed again, and the proof must name the designated PROGRAM_VKEY"
+    ],
+    "frozen": {
+      "SP1_PROVER": "cpu",
+      "SP1_GROTH16_CIRCUIT_PATH": "<the verified circuit root>",
+      "SP1_GNARK_IMAGE": "<repository>@sha256:<the record's digest>",
+      "DOCKER_CONTEXT": "default"
+    },
+    "refused": [
+      "NETWORK_PRIVATE_KEY",
+      "NETWORK_RPC_URL",
+      "SKIP_SIMULATION",
+      "SP1_CIRCUIT_MODE",
+      "SP1_PLONK_CIRCUIT_PATH",
+      "WITHOUT_VK_VERIFICATION"
+    ],
+    "refusedPrefix": "NETWORK_",
+    "passThrough": [
+      "PATH",
+      "HOME",
+      "USER",
+      "LOGNAME",
+      "LANG",
+      "LC_ALL",
+      "LC_CTYPE",
+      "TZ",
+      "TMPDIR",
+      "TMP",
+      "TEMP",
+      "SYSTEMROOT",
+      "WINDIR",
+      "PATHEXT",
+      "USERPROFILE",
+      "XDG_RUNTIME_DIR",
+      "DOCKER_HOST",
+      "DOCKER_CONFIG",
+      "RUST_LOG",
+      "RUST_BACKTRACE"
+    ],
+    "refusals": [
+      "RECORD_INVALID",
+      "RECORD_NOT_AUTHORITATIVE",
+      "ARCHIVE_UNREADABLE",
+      "ARCHIVE_SIZE_MISMATCH",
+      "ARCHIVE_DIGEST_MISMATCH",
+      "ARCHIVE_CHANGED_DURING_USE",
+      "ARCHIVE_CORRUPT",
+      "ARCHIVE_LIMIT_EXCEEDED",
+      "ARCHIVE_UNSAFE_ENTRY",
+      "ARCHIVE_MEMBER_MISMATCH",
+      "VK_MISMATCH",
+      "INSTALL_DESTINATION_INVALID",
+      "INSTALL_TARGET_EXISTS",
+      "INSTALL_FAILED",
+      "CIRCUIT_ROOT_INVALID",
+      "CIRCUIT_ARCHIVE_NOT_INSTALLED",
+      "CIRCUIT_INTEGRITY_FAILED",
+      "ENV_REFUSED",
+      "GNARK_IMAGE_NOT_PINNED",
+      "GNARK_IMAGE_CONFLICT",
+      "GNARK_IMAGE_NOT_LOCAL",
+      "PROVE_INPUT_INVALID",
+      "PROVER_SPAWN_FAILED",
+      "PROVER_FAILED",
+      "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE",
+      "PROOF_OUTPUT_REFUSED"
+    ]
+  },
+  "selfTest": {
+    "fixtures": [
+      {
+        "path": "test/fixtures/sp1-proving-archives/synthetic-anchor.json",
+        "sha256": "99311d062063c05ce600a24b736c0f22f5fd3f68c1c89203fa3441e425e47755"
+      },
+      {
+        "path": "test/fixtures/sp1-proving-archives/synthetic-safe.tar.gz",
+        "sha256": "9823fe742e085aef484f620e30918aa690ed93249494e12c74d0e9b6fa98c15f"
+      },
+      {
+        "path": "test/fixtures/sp1-proving-archives/synthetic-safe.record.json",
+        "sha256": "853f2f2761acef7ad874ee18f3de7926e5764a31fb6375412f5935ebe6250ecc"
+      }
+    ],
+    "safe": [
+      "inspected against its record: 5 members, sha256 9823fe742e085aef484f620e30918aa690ed93249494e12c74d0e9b6fa98c15f",
+      "installed and re-verified at <root>/v6.1.0",
+      "a second installation is refused: INSTALL_TARGET_EXISTS (EXISTS)",
+      "the gate passes with the image present by digest; the child gets only DOCKER_CONTEXT,PATH,SP1_GNARK_IMAGE,SP1_GROTH16_CIRCUIT_PATH,SP1_PROVER"
+    ],
+    "hostile": [
+      {
+        "id": "P01",
+        "title": "absolute POSIX path",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (ABSOLUTE_PATH)"
+      },
+      {
+        "id": "P02",
+        "title": "parent traversal",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (TRAVERSAL)"
+      },
+      {
+        "id": "P03",
+        "title": "traversal after a component",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (TRAVERSAL)"
+      },
+      {
+        "id": "P04",
+        "title": "Windows drive with backslash",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (BACKSLASH_IN_PATH)"
+      },
+      {
+        "id": "P05",
+        "title": "Windows drive with slash",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DRIVE_QUALIFIED_PATH)"
+      },
+      {
+        "id": "P06",
+        "title": "UNC path",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (BACKSLASH_IN_PATH)"
+      },
+      {
+        "id": "P07",
+        "title": "mixed separators",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (BACKSLASH_IN_PATH)"
+      },
+      {
+        "id": "P08",
+        "title": "repeated separators",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (EMPTY_COMPONENT)"
+      },
+      {
+        "id": "P09",
+        "title": "a dot component",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DOT_COMPONENT)"
+      },
+      {
+        "id": "P10",
+        "title": "NUL inside the name field",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (NUL_IN_PATH)"
+      },
+      {
+        "id": "P11",
+        "title": "NUL in a PAX path",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_PATH_MISMATCH)"
+      },
+      {
+        "id": "P12",
+        "title": "absolute path in the POSIX prefix",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (ABSOLUTE_PATH)"
+      },
+      {
+        "id": "P13",
+        "title": "Windows device name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (RESERVED_NAME)"
+      },
+      {
+        "id": "P14",
+        "title": "trailing dot (dropped by Windows)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (TRAILING_DOT)"
+      },
+      {
+        "id": "P15",
+        "title": "non-portable character",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (NON_PORTABLE_COMPONENT)"
+      },
+      {
+        "id": "P16",
+        "title": "path longer than the ustar name field",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PATH_TOO_LONG)"
+      },
+      {
+        "id": "P17",
+        "title": "a file named ./",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (EMPTY_PATH)"
+      },
+      {
+        "id": "P18",
+        "title": "bare ..",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (TRAVERSAL)"
+      },
+      {
+        "id": "L01",
+        "title": "symlink to an outside path",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (SYMLINK)"
+      },
+      {
+        "id": "L02",
+        "title": "symlink then a file through it",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (SYMLINK)"
+      },
+      {
+        "id": "L03",
+        "title": "hard link",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (HARDLINK)"
+      },
+      {
+        "id": "L04",
+        "title": "FIFO",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (FIFO)"
+      },
+      {
+        "id": "L05",
+        "title": "character device",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (CHARACTER_DEVICE)"
+      },
+      {
+        "id": "L06",
+        "title": "block device",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (BLOCK_DEVICE)"
+      },
+      {
+        "id": "L07",
+        "title": "unsupported entry type",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (UNSUPPORTED_ENTRY_TYPE)"
+      },
+      {
+        "id": "L08",
+        "title": "contiguous file (type 7)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (UNSUPPORTED_ENTRY_TYPE)"
+      },
+      {
+        "id": "L09",
+        "title": "GNU sparse file",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (UNSUPPORTED_ENTRY_TYPE)"
+      },
+      {
+        "id": "L10",
+        "title": "PAX global header",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_GLOBAL_HEADER)"
+      },
+      {
+        "id": "L11",
+        "title": "GNU long name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (GNU_LONG_NAME)"
+      },
+      {
+        "id": "L12",
+        "title": "GNU long link",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (GNU_LONG_LINK)"
+      },
+      {
+        "id": "L13",
+        "title": "PAX linkpath on a file",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_KEY_REFUSED)"
+      },
+      {
+        "id": "L14",
+        "title": "PAX sparse map",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_KEY_REFUSED)"
+      },
+      {
+        "id": "L15",
+        "title": "pre-ustar (v7) header",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (UNSUPPORTED_FORMAT)"
+      },
+      {
+        "id": "A01",
+        "title": "duplicate file entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DUPLICATE_PATH)"
+      },
+      {
+        "id": "A02",
+        "title": "duplicate normalized path",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DUPLICATE_PATH)"
+      },
+      {
+        "id": "A03",
+        "title": "case-only collision",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (CASE_COLLISION)"
+      },
+      {
+        "id": "A04",
+        "title": "file then directory of one name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (FILE_DIRECTORY_COLLISION)"
+      },
+      {
+        "id": "A05",
+        "title": "parent is a file",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PARENT_IS_FILE)"
+      },
+      {
+        "id": "A06",
+        "title": "parent is a file (child first)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PARENT_IS_FILE)"
+      },
+      {
+        "id": "A07",
+        "title": "case collision on a parent",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (CASE_COLLISION)"
+      },
+      {
+        "id": "A08",
+        "title": "empty directory entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (EMPTY_DIRECTORY)"
+      },
+      {
+        "id": "A09",
+        "title": "directory entry with data",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (DIRECTORY_WITH_DATA)"
+      },
+      {
+        "id": "A10",
+        "title": "PAX path naming another member",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_PATH_MISMATCH)"
+      },
+      {
+        "id": "A11",
+        "title": "PAX size disagreeing with the header",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_SIZE_MISMATCH)"
+      },
+      {
+        "id": "A12",
+        "title": "two PAX headers for one entry",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_REPEATED)"
+      },
+      {
+        "id": "A13",
+        "title": "PAX header describing no entry",
+        "refusal": "ARCHIVE_CORRUPT (DANGLING_PAX)"
+      },
+      {
+        "id": "A14",
+        "title": "PAX key given twice",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_DUPLICATE_KEY)"
+      },
+      {
+        "id": "A15",
+        "title": "unexpected extra member",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_MEMBER)"
+      },
+      {
+        "id": "A16",
+        "title": "missing required member",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (MISSING_MEMBER)"
+      },
+      {
+        "id": "A17",
+        "title": "unexpected member refused at its header (its declared bytes are never read)",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_MEMBER)"
+      },
+      {
+        "id": "A18",
+        "title": "missing required member (no record)",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (MISSING_MEMBER)"
+      },
+      {
+        "id": "S01",
+        "title": "header checksum",
+        "refusal": "ARCHIVE_CORRUPT (HEADER_CHECKSUM)"
+      },
+      {
+        "id": "S02",
+        "title": "no end-of-archive block",
+        "refusal": "ARCHIVE_CORRUPT (TRUNCATED)"
+      },
+      {
+        "id": "S03",
+        "title": "data after the end",
+        "refusal": "ARCHIVE_CORRUPT (TRAILING_DATA)"
+      },
+      {
+        "id": "S04",
+        "title": "not gzip",
+        "refusal": "ARCHIVE_CORRUPT (GZIP)"
+      },
+      {
+        "id": "S05",
+        "title": "truncated member",
+        "refusal": "ARCHIVE_CORRUPT (TRUNCATED)"
+      },
+      {
+        "id": "S06",
+        "title": "negative base-256 size",
+        "refusal": "ARCHIVE_CORRUPT (HEADER_FIELD)"
+      },
+      {
+        "id": "S07",
+        "title": "size field not octal",
+        "refusal": "ARCHIVE_CORRUPT (HEADER_FIELD)"
+      },
+      {
+        "id": "S08",
+        "title": "too many entries",
+        "refusal": "ARCHIVE_LIMIT_EXCEEDED (ENTRIES)"
+      },
+      {
+        "id": "S09",
+        "title": "members too large",
+        "refusal": "ARCHIVE_LIMIT_EXCEEDED (TOTAL_BYTES)"
+      },
+      {
+        "id": "S10",
+        "title": "decompression bomb after the end",
+        "refusal": "ARCHIVE_LIMIT_EXCEEDED (DECOMPRESSED_BYTES)"
+      },
+      {
+        "id": "S11",
+        "title": "PAX header too large",
+        "refusal": "ARCHIVE_LIMIT_EXCEEDED (PAX_BYTES)"
+      },
+      {
+        "id": "I01",
+        "title": "wrong archive sha256",
+        "refusal": "ARCHIVE_DIGEST_MISMATCH (SHA256)"
+      },
+      {
+        "id": "I02",
+        "title": "wrong archive length",
+        "refusal": "ARCHIVE_SIZE_MISMATCH (SIZE)"
+      },
+      {
+        "id": "I03",
+        "title": "wrong member sha256 (record edited)",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (DIGEST_MISMATCH)"
+      },
+      {
+        "id": "I04",
+        "title": "wrong member length (refused at its header)",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (SIZE_MISMATCH)"
+      },
+      {
+        "id": "I05",
+        "title": "wrong groth16_vk.bin, honestly recorded",
+        "refusal": "RECORD_INVALID (VK_MISMATCH)"
+      },
+      {
+        "id": "I06",
+        "title": "wrong groth16_vk.bin, the record claiming the established key",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (DIGEST_MISMATCH)"
+      },
+      {
+        "id": "I07",
+        "title": "archive correct, record's member list edited",
+        "refusal": "ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_MEMBER)"
+      },
+      {
+        "id": "I08",
+        "title": "record correct, archive altered (same length)",
+        "refusal": "ARCHIVE_DIGEST_MISMATCH (SHA256)"
+      }
+    ],
+    "gate": [
+      {
+        "id": "G01",
+        "title": "SP1_CIRCUIT_MODE=dev",
+        "refusal": "ENV_REFUSED (CIRCUIT_MODE)"
+      },
+      {
+        "id": "G02",
+        "title": "a prover-network key",
+        "refusal": "ENV_REFUSED (PROVER_NETWORK)"
+      },
+      {
+        "id": "G03",
+        "title": "SP1_PROVER=network",
+        "refusal": "ENV_REFUSED (PROVER_MODE)"
+      },
+      {
+        "id": "G04",
+        "title": "a tag-only SP1_GNARK_IMAGE",
+        "refusal": "GNARK_IMAGE_NOT_PINNED (NO_DIGEST)"
+      },
+      {
+        "id": "G05",
+        "title": "the image not in the local store",
+        "refusal": "GNARK_IMAGE_NOT_LOCAL (ABSENT)"
+      },
+      {
+        "id": "G06",
+        "title": "SP1_GROTH16_CIRCUIT_PATH at a missing directory",
+        "refusal": "CIRCUIT_ARCHIVE_NOT_INSTALLED (ROOT_ABSENT)"
+      },
+      {
+        "id": "G07",
+        "title": "a member changed after installation",
+        "refusal": "CIRCUIT_INTEGRITY_FAILED (DIGEST_MISMATCH)"
+      }
+    ],
+    "productionAnchorRefusesFixtures": [
+      "SUBJECT_MISMATCH",
+      "VK_MISMATCH"
+    ],
+    "productionArchiveRecords": 0
+  },
+  "residuals": [
+    "a privileged local process that rewrites the installed members, the host binary or the inputs after the gate's last re-hash and before SP1 reads them acts outside this gate; the re-hash after the run detects a change that persists, not one reverted in between",
+    "the gnark container is started by SP1 with a read-write bind mount of the circuit directory (docker run -v <dir>:/circuit, no :ro), so the pinned image could write there; the read-only install and the after-run re-hash detect, not prevent, that",
+    "docker run has no --pull=never: if the digest-pinned image is removed between the gate's check and SP1's docker run, docker pulls it again, by digest (the same bytes, but a network fetch)",
+    "a DOCKER_HOST unix socket that forwards to another machine's daemon would mount that machine's directory; the gate refuses non-socket endpoints and any context but default, not a forwarded socket",
+    "the gate is not the only way to run the host: running mldsa65-host directly still lets SP1 download the circuit, so the stronger claim (WalletWall proving never exercises the downloader) needs the exercised-proof lane",
+    "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority"
+  ],
+  "notEstablished": [
+    "any real v6.1.0-groth16.tar.gz: none was downloaded, so its sha256, length and member set are unknown (REQUIRED_MEMBERS is the floor SP1 reads, not the measured set)",
+    "the gnark image's digest: not measured, and not fetched to complete this lane",
+    "two independent acquisitions, two WalletWall mirrors, and a record in evidence/zk/sp1-impl/proving-archives",
+    "that the self-hosted path proves at all, or within the rotation delay",
+    "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound"
+  ],
+  "next": "owner-authorized two-host circuit acquisition, digest agreement, gnark-image digest acquisition and WalletWall mirroring; still not a proof lane"
+}
