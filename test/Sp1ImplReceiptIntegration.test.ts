@@ -304,18 +304,25 @@ describe("SP1 implementation receipt — the integration binding after the merge
     it("the working tree is judged byte for byte: an edit, an untracked contract, a removal, an assume-unchanged file", function () {
       mergeLane(repo);
       const b = baseline();
-      const cases: [string, () => void, () => void][] = [
+      const cases: [string, () => void, () => void, string][] = [
         [
           "an uncommitted edit",
           () => repo.write({ [VAULT]: "contract Vault { }\n" }),
           () => repo.git("checkout", "--", VAULT),
+          `${VAULT} (changed)`,
         ],
         [
           "an untracked contract",
           () => repo.write({ "contracts/Extra.sol": "contract Extra {}\n" }),
           () => repo.write({ "contracts/Extra.sol": null }),
+          "contracts/Extra.sol (added)",
         ],
-        ["a removed contract", () => repo.write({ [WRAPPER]: null }), () => repo.git("checkout", "--", WRAPPER)],
+        [
+          "a removed contract",
+          () => repo.write({ [WRAPPER]: null }),
+          () => repo.git("checkout", "--", WRAPPER),
+          `${WRAPPER} (removed)`,
+        ],
         [
           "an edit git's index is told to ignore",
           () => {
@@ -326,18 +333,27 @@ describe("SP1 implementation receipt — the integration binding after the merge
             repo.git("update-index", "--no-assume-unchanged", VAULT);
             repo.git("checkout", "--", VAULT);
           },
+          `${VAULT} (changed)`,
         ],
         [
           "the receipt edited on disk",
           () => repo.write({ [RECEIPT]: receiptText("0".repeat(40)) }),
           () => repo.git("checkout", "--", RECEIPT),
+          `${RECEIPT} (changed)`,
+        ],
+        [
+          "the receipt removed on disk",
+          () => repo.write({ [RECEIPT]: null }),
+          () => repo.git("checkout", "--", RECEIPT),
+          `${RECEIPT} (removed, or unreadable)`,
         ],
       ];
-      for (const [what, apply, undo] of cases) {
+      for (const [what, apply, undo, label] of cases) {
         apply();
         try {
           const errors = descendantDriftErrors(repo.dir, b).join("\n");
           expect(errors, what).to.match(/the working tree changes .* since the integrated subject/);
+          expect(errors, `${what}: names the file and what happened to it`).to.include(label);
           expect(errors, `${what}: HEAD itself is unchanged`).to.not.match(/HEAD changes/);
         } finally {
           undo();
@@ -588,12 +604,12 @@ describe("SP1 implementation receipt — the integration binding after the merge
       }
     });
 
-    it("the historical receipt must name a full base commit", function () {
+    it("the historical receipt must name a full base commit: anything else is no commit of main", function () {
       repo.git("checkout", "-q", "lane");
-      repo.commit("l3", { [RECEIPT]: receiptText("abc") });
+      repo.commit("l3", { [RECEIPT]: receiptText(repo.ids.m0.slice(0, 12)) });
       repo.git("checkout", "-q", "main");
       mergeLane(repo);
-      expect(() => deriveReceiptIntegration(repo.dir, RECEIPT)).to.throw(/names no full base commit/);
+      expect(() => deriveReceiptIntegration(repo.dir, RECEIPT)).to.throw(/is no commit of origin\/main's first-parent/);
     });
 
     it("the historical base must be a commit of main's first-parent history, never a lane commit", function () {
@@ -656,6 +672,13 @@ describe("SP1 implementation receipt — the integration binding after the merge
       expect(regenerated.status).to.equal(1);
       expect(regenerated.stderr).to.match(/already carries evidence\/zk\/sp1-impl\/implementation-receipt\.json/);
       expect(repo.git("status", "--porcelain", "--", RECEIPT), "the historical receipt is untouched").to.equal("");
+    });
+
+    it("the CLI's validation fails, with the binding's reason, where the binding does not hold", function () {
+      mergeLane(repo);
+      const run = cli("--validate");
+      expect(run.status).to.equal(1);
+      expect(run.stderr).to.match(/receipt-integration\.json is missing/);
     });
   });
 });

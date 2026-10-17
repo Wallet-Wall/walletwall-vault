@@ -76,7 +76,6 @@ export interface ReceiptIntegration {
   descendantDriftBaseline: { commit: string; subject: SubjectObject[] };
 }
 
-const FULL_ID = /^[0-9a-f]{40}$/;
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 const lines = (text: string) => text.split("\n").filter(Boolean);
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -116,17 +115,12 @@ function objectsAt(repoRoot: string, specs: readonly string[]): (SubjectObject |
   });
 }
 
-/** origin/main's first-parent history, newest first, read whole: a shallow clone or no origin/main is refused. */
+/**
+ * origin/main's first-parent history, newest first, read whole: a shallow clone or no origin/main is refused (and
+ * where git cannot run at all, its own error stands).
+ */
 function firstParentMainline(repoRoot: string): string[] {
-  let shallow: string;
-  try {
-    shallow = git(repoRoot, ["rev-parse", "--is-shallow-repository"]).trim();
-  } catch {
-    throw new Error(
-      "no git repository is readable here: the integration cannot be derived, and the receipt is not judged",
-    );
-  }
-  if (shallow !== "false") {
+  if (git(repoRoot, ["rev-parse", "--is-shallow-repository"]).trim() !== "false") {
     throw new Error(
       "a shallow clone cannot show where the receipt entered main: the full history is needed (fetch-depth 0), and " +
         "the receipt is not judged",
@@ -196,11 +190,11 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
     );
   }
   const [firstParent, reviewed] = parents;
-  const tree = (c: string) => git(repoRoot, ["rev-parse", `${c}^{tree}`]).trim();
-  if (tree(merge) !== tree(reviewed)) {
+  const [mergeTree, reviewedTree] = [merge, reviewed].map((c) => git(repoRoot, ["rev-parse", `${c}^{tree}`]).trim());
+  if (mergeTree !== reviewedTree) {
     throw new Error(
-      `the merge ${merge} carries bytes its reviewed head ${reviewed} does not (tree ${tree(merge)}, not ` +
-        `${tree(reviewed)}): an up-to-date pull request's merge commit carries its head's tree, and nothing else was ` +
+      `the merge ${merge} carries bytes its reviewed head ${reviewed} does not (tree ${mergeTree}, not ` +
+        `${reviewedTree}): an up-to-date pull request's merge commit carries its head's tree, and nothing else was ` +
         "reviewed",
     );
   }
@@ -211,10 +205,8 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
   } catch {
     throw new Error(`${receiptRel} as the merge carries it is not JSON`);
   }
+  // A full commit id is all mainline holds, so this also refuses a base that is no full commit id.
   const base = String(receipt?.baseCommit);
-  if (!FULL_ID.test(base)) {
-    throw new Error(`the historical receipt names no full base commit (${base}): where its lane began is unknown`);
-  }
   if (!mainline.includes(base)) {
     throw new Error(
       `the historical lane base ${base} is no commit of origin/main's first-parent history: only a published main ` +
@@ -246,8 +238,8 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
       historicalLaneBase: base,
       writtenAt,
     },
-    reviewedSubject: { commit: reviewed, tree: tree(reviewed) },
-    integratedSubject: { commit: merge, method: "MERGE_COMMIT", parents: [firstParent, reviewed], tree: tree(merge) },
+    reviewedSubject: { commit: reviewed, tree: reviewedTree },
+    integratedSubject: { commit: merge, method: "MERGE_COMMIT", parents: [firstParent, reviewed], tree: mergeTree },
     descendantDriftBaseline: {
       commit: merge,
       subject: protectedAt(repoRoot, merge, [...PROTECTED_SUBJECT_PATHS, receiptRel]),
