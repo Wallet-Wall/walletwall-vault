@@ -1,0 +1,2246 @@
+{
+  "schema": "walletwall.sp1-host-lockfile-advisories.v1",
+  "note": "What was assessed and why, for the zkvm/host RustSec findings of designation mldsa65-withdrawal-d1. Not a security waiver and not a fix: every finding below is still present in zkvm/host/Cargo.lock. Derived by scripts/generate-sp1-host-advisories.ts from the observation, the claims in scripts/lib/sp1-host-advisories.ts and the repository; never hand-edit it. See docs/SP1_Host_Lockfile_Advisories.md.",
+  "ownerDecision": {
+    "HOST_LOCKFILE_REMEDIATION": "DEFER_TO_NEXT_PROGRAM_REBUILD",
+    "designation": "mldsa65-withdrawal-d1",
+    "decidedOn": "2026-10-16",
+    "scope": "zkvm/host/Cargo.lock under designation mldsa65-withdrawal-d1: no host dependency is updated and d1 is kept; the compatible dependency refresh waits for the next actual program rebuild",
+    "premise": {
+      "mustFixBeforeRealProving": 0
+    },
+    "source": "owner decision after the read-only zkvm/host RustSec assessment of 2026-10-16 (after PR #219): defer the host lockfile updates to the next program rebuild and keep d1 and the lockfile as they are"
+  },
+  "subject": {
+    "designation": {
+      "id": "mldsa65-withdrawal-d1",
+      "sequence": 1,
+      "path": "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json",
+      "sha256": "8a491628d559a23a38537cd54030df271d2fc18728830d85dd9ffc25117cdb17",
+      "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+      "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+      "guestCargoLockSha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
+      "elfSha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+      "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+      "identity": "0xf3c63083eba01e6833512ed1a6067bf5f99a8ade2393a5429b79af64289f16c8"
+    },
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+    "files": [
+      {
+        "path": "zkvm/host/Cargo.lock",
+        "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+      },
+      {
+        "path": "zkvm/host/Cargo.toml",
+        "sha256": "089135867c60e92702dc25c337f5c166eeadb4df8d43cc6222868e9d4b269189"
+      },
+      {
+        "path": "zkvm/host/build.rs",
+        "sha256": "2e2a657ab94d9ba021af0a19879f74467b32b9041b429bcd9cc86e1e53451094"
+      },
+      {
+        "path": "zkvm/host/src/main.rs",
+        "sha256": "cc33889d7ce20774b9ba1e837014db47094086b75cd4c18646078f7d6b083ccd"
+      }
+    ],
+    "lockfile": {
+      "path": "zkvm/host/Cargo.lock",
+      "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541",
+      "packages": 537
+    },
+    "boundEvidence": [
+      {
+        "path": "evidence/zk/sp1-td1/decision-receipt.json",
+        "sha256": "ec0de76770e7ce19744ff4457618eb9e16b227cdd594b70adec31cd5290b28f3"
+      },
+      {
+        "path": "evidence/zk/sp1-impl/proving-availability.json",
+        "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee"
+      }
+    ]
+  },
+  "build": {
+    "sp1Requirements": {
+      "sp1-build": "=6.3.1",
+      "sp1-sdk": "=6.3.1"
+    },
+    "sp1Locked": {
+      "sp1-build": "6.3.1",
+      "sp1-prover": "6.3.1",
+      "sp1-sdk": "6.3.1"
+    },
+    "sp1SdkFeatures": [
+      "blocking",
+      "default"
+    ],
+    "provers": {
+      "selectable": [
+        "cpu (default)",
+        "light",
+        "mock"
+      ],
+      "refused": [
+        "cuda (panics: feature off)",
+        "network (panics: feature off)"
+      ]
+    },
+    "hostCommands": [
+      "acvp-execute",
+      "acvp-vkey",
+      "execute",
+      "prove",
+      "vkey"
+    ],
+    "proofSystems": [
+      "groth16"
+    ],
+    "circuit": {
+      "version": "v6.1.0",
+      "provingAvailability": "OWNER_DOWNLOAD_REQUIRED",
+      "walletWallArchives": 0,
+      "sp1DownloadsWhenAbsent": true
+    }
+  },
+  "assessment": {
+    "observation": {
+      "path": "evidence/zk/sp1-impl/observations/host-advisories-developer-workstation.raw.json",
+      "sha256": "e342060cb018c1dbb3a996194fb4c9132c90195f6a3b47af053b9fbd129aefc4",
+      "measuredAtUtc": "2026-10-17T01:16:24Z",
+      "host": "developer-workstation"
+    },
+    "tools": {
+      "cargo": "cargo 1.96.0 (30a34c682 2026-05-25)",
+      "cargoAudit": "cargo-audit-audit 0.22.2"
+    },
+    "database": {
+      "lastCommit": "64f92cdc64401fab47baa10e2e11fe382aa57155",
+      "lastUpdated": "2026-10-17T01:27:42+02:00",
+      "advisoryCount": 1334
+    },
+    "yankedSource": "https://index.crates.io/ (cargo audit ran with --no-yanked; an index that does not answer fails the measurement)",
+    "counts": {
+      "findings": 22,
+      "vulnerabilities": 12,
+      "warnings": 10,
+      "byKind": {
+        "vulnerability": 12,
+        "unsound": 3,
+        "yanked": 1,
+        "unmaintained": 6,
+        "notice": 0
+      },
+      "byBucket": {
+        "MUST_FIX_BEFORE_REAL_PROVING": 0,
+        "SHOULD_FIX_BEFORE_PRODUCTION": 8,
+        "NOT_REACHABLE_OR_UPSTREAM_ONLY": 14,
+        "UNASSESSED": 0
+      },
+      "compiled": 17
+    },
+    "dependencyStatus": "NOT_DEPENDENCY_SAFE",
+    "dependencyStatusMeaning": "derived from the measured findings alone: NOT_DEPENDENCY_SAFE while any RustSec vulnerability or unsoundness is locked in zkvm/host/Cargo.lock, whatever its bucket. A valid assessment records what was assessed and why; it does not make a vulnerable dependency non-vulnerable."
+  },
+  "buckets": {
+    "MUST_FIX_BEFORE_REAL_PROVING": [],
+    "SHOULD_FIX_BEFORE_PRODUCTION": [
+      "RUSTSEC-2026-0204 crossbeam-epoch@0.9.18",
+      "RUSTSEC-2026-0258 h2@0.4.14",
+      "RUSTSEC-2026-0285 rustls@0.23.40",
+      "RUSTSEC-2026-0346 rustls@0.23.40",
+      "RUSTSEC-2026-0348 rustls@0.23.40",
+      "RUSTSEC-2026-0349 rustls@0.23.40",
+      "RUSTSEC-2026-0186 memmap2@0.9.10",
+      "yanked spin@0.9.8"
+    ],
+    "NOT_REACHABLE_OR_UPSTREAM_ONLY": [
+      "RUSTSEC-2026-0185 quinn-proto@0.11.14",
+      "RUSTSEC-2026-0338 quinn-proto@0.11.14",
+      "RUSTSEC-2026-0339 quinn-proto@0.11.14",
+      "RUSTSEC-2026-0340 quinn-proto@0.11.14",
+      "RUSTSEC-2026-0342 quinn-proto@0.11.14",
+      "RUSTSEC-2026-0344 ruzstd@0.8.3",
+      "RUSTSEC-2026-0002 lru@0.12.5",
+      "RUSTSEC-2026-0253 lru@0.12.5",
+      "RUSTSEC-2021-0139 ansi_term@0.12.1",
+      "RUSTSEC-2025-0141 bincode@1.3.3",
+      "RUSTSEC-2025-0119 number_prefix@0.4.0",
+      "RUSTSEC-2024-0436 paste@1.0.15",
+      "RUSTSEC-2026-0173 proc-macro-error2@2.0.1",
+      "RUSTSEC-2025-0134 rustls-pemfile@2.2.0"
+    ]
+  },
+  "findings": [
+    {
+      "key": "RUSTSEC-2026-0204 crossbeam-epoch@0.9.18",
+      "id": "RUSTSEC-2026-0204",
+      "kind": "vulnerability",
+      "crate": "crossbeam-epoch",
+      "version": "0.9.18",
+      "advisory": {
+        "title": "Invalid pointer dereference in `fmt::Pointer` impl for `Atomic` and `Shared` when the underlying pointer is invalid",
+        "date": "2026-07-06",
+        "categories": [],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.9.20"
+        ],
+        "unaffected": [
+          "<0.9.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/crossbeam-rs/crossbeam/pull/1276"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "crossbeam-deque@0.8.6",
+          "crossbeam@0.8.4"
+        ],
+        "pathToRoot": [
+          "crossbeam-epoch@0.9.18",
+          "crossbeam@0.8.4",
+          "slop-futures@6.3.1",
+          "slop-basefold-prover@6.3.1",
+          "slop-jagged@6.3.1",
+          "slop-whir@6.3.1",
+          "sp1-hypercube@6.3.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "formatting an Atomic or Shared that holds an invalid (e.g. null) pointer with its pointer formatting",
+      "exploit": "an invalid pointer dereference (undefined behaviour) inside the formatting impl",
+      "rationale": "crossbeam-epoch is linked through rayon's work-stealing deques, and no crate that can name its types formats one as a pointer",
+      "condition": null,
+      "evidence": [
+        "SF_EPOCH_POINTERS_NEVER_FORMATTED"
+      ],
+      "fix": {
+        "compatibleVersion": "0.9.21",
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.9.20",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0258 h2@0.4.14",
+      "id": "RUSTSEC-2026-0258",
+      "kind": "vulnerability",
+      "crate": "h2",
+      "version": "0.4.14",
+      "advisory": {
+        "title": "h2 unbounded empty DATA frames",
+        "date": "2026-08-17",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.4.16"
+        ],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/hyperium/h2/pull/935"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "hyper@1.10.1",
+          "tonic@0.12.3"
+        ],
+        "pathToRoot": [
+          "h2@0.4.14",
+          "hyper@1.10.1",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "an HTTP/2 connection to a peer that sends empty DATA frames faster than the stream is drained",
+      "exploit": "unbounded memory growth, or a panic on length overflow (denial of service)",
+      "rationale": "h2 is linked through hyper (for reqwest and tonic), but no HTTP/2 connection is ever made: reqwest is built without http2 (HTTP/1.1 only), and no tonic transport is ever constructed, since sp1-prover uses tonic only for error types and sp1-sdk's gRPC client lives in its network module, which is not compiled",
+      "condition": null,
+      "evidence": [
+        "F_REQWEST_HTTP1_ONLY",
+        "SF_PROVER_NO_NETWORK_TRANSPORT",
+        "SF_SDK_GRPC_ONLY_IN_NETWORK_MODULE",
+        "SF_SDK_NETWORK_MODULE_GATED",
+        "F_SP1_SDK_NO_NETWORK",
+        "A_SP1_SDK_FEATURES"
+      ],
+      "fix": {
+        "compatibleVersion": "0.4.20",
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.4.16",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0185 quinn-proto@0.11.14",
+      "id": "RUSTSEC-2026-0185",
+      "kind": "vulnerability",
+      "crate": "quinn-proto",
+      "version": "0.11.14",
+      "advisory": {
+        "title": " Remote memory exhaustion in quinn-proto from unbounded out-of-order stream reassembly",
+        "date": "2026-06-22",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.11.15"
+        ],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/quinn-rs/quinn/pull/2694"
+      },
+      "compiled": false,
+      "dependency": {
+        "role": "NOT_COMPILED",
+        "directDependents": [],
+        "pathToRoot": []
+      },
+      "reachability": "NOT_COMPILED",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a QUIC connection (quinn) to a malicious peer",
+      "exploit": "memory exhaustion from unbounded out-of-order stream reassembly (remote peer)",
+      "rationale": "cargo tree prints nothing for quinn-proto on any target: it is in Cargo.lock only because reqwest's rustls feature names quinn?/ring (a weak dependency feature), while reqwest's http3 feature, the only one that enables quinn, is off",
+      "condition": null,
+      "evidence": [
+        "F_REQWEST_HTTP1_ONLY"
+      ],
+      "fix": {
+        "compatibleVersion": "0.11.19",
+        "alsoChanges": [
+          "Adding chacha20 v0.10.2",
+          "Removing getrandom v0.3.4",
+          "Removing r-efi v5.3.0",
+          "Updating rand v0.9.4 -> v0.10.3",
+          "Removing rand_chacha v0.9.0",
+          "Updating rand_core v0.9.5 -> v0.10.1",
+          "Adding rand_pcg v0.10.2"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.11.15",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0338 quinn-proto@0.11.14",
+      "id": "RUSTSEC-2026-0338",
+      "kind": "vulnerability",
+      "crate": "quinn-proto",
+      "version": "0.11.14",
+      "advisory": {
+        "title": "Remote peer can panic quinn-proto with zero-length STREAM frames during unordered reads",
+        "date": "2026-09-14",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.11.18"
+        ],
+        "unaffected": [
+          "<0.7.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/quinn-rs/quinn/pull/2868"
+      },
+      "compiled": false,
+      "dependency": {
+        "role": "NOT_COMPILED",
+        "directDependents": [],
+        "pathToRoot": []
+      },
+      "reachability": "NOT_COMPILED",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a QUIC connection (quinn) to a malicious peer",
+      "exploit": "a panic from zero-length STREAM frames during unordered reads (remote peer)",
+      "rationale": "cargo tree prints nothing for quinn-proto on any target: it is in Cargo.lock only because reqwest's rustls feature names quinn?/ring (a weak dependency feature), while reqwest's http3 feature, the only one that enables quinn, is off",
+      "condition": null,
+      "evidence": [
+        "F_REQWEST_HTTP1_ONLY"
+      ],
+      "fix": {
+        "compatibleVersion": "0.11.19",
+        "alsoChanges": [
+          "Adding chacha20 v0.10.2",
+          "Removing getrandom v0.3.4",
+          "Removing r-efi v5.3.0",
+          "Updating rand v0.9.4 -> v0.10.3",
+          "Removing rand_chacha v0.9.0",
+          "Updating rand_core v0.9.5 -> v0.10.1",
+          "Adding rand_pcg v0.10.2"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.11.18",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0339 quinn-proto@0.11.14",
+      "id": "RUSTSEC-2026-0339",
+      "kind": "vulnerability",
+      "crate": "quinn-proto",
+      "version": "0.11.14",
+      "advisory": {
+        "title": "Unbounded growth of pending connection ID retirements in quinn-proto",
+        "date": "2026-08-17",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.11.17"
+        ],
+        "unaffected": [
+          "<0.6.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/quinn-rs/quinn/pull/2790"
+      },
+      "compiled": false,
+      "dependency": {
+        "role": "NOT_COMPILED",
+        "directDependents": [],
+        "pathToRoot": []
+      },
+      "reachability": "NOT_COMPILED",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a QUIC connection (quinn) to a malicious peer",
+      "exploit": "unbounded growth of pending connection-ID retirements (remote peer)",
+      "rationale": "cargo tree prints nothing for quinn-proto on any target: it is in Cargo.lock only because reqwest's rustls feature names quinn?/ring (a weak dependency feature), while reqwest's http3 feature, the only one that enables quinn, is off",
+      "condition": null,
+      "evidence": [
+        "F_REQWEST_HTTP1_ONLY"
+      ],
+      "fix": {
+        "compatibleVersion": "0.11.19",
+        "alsoChanges": [
+          "Adding chacha20 v0.10.2",
+          "Removing getrandom v0.3.4",
+          "Removing r-efi v5.3.0",
+          "Updating rand v0.9.4 -> v0.10.3",
+          "Removing rand_chacha v0.9.0",
+          "Updating rand_core v0.9.5 -> v0.10.1",
+          "Adding rand_pcg v0.10.2"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.11.17",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0340 quinn-proto@0.11.14",
+      "id": "RUSTSEC-2026-0340",
+      "kind": "vulnerability",
+      "crate": "quinn-proto",
+      "version": "0.11.14",
+      "advisory": {
+        "title": "Peer minimum ACK delay can panic quinn-proto when ACK_FREQUENCY transmission is enabled",
+        "date": "2026-09-14",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.11.18"
+        ],
+        "unaffected": [
+          "<0.11.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/quinn-rs/quinn/pull/2868"
+      },
+      "compiled": false,
+      "dependency": {
+        "role": "NOT_COMPILED",
+        "directDependents": [],
+        "pathToRoot": []
+      },
+      "reachability": "NOT_COMPILED",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a QUIC connection (quinn) to a malicious peer",
+      "exploit": "a panic from a peer's minimum ACK delay when ACK_FREQUENCY sending is enabled",
+      "rationale": "cargo tree prints nothing for quinn-proto on any target: it is in Cargo.lock only because reqwest's rustls feature names quinn?/ring (a weak dependency feature), while reqwest's http3 feature, the only one that enables quinn, is off",
+      "condition": null,
+      "evidence": [
+        "F_REQWEST_HTTP1_ONLY"
+      ],
+      "fix": {
+        "compatibleVersion": "0.11.19",
+        "alsoChanges": [
+          "Adding chacha20 v0.10.2",
+          "Removing getrandom v0.3.4",
+          "Removing r-efi v5.3.0",
+          "Updating rand v0.9.4 -> v0.10.3",
+          "Removing rand_chacha v0.9.0",
+          "Updating rand_core v0.9.5 -> v0.10.1",
+          "Adding rand_pcg v0.10.2"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.11.18",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0342 quinn-proto@0.11.14",
+      "id": "RUSTSEC-2026-0342",
+      "kind": "vulnerability",
+      "crate": "quinn-proto",
+      "version": "0.11.14",
+      "advisory": {
+        "title": "Zero-length DATAGRAM frames bypass the receive buffer limit in quinn-proto",
+        "date": "2026-08-17",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.11.17"
+        ],
+        "unaffected": [
+          "<0.5.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/quinn-rs/quinn/pull/2790"
+      },
+      "compiled": false,
+      "dependency": {
+        "role": "NOT_COMPILED",
+        "directDependents": [],
+        "pathToRoot": []
+      },
+      "reachability": "NOT_COMPILED",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a QUIC connection (quinn) to a malicious peer",
+      "exploit": "zero-length DATAGRAM frames bypass the receive buffer limit (unbounded memory, remote peer)",
+      "rationale": "cargo tree prints nothing for quinn-proto on any target: it is in Cargo.lock only because reqwest's rustls feature names quinn?/ring (a weak dependency feature), while reqwest's http3 feature, the only one that enables quinn, is off",
+      "condition": null,
+      "evidence": [
+        "F_REQWEST_HTTP1_ONLY"
+      ],
+      "fix": {
+        "compatibleVersion": "0.11.19",
+        "alsoChanges": [
+          "Adding chacha20 v0.10.2",
+          "Removing getrandom v0.3.4",
+          "Removing r-efi v5.3.0",
+          "Updating rand v0.9.4 -> v0.10.3",
+          "Removing rand_chacha v0.9.0",
+          "Updating rand_core v0.9.5 -> v0.10.1",
+          "Adding rand_pcg v0.10.2"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.11.17",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0285 rustls@0.23.40",
+      "id": "RUSTSEC-2026-0285",
+      "kind": "vulnerability",
+      "crate": "rustls",
+      "version": "0.23.40",
+      "advisory": {
+        "title": "TLS 1.3 handshake messages incorrectly accepted across encryption level boundaries",
+        "date": "2026-09-14",
+        "categories": [
+          "crypto-failure"
+        ],
+        "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.23.45"
+        ],
+        "unaffected": [
+          "<0.23.13"
+        ],
+        "functions": null,
+        "url": "https://github.com/rustls/rustls/pull/3265"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "tokio-rustls@0.26.4"
+        ],
+        "pathToRoot": [
+          "rustls@0.23.40",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "CONDITIONAL",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a TLS 1.3 server that sends handshake messages across a key change in one record",
+      "exploit": "rustls accepts such messages instead of aborting; the transcript stays authenticated, so the peer cannot alter or complete a handshake (low impact)",
+      "rationale": "rustls is compiled, and its one use is the HTTPS download of SP1's circuit artifacts; nothing else in the host opens a TLS connection",
+      "condition": "rustls runs only inside SP1's own circuit download: release-mode install_circuit_artifacts at the Groth16/PLONK wrap stage, when the v6.1.0 circuit directory is absent (dev mode downloads with the aws CLI instead). The frozen proving configuration installs the circuit from a hash-verified WalletWall archive first, so that download never runs; until the archive path exists no proving run is authorized at all",
+      "evidence": [
+        "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
+        "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
+        "SF_PROVER_INSTALL_ONLY_AT_WRAP",
+        "SF_SDK_NEVER_INSTALLS_CIRCUITS",
+        "SF_PROVER_NO_NETWORK_TRANSPORT",
+        "F_SP1_SDK_NO_NETWORK",
+        "A_HOST_SOURCE",
+        "A_NO_PROVING_WITHOUT_ARCHIVE"
+      ],
+      "fix": {
+        "compatibleVersion": "0.23.46",
+        "alsoChanges": [
+          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.23.45",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0346 rustls@0.23.40",
+      "id": "RUSTSEC-2026-0346",
+      "kind": "vulnerability",
+      "crate": "rustls",
+      "version": "0.23.40",
+      "advisory": {
+        "title": "`Debug` impls for client session values expose TLS secrets",
+        "date": "2026-10-14",
+        "categories": [
+          "crypto-failure"
+        ],
+        "cvss": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:H/I:N/A:N",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.23.46"
+        ],
+        "unaffected": [
+          "<0.21.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/rustls/rustls/pull/3299"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "tokio-rustls@0.26.4"
+        ],
+        "pathToRoot": [
+          "rustls@0.23.40",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a custom ClientSessionStore that formats stored session values with Debug (for example into logs)",
+      "exploit": "disclosure of a TLS 1.2 master secret or TLS 1.3 resumption PSK to readers of those logs",
+      "rationale": "no crate that configures rustls here installs a session store of its own, and rustls's built-in cache redacts its Debug output",
+      "condition": null,
+      "evidence": [
+        "SF_NO_CUSTOM_SESSION_STORE"
+      ],
+      "fix": {
+        "compatibleVersion": "0.23.46",
+        "alsoChanges": [
+          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.23.46",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0348 rustls@0.23.40",
+      "id": "RUSTSEC-2026-0348",
+      "kind": "vulnerability",
+      "crate": "rustls",
+      "version": "0.23.40",
+      "advisory": {
+        "title": "Brotli certificate decompression can allocate up to 1 GiB before authentication",
+        "date": "2026-10-14",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:N/I:N/A:L",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.23.46"
+        ],
+        "unaffected": [
+          "<0.23.9"
+        ],
+        "functions": null,
+        "url": "https://github.com/rustls/rustls/pull/3297"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "tokio-rustls@0.26.4"
+        ],
+        "pathToRoot": [
+          "rustls@0.23.40",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "rustls's non-default brotli feature, connecting to a malicious server",
+      "exploit": "a five-byte header makes certificate decompression allocate up to 1 GiB before authentication (denial of service)",
+      "rationale": "rustls is built without brotli, and no brotli crate is in the lockfile",
+      "condition": null,
+      "evidence": [
+        "F_RUSTLS_NO_BROTLI",
+        "A_LOCK_NO_BROTLI"
+      ],
+      "fix": {
+        "compatibleVersion": "0.23.46",
+        "alsoChanges": [
+          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.23.46",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0349 rustls@0.23.40",
+      "id": "RUSTSEC-2026-0349",
+      "kind": "vulnerability",
+      "crate": "rustls",
+      "version": "0.23.40",
+      "advisory": {
+        "title": "Unauthenticated ServerHello can downgrade later connections to classical key exchange",
+        "date": "2026-10-14",
+        "categories": [
+          "crypto-failure"
+        ],
+        "cvss": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.23.46"
+        ],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/rustls/rustls/pull/3355"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "tokio-rustls@0.26.4"
+        ],
+        "pathToRoot": [
+          "rustls@0.23.40",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a client that offers a hybrid post-quantum key-exchange group (X25519MLKEM768) and keeps sessions across connections to one server",
+      "exploit": "an unauthenticated ServerHello pins later handshakes to classical X25519 (loss of post-quantum confidentiality; no authentication bypass)",
+      "rationale": "the only rustls provider compiled here is ring, whose groups are X25519, P-256 and P-384: there is no hybrid group to downgrade from",
+      "condition": null,
+      "evidence": [
+        "SF_RING_GROUPS_CLASSICAL",
+        "SF_RING_NO_MLKEM",
+        "F_RUSTLS_RING_ONLY",
+        "A_LOCK_NO_AWS_LC"
+      ],
+      "fix": {
+        "compatibleVersion": "0.23.46",
+        "alsoChanges": [
+          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+        ],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.23.46",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0344 ruzstd@0.8.3",
+      "id": "RUSTSEC-2026-0344",
+      "kind": "vulnerability",
+      "crate": "ruzstd",
+      "version": "0.8.3",
+      "advisory": {
+        "title": "Decompression bomb in `ruzstd`: a tiny input can exhaust memory (OOM)",
+        "date": "2026-10-11",
+        "categories": [
+          "denial-of-service"
+        ],
+        "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.9.1"
+        ],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/KillingSpark/zstd-rs/commit/d3907c960ca4a1aa44cc38340137c5679dd98f5a"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "object@0.37.3"
+        ],
+        "pathToRoot": [
+          "ruzstd@0.8.3",
+          "object@0.37.3",
+          "backtrace@0.3.76",
+          "sp1-recursion-compiler@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "decoding attacker-controlled zstd input",
+      "exploit": "a crafted .zst under 128 KB allocates gigabytes (out-of-memory denial of service)",
+      "rationale": "ruzstd is compiled because sp1-core-executor enables object's default compression feature, but its decoder is reached only through object's section decompression, which no crate here calls: sp1-core-executor only writes ELF dumps, and backtrace decompresses debug sections itself, with its zstd path behind its own ruzstd feature, which is off",
+      "condition": null,
+      "evidence": [
+        "SF_OBJECT_RUZSTD_ONLY_IN_DECOMPRESS",
+        "SF_OBJECT_DECOMPRESS_ONLY_VIA_UNCOMPRESSED_DATA",
+        "SF_OBJECT_DECOMPRESSION_UNUSED",
+        "SF_EXECUTOR_WRITES_ELF_ONLY",
+        "F_BACKTRACE_NO_RUZSTD",
+        "A_LOCK_BACKTRACE_WITHOUT_RUZSTD"
+      ],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": true,
+        "blockedBy": "object v0.37.3 requires ruzstd = \"^0.8.1\"",
+        "lockfileOnly": false,
+        "lowestPatched": "0.9.1",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0002 lru@0.12.5",
+      "id": "RUSTSEC-2026-0002",
+      "kind": "unsound",
+      "crate": "lru",
+      "version": "0.12.5",
+      "advisory": {
+        "title": "`IterMut` violates Stacked Borrows by invalidating internal pointer",
+        "date": "2026-01-07",
+        "categories": [
+          "memory-corruption"
+        ],
+        "cvss": null,
+        "informational": "unsound",
+        "withdrawn": null,
+        "patched": [
+          ">=0.16.3"
+        ],
+        "unaffected": [
+          "<0.9.0"
+        ],
+        "functions": null,
+        "url": "https://github.com/jeromefroe/lru-rs/pull/224"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "sp1-prover@6.3.1"
+        ],
+        "pathToRoot": [
+          "lru@0.12.5",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "calling LruCache::iter_mut",
+      "exploit": "a Stacked Borrows violation in IterMut (undefined behaviour for code that iterates mutably)",
+      "rationale": "sp1-prover, lru's only dependent, keeps two caches and never calls iter_mut",
+      "condition": null,
+      "evidence": [
+        "SF_LRU_ONLY_IN_TWO_CACHES",
+        "SF_PROVER_NO_ITER_MUT_OR_POP"
+      ],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": true,
+        "blockedBy": "sp1-prover v6.3.1 requires lru = \"^0.12.4\"",
+        "lockfileOnly": false,
+        "lowestPatched": "0.16.3",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0253 lru@0.12.5",
+      "id": "RUSTSEC-2026-0253",
+      "kind": "unsound",
+      "crate": "lru",
+      "version": "0.12.5",
+      "advisory": {
+        "title": "Potential use-after-free due to lack of panic safety in `LruCache::pop()`",
+        "date": "2026-05-12",
+        "categories": [
+          "memory-corruption"
+        ],
+        "cvss": null,
+        "informational": "unsound",
+        "withdrawn": null,
+        "patched": [
+          ">=0.18.2"
+        ],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/jeromefroe/lru-rs/pull/238"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "sp1-prover@6.3.1"
+        ],
+        "pathToRoot": [
+          "lru@0.12.5",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "LruCache::pop with a key whose Drop panics, the panic caught by catch_unwind",
+      "exploit": "a use-after-free or double free on a later eviction (memory corruption)",
+      "rationale": "sp1-prover never calls pop on its caches, never catches an unwind, and its cache keys have no Drop impl",
+      "condition": null,
+      "evidence": [
+        "SF_LRU_ONLY_IN_TWO_CACHES",
+        "SF_PROVER_NO_ITER_MUT_OR_POP",
+        "SF_PROVER_NO_CATCH_UNWIND",
+        "SF_LRU_KEYS_WITHOUT_DROP"
+      ],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": true,
+        "blockedBy": "sp1-prover v6.3.1 requires lru = \"^0.12.4\"",
+        "lockfileOnly": false,
+        "lowestPatched": "0.18.2",
+        "noPatchedRelease": false
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0186 memmap2@0.9.10",
+      "id": "RUSTSEC-2026-0186",
+      "kind": "unsound",
+      "crate": "memmap2",
+      "version": "0.9.10",
+      "advisory": {
+        "title": "Unchecked pointer offset in crate `memmap2`",
+        "date": "2026-06-20",
+        "categories": [],
+        "cvss": null,
+        "informational": "unsound",
+        "withdrawn": null,
+        "patched": [
+          ">=0.9.11"
+        ],
+        "unaffected": [],
+        "functions": {
+          "memmap2::Mmap::advise_range": [
+            ">=0.5.9",
+            "<0.9.11"
+          ],
+          "memmap2::Mmap::unchecked_advise_range": [
+            ">=0.8.0",
+            "<0.9.11"
+          ],
+          "memmap2::MmapMut::advise_range": [
+            ">=0.5.9",
+            "<0.9.11"
+          ],
+          "memmap2::MmapMut::flush_async_range": [
+            "<0.9.11"
+          ],
+          "memmap2::MmapMut::flush_range": [
+            "<0.9.11"
+          ],
+          "memmap2::MmapMut::unchecked_advise_range": [
+            ">=0.8.0",
+            "<0.9.11"
+          ]
+        },
+        "url": "https://github.com/RazrFalcon/memmap2-rs/issues/169"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "dynasmrt@3.2.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-jit@6.3.1"
+        ],
+        "pathToRoot": [
+          "memmap2@0.9.10",
+          "dynasmrt@3.2.1",
+          "sp1-jit@6.3.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "PRECONDITION_ABSENT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "calling advise_range, unchecked_advise_range, flush_range or flush_async_range with an out-of-bounds range",
+      "exploit": "an invalid pointer offset passed to madvise or msync (undefined behaviour; the pointer is not dereferenced)",
+      "rationale": "no dependent of memmap2 calls any of the affected functions",
+      "condition": null,
+      "evidence": [
+        "SF_MEMMAP2_RANGE_FNS_UNUSED"
+      ],
+      "fix": {
+        "compatibleVersion": "0.9.11",
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.9.11",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "yanked spin@0.9.8",
+      "id": null,
+      "kind": "yanked",
+      "crate": "spin",
+      "version": "0.9.8",
+      "advisory": null,
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "lazy_static@1.5.0"
+        ],
+        "pathToRoot": [
+          "spin@0.9.8",
+          "lazy_static@1.5.0",
+          "sharded-slab@0.1.7",
+          "tracing-subscriber@0.3.23",
+          "slop-utils@6.3.1",
+          "slop-basefold@6.3.1",
+          "slop-basefold-prover@6.3.1",
+          "slop-jagged@6.3.1",
+          "slop-whir@6.3.1",
+          "sp1-hypercube@6.3.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "spin 0.9.8 was yanked by its publisher; no advisory is attached",
+      "rationale": "linked via lazy_static@1.5.0 <- sharded-slab@0.1.7 <- tracing-subscriber@0.3.23 <- slop-utils@6.3.1 <- slop-basefold@6.3.1 <- slop-basefold-prover@6.3.1 <- slop-jagged@6.3.1 <- slop-whir@6.3.1 <- sp1-hypercube@6.3.1 <- sp1-core-executor@6.3.1 <- sp1-core-executor-runner@6.3.1 <- sp1-core-machine@6.3.1 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; a yanked release carries no known defect, but a later release replaces it",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": "0.9.9",
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": null,
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2021-0139 ansi_term@0.12.1",
+      "id": "RUSTSEC-2021-0139",
+      "kind": "unmaintained",
+      "crate": "ansi_term",
+      "version": "0.12.1",
+      "advisory": {
+        "title": "ansi_term is Unmaintained",
+        "date": "2021-08-18",
+        "categories": [],
+        "cvss": null,
+        "informational": "unmaintained",
+        "withdrawn": null,
+        "patched": [],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/ogham/rust-ansi-term/issues/72"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "tracing-forest@0.1.6"
+        ],
+        "pathToRoot": [
+          "ansi_term@0.12.1",
+          "tracing-forest@0.1.6",
+          "slop-utils@6.3.1",
+          "slop-basefold@6.3.1",
+          "slop-basefold-prover@6.3.1",
+          "slop-jagged@6.3.1",
+          "slop-whir@6.3.1",
+          "sp1-hypercube@6.3.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "ansi_term is Unmaintained (unmaintained; informational)",
+      "rationale": "linked via tracing-forest@0.1.6 <- slop-utils@6.3.1 <- slop-basefold@6.3.1 <- slop-basefold-prover@6.3.1 <- slop-jagged@6.3.1 <- slop-whir@6.3.1 <- sp1-hypercube@6.3.1 <- sp1-core-executor@6.3.1 <- sp1-core-executor-runner@6.3.1 <- sp1-core-machine@6.3.1 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": false,
+        "lowestPatched": null,
+        "noPatchedRelease": true
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2025-0141 bincode@1.3.3",
+      "id": "RUSTSEC-2025-0141",
+      "kind": "unmaintained",
+      "crate": "bincode",
+      "version": "1.3.3",
+      "advisory": {
+        "title": "Bincode is unmaintained",
+        "date": "2025-12-16",
+        "categories": [],
+        "cvss": null,
+        "informational": "unmaintained",
+        "withdrawn": null,
+        "patched": [],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "sp1-core-executor-runner-binary@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-primitives@6.3.1",
+          "sp1-prover-types@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-recursion-circuit@6.3.1",
+          "sp1-recursion-gnark-ffi@6.3.1",
+          "sp1-sdk@6.3.1",
+          "sp1-verifier@6.3.1"
+        ],
+        "pathToRoot": [
+          "bincode@1.3.3",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "Bincode is unmaintained (unmaintained; informational)",
+      "rationale": "linked via sp1-core-executor@6.3.1 <- sp1-core-executor-runner@6.3.1 <- sp1-core-machine@6.3.1 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": false,
+        "lowestPatched": null,
+        "noPatchedRelease": true
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2025-0119 number_prefix@0.4.0",
+      "id": "RUSTSEC-2025-0119",
+      "kind": "unmaintained",
+      "crate": "number_prefix",
+      "version": "0.4.0",
+      "advisory": {
+        "title": "number_prefix crate is unmaintained",
+        "date": "2025-11-17",
+        "categories": [],
+        "cvss": null,
+        "informational": "unmaintained",
+        "withdrawn": null,
+        "patched": [],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/ogham/rust-number-prefix/pull/8"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "indicatif@0.17.11"
+        ],
+        "pathToRoot": [
+          "number_prefix@0.4.0",
+          "indicatif@0.17.11",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "number_prefix crate is unmaintained (unmaintained; informational)",
+      "rationale": "linked via indicatif@0.17.11 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": false,
+        "lowestPatched": null,
+        "noPatchedRelease": true
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2024-0436 paste@1.0.15",
+      "id": "RUSTSEC-2024-0436",
+      "kind": "unmaintained",
+      "crate": "paste",
+      "version": "1.0.15",
+      "advisory": {
+        "title": "paste - no longer maintained",
+        "date": "2024-10-07",
+        "categories": [],
+        "cvss": null,
+        "informational": "unmaintained",
+        "withdrawn": null,
+        "patched": [],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/dtolnay/paste"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "PROC_MACRO",
+        "directDependents": [
+          "rrs-succinct@0.2.0"
+        ],
+        "pathToRoot": [
+          "paste@1.0.15",
+          "rrs-succinct@0.2.0",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "paste - no longer maintained (unmaintained; informational)",
+      "rationale": "a procedural macro (it runs only while compiling), used via rrs-succinct@0.2.0 <- sp1-core-executor@6.3.1 <- sp1-core-executor-runner@6.3.1 <- sp1-core-machine@6.3.1 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": false,
+        "lowestPatched": null,
+        "noPatchedRelease": true
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0173 proc-macro-error2@2.0.1",
+      "id": "RUSTSEC-2026-0173",
+      "kind": "unmaintained",
+      "crate": "proc-macro-error2",
+      "version": "2.0.1",
+      "advisory": {
+        "title": "proc-macro-error2 is unmaintained",
+        "date": "2026-06-07",
+        "categories": [],
+        "cvss": null,
+        "informational": "unmaintained",
+        "withdrawn": null,
+        "patched": [],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/GnomedDev/proc-macro-error-2/issues/17"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "PROC_MACRO_ONLY",
+        "directDependents": [
+          "dynasm@3.2.1"
+        ],
+        "pathToRoot": [
+          "proc-macro-error2@2.0.1",
+          "dynasm@3.2.1",
+          "dynasmrt@3.2.1",
+          "sp1-jit@6.3.1",
+          "sp1-core-executor@6.3.1",
+          "sp1-core-executor-runner@6.3.1",
+          "sp1-core-machine@6.3.1",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "proc-macro-error2 is unmaintained (unmaintained; informational)",
+      "rationale": "only by procedural macros (compile time only), via dynasm@3.2.1 <- dynasmrt@3.2.1 <- sp1-jit@6.3.1 <- sp1-core-executor@6.3.1 <- sp1-core-executor-runner@6.3.1 <- sp1-core-machine@6.3.1 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": false,
+        "lowestPatched": null,
+        "noPatchedRelease": true
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2025-0134 rustls-pemfile@2.2.0",
+      "id": "RUSTSEC-2025-0134",
+      "kind": "unmaintained",
+      "crate": "rustls-pemfile",
+      "version": "2.2.0",
+      "advisory": {
+        "title": "rustls-pemfile is unmaintained",
+        "date": "2025-11-28",
+        "categories": [],
+        "cvss": null,
+        "informational": "unmaintained",
+        "withdrawn": null,
+        "patched": [],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/rustls/pemfile/issues/61"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "tonic@0.12.3"
+        ],
+        "pathToRoot": [
+          "rustls-pemfile@2.2.0",
+          "tonic@0.12.3",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "NO_KNOWN_DEFECT",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "none: RustSec reports no vulnerability",
+      "exploit": "rustls-pemfile is unmaintained (unmaintained; informational)",
+      "rationale": "linked via tonic@0.12.3 <- sp1-prover@6.3.1 <- sp1-sdk@6.3.1 <- mldsa65-host@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+      "condition": null,
+      "evidence": [],
+      "fix": {
+        "compatibleVersion": null,
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": false,
+        "lowestPatched": null,
+        "noPatchedRelease": true
+      },
+      "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "A_HOST_MANIFEST",
+      "kind": "assumption",
+      "statement": "zkvm/host/Cargo.toml has only [package], [[bin]], [dependencies] (sp1-sdk, serde, serde_json, hex, anyhow) and [build-dependencies] (sp1-build): no [features], [target.*], [patch], [replace], [workspace] or [profile] table",
+      "holds": true,
+      "observed": "tables package, [[bin]], dependencies, build-dependencies; dependencies anyhow, hex, serde, serde_json, sp1-sdk; build-dependencies sp1-build"
+    },
+    {
+      "id": "A_SP1_SDK_FEATURES",
+      "kind": "assumption",
+      "statement": "sp1-sdk is required as \"=6.3.1\" with features [\"blocking\"] and its default features, and sp1-build as \"=6.3.1\": the network, cuda and native-gnark features are not requested",
+      "holds": true,
+      "observed": "sp1-sdk = {\"version\":\"=6.3.1\",\"features\":[\"blocking\"]}; sp1-build = \"=6.3.1\""
+    },
+    {
+      "id": "A_LOCK_NO_NETWORK_CRATES",
+      "kind": "assumption",
+      "statement": "zkvm/host/Cargo.lock pins none of the crates only sp1-sdk's network feature adds (alloy-signer, alloy-signer-aws, alloy-signer-local, aws-config, aws-sdk-kms, backoff, reqwest-middleware, twirp, zstd)",
+      "holds": true,
+      "observed": "none of alloy-signer, alloy-signer-aws, alloy-signer-local, aws-config, aws-sdk-kms, backoff, reqwest-middleware, twirp, zstd is locked"
+    },
+    {
+      "id": "A_LOCK_NO_CUDA",
+      "kind": "assumption",
+      "statement": "zkvm/host/Cargo.lock pins no sp1-cuda: the CUDA prover is not compiled",
+      "holds": true,
+      "observed": "none of sp1-cuda is locked"
+    },
+    {
+      "id": "A_LOCK_NO_AWS_LC",
+      "kind": "assumption",
+      "statement": "zkvm/host/Cargo.lock pins no aws-lc-rs or aws-lc-sys: ring is the only rustls crypto provider",
+      "holds": true,
+      "observed": "none of aws-lc-rs, aws-lc-sys is locked"
+    },
+    {
+      "id": "A_LOCK_NO_BROTLI",
+      "kind": "assumption",
+      "statement": "zkvm/host/Cargo.lock pins no brotli or brotli-decompressor: rustls's brotli feature cannot be on",
+      "holds": true,
+      "observed": "none of brotli, brotli-decompressor is locked"
+    },
+    {
+      "id": "A_LOCK_BACKTRACE_WITHOUT_RUZSTD",
+      "kind": "assumption",
+      "statement": "in zkvm/host/Cargo.lock object is ruzstd's only dependent: backtrace does not depend on it, so backtrace's own zstd path is off",
+      "holds": true,
+      "observed": "ruzstd's dependents: object@0.37.3"
+    },
+    {
+      "id": "A_HOST_SOURCE",
+      "kind": "assumption",
+      "statement": "zkvm/host/src/main.rs (comments stripped) proves only with .groth16() (once), never .plonk(), .compressed() or .core(), selects its prover with ProverClient::from_env(), and names no network or CUDA prover and no circuit install",
+      "holds": true,
+      "observed": ".groth16() 1x; other proof kinds: none; network/cuda/install names: none; ProverClient::from_env(): yes"
+    },
+    {
+      "id": "A_NO_PROVING_WITHOUT_ARCHIVE",
+      "kind": "assumption",
+      "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED with no WalletWall archive record and an unexercised self-hosted path that proves only from a verified archive: no proving run is authorized, and the only planned one never lets SP1 download the circuit",
+      "holds": true,
+      "observed": "status OWNER_DOWNLOAD_REQUIRED; archive records 0 recorded, 0 on disk; self-hosted path exercised false; proves only from an archive: yes"
+    },
+    {
+      "id": "F_SP1_SDK_NO_NETWORK",
+      "kind": "feature",
+      "statement": "sp1-sdk is built with blocking and without network, cuda, groth16-cuda, native-gnark or reserved-capacity",
+      "holds": true,
+      "observed": "sp1-sdk 6.3.1 features: blocking, default"
+    },
+    {
+      "id": "F_REQWEST_HTTP1_ONLY",
+      "kind": "feature",
+      "statement": "reqwest is built with rustls and without http2 or http3: it speaks HTTP/1.1 only and never opens QUIC",
+      "holds": true,
+      "observed": "reqwest 0.12.28 features: __rustls, __rustls-ring, __tls, rustls-tls, rustls-tls-webpki-roots, rustls-tls-webpki-roots-no-provider, stream"
+    },
+    {
+      "id": "F_RUSTLS_NO_BROTLI",
+      "kind": "feature",
+      "statement": "rustls is built without its brotli certificate-decompression feature",
+      "holds": true,
+      "observed": "rustls 0.23.40 features: log, logging, ring, std, tls12"
+    },
+    {
+      "id": "F_RUSTLS_RING_ONLY",
+      "kind": "feature",
+      "statement": "rustls is built with the ring provider only (no aws-lc-rs, fips or prefer-post-quantum)",
+      "holds": true,
+      "observed": "rustls 0.23.40 features: log, logging, ring, std, tls12"
+    },
+    {
+      "id": "F_BACKTRACE_NO_RUZSTD",
+      "kind": "feature",
+      "statement": "backtrace is built without its ruzstd feature",
+      "holds": true,
+      "observed": "backtrace 0.3.76 features: default, serde, std"
+    },
+    {
+      "id": "SF_SDK_NETWORK_MODULE_GATED",
+      "kind": "source",
+      "statement": "sp1-sdk compiles its network module (its gRPC prover-network client) only with the network feature",
+      "holds": true,
+      "observed": "1 match (sp1-sdk:src/lib.rs 1x) in sp1-sdk 6.3.1 (1 files)"
+    },
+    {
+      "id": "SF_SDK_GRPC_ONLY_IN_NETWORK_MODULE",
+      "kind": "source",
+      "statement": "outside its network module, sp1-sdk neither uses tonic nor constructs a gRPC client or endpoint",
+      "holds": true,
+      "observed": "0 matches in sp1-sdk 6.3.1 (43 files)"
+    },
+    {
+      "id": "SF_SDK_UNGATED_PROVERS",
+      "kind": "source",
+      "statement": "SP1_PROVER selects cpu (the default), mock or light without any feature",
+      "holds": true,
+      "observed": "3 matches (sp1-sdk:src/blocking/env/mod.rs 3x) in sp1-sdk 6.3.1 (1 files)"
+    },
+    {
+      "id": "SF_SDK_NETWORK_PROVER_REFUSED",
+      "kind": "source",
+      "statement": "SP1_PROVER=network panics when the network feature is off",
+      "holds": true,
+      "observed": "1 match (sp1-sdk:src/blocking/env/mod.rs 1x) in sp1-sdk 6.3.1 (1 files)"
+    },
+    {
+      "id": "SF_SDK_CUDA_PROVER_REFUSED",
+      "kind": "source",
+      "statement": "SP1_PROVER=cuda panics when the cuda feature is off",
+      "holds": true,
+      "observed": "1 match (sp1-sdk:src/blocking/env/mod.rs 1x) in sp1-sdk 6.3.1 (1 files)"
+    },
+    {
+      "id": "SF_SDK_NEVER_INSTALLS_CIRCUITS",
+      "kind": "source",
+      "statement": "sp1-sdk never calls the circuit installer itself (it only re-exports it)",
+      "holds": true,
+      "observed": "0 matches in sp1-sdk 6.3.1 (63 files)"
+    },
+    {
+      "id": "SF_PROVER_NO_NETWORK_TRANSPORT",
+      "kind": "source",
+      "statement": "neither tonic dependent (sp1-prover, sp1-prover-types) constructs a gRPC transport, server, listener or socket: sp1-prover uses tonic only for its Status and Code types, and its local workers talk over in-process channels",
+      "holds": true,
+      "observed": "0 matches in sp1-prover 6.3.1 (38 files), sp1-prover-types 6.3.1 (5 files)"
+    },
+    {
+      "id": "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
+      "kind": "source",
+      "statement": "sp1-prover builds its one HTTP client in src/build.rs (install_circuit_artifacts), nowhere else",
+      "holds": true,
+      "observed": "1 match (sp1-prover:src/build.rs 1x) in sp1-prover 6.3.1 (38 files)"
+    },
+    {
+      "id": "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
+      "kind": "source",
+      "statement": "the circuit installer downloads only when the circuit directory is absent, and uses an existing one as it is",
+      "holds": true,
+      "observed": "1 match (sp1-prover:src/build.rs 1x) in sp1-prover 6.3.1 (1 files)"
+    },
+    {
+      "id": "SF_PROVER_INSTALL_ONLY_AT_WRAP",
+      "kind": "source",
+      "statement": "the installer is reached only from the Groth16/PLONK wrap stage (src/worker/prover/recursion.rs); setup, vkey and execute never call it",
+      "holds": true,
+      "observed": "7 matches (sp1-prover:src/build.rs 5x, sp1-prover:src/worker/prover/recursion.rs 2x) in sp1-prover 6.3.1 (38 files)"
+    },
+    {
+      "id": "SF_NO_CUSTOM_SESSION_STORE",
+      "kind": "source",
+      "statement": "no crate that configures rustls here implements or installs a ClientSessionStore: only rustls's built-in, redacting cache is used",
+      "holds": true,
+      "observed": "0 matches in hyper-rustls 0.27.9 (5 files), quinn 0.11.9 (12 files), quinn-proto 0.11.14 (52 files), reqwest 0.12.28 (40 files), tokio-rustls 0.26.4 (6 files), tonic 0.12.3 (57 files)"
+    },
+    {
+      "id": "SF_RING_GROUPS_CLASSICAL",
+      "kind": "source",
+      "statement": "rustls's ring provider offers exactly X25519, P-256 and P-384",
+      "holds": true,
+      "observed": "1 match (rustls:src/crypto/ring/mod.rs 1x) in rustls 0.23.40 (1 files)"
+    },
+    {
+      "id": "SF_RING_NO_MLKEM",
+      "kind": "source",
+      "statement": "rustls's ring provider implements no ML-KEM (no hybrid post-quantum group)",
+      "holds": true,
+      "observed": "0 matches in rustls 0.23.40 (9 files)"
+    },
+    {
+      "id": "SF_LRU_ONLY_IN_TWO_CACHES",
+      "kind": "source",
+      "statement": "lru's only dependent, sp1-prover, uses LruCache in two places: the shape cache and the setup cache",
+      "holds": true,
+      "observed": "6 matches (sp1-prover:src/shapes.rs 3x, sp1-prover:src/worker/controller/mod.rs 3x) in sp1-prover 6.3.1 (38 files)"
+    },
+    {
+      "id": "SF_PROVER_NO_ITER_MUT_OR_POP",
+      "kind": "source",
+      "statement": "sp1-prover never calls iter_mut, pop(&key), pop_entry or pop_lru",
+      "holds": true,
+      "observed": "0 matches in sp1-prover 6.3.1 (38 files)"
+    },
+    {
+      "id": "SF_PROVER_NO_CATCH_UNWIND",
+      "kind": "source",
+      "statement": "sp1-prover never catches an unwinding panic",
+      "holds": true,
+      "observed": "0 matches in sp1-prover 6.3.1 (38 files)"
+    },
+    {
+      "id": "SF_LRU_KEYS_WITHOUT_DROP",
+      "kind": "source",
+      "statement": "the cache keys (SP1NormalizeInputShape, Artifact) have no Drop impl that could panic",
+      "holds": true,
+      "observed": "0 matches in sp1-prover 6.3.1 (38 files), sp1-prover-types 6.3.1 (5 files)"
+    },
+    {
+      "id": "SF_MEMMAP2_RANGE_FNS_UNUSED",
+      "kind": "source",
+      "statement": "no dependent of memmap2 (dynasmrt, sp1-core-executor, sp1-jit) calls advise_range, unchecked_advise_range, flush_range or flush_async_range",
+      "holds": true,
+      "observed": "0 matches in dynasmrt 3.2.1 (9 files), sp1-core-executor 6.3.1 (115 files), sp1-jit 6.3.1 (14 files)"
+    },
+    {
+      "id": "SF_EPOCH_POINTERS_NEVER_FORMATTED",
+      "kind": "source",
+      "statement": "no crate that can name crossbeam-epoch's Atomic or Shared (crossbeam-deque, crossbeam, and slop-futures through crossbeam) formats one as a pointer",
+      "holds": true,
+      "observed": "0 matches in crossbeam 0.8.4 (1 files), crossbeam-deque 0.8.6 (2 files), slop-futures 6.3.1 (7 files)"
+    },
+    {
+      "id": "SF_OBJECT_RUZSTD_ONLY_IN_DECOMPRESS",
+      "kind": "source",
+      "statement": "object, ruzstd's only dependent, calls the decoder only in CompressedData::decompress (src/read/mod.rs)",
+      "holds": true,
+      "observed": "3 matches (object:src/read/mod.rs 3x) in object 0.37.3 (80 files)"
+    },
+    {
+      "id": "SF_OBJECT_DECOMPRESS_ONLY_VIA_UNCOMPRESSED_DATA",
+      "kind": "source",
+      "statement": "object calls decompress() only from its uncompressed_data() implementations",
+      "holds": true,
+      "observed": "2 matches (object:src/read/traits.rs 1x, object:src/read/xcoff/section.rs 1x) in object 0.37.3 (80 files)"
+    },
+    {
+      "id": "SF_OBJECT_DECOMPRESSION_UNUSED",
+      "kind": "source",
+      "statement": "neither dependent of object (backtrace, sp1-core-executor) reaches object's section decompression: backtrace decompresses debug sections itself",
+      "holds": true,
+      "observed": "0 matches in backtrace 0.3.76 (36 files), sp1-core-executor 6.3.1 (115 files)"
+    },
+    {
+      "id": "SF_EXECUTOR_WRITES_ELF_ONLY",
+      "kind": "source",
+      "statement": "sp1-core-executor uses object only to write ELF dumps (object::write), never to read one",
+      "holds": true,
+      "observed": "0 matches in sp1-core-executor 6.3.1 (115 files)"
+    }
+  ],
+  "remediation": {
+    "status": "DEFERRED_TO_NEXT_PROGRAM_REBUILD",
+    "dependencyUpdatedByThisRecord": false,
+    "compatibleRefresh": [
+      {
+        "crate": "crossbeam-epoch",
+        "from": "0.9.18",
+        "to": "0.9.21",
+        "findings": [
+          "RUSTSEC-2026-0204 crossbeam-epoch@0.9.18"
+        ]
+      },
+      {
+        "crate": "h2",
+        "from": "0.4.14",
+        "to": "0.4.20",
+        "findings": [
+          "RUSTSEC-2026-0258 h2@0.4.14"
+        ]
+      },
+      {
+        "crate": "quinn-proto",
+        "from": "0.11.14",
+        "to": "0.11.19",
+        "findings": [
+          "RUSTSEC-2026-0185 quinn-proto@0.11.14",
+          "RUSTSEC-2026-0338 quinn-proto@0.11.14",
+          "RUSTSEC-2026-0339 quinn-proto@0.11.14",
+          "RUSTSEC-2026-0340 quinn-proto@0.11.14",
+          "RUSTSEC-2026-0342 quinn-proto@0.11.14"
+        ]
+      },
+      {
+        "crate": "rustls",
+        "from": "0.23.40",
+        "to": "0.23.46",
+        "findings": [
+          "RUSTSEC-2026-0285 rustls@0.23.40",
+          "RUSTSEC-2026-0346 rustls@0.23.40",
+          "RUSTSEC-2026-0348 rustls@0.23.40",
+          "RUSTSEC-2026-0349 rustls@0.23.40"
+        ]
+      },
+      {
+        "crate": "memmap2",
+        "from": "0.9.10",
+        "to": "0.9.11",
+        "findings": [
+          "RUSTSEC-2026-0186 memmap2@0.9.10"
+        ]
+      },
+      {
+        "crate": "spin",
+        "from": "0.9.8",
+        "to": "0.9.9",
+        "findings": [
+          "yanked spin@0.9.8"
+        ]
+      }
+    ],
+    "upstreamBlocked": [
+      {
+        "crate": "ruzstd",
+        "version": "0.8.3",
+        "blockedBy": "object v0.37.3 requires ruzstd = \"^0.8.1\"",
+        "findings": [
+          "RUSTSEC-2026-0344 ruzstd@0.8.3"
+        ]
+      },
+      {
+        "crate": "lru",
+        "version": "0.12.5",
+        "blockedBy": "sp1-prover v6.3.1 requires lru = \"^0.12.4\"",
+        "findings": [
+          "RUSTSEC-2026-0002 lru@0.12.5",
+          "RUSTSEC-2026-0253 lru@0.12.5"
+        ]
+      }
+    ],
+    "noPatchedRelease": [
+      {
+        "crate": "ansi_term",
+        "version": "0.12.1",
+        "findings": [
+          "RUSTSEC-2021-0139 ansi_term@0.12.1"
+        ]
+      },
+      {
+        "crate": "bincode",
+        "version": "1.3.3",
+        "findings": [
+          "RUSTSEC-2025-0141 bincode@1.3.3"
+        ]
+      },
+      {
+        "crate": "number_prefix",
+        "version": "0.4.0",
+        "findings": [
+          "RUSTSEC-2025-0119 number_prefix@0.4.0"
+        ]
+      },
+      {
+        "crate": "paste",
+        "version": "1.0.15",
+        "findings": [
+          "RUSTSEC-2024-0436 paste@1.0.15"
+        ]
+      },
+      {
+        "crate": "proc-macro-error2",
+        "version": "2.0.1",
+        "findings": [
+          "RUSTSEC-2026-0173 proc-macro-error2@2.0.1"
+        ]
+      },
+      {
+        "crate": "rustls-pemfile",
+        "version": "2.2.0",
+        "findings": [
+          "RUSTSEC-2025-0134 rustls-pemfile@2.2.0"
+        ]
+      }
+    ],
+    "remainingAfterCompatibleRefresh": [
+      "RUSTSEC-2026-0344 ruzstd@0.8.3",
+      "RUSTSEC-2026-0002 lru@0.12.5",
+      "RUSTSEC-2026-0253 lru@0.12.5",
+      "RUSTSEC-2021-0139 ansi_term@0.12.1",
+      "RUSTSEC-2025-0141 bincode@1.3.3",
+      "RUSTSEC-2025-0119 number_prefix@0.4.0",
+      "RUSTSEC-2024-0436 paste@1.0.15",
+      "RUSTSEC-2026-0173 proc-macro-error2@2.0.1",
+      "RUSTSEC-2025-0134 rustls-pemfile@2.2.0"
+    ]
+  },
+  "companionLockfiles": [
+    {
+      "id": "guest",
+      "path": "zkvm/guest/Cargo.lock",
+      "role": "DESIGNATED_SUBJECT",
+      "sha256": "87ae1246c7cf2691ab135e0ad8ee79167e23d80aad386b531f7381e9d80f9f48",
+      "packages": 159,
+      "vulnerabilities": 0,
+      "warnings": 3,
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD",
+      "findings": [
+        {
+          "key": "RUSTSEC-2026-0190 anyhow@1.0.102",
+          "id": "RUSTSEC-2026-0190",
+          "kind": "unsound",
+          "crate": "anyhow",
+          "version": "1.0.102",
+          "advisory": {
+            "title": "Unsoundness in `Error::downcast_mut()`",
+            "date": "2026-06-25",
+            "categories": [
+              "memory-corruption"
+            ],
+            "cvss": null,
+            "informational": "unsound",
+            "withdrawn": null,
+            "patched": [
+              ">=1.0.103"
+            ],
+            "unaffected": [],
+            "functions": {
+              "anyhow::Error::downcast_mut": [
+                "<1.0.103"
+              ]
+            },
+            "url": "https://github.com/dtolnay/anyhow/issues/451"
+          },
+          "compiled": false,
+          "dependency": {
+            "role": "NOT_COMPILED",
+            "directDependents": [],
+            "pathToRoot": []
+          },
+          "reachability": "NOT_COMPILED",
+          "reachableInFrozenProvingPath": false,
+          "precondition": "calling anyhow::Error::downcast_mut",
+          "exploit": "unsoundness in Error::downcast_mut",
+          "rationale": "cargo tree prints nothing for anyhow on any target: it is locked but compiled into neither guest program",
+          "condition": null,
+          "evidence": [],
+          "fix": {
+            "compatibleVersion": "1.0.104",
+            "alsoChanges": [],
+            "upstreamBlocked": false,
+            "blockedBy": null,
+            "lockfileOnly": true,
+            "lowestPatched": "1.0.103",
+            "noPatchedRelease": false
+          },
+          "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+          "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+        },
+        {
+          "key": "yanked der@0.8.0",
+          "id": null,
+          "kind": "yanked",
+          "crate": "der",
+          "version": "0.8.0",
+          "advisory": null,
+          "compiled": true,
+          "dependency": {
+            "role": "LINKED",
+            "directDependents": [
+              "pkcs8@0.11.0",
+              "spki@0.8.0"
+            ],
+            "pathToRoot": [
+              "der@0.8.0",
+              "pkcs8@0.11.0",
+              "ml-dsa@0.1.1",
+              "mldsa65-guest@0.1.0"
+            ]
+          },
+          "reachability": "NO_KNOWN_DEFECT",
+          "reachableInFrozenProvingPath": false,
+          "precondition": "none: RustSec reports no vulnerability",
+          "exploit": "der 0.8.0 was yanked by its publisher; no advisory is attached",
+          "rationale": "linked via pkcs8@0.11.0 <- ml-dsa@0.1.1 <- mldsa65-guest@0.1.0; a yanked release carries no known defect, but a later release replaces it",
+          "condition": null,
+          "evidence": [],
+          "fix": {
+            "compatibleVersion": "0.8.2",
+            "alsoChanges": [],
+            "upstreamBlocked": false,
+            "blockedBy": null,
+            "lockfileOnly": true,
+            "lowestPatched": null,
+            "noPatchedRelease": false
+          },
+          "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+          "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+        },
+        {
+          "key": "RUSTSEC-2025-0141 bincode@1.3.3",
+          "id": "RUSTSEC-2025-0141",
+          "kind": "unmaintained",
+          "crate": "bincode",
+          "version": "1.3.3",
+          "advisory": {
+            "title": "Bincode is unmaintained",
+            "date": "2025-12-16",
+            "categories": [],
+            "cvss": null,
+            "informational": "unmaintained",
+            "withdrawn": null,
+            "patched": [],
+            "unaffected": [],
+            "functions": null,
+            "url": "https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md"
+          },
+          "compiled": true,
+          "dependency": {
+            "role": "LINKED",
+            "directDependents": [
+              "sp1-lib@6.3.1",
+              "sp1-primitives@6.3.1"
+            ],
+            "pathToRoot": [
+              "bincode@1.3.3",
+              "sp1-lib@6.3.1",
+              "sp1-zkvm@6.3.1",
+              "mldsa65-guest@0.1.0"
+            ]
+          },
+          "reachability": "NO_KNOWN_DEFECT",
+          "reachableInFrozenProvingPath": false,
+          "precondition": "none: RustSec reports no vulnerability",
+          "exploit": "Bincode is unmaintained (unmaintained; informational)",
+          "rationale": "linked via sp1-lib@6.3.1 <- sp1-zkvm@6.3.1 <- mldsa65-guest@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+          "condition": null,
+          "evidence": [],
+          "fix": {
+            "compatibleVersion": null,
+            "alsoChanges": [],
+            "upstreamBlocked": false,
+            "blockedBy": null,
+            "lockfileOnly": false,
+            "lowestPatched": null,
+            "noPatchedRelease": true
+          },
+          "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+          "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+        }
+      ]
+    },
+    {
+      "id": "relation-tests",
+      "path": "zkvm/relation-tests/Cargo.lock",
+      "role": "CI_TEST_HARNESS",
+      "sha256": "2e974972786e7df4aa1205c08f079c4c6eefc997098de64fdd2c121221741ebb",
+      "packages": 69,
+      "vulnerabilities": 0,
+      "warnings": 3,
+      "disposition": "UNCHANGED_TEST_HARNESS_NOT_SHIPPED",
+      "findings": [
+        {
+          "key": "RUSTSEC-2026-0190 anyhow@1.0.102",
+          "id": "RUSTSEC-2026-0190",
+          "kind": "unsound",
+          "crate": "anyhow",
+          "version": "1.0.102",
+          "advisory": {
+            "title": "Unsoundness in `Error::downcast_mut()`",
+            "date": "2026-06-25",
+            "categories": [
+              "memory-corruption"
+            ],
+            "cvss": null,
+            "informational": "unsound",
+            "withdrawn": null,
+            "patched": [
+              ">=1.0.103"
+            ],
+            "unaffected": [],
+            "functions": {
+              "anyhow::Error::downcast_mut": [
+                "<1.0.103"
+              ]
+            },
+            "url": "https://github.com/dtolnay/anyhow/issues/451"
+          },
+          "compiled": false,
+          "dependency": {
+            "role": "NOT_COMPILED",
+            "directDependents": [],
+            "pathToRoot": []
+          },
+          "reachability": "NOT_COMPILED",
+          "reachableInFrozenProvingPath": false,
+          "precondition": "calling anyhow::Error::downcast_mut",
+          "exploit": "unsoundness in Error::downcast_mut",
+          "rationale": "cargo tree prints nothing for anyhow on any target: it is locked but not compiled into the test harness",
+          "condition": null,
+          "evidence": [],
+          "fix": {
+            "compatibleVersion": "1.0.104",
+            "alsoChanges": [],
+            "upstreamBlocked": false,
+            "blockedBy": null,
+            "lockfileOnly": true,
+            "lowestPatched": "1.0.103",
+            "noPatchedRelease": false
+          },
+          "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+          "disposition": "UNCHANGED_TEST_HARNESS_NOT_SHIPPED"
+        },
+        {
+          "key": "yanked der@0.8.0",
+          "id": null,
+          "kind": "yanked",
+          "crate": "der",
+          "version": "0.8.0",
+          "advisory": null,
+          "compiled": true,
+          "dependency": {
+            "role": "LINKED",
+            "directDependents": [
+              "pkcs8@0.11.0",
+              "spki@0.8.0"
+            ],
+            "pathToRoot": [
+              "der@0.8.0",
+              "pkcs8@0.11.0",
+              "ml-dsa@0.1.1",
+              "mldsa65-relation-tests@0.1.0"
+            ]
+          },
+          "reachability": "NO_KNOWN_DEFECT",
+          "reachableInFrozenProvingPath": false,
+          "precondition": "none: RustSec reports no vulnerability",
+          "exploit": "der 0.8.0 was yanked by its publisher; no advisory is attached",
+          "rationale": "linked via pkcs8@0.11.0 <- ml-dsa@0.1.1 <- mldsa65-relation-tests@0.1.0; a yanked release carries no known defect, but a later release replaces it",
+          "condition": null,
+          "evidence": [],
+          "fix": {
+            "compatibleVersion": "0.8.2",
+            "alsoChanges": [],
+            "upstreamBlocked": false,
+            "blockedBy": null,
+            "lockfileOnly": true,
+            "lowestPatched": null,
+            "noPatchedRelease": false
+          },
+          "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+          "disposition": "UNCHANGED_TEST_HARNESS_NOT_SHIPPED"
+        },
+        {
+          "key": "RUSTSEC-2025-0141 bincode@1.3.3",
+          "id": "RUSTSEC-2025-0141",
+          "kind": "unmaintained",
+          "crate": "bincode",
+          "version": "1.3.3",
+          "advisory": {
+            "title": "Bincode is unmaintained",
+            "date": "2025-12-16",
+            "categories": [],
+            "cvss": null,
+            "informational": "unmaintained",
+            "withdrawn": null,
+            "patched": [],
+            "unaffected": [],
+            "functions": null,
+            "url": "https://git.sr.ht/~stygianentity/bincode/tree/v3.0/item/README.md"
+          },
+          "compiled": true,
+          "dependency": {
+            "role": "LINKED",
+            "directDependents": [
+              "mldsa65-relation-tests@0.1.0",
+              "sp1-zkvm-host-shim@0.1.0"
+            ],
+            "pathToRoot": [
+              "bincode@1.3.3",
+              "mldsa65-relation-tests@0.1.0"
+            ]
+          },
+          "reachability": "NO_KNOWN_DEFECT",
+          "reachableInFrozenProvingPath": false,
+          "precondition": "none: RustSec reports no vulnerability",
+          "exploit": "Bincode is unmaintained (unmaintained; informational)",
+          "rationale": "linked via mldsa65-relation-tests@0.1.0; an unmaintained crate gets no fixes, so a future advisory would be upstream-only",
+          "condition": null,
+          "evidence": [],
+          "fix": {
+            "compatibleVersion": null,
+            "alsoChanges": [],
+            "upstreamBlocked": false,
+            "blockedBy": null,
+            "lockfileOnly": false,
+            "lowestPatched": null,
+            "noPatchedRelease": true
+          },
+          "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+          "disposition": "UNCHANGED_TEST_HARNESS_NOT_SHIPPED"
+        }
+      ]
+    },
+    {
+      "id": "evidence-validator",
+      "path": "zkvm/evidence-validator/Cargo.lock",
+      "role": "OFFLINE_TOOLING",
+      "sha256": "d1d54eeaaa8ae169ec1ceaba6a5bca8d12ed2085ae54fd9b4cd787041a2b0a6e",
+      "packages": 26,
+      "vulnerabilities": 0,
+      "warnings": 0,
+      "disposition": "UNCHANGED_OFFLINE_TOOLING",
+      "findings": []
+    }
+  ],
+  "reassessWhen": [
+    "zkvm/host's tree changes at HEAD or on disk (Cargo.toml, Cargo.lock, build.rs or src/main.rs), including a dependabot bump",
+    "a designation succeeds mldsa65-withdrawal-d1, or d1's bytes change (designations are immutable: supersede, never rewrite)",
+    "an assumption stops holding: a new dependency, table or sp1-sdk feature (network, cuda, native-gnark), a network-only, aws-lc, brotli or cuda crate in the lockfile, another proof kind or prover in src/main.rs",
+    "proving availability changes: a WalletWall circuit archive, a local copy, an exercised self-hosted path (the archive-only install changes which rustls path can run)",
+    "the networked RustSec job reports drift: a new advisory, a changed one (kind, severity, ranges), a finding that disappeared, or a changed graph, feature, source or fix fact",
+    "the measurement script, the evidence catalog or the claims change"
+  ],
+  "nextProgramRebuild": [
+    "apply the compatible dependency refresh listed under remediation.compatibleRefresh (and any newer patched releases)",
+    "re-audit every lockfile and re-measure this record's observation with the pinned cargo-audit",
+    "publish a successor designation for the rebuilt program (a host-only change is refused as a same-identity successor: the rebuild itself must change the program's identity, or the owner decides the designation route)",
+    "run the canonical two-host rebuild and record its procedure",
+    "re-measure the ELF and PROGRAM_VKEY outside the build and compare them",
+    "re-measure proving availability for the new lockfile and circuit"
+  ]
+}

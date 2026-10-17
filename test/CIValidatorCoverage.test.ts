@@ -131,12 +131,20 @@ describe("CI workflow — deployment-truth and bytecode-size gates run in normal
       expect(job).to.include("npm run validate:sp1-pin-parity");
     });
 
+    it("runs npm run validate:sp1-host-advisories", function () {
+      // The offline gate for the zkvm/host RustSec advisory record: without it a host lockfile or manifest change,
+      // a broken reachability assumption or a successor designation could merge while the record still describes
+      // the old subject. The networked RustSec job (.github/workflows/rustsec-audit.yml) only reports.
+      expect(job).to.include("npm run validate:sp1-host-advisories");
+    });
+
     for (const cmd of [
       "npm run validate:deployments",
       "npm run validate:reproducibility",
       "npm run validate:bytecode-size",
       "npm run validate:runtime-byte-claims",
       "npm run validate:sp1-pin-parity",
+      "npm run validate:sp1-host-advisories",
     ]) {
       it(`"${cmd}" step is unconditional (no if:, no continue-on-error escape hatch)`, function () {
         const step = stepBlockContaining(job, cmd);
