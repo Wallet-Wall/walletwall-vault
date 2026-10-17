@@ -493,7 +493,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
           ids.some((i) => i.startsWith(group)),
           group,
         ).to.equal(true);
-      expect(ids.length).to.equal(143);
+      expect(ids.length).to.equal(144);
     });
   });
 
@@ -644,6 +644,8 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
         ["._a b", null],
         ["x", null],
         [".x", null],
+        ["abc", null],
+        ["groth16_vk.bin", null],
       ];
       for (const [p, want] of cases) expect(appleDoubleCompanion(p), p).to.equal(want);
     });

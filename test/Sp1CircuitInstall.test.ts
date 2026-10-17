@@ -112,6 +112,23 @@ describe("SP1-PA2A circuit install", function () {
       expect(verifyInstalledCircuit(s.root, upRecord, anchor).members).to.deep.equal(upRecord.members);
     });
 
+    it("an archive swapped after inspection for one with unrecorded metadata is refused at that entry's header", async function () {
+      // The record names no ._groth16_witness.json; the swapped archive (the full upstream shape) holds one.
+      const files = UPSTREAM_SHAPED_FILES;
+      const without = upstreamShapedEntries(files).filter((e) => e.name !== "./._groth16_witness.json");
+      const original = gz(tarBytes(without));
+      const meta = appleDoubleMetadata(files).filter((m) => m.path !== "._groth16_witness.json");
+      const rec = syntheticRecord(original, files, anchor, meta);
+      const s = setup(original);
+      const swapped = gz(tarBytes(upstreamShapedEntries(files)));
+      expect(
+        await refusalOf(() =>
+          install(s, { record: rec, hooks: { afterInspection: () => writeFileSync(s.archivePath, swapped) } }),
+        ),
+      ).to.equal("ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_METADATA)");
+      expect(existsSync(s.target)).to.equal(false);
+    });
+
     it("an AppleDouble file planted in an upstream-shaped installation fails re-verification", async function () {
       const upArchive = gz(tarBytes(upstreamShapedEntries()));
       const upRecord = syntheticRecord(

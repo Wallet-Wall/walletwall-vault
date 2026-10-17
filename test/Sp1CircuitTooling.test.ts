@@ -14,7 +14,12 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-import { PROVENANCE_PAX_KEY, RECORD_FIELDS, archiveRecordErrors } from "../scripts/lib/sp1-circuit-archive";
+import {
+  ARCHIVE_RECORD_SCHEMA,
+  PROVENANCE_PAX_KEY,
+  RECORD_FIELDS,
+  archiveRecordErrors,
+} from "../scripts/lib/sp1-circuit-archive";
 import {
   FIXTURES_DIR,
   SAFE_ARCHIVE_REL,
@@ -170,7 +175,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(r.provingAvailability.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(0);
-      expect(r.selfTest.hostile).to.have.length(143);
+      expect(r.selfTest.hostile).to.have.length(144);
       expect(r.archiveRecord.schema).to.equal("walletwall.sp1-proving-archive.v2");
       expect(r.archiveRecord.ignoredMetadata.derivedFrom.archive).to.deep.equal({
         bytes: 6211807514,
@@ -215,6 +220,18 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(await toolingErrors(repo)).to.deep.equal([
         "proving availability is LOCAL_COPY_NOT_ARCHIVED: this lane leaves it OWNER_DOWNLOAD_REQUIRED, and a change needs its own lane",
       ]);
+    });
+
+    it("refuses to derive anything from census observations that are not one census", async function () {
+      this.timeout(120_000);
+      const repo = dirs.make();
+      for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock"]) {
+        cpSync(resolve(p), join(repo, p), { recursive: true });
+      }
+      const other = JSON.parse(read(CENSUS_OBSERVATIONS_REL[1]).toString("utf8"));
+      other.tar.entries += 1;
+      writeFileSync(join(repo, CENSUS_OBSERVATIONS_REL[1]), JSON.stringify(other));
+      expect(await toolingErrors(repo)).to.deep.equal(["the census observations are not one census"]);
     });
 
     it("never derives an archived state: a production record, a failed self-test", function () {
@@ -722,6 +739,8 @@ describe("SP1-PA2A circuit tooling contract", function () {
         expect(s.additionalProperties, path.join(".")).to.equal(false);
       }
       expect(schema.$id).to.equal("walletwall.sp1-proving-archive.v2");
+      expect(schema.properties.schema.const).to.equal(ARCHIVE_RECORD_SCHEMA);
+      expect(ARCHIVE_RECORD_SCHEMA).to.equal("walletwall.sp1-proving-archive.v2");
       expect(schema.properties.acquisitions.minItems).to.equal(2);
       expect(schema.properties.mirrors.minItems).to.equal(2);
     });

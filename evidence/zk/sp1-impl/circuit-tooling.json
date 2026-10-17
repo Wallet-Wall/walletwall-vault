@@ -1055,6 +1055,11 @@
         "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)"
       },
       {
+        "id": "M38",
+        "title": "a size smaller than every accepted body, refused at its header too (its declared bytes are never read)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)"
+      },
+      {
         "id": "M04",
         "title": "a nested ._ name",
         "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"

@@ -141,7 +141,7 @@ it were refused, and the amendment accepts exactly those two:
 | **AppleDouble entries** (`IGNORED_APPLEDOUBLE_METADATA`) | `._.` before the root directory entry, and `./._<name>` before each of the seven files; each a 163-byte regular file without a PAX header, all one body (an AppleDouble v2 header, an empty Finder Info holding one `com.apple.provenance` attribute, an empty resource fork), sha256 `a8d7edca…0e0` | the path is exactly `._.` or `._<name>`, where `<name>` is a canonical root-level name that is not itself AppleDouble-shaped; it is a regular file with no PAX header and the observed body; and the **very next entry** (PAX headers aside) is the one it describes: the root directory for `._.`, the regular file `<name>` otherwise |
 | **Binary provenance** (`IGNORED_PROVENANCE_METADATA`) | in every PAX header (the root's and the seven files'), `SCHILY.xattr.com.apple.provenance` = the 11 raw bytes `0102002d0e23b75bfde87a` (not UTF-8: it holds a NUL; sha256 `a6373f30…b8d`), beside its base64 twin `LIBARCHIVE.xattr.com.apple.provenance` | the key is exactly that; the raw value is exactly those bytes (compared byte for byte, never decoded, interpreted or applied as an extended attribute); it is on one of those eight entries by path **and** kind, at most once each; and once any entry carries it, all eight do by the end of the archive |
 
-What still fails closed, each pinned by a hostile archive (`M01`–`M37`, `X01`–`X32`): a path with any `._` component
+What still fails closed, each pinned by a hostile archive (`M01`–`M38`, `X01`–`X32`): a path with any `._` component
 is never a circuit member (in the archive or in a record), and outside the policy it is refused, whether nested,
 `._._x`, `._`, `._x.`, `._..`, a directory, a link, an oversized or other body, a PAX header on it, an orphan, an
 entry after its companion, a duplicate, or a case variant. Other dotfiles (`.DS_Store`, `__MACOSX/`) are not
@@ -298,8 +298,8 @@ owner and root needs an OS-level sandbox, a different lane.
   [`test/Sp1CircuitTooling.test.ts`](../test/Sp1CircuitTooling.test.ts),
   [`test/Sp1CircuitArchiveCensus.test.ts`](../test/Sp1CircuitArchiveCensus.test.ts). Link and FIFO cases run on POSIX
   (CI).
-- Hostile catalog: 143 archives (18 path, 18 link, special-type and mode, 18 ambiguity, 11 structure and bound,
-  9 integrity, 37 AppleDouble, 32 binary provenance), each pinned by refusal code and reason.
+- Hostile catalog: 144 archives (18 path, 18 link, special-type and mode, 18 ambiguity, 11 structure and bound,
+  9 integrity, 38 AppleDouble, 32 binary provenance), each pinned by refusal code and reason.
 - Mutation and adversarial review: see the pull requests.
 
 ## Next: SP1-PA2B, paused until this amendment merges

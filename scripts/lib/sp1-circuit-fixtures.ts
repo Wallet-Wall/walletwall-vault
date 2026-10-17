@@ -838,6 +838,12 @@ export function hostileCases(): HostileCase[] {
       expect: unsafe("APPLEDOUBLE_UNEXPECTED_BODY"),
     },
     {
+      id: "M38",
+      title: "a size smaller than every accepted body, refused at its header too (its declared bytes are never read)",
+      archive: gz(tarBytes([file("._groth16_vk.bin", "x", { size: 100 })], { end: false })),
+      expect: unsafe("APPLEDOUBLE_UNEXPECTED_BODY"),
+    },
+    {
       id: "M04",
       title: "a nested ._ name",
       archive: only(ad("extra/._README.synthetic"), file("extra/README.synthetic")),
