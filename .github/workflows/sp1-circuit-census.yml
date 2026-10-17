@@ -1,0 +1,118 @@
+name: SP1 circuit archive census (measurement)
+
+# SP1-PA2A amendment, owner-authorized (2026-10-17): the host-B half of the read-only characterization of SP1's
+# Groth16 circuit v6.1.0 archive. Host B's original copy was deleted on its ephemeral runner after it was measured,
+# so this is a re-acquisition (host B'): a fresh GitHub-hosted runner downloads the same URL and must measure exactly
+# the bytes both original hosts agreed on before anything else reads it. It:
+#   - downloads v6.1.0-groth16.tar.gz over HTTPS into the runner's temp directory (data only: never executed, never
+#     extracted);
+#   - measures its sha256 and length with coreutils and OpenSSL and STOPS unless both are the agreed values;
+#   - lists every entry with the committed census (scripts/sp1-circuit-archive-census.ts) and, independently, with
+#     CPython's stdlib tarfile (reading members, never extracting), and compares the two field by field;
+#   - uploads the measurement (never the archive) as an artifact.
+# It accepts nothing, installs nothing, proves nothing, writes to no chain and changes nothing in the repository. It
+# never runs on pull requests: only when pushed to a measure/sp1-circuit-census* branch, or dispatched.
+on:
+  push:
+    branches:
+      - "measure/sp1-circuit-census*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  census:
+    name: Re-acquire and census the circuit archive (GitHub-hosted runner, host B')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ARCHIVE_URL: https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz
+      AGREED_BYTES: "6211807514"
+      AGREED_SHA256: 18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download the archive (data only)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/census"
+          mkdir -p "$out/archive"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$out/started.txt"
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 -sS \
+            -D "$out/headers.txt" -o "$out/archive/v6.1.0-groth16.tar.gz" \
+            -w '{"http_code":%{http_code},"size_download":%{size_download},"remote_ip":"%{remote_ip}","url_effective":"%{url_effective}","time_total":%{time_total}}\n' \
+            "$ARCHIVE_URL" > "$out/transfer.json"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$out/finished.txt"
+          cat "$out/transfer.json"
+          tr -d '\r' < "$out/headers.txt"
+
+      - name: Measure, and stop unless the bytes are the agreed bytes
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/census"
+          f="$out/archive/v6.1.0-groth16.tar.gz"
+          stat -c %s "$f" | tee "$out/bytes.txt"
+          sha256sum "$f" | cut -d' ' -f1 | tee "$out/sha256-coreutils.txt"
+          openssl dgst -sha256 -r "$f" | cut -d' ' -f1 | tee "$out/sha256-openssl.txt"
+          if [ "$(cat "$out/bytes.txt")" != "$AGREED_BYTES" ] \
+            || [ "$(cat "$out/sha256-coreutils.txt")" != "$AGREED_SHA256" ] \
+            || [ "$(cat "$out/sha256-openssl.txt")" != "$AGREED_SHA256" ]; then
+            echo "STOP: the re-acquired archive is not the bytes hosts A and B agreed on" | tee "$out/STOP.txt"
+            exit 1
+          fi
+
+      - name: Census (committed TypeScript census)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/census"
+          npm run --silent sp1:circuit-archive:census -- --archive "$out/archive/v6.1.0-groth16.tar.gz" \
+            > "$out/census.json"
+          sha256sum "$out/census.json" | tee "$out/census-sha256.txt"
+
+      - name: Independent listing (CPython tarfile, never extracting)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/census"
+          python3 --version | tee "$out/python-version.txt"
+          python3 -I measure/sp1-circuit-census/tarfile_census.py "$out/archive/v6.1.0-groth16.tar.gz" \
+            > "$out/tarfile.json"
+          node measure/sp1-circuit-census/compare.mjs "$out/census.json" "$out/tarfile.json" | tee "$out/compare.txt"
+
+      - name: Record the runner
+        if: always()
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/census"
+          mkdir -p "$out"
+          {
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "image_os=${ImageOS:-}"
+            echo "image_version=${ImageVersion:-}"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "sha=$GITHUB_SHA"
+            uname -a
+          } | tee "$out/runner.txt"
+          rm -rf "$out/archive"
+
+      - name: Upload the measurement (never the archive)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-circuit-census-github-hosted-runner
+          path: |
+            ${{ runner.temp }}/census
+            !${{ runner.temp }}/census/archive
+          retention-days: 90
