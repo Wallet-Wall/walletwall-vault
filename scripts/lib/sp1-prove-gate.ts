@@ -158,16 +158,23 @@ function regularFile(path: string, what: string): void {
  * the way, the root `uid`'s and writable by nobody else, and every ancestor `uid`'s or the superuser's and writable
  * by no one else unless sticky (so no other user can rename the root, or an ancestor, out from under the run).
  */
-export function securePathError(root: string, uid: number): string | null {
+export function securePathError(
+  root: string,
+  uid: number,
+  fs: { lstat: (p: string) => { uid: number; mode: number }; realpath: (p: string) => string } = {
+    lstat: lstatSync,
+    realpath: realpathSync,
+  },
+): string | null {
   let real: string;
   try {
-    real = realpathSync(root);
+    real = fs.realpath(root);
   } catch {
     return "ABSENT";
   }
   if (real !== root) return "LINKED_PATH";
   for (let p = root; ; p = posix.dirname(p)) {
-    const st = lstatSync(p);
+    const st = fs.lstat(p);
     if (p === root ? st.uid !== uid : st.uid !== uid && st.uid !== 0)
       return p === root ? "NOT_OWNED" : "FOREIGN_ANCESTOR";
     if ((st.mode & 0o022) !== 0 && (p === root || (st.mode & 0o1000) === 0)) {
@@ -186,34 +193,38 @@ export type RootGuard = (circuitRoot: string, circuitDir: string) => { release()
  * circuit version nor move the verified one away. Permissions bind nothing for root, so root is refused, and Windows,
  * whose directory permissions this does not manage, is refused.
  */
-export const posixRootGuard: RootGuard = (root, circuitDir) => {
-  if (process.platform === "win32") {
-    throw refuse(
-      "PROVE_HOST_UNSUPPORTED",
-      "WINDOWS",
-      "proving through the gate needs a POSIX host whose circuit root can be locked",
-    );
-  }
-  const uid = process.getuid?.() ?? -1;
-  if (uid === 0)
-    throw refuse(
-      "PROVE_HOST_UNSUPPORTED",
-      "RUNS_AS_ROOT",
-      "permissions bind nothing for root: run as an unprivileged user",
-    );
-  const bad = securePathError(root, uid);
-  if (bad) throw refuse("CIRCUIT_ROOT_INVALID", bad, `${root} is not a path only its owner can change`);
-  const { files, directories } = walkTree(circuitDir, "CIRCUIT_INTEGRITY_FAILED");
-  for (const p of [circuitDir, ...[...directories, ...files].map((rel) => join(circuitDir, ...rel.split("/")))]) {
-    const st = lstatSync(p);
-    if (st.uid !== uid || (st.mode & 0o022) !== 0) {
-      throw refuse("CIRCUIT_ROOT_INVALID", "WRITABLE_BY_OTHERS", `${p} is not ${uid}'s alone`);
+export const posixRootGuardFor =
+  (platform: NodeJS.Platform, uid: number): RootGuard =>
+  (root, circuitDir) => {
+    if (platform === "win32") {
+      throw refuse(
+        "PROVE_HOST_UNSUPPORTED",
+        "WINDOWS",
+        "proving through the gate needs a POSIX host whose circuit root can be locked",
+      );
     }
-  }
-  const mode = lstatSync(root).mode & 0o7777;
-  chmodSync(root, mode & ~0o222);
-  return { release: () => chmodSync(root, mode) };
-};
+    if (uid === 0)
+      throw refuse(
+        "PROVE_HOST_UNSUPPORTED",
+        "RUNS_AS_ROOT",
+        "permissions bind nothing for root: run as an unprivileged user",
+      );
+    const bad = securePathError(root, uid);
+    if (bad) throw refuse("CIRCUIT_ROOT_INVALID", bad, `${root} is not a path only its owner can change`);
+    const { files, directories } = walkTree(circuitDir, "CIRCUIT_INTEGRITY_FAILED");
+    for (const p of [circuitDir, ...[...directories, ...files].map((rel) => join(circuitDir, ...rel.split("/")))]) {
+      const st = lstatSync(p);
+      if (st.uid !== uid || (st.mode & 0o022) !== 0) {
+        throw refuse("CIRCUIT_ROOT_INVALID", "WRITABLE_BY_OTHERS", `${p} is not ${uid}'s alone`);
+      }
+    }
+    const mode = lstatSync(root).mode & 0o7777;
+    chmodSync(root, mode & ~0o222);
+    return { release: () => chmodSync(root, mode) };
+  };
+
+/** The production guard for this process. */
+export const posixRootGuard: RootGuard = posixRootGuardFor(process.platform, process.getuid?.() ?? -1);
 
 /** The local image's repo digests for `ref` (offline: `docker image inspect`); null when docker has no such image. */
 export type LocalImageDigests = (ref: string, env: Record<string, string>) => string[] | null;

@@ -38,6 +38,7 @@ import {
   runArchiveOnlyProve,
   spawnHost,
   posixRootGuard,
+  posixRootGuardFor,
   securePathError,
   type LocalImageDigests,
   type RootGuard,
@@ -657,17 +658,55 @@ describe("SP1-PA2A archive-only prove gate", function () {
       }
     });
 
-    it("posixRootGuard refuses Windows and the superuser", function () {
-      const uid = process.getuid?.();
+    it("the root guard refuses Windows and the superuser, before touching anything", function () {
+      expect(() => posixRootGuardFor("win32", 1000)("C:\\circuits", "C:\\circuits\\v6.1.0")).to.throw(
+        /PROVE_HOST_UNSUPPORTED \(WINDOWS\)/,
+      );
+      expect(() => posixRootGuardFor("linux", 0)("/nonexistent/circuits", "/nonexistent/circuits/v6.1.0")).to.throw(
+        /PROVE_HOST_UNSUPPORTED \(RUNS_AS_ROOT\)/,
+      );
       if (process.platform === "win32") {
-        expect(() => posixRootGuard("C:\\circuits", "C:\\circuits\\v6.1.0")).to.throw(
-          /PROVE_HOST_UNSUPPORTED \(WINDOWS\)/,
-        );
-      } else if (uid === 0) {
-        expect(() => posixRootGuard("/opt/circuits", "/opt/circuits/v6.1.0")).to.throw(
-          /PROVE_HOST_UNSUPPORTED \(RUNS_AS_ROOT\)/,
-        );
-      } else this.skip();
+        expect(() => posixRootGuard("C:\\circuits", "C:\\circuits\\v6.1.0")).to.throw(/WINDOWS/);
+      }
+    });
+
+    it("securePathError judges every ancestor: owner, writability, stickiness, links", function () {
+      const tree: Record<string, { uid: number; mode: number }> = {
+        "/": { uid: 0, mode: 0o40755 },
+        "/srv": { uid: 0, mode: 0o40755 },
+        "/srv/c": { uid: 1000, mode: 0o40755 },
+      };
+      const fs = (over: Record<string, { uid: number; mode: number }> = {}, real = (p: string) => p) => ({
+        lstat: (p: string) => ({ ...tree, ...over })[p],
+        realpath: real,
+      });
+      expect(securePathError("/srv/c", 1000, fs())).to.equal(null);
+      expect(securePathError("/srv/c", 1001, fs())).to.equal("NOT_OWNED");
+      expect(securePathError("/srv/c", 1000, fs({ "/srv/c": { uid: 1000, mode: 0o40775 } }))).to.equal(
+        "WRITABLE_BY_OTHERS",
+      );
+      expect(securePathError("/srv/c", 1000, fs({ "/srv/c": { uid: 1000, mode: 0o41777 } }))).to.equal(
+        "WRITABLE_BY_OTHERS",
+      );
+      expect(securePathError("/srv/c", 1000, fs({ "/srv": { uid: 1002, mode: 0o40755 } }))).to.equal(
+        "FOREIGN_ANCESTOR",
+      );
+      expect(securePathError("/srv/c", 1000, fs({ "/srv": { uid: 1000, mode: 0o40755 } }))).to.equal(null);
+      expect(securePathError("/srv/c", 1000, fs({ "/srv": { uid: 0, mode: 0o40777 } }))).to.equal("WRITABLE_ANCESTOR");
+      expect(securePathError("/srv/c", 1000, fs({ "/srv": { uid: 0, mode: 0o40775 } }))).to.equal("WRITABLE_ANCESTOR");
+      expect(securePathError("/srv/c", 1000, fs({ "/srv": { uid: 0, mode: 0o41777 } }))).to.equal(null);
+      expect(securePathError("/srv/c", 1000, fs({ "/": { uid: 0, mode: 0o40777 } }))).to.equal("WRITABLE_ANCESTOR");
+      expect(
+        securePathError(
+          "/srv/c",
+          1000,
+          fs({}, () => "/elsewhere/c"),
+        ),
+      ).to.equal("LINKED_PATH");
+      const absent = () => {
+        throw new Error("ENOENT");
+      };
+      expect(securePathError("/srv/c", 1000, fs({}, absent))).to.equal("ABSENT");
     });
 
     it("posixRootGuard locks the root: no other version directory, no rename of the verified one, until release", async function () {
