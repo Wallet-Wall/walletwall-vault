@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+// CONTROL, DO NOT MERGE: a protected contracts/ change that validate:sp1-impl-receipt must refuse.
 pragma solidity ^0.8.20;
 
 import "./IPQCVerifier.sol";
