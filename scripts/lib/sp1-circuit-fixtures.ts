@@ -51,6 +51,8 @@ export interface TarSpec {
   size?: number;
   sizeEncoding?: "base256" | "negative" | { raw: string };
   badChecksum?: boolean;
+  /** The mode field's raw text (8 bytes); 0644, or 0755 for a directory, by default. */
+  mode?: string;
   /** A PAX extended header ("x") before this entry: records, or its raw data. */
   pax?: Record<string, string> | Buffer;
 }
@@ -69,7 +71,7 @@ function paxData(records: Record<string, string>): Buffer {
 function header(s: TarSpec, size: number): Buffer {
   const h = Buffer.alloc(512);
   (s.nameBytes ?? Buffer.from(s.name, "utf8")).copy(h, 0, 0, 100);
-  h.write(s.type === "5" ? "0000755\0" : "0000644\0", 100, "latin1");
+  h.write(s.mode ?? (s.type === "5" ? "0000755\0" : "0000644\0"), 100, "latin1");
   h.write("0000000\0", 108, "latin1");
   h.write("0000000\0", 116, "latin1");
   const enc = s.sizeEncoding;
@@ -408,6 +410,24 @@ export function hostileCases(): HostileCase[] {
       title: "pre-ustar (v7) header",
       archive: only(file("f", "x", { format: "v7" })),
       expect: unsafe("UNSUPPORTED_FORMAT"),
+    },
+    {
+      id: "L16",
+      title: "setuid mode (tar(1) as root would apply it)",
+      archive: only(file("suid", "x", { mode: "0004755\0" })),
+      expect: unsafe("SPECIAL_MODE_BITS"),
+    },
+    {
+      id: "L17",
+      title: "sticky directory mode",
+      archive: withSafe(file("./extra2/", "", { type: "5", mode: "0001777\0" }), file("./extra2/f", "x")),
+      expect: unsafe("SPECIAL_MODE_BITS"),
+    },
+    {
+      id: "L18",
+      title: "mode field not octal",
+      archive: only(file("f", "x", { mode: "rwxr-xr\0" })),
+      expect: corrupt("HEADER_FIELD"),
     },
     // Ambiguity
     {

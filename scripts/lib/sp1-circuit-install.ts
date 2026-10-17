@@ -73,7 +73,10 @@ export function hashRegularFile(full: string, rel: string, code: RefusalCode): S
     throw refuse(code, e.code === "ELOOP" ? "LINK_IN_TREE" : "UNREADABLE", `${rel}: ${e.message}`);
   }
   try {
-    if (!fstatSync(fd).isFile()) throw refuse(code, "SPECIAL_FILE_IN_TREE", `${rel} is not a regular file`);
+    const st = fstatSync(fd);
+    if (!st.isFile()) throw refuse(code, "SPECIAL_FILE_IN_TREE", `${rel} is not a regular file`);
+    // A second link is a second path to these bytes, outside the installation.
+    if (st.nlink !== 1) throw refuse(code, "HARDLINK_IN_TREE", `${rel} has ${st.nlink} links`);
     const hash = createHash("sha256");
     const buf = Buffer.allocUnsafe(READ_CHUNK);
     let bytes = 0;
@@ -152,11 +155,35 @@ export function verifyInstalledCircuit(
   const root = lstatOrNull(circuitRoot);
   if (!root) throw refuse("CIRCUIT_ARCHIVE_NOT_INSTALLED", "ROOT_ABSENT", `${circuitRoot} does not exist`);
   if (!root.isDirectory()) throw refuse("CIRCUIT_ROOT_INVALID", "NOT_A_DIRECTORY", `${circuitRoot} is not a directory`);
+  // SP1 reads <root>/<the version compiled into the host>: any other entry is what a host built for another circuit
+  // would use unverified, so the root holds the verified version and nothing else.
+  const other = readdirSync(circuitRoot).filter((n) => n !== anchor.circuitVersion);
+  if (other.length > 0) {
+    throw refuse("CIRCUIT_ROOT_INVALID", "UNEXPECTED_ENTRY", `${circuitRoot} also holds ${other.join(", ")}`);
+  }
   const circuitDir = join(circuitRoot, anchor.circuitVersion);
   const dir = lstatOrNull(circuitDir);
   if (!dir) throw refuse("CIRCUIT_ARCHIVE_NOT_INSTALLED", "CIRCUIT_ABSENT", `${circuitDir} does not exist`);
   if (!dir.isDirectory()) throw refuse(code, "NOT_A_DIRECTORY", `${circuitDir} is not a directory`);
   return { circuitDir, members: verifyTree(circuitDir, record, anchor, code) };
+}
+
+/**
+ * What the installation is, not only what it holds: device, inode, link count, size, mode and times of the root, the
+ * circuit directory and every entry under it. A tree moved away and re-created with the same bytes (SP1 downloading
+ * the circuit again) has the same hashes and another identity.
+ */
+export function installationIdentity(circuitRoot: string, circuitDir: string): string[] {
+  const line = (rel: string, full: string) => {
+    const s = lstatSync(full, { bigint: true });
+    return `${rel}\t${s.dev}:${s.ino}:${s.nlink}:${s.size}:${s.mode}:${s.mtimeNs}:${s.ctimeNs}`;
+  };
+  const { files, directories } = walkTree(circuitDir, "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE");
+  return [
+    line("<root>", circuitRoot),
+    line("", circuitDir),
+    ...[...directories, ...files].sort().map((rel) => line(rel, toFs(circuitDir, rel))),
+  ];
 }
 
 /** Applies `mode` to every file and directory under `dir` (never through a link), directories after their contents. */

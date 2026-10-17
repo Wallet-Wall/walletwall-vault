@@ -10,7 +10,7 @@
 import { expect } from "chai";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -35,6 +35,8 @@ import {
   UPSTREAM_OBSERVATION_REL,
   UPSTREAM_SCRIPT_REL,
   authoritativeRecordError,
+  committedProductionAnchor,
+  committedProductionRecord,
   envClass,
   environmentReads,
   gateCoverageErrors,
@@ -43,6 +45,7 @@ import {
   readUpstreamFacts,
   toolingErrors,
   toolingState,
+  uncommittedEvidenceError,
   upstreamObservationErrors,
   type UpstreamObservation,
 } from "../scripts/lib/sp1-circuit-tooling";
@@ -57,6 +60,8 @@ import { refusalOf, symlinkOrSkip, tempDirs } from "./helpers/circuit-tooling";
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const read = (rel: string) => readFileSync(resolve(rel));
+const insideGit =
+  spawnSync("git", ["rev-parse", "--is-inside-work-tree"], { encoding: "utf8" }).stdout?.trim() === "true";
 const committedObservation = () => JSON.parse(read(UPSTREAM_OBSERVATION_REL).toString("utf8")) as UpstreamObservation;
 
 /** Excerpts shaped like the pinned crates' sources: what SP1-PA2A read, in the form the measurement must find. */
@@ -162,7 +167,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(r.provingAvailability.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(0);
-      expect(r.selfTest.hostile).to.have.length(71);
+      expect(r.selfTest.hostile).to.have.length(74);
       expect(r.selfTest.productionAnchorRefusesFixtures).to.deep.equal(["SUBJECT_MISMATCH", "VK_MISMATCH"]);
       expect(STATES.filter((s) => s.reachableInThisLane).map((s) => s.state)).to.deep.equal([
         "TOOLING_NOT_PRESENT",
@@ -628,6 +633,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       spawnSync(process.execPath, ["--import", "tsx", script, ...args], { encoding: "utf8", timeout: 120_000 });
     it("install and prove refuse a fixture record as not authoritative; inspect refuses the synthetic key for d1", function () {
       this.timeout(240_000);
+      if (!insideGit) this.skip(); // the anchor counts only as committed evidence of a git checkout
       const root = dirs.make();
       const install = tsx("scripts/sp1-circuit-install.ts", [
         "--archive",
@@ -669,6 +675,99 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(r.status).to.equal(1);
       expect(r.stderr).to.include(UPSTREAM_OBSERVATION_REL);
     });
+    it("read their anchor from the checkout they live in, never the working directory", function () {
+      this.timeout(120_000);
+      // A crafted working directory with its own evidence and a "production" record: the review's attack.
+      const fake = dirs.make();
+      cpSync(resolve("evidence/zk/sp1/designations"), join(fake, "evidence/zk/sp1/designations"), { recursive: true });
+      cpSync(resolve(PROVING_AVAILABILITY_REL), join(fake, PROVING_AVAILABILITY_REL));
+      mkdirSync(join(fake, PROVING_ARCHIVES_DIR), { recursive: true });
+      const forged = join(fake, PROVING_ARCHIVES_DIR, "v6.1.0-groth16.json");
+      cpSync(resolve(SAFE_RECORD_REL), forged);
+      const cli = resolve("node_modules/tsx/dist/cli.mjs");
+      const r = spawnSync(
+        process.execPath,
+        [
+          cli,
+          resolve("scripts/sp1-circuit-install.ts"),
+          "--archive",
+          resolve(SAFE_ARCHIVE_REL),
+          "--record",
+          forged,
+          "--destination-root",
+          dirs.make(),
+        ],
+        { cwd: fake, encoding: "utf8", timeout: 120_000 },
+      );
+      expect(r.status).to.equal(1);
+      expect(r.stderr).to.include("RECORD_NOT_AUTHORITATIVE (OUTSIDE_PROVING_ARCHIVES)");
+    });
+  });
+
+  describe("committed evidence", function () {
+    const git = (cwd: string, ...args: string[]) => {
+      const r = spawnSync("git", args, { cwd, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+      return r.stdout;
+    };
+    function repo() {
+      const d = dirs.make();
+      git(d, "init", "-q");
+      git(d, "config", "user.email", "test@example.invalid");
+      git(d, "config", "user.name", "test");
+      git(d, "config", "commit.gpgsign", "false");
+      mkdirSync(join(d, PROVING_ARCHIVES_DIR), { recursive: true });
+      mkdirSync(join(d, "evidence/zk/sp1/designations"), { recursive: true });
+      writeFileSync(join(d, "evidence/zk/sp1/designations/a.json"), "{}\n");
+      writeFileSync(join(d, PROVING_ARCHIVES_DIR, "r.json"), '{"record":1}\n');
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "-m", "evidence");
+      return d;
+    }
+    it("is exactly what HEAD commits: modified, untracked or unknown paths are refused", function () {
+      this.timeout(60_000);
+      const d = repo();
+      const dir = "evidence/zk/sp1/designations";
+      expect(uncommittedEvidenceError([dir], d)).to.equal(null);
+      writeFileSync(join(d, dir, "b.json"), "{}\n");
+      expect(uncommittedEvidenceError([dir], d)).to.match(/^UNCOMMITTED \?\? /);
+      rmSync(join(d, dir, "b.json"));
+      writeFileSync(join(d, dir, "a.json"), '{"changed":true}\n');
+      expect(uncommittedEvidenceError([dir], d)).to.match(/^UNCOMMITTED M /);
+      expect(uncommittedEvidenceError(["evidence/absent.json"], d)).to.equal("UNTRACKED evidence/absent.json");
+      expect(uncommittedEvidenceError([dir], dirs.make())).to.equal("NOT_A_GIT_CHECKOUT");
+    });
+    it("a production record counts only as committed", async function () {
+      this.timeout(60_000);
+      const d = repo();
+      const r = join(d, PROVING_ARCHIVES_DIR, "r.json");
+      expect(committedProductionRecord(r, d)).to.deep.equal({ record: 1 });
+      writeFileSync(r, '{"record":2}\n');
+      expect(await refusalOf(() => committedProductionRecord(r, d))).to.equal("RECORD_NOT_AUTHORITATIVE (UNCOMMITTED)");
+      const fresh = join(d, PROVING_ARCHIVES_DIR, "new.json");
+      writeFileSync(fresh, "{}\n");
+      expect(await refusalOf(() => committedProductionRecord(fresh, d))).to.equal(
+        "RECORD_NOT_AUTHORITATIVE (UNTRACKED)",
+      );
+      expect(await refusalOf(() => committedProductionRecord(join(d, "elsewhere.json"), d))).to.equal(
+        "RECORD_NOT_AUTHORITATIVE (ABSENT)",
+      );
+    });
+    it("the production anchor's evidence counts only as committed, and only as a valid designation set", async function () {
+      this.timeout(60_000);
+      if (!insideGit) this.skip();
+      expect(await refusalOf(() => committedProductionAnchor(dirs.make()))).to.equal(
+        "EVIDENCE_NOT_COMMITTED (NOT_A_GIT_CHECKOUT)",
+      );
+      expect(committedProductionAnchor(resolve("."))).to.deep.equal(productionAnchor("."));
+      const fake = dirs.make();
+      cpSync(resolve("evidence/zk/sp1/designations"), join(fake, "evidence/zk/sp1/designations"), { recursive: true });
+      cpSync(resolve(PROVING_AVAILABILITY_REL), join(fake, PROVING_AVAILABILITY_REL));
+      const d1 = JSON.parse(read("evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json").toString("utf8"));
+      const d2 = { ...d1, id: "mldsa65-withdrawal-d2", sequence: 2, soundness: "ESTABLISHED" };
+      writeFileSync(join(fake, "evidence/zk/sp1/designations/mldsa65-withdrawal-d2.json"), JSON.stringify(d2));
+      expect(() => productionAnchor(fake)).to.throw(/not a valid set/);
+    });
   });
 
   describe("CI", function () {
@@ -699,6 +798,22 @@ describe("SP1-PA2A circuit tooling contract", function () {
       }
       expect(ci.includes("docker pull")).to.equal(false);
       expect(ci.includes("sp1-circuits.s3")).to.equal(false);
+    });
+  });
+
+  describe("the owner-facing page", function () {
+    const doc = read("docs/SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md").toString("utf8");
+    it("keeps the four states apart and proving availability unchanged", function () {
+      for (const s of STATES) expect(doc, s.state).to.include(s.state);
+      expect(doc).to.include("4. Production binding established");
+      expect(doc).to.include("`PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED`");
+      expect(doc).to.include("Research prototype. Not audited. Testnet/local only. Do not use real funds.");
+    });
+    it("claims only that the gate can refuse the downloader, not that proving never exercises it", function () {
+      expect(doc).to.include(
+        "WalletWall has a gate capable of refusing the built-in circuit downloader\n  once verified artifacts exist.",
+      );
+      expect(doc).to.include('It is not yet "WalletWall proving never exercises the downloader"');
     });
   });
 

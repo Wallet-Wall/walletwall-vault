@@ -3,10 +3,12 @@
  * directory, the gnark image and the prover mode, and every environment variable they read
  * (scripts/lib/sp1-circuit-tooling.ts), and writes the observation the circuit-tooling record is derived from.
  *
- *   npx tsx scripts/measure-sp1-circuit-upstream.ts --cargo-home <dir> [--host <id>]
+ *   npx tsx scripts/measure-sp1-circuit-upstream.ts --cargo-home <dir> [--host <id>] [--check]
  *
  *   --cargo-home  a CARGO_HOME whose registry cache holds every sp1-* and slop-* crate the host lockfile pins; each
  *                 cached copy must have the lockfile's checksum, and sources are read from those bytes only
+ *   --check       re-measure and compare with the committed observation (all but its timestamp) instead of writing:
+ *                 CI holds no crate cache, so this is how any host with the pinned crates re-derives what CI only binds
  *
  * It downloads nothing and writes only the observation. Research prototype. Not audited.
  */
@@ -38,7 +40,14 @@ try {
         .digest("hex"),
     },
   });
-  writeFileSync(resolve(UPSTREAM_OBSERVATION_REL), `${JSON.stringify(obs, null, 2)}\n`);
+  if (process.argv.includes("--check")) {
+    const committed = JSON.parse(readFileSync(resolve(UPSTREAM_OBSERVATION_REL), "utf8"));
+    const same = JSON.stringify({ ...obs, measuredAtUtc: "" }) === JSON.stringify({ ...committed, measuredAtUtc: "" });
+    if (!same) throw new Error(`MISMATCH: re-measuring does not reproduce ${UPSTREAM_OBSERVATION_REL}`);
+    console.log(`MATCH: ${UPSTREAM_OBSERVATION_REL} re-derives from the pinned crates (${obs.crates.length} crates).`);
+  } else {
+    writeFileSync(resolve(UPSTREAM_OBSERVATION_REL), `${JSON.stringify(obs, null, 2)}\n`);
+  }
   console.log(
     `${UPSTREAM_OBSERVATION_REL}: ${obs.crates.length} crates, ${Object.keys(obs.environment).length} environment ` +
       `variables, circuit ${obs.facts.circuitVersion}, ${obs.nonLiteralEnvironmentReads.length} non-literal reads`,

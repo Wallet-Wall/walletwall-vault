@@ -11,19 +11,24 @@
  *     mount the verified directory of this host);
  *   - the gnark image is named by digest and that exact digest is in the local docker store (inspected offline; the
  *     gate never pulls);
- *   - <root>/<circuit version> exists and is, byte for byte, the record's members, re-hashed now (installation alone
- *     authenticates nothing later).
+ *   - <root> holds <circuit version> and nothing else, and that directory is, byte for byte, the record's members,
+ *     re-hashed now (installation alone authenticates nothing later);
+ *   - on a POSIX host, run by an unprivileged user, <root> sits on a path only its owner can change, and is locked
+ *     read-only for the whole run: the host cannot create a directory for another circuit version (a host built
+ *     against another SP1 would read <root>/<its version>, find it absent and download), and nothing short of the
+ *     owner or root can move the verified directory away for SP1 to fetch a fresh copy.
  *
  * The child gets a constructed environment: the frozen SP1_PROVER=cpu, SP1_GROTH16_CIRCUIT_PATH, SP1_GNARK_IMAGE and
- * DOCKER_CONTEXT=default, plus a short list of process basics; nothing else the caller set reaches it. After the host
- * exits the installation is re-hashed again and the proof output must name the designated PROGRAM_VKEY.
+ * DOCKER_CONTEXT=default, plus a short list of process basics; nothing else the caller set reaches it. Whatever the
+ * host does, the installation is then re-hashed and its identity (inodes, links, times) compared with the one taken
+ * under the lock, and a proof must name the designated PROGRAM_VKEY and carry its verifying key's selector.
  *
- * Residual, not eliminated here: a privileged local process that rewrites proving inputs after the last check, or
- * removes the image so docker pulls it again (by digest), acts outside this gate. Research prototype. Not audited.
+ * Residual, not eliminated here: the owner or root, who can undo the lock, rewriting proving inputs during the run;
+ * the image removed so docker pulls it again (by digest). Research prototype. Not audited.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { lstatSync, type Stats } from "node:fs";
-import { isAbsolute, posix, win32 } from "node:path";
+import { chmodSync, lstatSync, realpathSync, type Stats } from "node:fs";
+import { isAbsolute, join, posix, win32 } from "node:path";
 
 import {
   acceptedRecord,
@@ -33,7 +38,7 @@ import {
   type ArchiveRecord,
   type CircuitToolingError,
 } from "./sp1-circuit-archive";
-import { verifyInstalledCircuit } from "./sp1-circuit-install";
+import { installationIdentity, verifyInstalledCircuit, walkTree } from "./sp1-circuit-install";
 
 export const LOCAL_PROVER = "cpu";
 export const DOCKER_CONTEXT_FROZEN = "default";
@@ -71,7 +76,8 @@ export const PASS_THROUGH_ENV: readonly string[] = [
   "RUST_LOG",
   "RUST_BACKTRACE",
 ];
-const LOCAL_DOCKER_HOST = /^(unix|npipe):\/\/./;
+/** A docker endpoint on this machine: an absolute unix socket, or a local named pipe (never \\<server>\pipe\...). */
+const LOCAL_DOCKER_HOST = { posix: /^unix:\/\/\/./, win32: /^npipe:\/\/\/\/\.\/pipe\/[^/\\]+$/ } as const;
 
 export interface ProverEnv {
   env: Record<string, string>;
@@ -104,7 +110,7 @@ export function buildProverEnv(
       if (v !== DOCKER_CONTEXT_FROZEN)
         throw refuse("ENV_REFUSED", "DOCKER_CONTEXT", `${k} must be ${DOCKER_CONTEXT_FROZEN}`);
     } else if (K === "DOCKER_HOST") {
-      if (!LOCAL_DOCKER_HOST.test(v))
+      if (!LOCAL_DOCKER_HOST[platform === "win32" ? "win32" : "posix"].test(v))
         throw refuse("ENV_REFUSED", "DOCKER_ENDPOINT_NOT_LOCAL", `${k} is not a local socket`);
     } else if (REFUSED_ENV[K] !== undefined) {
       throw refuse("ENV_REFUSED", REFUSED_ENV[K], `${k} is set`);
@@ -127,6 +133,8 @@ export function buildProverEnv(
  */
 export function circuitRootError(root: string, platform: NodeJS.Platform = process.platform): string | null {
   const p = platform === "win32" ? win32 : posix;
+  // A share other machines can write between the check and the use is never the verified tree.
+  if (platform === "win32" && /^[\\/]{2}/.test(root)) return "UNC_PATH";
   if (!p.isAbsolute(root)) return "RELATIVE";
   if (p.resolve(root) !== root) return "NOT_NORMALIZED";
   const colon = platform === "win32" ? root.indexOf(":", 2) : root.indexOf(":");
@@ -144,6 +152,68 @@ function regularFile(path: string, what: string): void {
   }
   if (!st.isFile()) throw refuse("PROVE_INPUT_INVALID", "NOT_A_FILE", `${what} ${path} is not a regular file`);
 }
+
+/**
+ * Why `root` is not a path only `uid` (and the superuser) can change, StrictModes-style, or null (POSIX): no link on
+ * the way, the root `uid`'s and writable by nobody else, and every ancestor `uid`'s or the superuser's and writable
+ * by no one else unless sticky (so no other user can rename the root, or an ancestor, out from under the run).
+ */
+export function securePathError(root: string, uid: number): string | null {
+  let real: string;
+  try {
+    real = realpathSync(root);
+  } catch {
+    return "ABSENT";
+  }
+  if (real !== root) return "LINKED_PATH";
+  for (let p = root; ; p = posix.dirname(p)) {
+    const st = lstatSync(p);
+    if (p === root ? st.uid !== uid : st.uid !== uid && st.uid !== 0)
+      return p === root ? "NOT_OWNED" : "FOREIGN_ANCESTOR";
+    if ((st.mode & 0o022) !== 0 && (p === root || (st.mode & 0o1000) === 0)) {
+      return p === root ? "WRITABLE_BY_OTHERS" : "WRITABLE_ANCESTOR";
+    }
+    if (p === "/") return null;
+  }
+}
+
+/** Holds the circuit root unchangeable for a run; `release` restores it. */
+export type RootGuard = (circuitRoot: string, circuitDir: string) => { release(): void };
+
+/**
+ * The production guard (POSIX, unprivileged): the root's path is secure, the installation is its owner's and writable
+ * by nobody else, and the root is made read-only until `release`, so the host can neither add a directory for another
+ * circuit version nor move the verified one away. Permissions bind nothing for root, so root is refused, and Windows,
+ * whose directory permissions this does not manage, is refused.
+ */
+export const posixRootGuard: RootGuard = (root, circuitDir) => {
+  if (process.platform === "win32") {
+    throw refuse(
+      "PROVE_HOST_UNSUPPORTED",
+      "WINDOWS",
+      "proving through the gate needs a POSIX host whose circuit root can be locked",
+    );
+  }
+  const uid = process.getuid?.() ?? -1;
+  if (uid === 0)
+    throw refuse(
+      "PROVE_HOST_UNSUPPORTED",
+      "RUNS_AS_ROOT",
+      "permissions bind nothing for root: run as an unprivileged user",
+    );
+  const bad = securePathError(root, uid);
+  if (bad) throw refuse("CIRCUIT_ROOT_INVALID", bad, `${root} is not a path only its owner can change`);
+  const { files, directories } = walkTree(circuitDir, "CIRCUIT_INTEGRITY_FAILED");
+  for (const p of [circuitDir, ...[...directories, ...files].map((rel) => join(circuitDir, ...rel.split("/")))]) {
+    const st = lstatSync(p);
+    if (st.uid !== uid || (st.mode & 0o022) !== 0) {
+      throw refuse("CIRCUIT_ROOT_INVALID", "WRITABLE_BY_OTHERS", `${p} is not ${uid}'s alone`);
+    }
+  }
+  const mode = lstatSync(root).mode & 0o7777;
+  chmodSync(root, mode & ~0o222);
+  return { release: () => chmodSync(root, mode) };
+};
 
 /** The local image's repo digests for `ref` (offline: `docker image inspect`); null when docker has no such image. */
 export type LocalImageDigests = (ref: string, env: Record<string, string>) => string[] | null;
@@ -281,31 +351,58 @@ export function proofOutput(stdout: string, anchor: ArchiveAnchor): ProofOutput 
   if (!/^0x(?:[0-9a-f]{2})*$/.test(String(out.publicValues)) || !/^0x(?:[0-9a-f]{2})+$/.test(String(out.proofBytes))) {
     throw refuse("PROOF_OUTPUT_REFUSED", "SHAPE", "publicValues and proofBytes must be hex");
   }
+  // SP1's Groth16 proof bytes open with the first four bytes of sha256(groth16_vk.bin): the key it was made under.
+  if (String(out.proofBytes).slice(2, 10) !== anchor.verifyingKey.sha256.slice(2, 10)) {
+    throw refuse(
+      "PROOF_OUTPUT_REFUSED",
+      "SELECTOR_MISMATCH",
+      "the proof was not made under the designated verifying key",
+    );
+  }
   return { vkey: out.vkey as string, publicValues: out.publicValues as string, proofBytes: out.proofBytes as string };
 }
 
-/** The gate, the host run and the after-run checks. Nothing is spawned unless prepareArchiveOnlyProve returned. */
+/**
+ * The gate, the host run and the after-run checks. Nothing is spawned unless prepareArchiveOnlyProve returned and the
+ * root is locked; under the lock the installation is verified again and its identity taken; whatever the host does,
+ * failure included, the installation must afterwards be the same bytes at the same inodes, before the lock is released.
+ */
 export async function runArchiveOnlyProve(
   input: ProveGateInput,
-  deps: { images: LocalImageDigests; spawn: Spawner },
+  deps: { images: LocalImageDigests; spawn: Spawner; guard?: RootGuard },
 ): Promise<{ plan: ProvePlan; output: ProofOutput }> {
   const plan = prepareArchiveOnlyProve(input, deps.images);
-  let result: SpawnResult;
-  try {
-    result = await deps.spawn(plan);
-  } catch (error) {
-    const e = error as { code?: string };
-    if (e?.code === "PROOF_OUTPUT_REFUSED") throw error;
-    throw refuse("PROVER_SPAWN_FAILED", "SPAWN", (error as Error).message);
-  }
-  if (result.status !== 0) {
-    throw refuse("PROVER_FAILED", "EXIT", `the host exited ${String(result.status)} (signal ${String(result.signal)})`);
-  }
+  const lock = (deps.guard ?? posixRootGuard)(input.circuitRoot, plan.circuitDir);
+  let result: SpawnResult | null = null;
+  let failure: unknown = null;
   try {
     verifyInstalledCircuit(input.circuitRoot, plan.record, input.anchor);
-  } catch (error) {
-    const e = error as CircuitToolingError;
-    throw refuse("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE", e.reason ?? "UNEXPECTED", e.message);
+    const before = installationIdentity(input.circuitRoot, plan.circuitDir).join("\n");
+    try {
+      result = await deps.spawn(plan);
+    } catch (error) {
+      failure = error;
+    }
+    try {
+      verifyInstalledCircuit(input.circuitRoot, plan.record, input.anchor);
+      if (installationIdentity(input.circuitRoot, plan.circuitDir).join("\n") !== before) {
+        throw refuse("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE", "REPLACED", "the same bytes now sit at other inodes");
+      }
+    } catch (error) {
+      const e = error as CircuitToolingError;
+      if (e.code === "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE") throw e;
+      throw refuse("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE", e.reason ?? "UNEXPECTED", e.message);
+    }
+  } finally {
+    lock.release();
   }
-  return { plan, output: proofOutput(result.stdout, input.anchor) };
+  if (failure !== null) {
+    if ((failure as { code?: string })?.code === "PROOF_OUTPUT_REFUSED") throw failure;
+    throw refuse("PROVER_SPAWN_FAILED", "SPAWN", (failure as Error).message);
+  }
+  const done = result as SpawnResult;
+  if (done.status !== 0) {
+    throw refuse("PROVER_FAILED", "EXIT", `the host exited ${String(done.status)} (signal ${String(done.signal)})`);
+  }
+  return { plan, output: proofOutput(done.stdout, input.anchor) };
 }

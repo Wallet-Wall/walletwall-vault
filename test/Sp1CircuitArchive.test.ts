@@ -244,6 +244,8 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
       expect(imageRefError("ghcr.io/succinctlabs/sp1-gnark@sha256:ABC")).to.equal("MALFORMED_DIGEST");
       expect(imageRefError(`ghcr.io/succinctlabs/sp1-gnark@sha512:${"a".repeat(128)}`)).to.equal("MALFORMED_DIGEST");
       expect(imageRefError(`ghcr.io/succinctlabs/sp1-gnark@${d}x`)).to.equal("MALFORMED_DIGEST");
+      // The first @ ends the repository: whatever follows must be one digest, so a second @ is never a digest.
+      expect(imageRefError(`ghcr.io/succinctlabs/sp1-gnark@${d}@${d}`)).to.equal("MALFORMED_DIGEST");
       expect(imageRefError(`ghcr.io/Succinct/sp1@${d}`)).to.equal("MALFORMED_REPOSITORY");
       expect(imageRefError(`ghcr.io@${d}`)).to.equal("MALFORMED_REPOSITORY");
       expect(imageRefError(`succinctlabs/sp1-gnark@${d}`)).to.equal("NOT_FULLY_QUALIFIED");
@@ -476,7 +478,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
           ids.some((i) => i.startsWith(group)),
           group,
         ).to.equal(true);
-      expect(ids.length).to.equal(71);
+      expect(ids.length).to.equal(74);
     });
   });
 

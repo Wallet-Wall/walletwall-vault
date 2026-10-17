@@ -73,6 +73,8 @@ export const REFUSAL_CODES = [
   "GNARK_IMAGE_CONFLICT",
   "GNARK_IMAGE_NOT_LOCAL",
   "PROVE_INPUT_INVALID",
+  "PROVE_HOST_UNSUPPORTED",
+  "EVIDENCE_NOT_COMMITTED",
   "PROVER_SPAWN_FAILED",
   "PROVER_FAILED",
   "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE",
@@ -623,6 +625,10 @@ export class TarParser {
     const posix = magic === "ustar\u000000";
     if (!posix && magic !== "ustar  \0")
       throw unsafe("UNSUPPORTED_FORMAT", `header at byte ${at}: not ustar or GNU tar`);
+    // Never applied here, but an archive WalletWall accepts must be benign under tar(1) too: no setuid, setgid, sticky.
+    if (octalField(h, 100, 8, "mode", at) & 0o7000) {
+      throw unsafe("SPECIAL_MODE_BITS", `header at byte ${at}: setuid, setgid or sticky mode`);
+    }
     const type = h[156] === 0 ? "0" : String.fromCharCode(h[156]);
     const refused = REFUSED_TYPES[type];
     if (refused) throw unsafe(refused, `header at byte ${at}: entry type ${JSON.stringify(type)}`);

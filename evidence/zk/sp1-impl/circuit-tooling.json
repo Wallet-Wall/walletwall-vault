@@ -65,8 +65,8 @@
   "upstream": {
     "observation": {
       "path": "evidence/zk/sp1-impl/observations/circuit-upstream-developer-workstation.raw.json",
-      "sha256": "4f1169a13b89d5d73f9196262533f761431f534f71d1d3749bc8a3742ba58ca3",
-      "measuredAtUtc": "2026-10-17T15:52:21Z"
+      "sha256": "bb29acc1dbe5a3e43ed8f8bf63d6363f72776012c6145eb1471ed55ae5852d22",
+      "measuredAtUtc": "2026-10-17T17:00:12Z"
     },
     "crates": 47,
     "censusScope": "literal environment reads in the src/ of every sp1-* and slop-* crate the host lockfile pins; other crates' reads (dirs, reqwest, tracing) are outside it and reach the host only through the pass-through list",
@@ -485,14 +485,15 @@
   },
   "gate": {
     "order": [
-      "the archive record is accepted for the designation",
-      "the circuit root is absolute, normalized and mount-safe",
-      "the caller's environment: frozen values identical or absent, refused variables absent",
+      "the record is a production record, exactly as committed, accepted for the designation read from the committed evidence of the checkout the command lives in",
+      "the circuit root is absolute, normalized, not a UNC share and mount-safe",
+      "the caller's environment: frozen values identical or absent, refused variables absent, docker only on a local socket",
       "the host executable and the inputs are regular files",
       "the gnark image is in the local docker store by its digest (offline inspection, never a pull)",
-      "<root>/<circuit version> is re-hashed and must be exactly the record's members",
-      "only then is the host spawned (no shell, the constructed environment only)",
-      "after it exits: the installation is re-hashed again, and the proof must name the designated PROGRAM_VKEY"
+      "<root> holds only <circuit version>, which is re-hashed and must be exactly the record's members, each file with one link",
+      "POSIX, unprivileged user: <root>'s path is changeable only by its owner, and <root> is locked read-only for the run",
+      "under the lock: the installation is re-hashed again and its identity (inodes, links, times) taken; then the host is spawned (no shell, the constructed environment only)",
+      "after it exits, whether or not it succeeded, and before the lock is released: the same bytes at the same identity; then exit 0, and a proof naming the designated PROGRAM_VKEY with its verifying key's selector"
     ],
     "frozen": {
       "SP1_PROVER": "cpu",
@@ -552,6 +553,8 @@
       "GNARK_IMAGE_CONFLICT",
       "GNARK_IMAGE_NOT_LOCAL",
       "PROVE_INPUT_INVALID",
+      "PROVE_HOST_UNSUPPORTED",
+      "EVIDENCE_NOT_COMMITTED",
       "PROVER_SPAWN_FAILED",
       "PROVER_FAILED",
       "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE",
@@ -744,6 +747,21 @@
         "id": "L15",
         "title": "pre-ustar (v7) header",
         "refusal": "ARCHIVE_UNSAFE_ENTRY (UNSUPPORTED_FORMAT)"
+      },
+      {
+        "id": "L16",
+        "title": "setuid mode (tar(1) as root would apply it)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (SPECIAL_MODE_BITS)"
+      },
+      {
+        "id": "L17",
+        "title": "sticky directory mode",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (SPECIAL_MODE_BITS)"
+      },
+      {
+        "id": "L18",
+        "title": "mode field not octal",
+        "refusal": "ARCHIVE_CORRUPT (HEADER_FIELD)"
       },
       {
         "id": "A01",
@@ -980,11 +998,16 @@
     "productionArchiveRecords": 0
   },
   "residuals": [
-    "a privileged local process that rewrites the installed members, the host binary or the inputs after the gate's last re-hash and before SP1 reads them acts outside this gate; the re-hash after the run detects a change that persists, not one reverted in between",
-    "the gnark container is started by SP1 with a read-write bind mount of the circuit directory (docker run -v <dir>:/circuit, no :ro), so the pinned image could write there; the read-only install and the after-run re-hash detect, not prevent, that",
+    "the root's owner (the operator's own user) or the superuser can undo the run's lock and rewrite or replace proving inputs, the host binary included, during the run; the after-run re-hash and identity comparison detect a change that persists, not one reverted in between",
+    "the gnark container is started by SP1 with a read-write bind mount of the circuit directory (docker run -v <dir>:/circuit, no :ro) and runs as root inside it, so the pinned image could write there; the after-run re-hash and identity comparison detect, not prevent, that",
     "docker run has no --pull=never: if the digest-pinned image is removed between the gate's check and SP1's docker run, docker pulls it again, by digest (the same bytes, but a network fetch)",
-    "a DOCKER_HOST unix socket that forwards to another machine's daemon would mount that machine's directory; the gate refuses non-socket endpoints and any context but default, not a forwarded socket",
-    "the gate is not the only way to run the host: running mldsa65-host directly still lets SP1 download the circuit, so the stronger claim (WalletWall proving never exercises the downloader) needs the exercised-proof lane",
+    "a local DOCKER_HOST socket that forwards to another machine's daemon would mount that machine's directory; the gate refuses every non-local endpoint and any context but default, not a forwarded socket",
+    "the host binary is not bound: one built for another circuit version cannot create its directory under the locked root (POSIX) and fails instead of downloading, but on a host where the lock does not hold (root, Windows) the gate refuses to run at all",
+    "the gate is not the only way to run the host: running mldsa65-host directly still lets SP1 download the circuit, so the stronger claim (WalletWall proving never exercises the downloader) needs the exercised-proof lane, which should also run the host with network egress blocked",
+    "on POSIX, an empty directory created by another process in the instant between the installer's last existence check and its rename is replaced by the rename (rename(2) semantics; Node exposes no RENAME_NOREPLACE); it held nothing, so nothing is overwritten",
+    "a flooding host is killed, not its docker child or container; a run has no overall time limit (proofs take hours)",
+    "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
+    "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
     "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority"
   ],
   "notEstablished": [

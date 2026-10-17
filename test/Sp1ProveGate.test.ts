@@ -8,7 +8,17 @@
  * no test needs docker, the network, SP1 or a real circuit.
  */
 import { expect } from "chai";
-import { chmodSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join, sep } from "node:path";
 
 import { CircuitToolingError } from "../scripts/lib/sp1-circuit-archive";
@@ -27,7 +37,10 @@ import {
   proofOutput,
   runArchiveOnlyProve,
   spawnHost,
+  posixRootGuard,
+  securePathError,
   type LocalImageDigests,
+  type RootGuard,
   type ProveGateInput,
   type ProvePlan,
   type SpawnResult,
@@ -40,7 +53,14 @@ const record = syntheticRecord(archive, SAFE_FILES);
 const imageRef = `${record.gnark.repository}@${record.gnark.digest}`;
 const otherDigest = `${record.gnark.repository}@sha256:${"b".repeat(64)}`;
 const present: LocalImageDigests = (ref) => (ref === imageRef ? [imageRef] : null);
-const okOutput = JSON.stringify({ vkey: anchor.programVKey, publicValues: "0x00ff", proofBytes: "0xabcd" });
+const selector = anchor.verifyingKey.sha256.slice(2, 10);
+const okOutput = JSON.stringify({ vkey: anchor.programVKey, publicValues: "0x00ff", proofBytes: `0x${selector}abcd` });
+/** A guard that locks nothing, so the stub-spawner tests run on every platform; posixRootGuard has its own tests. */
+const guardLog: string[] = [];
+const openGuard: RootGuard = (root, dir) => {
+  guardLog.push(`lock ${root} ${dir}`);
+  return { release: () => void guardLog.push("release") };
+};
 
 describe("SP1-PA2A archive-only prove gate", function () {
   const dirs = tempDirs();
@@ -88,7 +108,7 @@ describe("SP1-PA2A archive-only prove gate", function () {
         w.input({
           callerEnv: { PATH: "/usr/bin", HOME: "/home/u", LD_PRELOAD: "/evil.so", SP1_WORKER_NUM_CORE_WORKERS: "2" },
         }),
-        { images: present, spawn: s.spawn },
+        { images: present, spawn: s.spawn, guard: openGuard },
       );
       expect(s.calls).to.have.length(1);
       expect(plan.executable).to.equal(w.host);
@@ -126,7 +146,9 @@ describe("SP1-PA2A archive-only prove gate", function () {
       const s = spy();
       for (const r of [undefined, null, {}, { ...record, mirrors: [] }]) {
         expect(
-          await refusalOf(() => runArchiveOnlyProve(w.input({ record: r }), { images: present, spawn: s.spawn })),
+          await refusalOf(() =>
+            runArchiveOnlyProve(w.input({ record: r }), { images: present, spawn: s.spawn, guard: openGuard }),
+          ),
         ).to.match(/^RECORD_INVALID/);
       }
       expect(s.calls).to.have.length(0);
@@ -139,13 +161,17 @@ describe("SP1-PA2A archive-only prove gate", function () {
       mkdirSync(emptyRoot);
       expect(
         await refusalOf(() =>
-          runArchiveOnlyProve(w.input({ circuitRoot: emptyRoot }), { images: present, spawn: s.spawn }),
+          runArchiveOnlyProve(w.input({ circuitRoot: emptyRoot }), {
+            images: present,
+            spawn: s.spawn,
+            guard: openGuard,
+          }),
         ),
       ).to.equal("CIRCUIT_ARCHIVE_NOT_INSTALLED (CIRCUIT_ABSENT)");
       const absent = join(w.work, "absent");
       expect(
         await refusalOf(() =>
-          runArchiveOnlyProve(w.input({ circuitRoot: absent }), { images: present, spawn: s.spawn }),
+          runArchiveOnlyProve(w.input({ circuitRoot: absent }), { images: present, spawn: s.spawn, guard: openGuard }),
         ),
       ).to.equal("CIRCUIT_ARCHIVE_NOT_INSTALLED (ROOT_ABSENT)");
       expect(s.calls).to.have.length(0);
@@ -159,6 +185,7 @@ describe("SP1-PA2A archive-only prove gate", function () {
         runArchiveOnlyProve(w.input({ circuitRoot: absent, callerEnv: { SP1_GROTH16_CIRCUIT_PATH: absent } }), {
           images: present,
           spawn: s.spawn,
+          guard: openGuard,
         }),
       );
       expect(got).to.equal("CIRCUIT_ARCHIVE_NOT_INSTALLED (ROOT_ABSENT)");
@@ -181,7 +208,7 @@ describe("SP1-PA2A archive-only prove gate", function () {
         damage(w.circuitDir);
         const s = spy();
         expect(
-          await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn })),
+          await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
           what,
         ).to.equal(want);
         expect(s.calls, what).to.have.length(0);
@@ -203,7 +230,9 @@ describe("SP1-PA2A archive-only prove gate", function () {
         ],
       ];
       for (const [images, want] of cases) {
-        expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images, spawn: s.spawn }))).to.equal(want);
+        expect(
+          await refusalOf(() => runArchiveOnlyProve(w.input(), { images, spawn: s.spawn, guard: openGuard })),
+        ).to.equal(want);
       }
       expect(s.calls).to.have.length(0);
     });
@@ -228,9 +257,11 @@ describe("SP1-PA2A archive-only prove gate", function () {
         [{ inputsPath: join(w.work, "absent.json") }, "PROVE_INPUT_INVALID (ABSENT)"],
       ];
       for (const [over, want] of cases) {
-        expect(await refusalOf(() => runArchiveOnlyProve(w.input(over), { images: present, spawn: s.spawn }))).to.equal(
-          want,
-        );
+        expect(
+          await refusalOf(() =>
+            runArchiveOnlyProve(w.input(over), { images: present, spawn: s.spawn, guard: openGuard }),
+          ),
+        ).to.equal(want);
       }
       expect(s.calls).to.have.length(0);
     });
@@ -240,7 +271,9 @@ describe("SP1-PA2A archive-only prove gate", function () {
       const s = spy();
       const r = { ...record, subject: { ...record.subject, circuitVersion: "v6.0.0" } };
       expect(
-        await refusalOf(() => runArchiveOnlyProve(w.input({ record: r }), { images: present, spawn: s.spawn })),
+        await refusalOf(() =>
+          runArchiveOnlyProve(w.input({ record: r }), { images: present, spawn: s.spawn, guard: openGuard }),
+        ),
       ).to.equal("RECORD_INVALID (CIRCUIT_VERSION_MISMATCH)");
       expect(s.calls).to.have.length(0);
     });
@@ -250,7 +283,9 @@ describe("SP1-PA2A archive-only prove gate", function () {
       const s = spy();
       const r = { ...record, gnark: { ...record.gnark, repository: `${record.gnark.repository}:v6.1.0` } };
       expect(
-        await refusalOf(() => runArchiveOnlyProve(w.input({ record: r }), { images: present, spawn: s.spawn })),
+        await refusalOf(() =>
+          runArchiveOnlyProve(w.input({ record: r }), { images: present, spawn: s.spawn, guard: openGuard }),
+        ),
       ).to.equal("RECORD_INVALID (GNARK_NOT_DIGEST_PINNED)");
       expect(s.calls).to.have.length(0);
     });
@@ -290,7 +325,11 @@ describe("SP1-PA2A archive-only prove gate", function () {
         const images: LocalImageDigests = (ref) => ((asked += 1), [ref]);
         expect(
           await refusalOf(() =>
-            runArchiveOnlyProve(w.input({ callerEnv: { PATH: "/usr/bin", ...env } }), { images, spawn: s.spawn }),
+            runArchiveOnlyProve(w.input({ callerEnv: { PATH: "/usr/bin", ...env } }), {
+              images,
+              spawn: s.spawn,
+              guard: openGuard,
+            }),
           ),
         ).to.equal(want);
         expect(s.calls).to.have.length(0);
@@ -300,10 +339,29 @@ describe("SP1-PA2A archive-only prove gate", function () {
 
     it("a local docker socket passes; its value reaches the child unchanged", async function () {
       const w = await world();
-      for (const host of ["unix:///run/user/1000/docker.sock", "npipe:////./pipe/docker_engine"]) {
-        expect(
-          prepareArchiveOnlyProve(w.input({ callerEnv: { DOCKER_HOST: host } }), present).env.DOCKER_HOST,
-        ).to.equal(host);
+      const host =
+        process.platform === "win32" ? "npipe:////./pipe/docker_engine" : "unix:///run/user/1000/docker.sock";
+      expect(prepareArchiveOnlyProve(w.input({ callerEnv: { DOCKER_HOST: host } }), present).env.DOCKER_HOST).to.equal(
+        host,
+      );
+    });
+
+    it("a docker endpoint is local only: an absolute unix socket, or a named pipe on this machine", function () {
+      const frozen = { circuitRoot: "/opt/circuits", imageRef };
+      const env = (v: string, platform: NodeJS.Platform) => buildProverEnv({ DOCKER_HOST: v }, frozen, platform);
+      expect(env("unix:///var/run/docker.sock", "linux").env.DOCKER_HOST).to.equal("unix:///var/run/docker.sock");
+      expect(env("npipe:////./pipe/docker_engine", "win32").env.DOCKER_HOST).to.equal("npipe:////./pipe/docker_engine");
+      const refused: [string, NodeJS.Platform][] = [
+        ["unix://relative.sock", "linux"],
+        ["unix:///", "linux"],
+        ["npipe:////./pipe/docker_engine", "linux"],
+        ["npipe:////10.0.0.5/pipe/docker_engine", "win32"],
+        ["npipe:////./pipe/a/b", "win32"],
+        ["unix:///var/run/docker.sock", "win32"],
+        ["tcp://127.0.0.1:2375", "linux"],
+      ];
+      for (const [v, platform] of refused) {
+        expect(() => env(v, platform), `${v} on ${platform}`).to.throw(/DOCKER_ENDPOINT_NOT_LOCAL/);
       }
     });
   });
@@ -377,19 +435,30 @@ describe("SP1-PA2A archive-only prove gate", function () {
       expect(circuitRootError("C:/circuits", "win32")).to.equal("NOT_NORMALIZED");
       expect(circuitRootError("circuits", "win32")).to.equal("RELATIVE");
       expect(circuitRootError("C:\\a:b", "win32")).to.equal("MOUNT_UNSAFE_PATH");
+      expect(circuitRootError("\\\\fileserver\\share\\circuits", "win32")).to.equal("UNC_PATH");
+      expect(circuitRootError("//fileserver/share/circuits", "win32")).to.equal("UNC_PATH");
+      expect(circuitRootError("//opt/circuits", "linux")).to.equal("NOT_NORMALIZED");
     });
     it("an unsafe root is refused before anything runs", async function () {
       const w = await world();
       const s = spy();
       expect(
         await refusalOf(() =>
-          runArchiveOnlyProve(w.input({ circuitRoot: "circuits" }), { images: present, spawn: s.spawn }),
+          runArchiveOnlyProve(w.input({ circuitRoot: "circuits" }), {
+            images: present,
+            spawn: s.spawn,
+            guard: openGuard,
+          }),
         ),
       ).to.equal("CIRCUIT_ROOT_INVALID (RELATIVE)");
       // An absolute root with a trailing separator verifies on disk, but SP1 would be given another spelling of it.
       expect(
         await refusalOf(() =>
-          runArchiveOnlyProve(w.input({ circuitRoot: `${w.root}${sep}` }), { images: present, spawn: s.spawn }),
+          runArchiveOnlyProve(w.input({ circuitRoot: `${w.root}${sep}` }), {
+            images: present,
+            spawn: s.spawn,
+            guard: openGuard,
+          }),
         ),
       ).to.equal("CIRCUIT_ROOT_INVALID (NOT_NORMALIZED)");
       expect(s.calls).to.have.length(0);
@@ -402,29 +471,29 @@ describe("SP1-PA2A archive-only prove gate", function () {
       const s = spy(async () => {
         throw new CircuitToolingError("PROOF_OUTPUT_REFUSED", "OUTPUT_TOO_LARGE", "synthetic");
       });
-      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn }))).to.equal(
-        "PROOF_OUTPUT_REFUSED (OUTPUT_TOO_LARGE)",
-      );
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("PROOF_OUTPUT_REFUSED (OUTPUT_TOO_LARGE)");
     });
     it("a non-zero exit is PROVER_FAILED", async function () {
       const w = await world();
       const s = spy({ status: 3 });
-      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn }))).to.equal(
-        "PROVER_FAILED (EXIT)",
-      );
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("PROVER_FAILED (EXIT)");
       const k = spy({ status: null, signal: "SIGKILL" });
-      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: k.spawn }))).to.equal(
-        "PROVER_FAILED (EXIT)",
-      );
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: k.spawn, guard: openGuard })),
+      ).to.equal("PROVER_FAILED (EXIT)");
     });
     it("a spawn that throws is PROVER_SPAWN_FAILED", async function () {
       const w = await world();
       const s = spy(async () => {
         throw new Error("ENOENT");
       });
-      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn }))).to.equal(
-        "PROVER_SPAWN_FAILED (SPAWN)",
-      );
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("PROVER_SPAWN_FAILED (SPAWN)");
     });
     it("an installation changed during the run is CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE", async function () {
       const w = await world();
@@ -433,18 +502,18 @@ describe("SP1-PA2A archive-only prove gate", function () {
         writeFileSync(join(w.circuitDir, "groth16_pk.bin"), Buffer.alloc(3000));
         return { status: 0, signal: null, stdout: okOutput };
       });
-      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn }))).to.equal(
-        "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE (DIGEST_MISMATCH)",
-      );
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE (DIGEST_MISMATCH)");
       const gone = await world();
       const g = spy(async () => {
         writable(gone.circuitDir);
         rmSync(gone.circuitDir, { recursive: true, force: true });
         return { status: 0, signal: null, stdout: okOutput };
       });
-      expect(await refusalOf(() => runArchiveOnlyProve(gone.input(), { images: present, spawn: g.spawn }))).to.equal(
-        "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE (CIRCUIT_ABSENT)",
-      );
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(gone.input(), { images: present, spawn: g.spawn, guard: openGuard })),
+      ).to.equal("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE (CIRCUIT_ABSENT)");
     });
     it("the proof must be JSON naming the designated PROGRAM_VKEY, with hex values", async function () {
       expect(proofOutput(`noise\n${okOutput}\n\n`, anchor)).to.deep.equal(JSON.parse(okOutput));
@@ -468,14 +537,192 @@ describe("SP1-PA2A archive-only prove gate", function () {
           JSON.stringify({ vkey: anchor.programVKey, publicValues: "0x", proofBytes: "0x" }),
           "PROOF_OUTPUT_REFUSED (SHAPE)",
         ],
+        [
+          JSON.stringify({ vkey: anchor.programVKey, publicValues: "0x", proofBytes: "0xdeadbeef00" }),
+          "PROOF_OUTPUT_REFUSED (SELECTOR_MISMATCH)",
+        ],
+        [
+          JSON.stringify({ vkey: anchor.programVKey, publicValues: "0x", proofBytes: `0x${selector.slice(0, 6)}` }),
+          "PROOF_OUTPUT_REFUSED (SELECTOR_MISMATCH)",
+        ],
       ];
       for (const [stdout, want] of cases)
         expect(await refusalOf(() => proofOutput(stdout, anchor)), stdout).to.equal(want);
       const w = await world();
       const s = spy({ stdout: "no proof here" });
-      expect(await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn }))).to.equal(
-        "PROOF_OUTPUT_REFUSED (NOT_JSON)",
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("PROOF_OUTPUT_REFUSED (NOT_JSON)");
+    });
+  });
+
+  describe("the run lock and the installation's identity", function () {
+    it("locks the root before the host starts and releases it after, whatever happens", async function () {
+      const w = await world();
+      const events: string[] = [];
+      const guard: RootGuard = (root, dir) => {
+        events.push(`lock ${root === w.root} ${dir === w.circuitDir}`);
+        return { release: () => void events.push("release") };
+      };
+      const s = spy(async (plan) => (events.push("spawn"), { status: 0, signal: null, stdout: okOutput }));
+      await runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard });
+      expect(events).to.deep.equal(["lock true true", "spawn", "release"]);
+      for (const failing of [
+        spy({ status: 1 }),
+        spy(async () => {
+          throw new Error("ENOENT");
+        }),
+      ]) {
+        events.length = 0;
+        expect(
+          await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: failing.spawn, guard })),
+        ).to.match(/^PROVER_(FAILED|SPAWN_FAILED)/);
+        expect(events).to.deep.equal(["lock true true", "release"]);
+      }
+    });
+
+    it("never spawns when the lock cannot be taken", async function () {
+      const w = await world();
+      const s = spy();
+      const refusing: RootGuard = () => {
+        throw new CircuitToolingError("PROVE_HOST_UNSUPPORTED", "RUNS_AS_ROOT", "synthetic");
+      };
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: refusing })),
+      ).to.equal("PROVE_HOST_UNSUPPORTED (RUNS_AS_ROOT)");
+      expect(s.calls).to.have.length(0);
+    });
+
+    it("re-verifies under the lock: a member changed after the gate's first check is refused before the spawn", async function () {
+      const w = await world();
+      const s = spy();
+      const damaging: RootGuard = () => {
+        writable(w.circuitDir);
+        writeFileSync(join(w.circuitDir, "groth16_pk.bin"), Buffer.alloc(3000));
+        return { release() {} };
+      };
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: damaging })),
+      ).to.equal("CIRCUIT_INTEGRITY_FAILED (DIGEST_MISMATCH)");
+      expect(s.calls).to.have.length(0);
+    });
+
+    it("the installation moved away and re-created with the same bytes during the run is REPLACED", async function () {
+      const w = await world();
+      const s = spy(async () => {
+        // What SP1 does when the verified directory disappears mid-run: it fetches the circuit again.
+        writable(w.circuitDir);
+        renameSync(w.circuitDir, join(w.work, "moved-away"));
+        cpSync(join(w.work, "moved-away"), w.circuitDir, { recursive: true });
+        rmSync(join(w.work, "moved-away"), { recursive: true, force: true });
+        return { status: 0, signal: null, stdout: okOutput };
+      });
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE (REPLACED)");
+    });
+
+    it("an integrity failure after a failed run is reported over the run's failure", async function () {
+      const w = await world();
+      const s = spy(async () => {
+        writable(w.circuitDir);
+        writeFileSync(join(w.circuitDir, "extra.bin"), "x");
+        throw new Error("the host crashed");
+      });
+      expect(
+        await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+      ).to.equal("CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE (UNEXPECTED_MEMBER)");
+    });
+
+    it("prepare alone verifies the installation too (a dry run of the gate)", async function () {
+      const w = await world();
+      writable(w.circuitDir);
+      writeFileSync(join(w.circuitDir, "groth16_circuit.bin"), Buffer.alloc(1500));
+      expect(await refusalOf(() => prepareArchiveOnlyProve(w.input(), present))).to.equal(
+        "CIRCUIT_INTEGRITY_FAILED (DIGEST_MISMATCH)",
       );
+    });
+
+    it("a root holding anything besides the verified version is refused (a host for another circuit would read it)", async function () {
+      for (const extra of ["v6.0.0", "notes.txt"]) {
+        const w = await world();
+        if (extra === "notes.txt") writeFileSync(join(w.root, extra), "x");
+        else mkdirSync(join(w.root, extra));
+        const s = spy();
+        expect(
+          await refusalOf(() => runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn, guard: openGuard })),
+          extra,
+        ).to.equal("CIRCUIT_ROOT_INVALID (UNEXPECTED_ENTRY)");
+        expect(s.calls).to.have.length(0);
+      }
+    });
+
+    it("posixRootGuard refuses Windows and the superuser", function () {
+      const uid = process.getuid?.();
+      if (process.platform === "win32") {
+        expect(() => posixRootGuard("C:\\circuits", "C:\\circuits\\v6.1.0")).to.throw(
+          /PROVE_HOST_UNSUPPORTED \(WINDOWS\)/,
+        );
+      } else if (uid === 0) {
+        expect(() => posixRootGuard("/opt/circuits", "/opt/circuits/v6.1.0")).to.throw(
+          /PROVE_HOST_UNSUPPORTED \(RUNS_AS_ROOT\)/,
+        );
+      } else this.skip();
+    });
+
+    it("posixRootGuard locks the root: no other version directory, no rename of the verified one, until release", async function () {
+      if (process.platform === "win32" || process.getuid?.() === 0) this.skip();
+      const w = await world();
+      const before = statSync(w.root).mode & 0o7777;
+      const lock = posixRootGuard(w.root, w.circuitDir);
+      try {
+        expect(statSync(w.root).mode & 0o222).to.equal(0);
+        expect(() => mkdirSync(join(w.root, "v6.1.1"))).to.throw(/EACCES/);
+        expect(() => renameSync(w.circuitDir, join(w.root, "elsewhere"))).to.throw(/EACCES/);
+      } finally {
+        lock.release();
+      }
+      expect(statSync(w.root).mode & 0o7777).to.equal(before);
+      // The production run takes the same lock: during the spawn the root is read-only.
+      let modeDuringSpawn = -1;
+      const s = spy(
+        async () => ((modeDuringSpawn = statSync(w.root).mode & 0o777), { status: 0, signal: null, stdout: okOutput }),
+      );
+      await runArchiveOnlyProve(w.input(), { images: present, spawn: s.spawn });
+      expect(modeDuringSpawn & 0o222).to.equal(0);
+      expect(statSync(w.root).mode & 0o7777).to.equal(before);
+    });
+
+    it("posixRootGuard refuses a root or member others can write, and a linked root", async function () {
+      if (process.platform === "win32" || process.getuid?.() === 0) this.skip();
+      const w = await world();
+      chmodSync(w.root, 0o775);
+      expect(() => posixRootGuard(w.root, w.circuitDir)).to.throw(/CIRCUIT_ROOT_INVALID \(WRITABLE_BY_OTHERS\)/);
+      chmodSync(w.root, 0o755);
+      chmodSync(join(w.circuitDir, "groth16_pk.bin"), 0o464);
+      expect(() => posixRootGuard(w.root, w.circuitDir)).to.throw(/CIRCUIT_ROOT_INVALID \(WRITABLE_BY_OTHERS\)/);
+      chmodSync(join(w.circuitDir, "groth16_pk.bin"), 0o444);
+      const link = join(w.work, "linked-root");
+      symlinkSync(w.root, link, "dir");
+      expect(() => posixRootGuard(link, join(link, "v6.1.0"))).to.throw(/CIRCUIT_ROOT_INVALID \(LINKED_PATH\)/);
+      const lock = posixRootGuard(w.root, w.circuitDir);
+      lock.release();
+    });
+
+    it("securePathError: ancestors writable by others only when sticky", function () {
+      if (process.platform === "win32") this.skip();
+      const uid = process.getuid?.() ?? -1;
+      const base = dirs.make();
+      const open = join(base, "open");
+      mkdirSync(join(open, "root"), { recursive: true });
+      chmodSync(open, 0o777);
+      expect(securePathError(join(open, "root"), uid)).to.equal("WRITABLE_ANCESTOR");
+      chmodSync(open, 0o1777);
+      expect(securePathError(join(open, "root"), uid)).to.equal(null);
+      chmodSync(open, 0o755);
+      expect(securePathError(join(open, "root"), uid)).to.equal(null);
+      expect(securePathError(join(open, "root"), uid + 1)).to.equal("NOT_OWNED");
+      expect(securePathError(join(open, "absent"), uid)).to.equal("ABSENT");
     });
   });
 

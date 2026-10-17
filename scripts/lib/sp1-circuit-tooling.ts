@@ -15,6 +15,7 @@
  * The state is TOOLING_READY_NO_ARTIFACT. It never moves PROVING_AVAILABILITY, which stays OWNER_DOWNLOAD_REQUIRED:
  * tooling is not an artifact, and an artifact is not proving. Research prototype. Not audited. Testnet/local only.
  */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -43,6 +44,7 @@ import {
   VK_FILE,
   archiveRecordErrors,
   inspectArchive,
+  refuse,
   type ArchiveAnchor,
   type ArchiveRecord,
 } from "./sp1-circuit-archive";
@@ -57,7 +59,7 @@ import {
   syntheticRecord,
 } from "./sp1-circuit-fixtures";
 import { installCircuitArchive, verifyInstalledCircuit } from "./sp1-circuit-install";
-import { latestDesignation, readDesignations } from "./sp1-designation";
+import { DESIGNATIONS_DIR, designationSetErrors, latestDesignation, readDesignations } from "./sp1-designation";
 import {
   FROZEN_ENV,
   LOCAL_PROVER,
@@ -126,7 +128,10 @@ export type ToolingState = (typeof STATES)[number]["state"];
 
 /** What a production archive must serve: designation d1's circuit, from committed evidence only. */
 export function productionAnchor(repoRoot = "."): ArchiveAnchor {
-  const d = latestDesignation(readDesignations(repoRoot));
+  const set = readDesignations(repoRoot);
+  const malformed = designationSetErrors(set);
+  if (malformed.length > 0) throw new Error(`the designations are not a valid set: ${malformed.join("; ")}`);
+  const d = latestDesignation(set);
   const pa = JSON.parse(readFileSync(resolve(repoRoot, PROVING_AVAILABILITY_REL), "utf8"));
   const vk = (pa?.expectedArtifacts?.members ?? []).find((m: { file?: string }) => m?.file === VK_FILE);
   if (
@@ -165,6 +170,44 @@ export function authoritativeRecordError(recordPath: string, repoRoot = "."): st
   if (dirname(real) !== dir) return "OUTSIDE_PROVING_ARCHIVES";
   if (!real.endsWith(".json")) return "NOT_JSON";
   return null;
+}
+
+/** The evidence the production anchor is read from; it counts only as committed. */
+export const ANCHOR_EVIDENCE: readonly string[] = [DESIGNATIONS_DIR, PROVING_AVAILABILITY_REL];
+
+/**
+ * Why `paths` (repository-relative) are not exactly what HEAD commits, or null. Git is the evidence's anchor: an
+ * uncommitted designation, availability record or archive record is nobody's reviewed claim.
+ */
+export function uncommittedEvidenceError(paths: readonly string[], repoRoot: string): string | null {
+  const git = (...args: string[]) =>
+    spawnSync("git", ["-C", repoRoot, "--no-optional-locks", ...args], { encoding: "utf8", shell: false });
+  if (git("rev-parse", "--is-inside-work-tree").stdout.trim() !== "true") return "NOT_A_GIT_CHECKOUT";
+  for (const p of paths) {
+    if (git("ls-files", "--error-unmatch", "--", p).status !== 0) return `UNTRACKED ${p}`;
+  }
+  const status = git("status", "--porcelain", "--untracked-files=all", "--", ...paths);
+  if (status.status !== 0) return "GIT_STATUS_FAILED";
+  const first = status.stdout.split("\n").find((l) => l.trim() !== "");
+  return first === undefined ? null : `UNCOMMITTED ${first.trim()}`;
+}
+
+/** The production anchor from `repoRoot`'s committed evidence (the CLIs pass the checkout they live in, never cwd). */
+export function committedProductionAnchor(repoRoot: string): ArchiveAnchor {
+  const bad = uncommittedEvidenceError(ANCHOR_EVIDENCE, repoRoot);
+  if (bad)
+    throw refuse("EVIDENCE_NOT_COMMITTED", bad.split(" ")[0], `the anchor's evidence is not as committed: ${bad}`);
+  return productionAnchor(repoRoot);
+}
+
+/** The production record at `recordPath`: in PROVING_ARCHIVES_DIR, and exactly as committed. */
+export function committedProductionRecord(recordPath: string, repoRoot: string): unknown {
+  const bad = authoritativeRecordError(recordPath, repoRoot);
+  if (bad) throw refuse("RECORD_NOT_AUTHORITATIVE", bad, `${recordPath} is not a production archive record`);
+  const rel = relative(realpathSync(repoRoot), realpathSync(recordPath)).split(sep).join("/");
+  const dirty = uncommittedEvidenceError([rel], repoRoot);
+  if (dirty) throw refuse("RECORD_NOT_AUTHORITATIVE", dirty.split(" ")[0], `${rel} is not as committed: ${dirty}`);
+  return JSON.parse(readFileSync(recordPath, "utf8"));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -617,11 +660,16 @@ export function toolingState(input: { productionArchiveRecords: number; selfTest
 }
 
 export const RESIDUALS: readonly string[] = [
-  "a privileged local process that rewrites the installed members, the host binary or the inputs after the gate's last re-hash and before SP1 reads them acts outside this gate; the re-hash after the run detects a change that persists, not one reverted in between",
-  "the gnark container is started by SP1 with a read-write bind mount of the circuit directory (docker run -v <dir>:/circuit, no :ro), so the pinned image could write there; the read-only install and the after-run re-hash detect, not prevent, that",
+  "the root's owner (the operator's own user) or the superuser can undo the run's lock and rewrite or replace proving inputs, the host binary included, during the run; the after-run re-hash and identity comparison detect a change that persists, not one reverted in between",
+  "the gnark container is started by SP1 with a read-write bind mount of the circuit directory (docker run -v <dir>:/circuit, no :ro) and runs as root inside it, so the pinned image could write there; the after-run re-hash and identity comparison detect, not prevent, that",
   "docker run has no --pull=never: if the digest-pinned image is removed between the gate's check and SP1's docker run, docker pulls it again, by digest (the same bytes, but a network fetch)",
-  "a DOCKER_HOST unix socket that forwards to another machine's daemon would mount that machine's directory; the gate refuses non-socket endpoints and any context but default, not a forwarded socket",
-  "the gate is not the only way to run the host: running mldsa65-host directly still lets SP1 download the circuit, so the stronger claim (WalletWall proving never exercises the downloader) needs the exercised-proof lane",
+  "a local DOCKER_HOST socket that forwards to another machine's daemon would mount that machine's directory; the gate refuses every non-local endpoint and any context but default, not a forwarded socket",
+  "the host binary is not bound: one built for another circuit version cannot create its directory under the locked root (POSIX) and fails instead of downloading, but on a host where the lock does not hold (root, Windows) the gate refuses to run at all",
+  "the gate is not the only way to run the host: running mldsa65-host directly still lets SP1 download the circuit, so the stronger claim (WalletWall proving never exercises the downloader) needs the exercised-proof lane, which should also run the host with network egress blocked",
+  "on POSIX, an empty directory created by another process in the instant between the installer's last existence check and its rename is replaced by the rename (rename(2) semantics; Node exposes no RENAME_NOREPLACE); it held nothing, so nothing is overwritten",
+  "a flooding host is killed, not its docker child or container; a run has no overall time limit (proofs take hours)",
+  "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
+  "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
   "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
 ];
 
@@ -694,14 +742,15 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
     },
     gate: {
       order: [
-        "the archive record is accepted for the designation",
-        "the circuit root is absolute, normalized and mount-safe",
-        "the caller's environment: frozen values identical or absent, refused variables absent",
+        "the record is a production record, exactly as committed, accepted for the designation read from the committed evidence of the checkout the command lives in",
+        "the circuit root is absolute, normalized, not a UNC share and mount-safe",
+        "the caller's environment: frozen values identical or absent, refused variables absent, docker only on a local socket",
         "the host executable and the inputs are regular files",
         "the gnark image is in the local docker store by its digest (offline inspection, never a pull)",
-        "<root>/<circuit version> is re-hashed and must be exactly the record's members",
-        "only then is the host spawned (no shell, the constructed environment only)",
-        "after it exits: the installation is re-hashed again, and the proof must name the designated PROGRAM_VKEY",
+        "<root> holds only <circuit version>, which is re-hashed and must be exactly the record's members, each file with one link",
+        "POSIX, unprivileged user: <root>'s path is changeable only by its owner, and <root> is locked read-only for the run",
+        "under the lock: the installation is re-hashed again and its identity (inodes, links, times) taken; then the host is spawned (no shell, the constructed environment only)",
+        "after it exits, whether or not it succeeded, and before the lock is released: the same bytes at the same identity; then exit 0, and a proof naming the designated PROGRAM_VKEY with its verifying key's selector",
       ],
       frozen: {
         SP1_PROVER: LOCAL_PROVER,

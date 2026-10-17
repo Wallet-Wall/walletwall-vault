@@ -4,21 +4,24 @@
  *   npm run sp1:prove:archive-only -- --record <record.json> --circuit-root <absolute dir> \
  *     --host <absolute path to the built mldsa65-host> --inputs <absolute path to inputs.json> [--out <new file>]
  *
- * Runs `<host> prove <inputs>` only if the record is a production record accepted for d1, the caller's environment
- * selects nothing the gate does not freeze, the gnark image is in the local docker store by the record's digest, and
- * <circuit-root>/<circuit version> is, re-hashed now, exactly the record's members. Otherwise it refuses before the
- * host starts, so SP1 can never fall back to its own circuit download or a tagged image through this command. The
+ * Runs `<host> prove <inputs>` only if the record is a production record, exactly as committed and accepted for d1
+ * (whose committed evidence is read from the checkout this script lives in, never the working directory); the
+ * caller's environment selects nothing the gate does not freeze; the gnark image is in the local docker store by the
+ * record's digest; and <circuit-root> holds only <circuit version>, which, re-hashed now, is exactly the record's
+ * members. The root is then locked read-only for the run (POSIX, unprivileged user only). Otherwise it refuses before
+ * the host starts, so SP1 can never fall back to its own circuit download or a tagged image through this command. The
  * proof JSON goes to --out (created exclusively) or stdout. Never pulls an image or downloads anything itself.
  *
  * This lane generates no proof: no production record exists, so every run refuses. Research prototype. Not audited.
  */
-import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-import { refuse } from "./lib/sp1-circuit-archive";
-import { authoritativeRecordError, productionAnchor } from "./lib/sp1-circuit-tooling";
+import { committedProductionAnchor, committedProductionRecord } from "./lib/sp1-circuit-tooling";
 import { dockerImageDigests, runArchiveOnlyProve, spawnHost } from "./lib/sp1-prove-gate";
 import { runScript } from "./lib/run-script";
 import { writeNewFiles } from "./lib/write-once";
+
+const REPO = fileURLToPath(new URL("..", import.meta.url));
 
 function arg(name: string, required = true): string | undefined {
   const i = process.argv.indexOf(name);
@@ -28,13 +31,11 @@ function arg(name: string, required = true): string | undefined {
 }
 
 runScript(async () => {
-  const recordPath = arg("--record") as string;
-  const bad = authoritativeRecordError(recordPath, ".");
-  if (bad) throw refuse("RECORD_NOT_AUTHORITATIVE", bad, `${recordPath} is not a production archive record`);
+  const record = committedProductionRecord(arg("--record") as string, REPO);
   const { plan, output } = await runArchiveOnlyProve(
     {
-      record: JSON.parse(readFileSync(recordPath, "utf8")),
-      anchor: productionAnchor("."),
+      record,
+      anchor: committedProductionAnchor(REPO),
       circuitRoot: arg("--circuit-root") as string,
       hostExecutable: arg("--host") as string,
       inputsPath: arg("--inputs") as string,

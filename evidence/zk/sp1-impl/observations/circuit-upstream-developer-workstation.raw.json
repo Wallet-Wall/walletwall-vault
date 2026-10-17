@@ -1,10 +1,10 @@
 {
   "schema": "walletwall.sp1-circuit-upstream.v1",
-  "measuredAtUtc": "2026-10-17T15:52:21Z",
+  "measuredAtUtc": "2026-10-17T17:00:12Z",
   "host": "developer-workstation",
   "tool": {
     "script": "scripts/measure-sp1-circuit-upstream.ts",
-    "scriptSha256": "425b6d1ba837a01c407a6c31885ebb1cb5fcb902dd6fbd9149edf25d23ac0fae"
+    "scriptSha256": "5eca94ac1c3456c1837ca929ad3099ef71ffe96893f22dbce3b6bbe6c179fb39"
   },
   "lockfile": {
     "path": "zkvm/host/Cargo.lock",

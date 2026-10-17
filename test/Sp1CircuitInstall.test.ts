@@ -12,7 +12,9 @@ import { expect } from "chai";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  cpSync,
   existsSync,
+  linkSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -37,6 +39,7 @@ import {
   STAGING_PREFIX,
   hashRegularFile,
   installCircuitArchive,
+  installationIdentity,
   verifyInstalledCircuit,
   walkTree,
 } from "../scripts/lib/sp1-circuit-install";
@@ -315,8 +318,7 @@ describe("SP1-PA2A circuit install", function () {
       );
       expect(got).to.equal("INSTALL_FAILED (RENAME)");
       expect(existsSync(s.target)).to.equal(false);
-      chmodSync(moved, 0o700);
-      rmSync(moved, { recursive: true, force: true, maxRetries: 3 });
+      // `moved` (the read-only staged tree) sits inside the work directory, which the suite's cleanup removes.
     });
   });
 
@@ -377,6 +379,44 @@ describe("SP1-PA2A circuit install", function () {
       mkdirSync(real);
       symlinkOrSkip(this, real, b.target, "dir");
       expect(await check(b.root)).to.equal("CIRCUIT_INTEGRITY_FAILED (NOT_A_DIRECTORY)");
+    });
+
+    it("refuses a member with a second hard link (another path could change it)", async function () {
+      const a = await installed();
+      linkSync(join(a.target, "groth16_pk.bin"), join(a.work, "pk-alias"));
+      expect(await check(a.root)).to.equal("CIRCUIT_INTEGRITY_FAILED (HARDLINK_IN_TREE)");
+    });
+
+    it("refuses a root that holds anything besides the circuit version", async function () {
+      const a = await installed();
+      chmodSync(a.root, 0o755);
+      mkdirSync(join(a.root, "v6.1.1"));
+      expect(await check(a.root)).to.equal("CIRCUIT_ROOT_INVALID (UNEXPECTED_ENTRY)");
+      const b = setup();
+      writeFileSync(join(b.root, "README"), "x");
+      expect(await check(b.root)).to.equal("CIRCUIT_ROOT_INVALID (UNEXPECTED_ENTRY)");
+    });
+
+    it("an installation's identity changes when it is re-created with the same bytes", async function () {
+      const a = await installed();
+      const before = installationIdentity(a.root, a.target);
+      expect(installationIdentity(a.root, a.target)).to.deep.equal(before);
+      expect(before[0].startsWith("<root>\t")).to.equal(true);
+      expect(before.map((l) => l.split("\t")[0])).to.deep.equal([
+        "<root>",
+        "",
+        "constraints.json",
+        "extra",
+        "extra/README.synthetic",
+        "groth16_circuit.bin",
+        "groth16_pk.bin",
+        "groth16_vk.bin",
+      ]);
+      chmodSync(a.target, 0o700);
+      renameSync(a.target, join(a.work, "away"));
+      cpSync(join(a.work, "away"), a.target, { recursive: true });
+      expect(verifyInstalledCircuit(a.root, record, anchor).members).to.deep.equal(record.members);
+      expect(installationIdentity(a.root, a.target)).to.not.deep.equal(before);
     });
 
     it("refuses a FIFO in the tree, and never blocks on one", async function () {
