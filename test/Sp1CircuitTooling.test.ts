@@ -701,6 +701,34 @@ describe("SP1-PA2A circuit tooling contract", function () {
       );
       expect(r.status).to.equal(1);
       expect(r.stderr).to.include("RECORD_NOT_AUTHORITATIVE (OUTSIDE_PROVING_ARCHIVES)");
+      const root = dirs.make();
+      const prove = spawnSync(
+        process.execPath,
+        [
+          cli,
+          resolve("scripts/sp1-prove-archive-only.ts"),
+          "--record",
+          forged,
+          "--circuit-root",
+          root,
+          "--host",
+          root,
+          "--inputs",
+          root,
+        ],
+        { cwd: fake, encoding: "utf8", timeout: 120_000 },
+      );
+      expect(prove.status).to.equal(1);
+      expect(prove.stderr).to.include("RECORD_NOT_AUTHORITATIVE (OUTSIDE_PROVING_ARCHIVES)");
+      if (!insideGit) return;
+      // Inspection reads d1 from this checkout's committed evidence, so the synthetic key is refused, not accepted.
+      const inspect = spawnSync(
+        process.execPath,
+        [cli, resolve("scripts/sp1-circuit-archive-inspect.ts"), "--archive", resolve(SAFE_ARCHIVE_REL)],
+        { cwd: fake, encoding: "utf8", timeout: 120_000 },
+      );
+      expect(inspect.status).to.equal(1);
+      expect(inspect.stderr).to.include("VK_MISMATCH");
     });
   });
 
