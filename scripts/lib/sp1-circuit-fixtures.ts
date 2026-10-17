@@ -840,7 +840,8 @@ export function hostileCases(): HostileCase[] {
     {
       id: "M38",
       title: "a size smaller than every accepted body, refused at its header too (its declared bytes are never read)",
-      archive: gz(tarBytes([file("._groth16_vk.bin", "x", { size: 100 })], { end: false })),
+      // The stream ends after the header: a refusal at the end of the data would be TRUNCATED instead.
+      archive: gz(tarBytes([file("._groth16_vk.bin", "x", { size: 100 })], { end: false }).subarray(0, 512)),
       expect: unsafe("APPLEDOUBLE_UNEXPECTED_BODY"),
     },
     {
