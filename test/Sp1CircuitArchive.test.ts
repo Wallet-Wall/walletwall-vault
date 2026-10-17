@@ -795,6 +795,20 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
       expect(checked.provenance).to.deep.equal(want);
     });
 
+    it("keeps every other key under the existing rules: a lookalike key with a UTF-8 value is ordinary metadata", async function () {
+      for (const key of [`${PROVENANCE_PAX_KEY}2`, PROVENANCE_PAX_KEY.slice(0, -1)]) {
+        const tar = tarBytes([{ name: "groth16_vk.bin", data: SYNTHETIC_VK, pax: { [key]: "AQIALQ4jt1v96Ho" } }]);
+        const p = new TarParser({ limits });
+        p.feed(tar);
+        p.finish();
+        expect(
+          p.members.map((m) => m.path),
+          key,
+        ).to.deep.equal(["groth16_vk.bin"]);
+        expect(p.provenance, key).to.deep.equal([]);
+      }
+    });
+
     it("leaves an archive without the record as it was: no occurrence, no requirement", async function () {
       expect((await inspectArchive(write(safeGz), { anchor })).provenance).to.deep.equal([]);
     });
