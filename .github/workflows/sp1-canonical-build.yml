@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload the build's record and ELFs
         if: always() && needs.changes.outputs.rebuild == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: canonical-build-${{ matrix.runner }}
           path: ${{ runner.temp }}/canonical
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload the recompute records
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vkey-recompute
           path: recompute
@@ -200,7 +200,7 @@ jobs:
 
       - name: Upload the observation and its raw records (the committed evidence's layout)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: canonical-rebuild-evidence
           path: |
