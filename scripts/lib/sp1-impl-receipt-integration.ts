@@ -183,16 +183,15 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
     repoRoot,
     mainline.map((c) => `${c}:${receiptRel}`),
   );
-  const entered = mainline.filter(
-    (_, k) => present[k] !== null && (k + 1 === mainline.length || present[k + 1] === null),
-  );
-  if (entered.length === 0) {
+  // The oldest commit that carries the receipt (mainline is newest first): where it first entered main.
+  const first = present.reduce((at, o, k) => (o === null ? at : k), -1);
+  if (first === -1) {
     throw new Error(
       `${receiptRel} is on no commit of origin/main's first-parent history: the receipt is not integrated, and is not ` +
         "judged (fetch origin/main)",
     );
   }
-  const merge = entered[entered.length - 1];
+  const merge = mainline[first];
   const parents = git(repoRoot, ["rev-list", "--parents", "-n", "1", merge]).trim().split(" ").slice(1);
   if (parents.length !== 2) {
     throw new Error(
@@ -213,7 +212,7 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
         "reviewed",
     );
   }
-  const bytes = gitObjects(repoRoot, ["cat-file", "blob", String(present[mainline.indexOf(merge)]?.id)]);
+  const bytes = gitObjects(repoRoot, ["cat-file", "blob", String(present[first]?.id)]);
   let receipt: { lane?: unknown; baseCommit?: unknown } | null;
   try {
     receipt = JSON.parse(bytes.toString("utf8")) as { lane?: unknown; baseCommit?: unknown } | null;
