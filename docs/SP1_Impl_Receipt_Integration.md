@@ -18,7 +18,7 @@ later tree was compared with. After the merge those are different commits, and s
 | Fact | What it is | #219 |
 | --- | --- | --- |
 | Historical lane base | the main commit the lane began from: the receipt's `baseCommit`, which it states its change set against. Never moved | `4ffd92ca` |
-| Reviewed subject | the head the pull request merged: the merge commit's second parent | `2964b51c`, tree `1d640c7a` |
+| Reviewed subject | the head the pull request merged: the merge commit's second parent (git shows the merge, not an approval) | `2964b51c`, tree `1d640c7a` |
 | Integrated subject | the commit on main's first-parent history that introduced the receipt: a two-parent merge commit carrying the reviewed tree byte for byte | `74bbb0d9`, parents `4ffd92ca` and `2964b51c`, tree `1d640c7a` |
 | Descendant drift baseline | what every later tree must carry, byte for byte, committed and on disk: the integrated subject's `contracts/` and the receipt itself | `contracts` tree `439e0cd5`, receipt blob `5cba7595` |
 
@@ -44,11 +44,12 @@ historical receipt's sha256 (`b9f34d45…`) as the merge carries it, so a receip
 
 ## What is checked now
 
-1. **The binding is what git derives.** The receipt entered origin/main's first-parent history exactly once, through a
-   two-parent merge commit whose tree is its second parent's. The receipt's base is a main commit, an ancestor of the
-   lane commit that wrote the receipt, and main's `contracts/` did not move between that base and the merge's first
-   parent (A2, judged at the merge: the receipt states its change set against the base, which would otherwise hide
-   main's change).
+1. **The binding is what git derives.** Where the receipt first entered main's first-parent history is a two-parent
+   merge commit whose tree is its second parent's. Main is read only as `refs/remotes/origin/main` (a tag, a branch or
+   a file named `origin/main` would win the short name, and CI fetches tags), and git reads the objects themselves: no
+   replace ref and no graft is consulted. The receipt's base is a main commit, an ancestor of the lane commit that
+   wrote the receipt, and main's `contracts/` did not move between that base and the merge's first parent (A2, judged
+   at the merge: the receipt states its change set against the base, which would otherwise hide main's change).
 2. **This tree descends from the integrated subject and carries its protected subject.** HEAD descends from the merge;
    HEAD's `contracts/` tree and receipt blob are the merge's; on disk every file under `contracts/`, and the receipt,
    hash to the merge's objects, read byte for byte (index flags such as assume-unchanged are not consulted, and an
@@ -74,7 +75,7 @@ contract was never hashed, and now any byte under `contracts/` is drift.
 | Fast-forward (no pull request method; the ruleset refuses direct pushes) | the lane's commits become main's first parents | refused |
 | Octopus merge | more than two parents | refused |
 | A merge made from the lane's side | main's first parent runs through the lane: a single-parent introduction | refused |
-| The receipt removed and re-added on main | two introductions | refused |
+| The receipt removed and restored on main | it enters main again later | still bound to its first merge, which an append-only main never moves; the restored bytes are judged as any descendant's |
 | A later pull request's CI checkout (`refs/pull/N/merge`) | a descendant: two parents, main's tip first | judged as a descendant |
 
 A refused topology fails closed. A later lane whose receipt would land by squash or rebase cannot use this binding.
@@ -82,7 +83,8 @@ A refused topology fails closed. A later lane whose receipt would land by squash
 ## Why this does not reduce security
 
 - Nothing is skipped: not on branches, not on main, not when main is an ancestor. Being on main only locates the
-  merge; the merge is trusted because its tree is the reviewed head's, never because it is on main.
+  merge, and its second parent names the head it merged; the tree comparison shows the merge added no byte to that
+  head. A descendant is judged by its bytes, never by where it is.
 - The drift baseline is absolute bytes. Any change to `contracts/` or to the receipt after the merge fails, with
   the message that it needs new evidence; nothing tells anyone to regenerate the receipt.
 - The historical receipt is untouched: same bytes, same base (`4ffd92ca`), same verdict. The binding is a separate,
@@ -94,8 +96,15 @@ A refused topology fails closed. A later lane whose receipt would land by squash
 
 **Residuals.** The validator's own code is the checker, reviewed by pull request, as before. A protected change after
 the merge needs evidence no lane defines yet: a later lane must supersede this receipt (as SP1-P1's was superseded),
-and until then the change fails closed. Main's history is protected by its ruleset as measured; an administrator can
-change that. The binding proves which bytes were merged, not that they are sound.
+and until then the change fails closed; that holds for any change under `contracts/`, an unrelated vault fix
+included, because the receipt states that no contract outside the wrapper changed. Main's history is protected by its
+ruleset as measured; an administrator can change that. "Reviewed" means merged through a pull request with its
+required checks: git shows the merge, not an approval, and the measured ruleset requires no approving review; the
+receipt's `OWNER_REVIEW_AND_MERGE` prerequisite stays as published. `contracts/` pins sources: the wrapper's compiled
+code is pinned by its build record, but a dependency or compiler change (`package-lock.json`, `hardhat.config.ts`)
+reaches the other contracts' compiled code without changing a source, and the receipt never bound that. Someone who
+can write to a clone's `.git` (a forged commit-graph, say) defeats any check run in it; CI's fresh clone is the one that
+counts. The binding proves which bytes were merged, not that they are sound.
 
 ## Reproduce / check
 

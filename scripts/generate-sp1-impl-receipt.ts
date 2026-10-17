@@ -14,7 +14,6 @@
  * The first two compile first (npm pre-scripts). No network, no transactions. Research prototype. Not audited.
  * Testnet/local only. Do not use real funds.
  */
-import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
@@ -27,7 +26,9 @@ import {
 } from "./lib/sp1-impl-receipt";
 import {
   IMPL_RECEIPT_INTEGRATION_REL,
+  MAIN_REF,
   deriveReceiptIntegration,
+  gitObjects,
   serializeReceiptIntegration,
 } from "./lib/sp1-impl-receipt-integration";
 
@@ -47,9 +48,7 @@ async function main() {
   } else {
     const at = process.argv.indexOf("--base");
     const base =
-      at !== -1
-        ? String(process.argv[at + 1])
-        : execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
+      at !== -1 ? String(process.argv[at + 1]) : gitObjects(".", ["merge-base", "HEAD", MAIN_REF]).toString().trim();
     const receipt = deriveImplReceipt(await readImplReceiptInputs(".", base));
     mkdirSync(dirname(resolve(IMPL_RECEIPT_REL)), { recursive: true });
     writeFileSync(resolve(IMPL_RECEIPT_REL), serializeImplReceipt(receipt));

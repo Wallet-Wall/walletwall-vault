@@ -540,7 +540,9 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     });
 
     it("the false STOP's input is refused: a base that already carries the receipt (the merge, or main after it) is no lane base", async function () {
-      const mergeBase = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim();
+      const mergeBase = execFileSync("git", ["merge-base", "HEAD", "refs/remotes/origin/main"], {
+        encoding: "utf8",
+      }).trim();
       expect(
         execFileSync("git", ["cat-file", "-t", `${mergeBase}:${IMPL_RECEIPT_REL}`], { encoding: "utf8" }).trim(),
         "the premise: the base the generator would pick carries the receipt",
@@ -624,6 +626,38 @@ describe("SP1 implementation lane — the implementation receipt", function () {
     it("refuses a base HEAD does not descend from, and a base that is no full commit id", function () {
       expect(baseCommitErrors(repo, ids.m2, receiptCommit(repo)).join("\n")).to.match(/not an ancestor of HEAD/);
       expect(baseCommitErrors(repo, "m1", receiptCommit(repo)).join("\n")).to.match(/full commit id/);
+    });
+
+    it("judges the base against refs/remotes/origin/main only: a tag named origin/main shadows nothing", function () {
+      git("tag", "origin/main", ids.m0);
+      try {
+        expect(git("rev-parse", "origin/main"), "the premise: the tag wins the short name").to.equal(ids.m0);
+        expect(baseCommitErrors(repo, ids.m1, ids.l1)).to.deep.equal([]);
+      } finally {
+        git("tag", "-d", "origin/main");
+      }
+    });
+
+    it("reads the objects themselves: a replace ref cannot hide a later main commit from the base rule", function () {
+      const fake = git(
+        "-c",
+        "user.email=test@example.invalid",
+        "-c",
+        "user.name=test",
+        "commit-tree",
+        git("rev-parse", `${ids.l1}^{tree}`),
+        "-p",
+        ids.m0,
+        "-m",
+        "l1",
+      );
+      git("replace", ids.l1, fake);
+      try {
+        expect(git("rev-parse", `${ids.l1}^1`), "the premise: git shows l1 forked at m0").to.equal(ids.m0);
+        expect(baseCommitErrors(repo, ids.m0, ids.l1).join("\n")).to.match(new RegExp(`${ids.m1} is later`));
+      } finally {
+        git("replace", "-d", ids.l1);
+      }
     });
 
     it("refuses a base that already carries the receipt: a lane's base precedes its receipt (the false STOP's base)", function () {

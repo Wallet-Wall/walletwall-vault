@@ -1,6 +1,6 @@
 {
   "schema": "walletwall.sp1-impl-receipt-integration.v1",
-  "note": "The SP1 implementation receipt after its merge: its historical lane base, the head its pull request merged (the reviewed subject) and the merge commit that brought those bytes into main (the integrated subject), derived from git by scripts/lib/sp1-impl-receipt-integration.ts and checked by npm run validate:sp1-impl-receipt. A descendant is judged against the integrated subject; the historical receipt is never rewritten.",
+  "note": "The SP1 implementation receipt after its merge: its historical lane base, the head its pull request merged (the reviewed subject) and the merge commit that brought those bytes into main (the integrated subject), derived from git by scripts/lib/sp1-impl-receipt-integration.ts and checked by npm run validate:sp1-impl-receipt. It attests the merge's topology and bytes, not who reviewed or merged it: the receipt's OWNER_REVIEW_AND_MERGE stays as published. A descendant is judged against the integrated subject; the historical receipt is never rewritten.",
   "historicalReceipt": {
     "path": "evidence/zk/sp1-impl/implementation-receipt.json",
     "sha256": "b9f34d4531417015ae84475b76e98bb1444ff90f703a55b9e37c073ed8eba575",

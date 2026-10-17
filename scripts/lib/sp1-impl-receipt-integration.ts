@@ -14,9 +14,13 @@
  *
  * A descendant (main after the merge, a branch, a pull request's synthetic merge) is judged against the integrated
  * subject: its contracts and the receipt itself must be that commit's, byte for byte, in HEAD and in the working tree.
- * A protected change after the merge needs new evidence, which no lane has produced, so it fails closed. Main's
- * history only locates the integration; what makes it the reviewed subject is the content compared, never being on
- * main.
+ * A protected change after the merge needs new evidence, which no lane has produced, so it fails closed.
+ *
+ * Main's history locates the merge, and the merge's second parent names the head it merged; comparing the trees shows
+ * the merge carries exactly that head's bytes. git shows a merge, not an approval (the measured ruleset requires none),
+ * so the binding attests topology and bytes, not review. Main is read only as refs/remotes/origin/main, and git reads
+ * the objects themselves (no replace ref, no graft). Nothing is trusted for being on main: a descendant is judged by
+ * its bytes.
  *
  * Merge changes provenance location, not the set of bytes that were reviewed. A historical receipt is never rewritten
  * merely because its reviewed subject moved into main.
@@ -24,27 +28,35 @@
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { diskFiles, gitBlobId } from "./append-only-history";
 
 export const IMPL_RECEIPT_INTEGRATION_REL = "evidence/zk/sp1-impl/receipt-integration.json";
 export const RECEIPT_INTEGRATION_SCHEMA = "walletwall.sp1-impl-receipt-integration.v1";
 /**
+ * Main, by its full name: a tag, a branch or a file named origin/main would win the short name (git resolves those
+ * first), and actions/checkout fetches tags.
+ */
+export const MAIN_REF = "refs/remotes/origin/main";
+/**
  * What the receipt states against its base (the contract sources changed since it, the journal the wrapper decoded
  * there) reads these bytes, so after the merge they are the integrated subject's. Every other fact the receipt states
  * is absolute (hashes, the compiled wrapper's AST, the zkvm subject's trees, the probes' outcomes), and its byte for
- * byte re-derivation already judges it on every descendant.
+ * byte re-derivation already judges it on every descendant. These are sources: the wrapper's compiled code is pinned
+ * by its build record, and no other contract's compiled code was ever bound by the receipt.
  */
 export const PROTECTED_SUBJECT_PATHS = ["contracts"] as const;
 
 const NOTE =
   "The SP1 implementation receipt after its merge: its historical lane base, the head its pull request merged (the " +
   "reviewed subject) and the merge commit that brought those bytes into main (the integrated subject), derived from " +
-  "git by scripts/lib/sp1-impl-receipt-integration.ts and checked by npm run validate:sp1-impl-receipt. A descendant " +
-  "is judged against the integrated subject; the historical receipt is never rewritten.";
+  "git by scripts/lib/sp1-impl-receipt-integration.ts and checked by npm run validate:sp1-impl-receipt. It attests " +
+  "the merge's topology and bytes, not who reviewed or merged it: the receipt's OWNER_REVIEW_AND_MERGE stays as " +
+  "published. A descendant is judged against the integrated subject; the historical receipt is never rewritten.";
 const NEEDS_EVIDENCE =
   "a protected change after the merge needs new evidence (a later lane's record that supersedes this receipt), and " +
   "none exists, so the receipt fails closed; the historical receipt is never regenerated";
@@ -80,15 +92,22 @@ const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest(
 const lines = (text: string) => text.split("\n").filter(Boolean);
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-/** git, reading the objects themselves: a replace ref (`git replace`) would show other parents or trees under an id. */
-function gitBytes(repoRoot: string, args: string[], input?: string): Buffer {
+/** A graft file that does not exist: GIT_GRAFT_FILE replaces info/grafts, so git reads no graft at all. */
+const NO_GRAFTS = join(tmpdir(), `sp1-receipt-no-grafts-${randomUUID()}`);
+
+/**
+ * git, reading the objects themselves: a replace ref (`git replace`) or a graft (info/grafts, GIT_GRAFT_FILE) would show
+ * other parents or trees under the same ids, so neither is consulted.
+ */
+export function gitObjects(repoRoot: string, args: readonly string[], input?: string): Buffer {
   return execFileSync("git", ["--no-replace-objects", "-C", resolve(repoRoot), ...args], {
+    env: { ...process.env, GIT_GRAFT_FILE: NO_GRAFTS },
     input,
     maxBuffer: 64 * 1024 * 1024,
     stdio: ["pipe", "pipe", "pipe"],
   });
 }
-const git = (repoRoot: string, args: string[], input?: string) => gitBytes(repoRoot, args, input).toString("utf8");
+const git = (repoRoot: string, args: string[], input?: string) => gitObjects(repoRoot, args, input).toString("utf8");
 
 /** Whether `ancestor` is `descendant` or one of its ancestors; an object git cannot read shows nothing, so no. */
 function descends(repoRoot: string, ancestor: string, descendant: string): boolean {
@@ -127,7 +146,7 @@ function firstParentMainline(repoRoot: string): string[] {
     );
   }
   try {
-    return lines(git(repoRoot, ["rev-list", "--first-parent", "origin/main"]));
+    return lines(git(repoRoot, ["rev-list", "--first-parent", MAIN_REF]));
   } catch {
     throw new Error(
       "origin/main is not available, with its history: the integration cannot be derived, and the receipt is not judged",
@@ -150,11 +169,13 @@ function protectedAt(repoRoot: string, commit: string, paths: readonly string[])
  * The binding of the receipt at `receiptRel` to the merge that brought it into main, from git alone; throws (fail
  * closed) with the reason when there is none to derive.
  *
- * The receipt must have entered origin/main's first-parent history exactly once, through a two-parent merge commit
- * whose tree is its second parent's: a squash, a rebase merge or a fast-forward names no reviewed head, and a merge
- * that carries any byte its head does not carries something nobody reviewed. The receipt's own base must be a main
- * commit the lane that wrote it began from, and main's protected paths must not have moved between that base and the
- * merge's first parent: the receipt states its change set against the base, which would otherwise hide main's change.
+ * The receipt is bound to where it first entered origin/main's first-parent history: an append-only main never moves
+ * that commit, and a receipt removed and restored later is judged by its bytes, as every descendant is. That commit must
+ * be a two-parent merge whose tree is its second parent's: a squash, a rebase merge or a fast-forward names no reviewed
+ * head, and a merge that carries any byte its head does not carries something nobody reviewed. The receipt's own base
+ * must be a main commit the lane that wrote it began from, and main's protected paths must not have moved between that
+ * base and the merge's first parent: the receipt states its change set against the base, which would otherwise hide
+ * main's change.
  */
 export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): ReceiptIntegration {
   const mainline = firstParentMainline(repoRoot);
@@ -171,13 +192,7 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
         "judged (fetch origin/main)",
     );
   }
-  if (entered.length > 1) {
-    throw new Error(
-      `${receiptRel} entered main ${entered.length} times (${entered.join(", ")}): one historical receipt has one ` +
-        "integration",
-    );
-  }
-  const merge = entered[0];
+  const merge = entered[entered.length - 1];
   const parents = git(repoRoot, ["rev-list", "--parents", "-n", "1", merge]).trim().split(" ").slice(1);
   if (parents.length !== 2) {
     throw new Error(
@@ -198,7 +213,7 @@ export function deriveReceiptIntegration(repoRoot: string, receiptRel: string): 
         "reviewed",
     );
   }
-  const bytes = gitBytes(repoRoot, ["cat-file", "blob", String(present[mainline.indexOf(merge)]?.id)]);
+  const bytes = gitObjects(repoRoot, ["cat-file", "blob", String(present[mainline.indexOf(merge)]?.id)]);
   let receipt: { lane?: unknown; baseCommit?: unknown } | null;
   try {
     receipt = JSON.parse(bytes.toString("utf8")) as { lane?: unknown; baseCommit?: unknown } | null;
@@ -310,10 +325,20 @@ function treeDrift(repoRoot: string, s: SubjectObject): string[] {
   const drift: string[] = [];
   for (const [path, id] of expected) {
     if (!onDisk.has(path)) drift.push(`${s.path}/${path} (removed)`);
-    else if (onDisk.get(path) !== id) drift.push(`${s.path}/${path} (changed)`);
+    else if (onDisk.get(path) !== id)
+      drift.push(`${s.path}/${path} (${changeOf(readFileSync(resolve(repoRoot, s.path, path)), id)})`);
   }
   for (const path of onDisk.keys()) if (!expected.has(path)) drift.push(`${s.path}/${path} (added)`);
   return drift.sort();
+}
+
+/**
+ * How bytes that are not the blob `id` differ from it: only in CRLF line endings (what a core.autocrlf=true checkout
+ * writes; still drift, and named so), or otherwise.
+ */
+function changeOf(bytes: Buffer, id: string): string {
+  const lf = Buffer.from(bytes.toString("latin1").replaceAll("\r\n", "\n"), "latin1");
+  return gitBlobId(lf) === id ? "changed: line endings only; check out with core.autocrlf=false" : "changed";
 }
 
 /** Whether the file `s` is on disk as the blob it names; a file that cannot be read is drift, never a pass. */
@@ -324,7 +349,7 @@ function blobDrift(repoRoot: string, s: SubjectObject): string[] {
   } catch {
     return [`${s.path} (removed, or unreadable)`];
   }
-  return gitBlobId(bytes) === s.id ? [] : [`${s.path} (changed)`];
+  return gitBlobId(bytes) === s.id ? [] : [`${s.path} (${changeOf(bytes, s.id)})`];
 }
 
 /**

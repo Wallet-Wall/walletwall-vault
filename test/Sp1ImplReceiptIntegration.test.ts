@@ -40,21 +40,33 @@ class Repo {
   readonly ids: Record<string, string> = {};
 
   git(...args: string[]): string {
-    return execFileSync(
-      "git",
-      [
-        "-c",
-        "core.autocrlf=false",
-        "-c",
-        "commit.gpgsign=false",
-        "-c",
-        "user.email=t@example.invalid",
-        "-c",
-        "user.name=t",
-        ...args,
-      ],
-      { cwd: this.dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-    ).trim();
+    const run = () =>
+      execFileSync(
+        "git",
+        [
+          "-c",
+          "core.autocrlf=false",
+          "-c",
+          "commit.gpgsign=false",
+          "-c",
+          "user.email=t@example.invalid",
+          "-c",
+          "user.name=t",
+          ...args,
+        ],
+        { cwd: this.dir, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+      ).trim();
+    // On Windows a scanner can hold a just-written object file for a moment, and git's rename into .git/objects then
+    // fails with "Permission denied". That is the host, not the code under test: retry it, and only it, a few times.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return run();
+      } catch (error) {
+        const stderr = String((error as { stderr?: unknown }).stderr ?? "");
+        if (attempt === 5 || !/unable to write file \.git\/objects\/.*: Permission denied/.test(stderr)) throw error;
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200 * attempt);
+      }
+    }
   }
 
   head(): string {
@@ -119,6 +131,33 @@ function mergeLane(repo: Repo, name = "I", branch = "lane"): string {
   return repo.ids[name];
 }
 
+/**
+ * A look-alike of the lane: the same messages and the same receipt over another wrapper, and a merge of it onto m0 made
+ * the way the real one was (not published). What an attacker would like main to show instead of the real merge.
+ */
+function lookAlike(repo: Repo): { head: string; merge: string } {
+  const back = repo.git("rev-parse", "--abbrev-ref", "HEAD");
+  repo.git("checkout", "-q", "-b", "look-alike", repo.ids.m0);
+  repo.commit(
+    "x1",
+    { [WRAPPER]: "wrapper w1, rewritten\n", [PROBE]: "probe\n", [RECEIPT]: receiptText(repo.ids.m0) },
+    "l1",
+  );
+  const head = repo.commit("x2", { "docs/lane.md": "lane notes\n" }, "l2");
+  const merge = repo.git(
+    "commit-tree",
+    repo.tree(head),
+    "-p",
+    repo.ids.m0,
+    "-p",
+    head,
+    "-m",
+    "Merge pull request #1 from lane",
+  );
+  repo.git("checkout", "-q", back === "HEAD" ? repo.ids.I : back);
+  return { head, merge };
+}
+
 /** What the binding of a merge commit must say, written from git's own answers. */
 function expectedBinding(
   repo: Repo,
@@ -153,6 +192,7 @@ function expectedBinding(
 const withoutNote = (r: ReceiptIntegration) => {
   const { note, ...rest } = r;
   expect(note, "the record says what it is").to.match(/never rewritten/);
+  expect(note, "and what it does not attest").to.match(/not who reviewed or merged it/);
   return rest;
 };
 
@@ -342,6 +382,12 @@ describe("SP1 implementation receipt — the integration binding after the merge
           `${RECEIPT} (changed)`,
         ],
         [
+          "a contract with CRLF line endings, as a core.autocrlf=true clone writes it",
+          () => repo.write({ [VAULT]: "contract Vault {}\r\n" }),
+          () => repo.git("checkout", "--", VAULT),
+          `${VAULT} (changed: line endings only; check out with core.autocrlf=false)`,
+        ],
+        [
           "the receipt removed on disk",
           () => repo.write({ [RECEIPT]: null }),
           () => repo.git("checkout", "--", RECEIPT),
@@ -522,6 +568,71 @@ describe("SP1 implementation receipt — the integration binding after the merge
       expect(receiptIntegrationErrors(repo.dir, RECEIPT).errors.join("\n")).to.match(/not what git derives/);
     });
 
+    it("only refs/remotes/origin/main is main: a tag, a branch or a file named origin/main shadows nothing", function () {
+      mergeLane(repo);
+      const fake = lookAlike(repo);
+      const gitDir = join(repo.dir, ".git");
+      const shadows: [string, () => void, () => void][] = [
+        ["a tag", () => repo.git("tag", "origin/main", fake.merge), () => repo.git("tag", "-d", "origin/main")],
+        [
+          "a branch",
+          () => repo.git("branch", "origin/main", fake.merge),
+          () => repo.git("branch", "-D", "origin/main"),
+        ],
+        [
+          "a file in the git directory",
+          () => {
+            mkdirSync(join(gitDir, "origin"), { recursive: true });
+            writeFileSync(join(gitDir, "origin/main"), `${fake.merge}\n`);
+          },
+          () => rmSync(join(gitDir, "origin"), { recursive: true, force: true }),
+        ],
+      ];
+      for (const [what, shadow, undo] of shadows) {
+        shadow();
+        try {
+          expect(repo.git("rev-parse", "origin/main"), `the premise: ${what} wins the short name`).to.equal(fake.merge);
+          expect(deriveReceiptIntegration(repo.dir, RECEIPT).reviewedSubject.commit, what).to.equal(repo.ids.l2);
+        } finally {
+          undo();
+        }
+      }
+    });
+
+    it("grafts are not read: neither a grafts file nor GIT_GRAFT_FILE can reroute main through a look-alike merge", function () {
+      mergeLane(repo);
+      const fake = lookAlike(repo);
+      const grafts = `${repo.ids.I} ${fake.merge}\n`;
+      const file = join(repo.dir, ".git/info/grafts");
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, grafts);
+      try {
+        expect(repo.git("rev-parse", `${repo.ids.I}^1`), "the premise: git follows the grafts file").to.equal(
+          fake.merge,
+        );
+        expect(deriveReceiptIntegration(repo.dir, RECEIPT).reviewedSubject.commit, "a grafts file").to.equal(
+          repo.ids.l2,
+        );
+      } finally {
+        rmSync(file, { force: true });
+      }
+      const elsewhere = join(repo.dir, "grafts-elsewhere");
+      writeFileSync(elsewhere, grafts);
+      const before = process.env.GIT_GRAFT_FILE;
+      process.env.GIT_GRAFT_FILE = elsewhere;
+      try {
+        expect(repo.git("rev-parse", `${repo.ids.I}^1`), "the premise: git follows GIT_GRAFT_FILE").to.equal(
+          fake.merge,
+        );
+        expect(deriveReceiptIntegration(repo.dir, RECEIPT).reviewedSubject.commit, "GIT_GRAFT_FILE").to.equal(
+          repo.ids.l2,
+        );
+      } finally {
+        if (before === undefined) delete process.env.GIT_GRAFT_FILE;
+        else process.env.GIT_GRAFT_FILE = before;
+      }
+    });
+
     it("a replace ref cannot substitute another reviewed head: git's objects themselves are read", function () {
       const merge = mergeLane(repo);
       repo.git("checkout", "-q", "-b", "look-alike", repo.ids.m0);
@@ -575,12 +686,21 @@ describe("SP1 implementation receipt — the integration binding after the merge
       );
     });
 
-    it("a receipt that entered main twice is refused: one historical receipt has one integration", function () {
+    it("a receipt removed and restored on main stays bound to its first merge, and the restored bytes are judged", function () {
       mergeLane(repo);
+      const before = deriveReceiptIntegration(repo.dir, RECEIPT);
       repo.commit("drop", { [RECEIPT]: null });
       repo.commit("re-add", { [RECEIPT]: receiptText(repo.ids.m0) });
       repo.publish(repo.head());
-      expect(() => deriveReceiptIntegration(repo.dir, RECEIPT)).to.throw(/entered main 2 times/);
+      const after = deriveReceiptIntegration(repo.dir, RECEIPT);
+      expect(after, "an append-only main cannot move its first merge").to.deep.equal(before);
+      expect(descendantDriftErrors(repo.dir, after.descendantDriftBaseline), "the same bytes restored").to.deep.equal(
+        [],
+      );
+      repo.commit("re-add other", { [RECEIPT]: receiptText(repo.ids.l2) });
+      expect(descendantDriftErrors(repo.dir, after.descendantDriftBaseline).join("\n")).to.match(
+        /HEAD changes evidence\/zk\/sp1-impl\/implementation-receipt\.json since the integrated subject/,
+      );
     });
   });
 

@@ -85,7 +85,9 @@ import {
 } from "./sp1-registry";
 import {
   IMPL_RECEIPT_INTEGRATION_REL,
+  MAIN_REF,
   descendantDriftErrors,
+  gitObjects,
   receiptIntegrationErrors,
 } from "./sp1-impl-receipt-integration";
 import { finalizedBlock } from "./sp1-registration";
@@ -1319,8 +1321,9 @@ export function compareReceipt(text: string, derived: ImplReceipt): string[] {
   ];
 }
 
+/** git, reading the objects themselves (no replace ref, no graft), as the integration binding reads them. */
 function git(repoRoot: string, args: string[]): string {
-  return execFileSync("git", ["-C", resolve(repoRoot), ...args], { encoding: "utf8" });
+  return gitObjects(repoRoot, args).toString("utf8");
 }
 
 const jsonFiles = (repoRoot: string, dir: string) =>
@@ -1342,10 +1345,13 @@ export function receiptCommit(repoRoot = "."): string {
   return last || git(repoRoot, ["rev-parse", "HEAD"]).trim();
 }
 
-/** Whether `rev` carries the receipt; a commit git cannot read carries nothing it can show. */
+/**
+ * Whether `rev` carries the receipt. A commit git cannot read carries nothing it can show; such a base also fails the
+ * rule's other checks (it is on no first-parent history git can read), so reading it as "carries none" passes nothing.
+ */
 function carriesReceipt(repoRoot: string, rev: string): boolean {
   try {
-    execFileSync("git", ["-C", resolve(repoRoot), "cat-file", "-e", `${rev}:${IMPL_RECEIPT_REL}`], { stdio: "pipe" });
+    git(repoRoot, ["cat-file", "-e", `${rev}:${IMPL_RECEIPT_REL}`]);
     return true;
   } catch {
     return false;
@@ -1367,7 +1373,7 @@ export function baseCommitErrors(repoRoot: string, base: string, at: string): st
   const list = (args: string[]) => git(repoRoot, args).split("\n").filter(Boolean);
   let mainline: string[];
   try {
-    mainline = list(["rev-list", "--first-parent", "origin/main"]);
+    mainline = list(["rev-list", "--first-parent", MAIN_REF]);
   } catch {
     return [
       "origin/main is not available, with its history: the base cannot be verified, and the receipt is not judged",
