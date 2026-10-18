@@ -1295,7 +1295,9 @@ export function hostileCases(): HostileCase[] {
     {
       id: "X33",
       title: "the provenance key behind a UTF-8 byte-order mark, with the binary value",
-      archive: up(setPax("./groth16_vk.bin", { "\uFEFFSCHILY.xattr.com.apple.provenance": Buffer.from(PROVENANCE_VALUE) })),
+      archive: up(
+        setPax("./groth16_vk.bin", { "\uFEFFSCHILY.xattr.com.apple.provenance": Buffer.from(PROVENANCE_VALUE) }),
+      ),
       expect: corrupt("PAX_MALFORMED"),
     },
     {
