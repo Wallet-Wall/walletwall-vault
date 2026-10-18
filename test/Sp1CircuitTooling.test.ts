@@ -44,6 +44,7 @@ import {
   censusObservationErrors,
   censusPolicyErrors,
   committedProductionAnchor,
+  serializeCensus,
   committedProductionRecord,
   envClass,
   environmentReads,
@@ -175,7 +176,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(r.provingAvailability.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(0);
-      expect(r.selfTest.hostile).to.have.length(144);
+      expect(r.selfTest.hostile).to.have.length(153);
       expect(r.archiveRecord.schema).to.equal("walletwall.sp1-proving-archive.v2");
       expect(r.archiveRecord.ignoredMetadata.derivedFrom.archive).to.deep.equal({
         bytes: 6211807514,
@@ -651,7 +652,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
         [
           "a nested name",
           (c) => (adAt(c, "._groth16_pk.bin").path = "a/._groth16_pk.bin"),
-          /outside the policy's namespace/,
+          /APPLEDOUBLE_PATHS is not exactly/,
         ],
         ["a directory", (c) => (adAt(c, "._groth16_pk.bin").typeflag = "5"), /not a regular file/],
         ["an orphan", (c) => (adAt(c, "._groth16_pk.bin").companionFollows = false), /not followed by the entry/],
@@ -706,12 +707,16 @@ describe("SP1-PA2A circuit tooling contract", function () {
       other.tar.entries += 1;
       writeFileSync(join(repo, CENSUS_OBSERVATIONS_REL[1]), `${JSON.stringify(other, null, 2)}\n`);
       expect(censusObservationErrors(repo)).to.deep.equal(["the census observations are not one census"]);
-      // The same census in another serialization (CRLF line ends, as an autocrlf checkout writes it) is one census.
+      // The same bytes with CRLF line ends (as an autocrlf checkout writes them) are one census, as committed.
       writeFileSync(
         join(repo, CENSUS_OBSERVATIONS_REL[1]),
         read(CENSUS_OBSERVATIONS_REL[0]).toString("utf8").replace(/\n/g, "\r\n"),
       );
       expect(censusObservationErrors(repo)).to.deep.equal([]);
+      // The same census reformatted, in both files, is not the census tool's output.
+      for (const rel of CENSUS_OBSERVATIONS_REL) writeFileSync(join(repo, rel), `${JSON.stringify(census())}\n`);
+      expect(censusObservationErrors(repo)).to.deep.equal(["the census observations are not the census tool's output"]);
+      expect(serializeCensus(census())).to.equal(read(CENSUS_OBSERVATIONS_REL[0]).toString("utf8"));
     });
   });
 

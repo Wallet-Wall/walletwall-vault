@@ -445,6 +445,24 @@ export function hostileCases(): HostileCase[] {
     },
     { id: "P17", title: "a file named ./", archive: only(file("./")), expect: unsafe("EMPTY_PATH") },
     { id: "P18", title: "bare ..", archive: only(file("..")), expect: unsafe("TRAVERSAL") },
+    {
+      id: "P19",
+      title: "the root directory spelled / (the filesystem root under tar -P)",
+      archive: only(file("/", "", { type: "5" }), file("a")),
+      expect: unsafe("ABSOLUTE_PATH"),
+    },
+    {
+      id: "P20",
+      title: "the root directory with an empty name",
+      archive: only(file("", "", { type: "5" }), file("a")),
+      expect: unsafe("EMPTY_PATH"),
+    },
+    {
+      id: "P21",
+      title: "the root directory spelled .//",
+      archive: only(file(".//", "", { type: "5" }), file("a")),
+      expect: unsafe("EMPTY_PATH"),
+    },
     // Link and special-type attacks
     {
       id: "L01",
@@ -891,7 +909,7 @@ export function hostileCases(): HostileCase[] {
       // In an archive a root-level name is at most the 100-byte ustar field (a PAX path must equal it), so only a
       // record can spell this.
       id: "M12",
-      title: "the record's ._ name of 101 bytes, its 99-byte companion a member",
+      title: "the record's ._ name of 101 bytes (no observed path), its 99-byte companion a member",
       archive: adSafe(),
       record: (r) => ({
         ...r,
@@ -957,8 +975,20 @@ export function hostileCases(): HostileCase[] {
     {
       id: "M22",
       title: "followed by a directory of its companion's name",
-      archive: only(ad("._extra"), file("extra/", "", { type: "5" }), file("extra/x")),
+      archive: only(ad("._groth16_vk.bin"), file("groth16_vk.bin/", "", { type: "5" }), file("groth16_vk.bin/x")),
       expect: unsafe("APPLEDOUBLE_WITHOUT_COMPANION"),
+    },
+    {
+      id: "M39",
+      title: "._. followed by a root directory named / (the filesystem root under tar -P)",
+      archive: only(ad("._."), file("/", "", { type: "5" }), vkFile()),
+      expect: unsafe("ABSOLUTE_PATH"),
+    },
+    {
+      id: "M40",
+      title: "an unobserved AppleDouble name, its companion following",
+      archive: only(ad("._README"), file("README")),
+      expect: unsafe("APPLEDOUBLE_OUTSIDE_POLICY"),
     },
     {
       id: "M23",
@@ -998,9 +1028,9 @@ export function hostileCases(): HostileCase[] {
     },
     {
       id: "M28",
-      title: "AppleDouble entries colliding by case",
+      title: "a case variant of an observed AppleDouble name",
       archive: only(ad("._groth16_vk.bin"), vkFile(), ad("._GROTH16_VK.BIN")),
-      expect: unsafe("CASE_COLLISION"),
+      expect: unsafe("APPLEDOUBLE_OUTSIDE_POLICY"),
     },
     {
       id: "M29",
@@ -1041,7 +1071,8 @@ export function hostileCases(): HostileCase[] {
       id: "M33",
       title: "the record's metadata describing no member",
       archive: adSafe(),
-      record: withMetadata((m) => [...m, { ...m[0], path: "._zz.bin" }]),
+      // An observed path whose companion the synthetic record does not name.
+      record: withMetadata((m) => [...m, { ...m[0], path: "._groth16_witness.json" }]),
       expect: { code: "RECORD_INVALID", reason: "METADATA_WITHOUT_COMPANION" },
     },
     {
@@ -1260,6 +1291,30 @@ export function hostileCases(): HostileCase[] {
       title: "a provenance PAX header describing no entry",
       archive: gz(tarBytes([file("p", paxData(provenancePax()), { type: "x" })])),
       expect: corrupt("DANGLING_PAX"),
+    },
+    {
+      id: "X33",
+      title: "the provenance key behind a UTF-8 byte-order mark, with the binary value",
+      archive: up(setPax("./groth16_vk.bin", { "﻿SCHILY.xattr.com.apple.provenance": Buffer.from(PROVENANCE_VALUE) })),
+      expect: corrupt("PAX_MALFORMED"),
+    },
+    {
+      id: "X34",
+      title: "a PAX path behind a byte-order mark (a decoder that drops it would read the header's name)",
+      archive: only(file("groth16_vk.bin", SYNTHETIC_VK, { pax: { path: "﻿groth16_vk.bin" } })),
+      expect: unsafe("PAX_PATH_MISMATCH"),
+    },
+    {
+      id: "X35",
+      title: "a PAX size key behind a byte-order mark",
+      archive: only(file("groth16_vk.bin", SYNTHETIC_VK, { pax: { "﻿size": String(SYNTHETIC_VK.length) } })),
+      expect: unsafe("PAX_KEY_REFUSED"),
+    },
+    {
+      id: "X36",
+      title: "the root's provenance on a root directory named /",
+      archive: up((e) => e.map((s) => (s.name === "./" ? { ...s, name: "/" } : s))),
+      expect: unsafe("ABSOLUTE_PATH"),
     },
     {
       id: "X29",

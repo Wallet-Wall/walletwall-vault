@@ -50,15 +50,26 @@ export const MIN_MIRRORS = 2;
  * Finder Info carrying a single com.apple.provenance attribute, and an empty resource fork).
  *
  * The rule: a path with any "._" component is AppleDouble-shaped and is never a circuit member. It is accepted only as
- * ignored metadata (never extracted, never installed, never read by SP1), and only when it is exactly "._." or
- * "._<name>" with <name> a canonical root-level name that is not itself AppleDouble-shaped; it is a regular file with
- * no PAX header and one of APPLEDOUBLE_BODIES' bodies; and the very next entry (PAX headers aside) is the entry it
- * describes: the root directory for "._.", the regular file <name> otherwise. Anything else AppleDouble-shaped
- * (nested, "._._x", "._", a directory, a link, another body, an orphan, one after its companion) is refused. Other
+ * ignored metadata (never extracted, never installed, never read by SP1), and only when it is exactly one of
+ * APPLEDOUBLE_PATHS (the eight the census observed); it is a regular file with no PAX header and one of
+ * APPLEDOUBLE_BODIES' bodies; and the very next entry (PAX headers aside) is the entry it describes: the root directory
+ * for "._.", the regular file <name> for "._<name>". Anything else AppleDouble-shaped (another name, nested, a case
+ * variant, a directory, a link, another body, an orphan, one after its companion, a duplicate) is refused. Other
  * dotfiles and other macOS metadata are not covered: they stay ordinary entries under every member rule.
  */
 export const APPLEDOUBLE_PREFIX = "._";
 export const APPLEDOUBLE_ROOT = "._.";
+/** The AppleDouble paths the upstream archive holds: the root's, and each of its seven files'. */
+export const APPLEDOUBLE_PATHS: readonly string[] = [
+  APPLEDOUBLE_ROOT,
+  "._Groth16Verifier.sol",
+  "._SP1VerifierGroth16.sol",
+  "._constraints.json",
+  "._groth16_circuit.bin",
+  "._groth16_pk.bin",
+  "._groth16_vk.bin",
+  "._groth16_witness.json",
+];
 export const IGNORED_APPLEDOUBLE_METADATA = "IGNORED_APPLEDOUBLE_METADATA";
 /** The only AppleDouble bodies accepted: the one body every metadata entry of the upstream archive has. */
 export const APPLEDOUBLE_BODIES: readonly { readonly bytes: number; readonly sha256: string }[] = [
@@ -353,7 +364,7 @@ export function archiveRecordErrors(record: unknown, anchor: ArchiveAnchor): Ref
     const members = new Set((Array.isArray(r.members) ? r.members : []).map((m) => m?.path));
     r.metadata.forEach((m, i) => {
       if (!exactly(m, RECORD_FIELDS.metadata, `metadata[${i}]`)) return;
-      const companion = typeof m.path === "string" ? appleDoubleCompanion(m.path) : null;
+      const companion = appleDoubleCompanion(m.path);
       if (companion === null) return no("METADATA_PATH_INVALID", `metadata[${i}] ${JSON.stringify(m.path)}`);
       if (companion !== "" && !members.has(companion)) {
         no("METADATA_WITHOUT_COMPANION", `${m.path} describes ${companion}, which is not a record member`);
@@ -465,14 +476,11 @@ export const isAppleDoubleShaped = (path: string): boolean =>
 
 /**
  * The entry an AppleDouble path describes under the closed policy: "" (the archive root) for "._.", <name> for
- * "._<name>" with <name> a canonical root-level name that is not itself AppleDouble-shaped; null for any other path.
+ * "._<name>" when that is one of APPLEDOUBLE_PATHS; null for any other path (a non-string included).
  */
 export function appleDoubleCompanion(path: string): string | null {
-  if (path === APPLEDOUBLE_ROOT) return "";
-  if (!path.startsWith(APPLEDOUBLE_PREFIX) || path.includes("/") || memberPathError(path) !== null) return null;
-  const name = path.slice(APPLEDOUBLE_PREFIX.length);
-  // "._" alone names nothing: memberPathError("") is EMPTY_COMPONENT.
-  return isAppleDoubleShaped(name) || memberPathError(name) !== null ? null : name;
+  if (!APPLEDOUBLE_PATHS.includes(path)) return null;
+  return path === APPLEDOUBLE_ROOT ? "" : path.slice(APPLEDOUBLE_PREFIX.length);
 }
 
 export type EntryKind = "file" | "directory";
@@ -547,7 +555,8 @@ const OCTAL_MAX_SIZE = 0o77777777777;
 
 const unsafe = (reason: string, detail: string) => refuse("ARCHIVE_UNSAFE_ENTRY", reason, detail);
 const corrupt = (reason: string, detail: string) => refuse("ARCHIVE_CORRUPT", reason, detail);
-const utf8 = new TextDecoder("utf-8", { fatal: true });
+/** Strict, and BOM-preserving: a leading U+FEFF stays in the text, so "﻿path" is never the key `path`. */
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /** A NUL-terminated header field; a byte other than NUL after the terminator is an embedded NUL. */
 function textField(h: Buffer, from: number, len: number, at: number): string {
@@ -795,6 +804,10 @@ export class TarParser {
     }
     const path = entryPath(raw, kind);
     const where = `header at byte ${at}: ${JSON.stringify(raw)}`;
+    // The root is spelled "." or "./" only: "/" (the filesystem root under tar -P), "" or ".//" would name it too, and
+    // could stand in for "._."'s companion or the root's provenance occurrence.
+    if (path === "" && raw !== "." && raw !== "./")
+      throw unsafe(raw.startsWith("/") ? "ABSOLUTE_PATH" : "EMPTY_PATH", where);
     if (this.companion !== null) {
       const want = this.companion;
       this.companion = null;

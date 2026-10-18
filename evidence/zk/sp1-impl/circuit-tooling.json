@@ -65,7 +65,17 @@
     "ignoredMetadata": {
       "appleDouble": {
         "disposition": "IGNORED_APPLEDOUBLE_METADATA",
-        "rule": "a path with any \"._\" component is never a member; it is ignored only as ._. (describing the root directory) or \"._<name>\" (<name> a canonical root-level name, not itself AppleDouble-shaped, describing the regular file <name>), a regular file with no PAX header, one of these bodies, immediately followed by the entry it describes; never extracted, never installed; recorded in the record's metadata",
+        "rule": "a path with any \"._\" component is never a member; it is ignored only as one of these paths (\"._.\" describing the root directory, \"._<name>\" the regular file <name>), a regular file with no PAX header, one of these bodies, immediately followed by the entry it describes; never extracted, never installed; recorded in the record's metadata",
+        "paths": [
+          "._.",
+          "._Groth16Verifier.sol",
+          "._SP1VerifierGroth16.sol",
+          "._constraints.json",
+          "._groth16_circuit.bin",
+          "._groth16_pk.bin",
+          "._groth16_vk.bin",
+          "._groth16_witness.json"
+        ],
         "bodies": [
           {
             "bytes": 163,
@@ -760,6 +770,21 @@
         "refusal": "ARCHIVE_UNSAFE_ENTRY (TRAVERSAL)"
       },
       {
+        "id": "P19",
+        "title": "the root directory spelled / (the filesystem root under tar -P)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (ABSOLUTE_PATH)"
+      },
+      {
+        "id": "P20",
+        "title": "the root directory with an empty name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (EMPTY_PATH)"
+      },
+      {
+        "id": "P21",
+        "title": "the root directory spelled .//",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (EMPTY_PATH)"
+      },
+      {
         "id": "L01",
         "title": "symlink to an outside path",
         "refusal": "ARCHIVE_UNSAFE_ENTRY (SYMLINK)"
@@ -1101,7 +1126,7 @@
       },
       {
         "id": "M12",
-        "title": "the record's ._ name of 101 bytes, its 99-byte companion a member",
+        "title": "the record's ._ name of 101 bytes (no observed path), its 99-byte companion a member",
         "refusal": "RECORD_INVALID (METADATA_PATH_INVALID)"
       },
       {
@@ -1155,6 +1180,16 @@
         "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
       },
       {
+        "id": "M39",
+        "title": "._. followed by a root directory named / (the filesystem root under tar -P)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (ABSOLUTE_PATH)"
+      },
+      {
+        "id": "M40",
+        "title": "an unobserved AppleDouble name, its companion following",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
+      },
+      {
         "id": "M23",
         "title": "._. followed by a file, not the root",
         "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_WITHOUT_COMPANION)"
@@ -1186,8 +1221,8 @@
       },
       {
         "id": "M28",
-        "title": "AppleDouble entries colliding by case",
-        "refusal": "ARCHIVE_UNSAFE_ENTRY (CASE_COLLISION)"
+        "title": "a case variant of an observed AppleDouble name",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_OUTSIDE_POLICY)"
       },
       {
         "id": "M29",
@@ -1370,6 +1405,26 @@
         "refusal": "ARCHIVE_CORRUPT (DANGLING_PAX)"
       },
       {
+        "id": "X33",
+        "title": "the provenance key behind a UTF-8 byte-order mark, with the binary value",
+        "refusal": "ARCHIVE_CORRUPT (PAX_MALFORMED)"
+      },
+      {
+        "id": "X34",
+        "title": "a PAX path behind a byte-order mark (a decoder that drops it would read the header's name)",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_PATH_MISMATCH)"
+      },
+      {
+        "id": "X35",
+        "title": "a PAX size key behind a byte-order mark",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_KEY_REFUSED)"
+      },
+      {
+        "id": "X36",
+        "title": "the root's provenance on a root directory named /",
+        "refusal": "ARCHIVE_UNSAFE_ENTRY (ABSOLUTE_PATH)"
+      },
+      {
         "id": "X29",
         "title": "provenance in a PAX global header",
         "refusal": "ARCHIVE_UNSAFE_ENTRY (PAX_GLOBAL_HEADER)"
@@ -1445,7 +1500,9 @@
     "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
     "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
     "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
-    "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants"
+    "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
+    "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
+    "an AppleDouble entry's header encoding (ustar or GNU, a NUL typeflag, a base-256 size, a linkname beside a regular file) is held only to the parser's general rules; its path, body, position and PAX-lessness are what the policy binds, and a record pins the exact entries"
   ],
   "notEstablished": [
     "an accepted record of v6.1.0-groth16.tar.gz: its bytes were acquired on two hosts and every entry censused (the observations above), but no record exists, and passing the amended inspector on both copies is the acquisition lane's evidence, not this one's",

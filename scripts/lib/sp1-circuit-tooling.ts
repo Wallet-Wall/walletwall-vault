@@ -35,7 +35,7 @@ import { gunzipSync } from "node:zlib";
 
 import {
   APPLEDOUBLE_BODIES,
-  APPLEDOUBLE_ROOT,
+  APPLEDOUBLE_PATHS,
   ARCHIVE_RECORD_SCHEMA,
   CircuitToolingError,
   IGNORED_APPLEDOUBLE_METADATA,
@@ -49,7 +49,6 @@ import {
   REFUSAL_CODES,
   REQUIRED_MEMBERS,
   VK_FILE,
-  appleDoubleCompanion,
   archiveRecordErrors,
   inspectArchive,
   refuse,
@@ -516,6 +515,10 @@ export function censusPolicyErrors(census: Census): string[] {
   if (observed.join() !== APPLEDOUBLE_BODIES.map(key).sort().join()) {
     errors.push(`APPLEDOUBLE_BODIES is not exactly the bodies the census observed (${observed.join(", ")})`);
   }
+  const paths = census.appleDouble.map((r) => r.path).sort();
+  if (paths.join() !== [...APPLEDOUBLE_PATHS].sort().join()) {
+    errors.push(`APPLEDOUBLE_PATHS is not exactly the AppleDouble entries the census observed (${paths.join(", ")})`);
+  }
   for (const r of census.appleDouble) {
     const clashes = [
       ...r.sameAsOther,
@@ -524,7 +527,6 @@ export function censusPolicyErrors(census: Census): string[] {
       ...r.parentOfOther,
       ...r.otherIsParent,
     ];
-    if (appleDoubleCompanion(r.path) === null) errors.push(`the census's ${r.path} is outside the policy's namespace`);
     if (r.typeflag !== "0") errors.push(`the census's ${r.path} is not a regular file`);
     if (!r.companionFollows) errors.push(`the census's ${r.path} is not followed by the entry it describes`);
     if (clashes.length > 0) errors.push(`the census's ${r.path} collides with ${clashes.join(", ")}`);
@@ -552,14 +554,22 @@ export function censusPolicyErrors(census: Census): string[] {
   return errors;
 }
 
-/** The committed census observations: each exactly one census, all the same census, and the policies derived from it. */
+/** The census tool's output for `census`, byte for byte: what each observation file holds. */
+export const serializeCensus = (census: unknown) => `${JSON.stringify(census, null, 2)}\n`;
+
+/**
+ * The committed census observations: each exactly the census tool's output (line ends aside, so an autocrlf checkout
+ * still reads as committed, and a reformatted copy does not), all one census, and the policies derived from it.
+ */
 export function censusObservationErrors(repoRoot = "."): string[] {
-  const serialized = CENSUS_OBSERVATIONS_REL.map((rel) => {
+  const texts = CENSUS_OBSERVATIONS_REL.map((rel) => {
     const path = resolve(repoRoot, rel);
-    return existsSync(path) ? `${JSON.stringify(JSON.parse(readFileSync(path, "utf8")), null, 2)}\n` : `absent ${rel}`;
+    return existsSync(path) ? readFileSync(path, "utf8").replace(/\r\n/g, "\n") : `absent ${rel}`;
   });
-  if (serialized.some((s) => s !== serialized[0])) return ["the census observations are not one census"];
-  return censusPolicyErrors(JSON.parse(serialized[0]) as Census);
+  if (texts.some((t) => t !== texts[0])) return ["the census observations are not one census"];
+  const census = JSON.parse(texts[0]);
+  if (serializeCensus(census) !== texts[0]) return ["the census observations are not the census tool's output"];
+  return censusPolicyErrors(census as Census);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -792,6 +802,8 @@ export const RESIDUALS: readonly string[] = [
   "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
   "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
   "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
+  "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
+  "an AppleDouble entry's header encoding (ustar or GNU, a NUL typeflag, a base-256 size, a linkname beside a regular file) is held only to the parser's general rules; its path, body, position and PAX-lessness are what the policy binds, and a record pins the exact entries",
 ];
 
 export const NOT_ESTABLISHED: readonly string[] = [
@@ -852,7 +864,8 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
       ignoredMetadata: {
         appleDouble: {
           disposition: IGNORED_APPLEDOUBLE_METADATA,
-          rule: `a path with any "._" component is never a member; it is ignored only as ${APPLEDOUBLE_ROOT} (describing the root directory) or "._<name>" (<name> a canonical root-level name, not itself AppleDouble-shaped, describing the regular file <name>), a regular file with no PAX header, one of these bodies, immediately followed by the entry it describes; never extracted, never installed; recorded in the record's metadata`,
+          rule: `a path with any "._" component is never a member; it is ignored only as one of these paths ("._." describing the root directory, "._<name>" the regular file <name>), a regular file with no PAX header, one of these bodies, immediately followed by the entry it describes; never extracted, never installed; recorded in the record's metadata`,
+          paths: APPLEDOUBLE_PATHS,
           bodies: APPLEDOUBLE_BODIES,
         },
         provenance: {
@@ -867,10 +880,7 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
           rule: "the key's raw value must be exactly this value (never decoded, interpreted or applied), on these entries only (by path and kind), at most once each, and on all of them once on any; every other PAX key and value stays strict UTF-8",
         },
         derivedFrom: {
-          observations: CENSUS_OBSERVATIONS_REL.map((path) => ({
-            path,
-            sha256: sha256(`${JSON.stringify(census, null, 2)}\n`),
-          })),
+          observations: CENSUS_OBSERVATIONS_REL.map((path) => ({ path, sha256: sha256(serializeCensus(census)) })),
           archive: census.archive,
           tarEntries: census.tar.entries,
           appleDoubleEntries: census.appleDouble.map((r) => r.path),

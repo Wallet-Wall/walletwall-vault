@@ -128,30 +128,54 @@ must be present, and `groth16_vk.bin` must be the designated key.
 The owner-authorized acquisition (SP1-PA2B) fetched `v6.1.0-groth16.tar.gz` on two hosts. Both measured 6,211,807,514
 bytes, sha256 `18beebb6…a9147810`, and both copies were refused by this inspector at byte 0 on `"._."`. The archive was
 packed by macOS `bsdtar`, which adds the file's extended attributes twice. The amendment first characterized the
-archive read-only, with no policy change: the census (`sp1:circuit-archive:census`, a second tar walker independent of
-the parser, cross-checked field by field against CPython's `tarfile`) ran on the developer workstation's copy and on a
-GitHub-hosted runner. Host B's first copy was deleted by its ephemeral runner after measurement, so the runner
-re-acquired the bytes and stopped unless they were exactly the agreed sha256 and length. Both census files are
-byte-identical (sha256 `e39376dd…`) and committed. The archive holds 24 tar headers: 8 PAX headers and 16 entries, which
+archive read-only, with no policy change. The census (`sp1:circuit-archive:census`, a second tar walker independent of
+the parser) ran on the developer workstation's copy and on a GitHub-hosted runner. Host B's first copy was deleted by
+its ephemeral runner after measurement, so the runner re-acquired the bytes and stopped unless they were exactly the
+agreed sha256 and length. Both census files are byte-identical (sha256 `e39376dd…`) and committed. On each host the
+census was also cross-checked, outside the repository, against CPython's `tarfile` (3.13 on the workstation, 3.12 on
+the runner): the listings agreed with the census field by field on all 16 entries, and with each other. That check
+and its listings are in the pull request, not committed evidence. The archive holds 24 tar headers: 8 PAX headers and 16 entries, which
 are the root directory, seven files (`groth16_vk.bin` = the designated key) and eight AppleDouble entries. Two things in
 it were refused, and the amendment accepts exactly those two:
 
 | | Observed (both copies) | Accepted as ignored metadata only when |
 |---|---|---|
-| **AppleDouble entries** (`IGNORED_APPLEDOUBLE_METADATA`) | `._.` before the root directory entry, and `./._<name>` before each of the seven files; each a 163-byte regular file without a PAX header, all one body (an AppleDouble v2 header, an empty Finder Info holding one `com.apple.provenance` attribute, an empty resource fork), sha256 `a8d7edca…0e0` | the path is exactly `._.` or `._<name>`, where `<name>` is a canonical root-level name that is not itself AppleDouble-shaped; it is a regular file with no PAX header and the observed body; and the **very next entry** (PAX headers aside) is the one it describes: the root directory for `._.`, the regular file `<name>` otherwise |
+| **AppleDouble entries** (`IGNORED_APPLEDOUBLE_METADATA`) | `._.` before the root directory entry, and `./._<name>` before each of the seven files; each a 163-byte regular file without a PAX header, all one body (an AppleDouble v2 header, an empty Finder Info holding one `com.apple.provenance` attribute, an empty resource fork), sha256 `a8d7edca…0e0` | the path is exactly one of the eight observed (`APPLEDOUBLE_PATHS`); it is a regular file with no PAX header and the observed body; and the **very next entry** (PAX headers aside) is the one it describes: the root directory for `._.`, the regular file `<name>` for `._<name>` |
 | **Binary provenance** (`IGNORED_PROVENANCE_METADATA`) | in every PAX header (the root's and the seven files'), `SCHILY.xattr.com.apple.provenance` = the 11 raw bytes `0102002d0e23b75bfde87a` (not UTF-8: it holds a NUL; sha256 `a6373f30…b8d`), beside its base64 twin `LIBARCHIVE.xattr.com.apple.provenance` | the key is exactly that; the raw value is exactly those bytes (compared byte for byte, never decoded, interpreted or applied as an extended attribute); it is on one of those eight entries by path **and** kind, at most once each; and once any entry carries it, all eight do by the end of the archive |
 
-What still fails closed, each pinned by a hostile archive (`M01`–`M38`, `X01`–`X32`): a path with any `._` component
-is never a circuit member (in the archive or in a record), and outside the policy it is refused, whether nested,
-`._._x`, `._`, `._x.`, `._..`, a directory, a link, an oversized or other body, a PAX header on it, an orphan, an
-entry after its companion, a duplicate, or a case variant. Other dotfiles (`.DS_Store`, `__MACOSX/`) are not
-AppleDouble and stay ordinary entries, refused unless a record names them. The provenance key with any other bytes,
-even UTF-8 ones, is refused; so is the right value on any other entry, a case variant, a directory or AppleDouble
-entry of the same name, a repeated root entry, two PAX headers for one entry, one or more missing occurrences, a
-lookalike key (suffix, prefix, case, a leading space, the `LIBARCHIVE.` twin), the same bytes under `comment`, `mtime`,
-`path`, `size` or `linkpath`, a key that is not UTF-8, the key twice in one header, a dangling or global PAX header,
-and a provenance header that tries to stand in for an AppleDouble entry's companion. Only `path` and `size` can name a
-path or a size, and they stay strict UTF-8.
+What still fails closed, each pinned by a hostile archive (`M01`–`M40`, `X01`–`X36`), starting with AppleDouble:
+
+- A path with any `._` component is never a circuit member, in the archive or in a record.
+- Outside the policy it is refused: an unobserved name (even with its companion), nested, `._._x`, `._`, `._x.`,
+  `._..`, a case variant, a directory, a link, an oversized or other body, a PAX header on it, an orphan, an entry
+  after its companion, or a duplicate.
+- Other dotfiles (`.DS_Store`, `__MACOSX/`) are not AppleDouble and stay ordinary entries, refused unless a record
+  names them.
+
+Then provenance:
+
+- The provenance key with any other bytes, even UTF-8 ones, is refused.
+- So is the right value on any other entry, a case variant, a directory or AppleDouble entry of the same name, a
+  repeated root entry, two PAX headers for one entry, or one or more missing occurrences.
+- So is a lookalike key: suffix, prefix, case, a leading space, a leading byte-order mark, or the `LIBARCHIVE.` twin.
+- So are the same bytes under `comment`, `mtime`, `path`, `size` or `linkpath`; a key that is not UTF-8; the key twice
+  in one header; and a dangling or global PAX header.
+- A provenance header that tries to stand in for an AppleDouble entry's companion is refused.
+
+Two older gaps in the PAX and root handling were closed with the amendment:
+
+- **The byte-order mark.** The UTF-8 decoder kept dropping a leading byte-order mark, so a `﻿path` value could
+  read as the header's own name. It now preserves the mark.
+- **The root's spelling.** The root directory is now accepted only as `.` or `./`. A root named `/` (the filesystem
+  root under `tar -P`), an empty name or `.//` is refused, and none of them can satisfy `._.`'s companion or the root's
+  provenance occurrence.
+
+Only `path` and `size` can name a path or a size, and they stay strict UTF-8.
+
+**What is not closed.** Other extended-attribute PAX records keep PA2A's inert-metadata rule. That covers the
+provenance record's base64 twin `LIBARCHIVE.xattr.com.apple.provenance`, and any `LIBARCHIVE.xattr.*` or
+`SCHILY.xattr.*` record with a UTF-8 value. They are accepted on any entry and never applied: the installer applies no
+extended attribute. Closing them as the binary provenance record is closed would be a further owner decision.
 
 The archive's sha256 stays the authority and covers the metadata bytes. The record's `metadata` lists each AppleDouble
 entry with its path, length, sha256 and disposition, and the validator holds every entry to the policy, including
@@ -160,10 +184,11 @@ the eight entries) and reported by `inspectArchive` as `provenance`. Metadata ne
 it is never extracted or installed. An AppleDouble file planted in an installation fails re-verification, like any
 extra file.
 
-The constants (`APPLEDOUBLE_BODIES`, `PROVENANCE_VALUE`, `PROVENANCE_ENTRIES`) are the census, not a reading of it:
-`validate:sp1-circuit-tooling` requires the two committed census files to be one census, and every constant to be
-exactly what that census observed. That covers the bodies, the namespace, each AppleDouble entry's type, PAX header,
-companion and absence of collisions, the provenance value's sha256 and length, and the set of entries carrying it.
+The constants (`APPLEDOUBLE_PATHS`, `APPLEDOUBLE_BODIES`, `PROVENANCE_VALUE`, `PROVENANCE_ENTRIES`) are the census,
+not a reading of it. `validate:sp1-circuit-tooling` requires each committed census file to be exactly the census tool's
+output (line ends aside), both to be one census, and every constant to be exactly what that census observed. That
+covers the AppleDouble paths and bodies, each AppleDouble entry's type, PAX header, companion and absence of
+collisions, the provenance value's sha256 and length, and the set of entries carrying it.
 Another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment. These
 constants are never widened.
 
@@ -298,8 +323,8 @@ owner and root needs an OS-level sandbox, a different lane.
   [`test/Sp1CircuitTooling.test.ts`](../test/Sp1CircuitTooling.test.ts),
   [`test/Sp1CircuitArchiveCensus.test.ts`](../test/Sp1CircuitArchiveCensus.test.ts). Link and FIFO cases run on POSIX
   (CI).
-- Hostile catalog: 144 archives (18 path, 18 link, special-type and mode, 18 ambiguity, 11 structure and bound,
-  9 integrity, 38 AppleDouble, 32 binary provenance), each pinned by refusal code and reason.
+- Hostile catalog: 153 archives (21 path, 18 link, special-type and mode, 18 ambiguity, 11 structure and bound,
+  9 integrity, 40 AppleDouble, 36 binary provenance), each pinned by refusal code and reason.
 - Mutation and adversarial review: see the pull requests.
 
 ## Next: SP1-PA2B, paused until this amendment merges

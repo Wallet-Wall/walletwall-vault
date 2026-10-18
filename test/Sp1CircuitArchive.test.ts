@@ -15,6 +15,7 @@ import { join } from "node:path";
 
 import {
   APPLEDOUBLE_BODIES,
+  APPLEDOUBLE_PATHS,
   ARCHIVE_RECORD_SCHEMA,
   IGNORED_PROVENANCE_METADATA,
   PROVENANCE_ENTRIES,
@@ -493,7 +494,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
           ids.some((i) => i.startsWith(group)),
           group,
         ).to.equal(true);
-      expect(ids.length).to.equal(144);
+      expect(ids.length).to.equal(153);
     });
   });
 
@@ -625,14 +626,23 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
       }
     });
 
-    it("accepts only ._. and ._<canonical root-level name>, naming the entry each describes", function () {
-      const cases: [string, string | null][] = [
-        ["._.", ""],
-        ["._groth16_vk.bin", "groth16_vk.bin"],
-        ["._SP1VerifierGroth16.sol", "SP1VerifierGroth16.sol"],
-        [".__x", "_x"],
-        [`._${"n".repeat(98)}`, "n".repeat(98)],
-        [`._${"n".repeat(99)}`, null], // its companion fits 100 bytes; the path does not
+    it("accepts only the eight observed AppleDouble paths, naming the entry each describes", function () {
+      expect(APPLEDOUBLE_PATHS).to.deep.equal([
+        "._.",
+        ...["Groth16Verifier.sol", "SP1VerifierGroth16.sol", "constraints.json", "groth16_circuit.bin"].map(
+          (n) => `._${n}`,
+        ),
+        ...["groth16_pk.bin", "groth16_vk.bin", "groth16_witness.json"].map((n) => `._${n}`),
+      ]);
+      const cases: [unknown, string | null][] = [
+        ...APPLEDOUBLE_PATHS.map((p): [string, string] => [p, p === "._." ? "" : p.slice(2)]),
+        [".__x", null],
+        ["._README", null],
+        ["._GROTH16_VK.BIN", null],
+        ["./._groth16_vk.bin", null],
+        ["._groth16_vk.bin/", null],
+        [`._${"n".repeat(99)}`, null],
+        [7, null],
         ["._", null],
         ["._._x", null],
         ["a/._x", null],
@@ -647,7 +657,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
         ["abc", null],
         ["groth16_vk.bin", null],
       ];
-      for (const [p, want] of cases) expect(appleDoubleCompanion(p), p).to.equal(want);
+      for (const [p, want] of cases) expect(appleDoubleCompanion(p as string), String(p)).to.equal(want);
     });
 
     it("reads the upstream-shaped tree: metadata listed, members exactly the files, no metadata byte to a sink", function () {
@@ -720,7 +730,7 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
         ["not a string", (r) => (r.metadata[4].path = 7), "METADATA_PATH_INVALID"],
         ["AppleDouble of AppleDouble", (r) => (r.metadata[4].path = "._._groth16_vk.bin"), "METADATA_PATH_INVALID"],
         ["nested", (r) => (r.metadata[4].path = "extra/._README.synthetic"), "METADATA_PATH_INVALID"],
-        ["no member companion", (r) => (r.metadata[4].path = "._zz.bin"), "METADATA_WITHOUT_COMPANION"],
+        ["no member companion", (r) => (r.metadata[4].path = "._groth16_witness.json"), "METADATA_WITHOUT_COMPANION"],
         ["duplicate", (r) => r.metadata.push({ ...r.metadata[4] }), "METADATA_NOT_SORTED"],
         ["out of order", (r) => r.metadata.reverse(), "METADATA_NOT_SORTED"],
         ["another length", (r) => (r.metadata[4].bytes = 162), "METADATA_BODY_UNEXPECTED"],
