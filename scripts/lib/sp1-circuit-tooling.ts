@@ -34,11 +34,18 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 import {
+  APPLEDOUBLE_BODIES,
+  APPLEDOUBLE_PATHS,
   ARCHIVE_RECORD_SCHEMA,
   CircuitToolingError,
+  IGNORED_APPLEDOUBLE_METADATA,
+  IGNORED_PROVENANCE_METADATA,
   MIN_ACQUISITIONS,
   MIN_MIRRORS,
+  PROVENANCE_ENTRIES,
   PROVENANCE_ONLY,
+  PROVENANCE_PAX_KEY,
+  PROVENANCE_VALUE,
   REFUSAL_CODES,
   REQUIRED_MEMBERS,
   VK_FILE,
@@ -48,15 +55,21 @@ import {
   type ArchiveAnchor,
   type ArchiveRecord,
 } from "./sp1-circuit-archive";
+import { CENSUS_SCHEMA, type Census } from "./sp1-circuit-archive-census";
 import {
   SAFE_ARCHIVE_REL,
   SAFE_FILES,
   SAFE_RECORD_REL,
   SYNTHETIC_ANCHOR,
   SYNTHETIC_ANCHOR_REL,
+  UPSTREAM_SHAPED_FILES,
+  appleDoubleMetadata,
+  gz,
   hostileCases,
   safeTar,
   syntheticRecord,
+  tarBytes,
+  upstreamShapedEntries,
 } from "./sp1-circuit-fixtures";
 import { installCircuitArchive, verifyInstalledCircuit } from "./sp1-circuit-install";
 import { DESIGNATIONS_DIR, designationSetErrors, latestDesignation, readDesignations } from "./sp1-designation";
@@ -81,7 +94,7 @@ import {
 
 export const TOOLING_REL = "evidence/zk/sp1-impl/circuit-tooling.json";
 export const TOOLING_SCHEMA = "walletwall.sp1-circuit-tooling.v1";
-export const ARCHIVE_JSON_SCHEMA_REL = "evidence/zk/schema/sp1-proving-archive.v1.schema.json";
+export const ARCHIVE_JSON_SCHEMA_REL = "evidence/zk/schema/sp1-proving-archive.v2.schema.json";
 export const UPSTREAM_OBSERVATION_REL =
   "evidence/zk/sp1-impl/observations/circuit-upstream-developer-workstation.raw.json";
 export const UPSTREAM_SCHEMA = "walletwall.sp1-circuit-upstream.v1";
@@ -92,6 +105,15 @@ export const REVIEWED_PASS_THROUGH: readonly string[] = ["HOME"];
 /** Library sources that read the environment by a non-literal name, each reviewed: sp1-build's local build command
  * forwards the build environment to cargo; it runs in zkvm/host/build.rs (the ELF build), never in a proving run. */
 export const REVIEWED_NON_LITERAL_READS: readonly string[] = ["sp1-build/src/command/local.rs"];
+/**
+ * The census of the upstream v6.1.0 archive (scripts/sp1-circuit-archive-census.ts output, verbatim) on each host that
+ * acquired it: the developer workstation, and a GitHub-hosted runner (a re-acquisition of host B's bytes, whose first
+ * copy its ephemeral runner deleted after measuring it). The AppleDouble and provenance policies are derived from them.
+ */
+export const CENSUS_OBSERVATIONS_REL: readonly string[] = [
+  "evidence/zk/sp1-impl/observations/circuit-archive-census-developer-workstation.raw.json",
+  "evidence/zk/sp1-impl/observations/circuit-archive-census-github-hosted-runner.raw.json",
+];
 
 const sha256 = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
 
@@ -474,6 +496,83 @@ export function gateCoverageErrors(
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The metadata policies, checked against the census they are derived from
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A census entry's path as the parser names it, one leading "./" dropped: the upstream root, "./", is "". Any other
+ * spelling of an entry names no characterized one, and is refused. */
+const censusPath = (p: string) => (p.startsWith("./") ? p.slice(2) : p);
+
+/**
+ * Every way the AppleDouble and provenance constants are not exactly what `census` observed: the bodies, the
+ * namespace, each entry's companion, type and PAX header, and the provenance value and the entries carrying it.
+ */
+export function censusPolicyErrors(census: Census): string[] {
+  const errors: string[] = [];
+  if (census?.schema !== CENSUS_SCHEMA) return [`a census must be ${CENSUS_SCHEMA}`];
+  const key = (b: { bytes: number; sha256: string }) => `${b.bytes}:${b.sha256}`;
+  const observed = [...new Set(census.appleDouble.map((r) => key({ bytes: r.size, sha256: r.sha256 })))].sort();
+  if (observed.join() !== APPLEDOUBLE_BODIES.map(key).sort().join()) {
+    errors.push(`APPLEDOUBLE_BODIES is not exactly the bodies the census observed (${observed.join(", ")})`);
+  }
+  const paths = census.appleDouble.map((r) => r.path).sort();
+  if (paths.join() !== [...APPLEDOUBLE_PATHS].sort().join()) {
+    errors.push(`APPLEDOUBLE_PATHS is not exactly the AppleDouble entries the census observed (${paths.join(", ")})`);
+  }
+  for (const r of census.appleDouble) {
+    const clashes = [
+      ...r.sameAsOther,
+      ...r.caseFoldSameAsOther,
+      ...r.windowsNameSameAsOther,
+      ...r.parentOfOther,
+      ...r.otherIsParent,
+    ];
+    if (r.typeflag !== "0") errors.push(`the census's ${r.path} is not a regular file`);
+    if (!r.companionFollows) errors.push(`the census's ${r.path} is not followed by the entry it describes`);
+    if (clashes.length > 0) errors.push(`the census's ${r.path} collides with ${clashes.join(", ")}`);
+    if (census.entries[r.index]?.pax.length !== 0) errors.push(`the census's ${r.path} has a PAX header`);
+  }
+  const carrying = census.entries.flatMap((e) => {
+    const p = e.typeflag === "x" || e.typeflag === "g" ? undefined : e.pax.find((x) => x.key === PROVENANCE_PAX_KEY);
+    return p ? [{ e, p }] : [];
+  });
+  const kindOf = (typeflag: string) => (typeflag === "5" ? "directory" : "file");
+  const got = carrying.map(({ e }) => `${censusPath(e.path)}:${kindOf(e.typeflag)}`).sort();
+  if (
+    got.join() !==
+    PROVENANCE_ENTRIES.map((e) => `${e.path}:${e.kind}`)
+      .sort()
+      .join()
+  ) {
+    errors.push(`PROVENANCE_ENTRIES is not exactly the entries the census observed carrying ${PROVENANCE_PAX_KEY}`);
+  }
+  for (const { e, p } of carrying) {
+    if (p.valueBytes !== PROVENANCE_VALUE.length || p.valueSha256 !== sha256(PROVENANCE_VALUE)) {
+      errors.push(`the census's ${e.path} carries another ${PROVENANCE_PAX_KEY} value than PROVENANCE_VALUE`);
+    }
+  }
+  return errors;
+}
+
+/** The census tool's output for `census`, byte for byte: what each observation file holds. */
+export const serializeCensus = (census: unknown) => `${JSON.stringify(census, null, 2)}\n`;
+
+/**
+ * The committed census observations: each exactly the census tool's output (line ends aside, so an autocrlf checkout
+ * still reads as committed, and a reformatted copy does not), all one census, and the policies derived from it.
+ */
+export function censusObservationErrors(repoRoot = "."): string[] {
+  const texts = CENSUS_OBSERVATIONS_REL.map((rel) => {
+    const path = resolve(repoRoot, rel);
+    return existsSync(path) ? readFileSync(path, "utf8").replace(/\r\n/g, "\n") : `absent ${rel}`;
+  });
+  if (texts.some((t) => t !== texts[0])) return ["the census observations are not one census"];
+  const census = JSON.parse(texts[0]);
+  if (serializeCensus(census) !== texts[0]) return ["the census observations are not the census tool's output"];
+  return censusPolicyErrors(census as Census);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The self-test
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -549,6 +648,37 @@ export async function runSelfTest(repoRoot = "."): Promise<SelfTest> {
     );
     if (again !== "INSTALL_TARGET_EXISTS (EXISTS)") fail(`a second installation was not refused (${again})`);
     safe.push(`a second installation is refused: ${again}`);
+    const upArchive = gz(tarBytes(upstreamShapedEntries()));
+    const upRecord = syntheticRecord(
+      upArchive,
+      UPSTREAM_SHAPED_FILES,
+      anchor,
+      appleDoubleMetadata(UPSTREAM_SHAPED_FILES),
+    );
+    const upPath = join(work, "synthetic-upstream-shaped.tar.gz");
+    writeFileSync(upPath, upArchive);
+    const up = await inspectArchive(upPath, { anchor, record: upRecord });
+    safe.push(
+      `the upstream-shaped archive inspected against its record: ${up.members.length} members; ${up.metadata.length} AppleDouble entries and ${up.provenance.length} provenance records ignored`,
+    );
+    const upRoot = join(work, "circuits-upstream-shaped");
+    mkdirSync(upRoot);
+    const upInstalled = await installCircuitArchive({
+      archivePath: upPath,
+      record: upRecord,
+      anchor,
+      destinationRoot: upRoot,
+    });
+    const installedNames = readdirSync(upInstalled.circuitDir).sort();
+    if (
+      installedNames.join() !==
+      UPSTREAM_SHAPED_FILES.map(([p]) => p)
+        .sort()
+        .join()
+    ) {
+      fail(`the upstream-shaped installation holds ${installedNames.join(", ")}`);
+    }
+    safe.push(`installed it: the tree holds its ${installedNames.length} members only, no AppleDouble file`);
     const host = join(work, "host");
     const inputs = join(work, "inputs.json");
     writeFileSync(host, "synthetic host: never run");
@@ -671,11 +801,14 @@ export const RESIDUALS: readonly string[] = [
   "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
   "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
   "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
+  "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
+  "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
+  "an AppleDouble entry's header encoding (ustar or GNU, a NUL typeflag, a base-256 size, a linkname beside a regular file) is held only to the parser's general rules; its path, body, position and PAX-lessness are what the policy binds, and a record pins the exact entries",
 ];
 
 export const NOT_ESTABLISHED: readonly string[] = [
-  "any real v6.1.0-groth16.tar.gz: none was downloaded, so its sha256, length and member set are unknown (REQUIRED_MEMBERS is the floor SP1 reads, not the measured set)",
-  "the gnark image's digest: not measured, and not fetched to complete this lane",
+  "an accepted record of v6.1.0-groth16.tar.gz: its bytes were acquired on two hosts and every entry censused (the observations above), but no record exists, and passing the amended inspector on both copies is the acquisition lane's evidence, not this one's",
+  "the gnark image's digest: no committed observation, and the image is never pulled here",
   "two independent acquisitions, two WalletWall mirrors, and a record in evidence/zk/sp1-impl/proving-archives",
   "that the self-hosted path proves at all, or within the rotation delay",
   "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound",
@@ -691,6 +824,10 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
   if (obsErrors.length > 0) throw new Error(obsErrors.join("; "));
   const coverage = gateCoverageErrors(obs.facts, obs.environment, anchor);
   if (coverage.length > 0) throw new Error(coverage.join("; "));
+  const censusErrors = censusObservationErrors(repoRoot);
+  if (censusErrors.length > 0) throw new Error(censusErrors.join("; "));
+  const censusBytes = readFileSync(at(CENSUS_OBSERVATIONS_REL[0]), "utf8");
+  const census = JSON.parse(censusBytes) as Census;
   const paBytes = readFileSync(at(PROVING_AVAILABILITY_REL));
   const pa = JSON.parse(paBytes.toString("utf8"));
   if (pa.status !== "OWNER_DOWNLOAD_REQUIRED") {
@@ -704,6 +841,8 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
   return {
     schema: TOOLING_SCHEMA,
     lane: "SP1-PA2A",
+    amendment:
+      "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
     state,
     states: STATES,
     provingAvailability: {
@@ -722,6 +861,31 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
       minAcquisitions: MIN_ACQUISITIONS,
       minMirrors: MIN_MIRRORS,
       sourceUrlAndTag: PROVENANCE_ONLY,
+      ignoredMetadata: {
+        appleDouble: {
+          disposition: IGNORED_APPLEDOUBLE_METADATA,
+          rule: `a path with any "._" component is never a member; it is ignored only as one of these paths ("._." describing the root directory, "._<name>" the regular file <name>), a regular file with no PAX header, one of these bodies, immediately followed by the entry it describes; never extracted, never installed; recorded in the record's metadata`,
+          paths: APPLEDOUBLE_PATHS,
+          bodies: APPLEDOUBLE_BODIES,
+        },
+        provenance: {
+          disposition: IGNORED_PROVENANCE_METADATA,
+          key: PROVENANCE_PAX_KEY,
+          value: {
+            hex: PROVENANCE_VALUE.toString("hex"),
+            bytes: PROVENANCE_VALUE.length,
+            sha256: sha256(PROVENANCE_VALUE),
+          },
+          entries: PROVENANCE_ENTRIES.map((e) => ({ path: e.path || ".", kind: e.kind })),
+          rule: "the key's raw value must be exactly this value (never decoded, interpreted or applied), on these entries only (by path and kind), at most once each, and on all of them once on any; every other PAX key and value stays strict UTF-8",
+        },
+        derivedFrom: {
+          observations: CENSUS_OBSERVATIONS_REL.map((path) => ({ path, sha256: sha256(serializeCensus(census)) })),
+          archive: census.archive,
+          tarEntries: census.tar.entries,
+          appleDoubleEntries: census.appleDouble.map((r) => r.path),
+        },
+      },
     },
     upstream: {
       observation: { path: UPSTREAM_OBSERVATION_REL, sha256: sha256(obsBytes), measuredAtUtc: obs.measuredAtUtc },
@@ -766,7 +930,7 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
     selfTest,
     residuals: RESIDUALS,
     notEstablished: NOT_ESTABLISHED,
-    next: "owner-authorized two-host circuit acquisition, digest agreement, gnark-image digest acquisition and WalletWall mirroring; still not a proof lane",
+    next: "SP1-PA2B resumes only after this amendment merges and both independently acquired copies pass the merged inspector unchanged: then the gnark image by digest, WalletWall mirroring and the record; still not a proof lane",
   };
 }
 

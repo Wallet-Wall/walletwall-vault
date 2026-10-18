@@ -9,9 +9,10 @@
  * installed (scripts/lib/sp1-circuit-install.ts), then re-verified before each proving session
  * (scripts/lib/sp1-prove-gate.ts).
  *
- * This module holds the archive record (walletwall.sp1-proving-archive.v1) and its validator, the member-path rules,
- * the streaming tar parser and the archive inspection. Nothing here downloads, and no record this lane can produce
- * is an archived artifact: production records live only in evidence/zk/sp1-impl/proving-archives, which holds none.
+ * This module holds the archive record (walletwall.sp1-proving-archive.v2) and its validator, the member-path rules,
+ * the closed AppleDouble metadata policy, the streaming tar parser and the archive inspection. Nothing here downloads,
+ * and no record this lane can produce is an archived artifact: production records live only in
+ * evidence/zk/sp1-impl/proving-archives, which holds none.
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
@@ -21,7 +22,8 @@ import { Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 
-export const ARCHIVE_RECORD_SCHEMA = "walletwall.sp1-proving-archive.v1";
+/** v2 adds `metadata` (AppleDouble entries, ignored): a v1 record names no disposition for them, so none is read. */
+export const ARCHIVE_RECORD_SCHEMA = "walletwall.sp1-proving-archive.v2";
 export const CIRCUIT_SYSTEM = "groth16";
 export const ARCHIVE_FORMAT = "tar+gzip";
 export const PROVENANCE_ONLY = "PROVENANCE_ONLY";
@@ -38,6 +40,71 @@ export const REQUIRED_MEMBERS: readonly string[] = [
 export const MAX_PATH_BYTES = 100;
 export const MIN_ACQUISITIONS = 2;
 export const MIN_MIRRORS = 2;
+
+/**
+ * The AppleDouble policy, closed, and derived from the census of the upstream v6.1.0 archive (both acquisitions;
+ * evidence/zk/sp1-impl/observations/circuit-archive-census-*.raw.json). macOS bsdtar writes, before each entry "x",
+ * an AppleDouble file "._x" holding x's extended attributes (copyfile(3)); for the archive root it writes "._.". The
+ * upstream archive holds eight: "._." before the root directory entry and "._<name>" before each of its seven files,
+ * every one a 163-byte regular file without a PAX header, all with one body (an AppleDouble v2 header, an empty
+ * Finder Info carrying a single com.apple.provenance attribute, and an empty resource fork).
+ *
+ * The rule: a path with any "._" component is AppleDouble-shaped and is never a circuit member. It is accepted only as
+ * ignored metadata (never extracted, never installed, never read by SP1), and only when it is exactly one of
+ * APPLEDOUBLE_PATHS (the eight the census observed); it is a regular file with no PAX header and one of
+ * APPLEDOUBLE_BODIES' bodies; and the very next entry (PAX headers aside) is the entry it describes: the root directory
+ * for "._.", the regular file <name> for "._<name>". Anything else AppleDouble-shaped (another name, nested, a case
+ * variant, a directory, a link, another body, an orphan, one after its companion, a duplicate) is refused. Other
+ * dotfiles and other macOS metadata are not covered: they stay ordinary entries under every member rule.
+ */
+export const APPLEDOUBLE_PREFIX = "._";
+export const APPLEDOUBLE_ROOT = "._.";
+/** The AppleDouble paths the upstream archive holds: the root's, and each of its seven files'. */
+export const APPLEDOUBLE_PATHS: readonly string[] = [
+  APPLEDOUBLE_ROOT,
+  "._Groth16Verifier.sol",
+  "._SP1VerifierGroth16.sol",
+  "._constraints.json",
+  "._groth16_circuit.bin",
+  "._groth16_pk.bin",
+  "._groth16_vk.bin",
+  "._groth16_witness.json",
+];
+export const IGNORED_APPLEDOUBLE_METADATA = "IGNORED_APPLEDOUBLE_METADATA";
+/** The only AppleDouble bodies accepted: the one body every metadata entry of the upstream archive has. */
+export const APPLEDOUBLE_BODIES: readonly { readonly bytes: number; readonly sha256: string }[] = [
+  { bytes: 163, sha256: "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0" },
+];
+
+/**
+ * The binary provenance policy, closed, and derived from the same census. libarchive writes each extended attribute
+ * twice in an entry's PAX header: LIBARCHIVE.xattr.<name> (base64, so UTF-8) and SCHILY.xattr.<name> (the raw bytes).
+ * In the upstream archive every PAX header (the root's and each of the seven files') carries
+ * SCHILY.xattr.com.apple.provenance with one 11-byte value that is not UTF-8 (it holds a NUL): the only PAX value
+ * there that is not UTF-8, and the same value the AppleDouble body's com.apple.provenance attribute holds.
+ *
+ * The rule: a PAX record keyed exactly PROVENANCE_PAX_KEY is accepted only with exactly PROVENANCE_VALUE as its raw
+ * value (whatever its encoding), only on one of PROVENANCE_ENTRIES (the characterized upstream entries, by path and
+ * kind), at most once per entry, and, once any entry carries it, on every one of them by the end of the archive. It is
+ * ignored provenance metadata: never decoded, interpreted, applied as an extended attribute or extracted; it cannot
+ * name a path, a size, a link or a type (only the `path` and `size` keys can, and they stay strict UTF-8). Every other
+ * key, and every other value, keeps the parser's strict UTF-8 and key rules.
+ */
+export const PROVENANCE_PAX_KEY = "SCHILY.xattr.com.apple.provenance";
+export const IGNORED_PROVENANCE_METADATA = "IGNORED_PROVENANCE_METADATA";
+/** The raw value, byte for byte; the circuit-tooling validator binds it to the sha256 both census copies measured. */
+export const PROVENANCE_VALUE: Readonly<Buffer> = Buffer.from("0102002d0e23b75bfde87a", "hex");
+/** The entries that carry it upstream ("" is the archive root). */
+export const PROVENANCE_ENTRIES: readonly { readonly path: string; readonly kind: EntryKind }[] = [
+  { path: "", kind: "directory" },
+  { path: "Groth16Verifier.sol", kind: "file" },
+  { path: "SP1VerifierGroth16.sol", kind: "file" },
+  { path: "constraints.json", kind: "file" },
+  { path: "groth16_circuit.bin", kind: "file" },
+  { path: "groth16_pk.bin", kind: "file" },
+  { path: "groth16_vk.bin", kind: "file" },
+  { path: "groth16_witness.json", kind: "file" },
+];
 
 export interface Limits {
   maxEntries: number;
@@ -116,6 +183,14 @@ export interface ArchiveMember {
   sha256: string;
 }
 
+/** An AppleDouble entry the archive holds: covered by the archive's sha256 and its own, never installed. */
+export interface ArchiveMetadata {
+  path: string;
+  bytes: number;
+  sha256: string;
+  disposition: typeof IGNORED_APPLEDOUBLE_METADATA;
+}
+
 export interface ArchiveRecord {
   schema: string;
   subject: {
@@ -137,6 +212,7 @@ export interface ArchiveRecord {
   };
   acquisitions: { host: string; observedAtUtc: string; bytes: number; sha256: string; agreement: string }[];
   members: ArchiveMember[];
+  metadata: ArchiveMetadata[];
   gnark: {
     repository: string;
     tag: string;
@@ -150,13 +226,14 @@ export interface ArchiveRecord {
 
 /** The record's fields, level by level: a record names exactly these (an unknown field is refused, not ignored). */
 export const RECORD_FIELDS = {
-  record: ["schema", "subject", "archive", "acquisitions", "members", "gnark", "mirrors"],
+  record: ["schema", "subject", "archive", "acquisitions", "members", "metadata", "gnark", "mirrors"],
   subject: ["circuitSystem", "circuitVersion", "designation", "programVKey", "verifier", "verifyingKey"],
   verifier: ["version", "runtimeCodeKeccak", "verifierHash"],
   verifyingKey: ["file", "sha256", "bytes"],
   archive: ["file", "format", "bytes", "sha256", "acquiredAtUtc", "sourceUrl", "sourceUrlRole"],
   acquisition: ["host", "observedAtUtc", "bytes", "sha256", "agreement"],
   member: ["path", "bytes", "sha256"],
+  metadata: ["path", "bytes", "sha256", "disposition"],
   gnark: ["repository", "tag", "tagRole", "digest", "observation", "mirror"],
   gnarkObservation: ["host", "observedAtUtc", "method"],
   gnarkMirror: ["location", "digest"],
@@ -260,6 +337,9 @@ export function archiveRecordErrors(record: unknown, anchor: ArchiveAnchor): Ref
       if (!exactly(m, RECORD_FIELDS.member, `members[${i}]`)) return;
       const bad = typeof m.path === "string" ? memberPathError(m.path) : "NOT_A_STRING";
       if (bad) return no("MEMBER_PATH_INVALID", `members[${i}] ${JSON.stringify(m.path)}: ${bad}`);
+      if (isAppleDoubleShaped(m.path)) {
+        return no("APPLEDOUBLE_AS_MEMBER", `members[${i}] ${m.path} is AppleDouble metadata, never a circuit member`);
+      }
       const clash = tree.add(m.path, "file");
       if (clash) no("MEMBER_PATH_COLLISION", `${m.path}: ${clash}`);
       if (i > 0 && !(String(r.members[i - 1]?.path) < m.path)) no("MEMBERS_NOT_SORTED", `${m.path} is out of order`);
@@ -276,6 +356,28 @@ export function archiveRecordErrors(record: unknown, anchor: ArchiveAnchor): Ref
     if (vk && (`0x${vk.sha256}` !== anchor.verifyingKey.sha256 || vk.bytes !== anchor.verifyingKey.bytes)) {
       no("VK_MISMATCH", `members name a ${VK_FILE} that is not ${anchor.verifyingKey.sha256}`);
     }
+  }
+
+  if (!Array.isArray(r.metadata)) {
+    no("METADATA_MISSING", "the record has no metadata list (an empty list names none)");
+  } else {
+    const members = new Set((Array.isArray(r.members) ? r.members : []).map((m) => m?.path));
+    r.metadata.forEach((m, i) => {
+      if (!exactly(m, RECORD_FIELDS.metadata, `metadata[${i}]`)) return;
+      const companion = appleDoubleCompanion(m.path);
+      if (companion === null) return no("METADATA_PATH_INVALID", `metadata[${i}] ${JSON.stringify(m.path)}`);
+      if (companion !== "" && !members.has(companion)) {
+        no("METADATA_WITHOUT_COMPANION", `${m.path} describes ${companion}, which is not a record member`);
+      }
+      // Strictly ascending, so no path twice; a case variant ("._A", "._a") needs colliding members to describe.
+      if (i > 0 && !(String(r.metadata[i - 1]?.path) < m.path)) no("METADATA_NOT_SORTED", `${m.path} is out of order`);
+      if (!APPLEDOUBLE_BODIES.some((b) => b.bytes === m.bytes && b.sha256 === m.sha256)) {
+        no("METADATA_BODY_UNEXPECTED", `${m.path} is not an AppleDouble body the policy accepts`);
+      }
+      if (m.disposition !== IGNORED_APPLEDOUBLE_METADATA) {
+        no("METADATA_DISPOSITION", `${m.path}: the disposition must be ${IGNORED_APPLEDOUBLE_METADATA}`);
+      }
+    });
   }
 
   const g = r.gnark;
@@ -368,6 +470,19 @@ export function memberPathError(path: string): string | null {
   return null;
 }
 
+/** Whether any component of `path` is AppleDouble-shaped ("._" first): such a path is never a circuit member. */
+export const isAppleDoubleShaped = (path: string): boolean =>
+  path.split("/").some((p) => p.startsWith(APPLEDOUBLE_PREFIX));
+
+/**
+ * The entry an AppleDouble path describes under the closed policy: "" (the archive root) for "._.", <name> for
+ * "._<name>" when that is one of APPLEDOUBLE_PATHS; null for any other path (a non-string included).
+ */
+export function appleDoubleCompanion(path: string): string | null {
+  if (!APPLEDOUBLE_PATHS.includes(path)) return null;
+  return path === APPLEDOUBLE_ROOT ? "" : path.slice(APPLEDOUBLE_PREFIX.length);
+}
+
 export type EntryKind = "file" | "directory";
 
 interface TreeNode {
@@ -440,7 +555,8 @@ const OCTAL_MAX_SIZE = 0o77777777777;
 
 const unsafe = (reason: string, detail: string) => refuse("ARCHIVE_UNSAFE_ENTRY", reason, detail);
 const corrupt = (reason: string, detail: string) => refuse("ARCHIVE_CORRUPT", reason, detail);
-const utf8 = new TextDecoder("utf-8", { fatal: true });
+/** Strict, and BOM-preserving: a leading U+FEFF stays in the text, so "\uFEFFpath" is never the key `path`. */
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /** A NUL-terminated header field; a byte other than NUL after the terminator is an embedded NUL. */
 function textField(h: Buffer, from: number, len: number, at: number): string {
@@ -485,11 +601,15 @@ export function parsePax(data: Buffer, at: number): Map<string, string> {
     let value: string;
     try {
       key = utf8.decode(rec.subarray(0, Math.max(eq, 0)));
-      value = utf8.decode(rec.subarray(eq + 1));
+      // The provenance value is compared as raw bytes below, never decoded; every other value is strict UTF-8.
+      value = key === PROVENANCE_PAX_KEY ? "" : utf8.decode(rec.subarray(eq + 1));
     } catch {
       throw corrupt("PAX_MALFORMED", `PAX header at byte ${at}: a record is not UTF-8`);
     }
     if (eq <= 0) throw corrupt("PAX_MALFORMED", `PAX header at byte ${at}: a record has no key`);
+    if (key === PROVENANCE_PAX_KEY && !rec.subarray(eq + 1).equals(PROVENANCE_VALUE)) {
+      throw unsafe("PROVENANCE_VALUE_UNEXPECTED", `PAX header at byte ${at}: ${key} is not the characterized value`);
+    }
     if (out.has(key)) throw unsafe("PAX_DUPLICATE_KEY", `PAX header at byte ${at}: ${key} twice`);
     out.set(key, value);
     i = end;
@@ -519,6 +639,8 @@ export interface ParserOptions {
   limits: Limits;
   /** The record's members: an entry it does not name, or names at another size, is refused at its header. */
   expect?: ReadonlyMap<string, { bytes: number }>;
+  /** The record's metadata: an AppleDouble entry it does not name, or names at another size, likewise. */
+  expectMetadata?: ReadonlyMap<string, { bytes: number; sha256: string }>;
   /** Called for every accepted regular file before any of its bytes; its sink receives them. */
   openFile?: (path: string, bytes: number) => FileSink;
   /** Called for every accepted directory entry other than the root. */
@@ -534,7 +656,13 @@ type State = "header" | "data" | "padding" | "end";
 export class TarParser {
   readonly members: ScannedMember[] = [];
   readonly directories: string[] = [];
+  /** The AppleDouble entries accepted as ignored metadata: hashed, never given to a sink. */
+  readonly metadata: ArchiveMetadata[] = [];
+  /** The characterized entries whose PAX header carried the provenance record ("" is the root), in archive order. */
+  readonly provenance: string[] = [];
   private readonly tree = new MemberTree();
+  /** The entry the last AppleDouble entry describes ("" for the root): the next entry must be it. */
+  private companion: string | null = null;
   private state: State = "header";
   private header = Buffer.alloc(BLOCK);
   private headerFill = 0;
@@ -546,8 +674,14 @@ export class TarParser {
   private padding = 0;
   private pax: Map<string, string> | null = null;
   private paxChunks: Buffer[] | null = null;
-  private file: { path: string; bytes: number; hash: ReturnType<typeof createHash>; sink: FileSink | null } | null =
-    null;
+  private file: {
+    path: string;
+    bytes: number;
+    hash: ReturnType<typeof createHash>;
+    sink: FileSink | null;
+    /** For an AppleDouble entry, the bodies it may have (the record's, else the policy's); null for a member. */
+    bodies: readonly { readonly bytes: number; readonly sha256: string }[] | null;
+  } | null = null;
 
   constructor(private readonly opts: ParserOptions) {}
 
@@ -610,6 +744,19 @@ export class TarParser {
   private onHeader(h: Buffer, at: number): void {
     if (h.every((b) => b === 0)) {
       if (this.pax) throw corrupt("DANGLING_PAX", "a PAX header describes no entry");
+      if (this.companion !== null) {
+        throw unsafe(
+          "APPLEDOUBLE_WITHOUT_COMPANION",
+          `the archive ends before the entry an AppleDouble entry describes`,
+        );
+      }
+      const n = this.provenance.length;
+      if (n > 0 && n !== PROVENANCE_ENTRIES.length) {
+        throw unsafe(
+          "PROVENANCE_OCCURRENCE_MISSING",
+          `${PROVENANCE_PAX_KEY} is on ${n} of the ${PROVENANCE_ENTRIES.length} entries that carry it upstream`,
+        );
+      }
       this.state = "end";
       return;
     }
@@ -656,8 +803,25 @@ export class TarParser {
       }
     }
     const path = entryPath(raw, kind);
+    const where = `header at byte ${at}: ${JSON.stringify(raw)}`;
+    // The root is spelled "." or "./" only: "/" (the filesystem root under tar -P), "" or ".//" would name it too, and
+    // could stand in for "._."'s companion or the root's provenance occurrence.
+    if (path === "" && raw !== "." && raw !== "./")
+      throw unsafe(raw.startsWith("/") ? "ABSOLUTE_PATH" : "EMPTY_PATH", where);
+    if (this.companion !== null) {
+      const want = this.companion;
+      this.companion = null;
+      if (path !== want || kind !== (want === "" ? "directory" : "file")) {
+        throw unsafe(
+          "APPLEDOUBLE_WITHOUT_COMPANION",
+          `${where} is not the entry the AppleDouble entry before it describes`,
+        );
+      }
+    }
+    if (pax?.has(PROVENANCE_PAX_KEY)) this.onProvenance(path, kind, where);
+    if (isAppleDoubleShaped(path)) return this.onAppleDouble(path, kind, size, pax !== null, where);
     if (kind === "directory") {
-      if (size !== 0) throw unsafe("DIRECTORY_WITH_DATA", `header at byte ${at}: ${JSON.stringify(raw)}`);
+      if (size !== 0) throw unsafe("DIRECTORY_WITH_DATA", where);
       if (path === "") return this.startData(0);
     }
     const bad = path === "" ? "EMPTY_PATH" : memberPathError(path);
@@ -683,7 +847,47 @@ export class TarParser {
         `the members exceed ${this.opts.limits.maxTotalBytes} bytes`,
       );
     }
-    this.file = { path, bytes: size, hash: createHash("sha256"), sink: this.opts.openFile?.(path, size) ?? null };
+    this.file = {
+      path,
+      bytes: size,
+      hash: createHash("sha256"),
+      sink: this.opts.openFile?.(path, size) ?? null,
+      bodies: null,
+    };
+    this.startData(size);
+  }
+
+  /** An entry whose PAX header carries the provenance record: a characterized one, once; its value is never read. */
+  private onProvenance(path: string, kind: EntryKind, where: string): void {
+    if (!PROVENANCE_ENTRIES.some((e) => e.path === path && e.kind === kind)) {
+      throw unsafe(
+        "PROVENANCE_ON_UNCHARACTERIZED_ENTRY",
+        `${where} is not an entry the upstream archive carries it on`,
+      );
+    }
+    if (this.provenance.includes(path)) throw unsafe("PROVENANCE_REPEATED", `${where} carries it again`);
+    this.provenance.push(path);
+  }
+
+  /** An AppleDouble-shaped entry: ignored metadata under the closed policy, or refused. Never a member or a sink. */
+  private onAppleDouble(path: string, kind: EntryKind, size: number, hadPax: boolean, where: string): void {
+    const companion = appleDoubleCompanion(path);
+    if (companion === null) throw unsafe("APPLEDOUBLE_OUTSIDE_POLICY", where);
+    if (kind !== "file") throw unsafe("APPLEDOUBLE_NOT_A_FILE", where);
+    if (hadPax) throw unsafe("APPLEDOUBLE_WITH_PAX", `${where}: a PAX header precedes it`);
+    const clash = this.tree.add(path, "file");
+    if (clash) throw unsafe(clash, where);
+    let bodies = APPLEDOUBLE_BODIES;
+    const want = this.opts.expectMetadata;
+    if (want) {
+      const w = want.get(path);
+      if (!w) throw refuse("ARCHIVE_MEMBER_MISMATCH", "UNEXPECTED_METADATA", `${path} is not record metadata`);
+      bodies = [w];
+    }
+    // Refused at its header: a declared size no accepted body has is never read.
+    if (!bodies.some((b) => b.bytes === size)) throw unsafe("APPLEDOUBLE_UNEXPECTED_BODY", `${where}: ${size} bytes`);
+    this.companion = companion;
+    this.file = { path, bytes: size, hash: createHash("sha256"), sink: null, bodies };
     this.startData(size);
   }
 
@@ -717,8 +921,17 @@ export class TarParser {
     } else if (this.file) {
       const f = this.file;
       this.file = null;
-      f.sink?.close();
-      this.members.push({ path: f.path, bytes: f.bytes, sha256: f.hash.digest("hex") });
+      const sha256 = f.hash.digest("hex");
+      if (f.bodies) {
+        // Its length was one of these bodies' at its header; equal digests are then equal bodies.
+        if (!f.bodies.some((b) => b.sha256 === sha256)) {
+          throw unsafe("APPLEDOUBLE_UNEXPECTED_BODY", `${JSON.stringify(f.path)}: sha256 ${sha256}`);
+        }
+        this.metadata.push({ path: f.path, bytes: f.bytes, sha256, disposition: IGNORED_APPLEDOUBLE_METADATA });
+      } else {
+        f.sink?.close();
+        this.members.push({ path: f.path, bytes: f.bytes, sha256 });
+      }
     }
     this.state = this.padding === 0 ? "header" : "padding";
   }
@@ -765,6 +978,8 @@ export interface Scan {
   raw: Measurement;
   members: ScannedMember[];
   directories: string[];
+  metadata: ArchiveMetadata[];
+  provenance: string[];
 }
 
 /** One pass: the archive's raw bytes hashed as they are read, gunzipped and parsed; refusals are thrown. */
@@ -810,7 +1025,13 @@ export async function scanArchive(path: string, opts: ParserOptions): Promise<Sc
     await fh.close();
   }
   parser.finish();
-  return { raw: { sha256: hash.digest("hex"), bytes }, members: parser.members, directories: parser.directories };
+  return {
+    raw: { sha256: hash.digest("hex"), bytes },
+    members: parser.members,
+    directories: parser.directories,
+    metadata: parser.metadata,
+    provenance: parser.provenance,
+  };
 }
 
 /** Every way `actual` (a scanned archive or an installed tree) is not exactly the record's members. */
@@ -849,6 +1070,10 @@ export interface Inspection {
   archive: Measurement;
   members: ScannedMember[];
   directories: string[];
+  /** The AppleDouble entries the archive holds, each IGNORED_APPLEDOUBLE_METADATA: never members, never installed. */
+  metadata: ArchiveMetadata[];
+  /** The characterized entries ("." the root) whose PAX header carries the provenance record: ignored, never applied. */
+  provenance: { entry: string; key: string; disposition: typeof IGNORED_PROVENANCE_METADATA }[];
   /** True when the archive was checked against an accepted record; false for a measurement of a candidate. */
   matchesRecord: boolean;
 }
@@ -856,9 +1081,9 @@ export interface Inspection {
 /**
  * Inspects an archive offline. With a record: the record is validated against the anchor, the archive's sha256 and
  * length are checked before any byte is parsed, every entry is checked as it is parsed, the bytes parsed must be the
- * bytes authenticated, and the members must be exactly the record's. Without one (measuring a candidate for a future
- * record): every entry rule still applies, the required members must be present and groth16_vk.bin must be the
- * anchor's. Never invokes SP1 or tar(1).
+ * bytes authenticated, and the members and the AppleDouble metadata must be exactly the record's. Without one
+ * (measuring a candidate for a future record): every entry rule and the AppleDouble policy still apply, the required
+ * members must be present and groth16_vk.bin must be the anchor's. Never invokes SP1 or tar(1).
  */
 export async function inspectArchive(
   path: string,
@@ -884,6 +1109,7 @@ export async function inspectArchive(
   const scan = await scanArchive(path, {
     limits: opts.limits ?? DEFAULT_LIMITS,
     expect: record ? new Map(record.members.map((m) => [m.path, m])) : undefined,
+    expectMetadata: record ? new Map(record.metadata.map((m) => [m.path, m])) : undefined,
   });
   if (scan.raw.sha256 !== first.sha256) {
     throw refuse("ARCHIVE_CHANGED_DURING_USE", "REREAD", "the bytes parsed are not the bytes authenticated");
@@ -891,6 +1117,10 @@ export async function inspectArchive(
   if (record) {
     const errors = memberSetErrors(scan.members, record.members, opts.anchor);
     if (errors.length > 0) throw errors[0];
+    // Unexpected metadata, and metadata of another body, were refused at their headers and data.
+    const seen = new Set(scan.metadata.map((m) => m.path));
+    const absent = record.metadata.find((m) => !seen.has(m.path));
+    if (absent) throw refuse("ARCHIVE_MEMBER_MISMATCH", "MISSING_METADATA", `${absent.path} is absent`);
   } else {
     const named = new Set(scan.members.map((m) => m.path));
     const missing = REQUIRED_MEMBERS.find((p) => !named.has(p));
@@ -898,5 +1128,16 @@ export async function inspectArchive(
     const vk = vkError(scan.members, opts.anchor);
     if (vk) throw vk;
   }
-  return { archive: first, members: scan.members, directories: scan.directories, matchesRecord: record !== null };
+  return {
+    archive: first,
+    members: scan.members,
+    directories: scan.directories,
+    metadata: scan.metadata,
+    provenance: scan.provenance.map((p) => ({
+      entry: p === "" ? "." : p,
+      key: PROVENANCE_PAX_KEY,
+      disposition: IGNORED_PROVENANCE_METADATA,
+    })),
+    matchesRecord: record !== null,
+  };
 }

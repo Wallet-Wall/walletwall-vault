@@ -1,5 +1,5 @@
 {
-  "schema": "walletwall.sp1-proving-archive.v1",
+  "schema": "walletwall.sp1-proving-archive.v2",
   "subject": {
     "circuitSystem": "groth16",
     "circuitVersion": "v6.1.0",
@@ -68,6 +68,7 @@
       "sha256": "f60633aaf2c215d7bce2d4642900152750e66b77133075c734c14b51337d7c74"
     }
   ],
+  "metadata": [],
   "gnark": {
     "repository": "registry.invalid/walletwall/synthetic-gnark",
     "tag": "synthetic",

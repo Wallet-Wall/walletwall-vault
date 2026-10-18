@@ -5,12 +5,18 @@
 > Tooling is not an artifact, and an artifact is not proving. This lane built the WalletWall-controlled path a later,
 > owner-authorized lane will use to install SP1's Groth16 circuit v6.1.0 from a verified archive and prove from it.
 > It downloaded nothing, pulled no image, generated no proof, deployed nothing and wrote to no chain.
+>
+> **Amended** ([AppleDouble metadata and binary provenance](#appledouble-metadata-and-binary-provenance-amendment)):
+> the real archive, once acquired, held two kinds of macOS metadata the parser refused. The amendment characterized it
+> read-only on both acquired copies and accepts exactly what was observed as ignored metadata, nothing wider. It
+> created no archive record and left proving availability unchanged.
 
 Research prototype. Not audited. Testnet/local only. Do not use real funds.
 
 | | |
 |---|---|
-| Archive record, inspection, tar parser | [`scripts/lib/sp1-circuit-archive.ts`](../scripts/lib/sp1-circuit-archive.ts) (`walletwall.sp1-proving-archive.v1`; shape: [`evidence/zk/schema/sp1-proving-archive.v1.schema.json`](../evidence/zk/schema/sp1-proving-archive.v1.schema.json)) |
+| Archive record, inspection, tar parser | [`scripts/lib/sp1-circuit-archive.ts`](../scripts/lib/sp1-circuit-archive.ts) (`walletwall.sp1-proving-archive.v2`; shape: [`evidence/zk/schema/sp1-proving-archive.v2.schema.json`](../evidence/zk/schema/sp1-proving-archive.v2.schema.json)) |
+| Archive census (read-only, every entry) | [`scripts/lib/sp1-circuit-archive-census.ts`](../scripts/lib/sp1-circuit-archive-census.ts) (`sp1:circuit-archive:census`); the upstream archive's census on both hosts: [`circuit-archive-census-developer-workstation.raw.json`](../evidence/zk/sp1-impl/observations/circuit-archive-census-developer-workstation.raw.json), [`circuit-archive-census-github-hosted-runner.raw.json`](../evidence/zk/sp1-impl/observations/circuit-archive-census-github-hosted-runner.raw.json) |
 | Installer, installed-tree verification | [`scripts/lib/sp1-circuit-install.ts`](../scripts/lib/sp1-circuit-install.ts) |
 | Archive-only prove gate | [`scripts/lib/sp1-prove-gate.ts`](../scripts/lib/sp1-prove-gate.ts) |
 | Tooling contract (generated, never hand-edited) | [`evidence/zk/sp1-impl/circuit-tooling.json`](../evidence/zk/sp1-impl/circuit-tooling.json), from [`scripts/lib/sp1-circuit-tooling.ts`](../scripts/lib/sp1-circuit-tooling.ts) |
@@ -58,12 +64,15 @@ custody of an unverified archive: WalletWall verifies and installs the circuit b
 
 ## The archive record
 
-`walletwall.sp1-proving-archive.v1` binds, for one archive, the **subject** (Groth16, circuit `v6.1.0`, designation
+`walletwall.sp1-proving-archive.v2` binds, for one archive, the **subject** (Groth16, circuit `v6.1.0`, designation
 `mldsa65-withdrawal-d1`, its `PROGRAM_VKEY`, the designated verifier's version, runtime code hash and
 `VERIFIER_HASH`, and `groth16_vk.bin` = sha256 `0x4388a21c…e696`, 492 bytes); the **archive** (file name, length,
 sha256, acquisition time, source URL); **two acquisitions** from distinct hosts that agree on length and sha256; every
-**member** (canonical path, length, sha256, sorted); the **gnark image** (repository, tag, immutable digest, how it
-was observed); and **two mirrors** WalletWall controls, each naming the archive's sha256.
+**member** (canonical path, length, sha256, sorted; never an AppleDouble name); every **metadata** entry (an
+AppleDouble path, length, sha256 and the disposition `IGNORED_APPLEDOUBLE_METADATA`, sorted; an empty list when there
+is none); the **gnark image** (repository, tag, immutable digest, how it was observed); and **two mirrors** WalletWall
+controls, each naming the archive's sha256. v2 is v1 plus `metadata`: no v1 record was ever made, and a v1 record is
+refused rather than read as one that declares no metadata.
 
 The source URL and the image tag are recorded as `PROVENANCE_ONLY`, never authority. The members SP1 is known to read
 (`constraints.json`, `groth16_circuit.bin`, `groth16_pk.bin`, `groth16_vk.bin`) are a floor, not the archive's
@@ -101,17 +110,87 @@ refuses, a liveness failure, never a forged proof.
    type (tar has no socket type: any unlisted type is refused); setuid, setgid and sticky modes (never applied here,
   but an accepted archive must be benign under `tar(1)` too); PAX global headers, GNU long names and links, PAX keys
    other than `path`, `size` and inert metadata (so `linkpath`, `hdrcharset` and sparse maps are refused), a PAX path
-   that differs from the header name, and a PAX size that disagrees with one the header can carry; duplicate paths,
-   aliases (`./a` and `a`), case-fold collisions, a file that is another entry's parent, file/directory collisions and
-   directories with no member beneath them; data after the end-of-archive block; and archives past the entry, byte,
-   PAX and decompression bounds;
+   that differs from the header name, and a PAX size that disagrees with one the header can carry; a PAX value that is
+   not UTF-8 (one closed exception, below); duplicate paths, aliases (`./a` and `a`), case-fold collisions, a file
+   that is another entry's parent, file/directory collisions and directories with no member beneath them; every
+   AppleDouble-shaped entry outside the closed policy (below); data after the end-of-archive block; and archives past
+   the entry, byte, PAX and decompression bounds;
 3. with a record, an entry the record does not name, or names at another length, is refused **at its header**,
-   before its bytes are read;
-4. the bytes parsed must be the bytes authenticated (the second pass re-hashes the raw archive), and the members must
-   be exactly the record's, with `groth16_vk.bin` the anchor's.
+   before its bytes are read, and so is an AppleDouble entry its metadata does not name or names with another body;
+4. the bytes parsed must be the bytes authenticated (the second pass re-hashes the raw archive), the members must be
+   exactly the record's, with `groth16_vk.bin` the anchor's, and every metadata entry the record names must be there.
 
 Without a record (measuring a candidate for a future record) every entry rule still applies, the four members SP1 reads
 must be present, and `groth16_vk.bin` must be the designated key.
+
+## AppleDouble metadata and binary provenance (amendment)
+
+The owner-authorized acquisition (SP1-PA2B) fetched `v6.1.0-groth16.tar.gz` on two hosts. Both measured 6,211,807,514
+bytes, sha256 `18beebb6…a9147810`, and both copies were refused by this inspector at byte 0 on `"._."`. The archive was
+packed by macOS `bsdtar`, which adds the file's extended attributes twice. The amendment first characterized the
+archive read-only, with no policy change. The census (`sp1:circuit-archive:census`, a second tar walker independent of
+the parser) ran on the developer workstation's copy and on a GitHub-hosted runner. Host B's first copy was deleted by
+its ephemeral runner after measurement, so the runner re-acquired the bytes and stopped unless they were exactly the
+agreed sha256 and length. Both census files are byte-identical (sha256 `e39376dd…`) and committed. On each host the
+census was also cross-checked, outside the repository, against CPython's `tarfile` (3.13 on the workstation, 3.12 on
+the runner): the listings agreed with the census field by field on all 16 entries, and with each other. That check
+and its listings are in the pull request, not committed evidence. The archive holds 24 tar headers: 8 PAX headers and 16 entries, which
+are the root directory, seven files (`groth16_vk.bin` = the designated key) and eight AppleDouble entries. Two things in
+it were refused, and the amendment accepts exactly those two:
+
+| | Observed (both copies) | Accepted as ignored metadata only when |
+|---|---|---|
+| **AppleDouble entries** (`IGNORED_APPLEDOUBLE_METADATA`) | `._.` before the root directory entry, and `./._<name>` before each of the seven files; each a 163-byte regular file without a PAX header, all one body (an AppleDouble v2 header, an empty Finder Info holding one `com.apple.provenance` attribute, an empty resource fork), sha256 `a8d7edca…0e0` | the path is exactly one of the eight observed (`APPLEDOUBLE_PATHS`); it is a regular file with no PAX header and the observed body; and the **very next entry** (PAX headers aside) is the one it describes: the root directory for `._.`, the regular file `<name>` for `._<name>` |
+| **Binary provenance** (`IGNORED_PROVENANCE_METADATA`) | in every PAX header (the root's and the seven files'), `SCHILY.xattr.com.apple.provenance` = the 11 raw bytes `0102002d0e23b75bfde87a` (not UTF-8: it holds a NUL; sha256 `a6373f30…b8d`), beside its base64 twin `LIBARCHIVE.xattr.com.apple.provenance` | the key is exactly that; the raw value is exactly those bytes (compared byte for byte, never decoded, interpreted or applied as an extended attribute); it is on one of those eight entries by path **and** kind, at most once each; and once any entry carries it, all eight do by the end of the archive |
+
+What still fails closed, each pinned by a hostile archive (`M01`–`M40`, `X01`–`X36`), starting with AppleDouble:
+
+- A path with any `._` component is never a circuit member, in the archive or in a record.
+- Outside the policy it is refused: an unobserved name (even with its companion), nested, `._._x`, `._`, `._x.`,
+  `._..`, a case variant, a directory, a link, an oversized or other body, a PAX header on it, an orphan, an entry
+  after its companion, or a duplicate.
+- Other dotfiles (`.DS_Store`, `__MACOSX/`) are not AppleDouble and stay ordinary entries, refused unless a record
+  names them.
+
+Then provenance:
+
+- The provenance key with any other bytes, even UTF-8 ones, is refused.
+- So is the right value on any other entry, a case variant, a directory or AppleDouble entry of the same name, a
+  repeated root entry, two PAX headers for one entry, or one or more missing occurrences.
+- So is a lookalike key: suffix, prefix, case, a leading space, a leading byte-order mark, or the `LIBARCHIVE.` twin.
+- So are the same bytes under `comment`, `mtime`, `path`, `size` or `linkpath`; a key that is not UTF-8; the key twice
+  in one header; and a dangling or global PAX header.
+- A provenance header that tries to stand in for an AppleDouble entry's companion is refused.
+
+Two older gaps in the PAX and root handling were closed with the amendment:
+
+- **The byte-order mark.** The UTF-8 decoder used to drop a leading byte-order mark (U+FEFF), so a `path` value
+  starting with one could read as the header's own name. It now preserves the mark.
+- **The root's spelling.** The root directory is now accepted only as `.` or `./`. A root named `/` (the filesystem
+  root under `tar -P`), an empty name or `.//` is refused, and none of them can satisfy `._.`'s companion or the root's
+  provenance occurrence.
+
+Only `path` and `size` can name a path or a size, and they stay strict UTF-8.
+
+**What is not closed.** Other extended-attribute PAX records keep PA2A's inert-metadata rule. That covers the
+provenance record's base64 twin `LIBARCHIVE.xattr.com.apple.provenance`, and any `LIBARCHIVE.xattr.*` or
+`SCHILY.xattr.*` record with a UTF-8 value. They are accepted on any entry and never applied: the installer applies no
+extended attribute. Closing them as the binary provenance record is closed would be a further owner decision.
+
+The archive's sha256 stays the authority and covers the metadata bytes. The record's `metadata` lists each AppleDouble
+entry with its path, length, sha256 and disposition, and the validator holds every entry to the policy, including
+that the member it describes is a record member. The provenance occurrences are bound by the constants (the value,
+the eight entries) and reported by `inspectArchive` as `provenance`. Metadata never reaches the installer's writer, so
+it is never extracted or installed. An AppleDouble file planted in an installation fails re-verification, like any
+extra file.
+
+The constants (`APPLEDOUBLE_PATHS`, `APPLEDOUBLE_BODIES`, `PROVENANCE_VALUE`, `PROVENANCE_ENTRIES`) are the census,
+not a reading of it. `validate:sp1-circuit-tooling` requires each committed census file to be exactly the census tool's
+output (line ends aside), both to be one census, and every constant to be exactly what that census observed. That
+covers the AppleDouble paths and bodies, each AppleDouble entry's type, PAX header, companion and absence of
+collisions, the provenance value's sha256 and length, and the set of entries carrying it.
+Another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment. These
+constants are never widened.
 
 ## Installation
 
@@ -233,42 +312,47 @@ owner and root needs an OS-level sandbox, a different lane.
 ## Evidence
 
 - `npm run validate:sp1-circuit-tooling` (CI): re-derives the tooling record, including the self-test: the safe
-  synthetic archive inspects, installs and passes the gate with a stub image store; every hostile archive meets its
-  refusal; d1's anchor refuses every fixture (`SUBJECT_MISMATCH`, `VK_MISMATCH`); no production record exists.
+  synthetic archive inspects, installs and passes the gate with a stub image store; the upstream-shaped synthetic
+  archive inspects with its eight AppleDouble entries and eight provenance records ignored, and installs its members
+  only; every hostile archive meets its refusal; d1's anchor refuses every fixture (`SUBJECT_MISMATCH`, `VK_MISMATCH`);
+  no production record exists; and the two census observations are one census, from which every metadata constant
+  derives.
 - Suites: [`test/Sp1CircuitArchive.test.ts`](../test/Sp1CircuitArchive.test.ts),
   [`test/Sp1CircuitInstall.test.ts`](../test/Sp1CircuitInstall.test.ts),
   [`test/Sp1ProveGate.test.ts`](../test/Sp1ProveGate.test.ts),
-  [`test/Sp1CircuitTooling.test.ts`](../test/Sp1CircuitTooling.test.ts). Link and FIFO cases run on POSIX (CI).
-- Hostile catalog: 74 archives (18 path, 18 link, special-type and mode, 18 ambiguity, 11 structure and bound,
-  9 integrity), each pinned by refusal code and reason.
-- Mutation and adversarial review: see the pull request.
+  [`test/Sp1CircuitTooling.test.ts`](../test/Sp1CircuitTooling.test.ts),
+  [`test/Sp1CircuitArchiveCensus.test.ts`](../test/Sp1CircuitArchiveCensus.test.ts). Link and FIFO cases run on POSIX
+  (CI).
+- Hostile catalog: 153 archives (21 path, 18 link, special-type and mode, 18 ambiguity, 11 structure and bound,
+  9 integrity, 40 AppleDouble, 36 binary provenance), each pinned by refusal code and reason.
+- Mutation and adversarial review: see the pull requests.
 
-## Next: owner authorization required
+## Next: SP1-PA2B, paused until this amendment merges
 
-The next lane is still not a proof lane. It needs the owner to authorize:
-
-1. the download of `v6.1.0-groth16.tar.gz` (about 6.21 GB) on **two distinct hosts**, and their sha256 agreement;
-2. the acquisition of the gnark image's digest (`ghcr.io/succinctlabs/sp1-gnark`), and the image by that digest;
-3. two WalletWall-controlled mirror locations for the archive.
-
-That lane measures the archive with `sp1:circuit-archive:inspect`, writes the record from measured bytes, and admits it
-(updating the proving-availability generator to validate records with this schema). Only after that can a separate,
-owner-authorized lane run a real, egress-off proof through `sp1:prove:archive-only`.
+The owner-authorized acquisition lane (two-host download and agreement, the gnark image by digest, two WalletWall
+mirrors, the record) is paused at its inspection step. It resumes only after this amendment merges and **both
+independently acquired copies** pass the merged inspector unchanged: the developer workstation's copy, and a fresh
+GitHub-hosted runner's re-acquisition of host B's bytes (which must again be the agreed sha256 and length). It
+remains not a proof lane. That lane writes the record from measured bytes and admits it, updating the
+proving-availability generator to validate records with this schema. Only after that can a separate, owner-authorized
+lane run a real, egress-off proof through `sp1:prove:archive-only`.
 
 ## Reproduce
 
 ```bash
 npm run validate:sp1-circuit-tooling
-npx hardhat test test/Sp1CircuitArchive.test.ts test/Sp1CircuitInstall.test.ts test/Sp1ProveGate.test.ts test/Sp1CircuitTooling.test.ts
+npx hardhat test test/Sp1CircuitArchive.test.ts test/Sp1CircuitInstall.test.ts test/Sp1ProveGate.test.ts test/Sp1CircuitTooling.test.ts test/Sp1CircuitArchiveCensus.test.ts
 # re-measure the upstream observation (offline; needs a CARGO_HOME holding the pinned crates)
 npm run sp1:measure-circuit-upstream -- --cargo-home ~/.cargo && npm run sp1:circuit-tooling
+# census an acquired archive (read-only; prints JSON that depends only on the archive's bytes)
+npm run --silent sp1:circuit-archive:census -- --archive v6.1.0-groth16.tar.gz
 ```
 
 ## Limits
 
-The real archive's member set, layout and sizes are unknown: the parser's rules (100-byte names, portable characters,
-no long-name forms, the listed PAX keys) are strict by design, and the acquisition lane must widen one with a test if
-the measured archive needs it. The census covers literal environment reads in the sp1-* and slop-* crates' `src/`;
+The parser's rules (100-byte names, portable characters, no long-name forms, the listed PAX keys, UTF-8 values) stay
+strict by design. The two exceptions above are the census of one archive: they are widened by nothing but a new census
+and a reviewed amendment. The environment census covers literal environment reads in the sp1-* and slop-* crates' `src/`;
 other crates' reads reach the host only through the pass-through list. CI binds the upstream observation to the host
 lockfile and its script but cannot re-read the crates (it holds no crate cache); any host that has them re-derives it
 with `npm run sp1:measure-circuit-upstream -- --cargo-home <dir> --check`. The gate's rules are constants, so a forged

@@ -14,7 +14,12 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
-import { RECORD_FIELDS, archiveRecordErrors } from "../scripts/lib/sp1-circuit-archive";
+import {
+  ARCHIVE_RECORD_SCHEMA,
+  PROVENANCE_PAX_KEY,
+  RECORD_FIELDS,
+  archiveRecordErrors,
+} from "../scripts/lib/sp1-circuit-archive";
 import {
   FIXTURES_DIR,
   SAFE_ARCHIVE_REL,
@@ -29,13 +34,17 @@ import {
 } from "../scripts/lib/sp1-circuit-fixtures";
 import {
   ARCHIVE_JSON_SCHEMA_REL,
+  CENSUS_OBSERVATIONS_REL,
   STATES,
   TOOLING_REL,
   TOOLING_SCHEMA,
   UPSTREAM_OBSERVATION_REL,
   UPSTREAM_SCRIPT_REL,
   authoritativeRecordError,
+  censusObservationErrors,
+  censusPolicyErrors,
   committedProductionAnchor,
+  serializeCensus,
   committedProductionRecord,
   envClass,
   environmentReads,
@@ -167,7 +176,12 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(r.provingAvailability.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(0);
-      expect(r.selfTest.hostile).to.have.length(74);
+      expect(r.selfTest.hostile).to.have.length(153);
+      expect(r.archiveRecord.schema).to.equal("walletwall.sp1-proving-archive.v2");
+      expect(r.archiveRecord.ignoredMetadata.derivedFrom.archive).to.deep.equal({
+        bytes: 6211807514,
+        sha256: "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      });
       expect(r.selfTest.productionAnchorRefusesFixtures).to.deep.equal(["SUBJECT_MISMATCH", "VK_MISMATCH"]);
       expect(STATES.filter((s) => s.reachableInThisLane).map((s) => s.state)).to.deep.equal([
         "TOOLING_NOT_PRESENT",
@@ -207,6 +221,18 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(await toolingErrors(repo)).to.deep.equal([
         "proving availability is LOCAL_COPY_NOT_ARCHIVED: this lane leaves it OWNER_DOWNLOAD_REQUIRED, and a change needs its own lane",
       ]);
+    });
+
+    it("refuses to derive anything from census observations that are not one census", async function () {
+      this.timeout(120_000);
+      const repo = dirs.make();
+      for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock"]) {
+        cpSync(resolve(p), join(repo, p), { recursive: true });
+      }
+      const other = JSON.parse(read(CENSUS_OBSERVATIONS_REL[1]).toString("utf8"));
+      other.tar.entries += 1;
+      writeFileSync(join(repo, CENSUS_OBSERVATIONS_REL[1]), JSON.stringify(other));
+      expect(await toolingErrors(repo)).to.deep.equal(["the census observations are not one census"]);
     });
 
     it("never derives an archived state: a production record, a failed self-test", function () {
@@ -600,6 +626,100 @@ describe("SP1-PA2A circuit tooling contract", function () {
     });
   });
 
+  describe("the AppleDouble and provenance policies, against the census they are derived from", function () {
+    const census = () => JSON.parse(read(CENSUS_OBSERVATIONS_REL[0]).toString("utf8"));
+    const adAt = (c: any, path: string) => c.appleDouble.find((r: any) => r.path === path);
+    const entryAt = (c: any, path: string) => c.entries.find((e: any) => e.path === path);
+
+    it("holds on both committed observations, which are one census", function () {
+      expect(read(CENSUS_OBSERVATIONS_REL[0]).equals(read(CENSUS_OBSERVATIONS_REL[1]))).to.equal(true);
+      expect(censusObservationErrors(".")).to.deep.equal([]);
+      const c = census();
+      expect(c.archive.sha256).to.equal("18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810");
+      expect(c.appleDouble).to.have.length(8);
+      expect(censusPolicyErrors(c)).to.deep.equal([]);
+    });
+
+    it("names every way the constants are not what the census observed", function () {
+      const edits: [string, (c: any) => void, RegExp][] = [
+        ["another schema", (c) => (c.schema = "x"), /a census must be/],
+        [
+          "another body",
+          (c) => (adAt(c, "._groth16_pk.bin").sha256 = "0".repeat(64)),
+          /APPLEDOUBLE_BODIES is not exactly/,
+        ],
+        ["another length", (c) => (adAt(c, "._groth16_pk.bin").size = 162), /APPLEDOUBLE_BODIES is not exactly/],
+        [
+          "a nested name",
+          (c) => (adAt(c, "._groth16_pk.bin").path = "a/._groth16_pk.bin"),
+          /APPLEDOUBLE_PATHS is not exactly/,
+        ],
+        ["a directory", (c) => (adAt(c, "._groth16_pk.bin").typeflag = "5"), /not a regular file/],
+        ["an orphan", (c) => (adAt(c, "._groth16_pk.bin").companionFollows = false), /not followed by the entry/],
+        ["the same path", (c) => (adAt(c, "._groth16_pk.bin").sameAsOther = ["x"]), /collides with x/],
+        ["a case variant", (c) => (adAt(c, "._groth16_pk.bin").caseFoldSameAsOther = ["x"]), /collides with x/],
+        ["a Windows alias", (c) => (adAt(c, "._groth16_pk.bin").windowsNameSameAsOther = ["x"]), /collides with x/],
+        ["a parent", (c) => (adAt(c, "._groth16_pk.bin").parentOfOther = ["x"]), /collides with x/],
+        ["a child", (c) => (adAt(c, "._groth16_pk.bin").otherIsParent = ["x"]), /collides with x/],
+        [
+          "a PAX header on an AppleDouble entry",
+          (c) => entryAt(c, "./._groth16_pk.bin").pax.push({ key: "mtime", valueBytes: 1, valueSha256: "0" }),
+          /has a PAX header/,
+        ],
+        [
+          "an entry without the provenance record",
+          (c) => (entryAt(c, "./groth16_witness.json").pax = []),
+          /PROVENANCE_ENTRIES is not exactly/,
+        ],
+        [
+          "the provenance record on another entry",
+          (c) => (entryAt(c, "./groth16_witness.json").path = "./other.json"),
+          /PROVENANCE_ENTRIES is not exactly/,
+        ],
+        ["the root as a file", (c) => (entryAt(c, "./").typeflag = "0"), /PROVENANCE_ENTRIES is not exactly/],
+        [
+          "another provenance value",
+          (c) => (entryAt(c, "./groth16_pk.bin").pax.find((p: any) => p.key === PROVENANCE_PAX_KEY).valueSha256 = "0"),
+          /carries another .* value than PROVENANCE_VALUE/,
+        ],
+        [
+          "another provenance length",
+          (c) => (entryAt(c, "./groth16_pk.bin").pax.find((p: any) => p.key === PROVENANCE_PAX_KEY).valueBytes = 12),
+          /carries another .* value than PROVENANCE_VALUE/,
+        ],
+      ];
+      for (const [what, edit, want] of edits) {
+        const c = census();
+        edit(c);
+        const errors = censusPolicyErrors(c);
+        expect(errors, what).to.have.length(1);
+        expect(errors[0], what).to.match(want);
+      }
+    });
+
+    it("refuses observations that are absent or are not one census", function () {
+      const repo = dirs.make();
+      mkdirSync(join(repo, "evidence/zk/sp1-impl/observations"), { recursive: true });
+      expect(censusObservationErrors(repo)).to.deep.equal(["the census observations are not one census"]);
+      writeFileSync(join(repo, CENSUS_OBSERVATIONS_REL[0]), read(CENSUS_OBSERVATIONS_REL[0]));
+      expect(censusObservationErrors(repo)).to.deep.equal(["the census observations are not one census"]);
+      const other = census();
+      other.tar.entries += 1;
+      writeFileSync(join(repo, CENSUS_OBSERVATIONS_REL[1]), `${JSON.stringify(other, null, 2)}\n`);
+      expect(censusObservationErrors(repo)).to.deep.equal(["the census observations are not one census"]);
+      // The same bytes with CRLF line ends (as an autocrlf checkout writes them) are one census, as committed.
+      writeFileSync(
+        join(repo, CENSUS_OBSERVATIONS_REL[1]),
+        read(CENSUS_OBSERVATIONS_REL[0]).toString("utf8").replace(/\n/g, "\r\n"),
+      );
+      expect(censusObservationErrors(repo)).to.deep.equal([]);
+      // The same census reformatted, in both files, is not the census tool's output.
+      for (const rel of CENSUS_OBSERVATIONS_REL) writeFileSync(join(repo, rel), `${JSON.stringify(census())}\n`);
+      expect(censusObservationErrors(repo)).to.deep.equal(["the census observations are not the census tool's output"]);
+      expect(serializeCensus(census())).to.equal(read(CENSUS_OBSERVATIONS_REL[0]).toString("utf8"));
+    });
+  });
+
   describe("the archive record's JSON Schema", function () {
     const schema = JSON.parse(read(ARCHIVE_JSON_SCHEMA_REL).toString("utf8"));
     it("names the validator's fields, level by level, and forbids others", function () {
@@ -612,6 +732,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
         [["archive"], RECORD_FIELDS.archive],
         [["acquisitions", "[]"], RECORD_FIELDS.acquisition],
         [["members", "[]"], RECORD_FIELDS.member],
+        [["metadata", "[]"], RECORD_FIELDS.metadata],
         [["gnark"], RECORD_FIELDS.gnark],
         [["gnark", "observation"], RECORD_FIELDS.gnarkObservation],
         [["mirrors", "[]"], RECORD_FIELDS.mirror],
@@ -622,7 +743,9 @@ describe("SP1-PA2A circuit tooling contract", function () {
         expect(Object.keys(s.properties), path.join(".")).to.deep.equal([...fields]);
         expect(s.additionalProperties, path.join(".")).to.equal(false);
       }
-      expect(schema.$id).to.equal("walletwall.sp1-proving-archive.v1");
+      expect(schema.$id).to.equal("walletwall.sp1-proving-archive.v2");
+      expect(schema.properties.schema.const).to.equal(ARCHIVE_RECORD_SCHEMA);
+      expect(ARCHIVE_RECORD_SCHEMA).to.equal("walletwall.sp1-proving-archive.v2");
       expect(schema.properties.acquisitions.minItems).to.equal(2);
       expect(schema.properties.mirrors.minItems).to.equal(2);
     });
@@ -816,6 +939,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
     it("names every tooling command, none of which downloads, pulls or proves in CI", function () {
       for (const s of [
         "sp1:circuit-archive:inspect",
+        "sp1:circuit-archive:census",
         "sp1:circuit-install",
         "sp1:prove:archive-only",
         "sp1:measure-circuit-upstream",

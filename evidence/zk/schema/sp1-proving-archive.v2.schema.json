@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "walletwall.sp1-proving-archive.v1",
-  "title": "WalletWall SP1 proving-archive record (v1)",
-  "description": "The record a later, owner-authorized acquisition lane produces from MEASURED bytes for one SP1 Groth16 circuit archive. The shape only: scripts/lib/sp1-circuit-archive.ts archiveRecordErrors is the validator, and it also binds the subject to the designation, requires agreeing acquisitions from distinct hosts, two mirrors naming the archive's sha256, a digest-pinned gnark image, canonical sorted member paths and a groth16_vk.bin with the designated VERIFIER_HASH. Source URLs and image tags are provenance, never authority. A record counts only in evidence/zk/sp1-impl/proving-archives, which holds none. Research prototype; not audited; testnet/local only.",
+  "$id": "walletwall.sp1-proving-archive.v2",
+  "title": "WalletWall SP1 proving-archive record (v2)",
+  "description": "The record a later, owner-authorized acquisition lane produces from MEASURED bytes for one SP1 Groth16 circuit archive. The shape only: scripts/lib/sp1-circuit-archive.ts archiveRecordErrors is the validator, and it also binds the subject to the designation, requires agreeing acquisitions from distinct hosts, two mirrors naming the archive's sha256, a digest-pinned gnark image, canonical sorted member paths (none AppleDouble-shaped) and a groth16_vk.bin with the designated VERIFIER_HASH, and holds each metadata entry to the closed AppleDouble policy (its path, the member it describes, the observed body). v2 adds metadata: the archive's AppleDouble entries, ignored (never extracted, never installed). Source URLs and image tags are provenance, never authority. A record counts only in evidence/zk/sp1-impl/proving-archives, which holds none. Research prototype; not audited; testnet/local only.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "subject", "archive", "acquisitions", "members", "gnark", "mirrors"],
+  "required": ["schema", "subject", "archive", "acquisitions", "members", "metadata", "gnark", "mirrors"],
   "properties": {
-    "schema": { "const": "walletwall.sp1-proving-archive.v1" },
+    "schema": { "const": "walletwall.sp1-proving-archive.v2" },
     "subject": {
       "type": "object",
       "additionalProperties": false,
@@ -80,6 +80,20 @@
           "path": { "type": "string", "pattern": "^[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$", "maxLength": 100 },
           "bytes": { "type": "integer", "minimum": 0 },
           "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    },
+    "metadata": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "bytes", "sha256", "disposition"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^\\._(?:\\.|[A-Za-z0-9._-]+)$", "maxLength": 100 },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "disposition": { "const": "IGNORED_APPLEDOUBLE_METADATA" }
         }
       }
     },

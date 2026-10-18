@@ -14,16 +14,24 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
+  APPLEDOUBLE_BODIES,
+  APPLEDOUBLE_PATHS,
   ARCHIVE_RECORD_SCHEMA,
+  IGNORED_PROVENANCE_METADATA,
+  PROVENANCE_ENTRIES,
+  PROVENANCE_PAX_KEY,
+  PROVENANCE_VALUE,
   MemberTree,
   REQUIRED_MEMBERS,
   TarParser,
   VK_FILE,
   acceptedRecord,
+  appleDoubleCompanion,
   archiveRecordErrors,
   entryPath,
   imageRefError,
   inspectArchive,
+  isAppleDoubleShaped,
   measureArchive,
   memberPathError,
   memberSetErrors,
@@ -32,14 +40,22 @@ import {
   type ArchiveRecord,
 } from "../scripts/lib/sp1-circuit-archive";
 import {
+  APPLEDOUBLE_BODY,
   SAFE_FILES,
   SYNTHETIC_ANCHOR,
+  SYNTHETIC_VK,
+  UPSTREAM_SHAPED_FILES,
+  appleDoubleEntries,
+  appleDoubleMetadata,
   gz,
   hostileCases,
+  paxData,
+  provenancePax,
   safeEntries,
   safeTar,
   syntheticRecord,
   tarBytes,
+  upstreamShapedEntries,
 } from "../scripts/lib/sp1-circuit-fixtures";
 import { refusalOf, tempDirs } from "./helpers/circuit-tooling";
 
@@ -470,15 +486,15 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
         );
       });
     }
-    it("covers every path, link, ambiguity, structure and integrity class the lane names", function () {
+    it("covers every path, link, ambiguity, structure, integrity, AppleDouble and provenance class the lanes name", function () {
       const ids = hostileCases().map((c) => c.id);
       expect(new Set(ids).size).to.equal(ids.length);
-      for (const group of ["P", "L", "A", "S", "I"])
+      for (const group of ["P", "L", "A", "S", "I", "M", "X"])
         expect(
           ids.some((i) => i.startsWith(group)),
           group,
         ).to.equal(true);
-      expect(ids.length).to.equal(74);
+      expect(ids.length).to.equal(153);
     });
   });
 
@@ -582,6 +598,229 @@ describe("SP1-PA2A circuit archive: record, paths and the tar parser", function 
         )?.code,
       ).to.equal("VK_MISMATCH");
       expect(vkError(members, anchor)).to.equal(null);
+    });
+  });
+
+  describe("AppleDouble metadata (the closed policy)", function () {
+    const adGz = gz(tarBytes(appleDoubleEntries()));
+    const adRecord = () => syntheticRecord(adGz, SAFE_FILES, anchor, appleDoubleMetadata());
+    const parse = (tar: Buffer, opts: Partial<ConstructorParameters<typeof TarParser>[0]> = {}) => {
+      const p = new TarParser({ limits, ...opts });
+      for (let i = 0; i < tar.length; i += 333) p.feed(tar.subarray(i, i + 333));
+      p.finish();
+      return p;
+    };
+    const ad = (name: string) => ({ name, data: APPLEDOUBLE_BODY });
+
+    it("pins the one body the upstream census observed: 163 bytes, sha256 a8d7edca...0e0", function () {
+      expect(APPLEDOUBLE_BODIES).to.deep.equal([
+        { bytes: 163, sha256: "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0" },
+      ]);
+      expect({ bytes: APPLEDOUBLE_BODY.length, sha256: sha256(APPLEDOUBLE_BODY) }).to.deep.equal(APPLEDOUBLE_BODIES[0]);
+    });
+
+    it("calls a path AppleDouble-shaped when any component starts with ._", function () {
+      for (const p of ["._x", "._.", "._", ".__x", "a/._x", "._x/a"]) expect(isAppleDoubleShaped(p), p).to.equal(true);
+      for (const p of [".x", "a._x", "x._", "_.x", ".", "..", "a/.b/c", ".DS_Store"]) {
+        expect(isAppleDoubleShaped(p), p).to.equal(false);
+      }
+    });
+
+    it("accepts only the eight observed AppleDouble paths, naming the entry each describes", function () {
+      expect(APPLEDOUBLE_PATHS).to.deep.equal([
+        "._.",
+        ...["Groth16Verifier.sol", "SP1VerifierGroth16.sol", "constraints.json", "groth16_circuit.bin"].map(
+          (n) => `._${n}`,
+        ),
+        ...["groth16_pk.bin", "groth16_vk.bin", "groth16_witness.json"].map((n) => `._${n}`),
+      ]);
+      const cases: [unknown, string | null][] = [
+        ...APPLEDOUBLE_PATHS.map((p): [string, string] => [p, p === "._." ? "" : p.slice(2)]),
+        [".__x", null],
+        ["._README", null],
+        ["._GROTH16_VK.BIN", null],
+        ["./._groth16_vk.bin", null],
+        ["._groth16_vk.bin/", null],
+        [`._${"n".repeat(99)}`, null],
+        [7, null],
+        ["._", null],
+        ["._._x", null],
+        ["a/._x", null],
+        ["._x/a", null],
+        ["._./", null],
+        ["._x.", null],
+        ["._..", null],
+        ["._con", null],
+        ["._a b", null],
+        ["x", null],
+        [".x", null],
+        ["abc", null],
+        ["groth16_vk.bin", null],
+      ];
+      for (const [p, want] of cases) expect(appleDoubleCompanion(p as string), String(p)).to.equal(want);
+    });
+
+    it("reads the upstream-shaped tree: metadata listed, members exactly the files, no metadata byte to a sink", function () {
+      const opened: string[] = [];
+      const p = parse(tarBytes(appleDoubleEntries()), {
+        openFile: (path) => (opened.push(path), { write() {}, close() {} }),
+      });
+      expect(p.members.map((m) => m.path)).to.deep.equal(SAFE_FILES.map(([n]) => n));
+      expect(opened).to.deep.equal(SAFE_FILES.map(([n]) => n));
+      expect(p.metadata).to.deep.equal(appleDoubleMetadata());
+      expect(p.directories).to.deep.equal(["extra"]);
+    });
+
+    it("inspects the upstream-shaped archive with and without its record (the positive control)", async function () {
+      const path = write(adGz);
+      expect(reasons(adRecord())).to.deep.equal([]);
+      const measured = await inspectArchive(path, { anchor });
+      expect(measured.metadata).to.deep.equal(appleDoubleMetadata());
+      expect(measured.members).to.deep.equal(baseRecord().members);
+      const checked = await inspectArchive(path, { anchor, record: adRecord() });
+      expect(checked.matchesRecord).to.equal(true);
+      expect(checked.metadata).to.deep.equal(adRecord().metadata);
+      expect(checked.members).to.deep.equal(adRecord().members);
+    });
+
+    it("lets PAX headers stand between an AppleDouble entry and its companion, and accepts the root as . or ./", function () {
+      const vk = { name: "groth16_vk.bin", data: SYNTHETIC_VK, pax: { mtime: "0" } };
+      expect(parse(tarBytes([ad("._groth16_vk.bin"), vk])).metadata.map((m) => m.path)).to.deep.equal([
+        "._groth16_vk.bin",
+      ]);
+      for (const root of [".", "./"]) {
+        const p = parse(tarBytes([ad("._."), { name: root, type: "5" }, vk]));
+        expect(
+          p.metadata.map((m) => m.path),
+          root,
+        ).to.deep.equal(["._."]);
+        expect(
+          p.members.map((m) => m.path),
+          root,
+        ).to.deep.equal(["groth16_vk.bin"]);
+      }
+    });
+
+    it("checks the record's metadata at each header and at the end of its data, against the record's own body", async function () {
+      const tar = tarBytes(appleDoubleEntries());
+      const named = () => new Map(appleDoubleMetadata().map((m) => [m.path, m]));
+      expect(parse(tar, { expectMetadata: named() }).metadata).to.deep.equal(appleDoubleMetadata());
+      const without = named();
+      without.delete("._groth16_pk.bin");
+      expect(await refusalOf(() => parse(tar, { expectMetadata: without }))).to.equal(
+        "ARCHIVE_MEMBER_MISMATCH (UNEXPECTED_METADATA)",
+      );
+      const shorter = named();
+      shorter.set("._groth16_pk.bin", { ...appleDoubleMetadata()[3], bytes: 162 });
+      expect(await refusalOf(() => parse(tar, { expectMetadata: shorter }))).to.equal(
+        "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)",
+      );
+      const other = named();
+      other.set("._groth16_pk.bin", { ...appleDoubleMetadata()[3], sha256: "0".repeat(64) });
+      expect(await refusalOf(() => parse(tar, { expectMetadata: other }))).to.equal(
+        "ARCHIVE_UNSAFE_ENTRY (APPLEDOUBLE_UNEXPECTED_BODY)",
+      );
+    });
+
+    it("validates the record's metadata: a list, exact fields, the policy's paths, member companions, order, body, disposition", function () {
+      const edits: [string, (r: any) => void, string][] = [
+        ["not a list", (r) => (r.metadata = {}), "METADATA_MISSING"],
+        ["unknown field", (r) => (r.metadata[0].mode = "0644"), "UNKNOWN_FIELD"],
+        ["missing field", (r) => delete r.metadata[0].disposition, "MISSING_FIELD"],
+        ["not a string", (r) => (r.metadata[4].path = 7), "METADATA_PATH_INVALID"],
+        ["AppleDouble of AppleDouble", (r) => (r.metadata[4].path = "._._groth16_vk.bin"), "METADATA_PATH_INVALID"],
+        ["nested", (r) => (r.metadata[4].path = "extra/._README.synthetic"), "METADATA_PATH_INVALID"],
+        ["no member companion", (r) => (r.metadata[4].path = "._groth16_witness.json"), "METADATA_WITHOUT_COMPANION"],
+        ["duplicate", (r) => r.metadata.push({ ...r.metadata[4] }), "METADATA_NOT_SORTED"],
+        ["out of order", (r) => r.metadata.reverse(), "METADATA_NOT_SORTED"],
+        ["another length", (r) => (r.metadata[4].bytes = 162), "METADATA_BODY_UNEXPECTED"],
+        ["another body", (r) => (r.metadata[4].sha256 = "0".repeat(64)), "METADATA_BODY_UNEXPECTED"],
+        ["another disposition", (r) => (r.metadata[4].disposition = "INSTALLED"), "METADATA_DISPOSITION"],
+      ];
+      expect(adRecord().metadata[4].path).to.equal("._groth16_vk.bin");
+      for (const [what, edit, reason] of edits) {
+        const r = adRecord();
+        edit(r);
+        expect([...new Set(reasons(r))], what).to.deep.equal([reason]);
+      }
+      const noMembers = adRecord() as any;
+      noMembers.members = {};
+      expect(reasons(noMembers)).to.include("MEMBERS_MISSING");
+      const empty = adRecord();
+      empty.metadata = [];
+      expect(reasons(empty)).to.deep.equal([]);
+    });
+
+    it("refuses an AppleDouble path as a record member, at the root or nested", function () {
+      for (const path of ["._groth16_vk.bin", "extra/._README.synthetic"]) {
+        const r = baseRecord();
+        r.members = [{ path, bytes: 163, sha256: sha256(APPLEDOUBLE_BODY) }, ...r.members].sort((a, b) =>
+          a.path < b.path ? -1 : 1,
+        );
+        expect(reasons(r), path).to.deep.equal(["APPLEDOUBLE_AS_MEMBER"]);
+      }
+    });
+  });
+
+  describe("binary provenance (the closed PAX rule)", function () {
+    const upGz = gz(tarBytes(upstreamShapedEntries()));
+    const upRecord = () =>
+      syntheticRecord(upGz, UPSTREAM_SHAPED_FILES, anchor, appleDoubleMetadata(UPSTREAM_SHAPED_FILES));
+    const everyEntry = [".", ...UPSTREAM_SHAPED_FILES.map(([p]) => p)];
+
+    it("pins the one value and the entries the census observed", function () {
+      expect(PROVENANCE_PAX_KEY).to.equal("SCHILY.xattr.com.apple.provenance");
+      expect(PROVENANCE_VALUE.toString("hex")).to.equal("0102002d0e23b75bfde87a");
+      expect(sha256(PROVENANCE_VALUE)).to.equal("a6373f30dd827dcb223b421d779f3bbe6772f29ea5697c7aa0b00bece5209b8d");
+      expect(PROVENANCE_ENTRIES.map((e) => `${e.path || "."}:${e.kind}`)).to.deep.equal([
+        ".:directory",
+        ...[...UPSTREAM_SHAPED_FILES.map(([p]) => p)].sort().map((p) => `${p}:file`),
+      ]);
+    });
+
+    it("never decodes the provenance value, and decodes every other value strictly", function () {
+      const records = parsePax(paxData(provenancePax({ mtime: "0" })), 0);
+      expect(records.get(PROVENANCE_PAX_KEY)).to.equal("");
+      expect(records.get("LIBARCHIVE.xattr.com.apple.provenance")).to.equal("AQIALQ4jt1v96Ho");
+      expect(records.get("mtime")).to.equal("0");
+    });
+
+    it("inspects the upstream-shaped archive with and without its record: every occurrence ignored (the positive control)", async function () {
+      const path = write(upGz);
+      const want = everyEntry.map((entry) => ({
+        entry,
+        key: PROVENANCE_PAX_KEY,
+        disposition: IGNORED_PROVENANCE_METADATA,
+      }));
+      const measured = await inspectArchive(path, { anchor });
+      expect(measured.provenance).to.deep.equal(want);
+      // Archive order (the record lists them sorted).
+      const byPath = new Map(appleDoubleMetadata(UPSTREAM_SHAPED_FILES).map((m) => [m.path, m]));
+      expect(measured.metadata).to.deep.equal(
+        ["._.", ...UPSTREAM_SHAPED_FILES.map(([p]) => `._${p}`)].map((p) => byPath.get(p)),
+      );
+      expect(measured.members.map((m) => m.path)).to.deep.equal(UPSTREAM_SHAPED_FILES.map(([p]) => p));
+      const checked = await inspectArchive(path, { anchor, record: upRecord() });
+      expect(checked.matchesRecord).to.equal(true);
+      expect(checked.provenance).to.deep.equal(want);
+    });
+
+    it("keeps every other key under the existing rules: a lookalike key with a UTF-8 value is ordinary metadata", async function () {
+      for (const key of [`${PROVENANCE_PAX_KEY}2`, PROVENANCE_PAX_KEY.slice(0, -1)]) {
+        const tar = tarBytes([{ name: "groth16_vk.bin", data: SYNTHETIC_VK, pax: { [key]: "AQIALQ4jt1v96Ho" } }]);
+        const p = new TarParser({ limits });
+        p.feed(tar);
+        p.finish();
+        expect(
+          p.members.map((m) => m.path),
+          key,
+        ).to.deep.equal(["groth16_vk.bin"]);
+        expect(p.provenance, key).to.deep.equal([]);
+      }
+    });
+
+    it("leaves an archive without the record as it was: no occurrence, no requirement", async function () {
+      expect((await inspectArchive(write(safeGz), { anchor })).provenance).to.deep.equal([]);
     });
   });
 });
