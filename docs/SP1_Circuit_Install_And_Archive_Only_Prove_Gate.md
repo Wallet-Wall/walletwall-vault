@@ -164,8 +164,8 @@ Then provenance:
 
 Two older gaps in the PAX and root handling were closed with the amendment:
 
-- **The byte-order mark.** The UTF-8 decoder kept dropping a leading byte-order mark, so a `﻿path` value could
-  read as the header's own name. It now preserves the mark.
+- **The byte-order mark.** The UTF-8 decoder used to drop a leading byte-order mark (U+FEFF), so a `path` value
+  starting with one could read as the header's own name. It now preserves the mark.
 - **The root's spelling.** The root directory is now accepted only as `.` or `./`. A root named `/` (the filesystem
   root under `tar -P`), an empty name or `.//` is refused, and none of them can satisfy `._.`'s companion or the root's
   provenance occurrence.

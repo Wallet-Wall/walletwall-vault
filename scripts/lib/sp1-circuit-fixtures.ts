@@ -1295,19 +1295,19 @@ export function hostileCases(): HostileCase[] {
     {
       id: "X33",
       title: "the provenance key behind a UTF-8 byte-order mark, with the binary value",
-      archive: up(setPax("./groth16_vk.bin", { "﻿SCHILY.xattr.com.apple.provenance": Buffer.from(PROVENANCE_VALUE) })),
+      archive: up(setPax("./groth16_vk.bin", { "\uFEFFSCHILY.xattr.com.apple.provenance": Buffer.from(PROVENANCE_VALUE) })),
       expect: corrupt("PAX_MALFORMED"),
     },
     {
       id: "X34",
       title: "a PAX path behind a byte-order mark (a decoder that drops it would read the header's name)",
-      archive: only(file("groth16_vk.bin", SYNTHETIC_VK, { pax: { path: "﻿groth16_vk.bin" } })),
+      archive: only(file("groth16_vk.bin", SYNTHETIC_VK, { pax: { path: "\uFEFFgroth16_vk.bin" } })),
       expect: unsafe("PAX_PATH_MISMATCH"),
     },
     {
       id: "X35",
       title: "a PAX size key behind a byte-order mark",
-      archive: only(file("groth16_vk.bin", SYNTHETIC_VK, { pax: { "﻿size": String(SYNTHETIC_VK.length) } })),
+      archive: only(file("groth16_vk.bin", SYNTHETIC_VK, { pax: { "\uFEFFsize": String(SYNTHETIC_VK.length) } })),
       expect: unsafe("PAX_KEY_REFUSED"),
     },
     {

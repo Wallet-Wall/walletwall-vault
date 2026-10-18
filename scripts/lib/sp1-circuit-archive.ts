@@ -555,7 +555,7 @@ const OCTAL_MAX_SIZE = 0o77777777777;
 
 const unsafe = (reason: string, detail: string) => refuse("ARCHIVE_UNSAFE_ENTRY", reason, detail);
 const corrupt = (reason: string, detail: string) => refuse("ARCHIVE_CORRUPT", reason, detail);
-/** Strict, and BOM-preserving: a leading U+FEFF stays in the text, so "﻿path" is never the key `path`. */
+/** Strict, and BOM-preserving: a leading U+FEFF stays in the text, so "\uFEFFpath" is never the key `path`. */
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
 /** A NUL-terminated header field; a byte other than NUL after the terminator is an embedded NUL. */
