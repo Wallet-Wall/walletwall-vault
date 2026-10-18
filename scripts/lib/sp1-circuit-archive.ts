@@ -17,7 +17,9 @@
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
 import { createHash } from "node:crypto";
+import { existsSync, readdirSync } from "node:fs";
 import { open } from "node:fs/promises";
+import { resolve } from "node:path";
 import { Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
@@ -418,6 +420,27 @@ export function acceptedRecord(record: unknown, anchor: ArchiveAnchor): ArchiveR
     throw refuse("RECORD_INVALID", errors[0].reason, errors.map((e) => `${e.reason}: ${e.detail}`).join("; "));
   }
   return record as ArchiveRecord;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The authoritative record directory
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Where WalletWall archive records of the circuit artifacts live, and the only place one counts. SP1-PA2B's
+ * acquisition lane admits a record here from measured bytes (scripts/lib/sp1-circuit-acquisition.ts); every file in
+ * it is judged, so a stray file is a refusal, never "no record".
+ */
+export const PROVING_ARCHIVES_DIR = "evidence/zk/sp1-impl/proving-archives";
+
+/** Every file under PROVING_ARCHIVES_DIR, repository-relative and sorted. */
+export function archiveRecordsIn(repoRoot = "."): string[] {
+  const dir = resolve(repoRoot, PROVING_ARCHIVES_DIR);
+  return existsSync(dir)
+    ? readdirSync(dir)
+        .sort()
+        .map((f) => `${PROVING_ARCHIVES_DIR}/${f}`)
+    : [];
 }
 
 // ---------------------------------------------------------------------------------------------------------------
