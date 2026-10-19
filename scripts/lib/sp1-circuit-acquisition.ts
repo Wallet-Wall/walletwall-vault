@@ -668,8 +668,13 @@ export function acquisitionObservationErrors(
   return out;
 }
 
-function gnarkErrors(g: unknown, where: string, image: string, no: (reason: string, detail: string) => void): void {
-  if (!isObject(g)) return no("GNARK_MISSING", `${where} resolved no gnark image`);
+/** Called only for an object: the caller's closed-shape check refuses anything else before this runs. */
+function gnarkErrors(
+  g: Record<string, any>,
+  where: string,
+  image: string,
+  no: (reason: string, detail: string) => void,
+): void {
   const { registry, repository, tag } = (() => {
     try {
       return parseTaggedRef(image);
@@ -832,7 +837,8 @@ function decodedSegments(path: string): string[] | null {
  */
 export function mirrorIdentity(location: string): string | null {
   const m = /^([a-z0-9]+):\/\/(.+)$/.exec(location);
-  if (!m || /[?#@\s]/.test(location)) return null;
+  // A query, a fragment or whitespace is refused by the segment grammar below; a credential marker is refused here.
+  if (!m || location.includes("@")) return null;
   const provider = MIRROR_PROVIDERS.find((p) => p.scheme === m[1]);
   if (!provider) return null;
   const segments = decodedSegments(m[2]);
@@ -922,18 +928,13 @@ export function acquisitionErrors(
       }
     }),
   );
-  // Every observation passed its own checks above, which already bind two facts to constants on every host: the
-  // archive's file name (the anchor's circuit version) and the census (the committed census). Those cannot differ
-  // between hosts that both passed, so only the measured facts are compared here.
+  // Every observation passed its own checks above, which already bind three facts to constants on every host: the
+  // archive's file name (the anchor's circuit version), its length and sha256 (the committed census's) and the
+  // census itself. Those cannot differ between hosts that both passed, so only the facts no constant binds (the
+  // URL, the inspection, the image) are compared here.
   const first = obs[0];
   obs.slice(1).forEach((o, k) => {
     const where = `observations[${k + 1}] (${o.host})`;
-    if (o.archive.bytes !== first.archive.bytes || o.archive.sha256 !== first.archive.sha256) {
-      no(
-        "HOSTS_DISAGREE",
-        `${where}: ${o.archive.bytes} bytes, sha256 ${o.archive.sha256}; ${first.host}: ${first.archive.bytes} bytes, sha256 ${first.archive.sha256}`,
-      );
-    }
     if (o.transfer.urlEffective !== first.transfer.urlEffective)
       no("HOSTS_DISAGREE", `${where} acquired from another URL`);
     if (!same(o.inspection, first.inspection))

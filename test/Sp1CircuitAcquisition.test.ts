@@ -672,6 +672,8 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
 
     it("needs the host's own identity lines: the runner its run id, the workstation its operating system", function () {
       expect(errorsOf((a) => (a.platform = []))).to.include("OBSERVATION_FIELD");
+      expect(errorsOf((a) => ((a as any).platform = "os=win32 10.0.26200 x64"))).to.include("OBSERVATION_FIELD");
+      expect(errorsOf((a) => (a.platform = ["os=win32 10.0.26200 x64", 7 as never]))).to.include("OBSERVATION_FIELD");
       expect(errorsOf((a) => (a.platform = ["host=developer-workstation"]))).to.include("OBSERVATION_FIELD");
       const b = hostB();
       b.platform = ["host=github-hosted-runner", "runner_os=Linux"];
@@ -819,6 +821,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         "gs://bucket/../obj",
         "gs://bucket/obj?X-Goog-Signature=SECRET",
         "gs://bucket/obj#generation=1",
+        "gs://bucket/dir@x/obj",
         "gs://user:pass@bucket/obj",
         " gs://bucket/obj",
         "gs://bucket/obj ",
@@ -1171,7 +1174,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       const expectation = acquisitionExpectations(d, input);
       expect(expectation.scripts).to.deep.equal({ acquisition: null, mirror: null });
       const o = JSON.parse(readFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]), "utf8")) as AcquisitionObservation;
-      for (const claimed of [o.tool.scriptSha256, sha256(""), "null", ""]) {
+      for (const claimed of [o.tool.scriptSha256, sha256(""), "null", "", null as never]) {
         o.tool.scriptSha256 = claimed;
         expect(reasons(acquisitionObservationErrors(o, 0, expectation)), claimed).to.include("TOOL_NOT_BOUND");
       }
@@ -1179,6 +1182,8 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         readFileSync(join(d, OBSERVATIONS_DIR, "circuit-archive-mirror-a.raw.json"), "utf8"),
       ) as MirrorObservation;
       const archive = { bytes: ARCHIVE.bytes, sha256: ARCHIVE.sha256, upstreamHost: "upstream.invalid" };
+      expect(reasons(mirrorObservationErrors(m, 0, archive, expectation.scripts.mirror))).to.include("TOOL_NOT_BOUND");
+      (m.tool as any).scriptSha256 = null;
       expect(reasons(mirrorObservationErrors(m, 0, archive, expectation.scripts.mirror))).to.include("TOOL_NOT_BOUND");
     });
 
@@ -1199,19 +1204,24 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
 
   describe("the state, derived from the evidence", function () {
     const noRecord: ArchiveEvidence = { records: [], record: null, observations: [], errors: [] };
-    const accepted: ArchiveEvidence = {
-      records: [productionRecordRel(SYNTHETIC_ANCHOR)],
-      record: deriveArchiveRecord([hostA(), hostB()], [mirrorA(), mirrorB()], EXPECT),
-      observations: [...ACQUISITION_OBSERVATIONS_REL],
-      errors: [],
-    };
-    const refused: ArchiveEvidence = { ...accepted, record: null, errors: ["MIRRORS_MISSING: one mirror"] };
+    let accepted: ArchiveEvidence;
+    let refused: ArchiveEvidence;
+    before(function () {
+      accepted = {
+        records: [productionRecordRel(SYNTHETIC_ANCHOR)],
+        record: deriveArchiveRecord([hostA(), hostB()], [mirrorA(), mirrorB()], EXPECT),
+        observations: [...ACQUISITION_OBSERVATIONS_REL],
+        errors: [],
+      };
+      refused = { ...accepted, record: null, errors: ["MIRRORS_MISSING: one mirror"] };
+    });
 
     it("toolingState: the self-test, then the archive evidence; a refused record derives no state", function () {
       expect(toolingState({ selfTestPassed: false, archive: noRecord })).to.equal("TOOLING_NOT_PRESENT");
       expect(toolingState({ selfTestPassed: true, archive: noRecord })).to.equal("TOOLING_READY_NO_ARTIFACT");
       expect(toolingState({ selfTestPassed: true, archive: accepted })).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
       expect(() => toolingState({ selfTestPassed: true, archive: refused })).to.throw(/no state is derivable/);
+      expect(archiveEvidenceState({ ...accepted, errors: ["x"] })).to.equal("REFUSED");
       expect(() => toolingState({ selfTestPassed: true, archive: { ...noRecord, errors: ["x"] } })).to.throw(
         /no state is derivable/,
       );
