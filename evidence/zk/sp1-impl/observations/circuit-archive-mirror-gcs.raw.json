@@ -1,0 +1,30 @@
+{
+  "schema": "walletwall.sp1-circuit-mirror.v1",
+  "host": "developer-workstation",
+  "measuredAtUtc": "2026-10-19T05:29:28Z",
+  "tool": {
+    "script": "scripts/measure-sp1-circuit-mirror.ts",
+    "scriptSha256": "fb63cf4443dedbd4e40d792a5d54543c32b372d246382689849908cd4759040f"
+  },
+  "location": "gs://walletwall-sp1-archive-328o457ytfv/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+  "control": "WalletWall-controlled Google Cloud Storage bucket walletwall-sp1-archive-328o457ytfv in GCP project walletwall (private: public access prevention enforced, uniform bucket-level access; written once by SP1-PA2C with gcloud storage cp as one non-composite object; re-read here with a short-lived OAuth bearer token on the provider path, no signed URL)",
+  "fetch": {
+    "urlHost": "storage.googleapis.com",
+    "urlPath": "/walletwall-sp1-archive-328o457ytfv/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+    "httpCode": 200,
+    "startedAtUtc": "2026-10-19T05:21:21Z",
+    "finishedAtUtc": "2026-10-19T05:29:28Z",
+    "responseHeaders": {
+      "lastModified": "Mon, 19 Oct 2026 05:20:32 GMT",
+      "etag": "\"ae27466996e01b62b739a6db78edb9ba\"",
+      "contentLength": 6211807514
+    }
+  },
+  "bytes": 6211807514,
+  "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+  "expected": {
+    "bytes": 6211807514,
+    "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+  },
+  "agreement": "AGREES"
+}

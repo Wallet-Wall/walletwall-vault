@@ -1,0 +1,30 @@
+{
+  "schema": "walletwall.sp1-circuit-mirror.v1",
+  "host": "developer-workstation",
+  "measuredAtUtc": "2026-10-19T04:44:08Z",
+  "tool": {
+    "script": "scripts/measure-sp1-circuit-mirror.ts",
+    "scriptSha256": "fb63cf4443dedbd4e40d792a5d54543c32b372d246382689849908cd4759040f"
+  },
+  "location": "r2://b69bb874d4dd3937e1255b8527a84854/walletwall-sp1-archive/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+  "control": "WalletWall-controlled Cloudflare R2 bucket walletwall-sp1-archive in the owner account (private; written once by SP1-PA2C as a 60-part S3 multipart upload of the authenticated archive; re-read here through a short-lived SigV4 presigned GET whose query is not recorded)",
+  "fetch": {
+    "urlHost": "b69bb874d4dd3937e1255b8527a84854.r2.cloudflarestorage.com",
+    "urlPath": "/walletwall-sp1-archive/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+    "httpCode": 200,
+    "startedAtUtc": "2026-10-19T04:39:00Z",
+    "finishedAtUtc": "2026-10-19T04:44:08Z",
+    "responseHeaders": {
+      "lastModified": "Mon, 19 Oct 2026 04:22:08 GMT",
+      "etag": "\"f65a0bc730b4d3bd7bc54d7531acd515-60\"",
+      "contentLength": 6211807514
+    }
+  },
+  "bytes": 6211807514,
+  "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+  "expected": {
+    "bytes": 6211807514,
+    "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+  },
+  "agreement": "AGREES"
+}
