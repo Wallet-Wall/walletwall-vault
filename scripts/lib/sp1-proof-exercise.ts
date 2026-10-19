@@ -27,8 +27,10 @@ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "
 import { connect } from "node:net";
 import { basename, dirname, posix, resolve } from "node:path";
 
+import { Interface, getBytes, hexlify, keccak256, type Provider, type Signer } from "ethers";
+
 import { uncommittedEvidenceError } from "./committed-evidence";
-import { PROOF_INVALID } from "./sp1-chain-execution";
+import { PROOF_INVALID, VERIFIER_BYTECODE_REL, verdictOf } from "./sp1-chain-execution";
 import {
   archiveEvidenceState,
   productionRecordRel,
@@ -42,7 +44,7 @@ import {
   type ArchiveRecord,
   type Refusal,
 } from "./sp1-circuit-archive";
-import { readDesignations } from "./sp1-designation";
+import { readDesignations, type ProgramDesignation } from "./sp1-designation";
 import {
   DOCKER_CONTEXT_FROZEN,
   FROZEN_ENV,
@@ -151,7 +153,8 @@ export interface RunObservation {
     passedThrough: string[];
     dropped: string[];
   };
-  egress: { enforcement: string; before: EgressProbe[]; after: EgressProbe[]; condition: typeof EGRESS_DISABLED };
+  /** `condition` is what the tool observed (EGRESS_DISABLED only when every probe was refused); the validator requires it. */
+  egress: { enforcement: string; before: EgressProbe[]; after: EgressProbe[]; condition: string };
   timing: {
     /** The gate run: the record check, the re-hash of the installation, the host, the re-hash again. */
     startedAtUtc: string;
@@ -1292,5 +1295,122 @@ export function sourceIdentity(repoRoot: string): {
     dirty: status.stdout.trim() !== "",
   };
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// The designated verifier path: the CREATE2-authenticated runtime, asked by eth_call (SP1-PA3B's verification tool
+// and the suite that re-executes a committed proof)
+// ---------------------------------------------------------------------------------------------------------------
+
+const VERIFY_PROOF = new Interface(["function verifyProof(bytes32 programVKey, bytes publicValues, bytes proofBytes)"]);
+const HEX_DATA = /^0x(?:[0-9a-fA-F]{2})+$/;
+
+/** The same tampering SP1-TD1's chain-execution check applies: the last public-value bit flipped. */
+function flipLastBit(hex: string): string {
+  const b = getBytes(hex);
+  if (b.length === 0) throw new Error("no public values to tamper with");
+  b[b.length - 1] ^= 1;
+  return hexlify(b);
+}
+
+/**
+ * The designated verifier's initcode as SP1-TD1 recorded it (evidence/zk/sp1-td1/observations/deployment-bytecode
+ * .raw.json), accepted only as its keccak is the designation's CREATE2-authenticated initcodeKeccak.
+ */
+export function authenticatedInitcode(repoRoot: string, designation: ProgramDesignation): string {
+  const doc = JSON.parse(readFileSync(resolve(repoRoot, VERIFIER_BYTECODE_REL), "utf8"));
+  const initcode: unknown = doc?.deployments?.[designation.verifier.version]?.initcode;
+  const c2 = designation.verifier.create2;
+  if (
+    typeof initcode !== "string" ||
+    !HEX_DATA.test(initcode) ||
+    c2?.authenticated !== true ||
+    keccak256(initcode) !== c2.initcodeKeccak
+  ) {
+    throw new Error(
+      `${VERIFIER_BYTECODE_REL} does not hold ${designation.id}'s verifier ${designation.verifier.version} as designated: not the CREATE2-authenticated initcode`,
+    );
+  }
+  return initcode;
+}
+
+/** Deploys `initcode` (no constructor arguments) from `signer` and returns the address it got. */
+export async function deployRuntime(signer: Signer, initcode: string): Promise<string> {
+  const receipt = await (await signer.sendTransaction({ data: initcode })).wait();
+  if (!receipt?.contractAddress) throw new Error("the runtime did not deploy");
+  return receipt.contractAddress;
+}
+
+export interface VerifyInput {
+  address: string;
+  programVKey: string;
+  publicValues: string;
+  proofBytes: string;
+  mode: VerificationCheck["mode"];
+}
+
+/**
+ * Asks the verifier at `address` on `provider`'s chain: the proof as given, then its tampered copy. The code hash at
+ * the address is measured and recorded (the validator holds it to the designation's); the verdicts are the chain's
+ * answers, never judged here. An RPC that does not answer throws (no verdict is no evidence).
+ */
+export async function verifyWithRuntime(provider: Provider, input: VerifyInput): Promise<VerificationCheck> {
+  const code = await provider.getCode(input.address);
+  if (code === "0x") throw new Error(`${input.address} holds no code`);
+  const chainId = (await provider.getNetwork()).chainId.toString();
+  const block = await provider.getBlockNumber();
+  const call = (publicValues: string) => ({
+    to: input.address,
+    data: VERIFY_PROOF.encodeFunctionData("verifyProof", [input.programVKey, publicValues, input.proofBytes]),
+  });
+  const real = await verdictOf(provider, call(input.publicValues));
+  const tampered = await verdictOf(provider, call(flipLastBit(input.publicValues)));
+  return {
+    chainId,
+    address: input.address,
+    runtimeCodeKeccak: keccak256(code),
+    mode: input.mode,
+    verdicts: { real, tampered },
+    block,
+  };
+}
+
+/** Whether `checks` are the designated verifier's acceptance: every check accepted and refused the tampered copy, at least one of them the authenticated runtime itself. */
+export function checksAccept(checks: readonly VerificationCheck[]): boolean {
+  return (
+    checks.length > 0 &&
+    checks.every((c) => c.verdicts.real === "success" && c.verdicts.tampered === `revert ${PROOF_INVALID}`) &&
+    checks.some((c) => c.mode === LOCAL_RUNTIME)
+  );
+}
+
+/** The verification observation for `checks` of `run`'s proof; `acceptance` is computed from the checks, never set. */
+export function verificationObservationFor(input: {
+  host: string;
+  scriptSha256: string;
+  run: BoundRun;
+  verifier: ArchiveAnchor["verifier"];
+  checks: readonly VerificationCheck[];
+  clock?: () => string;
+}): VerificationObservation {
+  const proof = input.run.observation.proof;
+  return {
+    schema: VERIFICATION_SCHEMA,
+    host: input.host,
+    measuredAtUtc: (input.clock ?? utcNow)(),
+    tool: { script: VERIFICATION_SCRIPT_REL, scriptSha256: input.scriptSha256 },
+    run: { path: input.run.path, sha256: input.run.sha256 },
+    proof: {
+      vkey: proof.vkey,
+      publicValuesSha256: proof.publicValuesSha256,
+      proofBytesSha256: proof.proofBytesSha256,
+    },
+    verifier: { ...input.verifier },
+    checks: input.checks.map((c) => ({ ...c, verdicts: { ...c.verdicts } })),
+    acceptance: checksAccept(input.checks) ? ACCEPTED : REJECTED,
+  };
+}
+
+/** sha256 of a tool's own LF bytes: how an observation names the script that made it. */
+export const scriptSha256Of = (fileUrl: string) => sha256(lf(readFileSync(new URL(fileUrl), "utf8")));
 
 export { serializeJson, type ArchiveEvidence };

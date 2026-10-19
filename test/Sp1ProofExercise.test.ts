@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { serializeJson, type ArchiveEvidence } from "../scripts/lib/sp1-circuit-acquisition";
 import { productionRecordRel } from "../scripts/lib/sp1-circuit-acquisition";
@@ -1087,6 +1087,62 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       writeFileSync(join(d, "zkvm", "host", "main.rs"), "fn main() { }\n");
       expect(sourceIdentity(d).dirty).to.equal(true);
       assert.throws(() => sourceIdentity(dirs.make("sp1-pa3a-nogit-")), /not a git checkout|zkvm\/host/);
+    });
+  });
+
+  describe("the commands (run from this checkout; nothing is proved, pulled or downloaded)", function () {
+    const run = (script: string, ...args: string[]) =>
+      spawnSync(process.execPath, [join("node_modules", "tsx", "dist", "cli.mjs"), script, ...args], {
+        cwd: resolve("."),
+        encoding: "utf8",
+        env: { ...process.env, FORCE_COLOR: "0" },
+        timeout: 120_000,
+      });
+
+    it("sp1:proof-exercise-record --validate: no record exists, and the archive record is accepted", function () {
+      this.timeout(120_000);
+      const r = run("scripts/generate-sp1-proof-exercise-record.ts", "--validate");
+      expect(r.status, r.stderr).to.equal(0);
+      expect(r.stdout).to.include("OK:");
+      expect(r.stdout).to.include("no proof-exercise record");
+      expect(r.stdout).to.include("ARCHIVED_VERIFIED_UNEXERCISED");
+    });
+
+    it("sp1:proof-exercise-record: derives nothing while no observations exist (and never overwrites)", function () {
+      this.timeout(120_000);
+      const r = run("scripts/generate-sp1-proof-exercise-record.ts");
+      expect(r.status).to.equal(1);
+      expect(`${r.stdout}\n${r.stderr}`).to.match(/exactly one run observation/);
+      expect(exerciseRecordsIn(".")).to.deep.equal([]);
+    });
+
+    it("sp1:measure-proof-exercise refuses before any act: the arguments, then the host, then the record", function () {
+      this.timeout(120_000);
+      const none = run("scripts/measure-sp1-proof-exercise.ts");
+      expect(none.status).to.equal(1);
+      expect(`${none.stdout}\n${none.stderr}`).to.include("--record is required");
+      const absent = run(
+        "scripts/measure-sp1-proof-exercise.ts",
+        "--record",
+        resolve("absent-record.json"),
+        "--circuit-root",
+        "/srv/absent",
+        "--host",
+        "/srv/absent/mldsa65-host",
+        "--inputs",
+        "/srv/absent/inputs.json",
+        "--host-label",
+        "proving-host-a",
+        "--enforcement",
+        "synthetic",
+        "--out",
+        resolve("absent-out.json"),
+      );
+      expect(absent.status).to.equal(1);
+      expect(`${absent.stdout}\n${absent.stderr}`).to.match(
+        /PROVE_HOST_UNSUPPORTED \(NOT_LINUX\)|RECORD_NOT_AUTHORITATIVE/,
+      );
+      expect(exerciseObservationsIn(".")).to.deep.equal({ run: [], verification: [], other: [] });
     });
   });
 });
