@@ -1,0 +1,273 @@
+{
+  "schema": "walletwall.sp1-circuit-acquisition.v1",
+  "host": "github-hosted-runner",
+  "measuredAtUtc": "2026-10-19T00:04:04Z",
+  "tool": {
+    "script": "scripts/measure-sp1-circuit-acquisition.ts",
+    "scriptSha256": "83c3190cfc3520aa153f43f5c823e07c0742d155a621a2402a4551cf09aa56fd"
+  },
+  "anchor": {
+    "designation": "mldsa65-withdrawal-d1",
+    "circuitVersion": "v6.1.0",
+    "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "verifier": {
+      "version": "v6.1.0",
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    },
+    "verifyingKey": {
+      "sha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "bytes": 492
+    }
+  },
+  "archive": {
+    "file": "v6.1.0-groth16.tar.gz",
+    "bytes": 6211807514,
+    "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+  },
+  "transfer": {
+    "sourceUrl": "https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz",
+    "urlEffective": "https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz",
+    "httpCode": 200,
+    "remoteIp": "3.5.93.98",
+    "timeTotalSeconds": 91.352315,
+    "startedAtUtc": "2026-10-19T00:01:07Z",
+    "finishedAtUtc": "2026-10-19T00:02:38Z",
+    "responseHeaders": {
+      "lastModified": "Wed, 15 Apr 2026 23:37:14 GMT",
+      "etag": "\"06c0c00b698a872f5a78cb31056d077b-741\"",
+      "contentLength": 6211807514,
+      "server": "AmazonS3"
+    }
+  },
+  "independentDigests": [
+    {
+      "tool": "coreutils",
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+    },
+    {
+      "tool": "openssl",
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+    }
+  ],
+  "inspection": {
+    "members": [
+      {
+        "path": "groth16_vk.bin",
+        "bytes": 492,
+        "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+      },
+      {
+        "path": "groth16_circuit.bin",
+        "bytes": 2437991441,
+        "sha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc"
+      },
+      {
+        "path": "SP1VerifierGroth16.sol",
+        "bytes": 3236,
+        "sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0"
+      },
+      {
+        "path": "groth16_pk.bin",
+        "bytes": 5862173061,
+        "sha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167"
+      },
+      {
+        "path": "Groth16Verifier.sol",
+        "bytes": 26770,
+        "sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457"
+      },
+      {
+        "path": "constraints.json",
+        "bytes": 111997113,
+        "sha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b"
+      },
+      {
+        "path": "groth16_witness.json",
+        "bytes": 2802920,
+        "sha256": "ee2ac8e094712a87ec3b0dc50ed39704aa90ee066ce4c5bf6160d54f04014c94"
+      }
+    ],
+    "directories": [],
+    "metadata": [
+      {
+        "path": "._.",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._groth16_vk.bin",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._groth16_circuit.bin",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._SP1VerifierGroth16.sol",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._groth16_pk.bin",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._Groth16Verifier.sol",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._constraints.json",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      },
+      {
+        "path": "._groth16_witness.json",
+        "bytes": 163,
+        "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+        "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+      }
+    ],
+    "provenance": [
+      {
+        "entry": ".",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "groth16_vk.bin",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "groth16_circuit.bin",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "SP1VerifierGroth16.sol",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "groth16_pk.bin",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "Groth16Verifier.sol",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "constraints.json",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      },
+      {
+        "entry": "groth16_witness.json",
+        "key": "SCHILY.xattr.com.apple.provenance",
+        "disposition": "IGNORED_PROVENANCE_METADATA"
+      }
+    ]
+  },
+  "census": {
+    "schema": "walletwall.sp1-circuit-archive-census.v1",
+    "sha256": "e39376dd569ded2c8293b140f20752603fe3706149dd0c756ce3fb4780c5cc40",
+    "entries": 24,
+    "decompressedBytes": 8415018496,
+    "appleDoubleEntries": 8
+  },
+  "gnark": {
+    "repository": "ghcr.io/succinctlabs/sp1-gnark",
+    "tag": "v6.1.0",
+    "index": {
+      "digest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+      "dockerContentDigest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+      "mediaType": "application/vnd.oci.image.index.v1+json",
+      "bytes": 855,
+      "manifests": [
+        {
+          "digest": "sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+          "size": 866,
+          "platform": {
+            "architecture": "amd64",
+            "os": "linux"
+          },
+          "annotations": null
+        },
+        {
+          "digest": "sha256:6ade751e47f161a6d351675c72619ca9f9dff685c41962985e40e2b2289696b9",
+          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+          "size": 565,
+          "platform": {
+            "architecture": "unknown",
+            "os": "unknown"
+          },
+          "annotations": {
+            "vnd.docker.reference.digest": "sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+            "vnd.docker.reference.type": "attestation-manifest"
+          }
+        }
+      ]
+    },
+    "platforms": [
+      {
+        "digest": "sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
+        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+        "platform": {
+          "architecture": "amd64",
+          "os": "linux"
+        },
+        "config": {
+          "digest": "sha256:ceb60d80f46cd8e5869abd778f26dc34c4f3bab205f3d1d5275e532121cced4e",
+          "size": 1378
+        },
+        "layers": [
+          {
+            "digest": "sha256:da539b6761059a0a114c6671f1267b57445e3a54da023db5c28be019e40f0284",
+            "size": 28236332
+          },
+          {
+            "digest": "sha256:ac9e9fd44829dc4c09d86ef88bd74dd389ab282131521aef89f835db242da944",
+            "size": 3510942
+          },
+          {
+            "digest": "sha256:0cb14709acdbcb305475d2803cbe93b2df694ff0c61eb60fac458d42087724dc",
+            "size": 8207615
+          }
+        ]
+      }
+    ],
+    "method": "OCI distribution API: GET /v2/<repository>/manifests/<tag> with an anonymous pull token, the index digest being the sha256 of the raw index bytes and equal to the Docker-Content-Digest header; each platform manifest then fetched by digest and re-hashed; no image pulled",
+    "crossCheck": {
+      "tool": "docker buildx imagetools inspect --raw",
+      "indexSha256": "e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
+    },
+    "observedAtUtc": "2026-10-19T00:04:04Z"
+  },
+  "platform": [
+    "host=github-hosted-runner",
+    "runner_name=GitHub Actions 1000005666",
+    "runner_os=Linux",
+    "image_os=ubuntu24",
+    "image_version=20261012.334.1",
+    "run_id=39178864704",
+    "run_attempt=1",
+    "sha=ba56a62246d6598b6f477ae8d7b125887df9d193",
+    "node=v22.23.3",
+    "Linux runnervm8k3b6 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux"
+  ]
+}

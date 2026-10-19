@@ -1572,7 +1572,7 @@
     {
       "id": "A_NO_PROVING_WITHOUT_ARCHIVE",
       "kind": "assumption",
-      "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED with no WalletWall archive record and an unexercised self-hosted path that proves only from a verified archive: no proving run is authorized, and the only planned one never lets SP1 download the circuit",
+      "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy) or ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B), never an unverified local copy where SP1 reads; the self-hosted path is unexercised and proves only from a verified archive: no proving run has been authorized, and the only planned one never lets SP1 download the circuit",
       "holds": true,
       "observed": "status OWNER_DOWNLOAD_REQUIRED; archive records 0 recorded, 0 on disk; self-hosted path exercised false; proves only from an archive: yes"
     },

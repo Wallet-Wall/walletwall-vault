@@ -161,8 +161,12 @@ refuses the identity everywhere. Recovery is a successor identity's wrapper thro
 a program rebuild can be designated here, a fixed SP1 verifier cannot yet.
 
 **Proving availability (TD1-N9).** The rotation delay protects PqOnly users only while they can prove.
-`PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED`: the v6.1.0 Groth16 artifacts (about 6.21 GB) are not archived by
-WalletWall, and none are installed on the proving host. Their `groth16_vk.bin` must hash to `VERIFIER_HASH`
+`PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED` until SP1-PA2B's record is admitted: the v6.1.0 Groth16 artifacts
+(6,211,807,514 bytes, sha256 `18beebb6…`) were acquired and measured on two hosts and accepted by the archive
+inspector (the committed acquisition observations), but no record exists until two WalletWall-controlled mirrors are
+recorded, and none are installed on the proving host
+([SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md](SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md)). Their
+`groth16_vk.bin` must hash to `VERIFIER_HASH`
 `0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696` (the key `sp1-verifier` 6.3.1 embeds). The
 pinned prover downloads them only when `$SP1_GROTH16_CIRCUIT_PATH/v6.1.0` is absent and checks no digest, so a
 self-hosted path places a verified archive there, keeps `SP1_CIRCUIT_MODE` unset, and pins the gnark image

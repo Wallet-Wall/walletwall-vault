@@ -74,7 +74,9 @@ item holds. Evidence is of three kinds:
 - **Assumptions** over this repository's bytes, re-evaluated on every check: the host manifest's exact shape; sp1-sdk
   `=6.3.1` with features `["blocking"]` only (no `network`, `cuda` or `native-gnark`); no network-only, `aws-lc`,
   `brotli` or `sp1-cuda` crate in the lockfile; backtrace locked without ruzstd; `src/main.rs` proving only with
-  `.groth16()`; proving availability still `OWNER_DOWNLOAD_REQUIRED` with no WalletWall archive.
+  `.groth16()`; proving availability either `OWNER_DOWNLOAD_REQUIRED` with no WalletWall archive record and no local
+  copy, or (SP1-PA2B) `ARCHIVED_VERIFIED_UNEXERCISED` with exactly the one accepted archive record, never an
+  unverified local copy where SP1 reads, and in both the self-hosted path unexercised and archive-only.
 - **Feature facts** from `cargo tree -e features`: sp1-sdk without `network`; reqwest without `http2`/`http3`; rustls
   without `brotli` and with the ring provider only; backtrace without `ruzstd`.
 - **Source facts** from the pinned crates' own bytes, each read from the `.crate` whose sha256 is the lockfile

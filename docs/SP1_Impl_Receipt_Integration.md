@@ -97,7 +97,22 @@ A refused topology fails closed. A later lane whose receipt would land by squash
 **Residuals.** The validator's own code is the checker, reviewed by pull request, as before. A protected change after
 the merge needs evidence no lane defines yet: a later lane must supersede this receipt (as SP1-P1's was superseded),
 and until then the change fails closed; that holds for any change under `contracts/`, an unrelated vault fix
-included, because the receipt states that no contract outside the wrapper changed. Main's history is protected by its
+included, because the receipt states that no contract outside the wrapper changed.
+
+**Supersession of `PROVING_AVAILABILITY` (SP1-PA2B).** The receipt also binds `PROVING_AVAILABILITY` and the
+availability file's digest, read from the working tree, and SP1-PA2B's archive record moves that status to
+`ARCHIVED_VERIFIED_UNEXERCISED`. The receipt is never restamped: `npx tsx scripts/generate-sp1-impl-receipt.ts
+--supersession --lane <id> --record <the archive record> --reason "<why>"` writes
+`evidence/zk/sp1-impl/receipt-supersession.json` once (`walletwall.sp1-impl-receipt-supersession.v1`): the receipt's
+bytes pinned by sha256, a first-parent commit of `origin/main` at which the receipt was live (an ancestor of HEAD
+carrying the same receipt, with a pre-archive availability), `supersedes: ["PROVING_AVAILABILITY"]` (the only
+status superseded this way), and the superseding records (the archive record first: the one the live availability
+accepted, each a regular file in the checkout). `validate:sp1-impl-receipt` then derives that one status and that one file's digest at that commit, read from git, and everything else live. The
+supersession is refused unless the live availability record validates and names an archived state, so it cannot
+hide a live refusal and cannot be filed while nothing moved; an uncommitted supersession file binds nothing, so the
+receipt derives live until the file is committed; the historical subject is refused when it is a lane
+commit, a merge's second parent, a commit without the receipt, or one whose availability was already archived
+(`test/Sp1ImplReceiptSupersession.test.ts`). Main's history is protected by its
 ruleset as measured; an administrator can change that. "Reviewed" means merged through a pull request with its
 required checks: git shows the merge, not an approval, and the measured ruleset requires no approving review; the
 receipt's `OWNER_REVIEW_AND_MERGE` prerequisite stays as published. `contracts/` pins sources: the wrapper's compiled

@@ -17,7 +17,7 @@
     {
       "state": "ARCHIVED_VERIFIED_UNEXERCISED",
       "meaning": "an owner-authorized acquisition produced an accepted record (two agreeing hosts, two WalletWall mirrors, the gnark image by digest); no proof has been made from it",
-      "reachableInThisLane": false
+      "reachableInThisLane": true
     },
     {
       "state": "SELF_HOSTED_PATH_EXERCISED",
@@ -29,7 +29,7 @@
     "path": "evidence/zk/sp1-impl/proving-availability.json",
     "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee",
     "status": "OWNER_DOWNLOAD_REQUIRED",
-    "unchangedByThisTooling": true
+    "consistentWithArchiveEvidence": true
   },
   "anchor": {
     "designation": "mldsa65-withdrawal-d1",
@@ -44,6 +44,10 @@
       "sha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
       "bytes": 492
     }
+  },
+  "acquisition": {
+    "state": "NO_RECORD",
+    "record": null
   },
   "archiveRecord": {
     "schema": "walletwall.sp1-proving-archive.v2",
@@ -1485,8 +1489,7 @@
     "productionAnchorRefusesFixtures": [
       "SUBJECT_MISMATCH",
       "VK_MISMATCH"
-    ],
-    "productionArchiveRecords": 0
+    ]
   },
   "residuals": [
     "the root's owner (the operator's own user) or the superuser can undo the run's lock and rewrite or replace proving inputs, the host binary included, during the run; the after-run re-hash and identity comparison detect a change that persists, not one reverted in between",
@@ -1498,7 +1501,7 @@
     "on POSIX, an empty directory created by another process in the instant between the installer's last existence check and its rename is replaced by the rename (rename(2) semantics; Node exposes no RENAME_NOREPLACE); it held nothing, so nothing is overwritten",
     "a flooding host is killed, not its docker child or container; a run has no overall time limit (proofs take hours)",
     "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
-    "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
+    "the record's acquisitions, mirrors and gnark observation are derived from committed observations (SP1-PA2B): the validator checks that the observations agree with each other, with the committed census and with the designation, and that each mirror observation re-read the archive's bytes when it was made; it cannot check that the hosts were distinct machines, that the mirrors are under WalletWall's control, or that they still serve the bytes (a recorded mirror assertion is not continuously verified availability)",
     "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
     "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
     "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
@@ -1511,5 +1514,5 @@
     "that the self-hosted path proves at all, or within the rotation delay",
     "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound"
   ],
-  "next": "SP1-PA2B resumes only after this amendment merges and both independently acquired copies pass the merged inspector unchanged: then the gnark image by digest, WalletWall mirroring and the record; still not a proof lane"
+  "next": "SP1-PA2B: both independently acquired copies pass the merged inspector unchanged, the gnark image is resolved to its digest on both hosts, two WalletWall-controlled mirrors are re-read byte for byte, and the record is derived from those observations; still not a proof lane"
 }

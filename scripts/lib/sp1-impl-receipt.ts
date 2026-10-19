@@ -23,7 +23,16 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -31,6 +40,7 @@ import { getAddress, type Provider } from "ethers";
 
 import { collectReports } from "../validate-bytecode-size";
 import { fileHistoryErrors } from "./append-only-history";
+import { uncommittedEvidenceError } from "./committed-evidence";
 import {
   MAIN_RULESET_OBSERVATION_REL,
   historyProtectionGaps,
@@ -65,6 +75,7 @@ import {
   type ProgramDesignation,
 } from "./sp1-designation";
 import {
+  PROVING_ARCHIVES_DIR,
   PROVING_ARTIFACTS_OBSERVATION_REL,
   PROVING_AVAILABILITY_REL,
   provingAvailabilityErrors,
@@ -1358,6 +1369,207 @@ function carriesReceipt(repoRoot: string, rev: string): boolean {
   }
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Supersession (SP1-PA2B: the archive record moves PROVING_AVAILABILITY, a status this receipt binds)
+// ---------------------------------------------------------------------------------------------------------------
+//
+// The receipt reads proving availability from the working tree, so the lane that admits a WalletWall archive record
+// (which moves the status to ARCHIVED_VERIFIED_UNEXERCISED and rewrites the availability record) would make every
+// descendant re-derive another receipt. Restamping the historical receipt would erase what it proved. Instead, as
+// SP1-P1's receipt was superseded, a supersession record pins the receipt's exact bytes, names a first-parent main
+// commit at which the receipt was live, and names what superseded it; the superseded status and the availability
+// file's digest are then derived at that commit, read from git, while everything else is still judged live. Only
+// PROVING_AVAILABILITY can be superseded this way, and only once the live availability record validates and names an
+// archived state: a supersession that hides a live refusal, or one filed while nothing moved, is itself refused.
+
+export const IMPL_SUPERSESSION_REL = "evidence/zk/sp1-impl/receipt-supersession.json";
+export const IMPL_SUPERSESSION_SCHEMA = "walletwall.sp1-impl-receipt-supersession.v1";
+/** The statuses a supersession may hold at their historical derivation. */
+export const SUPERSEDABLE_STATUSES: readonly StatusKey[] = ["PROVING_AVAILABILITY"];
+/** The statuses proving availability may name while this receipt is live (SP1-IMPL derived only these). */
+export const LIVE_AVAILABILITY_STATUSES: readonly string[] = ["OWNER_DOWNLOAD_REQUIRED", "LOCAL_COPY_NOT_ARCHIVED"];
+
+export interface ImplSupersession {
+  schema: string;
+  receipt: string;
+  /** sha256 of the committed receipt bytes: the record is pinned, never restamped. */
+  receiptSha256: string;
+  /** A first-parent commit of origin/main at which the receipt was live: its superseded bindings are read there. */
+  historicalSubject: string;
+  supersedes: StatusKey[];
+  /** The records that supersede it; the first is the archive record that moved proving availability. */
+  supersededBy: { lane: string; record: string; reason: string }[];
+}
+
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** The supersession record, or null while the receipt is live. */
+export function readImplSupersession(repoRoot = "."): unknown {
+  const path = resolve(repoRoot, IMPL_SUPERSESSION_REL);
+  if (!existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, "utf8")) as unknown;
+}
+
+function availabilityStatusAt(repoRoot: string, commit: string): string | null {
+  try {
+    const doc = JSON.parse(gitObjects(repoRoot, ["show", `${commit}:${PROVING_AVAILABILITY_REL}`]).toString("utf8"));
+    return typeof doc?.status === "string" ? doc.status : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The live proving-availability record's verdict: its validator's errors, and its status when it validates. */
+export interface LiveAvailability {
+  errors: string[];
+  status: string | null;
+  /** The archive record the live availability accepted (the one a supersession may name), null before admission. */
+  acceptedRecord: string | null;
+}
+
+export function liveAvailability(repoRoot = "."): LiveAvailability {
+  const errors = provingAvailabilityErrors(repoRoot);
+  if (errors.length > 0) return { errors, status: null, acceptedRecord: null };
+  const record = provingAvailabilityFromRepo(repoRoot);
+  return { errors, status: record.status, acceptedRecord: record.archives.accepted?.record ?? null };
+}
+
+/**
+ * The proving-availability inputs the receipt derives from: live (the working tree, validated), or, once superseded,
+ * the file as the historical subject committed it, read from git, with the status it names there and no live errors
+ * (the supersession already established that the record was valid and live at that commit).
+ */
+export function provingAvailabilityInputs(
+  repoRoot: string,
+  historical: { commit: string } | null,
+): LiveAvailability & { bytes: Buffer } {
+  if (historical === null) {
+    const live = liveAvailability(repoRoot);
+    return { ...live, bytes: readFileSync(resolve(repoRoot, PROVING_AVAILABILITY_REL)) };
+  }
+  const bytes = gitObjects(repoRoot, ["show", `${historical.commit}:${PROVING_AVAILABILITY_REL}`]);
+  const doc = JSON.parse(bytes.toString("utf8"));
+  return { errors: [], status: typeof doc?.status === "string" ? doc.status : null, acceptedRecord: null, bytes };
+}
+
+/**
+ * The validated supersession's historical subject, null while the receipt is live; an invalid supersession throws
+ * naming every reason (a descendant that files one cannot make the receipt derive by it).
+ */
+export function boundSupersession(
+  repoRoot = ".",
+  live: LiveAvailability = liveAvailability(repoRoot),
+): { commit: string } | null {
+  const supersession = readImplSupersession(repoRoot);
+  if (supersession === null) return null;
+  const bad = implSupersessionErrors(supersession, readFileSync(resolve(repoRoot, IMPL_RECEIPT_REL)), repoRoot, live);
+  // A supersession counts only as committed: a file written in the working tree supersedes nothing.
+  const dirty = uncommittedEvidenceError([IMPL_SUPERSESSION_REL], repoRoot);
+  if (dirty !== null) bad.push(`the supersession is not as committed: ${dirty}`);
+  if (bad.length > 0) throw new Error(`${IMPL_SUPERSESSION_REL} is invalid: ${bad.join("; ")}`);
+  return { commit: (supersession as ImplSupersession).historicalSubject };
+}
+
+/** Every reason `value` is not a valid supersession of the committed receipt bytes in this repository. */
+export function implSupersessionErrors(
+  value: unknown,
+  receiptBytes: Buffer,
+  repoRoot = ".",
+  live: LiveAvailability = liveAvailability(repoRoot),
+): string[] {
+  const errors: string[] = [];
+  const s = value as Partial<ImplSupersession> | null;
+  if (s === null || typeof s !== "object" || Array.isArray(s)) return ["the supersession record is not an object"];
+  if (s.schema !== IMPL_SUPERSESSION_SCHEMA) errors.push(`supersession schema must be ${IMPL_SUPERSESSION_SCHEMA}`);
+  if (s.receipt !== IMPL_RECEIPT_REL) errors.push(`supersession must name ${IMPL_RECEIPT_REL}`);
+  if (s.receiptSha256 !== sha256(receiptBytes)) {
+    errors.push(
+      "the committed receipt is not the bytes the supersession pinned (a superseded receipt is never restamped)",
+    );
+  }
+  if (!same(s.supersedes, SUPERSEDABLE_STATUSES)) {
+    errors.push(
+      `supersedes must be exactly ${SUPERSEDABLE_STATUSES.join(", ")}: no other status is superseded this way`,
+    );
+  }
+  const commit =
+    typeof s.historicalSubject === "string" && /^[0-9a-f]{40}$/.test(s.historicalSubject) ? s.historicalSubject : null;
+  if (commit === null) {
+    errors.push("historicalSubject must be a full commit id");
+  } else {
+    let mainline: string[] = [];
+    try {
+      mainline = git(repoRoot, ["rev-list", "--first-parent", MAIN_REF]).split("\n").filter(Boolean);
+    } catch {
+      errors.push("origin/main is not available, with its history: the historical subject cannot be verified");
+    }
+    if (mainline.length > 0 && !mainline.includes(commit)) {
+      errors.push(`the historical subject ${commit} is no commit of origin/main's first-parent history`);
+    }
+    try {
+      git(repoRoot, ["merge-base", "--is-ancestor", commit, "HEAD"]);
+    } catch {
+      errors.push(`the historical subject ${commit} is not an ancestor of HEAD, or the history is unavailable`);
+    }
+    let then: Buffer | null = null;
+    try {
+      then = gitObjects(repoRoot, ["show", `${commit}:${IMPL_RECEIPT_REL}`]);
+    } catch {
+      then = null;
+    }
+    if (then === null) errors.push(`the receipt is not in the repository at ${commit} (or the commit is unavailable)`);
+    else if (!then.equals(receiptBytes)) errors.push(`the receipt at ${commit} is not the committed receipt`);
+    const historical = availabilityStatusAt(repoRoot, commit);
+    if (historical === null || !LIVE_AVAILABILITY_STATUSES.includes(historical)) {
+      errors.push(
+        `at ${commit} proving availability was ${String(historical)}, not a status this receipt derived live (${LIVE_AVAILABILITY_STATUSES.join(", ")})`,
+      );
+    }
+  }
+  // The supersession is justified only by a live availability record that validates and has moved to an archived state.
+  if (live.errors.length > 0) {
+    errors.push(
+      `the live proving-availability record does not validate, so nothing supersedes the receipt: ${live.errors.join("; ")}`,
+    );
+  } else if (live.status === null || LIVE_AVAILABILITY_STATUSES.includes(live.status)) {
+    errors.push(
+      `proving availability is still ${String(live.status)}: nothing superseded the receipt, so no supersession may be filed`,
+    );
+  }
+  if (!Array.isArray(s.supersededBy) || s.supersededBy.length === 0) {
+    errors.push("supersededBy must name at least one superseding record");
+  } else {
+    const first = s.supersededBy[0];
+    if (typeof first?.record !== "string" || !first.record.startsWith(`${PROVING_ARCHIVES_DIR}/`)) {
+      errors.push(`the first superseding record must be the archive record under ${PROVING_ARCHIVES_DIR}`);
+    } else if (live.acceptedRecord !== null && first.record !== live.acceptedRecord) {
+      errors.push(
+        `the first superseding record is ${first.record}, not the archive record the live availability accepted (${live.acceptedRecord})`,
+      );
+    }
+    for (const r of s.supersededBy) {
+      if (
+        typeof r?.lane !== "string" ||
+        r.lane.length === 0 ||
+        typeof r?.reason !== "string" ||
+        r.reason.length === 0
+      ) {
+        errors.push("each superseding record has a lane and a reason");
+      }
+      if (typeof r?.record !== "string" || !isRegularFile(resolve(repoRoot, r.record))) {
+        errors.push(`superseding record ${String(r?.record)} is not a file`);
+      }
+    }
+  }
+  return errors;
+}
+
 /**
  * Why `base` is not the receipt's base (review finding F5). The base decides which contract sources changed and what
  * the journal decoded as before, so it is verified, never taken from the receipt: it must be a published main commit
@@ -1450,6 +1662,8 @@ export async function readImplReceiptInputs(
   repoRoot: string,
   baseCommit: string,
   at = "HEAD",
+  /** A validated supersession's historical subject: the superseded status and file are read from git there. */
+  historical: { commit: string } | null = null,
 ): Promise<ImplReceiptInputs> {
   const baseErrors = baseCommitErrors(repoRoot, baseCommit, at);
   if (baseErrors.length > 0) throw new Error(baseErrors.join("; "));
@@ -1458,7 +1672,9 @@ export async function readImplReceiptInputs(
       `${REAL_PROOF_RECORDS_DIR}: real-proof records have no validator in this lane; a lane must define and validate them before they count`,
     );
   }
-  const read = (rel: string) => readFileSync(resolve(repoRoot, rel));
+  const proving = provingAvailabilityInputs(repoRoot, historical);
+  const read = (rel: string) =>
+    rel === PROVING_AVAILABILITY_REL ? proving.bytes : readFileSync(resolve(repoRoot, rel));
 
   const td1 = JSON.parse(read(TD1_RECEIPT_REL).toString("utf8"));
   const td2 = JSON.parse(read(TD2_RECORD_REL).toString("utf8"));
@@ -1486,7 +1702,6 @@ export async function readImplReceiptInputs(
     ? git(repoRoot, ["ls-files", "--", canonRecords]).split("\n").filter(Boolean).sort()
     : [];
 
-  const provingErrors = provingAvailabilityErrors(repoRoot);
   const { abi, contract } = compiledWrapper(repoRoot);
   const contractsChanged = contractsChangedSince(repoRoot, baseCommit);
   const multisig = (Array.isArray(td2.authorizationCut) ? td2.authorizationCut : []).find(
@@ -1558,10 +1773,7 @@ export async function readImplReceiptInputs(
         )
         .map((b) => b.hostId),
     },
-    proving: {
-      status: provingErrors.length === 0 ? provingAvailabilityFromRepo(repoRoot).status : null,
-      errors: provingErrors,
-    },
+    proving: { status: proving.status, errors: proving.errors },
     ast: wrapperAstFacts(contract, abi),
     journalTypesAtBase: journalTypesInSource(git(repoRoot, ["show", `${baseCommit}:${WRAPPER_SOURCE}`])),
     contractsChanged,
@@ -1595,6 +1807,7 @@ export async function readBoundReceiptInputs(repoRoot = "."): Promise<ImplReceip
     repoRoot,
     record.historicalReceipt.historicalLaneBase,
     record.historicalReceipt.writtenAt,
+    boundSupersession(repoRoot),
   );
 }
 

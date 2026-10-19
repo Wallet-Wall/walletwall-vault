@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.13.24",
+  "version": "0.13.25",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "type": "module",
   "main": "index.js",
@@ -64,6 +64,10 @@
     "sp1:measure-circuit-upstream": "tsx scripts/measure-sp1-circuit-upstream.ts",
     "sp1:circuit-tooling": "tsx scripts/generate-sp1-circuit-tooling.ts",
     "validate:sp1-circuit-tooling": "tsx scripts/generate-sp1-circuit-tooling.ts --validate",
+    "sp1:measure-circuit-acquisition": "tsx scripts/measure-sp1-circuit-acquisition.ts",
+    "sp1:measure-circuit-mirror": "tsx scripts/measure-sp1-circuit-mirror.ts",
+    "sp1:proving-archive-record": "tsx scripts/generate-sp1-proving-archive-record.ts",
+    "validate:sp1-proving-archive-record": "tsx scripts/generate-sp1-proving-archive-record.ts --validate",
     "presp1-impl:receipt": "hardhat compile",
     "sp1-impl:receipt": "tsx scripts/generate-sp1-impl-receipt.ts",
     "prevalidate:sp1-impl-receipt": "hardhat compile",

@@ -843,20 +843,23 @@ export const ASSUMPTIONS: readonly Assumption[] = [
   {
     id: "A_NO_PROVING_WITHOUT_ARCHIVE",
     statement:
-      "proving availability is OWNER_DOWNLOAD_REQUIRED with no WalletWall archive record and an unexercised self-hosted path that proves only from a verified archive: no proving run is authorized, and the only planned one never lets SP1 download the circuit",
+      "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy) or ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B), never an unverified local copy where SP1 reads; the self-hosted path is unexercised and proves only from a verified archive: no proving run has been authorized, and the only planned one never lets SP1 download the circuit",
     evaluate(input) {
       const pa = input.provingAvailability as Record<string, any> | null;
       const reqs: unknown[] = Array.isArray(pa?.selfHostedPath?.requirements) ? pa.selfHostedPath.requirements : [];
       const archiveOnly = reqs.some((r) => typeof r === "string" && r.startsWith("prove only from the archive"));
-      const holds =
-        pa?.status === "OWNER_DOWNLOAD_REQUIRED" &&
-        pa?.archives?.records === 0 &&
-        pa?.selfHostedPath?.exercised === false &&
-        archiveOnly &&
-        input.archiveRecords.length === 0;
+      const recorded = pa?.archives?.records;
+      const onDisk = input.archiveRecords.length;
+      const none = pa?.status === "OWNER_DOWNLOAD_REQUIRED" && recorded === 0 && onDisk === 0;
+      const archived =
+        pa?.status === "ARCHIVED_VERIFIED_UNEXERCISED" &&
+        recorded === 1 &&
+        onDisk === 1 &&
+        input.archiveRecords[0] === pa?.archives?.accepted?.record;
+      const holds = (none || archived) && pa?.selfHostedPath?.exercised === false && archiveOnly;
       return {
         holds,
-        observed: `status ${String(pa?.status)}; archive records ${String(pa?.archives?.records)} recorded, ${input.archiveRecords.length} on disk; self-hosted path exercised ${String(pa?.selfHostedPath?.exercised)}; proves only from an archive: ${archiveOnly ? "yes" : "no"}`,
+        observed: `status ${String(pa?.status)}; archive records ${String(recorded)} recorded, ${onDisk} on disk${archived ? ` (the accepted ${String(pa?.archives?.accepted?.record)})` : ""}; self-hosted path exercised ${String(pa?.selfHostedPath?.exercised)}; proves only from an archive: ${archiveOnly ? "yes" : "no"}`,
       };
     },
   },

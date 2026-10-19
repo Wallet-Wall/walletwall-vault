@@ -15,7 +15,6 @@
  * The state is TOOLING_READY_NO_ARTIFACT. It never moves PROVING_AVAILABILITY, which stays OWNER_DOWNLOAD_REQUIRED:
  * tooling is not an artifact, and an artifact is not proving. Research prototype. Not audited. Testnet/local only.
  */
-import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -55,7 +54,15 @@ import {
   type ArchiveAnchor,
   type ArchiveRecord,
 } from "./sp1-circuit-archive";
+import {
+  CENSUS_OBSERVATIONS_REL,
+  anchorFromDesignation,
+  archiveEvidenceState,
+  productionArchiveEvidence,
+  type ArchiveEvidence,
+} from "./sp1-circuit-acquisition";
 import { CENSUS_SCHEMA, type Census } from "./sp1-circuit-archive-census";
+import { uncommittedEvidenceError } from "./committed-evidence";
 import {
   SAFE_ARCHIVE_REL,
   SAFE_FILES,
@@ -86,7 +93,6 @@ import {
   HOST_LOCK_REL,
   PROVING_ARCHIVES_DIR,
   PROVING_AVAILABILITY_REL,
-  archiveRecordsIn,
   lockedCrates,
   readTarMembers,
   type LockedCrate,
@@ -108,12 +114,10 @@ export const REVIEWED_NON_LITERAL_READS: readonly string[] = ["sp1-build/src/com
 /**
  * The census of the upstream v6.1.0 archive (scripts/sp1-circuit-archive-census.ts output, verbatim) on each host that
  * acquired it: the developer workstation, and a GitHub-hosted runner (a re-acquisition of host B's bytes, whose first
- * copy its ephemeral runner deleted after measuring it). The AppleDouble and provenance policies are derived from them.
+ * copy its ephemeral runner deleted after measuring it). The AppleDouble and provenance policies are derived from them,
+ * and SP1-PA2B's acquisition observations must census to exactly this one (scripts/lib/sp1-circuit-acquisition.ts).
  */
-export const CENSUS_OBSERVATIONS_REL: readonly string[] = [
-  "evidence/zk/sp1-impl/observations/circuit-archive-census-developer-workstation.raw.json",
-  "evidence/zk/sp1-impl/observations/circuit-archive-census-github-hosted-runner.raw.json",
-];
+export { CENSUS_OBSERVATIONS_REL, uncommittedEvidenceError };
 
 const sha256 = (b: Uint8Array | string) => createHash("sha256").update(b).digest("hex");
 
@@ -133,7 +137,7 @@ export const STATES = [
     state: "ARCHIVED_VERIFIED_UNEXERCISED",
     meaning:
       "an owner-authorized acquisition produced an accepted record (two agreeing hosts, two WalletWall mirrors, the gnark image by digest); no proof has been made from it",
-    reachableInThisLane: false,
+    reachableInThisLane: true,
   },
   {
     state: "SELF_HOSTED_PATH_EXERCISED",
@@ -166,17 +170,25 @@ export function productionAnchor(repoRoot = "."): ArchiveAnchor {
   ) {
     throw new Error(`${PROVING_AVAILABILITY_REL} and the latest designation do not name one circuit and verifying key`);
   }
-  return {
-    designation: d.id,
-    circuitVersion: d.verifier.version,
-    programVKey: d.programVKey,
-    verifier: {
-      version: d.verifier.version,
-      runtimeCodeKeccak: d.verifier.runtimeCodeKeccak,
-      verifierHash: d.verifier.verifierHash,
-    },
-    verifyingKey: { sha256: d.verifier.verifierHash, bytes: vk.bytes },
-  };
+  return anchorFromDesignation(d, vk.bytes);
+}
+
+/** The gnark image the pinned prover defaults to, as the proving-availability record names it (repository:tag). */
+export function pinnedGnarkImage(repoRoot = "."): string {
+  const pa = JSON.parse(readFileSync(resolve(repoRoot, PROVING_AVAILABILITY_REL), "utf8"));
+  const image = pa?.expectedArtifacts?.gnark?.image;
+  if (typeof image !== "string" || image.length === 0) {
+    throw new Error(`${PROVING_AVAILABILITY_REL} names no gnark image`);
+  }
+  return image;
+}
+
+/** The archive evidence of `repoRoot`, judged for the production anchor and the pinned gnark image. */
+export function productionArchiveEvidenceOf(repoRoot = "."): ArchiveEvidence {
+  return productionArchiveEvidence(repoRoot, {
+    anchor: productionAnchor(repoRoot),
+    gnarkImage: pinnedGnarkImage(repoRoot),
+  });
 }
 
 /** Why `recordPath` is not a production record (a regular .json file directly in PROVING_ARCHIVES_DIR), or null. */
@@ -196,23 +208,6 @@ export function authoritativeRecordError(recordPath: string, repoRoot = "."): st
 
 /** The evidence the production anchor is read from; it counts only as committed. */
 export const ANCHOR_EVIDENCE: readonly string[] = [DESIGNATIONS_DIR, PROVING_AVAILABILITY_REL];
-
-/**
- * Why `paths` (repository-relative) are not exactly what HEAD commits, or null. Git is the evidence's anchor: an
- * uncommitted designation, availability record or archive record is nobody's reviewed claim.
- */
-export function uncommittedEvidenceError(paths: readonly string[], repoRoot: string): string | null {
-  const git = (...args: string[]) =>
-    spawnSync("git", ["-C", repoRoot, "--no-optional-locks", ...args], { encoding: "utf8", shell: false });
-  if (git("rev-parse", "--is-inside-work-tree").stdout.trim() !== "true") return "NOT_A_GIT_CHECKOUT";
-  for (const p of paths) {
-    if (git("ls-files", "--error-unmatch", "--", p).status !== 0) return `UNTRACKED ${p}`;
-  }
-  const status = git("status", "--porcelain", "--untracked-files=all", "--", ...paths);
-  if (status.status !== 0) return "GIT_STATUS_FAILED";
-  const first = status.stdout.split("\n").find((l) => l.trim() !== "");
-  return first === undefined ? null : `UNCOMMITTED ${first.trim()}`;
-}
 
 /** The production anchor from `repoRoot`'s committed evidence (the CLIs pass the checkout they live in, never cwd). */
 export function committedProductionAnchor(repoRoot: string): ArchiveAnchor {
@@ -588,7 +583,6 @@ export interface SelfTest {
   hostile: SelfTestCase[];
   gate: SelfTestCase[];
   productionAnchorRefusesFixtures: string[];
-  productionArchiveRecords: number;
 }
 
 const refusalOf = (e: unknown) =>
@@ -756,8 +750,6 @@ export async function runSelfTest(repoRoot = "."): Promise<SelfTest> {
     if (!production.includes("SUBJECT_MISMATCH") || !production.includes("VK_MISMATCH")) {
       fail(`the production anchor does not refuse the synthetic record (${production.join(", ")})`);
     }
-    const records = archiveRecordsIn(repoRoot).length;
-    if (records !== 0) fail(`${PROVING_ARCHIVES_DIR} holds ${records} records; no lane has admitted any`);
     return {
       fixtures: [SYNTHETIC_ANCHOR_REL, SAFE_ARCHIVE_REL, SAFE_RECORD_REL].map((p) => ({
         path: p,
@@ -767,7 +759,6 @@ export async function runSelfTest(repoRoot = "."): Promise<SelfTest> {
       hostile,
       gate,
       productionAnchorRefusesFixtures: [...new Set(production)].sort(),
-      productionArchiveRecords: records,
     };
   } finally {
     makeWritable(work);
@@ -779,14 +770,28 @@ export async function runSelfTest(repoRoot = "."): Promise<SelfTest> {
 // The tooling record
 // ---------------------------------------------------------------------------------------------------------------
 
-export function toolingState(input: { productionArchiveRecords: number; selfTestPassed: boolean }): ToolingState {
+/**
+ * The state the facts derive, never a string anyone sets: the self-test first (no tooling without it), then the
+ * archive evidence (scripts/lib/sp1-circuit-acquisition.ts): no record is TOOLING_READY_NO_ARTIFACT; exactly the
+ * accepted record (derived from the committed two-host acquisition and mirror observations, accepted for the
+ * designation, committed) is ARCHIVED_VERIFIED_UNEXERCISED; anything else under the archive directory derives no
+ * state at all. SELF_HOSTED_PATH_EXERCISED is never derived here: no proof lane exists.
+ */
+export function toolingState(input: { selfTestPassed: boolean; archive: ArchiveEvidence }): ToolingState {
   if (!input.selfTestPassed) return "TOOLING_NOT_PRESENT";
-  if (input.productionArchiveRecords > 0) {
-    throw new Error(
-      "an archive record exists: ARCHIVED_VERIFIED_UNEXERCISED is not reachable before an acquisition lane admits it",
-    );
-  }
-  return "TOOLING_READY_NO_ARTIFACT";
+  const s = archiveEvidenceState(input.archive);
+  if (s === "NO_RECORD") return "TOOLING_READY_NO_ARTIFACT";
+  if (s === "ACCEPTED") return "ARCHIVED_VERIFIED_UNEXERCISED";
+  throw new Error(
+    `${PROVING_ARCHIVES_DIR} holds what the acquisition evidence does not derive, so no state is derivable: ${input.archive.errors.join("; ")}`,
+  );
+}
+
+/** The proving-availability statuses consistent with a tooling state; any other pairing is a stale record. */
+export function availabilityStatusesFor(state: ToolingState): readonly string[] {
+  return state === "ARCHIVED_VERIFIED_UNEXERCISED"
+    ? ["ARCHIVED_VERIFIED_UNEXERCISED"]
+    : ["OWNER_DOWNLOAD_REQUIRED", "LOCAL_COPY_NOT_ARCHIVED"];
 }
 
 export const RESIDUALS: readonly string[] = [
@@ -799,7 +804,7 @@ export const RESIDUALS: readonly string[] = [
   "on POSIX, an empty directory created by another process in the instant between the installer's last existence check and its rename is replaced by the rename (rename(2) semantics; Node exposes no RENAME_NOREPLACE); it held nothing, so nothing is overwritten",
   "a flooding host is killed, not its docker child or container; a run has no overall time limit (proofs take hours)",
   "the upstream observation is bound to the lockfile and its script in CI but re-read only where the pinned crates are cached (npm run sp1:measure-circuit-upstream -- --check); the gate's own rules are constants, so a forged observation can hide a future SP1 change, never widen the gate",
-  "the record's acquisitions, mirrors and gnark observation are recorded assertions: the validator checks their form and agreement, not that two hosts or two mirrors exist; that is the acquisition lane's evidence to produce",
+  "the record's acquisitions, mirrors and gnark observation are derived from committed observations (SP1-PA2B): the validator checks that the observations agree with each other, with the committed census and with the designation, and that each mirror observation re-read the archive's bytes when it was made; it cannot check that the hosts were distinct machines, that the mirrors are under WalletWall's control, or that they still serve the bytes (a recorded mirror assertion is not continuously verified availability)",
   "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
   "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
   "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
@@ -813,6 +818,27 @@ export const NOT_ESTABLISHED: readonly string[] = [
   "that the self-hosted path proves at all, or within the rotation delay",
   "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound",
 ];
+
+/** What an accepted record still does not establish (SP1-PA2B): availability of bytes is not proving, and never soundness. */
+export const NOT_ESTABLISHED_ARCHIVED: readonly string[] = [
+  "that the self-hosted path proves at all, on what hardware, or within the 2-day rotation delay: no proof has been made from the archive (SELF_HOSTED_PATH_EXERCISED is the next lane's, never this one's)",
+  "that the mirrors keep serving the archive: each was re-read byte for byte when its observation was made; the record is that assertion, never a continuous check",
+  "that the two acquiring hosts and the two mirrors are independent beyond what their recorded identities and locations state",
+  "that the digest-pinned gnark image is archived under WalletWall's control: the record pins its identity (the registry's index digest and its linux/amd64 manifest), not a copy of its bytes, and the image is never pulled here",
+  "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound; archive provenance is where the bytes came from, never cryptographic soundness",
+  "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED",
+];
+
+/** The residuals and the not-established list the tooling record carries in `state`. */
+export const residualsFor = (state: ToolingState): readonly string[] =>
+  state === "ARCHIVED_VERIFIED_UNEXERCISED"
+    ? [
+        ...RESIDUALS,
+        "the acquisition observations bind the measurement scripts by sha256 and the inspection by the committed anchor, and the record is re-derived from them in CI; the archive itself is never in CI, so a record that no longer matches the archive's bytes is caught only where the archive is (npm run sp1:circuit-archive:inspect -- --archive <file> --record <record>), as the installer and the prove gate do before every use",
+      ]
+    : RESIDUALS;
+export const notEstablishedFor = (state: ToolingState): readonly string[] =>
+  state === "ARCHIVED_VERIFIED_UNEXERCISED" ? NOT_ESTABLISHED_ARCHIVED : NOT_ESTABLISHED;
 
 /** The tooling record the committed evidence and the self-test derive. */
 export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<string, unknown>> {
@@ -830,17 +856,19 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
   const census = JSON.parse(censusBytes) as Census;
   const paBytes = readFileSync(at(PROVING_AVAILABILITY_REL));
   const pa = JSON.parse(paBytes.toString("utf8"));
-  if (pa.status !== "OWNER_DOWNLOAD_REQUIRED") {
+  const archive = productionArchiveEvidence(repoRoot, { anchor, gnarkImage: pinnedGnarkImage(repoRoot) });
+  const selfTest = await runSelfTest(repoRoot);
+  const state = toolingState({ selfTestPassed: true, archive });
+  if (!availabilityStatusesFor(state).includes(String(pa.status))) {
     throw new Error(
-      `proving availability is ${String(pa.status)}: this lane leaves it OWNER_DOWNLOAD_REQUIRED, and a change needs its own lane`,
+      `proving availability is ${String(pa.status)}, but the archive evidence derives ${state}: regenerate it (npm run sp1:proving-availability)`,
     );
   }
-  const selfTest = await runSelfTest(repoRoot);
-  const state = toolingState({ productionArchiveRecords: selfTest.productionArchiveRecords, selfTestPassed: true });
+  const record = archive.record;
   const f = obs.facts;
   return {
     schema: TOOLING_SCHEMA,
-    lane: "SP1-PA2A",
+    lane: record === null ? "SP1-PA2A" : "SP1-PA2B",
     amendment:
       "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
     state,
@@ -849,14 +877,33 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
       path: PROVING_AVAILABILITY_REL,
       sha256: sha256(paBytes),
       status: pa.status,
-      unchangedByThisTooling: true,
+      consistentWithArchiveEvidence: true,
     },
     anchor,
+    acquisition:
+      record === null
+        ? { state: archiveEvidenceState(archive), record: null }
+        : {
+            state: archiveEvidenceState(archive),
+            record: archive.records[0],
+            derivedFrom: archive.observations,
+            archive: { file: record.archive.file, bytes: record.archive.bytes, sha256: record.archive.sha256 },
+            acquisitions: record.acquisitions.map((a) => ({ host: a.host, observedAtUtc: a.observedAtUtc })),
+            members: record.members.length,
+            ignoredMetadata: record.metadata.length,
+            verifyingKey: record.members.find((m) => m.path === VK_FILE) ?? null,
+            gnark: { repository: record.gnark.repository, tag: record.gnark.tag, digest: record.gnark.digest },
+            mirrors: record.mirrors.map((m) => m.location),
+            establishes:
+              "WalletWall independently identified, authenticated, recorded and mirrored the exact proving artifacts its designated verifier expects: two hosts acquired the same bytes, the merged inspector accepted them unchanged, every member and every ignored metadata entry is recorded, two WalletWall-controlled mirrors were re-read byte for byte when recorded, and the gnark image is pinned by its immutable digest",
+            doesNotEstablish:
+              "that the Groth16 trusted setup behind the key is sound (verifying-key equality is integrity and compatibility), that the self-hosted proving path works (no proof has been made), that the mirrors stay available (recorded assertions, never a continuous check), or production readiness",
+          },
     archiveRecord: {
       schema: ARCHIVE_RECORD_SCHEMA,
       jsonSchema: { path: ARCHIVE_JSON_SCHEMA_REL, sha256: sha256(readFileSync(at(ARCHIVE_JSON_SCHEMA_REL))) },
       authoritativeDir: PROVING_ARCHIVES_DIR,
-      productionRecords: selfTest.productionArchiveRecords,
+      productionRecords: archive.records.length,
       requiredMembers: REQUIRED_MEMBERS,
       minAcquisitions: MIN_ACQUISITIONS,
       minMirrors: MIN_MIRRORS,
@@ -928,9 +975,12 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
       refusals: REFUSAL_CODES,
     },
     selfTest,
-    residuals: RESIDUALS,
-    notEstablished: NOT_ESTABLISHED,
-    next: "SP1-PA2B resumes only after this amendment merges and both independently acquired copies pass the merged inspector unchanged: then the gnark image by digest, WalletWall mirroring and the record; still not a proof lane",
+    residuals: residualsFor(state),
+    notEstablished: notEstablishedFor(state),
+    next:
+      record === null
+        ? "SP1-PA2B: both independently acquired copies pass the merged inspector unchanged, the gnark image is resolved to its digest on both hosts, two WalletWall-controlled mirrors are re-read byte for byte, and the record is derived from those observations; still not a proof lane"
+        : "SP1-PA3: install exclusively from the committed verified archive, with the digest-pinned gnark image, network egress off; one real Groth16 proof of the designated program, verified through the designated verifier path, with peak memory and wall time recorded against the 2-day rotation delay; only then SELF_HOSTED_PATH_EXERCISED",
   };
 }
 

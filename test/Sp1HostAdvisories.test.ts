@@ -389,6 +389,43 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
     expect(a.evaluate(input(`${s.hostMainText}\nfn n() { let _ = "x"; network(); }\n`)).holds).to.equal(false);
   });
 
+  it("the archive assumption holds for the one accepted archive record (SP1-PA2B), and for nothing in between", function () {
+    const s = fresh();
+    const lock = parseCargoLock(s.locks.host as string);
+    const a = ASSUMPTIONS.find((x) => x.id === "A_NO_PROVING_WITHOUT_ARCHIVE") as (typeof ASSUMPTIONS)[number];
+    const record = "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json";
+    const live = structuredClone((s.provingAvailability as { doc: any }).doc);
+    const archived = (over: (pa: any) => void = () => undefined, onDisk: string[] = [record]) => {
+      const pa = structuredClone(live);
+      pa.status = "ARCHIVED_VERIFIED_UNEXERCISED";
+      pa.archives = { ...pa.archives, records: 1, accepted: { record } };
+      over(pa);
+      return a.evaluate({
+        hostManifestText: s.hostManifestText,
+        hostMainText: s.hostMainText,
+        hostLock: lock,
+        provingAvailability: pa,
+        archiveRecords: onDisk,
+      });
+    };
+    expect(archived().holds).to.equal(true);
+    expect(archived().observed).to.include(`(the accepted ${record})`);
+    expect(archived((pa) => (pa.archives.records = 0)).holds).to.equal(false);
+    expect(archived((pa) => (pa.archives.records = 2)).holds).to.equal(false);
+    expect(archived(() => undefined, []).holds).to.equal(false);
+    expect(archived(() => undefined, [record, "evidence/zk/sp1-impl/proving-archives/second.json"]).holds).to.equal(
+      false,
+    );
+    expect(
+      archived((pa) => (pa.archives.accepted.record = "evidence/zk/sp1-impl/proving-archives/other.json")).holds,
+    ).to.equal(false);
+    expect(archived((pa) => delete pa.archives.accepted).holds).to.equal(false);
+    expect(archived((pa) => (pa.selfHostedPath.exercised = true)).holds).to.equal(false);
+    expect(archived((pa) => (pa.selfHostedPath.requirements = [])).holds).to.equal(false);
+    expect(archived((pa) => (pa.status = "LOCAL_COPY_NOT_ARCHIVED")).holds).to.equal(false);
+    expect(archived((pa) => (pa.status = "SELF_HOSTED_PATH_EXERCISED")).holds).to.equal(false);
+  });
+
   it("a WalletWall archive or a changed proving availability breaks the archive assumption behind rustls's condition", function () {
     const s = fresh();
     const pa = s.provingAvailability as { sha256: string; doc: any };

@@ -10,7 +10,7 @@
 import { expect } from "chai";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -35,12 +35,14 @@ import {
 import {
   ARCHIVE_JSON_SCHEMA_REL,
   CENSUS_OBSERVATIONS_REL,
+  NOT_ESTABLISHED_ARCHIVED,
   STATES,
   TOOLING_REL,
   TOOLING_SCHEMA,
   UPSTREAM_OBSERVATION_REL,
   UPSTREAM_SCRIPT_REL,
   authoritativeRecordError,
+  availabilityStatusesFor,
   censusObservationErrors,
   censusPolicyErrors,
   committedProductionAnchor,
@@ -50,19 +52,35 @@ import {
   environmentReads,
   gateCoverageErrors,
   measureUpstream,
+  pinnedGnarkImage,
   productionAnchor,
   readUpstreamFacts,
+  serializeTooling,
   toolingErrors,
+  toolingRecordFromRepo,
   toolingState,
   uncommittedEvidenceError,
   upstreamObservationErrors,
   type UpstreamObservation,
 } from "../scripts/lib/sp1-circuit-tooling";
 import {
+  ACQUISITION_OBSERVATIONS_REL,
+  MIRROR_SCHEMA,
+  MIRROR_SCRIPT_REL,
+  OBSERVATIONS_DIR,
+  acquisitionExpectations,
+  deriveArchiveRecord,
+  mirrorObservationsIn,
+  productionRecordRel,
+  serializeJson,
+} from "../scripts/lib/sp1-circuit-acquisition";
+import {
   PROVING_ARCHIVES_DIR,
   PROVING_AVAILABILITY_REL,
   archiveRecordsIn,
   provingAvailabilityErrors,
+  provingAvailabilityFromRepo,
+  serializeProvingAvailability,
 } from "../scripts/lib/sp1-proving-availability";
 import { refusalOf, symlinkOrSkip, tempDirs } from "./helpers/circuit-tooling";
 
@@ -162,20 +180,47 @@ const srcOf =
     return s;
   };
 
+/** Whether the committed repository holds an archive record (SP1-PA2B admitted): the state the suites must hold to. */
+const archived = () => archiveRecordsIn(".").length > 0;
+
 describe("SP1-PA2A circuit tooling contract", function () {
   const dirs = tempDirs();
   afterEach(() => dirs.cleanup());
 
+  /** A copy of the evidence, scripts and fixtures as a git repository with one commit: committed evidence judges as
+   *  committed, so the copy derives what the repository derives (an uncommitted copy would refuse an archive record). */
+  function copyAsRepo(): string {
+    const repo = dirs.make();
+    for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock", "package.json"]) {
+      cpSync(resolve(p), join(repo, p), { recursive: true });
+    }
+    const git = (...args: string[]) => {
+      const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+    };
+    git("init", "-q");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "test");
+    git("config", "commit.gpgsign", "false");
+    git("add", "-A");
+    git("commit", "-q", "-m", "evidence");
+    return repo;
+  }
+
   describe("the committed state", function () {
-    it("validates: TOOLING_READY_NO_ARTIFACT, PROVING_AVAILABILITY still OWNER_DOWNLOAD_REQUIRED", async function () {
+    it("validates: the state and the proving availability the committed archive evidence derive", async function () {
       this.timeout(120_000);
       expect(await toolingErrors(".")).to.deep.equal([]);
       const r = JSON.parse(read(TOOLING_REL).toString("utf8"));
       expect(r.schema).to.equal(TOOLING_SCHEMA);
-      expect(r.state).to.equal("TOOLING_READY_NO_ARTIFACT");
-      expect(r.provingAvailability.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
+      // Before SP1-PA2B admits a record: TOOLING_READY_NO_ARTIFACT and OWNER_DOWNLOAD_REQUIRED; after: the archived pair.
+      expect(r.state).to.equal(archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "TOOLING_READY_NO_ARTIFACT");
+      expect(r.provingAvailability.status).to.equal(
+        archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "OWNER_DOWNLOAD_REQUIRED",
+      );
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
-      expect(r.archiveRecord.productionRecords).to.equal(0);
+      expect(r.archiveRecord.productionRecords).to.equal(archived() ? 1 : 0);
+      expect(r.lane).to.equal(archived() ? "SP1-PA2B" : "SP1-PA2A");
       expect(r.selfTest.hostile).to.have.length(153);
       expect(r.archiveRecord.schema).to.equal("walletwall.sp1-proving-archive.v2");
       expect(r.archiveRecord.ignoredMetadata.derivedFrom.archive).to.deep.equal({
@@ -186,41 +231,175 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(STATES.filter((s) => s.reachableInThisLane).map((s) => s.state)).to.deep.equal([
         "TOOLING_NOT_PRESENT",
         "TOOLING_READY_NO_ARTIFACT",
+        "ARCHIVED_VERIFIED_UNEXERCISED",
       ]);
+      expect(STATES.find((s) => s.state === "SELF_HOSTED_PATH_EXERCISED")?.reachableInThisLane).to.equal(false);
+      // The state is derived from the archive evidence, and the record says which state it holds and why.
+      expect(r.acquisition.state).to.equal(r.state === "TOOLING_READY_NO_ARTIFACT" ? "NO_RECORD" : "ACCEPTED");
+      expect(availabilityStatusesFor(r.state)).to.include(r.provingAvailability.status);
     });
 
-    it("leaves proving availability exactly as its own validator derives it, with no archive record", function () {
+    it("leaves proving availability exactly as its own validator derives it, counting exactly the archive records", function () {
       expect(provingAvailabilityErrors(".")).to.deep.equal([]);
       const pa = JSON.parse(read(PROVING_AVAILABILITY_REL).toString("utf8"));
-      expect(pa.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
-      expect(pa.archives.records).to.equal(0);
-      expect(archiveRecordsIn(".")).to.deep.equal([]);
+      expect(pa.status).to.equal(archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "OWNER_DOWNLOAD_REQUIRED");
+      expect(pa.archives.records).to.equal(archiveRecordsIn(".").length);
+      expect(pa.selfHostedPath.exercised).to.equal(false);
+      if (archived()) expect(pa.archives.accepted.record).to.equal(archiveRecordsIn(".")[0]);
+      else expect(pa.archives).to.not.have.property("accepted");
     });
 
     it("refuses a stale tooling record", async function () {
       this.timeout(120_000);
-      const repo = dirs.make();
-      for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock"]) {
-        cpSync(resolve(p), join(repo, p), { recursive: true });
-      }
+      const repo = copyAsRepo();
       writeFileSync(join(repo, TOOLING_REL), "{}\n");
       expect(await toolingErrors(repo)).to.deep.equal([
         `${TOOLING_REL} is not what the evidence and the self-test derive: regenerate it`,
       ]);
     });
 
-    it("refuses to derive anything while proving availability is other than OWNER_DOWNLOAD_REQUIRED", async function () {
+    it("refuses to derive anything while proving availability names a state the archive evidence does not derive", async function () {
       this.timeout(120_000);
       const repo = dirs.make();
       for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock"]) {
         cpSync(resolve(p), join(repo, p), { recursive: true });
       }
       const pa = JSON.parse(read(PROVING_AVAILABILITY_REL).toString("utf8"));
-      pa.status = "LOCAL_COPY_NOT_ARCHIVED";
+      // An archived status without an accepted record is a stale or inflated record, never a state.
+      pa.status = "ARCHIVED_VERIFIED_UNEXERCISED";
       writeFileSync(join(repo, PROVING_AVAILABILITY_REL), JSON.stringify(pa));
+      const state = archiveRecordsIn(repo).length === 0 ? "TOOLING_READY_NO_ARTIFACT" : "ARCHIVED_VERIFIED_UNEXERCISED";
+      if (state === "TOOLING_READY_NO_ARTIFACT") {
+        expect(await toolingErrors(repo)).to.deep.equal([
+          "proving availability is ARCHIVED_VERIFIED_UNEXERCISED, but the archive evidence derives TOOLING_READY_NO_ARTIFACT: regenerate it (npm run sp1:proving-availability)",
+        ]);
+      }
+      // And a record alone, without the observations that derive it, derives no state at all.
+      const stray = join(repo, PROVING_ARCHIVES_DIR, "v6.1.0-groth16.json");
+      mkdirSync(join(repo, PROVING_ARCHIVES_DIR), { recursive: true });
+      if (archiveRecordsIn(repo).length === 0) writeFileSync(stray, "{}\n");
+      else writeFileSync(join(repo, PROVING_ARCHIVES_DIR, "stray.json"), "{}\n");
+      const errors = await toolingErrors(repo);
+      expect(errors).to.have.length(1);
+      expect(errors[0]).to.match(/no state is derivable/);
+    });
+
+    it("derives ARCHIVED_VERIFIED_UNEXERCISED in a repository holding the record the committed observations derive", async function () {
+      this.timeout(300_000);
+      const present = ACQUISITION_OBSERVATIONS_REL.every((rel) => existsSync(resolve(rel)));
+      if (!present) this.skip();
+      const repo = copyAsRepo();
+      const git = (...args: string[]) => {
+        const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+        if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+        return r.stdout;
+      };
+      const input = { anchor: productionAnchor(repo), gnarkImage: pinnedGnarkImage(repo) };
+      if (archived()) {
+        // The repository already holds the admitted record: the copy derives the archived state as committed, and a
+        // record edited after its commit derives no state again.
+        expect(await toolingErrors(repo)).to.deep.equal([]);
+        const tooling = await toolingRecordFromRepo(repo);
+        expect(tooling.state).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+        expect((tooling.acquisition as { state: string }).state).to.equal("ACCEPTED");
+        const record = JSON.parse(readFileSync(join(repo, productionRecordRel(input.anchor)), "utf8"));
+        writeFileSync(
+          join(repo, productionRecordRel(input.anchor)),
+          serializeJson({ ...record, mirrors: [...record.mirrors].reverse() }),
+        );
+        const errors = await toolingErrors(repo);
+        expect(errors).to.have.length(1);
+        expect(errors[0]).to.match(/no state is derivable/);
+        return;
+      }
+      // Two synthetic mirror observations of the REAL archive (locations that are plainly not mirrors): the record
+      // then derives from the real acquisition observations, and every dependent record follows from it.
+      const expectation = acquisitionExpectations(repo, input);
+      const real = JSON.parse(read(ACQUISITION_OBSERVATIONS_REL[0]).toString("utf8"));
+      const mirror = (id: string, location: string, urlHost: string, urlPath: string) =>
+        writeFileSync(
+          join(repo, OBSERVATIONS_DIR, `circuit-archive-mirror-${id}.raw.json`),
+          serializeJson({
+            schema: MIRROR_SCHEMA,
+            host: "developer-workstation",
+            measuredAtUtc: "2026-10-19T01:00:00Z",
+            tool: { script: MIRROR_SCRIPT_REL, scriptSha256: expectation.scripts.mirror },
+            location,
+            control: "TEST ONLY: a synthetic location in a temporary repository, never committed",
+            fetch: {
+              urlHost,
+              urlPath,
+              httpCode: 200,
+              startedAtUtc: "2026-10-19T00:50:00Z",
+              finishedAtUtc: "2026-10-19T00:59:00Z",
+              responseHeaders: { lastModified: null, etag: null, contentLength: real.archive.bytes },
+            },
+            bytes: real.archive.bytes,
+            sha256: real.archive.sha256,
+            expected: { bytes: real.archive.bytes, sha256: real.archive.sha256 },
+            agreement: "AGREES",
+          }),
+        );
+      mirror(
+        "test-a",
+        "gs://walletwall-test-only-not-a-mirror-a/v6.1.0-groth16.tar.gz",
+        "storage.googleapis.com",
+        "/walletwall-test-only-not-a-mirror-a/v6.1.0-groth16.tar.gz",
+      );
+      mirror(
+        "test-b",
+        "r2://0123456789abcdef0123456789abcdef/walletwall-test-only-not-a-mirror-b/v6.1.0-groth16.tar.gz",
+        "0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com",
+        "/walletwall-test-only-not-a-mirror-b/v6.1.0-groth16.tar.gz",
+      );
+      const observations = ACQUISITION_OBSERVATIONS_REL.map((rel) => JSON.parse(read(rel).toString("utf8")));
+      const record = deriveArchiveRecord(
+        observations,
+        mirrorObservationsIn(repo).map((rel) => JSON.parse(readFileSync(join(repo, rel), "utf8"))),
+        expectation,
+      );
+      mkdirSync(join(repo, PROVING_ARCHIVES_DIR), { recursive: true });
+      writeFileSync(join(repo, productionRecordRel(input.anchor)), serializeJson(record));
+      git("add", "-A");
+      git("commit", "-q", "-m", "the record");
+      // Availability must follow the record, else the pair is stale.
       expect(await toolingErrors(repo)).to.deep.equal([
-        "proving availability is LOCAL_COPY_NOT_ARCHIVED: this lane leaves it OWNER_DOWNLOAD_REQUIRED, and a change needs its own lane",
+        "proving availability is OWNER_DOWNLOAD_REQUIRED, but the archive evidence derives ARCHIVED_VERIFIED_UNEXERCISED: regenerate it (npm run sp1:proving-availability)",
       ]);
+      const pa = provingAvailabilityFromRepo(repo);
+      expect(pa.status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(pa.selfHostedPath.exercised).to.equal(false);
+      expect(pa.archives).to.deep.include({ records: 1 });
+      expect(pa.archives.accepted?.record).to.equal(productionRecordRel(input.anchor));
+      expect(pa.archives.accepted?.mirrors).to.have.length(2);
+      expect(pa.expectedArtifacts.tarball).to.deep.include({
+        sha256: record.archive.sha256,
+        status: "ARCHIVED_VERIFIED",
+      });
+      expect(pa.expectedArtifacts.gnark.imageDigest).to.equal(record.gnark.digest);
+      writeFileSync(join(repo, PROVING_AVAILABILITY_REL), serializeProvingAvailability(pa));
+      expect(provingAvailabilityErrors(repo)).to.deep.equal([]);
+      const tooling = await toolingRecordFromRepo(repo);
+      expect(tooling.state).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(tooling.lane).to.equal("SP1-PA2B");
+      const acquisition = tooling.acquisition as { state: string; record: string; mirrors: string[]; members: number };
+      expect(acquisition.state).to.equal("ACCEPTED");
+      expect(acquisition.record).to.equal(productionRecordRel(input.anchor));
+      expect(acquisition.members).to.equal(7);
+      expect((tooling.archiveRecord as { productionRecords: number }).productionRecords).to.equal(1);
+      expect(tooling.notEstablished).to.deep.equal(NOT_ESTABLISHED_ARCHIVED);
+      writeFileSync(join(repo, TOOLING_REL), serializeTooling(tooling));
+      git("add", "-A");
+      git("commit", "-q", "-m", "availability and tooling");
+      expect(await toolingErrors(repo)).to.deep.equal([]);
+      // And the record alone, uncommitted after an edit, derives no state again.
+      writeFileSync(
+        join(repo, productionRecordRel(input.anchor)),
+        serializeJson({ ...record, mirrors: [...record.mirrors].reverse() }),
+      );
+      const errors = await toolingErrors(repo);
+      expect(errors).to.have.length(1);
+      expect(errors[0]).to.match(/no state is derivable/);
     });
 
     it("refuses to derive anything from census observations that are not one census", async function () {
@@ -235,12 +414,23 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(await toolingErrors(repo)).to.deep.equal(["the census observations are not one census"]);
     });
 
-    it("never derives an archived state: a production record, a failed self-test", function () {
-      expect(toolingState({ productionArchiveRecords: 0, selfTestPassed: true })).to.equal("TOOLING_READY_NO_ARTIFACT");
-      expect(toolingState({ productionArchiveRecords: 0, selfTestPassed: false })).to.equal("TOOLING_NOT_PRESENT");
-      expect(() => toolingState({ productionArchiveRecords: 1, selfTestPassed: true })).to.throw(
-        /ARCHIVED_VERIFIED_UNEXERCISED is not reachable/,
-      );
+    it("derives the archived state only from accepted archive evidence, and no state from refused evidence", function () {
+      const none = { records: [], record: null, observations: [], errors: [] };
+      expect(toolingState({ selfTestPassed: true, archive: none })).to.equal("TOOLING_READY_NO_ARTIFACT");
+      expect(toolingState({ selfTestPassed: false, archive: none })).to.equal("TOOLING_NOT_PRESENT");
+      const stray = { records: [`${PROVING_ARCHIVES_DIR}/r.json`], record: null, observations: [], errors: ["stray"] };
+      expect(() => toolingState({ selfTestPassed: true, archive: stray })).to.throw(/no state is derivable/);
+      // A record object without a clean verdict is never accepted (the errors decide, not the presence of a record).
+      const record = JSON.parse(read(SAFE_RECORD_REL).toString("utf8"));
+      const refused = {
+        records: [`${PROVING_ARCHIVES_DIR}/r.json`],
+        record,
+        observations: [],
+        errors: ["MIRRORS_MISSING"],
+      };
+      expect(() => toolingState({ selfTestPassed: true, archive: refused })).to.throw(/no state is derivable/);
+      const accepted = { records: [`${PROVING_ARCHIVES_DIR}/r.json`], record, observations: ["o.json"], errors: [] };
+      expect(toolingState({ selfTestPassed: true, archive: accepted })).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
     });
   });
 
@@ -955,11 +1145,22 @@ describe("SP1-PA2A circuit tooling contract", function () {
 
   describe("the owner-facing page", function () {
     const doc = read("docs/SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md").toString("utf8");
-    it("keeps the four states apart and proving availability unchanged", function () {
+    it("keeps the four states apart and names the proving availability the evidence derives", function () {
       for (const s of STATES) expect(doc, s.state).to.include(s.state);
       expect(doc).to.include("4. Production binding established");
-      expect(doc).to.include("`PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED`");
+      const pa = JSON.parse(read(PROVING_AVAILABILITY_REL).toString("utf8"));
+      expect(doc).to.include(`\`PROVING_AVAILABILITY = ${pa.status}\``);
       expect(doc).to.include("Research prototype. Not audited. Testnet/local only. Do not use real funds.");
+    });
+    it("states what SP1-PA2B establishes and what it does not, and that the next state is the proving exercise", function () {
+      expect(doc).to.include("Archive provenance does not establish Groth16 soundness");
+      expect(doc).to.include("verifying-key equality is\n  integrity and compatibility, never trusted-setup proof");
+      expect(doc).to.include("the digest is supply-chain identity, not proof-system correctness");
+      expect(doc).to.include("Two mirrors improve availability; they do not prove eternal availability");
+      expect(doc).to.include("a recorded mirror assertion is not continuously verified availability");
+      expect(doc).to.include("no real proof has been produced");
+      expect(doc).to.include("only then `SELF_HOSTED_PATH_EXERCISED`");
+      expect(doc).to.include("An availability problem is not converted into a trust claim.");
     });
     it("claims only that the gate can refuse the downloader, not that proving never exercises it", function () {
       expect(doc).to.include(
