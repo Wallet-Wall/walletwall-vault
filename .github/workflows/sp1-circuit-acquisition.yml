@@ -1,0 +1,176 @@
+name: SP1 circuit acquisition (measurement, host B)
+
+# SP1-PA2B, owner-authorized: host B's independent acquisition of SP1's Groth16 circuit v6.1.0 archive
+# (docs/SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md, "SP1-PA2B"). A GitHub-hosted runner is a different
+# machine on a different network path from the developer workstation (host A), so its download is an independent
+# observation that never reuses host A's bytes. It:
+#   - records the runner's identity, then downloads v6.1.0-groth16.tar.gz over HTTPS into the runner's temp
+#     directory (data only: never executed, never extracted with tar(1));
+#   - measures its length and sha256 with coreutils and OpenSSL and STOPS unless both are the agreed values (a
+#     mismatch is recorded and fails the run; nothing is inspected);
+#   - resolves ghcr.io/succinctlabs/sp1-gnark:v6.1.0 to its raw index with docker buildx (registry only, no pull), as
+#     a cross-check of the measurement tool's own registry read;
+#   - measures the copy with the committed tool (scripts/measure-sp1-circuit-acquisition.ts): the merged PA2A
+#     inspector in measuring mode against designation d1's committed anchor, the read-only census, the transfer's
+#     provenance, the independent digests and the gnark image's immutable digest, written as this host's
+#     acquisition observation;
+#   - cross-checks the census against CPython's stdlib tarfile (reading members, never extracting);
+#   - when the checkout already holds a production archive record, inspects the copy against it too;
+#   - removes the archive and uploads only the measurement (never the 6.21 GB archive) as an artifact.
+# It accepts nothing into the repository, installs nothing, proves nothing, writes to no chain. It never runs on pull
+# requests: only when pushed to a measure/sp1-circuit-acquisition* branch, or dispatched.
+on:
+  push:
+    branches:
+      - "measure/sp1-circuit-acquisition*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire:
+    name: Acquire, measure and inspect the circuit archive (GitHub-hosted runner, host B)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      ARCHIVE_URL: https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz
+      GNARK_TAG: ghcr.io/succinctlabs/sp1-gnark:v6.1.0
+      AGREED_BYTES: "6211807514"
+      AGREED_SHA256: 18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810
+      HOST: github-hosted-runner
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Record the runner
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          mkdir -p "$out"
+          {
+            echo "host=$HOST"
+            echo "runner_name=$RUNNER_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "image_os=${ImageOS:-}"
+            echo "image_version=${ImageVersion:-}"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "sha=$GITHUB_SHA"
+            echo "node=$(node --version)"
+            uname -a
+          } | tee "$out/runner.txt"
+
+      - name: Download the archive (data only)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          mkdir -p "$out/archive"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$out/started.txt"
+          curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 -sS \
+            -D "$out/headers.txt" -o "$out/archive/v6.1.0-groth16.tar.gz" \
+            -w '{"http_code":%{http_code},"size_download":%{size_download},"remote_ip":"%{remote_ip}","url_effective":"%{url_effective}","time_total":%{time_total}}\n' \
+            "$ARCHIVE_URL" > "$out/transfer.json"
+          date -u +%Y-%m-%dT%H:%M:%SZ > "$out/finished.txt"
+          cat "$out/transfer.json"
+          tr -d '\r' < "$out/headers.txt"
+
+      - name: Measure with coreutils and OpenSSL, and stop unless the bytes are the agreed bytes
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          f="$out/archive/v6.1.0-groth16.tar.gz"
+          stat -c %s "$f" | tee "$out/bytes.txt"
+          sha256sum "$f" | cut -d' ' -f1 | tee "$out/sha256-coreutils.txt"
+          openssl dgst -sha256 -r "$f" | cut -d' ' -f1 | tee "$out/sha256-openssl.txt"
+          if [ "$(cat "$out/bytes.txt")" != "$AGREED_BYTES" ] \
+            || [ "$(cat "$out/sha256-coreutils.txt")" != "$AGREED_SHA256" ] \
+            || [ "$(cat "$out/sha256-openssl.txt")" != "$AGREED_SHA256" ]; then
+            echo "STOP: the acquired archive is not the agreed bytes (length $AGREED_BYTES, sha256 $AGREED_SHA256)" | tee "$out/STOP.txt"
+            exit 1
+          fi
+
+      - name: Resolve the gnark image tag to its raw index with buildx (registry only, no pull; a cross-check)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          docker buildx imagetools inspect "$GNARK_TAG" --raw > "$out/gnark-index.raw"
+          sha256sum "$out/gnark-index.raw" | cut -d' ' -f1 | tee "$out/gnark-index-sha256.txt"
+
+      - name: Measure the copy with the committed acquisition tool (merged PA2A inspector, census, provenance, digest)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          status=0
+          npm run --silent sp1:measure-circuit-acquisition -- \
+            --archive "$out/archive/v6.1.0-groth16.tar.gz" --host "$HOST" \
+            --transfer "$out/transfer.json" --headers "$out/headers.txt" \
+            --started-at "$(cat "$out/started.txt")" --finished-at "$(cat "$out/finished.txt")" \
+            --digest "coreutils=@$out/sha256-coreutils.txt" --digest "openssl=@$out/sha256-openssl.txt" \
+            --gnark-image "$GNARK_TAG" --gnark-raw-index "$out/gnark-index.raw" \
+            --platform-file "$out/runner.txt" \
+            --out "$out/circuit-acquisition-$HOST.raw.json" \
+            --census-out "$out/census.json" 2> "$out/tool.stderr" | tee "$out/tool.stdout" || status=$?
+          echo "$status" > "$out/tool-exit.txt"
+          cat "$out/tool.stderr" || true
+          sha256sum "$out/census.json" | tee "$out/census-sha256.txt"
+
+      - name: Independent listing (CPython tarfile, never extracting)
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          python3 --version | tee "$out/python-version.txt"
+          python3 -I measure/sp1-circuit-acquisition/tarfile_census.py "$out/archive/v6.1.0-groth16.tar.gz" \
+            > "$out/tarfile.json"
+          status=0
+          node measure/sp1-circuit-acquisition/compare.mjs "$out/census.json" "$out/tarfile.json" | tee "$out/compare.txt" || status=$?
+          echo "$status" > "$out/compare-exit.txt"
+
+      - name: Inspect the copy against the production record, when the checkout holds one
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          record=evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json
+          if [ -f "$record" ]; then
+            status=0
+            npm run --silent sp1:circuit-archive:inspect -- --archive "$out/archive/v6.1.0-groth16.tar.gz" \
+              --record "$record" > "$out/inspect-record.json" 2> "$out/inspect-record.stderr" || status=$?
+            echo "$status" > "$out/inspect-record-exit.txt"
+            cat "$out/inspect-record.stderr" || true
+            sha256sum "$record" | tee "$out/record-sha256.txt"
+          else
+            echo "no production record in this checkout" | tee "$out/inspect-record-exit.txt"
+          fi
+
+      - name: Remove the archive
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/acquisition/archive"
+
+      - name: Upload the measurement (never the archive)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sp1-circuit-acquisition-github-hosted-runner
+          path: |
+            ${{ runner.temp }}/acquisition
+            !${{ runner.temp }}/acquisition/archive
+          retention-days: 90
+
+      - name: Fail when the tool refused the copy or the listings disagree
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/acquisition"
+          test "$(cat "$out/tool-exit.txt")" = "0"
+          test "$(cat "$out/compare-exit.txt")" = "0"
+          if [ -f "$out/inspect-record-exit.txt" ] && [ "$(cat "$out/inspect-record-exit.txt")" != "no production record in this checkout" ]; then
+            test "$(cat "$out/inspect-record-exit.txt")" = "0"
+          fi
