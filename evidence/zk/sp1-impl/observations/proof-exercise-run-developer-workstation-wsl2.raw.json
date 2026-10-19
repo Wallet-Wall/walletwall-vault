@@ -1,0 +1,311 @@
+{
+  "schema": "walletwall.sp1-proof-exercise-run.v1",
+  "host": "developer-workstation-wsl2",
+  "measuredAtUtc": "2026-10-19T23:35:01Z",
+  "tool": {
+    "script": "scripts/measure-sp1-proof-exercise.ts",
+    "scriptSha256": "0ac48d84cd8122dd2d99ed91e6a523ea9923ee21aae8258bda4a6345380b7c3d"
+  },
+  "source": {
+    "repository": "Wallet-Wall/walletwall-vault",
+    "commit": "da7936bbcf8252a22efafda70fa94870c7aa2d20",
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3"
+  },
+  "anchor": {
+    "designation": "mldsa65-withdrawal-d1",
+    "circuitVersion": "v6.1.0",
+    "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "verifier": {
+      "version": "v6.1.0",
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    },
+    "verifyingKey": {
+      "sha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "bytes": 492
+    }
+  },
+  "archiveRecord": {
+    "path": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+    "sha256": "a50038e70c9c87d3cdaaa0174ee6c3b570736de17d8943d284dc401021c97116"
+  },
+  "installedCircuit": {
+    "root": "/home/prover/pa3b/circuit-root",
+    "circuitVersion": "v6.1.0",
+    "members": [
+      {
+        "path": "Groth16Verifier.sol",
+        "bytes": 26770,
+        "sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457"
+      },
+      {
+        "path": "SP1VerifierGroth16.sol",
+        "bytes": 3236,
+        "sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0"
+      },
+      {
+        "path": "constraints.json",
+        "bytes": 111997113,
+        "sha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b"
+      },
+      {
+        "path": "groth16_circuit.bin",
+        "bytes": 2437991441,
+        "sha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc"
+      },
+      {
+        "path": "groth16_pk.bin",
+        "bytes": 5862173061,
+        "sha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167"
+      },
+      {
+        "path": "groth16_vk.bin",
+        "bytes": 492,
+        "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+      },
+      {
+        "path": "groth16_witness.json",
+        "bytes": 2802920,
+        "sha256": "ee2ac8e094712a87ec3b0dc50ed39704aa90ee066ce4c5bf6160d54f04014c94"
+      }
+    ]
+  },
+  "hostExecutable": {
+    "file": "mldsa65-host",
+    "bytes": 57567008,
+    "sha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b"
+  },
+  "inputs": {
+    "file": "mldsa65-withdrawal.inputs.json",
+    "bytes": 10746,
+    "sha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9"
+  },
+  "gnark": {
+    "repository": "ghcr.io/succinctlabs/sp1-gnark",
+    "digest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+    "imageRef": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+    "localRepoDigests": [
+      "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
+    ]
+  },
+  "prover": {
+    "mode": "cpu",
+    "frozenEnv": {
+      "SP1_PROVER": "cpu",
+      "SP1_GROTH16_CIRCUIT_PATH": "/home/prover/pa3b/circuit-root",
+      "SP1_GNARK_IMAGE": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+      "DOCKER_CONTEXT": "default"
+    },
+    "passedThrough": [
+      "HOME",
+      "LANG",
+      "LOGNAME",
+      "PATH",
+      "USER",
+      "XDG_RUNTIME_DIR"
+    ],
+    "dropped": [
+      "COLOR",
+      "DBUS_SESSION_BUS_ADDRESS",
+      "DISPLAY",
+      "EDITOR",
+      "HOSTTYPE",
+      "INIT_CWD",
+      "NAME",
+      "NODE",
+      "OLDPWD",
+      "PULSE_SERVER",
+      "PWD",
+      "SHELL",
+      "SHLVL",
+      "TERM",
+      "WAYLAND_DISPLAY",
+      "WSL2_GUI_APPS_ENABLED",
+      "WSLENV",
+      "WSL_DISTRO_NAME",
+      "WSL_INTEROP",
+      "_",
+      "npm_command",
+      "npm_config_cache",
+      "npm_config_global_prefix",
+      "npm_config_globalconfig",
+      "npm_config_init_module",
+      "npm_config_local_prefix",
+      "npm_config_loglevel",
+      "npm_config_node_gyp",
+      "npm_config_noproxy",
+      "npm_config_npm_version",
+      "npm_config_prefix",
+      "npm_config_user_agent",
+      "npm_config_userconfig",
+      "npm_execpath",
+      "npm_lifecycle_event",
+      "npm_lifecycle_script",
+      "npm_node_execpath",
+      "npm_package_engines_node",
+      "npm_package_json",
+      "npm_package_name",
+      "npm_package_version"
+    ]
+  },
+  "egress": {
+    "enforcement": "nftables table inet pa3b_egress_off, created as root in the root network namespace of the WSL2 virtual machine that the Linux proving host (Ubuntu 24.04) shares with every other WSL2 distribution on this machine and with Docker Desktop's engine: output hook (priority -10) first refuses every packet to the WSL DNS-tunnelling resolver 10.255.255.254 (an address on lo that proxies to the Windows host; TCP by tcp reset, the rest by ICMP port-unreachable), then accepts packets to the host's own addresses only (fib daddr type local: 127.0.0.0/8, ::1 and its eth0 address, which never leave the VM and carry the kernel's own reset and ICMP answers back to the refusing socket), then refuses every other packet the host originates (TCP by tcp reset, UDP by ICMP port-unreachable, the rest by ICMP admin-prohibited); forward hook (priority -10, policy drop) refuses every forwarded packet the same way (the local Docker Engine's bridge docker0, so every container, the gnark container included); input hook drops every packet a container sends to the host (iifname docker0), so a container cannot reach the host's resolver either; the docker endpoint is the local engine's unix:///var/run/docker.sock (Ubuntu docker.io 29.1.3 running in this distribution, no Docker Desktop integration); the table was created before the before-probes and deleted after the after-probes, no Windows-side rule was used, and nothing was pulled, downloaded or installed while it existed; rehearsed before the run with the same probes from the host and from a container (all refused) and after its removal (all resolved and connected)",
+    "before": [
+      {
+        "target": "sp1-circuits.s3-us-east-2.amazonaws.com",
+        "kind": "dns",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "ghcr.io",
+        "kind": "dns",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "sp1-circuits.s3-us-east-2.amazonaws.com:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "ghcr.io:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "3.5.90.58:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      },
+      {
+        "target": "3.5.93.98:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      },
+      {
+        "target": "1.1.1.1:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      },
+      {
+        "target": "8.8.8.8:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:24:14Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      }
+    ],
+    "after": [
+      {
+        "target": "sp1-circuits.s3-us-east-2.amazonaws.com",
+        "kind": "dns",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "ghcr.io",
+        "kind": "dns",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "sp1-circuits.s3-us-east-2.amazonaws.com:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "ghcr.io:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "EAI_AGAIN"
+      },
+      {
+        "target": "3.5.90.58:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      },
+      {
+        "target": "3.5.93.98:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      },
+      {
+        "target": "1.1.1.1:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      },
+      {
+        "target": "8.8.8.8:443",
+        "kind": "tcp",
+        "atUtc": "2026-10-19T23:35:00Z",
+        "outcome": "REFUSED",
+        "error": "ECONNREFUSED"
+      }
+    ],
+    "condition": "EGRESS_DISABLED"
+  },
+  "timing": {
+    "startedAtUtc": "2026-10-19T23:24:14Z",
+    "finishedAtUtc": "2026-10-19T23:35:00Z",
+    "gateSeconds": 647,
+    "hostStartedAtUtc": "2026-10-19T23:24:26Z",
+    "hostFinishedAtUtc": "2026-10-19T23:34:31Z",
+    "hostSeconds": 606
+  },
+  "peakMemory": {
+    "hostProcess": {
+      "bytes": 23366266880,
+      "method": "/proc/<pid>/status VmHWM of the host process, polled every 2000 ms and at exit (the kernel's high-water mark)"
+    },
+    "gnarkContainers": {
+      "bytes": 18962280612,
+      "samples": 61,
+      "intervalMs": 2000,
+      "method": "docker stats --no-stream MemUsage of the running containers whose ancestor is ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d, summed, polled every 2000 ms (a sampled lower bound of the peak)"
+    }
+  },
+  "proof": {
+    "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "publicValues": "0x8e345eeac3d258c778ad2384da5952dd41734c24c4912cc168899b54ac24e9863ae18e10835136b3f369b331045bd230caefed3e5c32a3bd0be523a5ccda12f03ad471f5c1048bfc22a707479e3f827bd032da80870c98fbdef2b964ad50caed0000000000000000000000000000000000000000000000000000000000007a690000000000000000000000001111111111111111111111111111111111111111",
+    "proofBytes": "0x4388a21c0000000000000000000000000000000000000000000000000000000000000000002f850ee998974d6cc00e50cd0814b098c05bfade466d28573240d057f2535200000000000000000000000000000000000000000000000000000000000000000d84d69819b75132baec0db347a8afd9248fbfe1dcaec81592b113b680d1655323661776da8a93258535cb552e264498681f28c6dc349a4a388aed17c63637c12ecf146f1b28f66ec1f38a01f8b9e63dc044906b503270d0f6afc48f31ecb564226f3a58fd1ec3f85105984a0aab7e1a9f590a08fbecd34ca12eba895a0bf6df2a7a2e0b7e71a98c45a900f7cb88b5a1e6ce328626b0622dd1d489af2c2e013b2111f4d43e104a2506326876c0876722792db11f5ca0a8a421f81bc75c31c9cc27a71dab92c5a94558701de17e08a8ff8bf00bc3539efacb72323109ea8c67091bc0cbe6cd3f4d238db0c3be0fcb4d59974d8a70b3ae747c89e36172183c60d7",
+    "selector": "0x4388a21c",
+    "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+    "proofBytesSha256": "dfe975da331d53bee1485d55f032566fd43ddc0350904a30f74bcd83f7370eee"
+  },
+  "platform": [
+    "host=developer-workstation-wsl2",
+    "os=linux 6.18.33.1-microsoft-standard-WSL2 x64",
+    "node=v24.16.0",
+    "distro=Ubuntu 24.04.4 LTS wsl2=true",
+    "kernel=6.18.33.1-microsoft-standard-WSL2 machine=x86_64",
+    "cpu=AMD Ryzen 7 9800X3D 8-Core Processor cores=16",
+    "memTotalKiB=24608404 swapTotalKiB=41943040",
+    "docker=engine 29.1.3 api 1.52 endpoint=unix:///var/run/docker.sock context=default",
+    "user=prover uid=1001",
+    "sourceCheckout=da7936bbcf8252a22efafda70fa94870c7aa2d20 hostTree=30f72596c430974bf8113892bf41c26dce3629f3"
+  ]
+}
