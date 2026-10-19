@@ -136,6 +136,13 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(runRefusals(() => undefined, { ...EXPECTATIONS, scripts: { run: null, verification: null } })).to.include(
         "TOOL_NOT_BOUND",
       );
+      // An absent tool binds nothing, even to an observation that names no sha (null never equals null here).
+      expect(
+        runRefusals((o) => ((o.tool as unknown as Record<string, unknown>).scriptSha256 = null), {
+          ...EXPECTATIONS,
+          scripts: { run: null, verification: EXPECTATIONS.scripts.verification },
+        }),
+      ).to.include("TOOL_NOT_BOUND");
     });
 
     it("binds the source: this repository, a commit, the designated host tree", function () {
@@ -391,6 +398,12 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(refusals((v) => (v.measuredAtUtc = "2026-11-01 12:30:00"))).to.include("OBSERVATION_FIELD");
       expect(
         refusals(() => undefined, { ...EXPECTATIONS, scripts: { run: RUN_SCRIPT_SHA, verification: null } }),
+      ).to.include("TOOL_NOT_BOUND");
+      expect(
+        refusals((v) => ((v.tool as unknown as Record<string, unknown>).scriptSha256 = null), {
+          ...EXPECTATIONS,
+          scripts: { run: RUN_SCRIPT_SHA, verification: null },
+        }),
       ).to.include("TOOL_NOT_BOUND");
       expect(refusals((v) => (v.host = "Host"))).to.include("OBSERVATION_FIELD");
       // Verified before the run was measured: not a verification of that run.
