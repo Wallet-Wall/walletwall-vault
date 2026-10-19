@@ -588,11 +588,15 @@ liveness on one host at one time, never soundness of the Groth16 trusted setup a
   `evidence/zk/sp1-impl/observations/proof-exercise-run-<host>.raw.json`) is written by
   `sp1:measure-proof-exercise` (`scripts/measure-sp1-proof-exercise.ts`, Linux only), which refuses before any act
   unless the record is a production record exactly as committed and the checkout is clean, probes egress (name
-  resolution and TCP 443 at the archive's upstream host and the gnark image's registry), runs the **unchanged** gate
+  resolution and TCP 443 at the archive's upstream host and the gnark image's registry, and TCP 443 at the
+  acquisitions' upstream addresses and two canary addresses, which must be refused at the connection), runs the
+  **unchanged** gate
   (`runArchiveOnlyProve`, every check of `sp1:prove:archive-only`) through a spawner that measures the host, probes
   egress again, and records: the checkout (this repository, HEAD, the designated host source tree), the committed
   anchor and archive record (by sha256), the installation the gate re-hashed (exactly the record's members), the host
-  executable and the proof input (`zkvm/fixtures/mldsa65-withdrawal.inputs.json`) by sha256, the gnark image by the
+  executable by sha256 (it must be the canonical-build host binary the committed canonical rebuild observation names
+  for the designated host tree) and the proof input (`zkvm/fixtures/mldsa65-withdrawal.inputs.json`) by sha256, the
+  gnark image by the
   record's digest and the local store's repo digests, the prover mode and the gate's frozen environment (names only
   of what passed through or was dropped), the probes before and after with the operator's statement of the
   enforcement, the gate's and the host's wall time (monotonic, rounded up) with their stamps, the host process's peak
@@ -623,19 +627,25 @@ liveness on one host at one time, never soundness of the Groth16 trusted setup a
 one record named after the designation, a regular file, that is byte for byte what the committed run and
 verification observations derive (exactly one of each, each file holding its own host's observation), for the
 accepted archive record (its committed bytes by sha256, its members, its gnark digest), bound to the committed tools
-by sha256, with the run's source commit in this repository's history and the designation's host source tree, and
-every one of these files exactly as HEAD commits them (state 3); anything else is refused with every reason, never
-read as "no record". The transition fails, independently, for each of: no record; `selfHostedPath.exercised` or the
-state string hand-set (the generated files no longer match their derivation); another designation; another
-archive-record sha256 or archive sha256; another circuit version; another `PROGRAM_VKEY`; another host tree or an
-unmeasured host executable; another proof-input digest; another gnark digest, or a tag in place of the digest; a
-prover mode other than `cpu`, or an environment other than the gate's frozen one, or a refused variable; egress
-resolved or connected at any required target, a probe without a refusal code, probes missing, or probes taken inside
-the run window; a verifier rejection, a tampered copy accepted, a check at another code hash, no check of the
+by sha256, with the run's source commit in this repository's history and holding what the run claims it ran from (the
+designated host tree at `zkvm/host`, the archive record and the measurement tool as committed), the host executable
+the canonical-build host binary for the designated host tree, the observations and the record regular LF files in
+their directories, and every one of these files exactly as HEAD commits them (state 3); anything else is refused
+with every reason, never read as "no record". The transition fails, independently, for each of: no record;
+`selfHostedPath.exercised` or the state string hand-set (the generated files no longer match their derivation);
+another designation; another archive-record sha256 or archive sha256; another circuit version; another
+`PROGRAM_VKEY`; another host tree, a host executable other than the canonical-build binary, or a commit in the
+history that does not hold the designated host tree, the archive record or the tool; another proof-input digest;
+another gnark digest, or a tag in place of the digest; a prover mode other than `cpu`, or an environment other than
+the gate's frozen one, or a refused variable; egress resolved or connected at any required target, a probe without a
+refusal code, a probe at an address refused only by name resolution, a required address probe missing, probes
+missing, or a probe taken inside the run window or more than ten minutes from it; a verifier rejection, a tampered
+copy accepted, a check at another code hash, no check of the
 authenticated runtime, or a verification of another proof or another run; a zero, negative or impossible wall time
 (the host run outside the gate run, seconds that do not match the stamps); a malformed or missing peak-memory
-measurement; an uncommitted observation or record; a run observation edited after it was verified; a second record,
-a link, a duplicate or stray observation, a relabeled host; a record outside the authoritative directory (which is
+measurement; an uncommitted observation or record, or one committed with CRLF line ends; a run observation edited
+after it was verified; a second record, a record or an observation that is a link, a duplicate or stray observation,
+a relabeled host; a record outside the authoritative directory (which is
 then no record); an exercise of another commit or baseline; and the archive record changed or removed after the
 exercise record exists (exercise evidence without an accepted archive derives no state at all). Each is pinned by a
 test in [`test/Sp1ProofExercise.test.ts`](../test/Sp1ProofExercise.test.ts), and the transition itself is proved
@@ -661,12 +671,19 @@ proof must verify there. A verification observation forged without a proof the r
   has been made); anything about egress, memory or wall time (nothing was measured); that the Groth16 trusted setup
   behind the key is sound (a proof the verifier accepts is compatibility with the key, never soundness); production
   readiness (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`). SP1-PA3A is not proving availability.
-- Residuals of the evidence model, once SP1-PA3B runs it: egress is attested by probes at the edges of the run and by
-  the operator's statement of the enforcement, not watched during it, and a container's egress is covered only as
-  far as the host's enforcement reaches the docker bridge; the containers' peak memory is sampled (a lower bound);
-  one host, one run, one time; a committed observation names its tool by sha256 and binds every fact the repository
-  holds, but the validator cannot know that the host was a distinct machine or that the enforcement was what the
-  operator stated (the same limit SP1-PA2B records for its hosts and mirrors).
+- Residuals of the evidence model, once SP1-PA3B runs it. **The designated verifier proves the proof's validity under
+  the designated key, never its provenance**: that the proof was made through the gate, with `SP1_PROVER=cpu`, with
+  egress refused, by the canonical host binary, in the recorded time and memory are the operator's observations. The
+  repository binds them as far as it can (the proof's digests; the run's commit content; the canonical host binary;
+  the committed input; the probes' shape, codes and timing); the rest rests on the owner's review of the pull request
+  that commits them, and a valid proof of the designated program made by any other means, wrapped in self-consistent
+  observations, is refused only by that review. Egress is attested by probes within ten minutes before and after the
+  run and by the operator's statement of the enforcement, not watched during it, and a container's egress is covered
+  only as far as the host's enforcement reaches the docker bridge; the containers' peak memory is sampled (a lower
+  bound); one host, one run, one time; a run over the 2-day rotation delay is still an exercised path (the record
+  carries `withinRotationDelay = false` and the availability record says EXCEEDING), never a timely one; the
+  validator cannot know that the host was a distinct machine (the same limit SP1-PA2B records for its hosts and
+  mirrors).
 
 ### SP1-PA3B: what the owner must supply (not started)
 
@@ -674,10 +691,14 @@ proof must verify there. A verification observation forged without a proof the r
    (`ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62…48c4d`, so that `docker image inspect` lists it by that digest).
 2. Install the circuit only from the committed v2 archive record (`sp1:circuit-install` from one of the two recorded
    mirrors, verified against the record) into a root only the operator's user can change.
-3. Build or use the designated `mldsa65-host` from the designated host source tree (the checkout's `zkvm/host` at the
-   commit the run names; the observation records the tree and the executable's sha256).
-4. Disable egress on the host (and the docker bridge) by a stated enforcement; the probes must find name resolution
-   and TCP 443 refused at `sp1-circuits.s3-us-east-2.amazonaws.com` and `ghcr.io` before and after the run.
+3. Use the canonical-build `mldsa65-host`: the committed canonical rebuild observation names its sha256 for the
+   designated host tree (`fc8eff69…abf1b` for `30f72596…`); a host built on the proving host is admitted only by first
+   extending that observation there under the canonical procedure, since the run observation's executable sha256
+   must be that binary's.
+4. Disable egress on the host (and the docker bridge) by a stated enforcement; within ten minutes before and after
+   the run the probes must find name resolution and TCP 443 refused at `sp1-circuits.s3-us-east-2.amazonaws.com` and
+   `ghcr.io`, and the connection refused at the acquisitions' upstream addresses (`3.5.90.58`, `3.5.93.98`) and the
+   canaries `1.1.1.1` and `8.8.8.8` on TCP 443.
 5. Run exactly one proof: `npm run sp1:measure-proof-exercise -- --record evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json --circuit-root <root> --host <mldsa65-host> --inputs zkvm/fixtures/mldsa65-withdrawal.inputs.json --host-label <label> --enforcement "<statement>" --out evidence/zk/sp1-impl/observations/proof-exercise-run-<label>.raw.json`
    from a clean checkout; commit the observation.
 6. Verify: `SP1_PROOF_EXERCISE_RUN=<that file> SP1_PROOF_EXERCISE_HOST=<label> SP1_PROOF_EXERCISE_OUT=evidence/zk/sp1-impl/observations/proof-exercise-verification-<label>.raw.json npm run sp1:verify-proof-exercise`

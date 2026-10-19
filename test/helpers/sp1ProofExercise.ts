@@ -11,6 +11,7 @@ import { PROOF_INVALID } from "../../scripts/lib/sp1-chain-execution";
 import { productionRecordRel, serializeJson } from "../../scripts/lib/sp1-circuit-acquisition";
 import { SAFE_FILES, SYNTHETIC_ANCHOR, gz, safeTar, syntheticRecord } from "../../scripts/lib/sp1-circuit-fixtures";
 import {
+  EGRESS_CANARY_IPS,
   EGRESS_DISABLED,
   REPOSITORY_ID,
   RUN_SCHEMA,
@@ -44,6 +45,11 @@ export const HOST_TREE = "a".repeat(40);
 export const SOURCE_COMMIT = "c".repeat(40);
 export const UPSTREAM_HOST = "example.invalid";
 export const REGISTRY_HOST = "registry.invalid";
+/** The upstream address the committed acquisitions recorded (TEST-NET-3 here) and the canary addresses. */
+export const UPSTREAM_IPS = ["203.0.113.5"];
+export const PROBE_IPS = [...UPSTREAM_IPS, ...EGRESS_CANARY_IPS];
+/** The canonical-build host binary the exercise must have run (the run observation's hostExecutable.sha256). */
+export const HOST_BINARY_SHA = "44".repeat(32);
 export const ROOT = "/srv/sp1/circuits";
 export const IMAGE_REF = `${ARCHIVE_RECORD.gnark.repository}@${ARCHIVE_RECORD.gnark.digest}`;
 export const SELECTOR = ANCHOR.verifyingKey.sha256.slice(2, 10);
@@ -61,6 +67,8 @@ export const EXPECTATIONS: ExerciseExpectations = {
   proofInputSha256: INPUT_SHA,
   upstreamHost: UPSTREAM_HOST,
   registryHost: REGISTRY_HOST,
+  upstreamIps: UPSTREAM_IPS,
+  hostBinarySha256: HOST_BINARY_SHA,
   scripts: { run: RUN_SCRIPT_SHA, verification: VERIFICATION_SCRIPT_SHA },
   repository: REPOSITORY_ID,
 };
@@ -74,8 +82,17 @@ export function probes(atUtc: string): EgressProbe[] {
     outcome: "REFUSED",
     error: "ENETUNREACH",
   });
-  return [dns(UPSTREAM_HOST), tcp(`${UPSTREAM_HOST}:443`), dns(REGISTRY_HOST), tcp(`${REGISTRY_HOST}:443`)];
+  return [
+    dns(UPSTREAM_HOST),
+    tcp(`${UPSTREAM_HOST}:443`),
+    dns(REGISTRY_HOST),
+    tcp(`${REGISTRY_HOST}:443`),
+    ...PROBE_IPS.map((ip) => tcp(`${ip}:443`)),
+  ];
 }
+
+/** Every probe target the synthetic run covers, as the record lists them. */
+export const probeTargets = () => [...new Set(probes("x").map((p) => `${p.kind}:${p.target}`))].sort();
 
 export function runObservation(): RunObservation {
   return {
@@ -91,7 +108,7 @@ export function runObservation(): RunObservation {
       circuitVersion: ANCHOR.circuitVersion,
       members: structuredClone(ARCHIVE_RECORD.members),
     },
-    hostExecutable: { file: "mldsa65-host", bytes: 12_345_678, sha256: "44".repeat(32) },
+    hostExecutable: { file: "mldsa65-host", bytes: 12_345_678, sha256: HOST_BINARY_SHA },
     inputs: { file: "mldsa65-withdrawal.inputs.json", bytes: 7_000, sha256: INPUT_SHA },
     gnark: {
       repository: ARCHIVE_RECORD.gnark.repository,

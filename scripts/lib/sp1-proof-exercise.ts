@@ -24,14 +24,16 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { connect } from "node:net";
+import { connect, isIP } from "node:net";
 import { basename, dirname, posix, resolve } from "node:path";
 
 import { Interface, getBytes, hexlify, keccak256, type Provider, type Signer } from "ethers";
 
 import { uncommittedEvidenceError } from "./committed-evidence";
+import { CANONICAL_REBUILD_OBSERVATION_REL } from "./sp1-canonical-build";
 import { PROOF_INVALID, VERIFIER_BYTECODE_REL, verdictOf } from "./sp1-chain-execution";
 import {
+  ACQUISITION_OBSERVATIONS_REL,
   archiveEvidenceState,
   productionRecordRel,
   serializeJson,
@@ -74,19 +76,24 @@ export const REPOSITORY_ID = "Wallet-Wall/walletwall-vault";
 /** PQ_VERIFIER_UPDATE_DELAY (contracts/WalletWallVault.sol): 2 days; a PqOnly user must prove within it. */
 export const ROTATION_DELAY_SECONDS = 2 * 24 * 3600;
 export const EGRESS_DISABLED = "EGRESS_DISABLED";
-/** The errors a refused probe may end with: unreachable, rejected, timed out, or a name that does not resolve. */
-export const EGRESS_REFUSAL_CODES: readonly string[] = [
+/** A refused CONNECTION: unreachable, rejected, timed out, or forbidden. What a probe at an address must end with. */
+export const CONNECTION_REFUSAL_CODES: readonly string[] = [
   "ENETUNREACH",
   "EHOSTUNREACH",
   "ECONNREFUSED",
   "ETIMEDOUT",
   "EACCES",
   "EPERM",
-  "EAI_AGAIN",
-  "ENOTFOUND",
-  "EAI_FAIL",
-  "EAI_NONAME",
 ];
+/** A refused name resolution: what a probe by name may end with instead (a stub resolver answers this with egress
+ * open, which is why the address probes below are required as well). */
+export const RESOLUTION_REFUSAL_CODES: readonly string[] = ["EAI_AGAIN", "ENOTFOUND", "EAI_FAIL", "EAI_NONAME"];
+export const EGRESS_REFUSAL_CODES: readonly string[] = [...CONNECTION_REFUSAL_CODES, ...RESOLUTION_REFUSAL_CODES];
+/** Canary addresses (anycast resolvers, TCP 443): a refused connection to each shows egress blocked below name
+ * resolution, which no resolver stub can imitate. */
+export const EGRESS_CANARY_IPS: readonly string[] = ["1.1.1.1", "8.8.8.8"];
+/** A probe attests to the run only near it: at most this long before it began or after it ended. */
+export const PROBE_WINDOW_SECONDS = 600;
 export const PROBE_PORT = 443;
 export const LOCAL_RUNTIME = "AUTHENTICATED_RUNTIME_LOCAL";
 export const DEPLOYED_RUNTIME = "DEPLOYED";
@@ -258,6 +265,11 @@ export interface ExerciseExpectations {
   /** The hosts egress must have been refused to: the archive's upstream and the gnark image's registry. */
   upstreamHost: string;
   registryHost: string;
+  /** The upstream addresses the committed acquisitions were served from: probed by address, beside the canaries. */
+  upstreamIps: string[];
+  /** The canonical-build host binary's sha256 for the designated host tree (null when the committed canonical
+   * rebuild observation names none, or more than one: then no host executable binds). */
+  hostBinarySha256: string | null;
   /** sha256 of the committed tools' LF bytes (null when a tool is absent: then nothing binds). */
   scripts: { run: string | null; verification: string | null };
   repository: string;
@@ -283,9 +295,17 @@ function exactly(
 }
 
 /** The probe targets an exercise must have been refused at: name resolution and TCP 443 for each host. */
-export function requiredProbeTargets(expect: Pick<ExerciseExpectations, "upstreamHost" | "registryHost">): string[] {
-  return [expect.upstreamHost, expect.registryHost].flatMap((h) => [`dns:${h}`, `tcp:${h}:${PROBE_PORT}`]).sort();
+export function requiredProbeTargets(
+  expect: Pick<ExerciseExpectations, "upstreamHost" | "registryHost" | "upstreamIps">,
+): string[] {
+  return [
+    ...[expect.upstreamHost, expect.registryHost].flatMap((h) => [`dns:${h}`, `tcp:${h}:${PROBE_PORT}`]),
+    ...[...expect.upstreamIps, ...EGRESS_CANARY_IPS].map((ip) => `tcp:${ip}:${PROBE_PORT}`),
+  ].sort();
 }
+
+/** The host a tcp probe target names (`<host>:<port>`). */
+const probeHost = (target: string) => target.slice(0, target.lastIndexOf(":"));
 
 function probeErrors(
   probes: unknown,
@@ -304,10 +324,14 @@ function probeErrors(
       no("EGRESS_NOT_DISABLED", `${where}[${i}] is not a probe`);
       return;
     }
-    if (p.outcome !== "REFUSED" || !EGRESS_REFUSAL_CODES.includes(String(p.error))) {
+    // A probe at an address must have had its CONNECTION refused; a resolver code there says only that names do
+    // not resolve, which a stub resolver gives with egress open. A probe by name may fail either way.
+    const atAddress = p.kind === "tcp" && isIP(probeHost(String(p.target))) !== 0;
+    const allowed = atAddress ? CONNECTION_REFUSAL_CODES : EGRESS_REFUSAL_CODES;
+    if (p.outcome !== "REFUSED" || !allowed.includes(String(p.error))) {
       no(
         "EGRESS_NOT_DISABLED",
-        `${where}[${i}] ${p.kind} ${p.target}: ${String(p.outcome)} (${String(p.error)}); egress was not refused`,
+        `${where}[${i}] ${p.kind} ${p.target}: ${String(p.outcome)} (${String(p.error)}); egress was not refused${atAddress ? " at the connection" : ""}`,
       );
       return;
     }
@@ -405,6 +429,15 @@ export function runObservationErrors(value: unknown, expect: ExerciseExpectation
       no(what, `${where}.${k} is not a measured file, length and sha256`);
     }
   }
+  if (
+    isObject(o.hostExecutable) &&
+    (expect.hostBinarySha256 === null || o.hostExecutable.sha256 !== expect.hostBinarySha256)
+  ) {
+    no(
+      "HOST_IDENTITY_MISMATCH",
+      `${where} ran a host executable with sha256 ${String(o.hostExecutable.sha256)}, not the canonical-build host binary for the designated host tree (${String(expect.hostBinarySha256)}): another host build`,
+    );
+  }
   if (isObject(o.inputs) && (expect.proofInputSha256 === null || o.inputs.sha256 !== expect.proofInputSha256)) {
     no(
       "PROOF_INPUT_MISMATCH",
@@ -483,12 +516,24 @@ export function runObservationErrors(value: unknown, expect: ExerciseExpectation
         no("TIMING_IMPOSSIBLE", `${where}.timing: hostSeconds ${t.hostSeconds} is not the stamps' ${hf - hs} s`);
       if (UTC.test(String(o.measuredAtUtc)) && !(f <= seconds(o.measuredAtUtc)))
         no("TIMING_IMPOSSIBLE", `${where} was measured before the gate run ended`);
-      for (const b of before ?? [])
-        if (!(seconds(b.atUtc) <= s))
-          no("EGRESS_NOT_DISABLED", `${where}: a "before" probe was taken after the run began`);
-      for (const a of after ?? [])
-        if (!(seconds(a.atUtc) >= f))
-          no("EGRESS_NOT_DISABLED", `${where}: an "after" probe was taken before the run ended`);
+      for (const b of before ?? []) {
+        const at = seconds(b.atUtc);
+        if (!(at <= s && s - at <= PROBE_WINDOW_SECONDS)) {
+          no(
+            "EGRESS_NOT_DISABLED",
+            `${where}: a "before" probe was not taken within ${PROBE_WINDOW_SECONDS} s before the run began`,
+          );
+        }
+      }
+      for (const a of after ?? []) {
+        const at = seconds(a.atUtc);
+        if (!(at >= f && at - f <= PROBE_WINDOW_SECONDS)) {
+          no(
+            "EGRESS_NOT_DISABLED",
+            `${where}: an "after" probe was not taken within ${PROBE_WINDOW_SECONDS} s after the run ended`,
+          );
+        }
+      }
     }
   }
   const m = o.peakMemory;
@@ -815,7 +860,7 @@ export function deriveExerciseRecord(
     establishes:
       "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, SP1_PROVER=cpu and network egress refused before and after the run, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time",
     doesNotEstablish:
-      "that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); that any other hardware proves within the rotation delay; that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); that the archive, the mirrors or the image remain available; or production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)",
+      "the provenance of the proving: the verifier proves the proof's validity under the designated key, never that it was made through the gate, with SP1_PROVER=cpu, with egress refused, by this host binary, in this time or with this memory; those facts are the operator's observation, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise rest on the owner's review of the pull request that commits them; nor that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); nor that any other hardware proves within the rotation delay; nor that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)",
   };
 }
 
@@ -893,9 +938,51 @@ export function exerciseExpectations(repoRoot: string, input: ExerciseEvidenceIn
     proofInputSha256: fileSha(repoRoot, PROOF_INPUT_FIXTURE_REL),
     upstreamHost,
     registryHost: record.gnark.repository.split("/")[0],
+    upstreamIps: upstreamAddresses(repoRoot),
+    hostBinarySha256: canonicalHostBinarySha256(repoRoot, tree),
     scripts: { run: fileSha(repoRoot, RUN_SCRIPT_REL), verification: fileSha(repoRoot, VERIFICATION_SCRIPT_REL) },
     repository: REPOSITORY_ID,
   };
+}
+
+/** The addresses the committed acquisition observations were served from (transfer.remoteIp), unique and sorted. */
+export function upstreamAddresses(repoRoot: string): string[] {
+  const ips = new Set<string>();
+  for (const rel of ACQUISITION_OBSERVATIONS_REL) {
+    const p = resolve(repoRoot, rel);
+    if (!existsSync(p)) continue;
+    try {
+      const ip = (JSON.parse(readFileSync(p, "utf8")) as { transfer?: { remoteIp?: unknown } })?.transfer?.remoteIp;
+      if (typeof ip === "string" && isIP(ip) !== 0) ips.add(ip);
+    } catch {
+      // an unreadable observation binds no address; the archive evidence judges it elsewhere
+    }
+  }
+  return [...ips].sort();
+}
+
+/**
+ * The canonical-build host binary for `zkvmHostTree`: the committed canonical rebuild observation's
+ * builds[].hostBinarySha256 whose subject names that tree. One distinct value binds; none, or several, binds nothing.
+ */
+export function canonicalHostBinarySha256(repoRoot: string, zkvmHostTree: string): string | null {
+  const p = resolve(repoRoot, CANONICAL_REBUILD_OBSERVATION_REL);
+  if (!existsSync(p)) return null;
+  let builds: unknown[];
+  try {
+    const doc = JSON.parse(readFileSync(p, "utf8")) as { builds?: unknown };
+    builds = Array.isArray(doc?.builds) ? doc.builds : [];
+  } catch {
+    return null;
+  }
+  const shas = new Set<string>();
+  for (const b of builds) {
+    const build = b as { subject?: { zkvmHostTree?: unknown }; hostBinarySha256?: unknown };
+    if (build?.subject?.zkvmHostTree === zkvmHostTree && HEX64.test(String(build.hostBinarySha256))) {
+      shas.add(String(build.hostBinarySha256));
+    }
+  }
+  return shas.size === 1 ? [...shas][0] : null;
 }
 
 export interface ExerciseEvidence {
@@ -906,6 +993,61 @@ export interface ExerciseEvidence {
   /** The run and verification observation paths (empty while there is no record). */
   observations: string[];
   errors: string[];
+}
+
+/** Whether `rel` is a regular file (not a link) directly in `dir` under `repoRoot`. */
+function regularFileIn(repoRoot: string, rel: string, dir: string): boolean {
+  const full = resolve(repoRoot, rel);
+  try {
+    return (
+      lstatSync(full).isFile() && dirname(realpathSync(full)) === realpathSync(resolve(repoRoot, ...dir.split("/")))
+    );
+  } catch {
+    return false;
+  }
+}
+
+const gitOut = (repoRoot: string, args: string[]) =>
+  spawnSync("git", ["-C", repoRoot, "--no-optional-locks", ...args], { encoding: "utf8", shell: false });
+
+/**
+ * Every reason `commit` (the run's source commit) does not hold what the run claims it ran from: the designated
+ * host tree at zkvm/host, the archive record as committed (by the sha256 of its LF bytes), and the measurement tool
+ * as committed. An ancestor commit from before the archive record or the tools is thereby refused.
+ */
+export function commitContentErrors(repoRoot: string, commit: string, expect: ExerciseExpectations): string[] {
+  const errors: string[] = [];
+  const tree = gitOut(repoRoot, ["rev-parse", `${commit}:${HOST_SOURCE_DIR}`]);
+  const held = tree.status === 0 ? tree.stdout.trim() : null;
+  if (held !== expect.zkvmHostTree) {
+    errors.push(
+      `the run's source commit ${commit} does not hold the designated host tree ${expect.zkvmHostTree} at ${HOST_SOURCE_DIR} (it holds ${held ?? "no such tree"})`,
+    );
+  }
+  const blobSha = (rel: string): string | null => {
+    const r = gitOut(repoRoot, ["show", `${commit}:${rel}`]);
+    return r.status === 0 ? sha256(lf(r.stdout)) : null;
+  };
+  if (blobSha(expect.archiveRecord.path) !== expect.archiveRecord.sha256) {
+    errors.push(
+      `the run's source commit ${commit} does not hold the archive record ${expect.archiveRecord.path} as committed`,
+    );
+  }
+  if (expect.scripts.run === null || blobSha(RUN_SCRIPT_REL) !== expect.scripts.run) {
+    errors.push(`the run's source commit ${commit} does not hold ${RUN_SCRIPT_REL} as committed`);
+  }
+  return errors;
+}
+
+/** Every file of `rels` whose committed (index) bytes carry CRLF: the bound sha256 is of LF bytes, so a CRLF commit
+ * would read as committed while hashing differently; observations and records are LF. */
+export function crlfCommittedErrors(repoRoot: string, rels: readonly string[]): string[] {
+  const r = gitOut(repoRoot, ["ls-files", "--eol", "--", ...rels]);
+  if (r.status !== 0) return [`git ls-files --eol failed in ${repoRoot}`];
+  return r.stdout
+    .split(/\r?\n/)
+    .filter((line) => /^i\/(crlf|mixed)\b/.test(line))
+    .map((line) => `${line.split("\t").pop()} is committed with CRLF line ends; observations and records are LF`);
 }
 
 /** Whether `commit` is in `repoRoot`'s history (HEAD or an ancestor of it). */
@@ -935,16 +1077,9 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
     errors.push(`${PROOF_EXERCISES_DIR} must hold exactly ${want}; it holds ${records.join(", ")}`);
   }
   for (const rel of records) {
-    const full = resolve(repoRoot, rel);
-    let regular = false;
-    try {
-      regular =
-        lstatSync(full).isFile() &&
-        dirname(realpathSync(full)) === realpathSync(resolve(repoRoot, PROOF_EXERCISES_DIR));
-    } catch {
-      regular = false;
+    if (!regularFileIn(repoRoot, rel, PROOF_EXERCISES_DIR)) {
+      errors.push(`${rel} is not a regular file directly in ${PROOF_EXERCISES_DIR}`);
     }
-    if (!regular) errors.push(`${rel} is not a regular file directly in ${PROOF_EXERCISES_DIR}`);
   }
   const archiveState = archiveEvidenceState(input.archive);
   if (archiveState !== "ACCEPTED" || input.archive.record === null) {
@@ -969,6 +1104,11 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
   const archivePath = productionRecordRel(input.anchor);
   if (!existsSync(resolve(repoRoot, archivePath))) errors.push(`the archive record ${archivePath} is missing`);
   const observations = [...obs.run, ...obs.verification];
+  for (const rel of observations) {
+    if (!regularFileIn(repoRoot, rel, OBSERVATIONS_DIR)) {
+      errors.push(`${rel} is not a regular file directly in ${OBSERVATIONS_DIR}`);
+    }
+  }
   if (errors.length > 0) return { records, record: null, observations, errors };
   let expect: ExerciseExpectations;
   try {
@@ -1014,7 +1154,10 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
   const commit = (run.value as RunObservation).source.commit;
   if (!inHistory(repoRoot, commit)) {
     errors.push(`the run's source commit ${commit} is not in this repository's history`);
+  } else {
+    errors.push(...commitContentErrors(repoRoot, commit, expect));
   }
+  errors.push(...crlfCommittedErrors(repoRoot, [...records, ...observations]));
   const dirty = uncommittedEvidenceError([...records, ...observations, archivePath], repoRoot);
   if (dirty !== null) errors.push(`the proof-exercise evidence is not as committed: ${dirty}`);
   return { records, record: errors.length === 0 ? derived : null, observations, errors };
@@ -1203,9 +1346,14 @@ export interface ProbeDeps {
 }
 
 /** The targets an exercise must probe: the archive's upstream host and the image registry, by name and TCP 443. */
-export function egressTargets(expect: Pick<ExerciseExpectations, "upstreamHost" | "registryHost">): ProbeTargets {
+export function egressTargets(
+  expect: Pick<ExerciseExpectations, "upstreamHost" | "registryHost" | "upstreamIps">,
+): ProbeTargets {
   const hosts = [expect.upstreamHost, expect.registryHost];
-  return { dns: [...hosts], tcp: hosts.map((host) => ({ host, port: PROBE_PORT })) };
+  return {
+    dns: [...hosts],
+    tcp: [...hosts, ...expect.upstreamIps, ...EGRESS_CANARY_IPS].map((host) => ({ host, port: PROBE_PORT })),
+  };
 }
 
 const errorCode = (error: unknown) => {

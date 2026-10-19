@@ -18,6 +18,7 @@ import { dirname, join, resolve } from "node:path";
 
 import { serializeJson, type ArchiveEvidence } from "../scripts/lib/sp1-circuit-acquisition";
 import { productionRecordRel } from "../scripts/lib/sp1-circuit-acquisition";
+import { CANONICAL_REBUILD_OBSERVATION_REL } from "../scripts/lib/sp1-canonical-build";
 import { PROOF_INVALID } from "../scripts/lib/sp1-chain-execution";
 import { SAFE_FILES, SYNTHETIC_ANCHOR, gz, safeTar, syntheticRecord } from "../scripts/lib/sp1-circuit-fixtures";
 import {
@@ -37,6 +38,7 @@ import {
   type ProvingArtifactsObservation,
 } from "../scripts/lib/sp1-proving-availability";
 import {
+  EGRESS_CANARY_IPS,
   EGRESS_DISABLED,
   EXERCISE_RECORD_SCHEMA,
   OBSERVATIONS_DIR,
@@ -77,6 +79,7 @@ import {
   ARCHIVE_RECORD,
   ARCHIVE_RECORD_TEXT,
   EXPECTATIONS,
+  HOST_BINARY_SHA,
   HOST_TREE,
   IMAGE_REF,
   INPUT_SHA,
@@ -89,6 +92,7 @@ import {
   SOURCE_COMMIT,
   UPSTREAM_HOST,
   VERIFICATION_REL,
+  probeTargets,
   probes,
   runObservation,
   runSha,
@@ -159,6 +163,11 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
     it("needs a measured host executable and the committed proof input", function () {
       expect(runRefusals((o) => (o.hostExecutable.sha256 = "nope"))).to.include("HOST_IDENTITY_MISMATCH");
       expect(runRefusals((o) => (o.hostExecutable.bytes = 0))).to.include("HOST_IDENTITY_MISMATCH");
+      // A well-formed sha256 that is not the canonical-build host binary's: another host build.
+      expect(runRefusals((o) => (o.hostExecutable.sha256 = "55".repeat(32)))).to.include("HOST_IDENTITY_MISMATCH");
+      expect(runRefusals(() => undefined, { ...EXPECTATIONS, hostBinarySha256: null })).to.include(
+        "HOST_IDENTITY_MISMATCH",
+      );
       expect(runRefusals((o) => (o.inputs.sha256 = "00".repeat(32)))).to.include("PROOF_INPUT_MISMATCH");
       expect(runRefusals(() => undefined, { ...EXPECTATIONS, proofInputSha256: null })).to.include(
         "PROOF_INPUT_MISMATCH",
@@ -189,6 +198,13 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(runRefusals((o) => (o.prover.frozenEnv.SP1_CIRCUIT_MODE = "dev"))).to.include("PROVER_ENV_MISMATCH");
       expect(runRefusals((o) => o.prover.passedThrough.push("NETWORK_PRIVATE_KEY"))).to.include("PROVER_ENV_MISMATCH");
       expect(runRefusals((o) => o.prover.dropped.push("SP1_CIRCUIT_MODE"))).to.include("PROVER_ENV_MISMATCH");
+      expect(runRefusals((o) => (o.prover.passedThrough = [42] as never))).to.include("PROVER_ENV_MISMATCH");
+      expect(runRefusals((o) => (o.prover.dropped = "SHELL" as never))).to.include("PROVER_ENV_MISMATCH");
+      expect(runRefusals((o) => o.prover.passedThrough.push("not a name!"))).to.include("PROVER_ENV_MISMATCH");
+      // A variable the gate never passes through cannot have reached the host.
+      expect(runRefusals((o) => o.prover.passedThrough.push("SP1_WORKER_NUM_CORE_WORKERS"))).to.include(
+        "PROVER_ENV_MISMATCH",
+      );
     });
 
     it("needs egress refused at every required target before and after the run, and nothing else", function () {
@@ -199,6 +215,44 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(runRefusals((o) => o.egress.before.splice(0, 1))).to.include("EGRESS_NOT_DISABLED");
       expect(runRefusals((o) => (o.egress.after = []))).to.include("EGRESS_NOT_DISABLED");
       expect(runRefusals((o) => (o.egress.enforcement = ""))).to.include("EGRESS_NOT_DISABLED");
+      // Not a list, or an entry that is no probe (another kind, no target, no stamp, a stray field): refused.
+      expect(runRefusals((o) => (o.egress.before = "none" as never))).to.include("EGRESS_NOT_DISABLED");
+      expect(runRefusals((o) => (o.egress.after[0].kind = "udp" as never))).to.include("EGRESS_NOT_DISABLED");
+      expect(runRefusals((o) => (o.egress.after[0].target = ""))).to.include("EGRESS_NOT_DISABLED");
+      expect(runRefusals((o) => (o.egress.after[0].atUtc = "noon"))).to.include("EGRESS_NOT_DISABLED");
+      expect(runRefusals((o) => ((o.egress.after[0] as unknown as Record<string, unknown>).note = "x"))).to.include(
+        "EGRESS_NOT_DISABLED",
+      );
+      // A TCP probe at an address needs a refused CONNECTION: a resolver code there proves only that names do not
+      // resolve, and a stub resolver answering NXDOMAIN would satisfy every by-name probe with egress open.
+      expect(
+        runRefusals((o) => {
+          for (const p of [...o.egress.before, ...o.egress.after])
+            if (p.target.startsWith("203.")) p.error = "EAI_AGAIN";
+        }),
+      ).to.include("EGRESS_NOT_DISABLED");
+      expect(
+        runRefusals((o) => {
+          for (const p of [...o.egress.before, ...o.egress.after])
+            if (p.target.startsWith("1.1.1.1")) p.error = "ENOTFOUND";
+        }),
+      ).to.include("EGRESS_NOT_DISABLED");
+      // The address probes are required: the acquisitions' upstream address and both canaries.
+      for (const ip of ["203.0.113.5", ...EGRESS_CANARY_IPS]) {
+        expect(
+          runRefusals((o) => {
+            o.egress.before = o.egress.before.filter((p) => !p.target.startsWith(ip));
+          }),
+          ip,
+        ).to.include("EGRESS_NOT_DISABLED");
+      }
+      // A resolver failing with a connection code is still a refusal (the resolver itself is unreachable).
+      expect(runRefusals((o) => (o.egress.before[0].error = "ECONNREFUSED"))).to.deep.equal([]);
+      // "Immediately before and after": a probe more than ten minutes from the run attests to another time.
+      expect(runRefusals((o) => (o.egress.before[0].atUtc = "2026-11-01T09:49:59Z"))).to.include("EGRESS_NOT_DISABLED");
+      expect(runRefusals((o) => (o.egress.after[0].atUtc = "2026-11-01T12:09:41Z"))).to.include("EGRESS_NOT_DISABLED");
+      expect(runRefusals((o) => (o.egress.before[0].atUtc = "2026-11-01T09:50:00Z"))).to.deep.equal([]);
+      expect(runRefusals((o) => (o.egress.after[0].atUtc = "2026-11-01T12:09:40Z"))).to.deep.equal([]);
       // Probes taken inside the run window attest nothing about its start or end.
       expect(runRefusals((o) => (o.egress.before[0].atUtc = "2026-11-01T10:00:01Z"))).to.include("EGRESS_NOT_DISABLED");
       expect(runRefusals((o) => (o.egress.after[0].atUtc = "2026-11-01T11:59:39Z"))).to.include("EGRESS_NOT_DISABLED");
@@ -212,6 +266,17 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(runRefusals((o) => (o.timing.gateSeconds = 100))).to.include("TIMING_IMPOSSIBLE");
       expect(runRefusals((o) => (o.timing.hostStartedAtUtc = "2026-11-01T09:00:00Z"))).to.include("TIMING_IMPOSSIBLE");
       expect(runRefusals((o) => (o.timing.gateSeconds = 1.5 as never))).to.include("TIMING_IMPOSSIBLE");
+      expect(runRefusals((o) => (o.timing.hostSeconds = 4800.5 as never))).to.include("TIMING_IMPOSSIBLE");
+      expect(runRefusals((o) => (o.timing.startedAtUtc = "2026-11-01 10:00:00"))).to.include("TIMING_IMPOSSIBLE");
+      // The host run equal to the gate run but longer in seconds: impossible even within the clock tolerance.
+      expect(
+        runRefusals((o) => {
+          o.timing.hostStartedAtUtc = o.timing.startedAtUtc;
+          o.timing.hostFinishedAtUtc = o.timing.finishedAtUtc;
+          o.timing.hostSeconds = 7180;
+          o.timing.gateSeconds = 7176;
+        }),
+      ).to.include("TIMING_IMPOSSIBLE");
       expect(runRefusals((o) => (o.measuredAtUtc = "2026-11-01T11:00:00Z"))).to.include("TIMING_IMPOSSIBLE");
     });
 
@@ -236,6 +301,20 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(runRefusals((o) => (o.proof.publicValuesSha256 = "00".repeat(32)))).to.include("PROOF_MISMATCH");
       expect(runRefusals((o) => (o.proof.publicValues = "0x"))).to.include("PROOF_MISMATCH");
       expect(runRefusals((o) => (o.proof.publicValues = "0xabc"))).to.include("PROOF_MISMATCH");
+      // Shape, not only the digest: empty public values or upper-case hex with a consistent digest are refused.
+      expect(
+        runRefusals((o) => {
+          o.proof.publicValues = "0x";
+          o.proof.publicValuesSha256 = sha256(Buffer.alloc(0));
+        }),
+      ).to.include("PROOF_MISMATCH");
+      expect(
+        runRefusals((o) => {
+          const upper = Buffer.alloc(64, 0xab);
+          o.proof.publicValues = `0x${upper.toString("hex").toUpperCase()}`;
+          o.proof.publicValuesSha256 = sha256(upper);
+        }),
+      ).to.include("PROOF_MISMATCH");
     });
 
     it("needs a host label, UTC stamps and identity lines", function () {
@@ -362,7 +441,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         verifiedBy: "the archive-only gate: re-hashed against the record before the host started and after it exited",
       });
       expect(r.host).to.deep.equal({
-        executableSha256: run.hostExecutable.sha256,
+        executableSha256: HOST_BINARY_SHA,
         executableBytes: run.hostExecutable.bytes,
         sourceTree: HOST_TREE,
         sourceCommit: SOURCE_COMMIT,
@@ -401,16 +480,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(r.egress).to.deep.equal({
         condition: EGRESS_DISABLED,
         enforcement: run.egress.enforcement,
-        probes: {
-          before: 4,
-          after: 4,
-          targets: [
-            `dns:${UPSTREAM_HOST}`,
-            `dns:${REGISTRY_HOST}`,
-            `tcp:${UPSTREAM_HOST}:443`,
-            `tcp:${REGISTRY_HOST}:443`,
-          ].sort(),
-        },
+        probes: { before: 7, after: 7, targets: probeTargets() },
       });
       expect(r.derivedFrom).to.deep.equal([RUN_REL, VERIFICATION_REL]);
       expect(r.establishes).to.be.a("string").and.include("liveness");
@@ -487,6 +557,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
     interface Repo {
       dir: string;
       base: string;
+      commit0: string;
       run: RunObservation;
       verification: VerificationObservation;
       expect: ExerciseExpectations;
@@ -509,17 +580,42 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       git(d, "config", "user.email", "test@example.invalid");
       git(d, "config", "user.name", "test");
       git(d, "config", "commit.gpgsign", "false");
+      // commit 0: the archive record beside an older host tree and no tools; commit 1 (the base): the designated
+      // host tree, the fixture, the tools, the designation naming that tree, the canonical-build host binary.
       write(d, productionRecordRel(ANCHOR), ARCHIVE_RECORD_TEXT);
-      write(
-        d,
-        `${DESIGNATIONS_DIR}/${ANCHOR.designation}.json`,
-        serializeJson({ id: ANCHOR.designation, sequence: 1, subject: { zkvmHostTree: HOST_TREE } }),
-      );
+      write(d, "zkvm/host/src/main.rs", "fn main() { /* v0 */ }\n");
+      const commit0 = commit(d, "an older checkout");
+      write(d, "zkvm/host/src/main.rs", "fn main() {}\n");
       write(d, PROOF_INPUT_FIXTURE_REL, '{\n  "synthetic": "proof input fixture"\n}\n');
       write(d, RUN_SCRIPT_REL, "// synthetic measurement tool\n");
       write(d, VERIFICATION_SCRIPT_REL, "// synthetic verification tool\n");
+      for (const [host, ip] of [
+        ["developer-workstation", "203.0.113.5"],
+        ["github-hosted-runner", "203.0.113.5"],
+      ]) {
+        write(
+          d,
+          `${OBSERVATIONS_DIR}/circuit-acquisition-${host}.raw.json`,
+          serializeJson({ host, transfer: { remoteIp: ip } }),
+        );
+      }
+      commit(d, "the designated host tree and the tools");
+      const tree = git(d, "rev-parse", "HEAD:zkvm/host");
+      write(
+        d,
+        `${DESIGNATIONS_DIR}/${ANCHOR.designation}.json`,
+        serializeJson({ id: ANCHOR.designation, sequence: 1, subject: { zkvmHostTree: tree } }),
+      );
+      write(
+        d,
+        CANONICAL_REBUILD_OBSERVATION_REL,
+        serializeJson({
+          builds: [{ hostId: "x", subject: { zkvmHostTree: tree }, hostBinarySha256: HOST_BINARY_SHA }],
+        }),
+      );
       const base = commit(d, "archived state");
       const expect = exerciseExpectations(d, { anchor: ANCHOR, archive });
+      void commit0;
       const bindTo = (run: RunObservation) => {
         const v = verificationObservation(run);
         v.run = { path: RUN_FILE, sha256: runSha(run) };
@@ -530,6 +626,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       // so a test can commit a record beside observations that no longer derive it.
       const clean = runObservation();
       clean.source.commit = base;
+      clean.source.zkvmHostTree = expect.zkvmHostTree;
       clean.inputs.sha256 = String(expect.proofInputSha256);
       clean.tool.scriptSha256 = String(expect.scripts.run);
       const record = deriveExerciseRecord(
@@ -548,7 +645,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       }
       if (opts.record !== false) write(d, exerciseRecordRel(ANCHOR), serializeJson(record));
       if (opts.commit !== false) commit(d, "the exercise");
-      return { dir: d, base, run, verification, expect };
+      return { dir: d, base, commit0, run, verification, expect };
     }
     const judge = (d: string, a: ArchiveEvidence = archive) =>
       productionExerciseEvidence(d, { anchor: ANCHOR, archive: a });
@@ -567,10 +664,12 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         sha256: sha256(ARCHIVE_RECORD_TEXT),
         record: ARCHIVE_RECORD,
       });
-      expect(x.zkvmHostTree).to.equal(HOST_TREE);
+      expect(x.zkvmHostTree).to.match(/^[0-9a-f]{40}$/);
       expect(x.proofInputSha256).to.equal(sha256('{\n  "synthetic": "proof input fixture"\n}\n'));
       expect(x.upstreamHost).to.equal(UPSTREAM_HOST);
       expect(x.registryHost).to.equal(REGISTRY_HOST);
+      expect(x.upstreamIps).to.deep.equal(["203.0.113.5"]);
+      expect(x.hostBinarySha256).to.equal(HOST_BINARY_SHA);
       expect(x.scripts).to.deep.equal({
         run: sha256("// synthetic measurement tool\n"),
         verification: sha256("// synthetic verification tool\n"),
@@ -588,6 +687,8 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       const bare = exerciseExpectations(d, { anchor: ANCHOR, archive });
       expect(bare.proofInputSha256).to.equal(null);
       expect(bare.scripts).to.deep.equal({ run: null, verification: null });
+      expect(bare.upstreamIps).to.deep.equal([]);
+      expect(bare.hostBinarySha256).to.equal(null);
     });
 
     it("is NO_RECORD while the exercise directory holds nothing, whatever observations exist", function () {
@@ -656,12 +757,6 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       commit(r.dir, "renamed");
       refused(r.dir, /must hold exactly/);
       r = repo();
-      const linked = join(r.dir, "elsewhere.json");
-      renameSync(join(r.dir, exerciseRecordRel(ANCHOR)), linked);
-      symlinkOrSkip(this, linked, join(r.dir, exerciseRecordRel(ANCHOR)), "file");
-      commit(r.dir, "a link");
-      refused(r.dir, /not a regular file/);
-      r = repo();
       write(
         r.dir,
         `${OBSERVATIONS_DIR}/proof-exercise-run-proving-host-b.raw.json`,
@@ -691,6 +786,30 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       refused(r.dir, /claims host proving-host-a/);
     });
 
+    it("is REFUSED for a record or an observation that is a link (POSIX)", function () {
+      this.timeout(60_000);
+      let r = repo();
+      const linked = join(r.dir, "elsewhere.json");
+      renameSync(join(r.dir, exerciseRecordRel(ANCHOR)), linked);
+      symlinkOrSkip(this, linked, join(r.dir, exerciseRecordRel(ANCHOR)), "file");
+      commit(r.dir, "a link");
+      refused(r.dir, /not a regular file/);
+      r = repo();
+      const elsewhere = join(r.dir, "run-elsewhere.json");
+      renameSync(join(r.dir, RUN_FILE), elsewhere);
+      symlinkOrSkip(this, elsewhere, join(r.dir, RUN_FILE), "file");
+      commit(r.dir, "a linked observation");
+      refused(r.dir, /not a regular file/);
+    });
+
+    it("is REFUSED for an observation committed with CRLF line ends (the bound sha256 is of the committed bytes)", function () {
+      this.timeout(60_000);
+      const r = repo();
+      writeFileSync(join(r.dir, RUN_FILE), readFileSync(join(r.dir, RUN_FILE), "utf8").replace(/\n/g, "\r\n"));
+      commit(r.dir, "crlf");
+      refused(r.dir, /CRLF/);
+    });
+
     it("is REFUSED when the archive evidence is gone, changed, or was never accepted", function () {
       this.timeout(60_000);
       const r = repo();
@@ -711,6 +830,16 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       this.timeout(60_000);
       // A commit this repository never had.
       refused(repo({ run: (o) => (o.source.commit = "d".repeat(40)) }).dir, /not in this repository's history/);
+      // A commit in the history that does not hold the designated host tree (an older checkout, no tools).
+      const older = repo();
+      const o = JSON.parse(readFileSync(join(older.dir, RUN_FILE), "utf8"));
+      o.source.commit = older.commit0;
+      writeFileSync(join(older.dir, RUN_FILE), serializeJson(o));
+      const v = JSON.parse(readFileSync(join(older.dir, VERIFICATION_FILE), "utf8"));
+      v.run.sha256 = sha256(serializeJson(o));
+      writeFileSync(join(older.dir, VERIFICATION_FILE), serializeJson(v));
+      commit(older.dir, "another commit");
+      refused(older.dir, /does not hold the designated host tree/);
       // The run observation of another baseline (another archive record's sha256).
       refused(repo({ run: (o) => (o.archiveRecord.sha256 = "ee".repeat(32)) }).dir, /ARCHIVE_RECORD_MISMATCH/);
       // The designation's host tree moved on.
@@ -915,6 +1044,9 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(pa.exercises).to.deep.equal({ dir: PROOF_EXERCISES_DIR, records: 0 });
       // SP1-PA2C's evidence is not SP1-PA3's: the archive record is no run observation and no verification.
       const x = exerciseExpectations(".", { anchor: productionAnchor("."), archive });
+      expect(x.upstreamIps).to.deep.equal(["3.5.90.58", "3.5.93.98"]);
+      expect(x.hostBinarySha256).to.equal("fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b");
+      expect(x.zkvmHostTree).to.equal("30f72596c430974bf8113892bf41c26dce3629f3");
       expect(runObservationErrors(archive.record, x).map((r) => r.reason)).to.include("OBSERVATION_SHAPE");
       expect(
         verificationObservationErrors(archive.record, { path: "", sha256: "", observation: runObservation() }, x).map(
@@ -1052,6 +1184,9 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         tcp: [
           { host: UPSTREAM_HOST, port: 443 },
           { host: REGISTRY_HOST, port: 443 },
+          { host: "203.0.113.5", port: 443 },
+          { host: "1.1.1.1", port: 443 },
+          { host: "8.8.8.8", port: 443 },
         ],
       });
     });

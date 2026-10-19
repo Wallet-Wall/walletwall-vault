@@ -48,12 +48,12 @@ runScript(async () => {
     const state = exerciseEvidenceState(e);
     if (state === "REFUSED") throw new Error(`the proof-exercise evidence is refused:\n - ${e.errors.join("\n - ")}`);
     if (state === "NO_RECORD") {
-      const derived =
-        archiveState === "ACCEPTED"
-          ? "ARCHIVED_VERIFIED_UNEXERCISED"
-          : archiveState === "NO_RECORD"
-            ? "TOOLING_READY_NO_ARTIFACT"
-            : `archive evidence ${archiveState}: no state`;
+      if (archiveState === "REFUSED") {
+        throw new Error(
+          `no proof-exercise record, and the archive evidence is refused:\n - ${archive.errors.join("\n - ")}`,
+        );
+      }
+      const derived = archiveState === "ACCEPTED" ? "ARCHIVED_VERIFIED_UNEXERCISED" : "TOOLING_READY_NO_ARTIFACT";
       console.log(`OK: ${exerciseRecordRel(anchor)} does not exist; no proof-exercise record (${derived}).`);
       return;
     }

@@ -868,14 +868,16 @@ const RESIDUAL_ARCHIVED =
 
 /** What an exercised path still leaves open (SP1-PA3A): the measurement's own limits. */
 export const RESIDUALS_EXERCISED: readonly string[] = [
-  "egress is attested by probes refused immediately before and after the gate run (the archive's upstream host and the image registry, each by name and by TCP 443) and by the operator's statement of the enforcement; the probes do not watch the run itself, and a container's own egress is covered only as far as the host's enforcement reaches the docker bridge",
+  "the designated verifier proves the proof's validity under the designated key, never its provenance: that the proof was made through the gate, with SP1_PROVER=cpu, with egress refused, by the canonical host binary, in the recorded time and memory are the operator's observations, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise resting on the owner's review of the pull request that commits them; a valid proof of the designated program made by any other means, wrapped in self-consistent observations, is refused only by that review",
+  "egress is attested by probes refused within ten minutes before and after the gate run (the archive's upstream host and the image registry by name and by TCP 443, the acquisitions' upstream addresses and two canary addresses by TCP 443 with a refused connection) and by the operator's statement of the enforcement; the probes do not watch the run itself, and a container's own egress is covered only as far as the host's enforcement reaches the docker bridge",
   "the gnark containers' peak memory is sampled (docker stats at a fixed interval), a lower bound of the true peak; the host process's figure is the kernel's high-water mark (VmHWM)",
   "one host, one run: the wall time and the memory are that hardware's at that time, never a bound for a user's machine",
   "a pure validator cannot execute a pairing: the verification observation records the designated verifier's answer, and the suite re-executes a committed proof against the CREATE2-authenticated runtime (test/Sp1ProofExerciseVerifier.test.ts); a verification observation forged without a proof the runtime accepts fails there",
 ];
 
 export const NOT_ESTABLISHED_EXERCISED: readonly string[] = [
-  "that any other hardware proves within the 2-day rotation delay: one measured run on one host",
+  "the provenance of the proving beyond what the repository binds: the verifier accepts a valid proof whoever made it, however it was made",
+  "that any other hardware proves within the 2-day rotation delay: one measured run on one host; a run over the delay is still an exercised path (the record carries withinRotationDelay = false and the availability record says EXCEEDING), never a timely one",
   "that egress stayed refused between the two probes, or that the proving host's enforcement reached every container",
   "that the archive, the mirrors or the image remain available: the exercise used them once, and no re-read is continuous",
   "the Groth16 trusted setup behind the v6.1.0 key: a proof the verifier accepts is compatibility with the key, never soundness",
@@ -899,12 +901,12 @@ export const notEstablishedFor = (state: ToolingState): readonly string[] =>
 /** The invariants a proof-exercise record must satisfy before the third state is derived (the validator's rules). */
 export const EXERCISE_REQUIREMENTS: readonly string[] = [
   `exactly one record in ${PROOF_EXERCISES_DIR}, named after the designation, byte for byte what the committed observations derive (never written by hand), committed with them`,
-  `exactly one run observation (${RUN_SCRIPT_REL}, bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable and the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable`,
-  "network egress refused at the archive's upstream host and the image registry (by name and by TCP 443) immediately before and after the gate run, with the enforcement stated",
+  `exactly one run observation (${RUN_SCRIPT_REL}, bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable by sha256 (the canonical-build host binary the committed canonical rebuild observation names for the designated host tree), the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable`,
+  "network egress refused within ten minutes before and after the gate run: at the archive's upstream host and the image registry by name and by TCP 443, and by a refused connection at the acquisitions' upstream addresses and two canary addresses (TCP 443), with the enforcement stated",
   "a possible wall time (the host run inside the gate run, positive whole seconds that match the stamps) and a positive peak-memory measurement of the host process and of the gnark containers",
   "a proof naming the designated PROGRAM_VKEY whose first four bytes are the designated verifying key's selector, with its public values' and bytes' sha256",
   `exactly one verification observation (${VERIFICATION_SCRIPT_REL}, bound by sha256) binding the run observation's committed bytes and the proof's digests, in which the designation's verifier (the CREATE2-authenticated v6.1.0 runtime, its code hash checked at the called address) accepted the proof and refused its tampered copy`,
-  "the run's source commit in this repository's history, the designation's host source tree, and this repository's identity",
+  "the run's source commit in this repository's history and holding what the run claims it ran from (the designated host tree, the archive record and the measurement tool as committed), and this repository's identity; observations and records committed as regular LF files in their directories",
   "the accepted archive record still accepted: exercise evidence without it derives no state",
 ];
 

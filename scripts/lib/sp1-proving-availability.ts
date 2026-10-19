@@ -853,7 +853,8 @@ export function deriveProvingAvailability(input: {
     notEstablished:
       exercised !== null
         ? [
-            `that any other hardware proves within the ${ROTATION_DELAY_SECONDS} s rotation delay: one measured run on one host`,
+            "the provenance of the proving beyond what the repository binds (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing): the designated verifier accepts a valid proof whoever made it, however it was made; the rest is the operator's observation under the owner's review",
+            `that any other hardware proves within the ${ROTATION_DELAY_SECONDS} s rotation delay: one measured run on one host (a run over the delay is still an exercised path, recorded as EXCEEDING, never a timely one)`,
             "that egress stayed refused between the two probes, or that the proving host's enforcement reached every container",
             "that the mirrors keep serving the archive, or that the image stays in the registry: the exercise used them once",
             `the Groth16 trusted setup behind the ${v} key: a proof the designated verifier accepts is compatibility with the key, never soundness`,
