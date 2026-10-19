@@ -1,10 +1,11 @@
-# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B)
+# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C)
 
-**Status:** `TOOLING_READY_NO_ARTIFACT`, with SP1-PA2B's two acquisition observations committed and the record's
-derivation in place; `PROVING_AVAILABILITY = OWNER_DOWNLOAD_REQUIRED` until two WalletWall-controlled mirror
-observations are committed and the record is derived from them, which moves both to `ARCHIVED_VERIFIED_UNEXERCISED`.
-The state is derived from the committed evidence by `validate:sp1-circuit-tooling`, never set
-([SP1-PA2B](#sp1-pa2b-the-real-archive-acquired-measured-recorded)).
+**Status:** `ARCHIVED_VERIFIED_UNEXERCISED`: SP1-PA2C committed two WalletWall-controlled mirror observations (Google
+Cloud Storage and Cloudflare R2, each re-read byte for byte from its provider) and derived the production archive record
+from them and SP1-PA2B's two acquisition observations; `PROVING_AVAILABILITY = ARCHIVED_VERIFIED_UNEXERCISED` and
+`SELF_HOSTED_PATH_EXERCISED = false`: no real WalletWall Groth16 proof has been produced. The state is derived from the
+committed evidence by `validate:sp1-circuit-tooling`, never set
+([SP1-PA2C](#sp1-pa2c-two-walletwall-controlled-mirrors-the-record-admitted)).
 
 > Tooling is not an artifact, and an artifact is not proving. SP1-PA2A built the WalletWall-controlled path that
 > installs SP1's Groth16 circuit v6.1.0 from a verified archive and proves from it; it downloaded nothing, pulled no
@@ -21,6 +22,12 @@ The state is derived from the committed evidence by `validate:sp1-circuit-toolin
 > only when every fact holds, and then the tooling state, proving availability, the host-advisory assumption and the
 > implementation receipt's binding follow from it. Archive provenance does not establish Groth16 soundness, no real
 > proof has been produced, and nothing here is production readiness.
+>
+> **SP1-PA2C** (owner-authorized mirrors): the authenticated archive was written once to a dedicated Google Cloud
+> Storage bucket and once to a Cloudflare R2 bucket, each object was re-read byte for byte from its provider by the
+> committed measurement tool, and the record was derived from the four observations; proving availability, the tooling
+> state, the host-advisory assumption and the receipt supersession followed from it by their own generators. Mirror
+> ownership is not artifact identity, artifact identity is not proving, and proving is not production readiness.
 
 Research prototype. Not audited. Testnet/local only. Do not use real funds.
 
@@ -42,7 +49,7 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 | State | Means | Reached |
 |---|---|---|
 | 1. Tooling exists (`TOOLING_READY_NO_ARTIFACT`) | the inspection, installer and archive-only gate exist and pass their self-test; no WalletWall archive record exists | **SP1-PA2A** |
-| 2. Verified archive exists (`ARCHIVED_VERIFIED_UNEXERCISED`) | an owner-authorized acquisition produced a record in `evidence/zk/sp1-impl/proving-archives`: two hosts agreeing on the archive's sha256, two WalletWall mirrors, the gnark image by digest | **SP1-PA2B**, once the two mirror observations are committed and the record derived (the acquisitions are committed) |
+| 2. Verified archive exists (`ARCHIVED_VERIFIED_UNEXERCISED`) | an owner-authorized acquisition produced a record in `evidence/zk/sp1-impl/proving-archives`: two hosts agreeing on the archive's sha256, two WalletWall mirrors, the gnark image by digest | **SP1-PA2C** (the two mirror observations committed and the record derived; the acquisitions are SP1-PA2B's) |
 | 3. Self-hosted proving path exercised (`SELF_HOSTED_PATH_EXERCISED`) | a real Groth16 proof of the designated program made through this gate from the archive, egress off, accepted by the designated verifier | not reachable here: SP1-PA3 |
 | 4. Production binding established | the implementation receipt's `PRODUCTION_SP1_BINDING`; needs, among other things, state 3 | not reachable here |
 
@@ -382,10 +389,11 @@ one object under two addressing styles or spellings is one mirror. The upstream 
 observation is a re-read at one moment: **a recorded mirror assertion is not continuously verified availability.**
 Two mirrors improve availability; they do not prove eternal availability, and the record says so.
 
-The owner chose Google Cloud Storage and Cloudflare R2 as the two locations. Establishing them (buckets, uploads) is
-an owner act in the owner's cloud accounts; this pull request carries the tooling that records them and derives the
-record, and the two acquisition observations. Until both mirror observations are committed, no record exists and the
-state stays `TOOLING_READY_NO_ARTIFACT`.
+The owner chose Google Cloud Storage and Cloudflare R2 as the two locations. Establishing them (buckets, uploads) was
+an owner act in the owner's cloud accounts; SP1-PA2B carried the tooling that records them and derives the record, and
+the two acquisition observations. Until both mirror observations were committed, no record existed and the state
+stayed `TOOLING_READY_NO_ARTIFACT`; SP1-PA2C committed them
+([below](#sp1-pa2c-two-walletwall-controlled-mirrors-the-record-admitted)).
 
 ### The record, derived
 
@@ -470,13 +478,85 @@ in the local store and network egress off; generate one real Groth16 proof of de
 them with the 2-day rotation delay; only then `SELF_HOSTED_PATH_EXERCISED`. That lane needs its own owner
 authorization.
 
+## SP1-PA2C: two WalletWall-controlled mirrors, the record admitted
+
+SP1-PA2B left one fact missing: two real WalletWall-controlled mirrors, each independently re-read from its provider.
+SP1-PA2C (owner-authorized) supplied it and nothing else. It uploaded the authenticated archive (the SP1-PA2B host A
+copy, re-measured before upload to exactly 6,211,807,514 bytes and sha256 `18beebb6…a9147810`, and accepted again by
+the merged inspector) to the two providers the owner named, re-read each object through `sp1:measure-circuit-mirror`,
+committed the two observations, and ran the admission chain exactly as designed above. It changed no decision code,
+grammar, schema, policy or state derivation, pulled no image, generated no proof, deployed nothing and wrote to no
+chain.
+
+### The two mirrors
+
+| | Google Cloud Storage | Cloudflare R2 |
+|---|---|---|
+| Location (as the record names it) | `gs://walletwall-sp1-archive-328o457ytfv/sp1/v6.1.0/v6.1.0-groth16.tar.gz` | `r2://b69bb874d4dd3937e1255b8527a84854/walletwall-sp1-archive/sp1/v6.1.0/v6.1.0-groth16.tar.gz` |
+| Provider identity | generation `1792387232081573`, one non-composite object, created 2026-10-19T05:20:32Z; the provider's MD5 equals the source file's | ETag `"f65a0bc730b4d3bd7bc54d7531acd515-60"`, Last-Modified 2026-10-19 04:22:08 GMT (R2 keeps no generations) |
+| Written | once, 2026-10-19 03:56:49–05:20:33Z, `gcloud storage cp --no-clobber` with composite uploads disabled, into a dedicated bucket that was empty (public access prevention enforced, uniform bucket-level access) | once, 2026-10-19 03:57:45–04:22:09Z, a 60-part S3 multipart upload with SigV4 header authentication into a private bucket; `HEAD` 404 before, 200 after |
+| Re-read | 05:21:21–05:29:28Z from `storage.googleapis.com/<bucket>/<object>` with a short-lived OAuth bearer token in an environment variable; no signed URL | 04:39:00–04:44:08Z from `<account>.r2.cloudflarestorage.com/<bucket>/<object>` through a one-hour SigV4 presigned GET given to the unchanged tool as an argument; the tool records host and path, never the query |
+| Served | HTTP 200, `Content-Length` 6211807514, 6,211,807,514 bytes, sha256 `18beebb6…a9147810`: `AGREES` | the same: `AGREES` |
+| Observation | [`circuit-archive-mirror-gcs.raw.json`](../evidence/zk/sp1-impl/observations/circuit-archive-mirror-gcs.raw.json) | [`circuit-archive-mirror-r2.raw.json`](../evidence/zk/sp1-impl/observations/circuit-archive-mirror-r2.raw.json) |
+
+Both observations bind `scripts/measure-sp1-circuit-mirror.ts` by sha256. Independence, as far as the validator checks
+it: two providers, two canonical object identities, each re-read served by its own provider's host for exactly the
+object its location names, two separate reads and tool invocations, one content digest, and no upstream host. Two
+mirrors are two objects, never two addressing styles, signed URLs or cache copies of one. **Each observation establishes
+content identity at measurement time, not continuous availability**; "controlled by WalletWall" is an assertion the
+observation records and the validator cannot verify.
+
+### The record and what followed from it
+
+`npm run sp1:proving-archive-record` derived
+[`evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json`](../evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json)
+(`walletwall.sp1-proving-archive.v2`) from the four committed observations, and the availability generator refused to
+read the record until the record itself was committed: designation `mldsa65-withdrawal-d1`; the archive, 6,211,807,514
+bytes, sha256 `18beebb6…a9147810`; two acquisitions (`developer-workstation`, `github-hosted-runner`); 7 members;
+8 ignored AppleDouble metadata entries, exactly the PA2A policy; the designated verifying key (492 bytes,
+`0x4388a21c…e696`); the gnark image pinned by its OCI index digest `sha256:e1a1cd62…48c4d` with the linux/amd64
+manifest `sha256:be8555f1…29e54` named in the observation method, the tag provenance only; two mirrors, each naming
+the archive's sha256. The record passed the unchanged PA2A validator, `validate:sp1-proving-archive-record`, and the
+production inspector against the real archive bytes (`sp1:circuit-archive:inspect -- --archive <host A copy> --record
+<the record>`: exact member and metadata sets, the designated key).
+
+Then, each by its own generator and never by hand: `sp1:proving-availability` wrote status
+`ARCHIVED_VERIFIED_UNEXERCISED` with the measured tarball, the archived members' digests, the image digest, the accepted
+record and its four observations, and one remaining owner action (authorize SP1-PA3); `sp1:circuit-tooling` derived
+state `ARCHIVED_VERIFIED_UNEXERCISED` with `acquisition.state = ACCEPTED` (its `lane` field names SP1-PA2B, the lane
+that built the derivation it runs; SP1-PA2C supplied the evidence); `sp1:host-advisories` regenerated the record in the
+archived state (`A_NO_PROVING_WITHOUT_ARCHIVE` holds: exactly the one accepted record, never an unverified local copy;
+still `ASSESSMENT_VALID` and still `NOT_DEPENDENCY_SAFE`, nothing patched); and
+`generate-sp1-impl-receipt.ts --supersession --lane SP1-PA2C` filed
+[`receipt-supersession.json`](../evidence/zk/sp1-impl/receipt-supersession.json), pinning the historical receipt's bytes
+and reading its `PROVING_AVAILABILITY` at `ab26dd6b`, the last first-parent main commit where it was live. The receipt
+itself is byte-identical; nothing was restamped.
+
+### What SP1-PA2C establishes, and what it does not
+
+- Established: WalletWall now controls two independently measured copies of the exact authenticated artifact SP1-PA2A
+  and SP1-PA2B characterized, and the committed evidence derives the archived state without assertion or manual
+  status-setting: `TOOLING_READY_NO_ARTIFACT` → `ARCHIVED_VERIFIED_UNEXERCISED`, with
+  `SELF_HOSTED_PATH_EXERCISED = false`.
+- Not established: that the mirrors stay available (each observation is a re-read at one moment; the GCS object is not
+  versioned and R2 keeps no versions, so a later overwrite is caught only by the next re-read, or by the installer and
+  prove gate, which re-hash the archive before every use); that the Groth16 trusted setup behind the key is sound
+  (archive hashing establishes identity, never proving-system soundness); that the self-hosted path proves at all, on
+  what hardware, or within the 2-day rotation delay (no real WalletWall Groth16 proof has been produced; no wall-clock
+  or memory figure exists); production readiness (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`).
+- Next lane: SP1-PA3, [above](#next-sp1-pa3-the-self-hosted-proving-exercise-not-executed-here), under its own owner
+  authorization. Nothing here is production ready.
+
 ## Relation to #220 and #221 (SP1-PA2A)
 
-- **#220 (host advisories):** unchanged and still `ASSESSMENT_VALID` at SP1-PA2A; SP1-PA2B's restatement of its
-  archive assumption is [above](#what-admission-changes-and-what-it-does-not).
+- **#220 (host advisories):** still `ASSESSMENT_VALID`; SP1-PA2B's restatement of its archive assumption is
+  [above](#what-admission-changes-and-what-it-does-not), and SP1-PA2C regenerated the record in the archived state
+  (`A_NO_PROVING_WITHOUT_ARCHIVE` holds for exactly the one accepted record; nothing patched, still
+  `NOT_DEPENDENCY_SAFE`).
 - **#221 (receipt integration):** no `contracts/` change, so the historical implementation receipt and its
-  integration binding are byte-identical and `validate:sp1-impl-receipt` passes as before; SP1-PA2B's supersession of
-  its proving-availability binding is [above](#what-admission-changes-and-what-it-does-not).
+  integration binding are byte-identical; SP1-PA2C filed the supersession SP1-PA2B designed
+  (`evidence/zk/sp1-impl/receipt-supersession.json`, lane `SP1-PA2C`, the receipt pinned by sha256, its
+  `PROVING_AVAILABILITY` read at `ab26dd6b`), and `validate:sp1-impl-receipt` passes through it.
 
 ## Evidence
 
@@ -498,6 +578,9 @@ authorization.
   agreement rules, the derived record, the committed evidence in a temporary repository, the state) and
   [`test/Sp1ImplReceiptSupersession.test.ts`](../test/Sp1ImplReceiptSupersession.test.ts); the committed acquisition
   observations are re-checked against the committed script, census and designation on every run.
+- SP1-PA2C: the two mirror observations are re-checked against the committed script and the record on every run; the
+  adversarial closeout (a throwaway clone of the lane commit, each attempted state inflation refused by the validators)
+  is in its pull request.
 - Mutation and adversarial review: see the pull requests.
 
 ## Reproduce
@@ -522,7 +605,7 @@ npm run sp1:measure-circuit-mirror -- --location "<as the record names it>" --ur
   --out evidence/zk/sp1-impl/observations/circuit-archive-mirror-<id>.raw.json
 # then, with both mirror observations committed: derive the record and let every dependent record follow from it
 npm run sp1:proving-archive-record && npm run sp1:proving-availability && npm run sp1:circuit-tooling && npm run sp1:host-advisories
-npx tsx scripts/generate-sp1-impl-receipt.ts --supersession --lane SP1-PA2B \
+npx tsx scripts/generate-sp1-impl-receipt.ts --supersession --lane SP1-PA2C \
   --record evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json --reason "the archive record moved proving availability"
 # and state the new status at the top of this page (`PROVING_AVAILABILITY = ARCHIVED_VERIFIED_UNEXERCISED`): the
 # tooling suite holds the page to the status the evidence derives; commit the record, the observations, the

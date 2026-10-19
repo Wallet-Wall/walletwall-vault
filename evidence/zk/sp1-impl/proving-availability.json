@@ -11,11 +11,11 @@
     "plan": "archive the v6.1.0 circuit artifacts by hash and keep a self-hosted proving path before real value",
     "dependency": "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's."
   },
-  "status": "OWNER_DOWNLOAD_REQUIRED",
+  "status": "ARCHIVED_VERIFIED_UNEXERCISED",
   "basis": [
     "the circuit v6.1.0 Groth16 artifacts are absent on developer-workstation: ~/.sp1/circuits/groth16/v6.1.0 does not exist, nor does ~/.sp1/circuits",
-    "no WalletWall archive of them is recorded (evidence/zk/sp1-impl/proving-archives holds no record)",
-    "obtaining them needs the download of v6.1.0-groth16.tar.gz (about 6.21 GB, per SP1-TD1), which this lane is not authorized to make",
+    "WalletWall archived v6.1.0-groth16.tar.gz: 6211807514 bytes, sha256 18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810, acquired independently on developer-workstation and github-hosted-runner (both measured the same bytes), inspected member by member by the SP1-PA2A tooling (7 members; 8 AppleDouble entries ignored), mirrored at 2 WalletWall-controlled locations each recorded with that sha256, with the gnark image pinned by digest sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d; the record is evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json, derived from the committed acquisition observations",
+    "an archive is not an exercised proving path: no proof has been made from it, and archiving establishes availability of the bytes, never that the Groth16 trusted setup behind the key is sound",
     "upstream (sp1-circuits.s3-us-east-2.amazonaws.com) hosting them is not availability: it can stop, and nothing here relies on what it serves",
     "known offline: their groth16_vk.bin must have sha256 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 (492 bytes), the key sp1-verifier 6.3.1 embeds; that crate is the one zkvm/host/Cargo.lock pins, and the hash is the designated VERIFIER_HASH"
   ],
@@ -27,9 +27,9 @@
     "upstreamUrl": "https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz",
     "tarball": {
       "file": "v6.1.0-groth16.tar.gz",
-      "sha256": null,
-      "size": "about 6.21 GB (SP1-TD1; not measured here)",
-      "status": "UNKNOWN_UNTIL_ARCHIVED"
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      "size": "6211807514 bytes (measured on 2 hosts)",
+      "status": "ARCHIVED_VERIFIED"
     },
     "members": [
       {
@@ -37,24 +37,28 @@
         "sha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
         "bytes": 492,
         "knownFrom": "sp1-verifier 6.3.1 vk-artifacts/groth16_vk.bin (crate sha256 b6dbb411abb1ea167f9b0b082c95f62ede26ab7ba72349770292a60dc0e9a673, the zkvm/host/Cargo.lock checksum)",
+        "status": "ARCHIVED_VERIFIED",
         "role": "the verifying key: a proof's selector and vkey hash are its sha256, so a proof made under any other key is refused by the designated verifier"
       },
       {
         "file": "constraints.json",
-        "sha256": null,
-        "status": "UNKNOWN_UNTIL_ARCHIVED",
+        "sha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b",
+        "bytes": 111997113,
+        "status": "ARCHIVED_VERIFIED",
         "role": "read by Groth16 proving: any other file yields proofs the designated verifier refuses (liveness, never soundness)"
       },
       {
         "file": "groth16_circuit.bin",
-        "sha256": null,
-        "status": "UNKNOWN_UNTIL_ARCHIVED",
+        "sha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc",
+        "bytes": 2437991441,
+        "status": "ARCHIVED_VERIFIED",
         "role": "read by Groth16 proving: any other file yields proofs the designated verifier refuses (liveness, never soundness)"
       },
       {
         "file": "groth16_pk.bin",
-        "sha256": null,
-        "status": "UNKNOWN_UNTIL_ARCHIVED",
+        "sha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167",
+        "bytes": 5862173061,
+        "status": "ARCHIVED_VERIFIED",
         "role": "read by Groth16 proving: any other file yields proofs the designated verifier refuses (liveness, never soundness)"
       }
     ],
@@ -63,8 +67,8 @@
       "features": [],
       "image": "ghcr.io/succinctlabs/sp1-gnark:v6.1.0",
       "imageOverrideEnv": "SP1_GNARK_IMAGE",
-      "imageDigest": null,
-      "status": "UNKNOWN_UNTIL_ARCHIVED"
+      "imageDigest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+      "status": "DIGEST_RECORDED_NOT_PULLED"
     }
   },
   "pinnedProver": [
@@ -86,7 +90,27 @@
   },
   "archives": {
     "dir": "evidence/zk/sp1-impl/proving-archives",
-    "records": 0
+    "records": 1,
+    "accepted": {
+      "record": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "derivedFrom": [
+        "evidence/zk/sp1-impl/observations/circuit-acquisition-developer-workstation.raw.json",
+        "evidence/zk/sp1-impl/observations/circuit-acquisition-github-hosted-runner.raw.json",
+        "evidence/zk/sp1-impl/observations/circuit-archive-mirror-gcs.raw.json",
+        "evidence/zk/sp1-impl/observations/circuit-archive-mirror-r2.raw.json"
+      ],
+      "hosts": [
+        "developer-workstation",
+        "github-hosted-runner"
+      ],
+      "mirrors": [
+        "gs://walletwall-sp1-archive-328o457ytfv/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+        "r2://b69bb874d4dd3937e1255b8527a84854/walletwall-sp1-archive/sp1/v6.1.0/v6.1.0-groth16.tar.gz"
+      ],
+      "members": 7,
+      "ignoredMetadata": 8,
+      "gnarkDigest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
+    }
   },
   "selfHostedPath": {
     "exercised": false,
@@ -100,16 +124,14 @@
     ]
   },
   "ownerAction": [
-    "authorize the download of v6.1.0-groth16.tar.gz (about 6.21 GB) and of the gnark image by digest; this lane downloaded nothing",
-    "name the two archive locations WalletWall controls",
-    "authorize the self-hosted proving run: a real proof, which this lane did not generate"
+    "authorize the self-hosted proving run (SP1-PA3): install from the committed verified archive only, with the digest-pinned gnark image, network egress off, one real Groth16 proof of the designated program verified through the designated verifier path, peak memory and wall time recorded against the 2-day rotation delay; only then SELF_HOSTED_PATH_EXERCISED"
   ],
   "notEstablished": [
-    "the tarball's sha256 and the digests of constraints.json, groth16_circuit.bin, groth16_pk.bin (never downloaded)",
-    "the gnark image's digest",
-    "that the self-hosted path proves at all, on what hardware, and within the 2-day rotation delay",
-    "that upstream keeps hosting the artifacts",
-    "the Groth16 trusted setup behind the v6.1.0 key: an upstream assumption the designated verifier inherits, which archiving does not change"
+    "that the self-hosted path proves at all, on what hardware, and within the 2-day rotation delay: no proof has been made from the archive",
+    "that the mirrors keep serving the archive: each was re-read byte for byte when its observation was made, and the record is that assertion, never a continuous check",
+    "that the mirrors are independent of each other beyond what their locations and controller state",
+    "that the digest-pinned gnark image is archived under WalletWall's control: the record pins its identity (the registry's index digest and the linux/amd64 manifest), not a copy of its bytes",
+    "the Groth16 trusted setup behind the v6.1.0 key: an upstream assumption the designated verifier inherits, which archiving does not change; the verifying-key equality is integrity and compatibility, never soundness"
   ],
   "observation": {
     "path": "evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json",

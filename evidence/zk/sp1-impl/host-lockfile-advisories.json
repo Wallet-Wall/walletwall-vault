@@ -55,7 +55,7 @@
       },
       {
         "path": "evidence/zk/sp1-impl/proving-availability.json",
-        "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee"
+        "sha256": "82bc0c5dfa2f5108afe663f71fdee3f274d397e2a3057445076fe2038c2cc668"
       }
     ]
   },
@@ -96,8 +96,8 @@
     ],
     "circuit": {
       "version": "v6.1.0",
-      "provingAvailability": "OWNER_DOWNLOAD_REQUIRED",
-      "walletWallArchives": 0,
+      "provingAvailability": "ARCHIVED_VERIFIED_UNEXERCISED",
+      "walletWallArchives": 1,
       "sp1DownloadsWhenAbsent": true
     }
   },
@@ -1574,7 +1574,7 @@
       "kind": "assumption",
       "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy) or ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B), never an unverified local copy where SP1 reads; the self-hosted path is unexercised and proves only from a verified archive: no proving run has been authorized, and the only planned one never lets SP1 download the circuit",
       "holds": true,
-      "observed": "status OWNER_DOWNLOAD_REQUIRED; archive records 0 recorded, 0 on disk; self-hosted path exercised false; proves only from an archive: yes"
+      "observed": "status ARCHIVED_VERIFIED_UNEXERCISED; archive records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json); self-hosted path exercised false; proves only from an archive: yes"
     },
     {
       "id": "F_SP1_SDK_NO_NETWORK",
