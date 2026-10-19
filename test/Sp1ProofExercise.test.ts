@@ -1324,6 +1324,15 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(answers({ status: 0, stdout: ids }, { status: 0, stdout: "", error: new Error("x") })()).to.equal(null);
       expect(answers({ status: 0, stdout: ids }, { status: 0, stdout: "garbage\n" })()).to.equal(null);
       expect(answers({ status: 0, stdout: ids }, { status: 0, stdout: "\n" })()).to.equal(null);
+      // A failed command whose output still looks like an answer is no answer.
+      expect(answers({ status: 1, stdout: ids }, { status: 0, stdout: "1GiB / 4GiB\n" })()).to.equal(null);
+      expect(
+        answers({ status: 0, stdout: ids, error: new Error("x") }, { status: 0, stdout: "1GiB / 4GiB\n" })(),
+      ).to.equal(null);
+      expect(answers({ status: 0, stdout: ids }, { status: 1, stdout: "1GiB / 4GiB\n" })()).to.equal(null);
+      expect(
+        answers({ status: 0, stdout: ids }, { status: 0, stdout: "1GiB / 4GiB\n", error: new Error("x") })(),
+      ).to.equal(null);
     });
 
     it("measures a run: the host's wall time (rounded up), its peak RSS and the sampled container memory", async function () {
@@ -1471,7 +1480,22 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       });
       writeFileSync(join(d, "zkvm", "host", "main.rs"), "fn main() { }\n");
       expect(sourceIdentity(d).dirty).to.equal(true);
-      assert.throws(() => sourceIdentity(dirs.make("sp1-pa3a-nogit-")), /not a git checkout|zkvm\/host/);
+      assert.throws(() => sourceIdentity(dirs.make("sp1-pa3a-nogit-")), /is not a git checkout/);
+      // A checkout without the host source tree: the tree is not a tree of it (not an empty string).
+      const nohost = dirs.make("sp1-pa3a-nohost-");
+      const g2 = (...args: string[]) => {
+        const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: nohost, encoding: "utf8" });
+        if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+        return r.stdout.trim();
+      };
+      g2("init", "-q");
+      g2("config", "user.email", "test@example.invalid");
+      g2("config", "user.name", "test");
+      g2("config", "commit.gpgsign", "false");
+      writeFileSync(join(nohost, "README.md"), "no host here\n");
+      g2("add", "-A");
+      g2("commit", "-q", "-m", "no host");
+      assert.throws(() => sourceIdentity(nohost), /HEAD:zkvm\/host is not a tree/);
     });
   });
 

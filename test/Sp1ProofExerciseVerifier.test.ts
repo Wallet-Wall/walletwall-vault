@@ -98,6 +98,16 @@ describe("SP1-PA3A — the designated verifier path (a development chain)", func
     });
     expect(s.verdicts.real).to.match(/^revert /);
     expect(s.verdicts.real).to.not.equal("success");
+    // An address holding no code is no verifier (a call to it would "succeed" with no answer), and public values
+    // that are empty leave nothing to tamper with: both refused before any verdict is recorded.
+    await assert.rejects(
+      verifyWithRuntime(ethers.provider, { address: `0x${"de".repeat(20)}`, ...proof, mode: LOCAL_RUNTIME }),
+      /holds no code/,
+    );
+    await assert.rejects(
+      verifyWithRuntime(ethers.provider, { address, ...proof, publicValues: "0x", mode: LOCAL_RUNTIME }),
+      /no public values to tamper with/,
+    );
   });
 
   it("the verification observation is ACCEPTED only when every check accepted the proof and refused the tampered copy", function () {
