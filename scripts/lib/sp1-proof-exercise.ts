@@ -20,13 +20,21 @@
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { posix, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { dirname, posix, resolve } from "node:path";
 
+import { uncommittedEvidenceError } from "./committed-evidence";
 import { PROOF_INVALID } from "./sp1-chain-execution";
-import { serializeJson, type ArchiveEvidence } from "./sp1-circuit-acquisition";
+import {
+  archiveEvidenceState,
+  productionRecordRel,
+  serializeJson,
+  type ArchiveEvidence,
+} from "./sp1-circuit-acquisition";
 import { type ArchiveAnchor, type ArchiveMember, type ArchiveRecord, type Refusal } from "./sp1-circuit-archive";
+import { readDesignations } from "./sp1-designation";
 import {
   DOCKER_CONTEXT_FROZEN,
   FROZEN_ENV,
@@ -610,10 +618,12 @@ export function verificationObservationErrors(value: unknown, run: BoundRun, exp
   return out;
 }
 
-/** What binds the pair: the run observation's committed bytes, and where the verification is committed. */
+/** What binds the pair: the run observation's committed bytes (and path, when known), where the verification is. */
 export interface ExerciseBinding {
   runSha256: string;
   verificationPath: string;
+  /** The run observation's committed path; when absent the verification's own claim is taken as the path. */
+  runPath?: string;
 }
 
 /** Every reason `run` and `verification` do not derive one record for `expect`: the run first, then the acceptance. */
@@ -626,11 +636,13 @@ export function exerciseErrors(
   const out = runObservationErrors(run, expect);
   if (out.length > 0) return out;
   const r = run as RunObservation;
-  const runPath = isObject((verification as VerificationObservation)?.run)
+  const claimed = isObject((verification as VerificationObservation)?.run)
     ? String((verification as VerificationObservation).run.path)
     : "";
-  // The run's path is the verification's claim; its content is bound by the sha256 of the committed bytes. The judge
-  // (productionExerciseEvidence) checks the path against the file it read; here the sha256 is the authority.
+  // Without a committed path the run's path is the verification's own claim and the sha256 of the committed bytes is
+  // the authority; the judge (productionExerciseEvidence) passes the path of the file it read, so a relabeled run
+  // observation is refused there.
+  const runPath = binding.runPath ?? claimed;
   return verificationObservationErrors(
     verification,
     { path: runPath, sha256: binding.runSha256, observation: r },
@@ -791,6 +803,213 @@ export function deriveExerciseRecord(
     doesNotEstablish:
       "that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); that any other hardware proves within the rotation delay; that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); that the archive, the mirrors or the image remain available; or production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)",
   };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The committed evidence
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Every file under PROOF_EXERCISES_DIR, repository-relative and sorted (as archiveRecordsIn lists records). */
+export function exerciseRecordsIn(repoRoot = "."): string[] {
+  const dir = resolve(repoRoot, PROOF_EXERCISES_DIR);
+  return existsSync(dir)
+    ? readdirSync(dir)
+        .sort()
+        .map((f) => `${PROOF_EXERCISES_DIR}/${f}`)
+    : [];
+}
+
+/** The committed proof-exercise observations by kind; anything else under the prefix is `other` (and refused). */
+export function exerciseObservationsIn(repoRoot = "."): { run: string[]; verification: string[]; other: string[] } {
+  const dir = resolve(repoRoot, OBSERVATIONS_DIR);
+  const out = { run: [] as string[], verification: [] as string[], other: [] as string[] };
+  if (!existsSync(dir)) return out;
+  for (const f of readdirSync(dir).sort()) {
+    if (!f.startsWith(EXERCISE_OBSERVATION_PREFIX)) continue;
+    const rel = `${OBSERVATIONS_DIR}/${f}`;
+    const raw = f.endsWith(".raw.json");
+    if (raw && f.startsWith(RUN_OBSERVATION_PREFIX)) out.run.push(rel);
+    else if (raw && f.startsWith(VERIFICATION_OBSERVATION_PREFIX)) out.verification.push(rel);
+    else out.other.push(rel);
+  }
+  return out;
+}
+
+/** The host label an observation file is for, from its name. */
+export const hostOfObservationFile = (rel: string, prefix: string) =>
+  rel.slice(rel.lastIndexOf("/") + 1 + prefix.length, rel.length - ".raw.json".length);
+
+const lf = (text: string) => text.replace(/\r\n/g, "\n");
+/** sha256 of a committed text file's LF bytes (what git commits and an LF checkout reads); null when absent. */
+function fileSha(repoRoot: string, rel: string): string | null {
+  const p = resolve(repoRoot, rel);
+  return existsSync(p) ? sha256(lf(readFileSync(p, "utf8"))) : null;
+}
+
+export interface ExerciseEvidenceInput {
+  anchor: ArchiveAnchor;
+  /** The judged archive evidence (scripts/lib/sp1-circuit-acquisition.ts): an exercise stands only on an accepted one. */
+  archive: ArchiveEvidence;
+}
+
+/**
+ * The expectations the committed evidence holds for an exercise of `input.anchor`'s designation: the accepted archive
+ * record and the sha256 of its committed bytes, the designation's host source tree, the committed proof-input fixture,
+ * the hosts egress must have been refused to (the archive's upstream, the image's registry), the committed tools.
+ */
+export function exerciseExpectations(repoRoot: string, input: ExerciseEvidenceInput): ExerciseExpectations {
+  const record = input.archive.record;
+  if (record === null) throw new Error("no accepted archive record: nothing an exercise could have run from");
+  const path = productionRecordRel(input.anchor);
+  const recordSha = fileSha(repoRoot, path);
+  if (recordSha === null) throw new Error(`the archive record ${path} is missing`);
+  const d = readDesignations(repoRoot).find((x) => x.id === input.anchor.designation);
+  const tree = d?.subject?.zkvmHostTree;
+  if (!isText(tree)) throw new Error(`the designation ${input.anchor.designation} names no zkvmHostTree`);
+  let upstreamHost: string;
+  try {
+    upstreamHost = new URL(record.archive.sourceUrl).host.toLowerCase();
+  } catch {
+    throw new Error(`the archive record's sourceUrl ${String(record.archive.sourceUrl)} names no host`);
+  }
+  return {
+    anchor: input.anchor,
+    archiveRecord: { path, sha256: recordSha, record },
+    zkvmHostTree: tree,
+    proofInputSha256: fileSha(repoRoot, PROOF_INPUT_FIXTURE_REL),
+    upstreamHost,
+    registryHost: record.gnark.repository.split("/")[0],
+    scripts: { run: fileSha(repoRoot, RUN_SCRIPT_REL), verification: fileSha(repoRoot, VERIFICATION_SCRIPT_REL) },
+    repository: REPOSITORY_ID,
+  };
+}
+
+export interface ExerciseEvidence {
+  /** Every file under PROOF_EXERCISES_DIR, as exerciseRecordsIn lists them. */
+  records: string[];
+  /** The one accepted record, derived from the committed observations and equal to the committed file; else null. */
+  record: ProofExerciseRecord | null;
+  /** The run and verification observation paths (empty while there is no record). */
+  observations: string[];
+  errors: string[];
+}
+
+/** Whether `commit` is in `repoRoot`'s history (HEAD or an ancestor of it). */
+function inHistory(repoRoot: string, commit: string): boolean {
+  if (!HEX40.test(commit)) return false;
+  const r = spawnSync("git", ["-C", repoRoot, "--no-optional-locks", "merge-base", "--is-ancestor", commit, "HEAD"], {
+    encoding: "utf8",
+    shell: false,
+  });
+  return r.status === 0;
+}
+
+/**
+ * What the repository holds under PROOF_EXERCISES_DIR, judged: no record (the state before SP1-PA3B), or exactly one
+ * record, named after the designation, that is byte for byte the record the committed run and verification
+ * observations derive for the accepted archive record, with the run's source commit in this repository's history, and
+ * every one of these files exactly as HEAD commits them. Anything else (a second file, a link, a record without its
+ * two observations or with a third, a hand-edited record, an uncommitted one, an exercise of another baseline, or any
+ * record while the archive evidence is not accepted) is refused with every reason, and never read as "no record".
+ */
+export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvidenceInput): ExerciseEvidence {
+  const records = exerciseRecordsIn(repoRoot);
+  if (records.length === 0) return { records, record: null, observations: [], errors: [] };
+  const errors: string[] = [];
+  const want = exerciseRecordRel(input.anchor);
+  if (records.length !== 1 || records[0] !== want) {
+    errors.push(`${PROOF_EXERCISES_DIR} must hold exactly ${want}; it holds ${records.join(", ")}`);
+  }
+  for (const rel of records) {
+    const full = resolve(repoRoot, rel);
+    let regular = false;
+    try {
+      regular =
+        lstatSync(full).isFile() &&
+        dirname(realpathSync(full)) === realpathSync(resolve(repoRoot, PROOF_EXERCISES_DIR));
+    } catch {
+      regular = false;
+    }
+    if (!regular) errors.push(`${rel} is not a regular file directly in ${PROOF_EXERCISES_DIR}`);
+  }
+  const archiveState = archiveEvidenceState(input.archive);
+  if (archiveState !== "ACCEPTED" || input.archive.record === null) {
+    errors.push(
+      `a proof-exercise record exists but the archive evidence is not accepted (${archiveState}${input.archive.errors.length > 0 ? `: ${input.archive.errors.join("; ")}` : ""}): no exercise stands without the archive it ran from`,
+    );
+  }
+  const obs = exerciseObservationsIn(repoRoot);
+  if (obs.run.length !== 1) {
+    errors.push(
+      `${OBSERVATIONS_DIR} must hold exactly one run observation (${RUN_OBSERVATION_PREFIX}<host>.raw.json); it holds ${obs.run.length}`,
+    );
+  }
+  if (obs.verification.length !== 1) {
+    errors.push(
+      `${OBSERVATIONS_DIR} must hold exactly one verification observation (${VERIFICATION_OBSERVATION_PREFIX}<host>.raw.json); it holds ${obs.verification.length}`,
+    );
+  }
+  if (obs.other.length > 0) {
+    errors.push(`${OBSERVATIONS_DIR} holds ${obs.other.join(", ")}, which is no proof-exercise observation`);
+  }
+  const archivePath = productionRecordRel(input.anchor);
+  if (!existsSync(resolve(repoRoot, archivePath))) errors.push(`the archive record ${archivePath} is missing`);
+  const observations = [...obs.run, ...obs.verification];
+  if (errors.length > 0) return { records, record: null, observations, errors };
+  let expect: ExerciseExpectations;
+  try {
+    expect = exerciseExpectations(repoRoot, input);
+  } catch (error) {
+    return { records, record: null, observations, errors: [(error as Error).message] };
+  }
+  const readJson = (rel: string): { text: string; value: unknown } => {
+    const text = lf(readFileSync(resolve(repoRoot, rel), "utf8"));
+    try {
+      return { text, value: JSON.parse(text) };
+    } catch {
+      errors.push(`${rel} is not JSON`);
+      return { text, value: null };
+    }
+  };
+  const run = readJson(obs.run[0]);
+  const verification = readJson(obs.verification[0]);
+  for (const [rel, value, prefix] of [
+    [obs.run[0], run.value, RUN_OBSERVATION_PREFIX],
+    [obs.verification[0], verification.value, VERIFICATION_OBSERVATION_PREFIX],
+  ] as const) {
+    const host = (value as { host?: unknown })?.host;
+    const named = hostOfObservationFile(rel, prefix);
+    if (host !== named) errors.push(`${rel} claims host ${String(host)}, not ${named}`);
+  }
+  if (errors.length > 0) return { records, record: null, observations, errors };
+  const binding: ExerciseBinding = {
+    runSha256: sha256(run.text),
+    verificationPath: obs.verification[0],
+    runPath: obs.run[0],
+  };
+  const agreement = exerciseErrors(run.value, verification.value, binding, expect);
+  if (agreement.length > 0) {
+    return { records, record: null, observations, errors: agreement.map((e) => `${e.reason}: ${e.detail}`) };
+  }
+  const derived = deriveExerciseRecord(run.value, verification.value, binding, expect);
+  if (lf(readFileSync(resolve(repoRoot, records[0]), "utf8")) !== serializeJson(derived)) {
+    errors.push(
+      `${records[0]} is not the record the committed observations derive: regenerate it (npm run sp1:proof-exercise-record)`,
+    );
+  }
+  const commit = (run.value as RunObservation).source.commit;
+  if (!inHistory(repoRoot, commit)) {
+    errors.push(`the run's source commit ${commit} is not in this repository's history`);
+  }
+  const dirty = uncommittedEvidenceError([...records, ...observations, archivePath], repoRoot);
+  if (dirty !== null) errors.push(`the proof-exercise evidence is not as committed: ${dirty}`);
+  return { records, record: errors.length === 0 ? derived : null, observations, errors };
+}
+
+/** The state the exercise evidence is in, as the tooling record names it. */
+export function exerciseEvidenceState(e: ExerciseEvidence): "NO_RECORD" | "ACCEPTED" | "REFUSED" {
+  if (e.records.length === 0) return e.errors.length === 0 ? "NO_RECORD" : "REFUSED";
+  return e.record !== null && e.errors.length === 0 ? "ACCEPTED" : "REFUSED";
 }
 
 export { serializeJson, type ArchiveEvidence };

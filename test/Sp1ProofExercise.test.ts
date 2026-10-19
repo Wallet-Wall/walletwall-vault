@@ -11,16 +11,22 @@
  */
 import { expect } from "chai";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 import { serializeJson, type ArchiveEvidence } from "../scripts/lib/sp1-circuit-acquisition";
 import { productionRecordRel } from "../scripts/lib/sp1-circuit-acquisition";
 import { PROOF_INVALID } from "../scripts/lib/sp1-chain-execution";
 import { SAFE_FILES, SYNTHETIC_ANCHOR, gz, safeTar, syntheticRecord } from "../scripts/lib/sp1-circuit-fixtures";
+import { DESIGNATIONS_DIR } from "../scripts/lib/sp1-designation";
 import {
   EGRESS_DISABLED,
   EXERCISE_RECORD_SCHEMA,
+  OBSERVATIONS_DIR,
   PROOF_EXERCISES_DIR,
+  PROOF_INPUT_FIXTURE_REL,
   REPOSITORY_ID,
   ROTATION_DELAY_SECONDS,
   RUN_SCHEMA,
@@ -29,7 +35,12 @@ import {
   VERIFICATION_SCRIPT_REL,
   deriveExerciseRecord,
   exerciseErrors,
+  exerciseEvidenceState,
+  exerciseExpectations,
+  exerciseObservationsIn,
   exerciseRecordRel,
+  exerciseRecordsIn,
+  productionExerciseEvidence,
   runObservationErrors,
   verificationObservationErrors,
   type EgressProbe,
@@ -37,6 +48,7 @@ import {
   type RunObservation,
   type VerificationObservation,
 } from "../scripts/lib/sp1-proof-exercise";
+import { symlinkOrSkip, tempDirs } from "./helpers/circuit-tooling";
 
 const RUN_REL = "evidence/zk/sp1-impl/observations/proof-exercise-run-proving-host-a.raw.json";
 const VERIFICATION_REL = "evidence/zk/sp1-impl/observations/proof-exercise-verification-proving-host-a.raw.json";
@@ -210,7 +222,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
 
     it("refuses another schema, a field the schema does not name, a missing field, and an unbound tool", function () {
       expect(runRefusals((o) => (o.schema = "walletwall.sp1-proof-exercise-run.v0"))).to.include("OBSERVATION_SCHEMA");
-      expect(runRefusals((o) => ((o as Record<string, unknown>).verified = true))).to.include("OBSERVATION_SHAPE");
+      expect(runRefusals((o) => ((o as unknown as Record<string, unknown>).verified = true))).to.include("OBSERVATION_SHAPE");
       expect(runRefusals((o) => delete (o as Partial<RunObservation>).egress)).to.include("OBSERVATION_SHAPE");
       expect(runRefusals((o) => (o.tool.scriptSha256 = "00".repeat(32)))).to.include("TOOL_NOT_BOUND");
       expect(runRefusals((o) => (o.tool.script = "scripts/other.ts"))).to.include("TOOL_NOT_BOUND");
@@ -356,7 +368,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(refusals((v) => (v.schema = "walletwall.sp1-proof-exercise-verification.v0"))).to.include(
         "OBSERVATION_SCHEMA",
       );
-      expect(refusals((v) => ((v as Record<string, unknown>).note = "fine"))).to.include("OBSERVATION_SHAPE");
+      expect(refusals((v) => ((v as unknown as Record<string, unknown>).note = "fine"))).to.include("OBSERVATION_SHAPE");
       expect(refusals((v) => (v.tool.scriptSha256 = "00".repeat(32)))).to.include("TOOL_NOT_BOUND");
       expect(
         refusals(() => undefined, { ...EXPECTATIONS, scripts: { run: RUN_SCRIPT_SHA, verification: null } }),
@@ -541,6 +553,297 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       const v3 = verificationObservation(run2);
       v3.proof.proofBytesSha256 = "ff".repeat(32);
       expect(exerciseErrors(run2, v3, bound(run2), EXPECTATIONS).map((r) => r.reason)).to.include("PROOF_MISMATCH");
+    });
+  });
+
+  describe("the committed evidence (a temporary repository)", function () {
+    const dirs = tempDirs();
+    afterEach(() => dirs.cleanup());
+    const git = (cwd: string, ...args: string[]) => {
+      const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd, encoding: "utf8" });
+      if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+      return r.stdout.trim();
+    };
+    const write = (d: string, rel: string, text: string) => {
+      mkdirSync(join(d, dirname(rel)), { recursive: true });
+      writeFileSync(join(d, rel), text);
+    };
+    const commit = (d: string, message: string) => {
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "--allow-empty", "-m", message);
+      return git(d, "rev-parse", "HEAD");
+    };
+    /** The accepted archive evidence the exercise is judged against (what the tooling record passes). */
+    const archive: ArchiveEvidence = {
+      records: [productionRecordRel(ANCHOR)],
+      record: ARCHIVE_RECORD,
+      observations: [],
+      errors: [],
+    };
+    const RUN_FILE = `${OBSERVATIONS_DIR}/proof-exercise-run-proving-host-a.raw.json`;
+    const VERIFICATION_FILE = `${OBSERVATIONS_DIR}/proof-exercise-verification-proving-host-a.raw.json`;
+
+    interface Repo {
+      dir: string;
+      base: string;
+      run: RunObservation;
+      verification: VerificationObservation;
+      expect: ExerciseExpectations;
+    }
+    /**
+     * A repository at the archived state (the archive record, the designation, the proof-input fixture and the two
+     * tools committed as the base), then the two observations of one exercise and the record derived from them.
+     */
+    function repo(
+      opts: {
+        observations?: boolean;
+        record?: boolean;
+        commit?: boolean;
+        run?: (o: RunObservation) => void;
+        verification?: (v: VerificationObservation) => void;
+      } = {},
+    ): Repo {
+      const d = dirs.make("sp1-pa3a-");
+      git(d, "init", "-q");
+      git(d, "config", "user.email", "test@example.invalid");
+      git(d, "config", "user.name", "test");
+      git(d, "config", "commit.gpgsign", "false");
+      write(d, productionRecordRel(ANCHOR), ARCHIVE_RECORD_TEXT);
+      write(
+        d,
+        `${DESIGNATIONS_DIR}/${ANCHOR.designation}.json`,
+        serializeJson({ id: ANCHOR.designation, sequence: 1, subject: { zkvmHostTree: HOST_TREE } }),
+      );
+      write(d, PROOF_INPUT_FIXTURE_REL, '{\n  "synthetic": "proof input fixture"\n}\n');
+      write(d, RUN_SCRIPT_REL, "// synthetic measurement tool\n");
+      write(d, VERIFICATION_SCRIPT_REL, "// synthetic verification tool\n");
+      const base = commit(d, "archived state");
+      const expect = exerciseExpectations(d, { anchor: ANCHOR, archive });
+      const bindTo = (run: RunObservation) => {
+        const v = verificationObservation(run);
+        v.run = { path: RUN_FILE, sha256: runSha(run) };
+        v.tool.scriptSha256 = String(expect.scripts.verification);
+        return v;
+      };
+      // The record is derived from the consistent pair; `opts.run` / `opts.verification` then edit what is written,
+      // so a test can commit a record beside observations that no longer derive it.
+      const clean = runObservation();
+      clean.source.commit = base;
+      clean.inputs.sha256 = String(expect.proofInputSha256);
+      clean.tool.scriptSha256 = String(expect.scripts.run);
+      const record = deriveExerciseRecord(
+        clean,
+        bindTo(clean),
+        { runSha256: runSha(clean), verificationPath: VERIFICATION_FILE, runPath: RUN_FILE },
+        expect,
+      );
+      const run = structuredClone(clean);
+      opts.run?.(run);
+      const verification = bindTo(run);
+      opts.verification?.(verification);
+      if (opts.observations !== false) {
+        write(d, RUN_FILE, serializeJson(run));
+        write(d, VERIFICATION_FILE, serializeJson(verification));
+      }
+      if (opts.record !== false) write(d, exerciseRecordRel(ANCHOR), serializeJson(record));
+      if (opts.commit !== false) commit(d, "the exercise");
+      return { dir: d, base, run, verification, expect };
+    }
+    const judge = (d: string, a: ArchiveEvidence = archive) =>
+      productionExerciseEvidence(d, { anchor: ANCHOR, archive: a });
+    const refused = (d: string, re: RegExp, a: ArchiveEvidence = archive) => {
+      const e = judge(d, a);
+      expect(exerciseEvidenceState(e), e.errors.join("; ")).to.equal("REFUSED");
+      expect(e.record).to.equal(null);
+      expect(e.errors.join("\n")).to.match(re);
+    };
+
+    it("reads the expectations from the committed evidence: the record's bytes, the host tree, the fixture, the tools", function () {
+      this.timeout(60_000);
+      const { expect: x } = repo({ observations: false, record: false });
+      expect(x.archiveRecord).to.deep.equal({
+        path: productionRecordRel(ANCHOR),
+        sha256: sha256(ARCHIVE_RECORD_TEXT),
+        record: ARCHIVE_RECORD,
+      });
+      expect(x.zkvmHostTree).to.equal(HOST_TREE);
+      expect(x.proofInputSha256).to.equal(sha256('{\n  "synthetic": "proof input fixture"\n}\n'));
+      expect(x.upstreamHost).to.equal(UPSTREAM_HOST);
+      expect(x.registryHost).to.equal(REGISTRY_HOST);
+      expect(x.scripts).to.deep.equal({
+        run: sha256("// synthetic measurement tool\n"),
+        verification: sha256("// synthetic verification tool\n"),
+      });
+      expect(x.repository).to.equal(REPOSITORY_ID);
+      // An absent fixture or tool binds nothing (and so refuses every observation).
+      const d = dirs.make("sp1-pa3a-bare-");
+      git(d, "init", "-q");
+      write(d, productionRecordRel(ANCHOR), ARCHIVE_RECORD_TEXT);
+      write(
+        d,
+        `${DESIGNATIONS_DIR}/${ANCHOR.designation}.json`,
+        serializeJson({ id: ANCHOR.designation, sequence: 1, subject: { zkvmHostTree: HOST_TREE } }),
+      );
+      const bare = exerciseExpectations(d, { anchor: ANCHOR, archive });
+      expect(bare.proofInputSha256).to.equal(null);
+      expect(bare.scripts).to.deep.equal({ run: null, verification: null });
+    });
+
+    it("is NO_RECORD while the exercise directory holds nothing, whatever observations exist", function () {
+      this.timeout(60_000);
+      for (const d of [repo({ record: false }), repo({ record: false, observations: false })]) {
+        const e = judge(d.dir);
+        expect(exerciseEvidenceState(e)).to.equal("NO_RECORD");
+        expect(e).to.deep.include({ records: [], record: null, errors: [] });
+      }
+      expect(exerciseRecordsIn(repo({ record: false }).dir)).to.deep.equal([]);
+    });
+
+    it("is ACCEPTED only for the one record the committed observations derive, committed with them and the archive record", function () {
+      this.timeout(60_000);
+      const r = repo();
+      const e = judge(r.dir);
+      expect(exerciseEvidenceState(e), e.errors.join("; ")).to.equal("ACCEPTED");
+      expect(e.records).to.deep.equal([exerciseRecordRel(ANCHOR)]);
+      expect(e.observations).to.deep.equal([RUN_FILE, VERIFICATION_FILE]);
+      expect(e.record?.proof.vkey).to.equal(ANCHOR.programVKey);
+      expect(serializeJson(e.record)).to.equal(readFileSync(join(r.dir, exerciseRecordRel(ANCHOR)), "utf8"));
+      expect(exerciseObservationsIn(r.dir)).to.deep.equal({
+        run: [RUN_FILE],
+        verification: [VERIFICATION_FILE],
+        other: [],
+      });
+    });
+
+    it("is REFUSED, never NO_RECORD, for uncommitted or edited evidence", function () {
+      this.timeout(60_000);
+      refused(repo({ commit: false }).dir, /not as committed: (NOT_A_GIT_CHECKOUT|UNTRACKED|UNCOMMITTED)/);
+      // The record reformatted by hand: not the derived bytes.
+      let r = repo();
+      const rec = JSON.parse(readFileSync(join(r.dir, exerciseRecordRel(ANCHOR)), "utf8"));
+      writeFileSync(join(r.dir, exerciseRecordRel(ANCHOR)), `${JSON.stringify(rec, null, 4)}\n`);
+      commit(r.dir, "reformatted");
+      refused(r.dir, /not the record the committed observations derive/);
+      // A record field hand-set after derivation.
+      r = repo();
+      rec.performance.withinRotationDelay = true;
+      rec.performance.wallClockSeconds = 1;
+      writeFileSync(join(r.dir, exerciseRecordRel(ANCHOR)), serializeJson(rec));
+      commit(r.dir, "edited");
+      refused(r.dir, /not the record the committed observations derive/);
+      // The run observation edited after it was verified: the verification no longer binds it.
+      r = repo();
+      const run = JSON.parse(readFileSync(join(r.dir, RUN_FILE), "utf8"));
+      run.platform.push("edited after verification");
+      writeFileSync(join(r.dir, RUN_FILE), serializeJson(run));
+      commit(r.dir, "run edited");
+      refused(r.dir, /RUN_NOT_BOUND/);
+      // The run observation edited in the working tree only.
+      r = repo();
+      writeFileSync(join(r.dir, RUN_FILE), serializeJson(run));
+      refused(r.dir, /RUN_NOT_BOUND|UNCOMMITTED/);
+    });
+
+    it("is REFUSED for a second record, a link, a duplicate or stray observation, or a missing one", function () {
+      this.timeout(60_000);
+      let r = repo();
+      write(r.dir, `${PROOF_EXERCISES_DIR}/another.json`, "{}\n");
+      commit(r.dir, "second");
+      refused(r.dir, /must hold exactly/);
+      r = repo();
+      renameSync(join(r.dir, exerciseRecordRel(ANCHOR)), join(r.dir, PROOF_EXERCISES_DIR, "other-designation.json"));
+      commit(r.dir, "renamed");
+      refused(r.dir, /must hold exactly/);
+      r = repo();
+      const linked = join(r.dir, "elsewhere.json");
+      renameSync(join(r.dir, exerciseRecordRel(ANCHOR)), linked);
+      symlinkOrSkip(this, linked, join(r.dir, exerciseRecordRel(ANCHOR)), "file");
+      commit(r.dir, "a link");
+      refused(r.dir, /not a regular file/);
+      r = repo();
+      write(
+        r.dir,
+        `${OBSERVATIONS_DIR}/proof-exercise-run-proving-host-b.raw.json`,
+        readFileSync(join(r.dir, RUN_FILE), "utf8"),
+      );
+      commit(r.dir, "a second run");
+      refused(r.dir, /exactly one run observation/);
+      r = repo();
+      write(r.dir, `${OBSERVATIONS_DIR}/proof-exercise-notes.raw.json`, "{}\n");
+      commit(r.dir, "a stray file");
+      refused(r.dir, /proof-exercise-notes\.raw\.json/);
+      r = repo();
+      rmSync(join(r.dir, VERIFICATION_FILE));
+      commit(r.dir, "no verification");
+      refused(r.dir, /exactly one verification observation/);
+      r = repo();
+      rmSync(join(r.dir, RUN_FILE));
+      commit(r.dir, "no run");
+      refused(r.dir, /exactly one run observation/);
+      // An observation whose file names another host than it claims.
+      r = repo();
+      renameSync(
+        join(r.dir, VERIFICATION_FILE),
+        join(r.dir, OBSERVATIONS_DIR, "proof-exercise-verification-other.raw.json"),
+      );
+      commit(r.dir, "relabeled");
+      refused(r.dir, /claims host proving-host-a/);
+    });
+
+    it("is REFUSED when the archive evidence is gone, changed, or was never accepted", function () {
+      this.timeout(60_000);
+      const r = repo();
+      refused(r.dir, /archive evidence is not accepted/, { records: [], record: null, observations: [], errors: [] });
+      refused(r.dir, /archive evidence is not accepted/, { ...archive, record: null, errors: ["MIRRORS_MISSING"] });
+      // The archive record's bytes changed after the exercise: the run no longer names the committed record.
+      const edited = { ...ARCHIVE_RECORD, mirrors: [...ARCHIVE_RECORD.mirrors].reverse() };
+      writeFileSync(join(r.dir, productionRecordRel(ANCHOR)), serializeJson(edited));
+      commit(r.dir, "archive record changed");
+      refused(r.dir, /ARCHIVE_RECORD_MISMATCH/, { ...archive, record: edited });
+      // The archive record file removed while the exercise record stays.
+      rmSync(join(r.dir, productionRecordRel(ANCHOR)));
+      commit(r.dir, "archive record removed");
+      refused(r.dir, /archive record .*is missing|ARCHIVE_RECORD_MISMATCH/);
+    });
+
+    it("is REFUSED for an exercise of another commit, another baseline or another designation", function () {
+      this.timeout(60_000);
+      // A commit this repository never had.
+      refused(repo({ run: (o) => (o.source.commit = "d".repeat(40)) }).dir, /not in this repository's history/);
+      // The run observation of another baseline (another archive record's sha256).
+      refused(repo({ run: (o) => (o.archiveRecord.sha256 = "ee".repeat(32)) }).dir, /ARCHIVE_RECORD_MISMATCH/);
+      // The designation's host tree moved on.
+      const r = repo();
+      write(
+        r.dir,
+        `${DESIGNATIONS_DIR}/${ANCHOR.designation}.json`,
+        serializeJson({ id: ANCHOR.designation, sequence: 1, subject: { zkvmHostTree: "b".repeat(40) } }),
+      );
+      commit(r.dir, "another host tree");
+      refused(r.dir, /HOST_IDENTITY_MISMATCH/);
+      // The proof-input fixture regenerated after the exercise.
+      const r2 = repo();
+      write(r2.dir, PROOF_INPUT_FIXTURE_REL, '{\n  "synthetic": "another input"\n}\n');
+      commit(r2.dir, "another input");
+      refused(r2.dir, /PROOF_INPUT_MISMATCH/);
+      // The measurement tool edited after the run.
+      const r3 = repo();
+      write(r3.dir, RUN_SCRIPT_REL, "// synthetic measurement tool, edited\n");
+      commit(r3.dir, "tool edited");
+      refused(r3.dir, /TOOL_NOT_BOUND/);
+    });
+
+    it("is REFUSED when the verifier rejected, or a check ran another runtime", function () {
+      this.timeout(60_000);
+      refused(
+        repo({ verification: (v) => (v.checks[0].verdicts.real = `revert ${PROOF_INVALID}`) }).dir,
+        /VERIFIER_REJECTED/,
+      );
+      refused(repo({ verification: (v) => (v.acceptance = "REJECTED") }).dir, /VERIFIER_REJECTED/);
+      refused(
+        repo({ verification: (v) => (v.checks[0].runtimeCodeKeccak = `0x${"00".repeat(32)}`) }).dir,
+        /VERIFIER_MISMATCH/,
+      );
     });
   });
 });
