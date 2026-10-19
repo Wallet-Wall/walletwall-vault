@@ -21,7 +21,13 @@ runScript(async () => {
     if (errors.length > 0) throw new Error(`the circuit tooling is invalid:\n - ${errors.join("\n - ")}`);
     const r = (await toolingRecordFromRepo(".")) as { state: string; provingAvailability: { status: string } };
     console.log(`OK: ${TOOLING_REL} is what the evidence and the self-test derive (${r.state}).`);
-    console.log(`PROVING_AVAILABILITY = ${r.provingAvailability.status} (unchanged: tooling is not an artifact).`);
+    console.log(
+      `PROVING_AVAILABILITY = ${r.provingAvailability.status} (${
+        r.state === "ARCHIVED_VERIFIED_UNEXERCISED"
+          ? "an accepted archive record; no proof has been made from it"
+          : "no archive record: tooling is not an artifact"
+      }).`,
+    );
   } else {
     const record = await toolingRecordFromRepo(".");
     writeFileSync(resolve(TOOLING_REL), serializeTooling(record));
