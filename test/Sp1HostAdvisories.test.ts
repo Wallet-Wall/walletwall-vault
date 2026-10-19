@@ -460,6 +460,11 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
     ).to.equal(false);
     expect(exercised((pa) => (pa.selfHostedPath.requirements = [])).holds).to.equal(false);
     expect(exercised((pa) => (pa.archives.records = 0)).holds).to.equal(false);
+    // The exercised facts without the exercised status, the one on-disk record under another name, and the
+    // archived state claiming a recorded exercise it has not got on disk: none holds.
+    expect(exercised((pa) => (pa.status = "ARCHIVED_VERIFIED_UNEXERCISED")).holds).to.equal(false);
+    expect(exercised(() => undefined, ["evidence/zk/sp1-impl/proof-exercises/other.json"]).holds).to.equal(false);
+    expect(archived((pa) => (pa.exercises.records = 1)).holds).to.equal(false);
     // The archived state with an exercise record on disk that the availability record does not account for.
     expect(archived(() => undefined, [record], [exercise]).holds).to.equal(false);
   });

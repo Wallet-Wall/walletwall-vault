@@ -1217,11 +1217,14 @@ export const linuxHostRssBytes = (pid: number): number | null => {
  * The summed memory usage of the running containers whose ancestor is `imageRef`, by `docker ps` then `docker stats
  * --no-stream` (offline, read-only); null when docker does not answer or no such container runs.
  */
+export type DockerRunner = (args: string[]) => { error?: Error; status: number | null; stdout: string };
+export const dockerRunner =
+  (env: NodeJS.ProcessEnv): DockerRunner =>
+  (args) =>
+    spawnSync("docker", args, { env, encoding: "utf8", shell: false, timeout: 30_000, windowsHide: true });
 export const dockerContainerBytes =
-  (imageRef: string, env: NodeJS.ProcessEnv): (() => number | null) =>
+  (imageRef: string, env: NodeJS.ProcessEnv, run: DockerRunner = dockerRunner(env)): (() => number | null) =>
   () => {
-    const run = (args: string[]) =>
-      spawnSync("docker", args, { env, encoding: "utf8", shell: false, timeout: 30_000, windowsHide: true });
     const ps = run(["ps", "--no-trunc", "--filter", `ancestor=${imageRef}`, "--format", "{{.ID}}"]);
     if (ps.error || ps.status !== 0) return null;
     const ids = ps.stdout.split(/\r?\n/).filter((l) => /^[0-9a-f]{12,64}$/.test(l));

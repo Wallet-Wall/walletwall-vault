@@ -140,6 +140,11 @@ describe("SP1-PA3A — the designated verifier path (a development chain)", func
       }).acceptance,
     ).to.equal("REJECTED");
     expect(verificationObservationFor({ ...input, checks: [] }).acceptance).to.equal("REJECTED");
+    // Accepting checks that never ran the authenticated runtime itself do not accept.
+    expect(
+      verificationObservationFor({ ...input, checks: [{ ...check, chainId: "11155111", mode: "DEPLOYED" }] })
+        .acceptance,
+    ).to.equal("REJECTED");
     // Every check must accept: one deployed check rejecting beside an accepting local one rejects the whole.
     expect(
       verificationObservationFor({
