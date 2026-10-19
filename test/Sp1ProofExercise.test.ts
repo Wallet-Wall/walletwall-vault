@@ -56,7 +56,14 @@ import {
   exerciseRecordRel,
   exerciseRecordsIn,
   productionExerciseEvidence,
+  egressTargets,
+  fileIdentity,
+  measuringSpawner,
+  parseDockerMemUsage,
+  parseVmHWM,
+  probeEgress,
   runObservationErrors,
+  sourceIdentity,
   verificationObservationErrors,
   type EgressProbe,
   type ExerciseEvidence,
@@ -914,6 +921,172 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
           (r) => r.reason,
         ),
       ).to.include("OBSERVATION_SHAPE");
+    });
+  });
+
+  describe("the measurement (SP1-PA3B's tool, exercised here with injected readers; nothing is proved)", function () {
+    const dirs = tempDirs();
+    afterEach(() => dirs.cleanup());
+    const clockAt = (stamps: string[]) => () => stamps.shift() ?? "2026-11-01T23:59:59Z";
+
+    it("parses the kernel's high-water mark and docker's memory usage, refusing what it cannot read", function () {
+      expect(parseVmHWM("Name:\tmldsa65-host\nVmPeak:\t 1 kB\nVmHWM:\t  123456 kB\nVmRSS:\t 1 kB\n")).to.equal(
+        123456 * 1024,
+      );
+      expect(parseVmHWM("Name:\tx\n")).to.equal(null);
+      expect(parseVmHWM("VmHWM:\t  -5 kB\n")).to.equal(null);
+      expect(parseDockerMemUsage("1.5GiB / 15.6GiB")).to.equal(Math.round(1.5 * 1024 ** 3));
+      expect(parseDockerMemUsage("512MiB / 2GiB")).to.equal(512 * 1024 ** 2);
+      expect(parseDockerMemUsage("900kB / 1GiB")).to.equal(900 * 1000);
+      expect(parseDockerMemUsage("2.25TiB / 4TiB")).to.equal(Math.round(2.25 * 1024 ** 4));
+      expect(parseDockerMemUsage("0B / 0B")).to.equal(0);
+      expect(parseDockerMemUsage("garbage")).to.equal(null);
+      expect(parseDockerMemUsage("")).to.equal(null);
+    });
+
+    it("measures a run: the host's wall time (rounded up), its peak RSS and the sampled container memory", async function () {
+      this.timeout(30_000);
+      let rss = 0;
+      const container = [null, 5_000, 7_000, 6_000];
+      let k = 0;
+      const m = measuringSpawner({
+        intervalMs: 20,
+        hostRssBytes: () => (rss += 1_000),
+        containerBytes: () => container[Math.min(k++, container.length - 1)],
+        clock: clockAt(["2026-11-01T10:20:00Z", "2026-11-01T10:20:01Z"]),
+      });
+      const env: Record<string, string> = {};
+      for (const name of ["PATH", "SYSTEMROOT", "TEMP", "TMP", "HOME"]) {
+        if (process.env[name]) env[name] = process.env[name] as string;
+      }
+      const plan = {
+        executable: process.execPath,
+        args: ["-e", 'setTimeout(() => { console.log(\'{"vkey":"0x01"}\') }, 300)'],
+        env,
+        dropped: [],
+        circuitDir: "",
+        imageRef: "registry.invalid/x@sha256:00",
+        record: {} as never,
+      };
+      const r = await m.spawner(plan);
+      expect(r.status).to.equal(0);
+      expect(r.stdout).to.include('"vkey"');
+      const got = m.measurement();
+      expect(got).to.deep.include({
+        hostStartedAtUtc: "2026-11-01T10:20:00Z",
+        hostFinishedAtUtc: "2026-11-01T10:20:01Z",
+        hostSeconds: 1,
+        containerPeakBytes: 7_000,
+        intervalMs: 20,
+      });
+      expect(got.hostPeakRssBytes).to.be.greaterThan(0);
+      expect(got.containerSamples).to.be.at.least(1);
+      // Before a run there is no measurement; after it the child's exit code is the gate's to judge, not this tool's.
+      assert.throws(
+        () => measuringSpawner({ intervalMs: 20, hostRssBytes: () => null, containerBytes: () => null }).measurement(),
+        /no run/,
+      );
+      const failing = measuringSpawner({ intervalMs: 20, hostRssBytes: () => null, containerBytes: () => null });
+      const f = await failing.spawner({ ...plan, args: ["-e", "process.exit(3)"] });
+      expect(f.status).to.equal(3);
+      expect(failing.measurement().containerSamples).to.equal(0);
+      // A child flooding stdout is refused as the gate refuses it.
+      const flooded = measuringSpawner({
+        intervalMs: 20,
+        hostRssBytes: () => null,
+        containerBytes: () => null,
+        maxStdout: 16,
+      });
+      await assert.rejects(
+        flooded.spawner({ ...plan, args: ["-e", "console.log('x'.repeat(100))"] }),
+        /PROOF_OUTPUT_REFUSED/,
+      );
+    });
+
+    it("probes egress: a refusal is recorded with its code; a resolution or a connection is recorded as such", async function () {
+      const clock = clockAt(["2026-11-01T09:59:50Z", "2026-11-01T09:59:51Z", "2026-11-01T09:59:52Z"]);
+      const refusing = {
+        lookup: async (host: string) => {
+          if (host === "b.invalid") return;
+          throw Object.assign(new Error("resolution refused"), { code: "EAI_AGAIN" });
+        },
+        connect: async () => {
+          throw Object.assign(new Error("unreachable"), { code: "ENETUNREACH" });
+        },
+        clock,
+      };
+      const probes = await probeEgress(
+        { dns: ["a.invalid", "b.invalid"], tcp: [{ host: "a.invalid", port: 443 }] },
+        refusing,
+      );
+      expect(probes).to.deep.equal([
+        { target: "a.invalid", kind: "dns", atUtc: "2026-11-01T09:59:50Z", outcome: "REFUSED", error: "EAI_AGAIN" },
+        { target: "b.invalid", kind: "dns", atUtc: "2026-11-01T09:59:51Z", outcome: "RESOLVED", error: null },
+        {
+          target: "a.invalid:443",
+          kind: "tcp",
+          atUtc: "2026-11-01T09:59:52Z",
+          outcome: "REFUSED",
+          error: "ENETUNREACH",
+        },
+      ]);
+      const open = await probeEgress(
+        { dns: [], tcp: [{ host: "a.invalid", port: 443 }] },
+        { lookup: async () => undefined, connect: async () => undefined, clock },
+      );
+      expect(open[0]).to.deep.include({ outcome: "CONNECTED", error: null });
+      // An error without a code is recorded as UNKNOWN, which the validator refuses: egress was not shown refused.
+      const unknown = await probeEgress(
+        { dns: ["x.invalid"], tcp: [] },
+        {
+          lookup: async () => {
+            throw new Error("?");
+          },
+          connect: async () => undefined,
+          clock,
+        },
+      );
+      expect(unknown[0]).to.deep.include({ outcome: "REFUSED", error: "UNKNOWN" });
+      expect(egressTargets(EXPECTATIONS)).to.deep.equal({
+        dns: [UPSTREAM_HOST, REGISTRY_HOST],
+        tcp: [
+          { host: UPSTREAM_HOST, port: 443 },
+          { host: REGISTRY_HOST, port: 443 },
+        ],
+      });
+    });
+
+    it("identifies a file and the source checkout: sha256 and length; HEAD and the host tree; a dirty tree is seen", function () {
+      this.timeout(60_000);
+      const d = dirs.make("sp1-pa3a-src-");
+      const git = (...args: string[]) => {
+        const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: d, encoding: "utf8" });
+        if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+        return r.stdout.trim();
+      };
+      git("init", "-q");
+      git("config", "user.email", "test@example.invalid");
+      git("config", "user.name", "test");
+      git("config", "commit.gpgsign", "false");
+      mkdirSync(join(d, "zkvm", "host"), { recursive: true });
+      writeFileSync(join(d, "zkvm", "host", "main.rs"), "fn main() {}\n");
+      writeFileSync(join(d, "inputs.json"), "{}\n");
+      git("add", "-A");
+      git("commit", "-q", "-m", "base");
+      expect(fileIdentity(join(d, "inputs.json"))).to.deep.equal({
+        file: "inputs.json",
+        bytes: 3,
+        sha256: sha256("{}\n"),
+      });
+      expect(sourceIdentity(d)).to.deep.equal({
+        repository: REPOSITORY_ID,
+        commit: git("rev-parse", "HEAD"),
+        zkvmHostTree: git("rev-parse", "HEAD:zkvm/host"),
+        dirty: false,
+      });
+      writeFileSync(join(d, "zkvm", "host", "main.rs"), "fn main() { }\n");
+      expect(sourceIdentity(d).dirty).to.equal(true);
+      assert.throws(() => sourceIdentity(dirs.make("sp1-pa3a-nogit-")), /not a git checkout|zkvm\/host/);
     });
   });
 });

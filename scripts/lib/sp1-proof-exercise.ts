@@ -20,10 +20,12 @@
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { dirname, posix, resolve } from "node:path";
+import { connect } from "node:net";
+import { basename, dirname, posix, resolve } from "node:path";
 
 import { uncommittedEvidenceError } from "./committed-evidence";
 import { PROOF_INVALID } from "./sp1-chain-execution";
@@ -33,7 +35,13 @@ import {
   serializeJson,
   type ArchiveEvidence,
 } from "./sp1-circuit-acquisition";
-import { type ArchiveAnchor, type ArchiveMember, type ArchiveRecord, type Refusal } from "./sp1-circuit-archive";
+import {
+  refuse,
+  type ArchiveAnchor,
+  type ArchiveMember,
+  type ArchiveRecord,
+  type Refusal,
+} from "./sp1-circuit-archive";
 import { readDesignations } from "./sp1-designation";
 import {
   DOCKER_CONTEXT_FROZEN,
@@ -42,6 +50,9 @@ import {
   PASS_THROUGH_ENV,
   REFUSED_ENV,
   REFUSED_ENV_PREFIX,
+  type ProvePlan,
+  type SpawnResult,
+  type Spawner,
 } from "./sp1-prove-gate";
 
 export const PROOF_EXERCISES_DIR = "evidence/zk/sp1-impl/proof-exercises";
@@ -1010,6 +1021,276 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
 export function exerciseEvidenceState(e: ExerciseEvidence): "NO_RECORD" | "ACCEPTED" | "REFUSED" {
   if (e.records.length === 0) return e.errors.length === 0 ? "NO_RECORD" : "REFUSED";
   return e.record !== null && e.errors.length === 0 ? "ACCEPTED" : "REFUSED";
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Measurement: what SP1-PA3B's tool records of the run. Pure where it can be (the parsers, the classification),
+// injectable where it reads the host (the readers, the probes, the clock), so the suite exercises every branch here
+// while the real readers run only on the proving host. Nothing here proves.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** VmHWM from /proc/<pid>/status: the process's peak resident set, in bytes; null when absent or not a count. */
+export function parseVmHWM(statusText: string): number | null {
+  const m = /^VmHWM:\s*(\d+)\s*kB\s*$/m.exec(statusText);
+  if (!m) return null;
+  const kb = Number(m[1]);
+  return Number.isSafeInteger(kb) && kb >= 0 ? kb * 1024 : null;
+}
+
+const MEMORY_UNITS: Readonly<Record<string, number>> = {
+  B: 1,
+  kB: 1e3,
+  KB: 1e3,
+  MB: 1e6,
+  GB: 1e9,
+  TB: 1e12,
+  KiB: 1024,
+  MiB: 1024 ** 2,
+  GiB: 1024 ** 3,
+  TiB: 1024 ** 4,
+};
+
+/** The usage half of docker stats' MemUsage ("1.5GiB / 15.6GiB"), in bytes; null when it does not read. */
+export function parseDockerMemUsage(memUsage: string): number | null {
+  const m = /^\s*([0-9]+(?:\.[0-9]+)?)\s*([A-Za-z]+)\s*\/\s*[0-9]/.exec(memUsage);
+  if (!m) return null;
+  const unit = MEMORY_UNITS[m[2]];
+  return unit === undefined ? null : Math.round(Number(m[1]) * unit);
+}
+
+/** The peak RSS of a process on Linux (/proc/<pid>/status VmHWM); null elsewhere or when the process is gone. */
+export const linuxHostRssBytes = (pid: number): number | null => {
+  try {
+    return parseVmHWM(readFileSync(`/proc/${pid}/status`, "utf8"));
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * The summed memory usage of the running containers whose ancestor is `imageRef`, by `docker ps` then `docker stats
+ * --no-stream` (offline, read-only); null when docker does not answer or no such container runs.
+ */
+export const dockerContainerBytes =
+  (imageRef: string, env: NodeJS.ProcessEnv): (() => number | null) =>
+  () => {
+    const run = (args: string[]) =>
+      spawnSync("docker", args, { env, encoding: "utf8", shell: false, timeout: 30_000, windowsHide: true });
+    const ps = run(["ps", "--no-trunc", "--filter", `ancestor=${imageRef}`, "--format", "{{.ID}}"]);
+    if (ps.error || ps.status !== 0) return null;
+    const ids = ps.stdout.split(/\r?\n/).filter((l) => /^[0-9a-f]{12,64}$/.test(l));
+    if (ids.length === 0) return null;
+    const stats = run(["stats", "--no-stream", "--format", "{{.MemUsage}}", ...ids]);
+    if (stats.error || stats.status !== 0) return null;
+    const figures = stats.stdout
+      .split(/\r?\n/)
+      .filter((l) => l.trim() !== "")
+      .map(parseDockerMemUsage);
+    if (figures.length === 0 || figures.some((f) => f === null)) return null;
+    return (figures as number[]).reduce((a, b) => a + b, 0);
+  };
+
+/** A UTC stamp at second resolution, as every observation records time. */
+export const utcNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+/** The gate's own cap on the host's stdout (scripts/lib/sp1-prove-gate.ts MAX_STDOUT), mirrored. */
+export const MAX_STDOUT = 64 * 1024 * 1024;
+
+export interface MeasurementDeps {
+  intervalMs: number;
+  hostRssBytes: (pid: number) => number | null;
+  containerBytes: () => number | null;
+  clock?: () => string;
+  maxStdout?: number;
+}
+
+export interface RunMeasurement {
+  hostStartedAtUtc: string;
+  hostFinishedAtUtc: string;
+  /** Whole seconds, rounded up, from the monotonic clock. */
+  hostSeconds: number;
+  hostPeakRssBytes: number | null;
+  containerPeakBytes: number | null;
+  containerSamples: number;
+  intervalMs: number;
+}
+
+/**
+ * A Spawner for runArchiveOnlyProve with the gate's semantics (no shell, exactly the plan's environment, stdout
+ * captured under the gate's cap, stderr through) that also measures the host: its wall time on the monotonic clock,
+ * its peak RSS and the containers' sampled memory at `intervalMs`. The host's exit code is returned for the gate to
+ * judge, never judged here.
+ */
+export function measuringSpawner(deps: MeasurementDeps): { spawner: Spawner; measurement(): RunMeasurement } {
+  let done: RunMeasurement | null = null;
+  const clock = deps.clock ?? utcNow;
+  const maxStdout = deps.maxStdout ?? MAX_STDOUT;
+  const spawner: Spawner = (plan: ProvePlan) =>
+    new Promise<SpawnResult>((resolve, reject) => {
+      const startedAt = clock();
+      const t0 = process.hrtime.bigint();
+      const child = spawn(plan.executable, plan.args, {
+        env: plan.env,
+        shell: false,
+        stdio: ["ignore", "pipe", "inherit"],
+        windowsHide: true,
+      });
+      let hostPeak: number | null = null;
+      let containerPeak: number | null = null;
+      let samples = 0;
+      const sample = () => {
+        if (child.pid !== undefined) {
+          const h = deps.hostRssBytes(child.pid);
+          if (h !== null && (hostPeak === null || h > hostPeak)) hostPeak = h;
+        }
+        const c = deps.containerBytes();
+        if (c !== null) {
+          samples++;
+          if (containerPeak === null || c > containerPeak) containerPeak = c;
+        }
+      };
+      const timer = setInterval(sample, deps.intervalMs);
+      const chunks: Buffer[] = [];
+      let size = 0;
+      child.stdout.on("data", (c: Buffer) => {
+        size += c.length;
+        if (size > maxStdout) child.kill();
+        else chunks.push(c);
+      });
+      child.on("error", (error) => {
+        clearInterval(timer);
+        reject(error);
+      });
+      child.on("close", (status, signal) => {
+        clearInterval(timer);
+        sample();
+        const ns = process.hrtime.bigint() - t0;
+        done = {
+          hostStartedAtUtc: startedAt,
+          hostFinishedAtUtc: clock(),
+          hostSeconds: Number((ns + 999_999_999n) / 1_000_000_000n),
+          hostPeakRssBytes: hostPeak,
+          containerPeakBytes: containerPeak,
+          containerSamples: samples,
+          intervalMs: deps.intervalMs,
+        };
+        if (size > maxStdout) {
+          reject(refuse("PROOF_OUTPUT_REFUSED", "OUTPUT_TOO_LARGE", `more than ${maxStdout} bytes on stdout`));
+        } else {
+          resolve({ status, signal, stdout: Buffer.concat(chunks).toString("utf8") });
+        }
+      });
+    });
+  return {
+    spawner,
+    measurement: () => {
+      if (done === null) throw new Error("no run has been measured");
+      return { ...done };
+    },
+  };
+}
+
+export interface ProbeTargets {
+  dns: string[];
+  tcp: { host: string; port: number }[];
+}
+export interface ProbeDeps {
+  lookup: (host: string) => Promise<void>;
+  connect: (host: string, port: number) => Promise<void>;
+  clock?: () => string;
+}
+
+/** The targets an exercise must probe: the archive's upstream host and the image registry, by name and TCP 443. */
+export function egressTargets(expect: Pick<ExerciseExpectations, "upstreamHost" | "registryHost">): ProbeTargets {
+  const hosts = [expect.upstreamHost, expect.registryHost];
+  return { dns: [...hosts], tcp: hosts.map((host) => ({ host, port: PROBE_PORT })) };
+}
+
+const errorCode = (error: unknown) => {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return typeof code === "string" && code.length > 0 ? code : "UNKNOWN";
+};
+
+/** Probes each target once, in order; a refusal keeps its error code (UNKNOWN when there is none). */
+export async function probeEgress(targets: ProbeTargets, deps: ProbeDeps): Promise<EgressProbe[]> {
+  const clock = deps.clock ?? utcNow;
+  const out: EgressProbe[] = [];
+  for (const host of targets.dns) {
+    const atUtc = clock();
+    try {
+      await deps.lookup(host);
+      out.push({ target: host, kind: "dns", atUtc, outcome: "RESOLVED", error: null });
+    } catch (error) {
+      out.push({ target: host, kind: "dns", atUtc, outcome: "REFUSED", error: errorCode(error) });
+    }
+  }
+  for (const { host, port } of targets.tcp) {
+    const atUtc = clock();
+    const target = `${host}:${port}`;
+    try {
+      await deps.connect(host, port);
+      out.push({ target, kind: "tcp", atUtc, outcome: "CONNECTED", error: null });
+    } catch (error) {
+      out.push({ target, kind: "tcp", atUtc, outcome: "REFUSED", error: errorCode(error) });
+    }
+  }
+  return out;
+}
+
+/** The real probes: the system resolver, and a TCP connect that is torn down as soon as it is answered. */
+export const networkProbeDeps = (timeoutMs = 10_000): ProbeDeps => ({
+  lookup: (host) => lookup(host).then(() => undefined),
+  connect: (host, port) =>
+    new Promise<void>((resolve, reject) => {
+      const socket = connect({ host, port });
+      const timer = setTimeout(() => {
+        socket.destroy();
+        reject(Object.assign(new Error(`${host}:${port} timed out`), { code: "ETIMEDOUT" }));
+      }, timeoutMs);
+      socket.once("connect", () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve();
+      });
+      socket.once("error", (error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+    }),
+});
+
+/** A file's identity as the observations record it: its name, length and sha256. */
+export function fileIdentity(path: string): { file: string; bytes: number; sha256: string } {
+  const bytes = readFileSync(path);
+  return { file: basename(path), bytes: bytes.length, sha256: sha256(bytes) };
+}
+
+export const HOST_SOURCE_DIR = "zkvm/host";
+
+/** The checkout the tool runs from: this repository, its HEAD, the host source tree, and whether the tree is dirty. */
+export function sourceIdentity(repoRoot: string): {
+  repository: string;
+  commit: string;
+  zkvmHostTree: string;
+  dirty: boolean;
+} {
+  const git = (...args: string[]) =>
+    spawnSync("git", ["-C", repoRoot, "--no-optional-locks", ...args], { encoding: "utf8", shell: false });
+  if (git("rev-parse", "--is-inside-work-tree").stdout.trim() !== "true") {
+    throw new Error(`${repoRoot} is not a git checkout`);
+  }
+  const commit = git("rev-parse", "HEAD").stdout.trim();
+  const tree = git("rev-parse", `HEAD:${HOST_SOURCE_DIR}`);
+  if (tree.status !== 0 || !HEX40.test(tree.stdout.trim())) {
+    throw new Error(`HEAD:${HOST_SOURCE_DIR} is not a tree of ${repoRoot}`);
+  }
+  const status = git("status", "--porcelain", "--untracked-files=all");
+  if (status.status !== 0) throw new Error(`git status failed in ${repoRoot}`);
+  return {
+    repository: REPOSITORY_ID,
+    commit,
+    zkvmHostTree: tree.stdout.trim(),
+    dirty: status.stdout.trim() !== "",
+  };
 }
 
 export { serializeJson, type ArchiveEvidence };
