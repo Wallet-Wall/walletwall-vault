@@ -20,7 +20,22 @@ import { serializeJson, type ArchiveEvidence } from "../scripts/lib/sp1-circuit-
 import { productionRecordRel } from "../scripts/lib/sp1-circuit-acquisition";
 import { PROOF_INVALID } from "../scripts/lib/sp1-chain-execution";
 import { SAFE_FILES, SYNTHETIC_ANCHOR, gz, safeTar, syntheticRecord } from "../scripts/lib/sp1-circuit-fixtures";
-import { DESIGNATIONS_DIR } from "../scripts/lib/sp1-designation";
+import {
+  STATES,
+  availabilityStatusesFor,
+  productionAnchor,
+  productionArchiveEvidenceOf,
+  toolingState,
+} from "../scripts/lib/sp1-circuit-tooling";
+import { DESIGNATIONS_DIR, readDesignations } from "../scripts/lib/sp1-designation";
+import {
+  PROVING_ARTIFACTS_OBSERVATION_REL,
+  archiveEvidenceFromRepo,
+  deriveProvingAvailability,
+  provingAvailabilityFromRepo,
+  provingAvailabilityStatus,
+  type ProvingArtifactsObservation,
+} from "../scripts/lib/sp1-proving-availability";
 import {
   EGRESS_DISABLED,
   EXERCISE_RECORD_SCHEMA,
@@ -44,162 +59,37 @@ import {
   runObservationErrors,
   verificationObservationErrors,
   type EgressProbe,
+  type ExerciseEvidence,
   type ExerciseExpectations,
   type RunObservation,
   type VerificationObservation,
 } from "../scripts/lib/sp1-proof-exercise";
 import { symlinkOrSkip, tempDirs } from "./helpers/circuit-tooling";
-
-const RUN_REL = "evidence/zk/sp1-impl/observations/proof-exercise-run-proving-host-a.raw.json";
-const VERIFICATION_REL = "evidence/zk/sp1-impl/observations/proof-exercise-verification-proving-host-a.raw.json";
+import {
+  ANCHOR,
+  ARCHIVE_RECORD,
+  ARCHIVE_RECORD_TEXT,
+  EXPECTATIONS,
+  HOST_TREE,
+  IMAGE_REF,
+  INPUT_SHA,
+  PROOF_BYTES,
+  PUBLIC_VALUES,
+  REGISTRY_HOST,
+  RUN_REL,
+  RUN_SCRIPT_SHA,
+  SELECTOR,
+  SOURCE_COMMIT,
+  UPSTREAM_HOST,
+  VERIFICATION_REL,
+  probes,
+  runObservation,
+  runSha,
+  verificationObservation,
+} from "./helpers/sp1ProofExercise";
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const hex = (b: Buffer) => `0x${b.toString("hex")}`;
-
-// ---------------------------------------------------------------------------------------------------------------
-// Synthetic evidence: an anchor that is no designation, the safe fixture archive's record, one run, one verification
-// ---------------------------------------------------------------------------------------------------------------
-
-const ANCHOR = SYNTHETIC_ANCHOR;
-const ARCHIVE_GZ = gz(safeTar());
-const ARCHIVE_RECORD = syntheticRecord(ARCHIVE_GZ, SAFE_FILES);
-const ARCHIVE_RECORD_TEXT = serializeJson(ARCHIVE_RECORD);
-const RUN_SCRIPT_SHA = "11".repeat(32);
-const VERIFICATION_SCRIPT_SHA = "22".repeat(32);
-const INPUT_SHA = "33".repeat(32);
-const HOST_TREE = "a".repeat(40);
-const SOURCE_COMMIT = "c".repeat(40);
-const UPSTREAM_HOST = "example.invalid";
-const REGISTRY_HOST = "registry.invalid";
-const ROOT = "/srv/sp1/circuits";
-const IMAGE_REF = `${ARCHIVE_RECORD.gnark.repository}@${ARCHIVE_RECORD.gnark.digest}`;
-const SELECTOR = ANCHOR.verifyingKey.sha256.slice(2, 10);
-const PROOF_BYTES = Buffer.concat([Buffer.from(SELECTOR, "hex"), Buffer.alloc(352, 0xab)]);
-const PUBLIC_VALUES = Buffer.alloc(64, 0x01);
-
-export const EXPECTATIONS: ExerciseExpectations = {
-  anchor: ANCHOR,
-  archiveRecord: {
-    path: productionRecordRel(ANCHOR),
-    sha256: sha256(ARCHIVE_RECORD_TEXT),
-    record: ARCHIVE_RECORD,
-  },
-  zkvmHostTree: HOST_TREE,
-  proofInputSha256: INPUT_SHA,
-  upstreamHost: UPSTREAM_HOST,
-  registryHost: REGISTRY_HOST,
-  scripts: { run: RUN_SCRIPT_SHA, verification: VERIFICATION_SCRIPT_SHA },
-  repository: REPOSITORY_ID,
-};
-
-function probes(atUtc: string): EgressProbe[] {
-  const dns = (target: string): EgressProbe => ({ target, kind: "dns", atUtc, outcome: "REFUSED", error: "EAI_AGAIN" });
-  const tcp = (target: string): EgressProbe => ({
-    target,
-    kind: "tcp",
-    atUtc,
-    outcome: "REFUSED",
-    error: "ENETUNREACH",
-  });
-  return [dns(UPSTREAM_HOST), tcp(`${UPSTREAM_HOST}:443`), dns(REGISTRY_HOST), tcp(`${REGISTRY_HOST}:443`)];
-}
-
-export function runObservation(): RunObservation {
-  return {
-    schema: RUN_SCHEMA,
-    host: "proving-host-a",
-    measuredAtUtc: "2026-11-01T12:00:10Z",
-    tool: { script: RUN_SCRIPT_REL, scriptSha256: RUN_SCRIPT_SHA },
-    source: { repository: REPOSITORY_ID, commit: SOURCE_COMMIT, zkvmHostTree: HOST_TREE },
-    anchor: structuredClone(ANCHOR),
-    archiveRecord: { path: EXPECTATIONS.archiveRecord.path, sha256: EXPECTATIONS.archiveRecord.sha256 },
-    installedCircuit: {
-      root: ROOT,
-      circuitVersion: ANCHOR.circuitVersion,
-      members: structuredClone(ARCHIVE_RECORD.members),
-    },
-    hostExecutable: { file: "mldsa65-host", bytes: 12_345_678, sha256: "44".repeat(32) },
-    inputs: { file: "mldsa65-withdrawal.inputs.json", bytes: 7_000, sha256: INPUT_SHA },
-    gnark: {
-      repository: ARCHIVE_RECORD.gnark.repository,
-      digest: ARCHIVE_RECORD.gnark.digest,
-      imageRef: IMAGE_REF,
-      localRepoDigests: [IMAGE_REF],
-    },
-    prover: {
-      mode: "cpu",
-      frozenEnv: {
-        SP1_PROVER: "cpu",
-        SP1_GROTH16_CIRCUIT_PATH: ROOT,
-        SP1_GNARK_IMAGE: IMAGE_REF,
-        DOCKER_CONTEXT: "default",
-      },
-      passedThrough: ["HOME", "PATH"],
-      dropped: ["SHELL"],
-    },
-    egress: {
-      enforcement: "nftables: every outbound packet dropped except loopback, on the host and the docker bridge",
-      before: probes("2026-11-01T09:59:50Z"),
-      after: probes("2026-11-01T11:59:50Z"),
-      condition: EGRESS_DISABLED,
-    },
-    timing: {
-      startedAtUtc: "2026-11-01T10:00:00Z",
-      finishedAtUtc: "2026-11-01T11:59:40Z",
-      gateSeconds: 7180,
-      hostStartedAtUtc: "2026-11-01T10:20:00Z",
-      hostFinishedAtUtc: "2026-11-01T11:40:00Z",
-      hostSeconds: 4800,
-    },
-    peakMemory: {
-      hostProcess: { bytes: 3_000_000_000, method: "/proc/<pid>/status VmHWM, polled every 2000 ms" },
-      gnarkContainers: {
-        bytes: 20_000_000_000,
-        samples: 2400,
-        intervalMs: 2000,
-        method: "docker stats --no-stream of containers whose ancestor is the pinned image, polled every 2000 ms",
-      },
-    },
-    proof: {
-      vkey: ANCHOR.programVKey,
-      publicValues: hex(PUBLIC_VALUES),
-      proofBytes: hex(PROOF_BYTES),
-      selector: `0x${SELECTOR}`,
-      publicValuesSha256: sha256(PUBLIC_VALUES),
-      proofBytesSha256: sha256(PROOF_BYTES),
-    },
-    platform: ["host=proving-host-a", "os=linux 6.8.0 x64", "node=v22.13.0"],
-  };
-}
-
-export function verificationObservation(run: RunObservation = runObservation()): VerificationObservation {
-  return {
-    schema: VERIFICATION_SCHEMA,
-    host: "proving-host-a",
-    measuredAtUtc: "2026-11-01T12:30:00Z",
-    tool: { script: VERIFICATION_SCRIPT_REL, scriptSha256: VERIFICATION_SCRIPT_SHA },
-    run: { path: "evidence/zk/sp1-impl/observations/proof-exercise-run-proving-host-a.raw.json", sha256: runSha(run) },
-    proof: {
-      vkey: run.proof.vkey,
-      publicValuesSha256: run.proof.publicValuesSha256,
-      proofBytesSha256: run.proof.proofBytesSha256,
-    },
-    verifier: structuredClone(ANCHOR.verifier),
-    checks: [
-      {
-        chainId: "31337",
-        address: `0x${"ab".repeat(20)}`,
-        runtimeCodeKeccak: ANCHOR.verifier.runtimeCodeKeccak,
-        mode: "AUTHENTICATED_RUNTIME_LOCAL",
-        verdicts: { real: "success", tampered: `revert ${PROOF_INVALID}` },
-        block: null,
-      },
-    ],
-    acceptance: "ACCEPTED",
-  };
-}
-
-export const runSha = (run: RunObservation) => sha256(serializeJson(run));
 
 /** The reasons (codes only) `mutate`d run observation is refused. */
 function runRefusals(mutate: (o: RunObservation) => void, expect: ExerciseExpectations = EXPECTATIONS): string[] {
@@ -222,7 +112,9 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
 
     it("refuses another schema, a field the schema does not name, a missing field, and an unbound tool", function () {
       expect(runRefusals((o) => (o.schema = "walletwall.sp1-proof-exercise-run.v0"))).to.include("OBSERVATION_SCHEMA");
-      expect(runRefusals((o) => ((o as unknown as Record<string, unknown>).verified = true))).to.include("OBSERVATION_SHAPE");
+      expect(runRefusals((o) => ((o as unknown as Record<string, unknown>).verified = true))).to.include(
+        "OBSERVATION_SHAPE",
+      );
       expect(runRefusals((o) => delete (o as Partial<RunObservation>).egress)).to.include("OBSERVATION_SHAPE");
       expect(runRefusals((o) => (o.tool.scriptSha256 = "00".repeat(32)))).to.include("TOOL_NOT_BOUND");
       expect(runRefusals((o) => (o.tool.script = "scripts/other.ts"))).to.include("TOOL_NOT_BOUND");
@@ -368,7 +260,9 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(refusals((v) => (v.schema = "walletwall.sp1-proof-exercise-verification.v0"))).to.include(
         "OBSERVATION_SCHEMA",
       );
-      expect(refusals((v) => ((v as unknown as Record<string, unknown>).note = "fine"))).to.include("OBSERVATION_SHAPE");
+      expect(refusals((v) => ((v as unknown as Record<string, unknown>).note = "fine"))).to.include(
+        "OBSERVATION_SHAPE",
+      );
       expect(refusals((v) => (v.tool.scriptSha256 = "00".repeat(32)))).to.include("TOOL_NOT_BOUND");
       expect(
         refusals(() => undefined, { ...EXPECTATIONS, scripts: { run: RUN_SCRIPT_SHA, verification: null } }),
@@ -844,6 +738,182 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         repo({ verification: (v) => (v.checks[0].runtimeCodeKeccak = `0x${"00".repeat(32)}`) }).dir,
         /VERIFIER_MISMATCH/,
       );
+    });
+  });
+
+  describe("the state, derived from facts", function () {
+    const NO_EXERCISE: ExerciseEvidence = { records: [], record: null, observations: [], errors: [] };
+    const noArchive: ArchiveEvidence = { records: [], record: null, observations: [], errors: [] };
+    const acceptedArchive: ArchiveEvidence = {
+      records: [productionRecordRel(ANCHOR)],
+      record: ARCHIVE_RECORD,
+      observations: ["a.json", "b.json"],
+      errors: [],
+    };
+    const syntheticExercise = (): ExerciseEvidence => {
+      const run = runObservation();
+      const v = verificationObservation(run);
+      return {
+        records: [exerciseRecordRel(ANCHOR)],
+        record: deriveExerciseRecord(
+          run,
+          v,
+          { runSha256: runSha(run), verificationPath: VERIFICATION_REL, runPath: RUN_REL },
+          EXPECTATIONS,
+        ),
+        observations: [RUN_REL, VERIFICATION_REL],
+        errors: [],
+      };
+    };
+    const refusedExercise = (): ExerciseEvidence => ({
+      ...syntheticExercise(),
+      record: null,
+      errors: ["VERIFIER_REJECTED: the proof was not accepted"],
+    });
+
+    it("toolingState: the third state only from an accepted exercise on an accepted archive; anything else derives none", function () {
+      const x = syntheticExercise();
+      expect(toolingState({ selfTestPassed: false, archive: acceptedArchive, exercise: x })).to.equal(
+        "TOOLING_NOT_PRESENT",
+      );
+      expect(toolingState({ selfTestPassed: true, archive: noArchive, exercise: NO_EXERCISE })).to.equal(
+        "TOOLING_READY_NO_ARTIFACT",
+      );
+      expect(toolingState({ selfTestPassed: true, archive: acceptedArchive, exercise: NO_EXERCISE })).to.equal(
+        "ARCHIVED_VERIFIED_UNEXERCISED",
+      );
+      expect(toolingState({ selfTestPassed: true, archive: acceptedArchive, exercise: x })).to.equal(
+        "SELF_HOSTED_PATH_EXERCISED",
+      );
+      assert.throws(
+        () => toolingState({ selfTestPassed: true, archive: acceptedArchive, exercise: refusedExercise() }),
+        /no state is derivable[\s\S]*VERIFIER_REJECTED/,
+      );
+      assert.throws(
+        () => toolingState({ selfTestPassed: true, archive: noArchive, exercise: x }),
+        /no state is derivable/,
+      );
+      assert.throws(
+        () => toolingState({ selfTestPassed: true, archive: noArchive, exercise: refusedExercise() }),
+        /no state is derivable/,
+      );
+      assert.throws(
+        () =>
+          toolingState({
+            selfTestPassed: true,
+            archive: { ...acceptedArchive, record: null, errors: ["MIRRORS_MISSING"] },
+            exercise: x,
+          }),
+        /no state is derivable/,
+      );
+      // A record object with errors beside it is never accepted: the errors decide, not the presence of a record.
+      assert.throws(
+        () => toolingState({ selfTestPassed: true, archive: acceptedArchive, exercise: { ...x, errors: ["x"] } }),
+        /no state is derivable/,
+      );
+      expect(availabilityStatusesFor("SELF_HOSTED_PATH_EXERCISED")).to.deep.equal(["SELF_HOSTED_PATH_EXERCISED"]);
+      expect(availabilityStatusesFor("ARCHIVED_VERIFIED_UNEXERCISED")).to.deep.equal(["ARCHIVED_VERIFIED_UNEXERCISED"]);
+      expect(STATES.find((s) => s.state === "SELF_HOSTED_PATH_EXERCISED")?.reachableInThisLane).to.equal(true);
+    });
+
+    it("provingAvailabilityStatus: SELF_HOSTED_PATH_EXERCISED only from accepted exercise evidence that judged exactly the records on disk", function () {
+      const obs = JSON.parse(readFileSync(PROVING_ARTIFACTS_OBSERVATION_REL, "utf8")) as ProvingArtifactsObservation;
+      const x = syntheticExercise();
+      const a = acceptedArchive;
+      expect(provingAvailabilityStatus(obs, a.records, a, x.records, x)).to.equal("SELF_HOSTED_PATH_EXERCISED");
+      expect(provingAvailabilityStatus(obs, a.records, a, [], NO_EXERCISE)).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(provingAvailabilityStatus(obs, a.records, a)).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      assert.throws(
+        () => provingAvailabilityStatus(obs, a.records, a, x.records),
+        /not an accepted proof-exercise record/,
+      );
+      assert.throws(
+        () => provingAvailabilityStatus(obs, a.records, a, x.records, refusedExercise()),
+        /VERIFIER_REJECTED/,
+      );
+      assert.throws(() => provingAvailabilityStatus(obs, a.records, a, [], x), /judged .* not no record/);
+      assert.throws(
+        () => provingAvailabilityStatus(obs, a.records, a, [], { ...NO_EXERCISE, errors: ["stray"] }),
+        /refused without a record/,
+      );
+      // A proof-exercise record without an accepted archive record derives no status at all.
+      assert.throws(() => provingAvailabilityStatus(obs, [], noArchive, x.records, x), /without an accepted archive/);
+      assert.throws(() => provingAvailabilityStatus(obs, [], null, x.records), /without an accepted archive/);
+    });
+
+    it("deriveProvingAvailability: selfHostedPath.exercised follows the accepted exercise of the accepted record, never a setting", function () {
+      const obsBytes = readFileSync(PROVING_ARTIFACTS_OBSERVATION_REL);
+      const obs = JSON.parse(obsBytes.toString("utf8")) as ProvingArtifactsObservation;
+      const td1Bytes = readFileSync("evidence/zk/sp1-td1/decision-receipt.json");
+      const designations = readDesignations(".");
+      const archive = archiveEvidenceFromRepo(".", obs, designations) as ArchiveEvidence;
+      expect(archive.record, "the real archive record is accepted today").to.not.equal(null);
+      const base = {
+        observation: obs,
+        observationSha256: sha256(obsBytes),
+        designations,
+        td1Receipt: { sha256: sha256(td1Bytes), doc: JSON.parse(td1Bytes.toString("utf8")) },
+        archiveRecords: archive.records,
+        archive,
+      };
+      const unexercised = deriveProvingAvailability({ ...base, exerciseRecords: [], exercise: NO_EXERCISE });
+      expect(unexercised.status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(unexercised.selfHostedPath.exercised).to.equal(false);
+      expect(unexercised.exercises).to.deep.equal({ dir: PROOF_EXERCISES_DIR, records: 0 });
+      // An exercise of another designation's circuit, even an accepted one, is not an exercise of this record.
+      const x = syntheticExercise();
+      assert.throws(
+        () => deriveProvingAvailability({ ...base, exerciseRecords: x.records, exercise: x }),
+        /not an exercise of the accepted archive record/,
+      );
+      const d1 = designations[designations.length - 1];
+      const bound = structuredClone(x);
+      bound.records = [`${PROOF_EXERCISES_DIR}/${d1.id}.json`];
+      bound.record!.subject.designation = d1.id;
+      bound.record!.subject.programVKey = d1.programVKey;
+      bound.record!.archiveRecord.path = archive.records[0];
+      bound.record!.archiveRecord.archiveSha256 = archive.record!.archive.sha256;
+      bound.record!.archiveRecord.sha256 = sha256(readFileSync(archive.records[0], "utf8").replace(/\r\n/g, "\n"));
+      const exercised = deriveProvingAvailability({ ...base, exerciseRecords: bound.records, exercise: bound });
+      expect(exercised.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
+      expect(exercised.selfHostedPath.exercised).to.equal(true);
+      expect(exercised.selfHostedPath.record).to.equal(bound.records[0]);
+      expect(exercised.exercises.accepted).to.deep.include({
+        record: bound.records[0],
+        derivedFrom: [RUN_REL, VERIFICATION_REL],
+        host: "proving-host-a",
+        wallClockSeconds: 7180,
+        hostSeconds: 4800,
+        rotationDelaySeconds: ROTATION_DELAY_SECONDS,
+        withinRotationDelay: true,
+      });
+      expect(exercised.basis.join("\n")).to.include(`${ROTATION_DELAY_SECONDS}`);
+      expect(exercised.ownerAction.join("\n")).to.include("production binding");
+      expect(exercised.notEstablished.join("\n")).to.include("production readiness");
+    });
+
+    it("the real checkout has not reached the third state: no record, no exercise evidence, exercised false", function () {
+      this.timeout(120_000);
+      expect(exerciseRecordsIn(".")).to.deep.equal([]);
+      expect(exerciseObservationsIn(".")).to.deep.equal({ run: [], verification: [], other: [] });
+      const archive = productionArchiveEvidenceOf(".");
+      const exercise = productionExerciseEvidence(".", { anchor: productionAnchor("."), archive });
+      expect(exerciseEvidenceState(exercise)).to.equal("NO_RECORD");
+      expect(exercise).to.deep.equal(NO_EXERCISE);
+      expect(toolingState({ selfTestPassed: true, archive, exercise })).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      const pa = provingAvailabilityFromRepo(".");
+      expect(pa.status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(pa.selfHostedPath.exercised).to.equal(false);
+      expect(pa.selfHostedPath).to.not.have.property("record");
+      expect(pa.exercises).to.deep.equal({ dir: PROOF_EXERCISES_DIR, records: 0 });
+      // SP1-PA2C's evidence is not SP1-PA3's: the archive record is no run observation and no verification.
+      const x = exerciseExpectations(".", { anchor: productionAnchor("."), archive });
+      expect(runObservationErrors(archive.record, x).map((r) => r.reason)).to.include("OBSERVATION_SHAPE");
+      expect(
+        verificationObservationErrors(archive.record, { path: "", sha256: "", observation: runObservation() }, x).map(
+          (r) => r.reason,
+        ),
+      ).to.include("OBSERVATION_SHAPE");
     });
   });
 });

@@ -220,7 +220,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       );
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(archived() ? 1 : 0);
-      expect(r.lane).to.equal(archived() ? "SP1-PA2B" : "SP1-PA2A");
+      expect(r.lane).to.equal(archived() ? "SP1-PA3A" : "SP1-PA2A");
       expect(r.selfTest.hostile).to.have.length(153);
       expect(r.archiveRecord.schema).to.equal("walletwall.sp1-proving-archive.v2");
       expect(r.archiveRecord.ignoredMetadata.derivedFrom.archive).to.deep.equal({
@@ -228,14 +228,25 @@ describe("SP1-PA2A circuit tooling contract", function () {
         sha256: "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
       });
       expect(r.selfTest.productionAnchorRefusesFixtures).to.deep.equal(["SUBJECT_MISMATCH", "VK_MISMATCH"]);
+      // Every state is derivable since SP1-PA3A (the third from committed proof-exercise evidence); which are reached
+      // is a fact of the evidence, carried per state.
       expect(STATES.filter((s) => s.reachableInThisLane).map((s) => s.state)).to.deep.equal([
         "TOOLING_NOT_PRESENT",
         "TOOLING_READY_NO_ARTIFACT",
         "ARCHIVED_VERIFIED_UNEXERCISED",
+        "SELF_HOSTED_PATH_EXERCISED",
       ]);
-      expect(STATES.find((s) => s.state === "SELF_HOSTED_PATH_EXERCISED")?.reachableInThisLane).to.equal(false);
-      // The state is derived from the archive evidence, and the record says which state it holds and why.
+      expect(r.states.map((s: { state: string; reached: boolean }) => [s.state, s.reached])).to.deep.equal([
+        ["TOOLING_NOT_PRESENT", true],
+        ["TOOLING_READY_NO_ARTIFACT", true],
+        ["ARCHIVED_VERIFIED_UNEXERCISED", archived()],
+        ["SELF_HOSTED_PATH_EXERCISED", false],
+      ]);
+      // The state is derived from the archive and exercise evidence, and the record says which state it holds and why.
       expect(r.acquisition.state).to.equal(r.state === "TOOLING_READY_NO_ARTIFACT" ? "NO_RECORD" : "ACCEPTED");
+      expect(r.exercise.state).to.equal("NO_RECORD");
+      expect(r.exercise.record).to.equal(null);
+      expect(r.exercise.authoritativeDir).to.equal("evidence/zk/sp1-impl/proof-exercises");
       expect(availabilityStatusesFor(r.state)).to.include(r.provingAvailability.status);
     });
 
@@ -381,7 +392,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(provingAvailabilityErrors(repo)).to.deep.equal([]);
       const tooling = await toolingRecordFromRepo(repo);
       expect(tooling.state).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
-      expect(tooling.lane).to.equal("SP1-PA2B");
+      expect(tooling.lane).to.equal("SP1-PA3A");
       const acquisition = tooling.acquisition as { state: string; record: string; mirrors: string[]; members: number };
       expect(acquisition.state).to.equal("ACCEPTED");
       expect(acquisition.record).to.equal(productionRecordRel(input.anchor));
@@ -416,10 +427,11 @@ describe("SP1-PA2A circuit tooling contract", function () {
 
     it("derives the archived state only from accepted archive evidence, and no state from refused evidence", function () {
       const none = { records: [], record: null, observations: [], errors: [] };
-      expect(toolingState({ selfTestPassed: true, archive: none })).to.equal("TOOLING_READY_NO_ARTIFACT");
-      expect(toolingState({ selfTestPassed: false, archive: none })).to.equal("TOOLING_NOT_PRESENT");
+      const exercise = { records: [], record: null, observations: [], errors: [] };
+      expect(toolingState({ selfTestPassed: true, archive: none, exercise })).to.equal("TOOLING_READY_NO_ARTIFACT");
+      expect(toolingState({ selfTestPassed: false, archive: none, exercise })).to.equal("TOOLING_NOT_PRESENT");
       const stray = { records: [`${PROVING_ARCHIVES_DIR}/r.json`], record: null, observations: [], errors: ["stray"] };
-      expect(() => toolingState({ selfTestPassed: true, archive: stray })).to.throw(/no state is derivable/);
+      expect(() => toolingState({ selfTestPassed: true, archive: stray, exercise })).to.throw(/no state is derivable/);
       // A record object without a clean verdict is never accepted (the errors decide, not the presence of a record).
       const record = JSON.parse(read(SAFE_RECORD_REL).toString("utf8"));
       const refused = {
@@ -428,9 +440,13 @@ describe("SP1-PA2A circuit tooling contract", function () {
         observations: [],
         errors: ["MIRRORS_MISSING"],
       };
-      expect(() => toolingState({ selfTestPassed: true, archive: refused })).to.throw(/no state is derivable/);
+      expect(() => toolingState({ selfTestPassed: true, archive: refused, exercise })).to.throw(
+        /no state is derivable/,
+      );
       const accepted = { records: [`${PROVING_ARCHIVES_DIR}/r.json`], record, observations: ["o.json"], errors: [] };
-      expect(toolingState({ selfTestPassed: true, archive: accepted })).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(toolingState({ selfTestPassed: true, archive: accepted, exercise })).to.equal(
+        "ARCHIVED_VERIFIED_UNEXERCISED",
+      );
     });
   });
 

@@ -36,6 +36,7 @@ import {
   subjectFreshnessErrors,
   type ProgramDesignation,
 } from "./sp1-designation";
+import { exerciseRecordsIn } from "./sp1-proof-exercise";
 import { PROVING_AVAILABILITY_REL, archiveRecordsIn } from "./sp1-proving-availability";
 
 export const HOST_ADVISORIES_REL = "evidence/zk/sp1-impl/host-lockfile-advisories.json";
@@ -705,6 +706,8 @@ export interface AssumptionInput {
   hostLock: readonly LockPackage[];
   provingAvailability: unknown;
   archiveRecords: readonly string[];
+  /** The files under evidence/zk/sp1-impl/proof-exercises (SP1-PA3A); the availability record must account for them. */
+  exerciseRecords: readonly string[];
 }
 export interface EvidenceResult {
   holds: boolean;
@@ -843,7 +846,7 @@ export const ASSUMPTIONS: readonly Assumption[] = [
   {
     id: "A_NO_PROVING_WITHOUT_ARCHIVE",
     statement:
-      "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy) or ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B), never an unverified local copy where SP1 reads; the self-hosted path is unexercised and proves only from a verified archive: no proving run has been authorized, and the only planned one never lets SP1 download the circuit",
+      "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy), ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B, and no proof-exercise record) or SELF_HOSTED_PATH_EXERCISED (that archive record plus exactly the one proof-exercise record derived from a run through the archive-only gate, SP1-PA3A), never an unverified local copy where SP1 reads; the self-hosted path proves only from a verified archive through that gate, which never lets SP1 download the circuit, and it is exercised only as the committed proof-exercise record says",
     evaluate(input) {
       const pa = input.provingAvailability as Record<string, any> | null;
       const reqs: unknown[] = Array.isArray(pa?.selfHostedPath?.requirements) ? pa.selfHostedPath.requirements : [];
@@ -856,10 +859,29 @@ export const ASSUMPTIONS: readonly Assumption[] = [
         recorded === 1 &&
         onDisk === 1 &&
         input.archiveRecords[0] === pa?.archives?.accepted?.record;
-      const holds = (none || archived) && pa?.selfHostedPath?.exercised === false && archiveOnly;
+      const exercisesRecorded = pa?.exercises?.records;
+      const exercisesOnDisk = input.exerciseRecords.length;
+      const acceptedExercise = pa?.exercises?.accepted?.record;
+      const exercised =
+        pa?.status === "SELF_HOSTED_PATH_EXERCISED" &&
+        recorded === 1 &&
+        onDisk === 1 &&
+        input.archiveRecords[0] === pa?.archives?.accepted?.record &&
+        exercisesRecorded === 1 &&
+        exercisesOnDisk === 1 &&
+        typeof acceptedExercise === "string" &&
+        input.exerciseRecords[0] === acceptedExercise &&
+        pa?.selfHostedPath?.record === acceptedExercise &&
+        pa?.selfHostedPath?.exercised === true;
+      const unexercised =
+        (none || archived) &&
+        pa?.selfHostedPath?.exercised === false &&
+        exercisesRecorded === 0 &&
+        exercisesOnDisk === 0;
+      const holds = (unexercised || exercised) && archiveOnly;
       return {
         holds,
-        observed: `status ${String(pa?.status)}; archive records ${String(recorded)} recorded, ${onDisk} on disk${archived ? ` (the accepted ${String(pa?.archives?.accepted?.record)})` : ""}; self-hosted path exercised ${String(pa?.selfHostedPath?.exercised)}; proves only from an archive: ${archiveOnly ? "yes" : "no"}`,
+        observed: `status ${String(pa?.status)}; archive records ${String(recorded)} recorded, ${onDisk} on disk${archived || exercised ? ` (the accepted ${String(pa?.archives?.accepted?.record)})` : ""}; proof-exercise records ${String(exercisesRecorded)} recorded, ${exercisesOnDisk} on disk${exercised ? ` (the accepted ${String(acceptedExercise)})` : ""}; self-hosted path exercised ${String(pa?.selfHostedPath?.exercised)}; proves only from an archive: ${archiveOnly ? "yes" : "no"}`,
       };
     },
   },
@@ -1890,6 +1912,7 @@ export interface AdvisoryState {
   td1Receipt: FileDigest | null;
   provingAvailability: { sha256: string; doc: unknown } | null;
   archiveRecords: string[];
+  exerciseRecords: string[];
 }
 
 function readOrNull(path: string): Buffer | null {
@@ -1945,6 +1968,7 @@ export function advisoryStateFromRepo(repoRoot = "."): AdvisoryState {
     td1Receipt: td1 === null ? null : { path: TD1_RECEIPT_REL, sha256: sha256(td1) },
     provingAvailability: pa === null ? null : { sha256: sha256(pa), doc: JSON.parse(pa.toString("utf8")) },
     archiveRecords: archiveRecordsIn(repoRoot),
+    exerciseRecords: exerciseRecordsIn(repoRoot),
   };
 }
 
@@ -2019,6 +2043,7 @@ export interface HostAdvisoryRecord {
       version: string | null;
       provingAvailability: string | null;
       walletWallArchives: number;
+      walletWallProofExercises: number;
       sp1DownloadsWhenAbsent: boolean;
     };
   };
@@ -2115,6 +2140,7 @@ export function evidenceResults(state: AdvisoryState, hostLock: readonly LockPac
     hostLock,
     provingAvailability: state.provingAvailability?.doc ?? null,
     archiveRecords: state.archiveRecords,
+    exerciseRecords: state.exerciseRecords,
   };
   for (const a of ASSUMPTIONS) {
     const r = a.evaluate(input);
@@ -2389,6 +2415,7 @@ export function deriveRecordWith(state: AdvisoryState, claims: readonly Claim[])
         version: typeof pa?.expectedArtifacts?.circuitVersion === "string" ? pa.expectedArtifacts.circuitVersion : null,
         provingAvailability: typeof pa?.status === "string" ? pa.status : null,
         walletWallArchives: state.archiveRecords.length,
+        walletWallProofExercises: state.exerciseRecords.length,
         sp1DownloadsWhenAbsent: ev("SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT"),
       },
     },

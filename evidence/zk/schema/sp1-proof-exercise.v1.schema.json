@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "walletwall.sp1-proof-exercise.v1",
+  "title": "WalletWall SP1 proof-exercise record (v1)",
+  "description": "The record a later, owner-authorized lane (SP1-PA3B) produces from MEASURED observations of one real self-hosted Groth16 proof exercise: one run through the archive-only gate from the committed verified archive, egress off, and the designated verifier's acceptance of its proof. The shape only: scripts/lib/sp1-proof-exercise.ts is the validator; it derives the record from the committed run and verification observations (never from a hand-written record), binds it to the committed archive record, designation, host tree, proof input, gnark digest and tools by sha256, and the state SELF_HOSTED_PATH_EXERCISED follows from exactly one accepted record in evidence/zk/sp1-impl/proof-exercises, which holds none. Artifact identity, proving execution, verifier acceptance, performance and production readiness are separate facts; this record carries the first four and never the fifth. Research prototype; not audited; testnet/local only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "lane",
+    "exercise",
+    "subject",
+    "archiveRecord",
+    "installedCircuit",
+    "host",
+    "proofInput",
+    "gnark",
+    "prover",
+    "proof",
+    "verification",
+    "performance",
+    "egress",
+    "derivedFrom",
+    "establishes",
+    "doesNotEstablish"
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bytes32": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+    "utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+    "positiveInt": { "type": "integer", "minimum": 1 },
+    "verifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "runtimeCodeKeccak", "verifierHash"],
+      "properties": {
+        "version": { "type": "string" },
+        "runtimeCodeKeccak": { "$ref": "#/$defs/bytes32" },
+        "verifierHash": { "$ref": "#/$defs/bytes32" }
+      }
+    }
+  },
+  "properties": {
+    "schema": { "const": "walletwall.sp1-proof-exercise.v1" },
+    "lane": { "const": "SP1-PA3B" },
+    "exercise": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "host", "performedAtUtc", "verifiedAtUtc"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "host": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$" },
+        "performedAtUtc": { "$ref": "#/$defs/utc" },
+        "verifiedAtUtc": { "$ref": "#/$defs/utc" }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["designation", "circuitSystem", "circuitVersion", "programVKey", "verifier", "verifyingKey"],
+      "properties": {
+        "designation": { "type": "string", "minLength": 1 },
+        "circuitSystem": { "const": "groth16" },
+        "circuitVersion": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+        "programVKey": { "$ref": "#/$defs/bytes32" },
+        "verifier": { "$ref": "#/$defs/verifier" },
+        "verifyingKey": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "bytes"],
+          "properties": {
+            "file": { "const": "groth16_vk.bin" },
+            "sha256": { "$ref": "#/$defs/bytes32" },
+            "bytes": { "$ref": "#/$defs/positiveInt" }
+          }
+        }
+      }
+    },
+    "archiveRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "archiveFile", "archiveBytes", "archiveSha256", "members"],
+      "properties": {
+        "path": { "type": "string", "pattern": "^evidence/zk/sp1-impl/proving-archives/[^/]+\\.json$" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "archiveFile": { "type": "string", "pattern": "^[A-Za-z0-9._-]+\\.tar\\.gz$" },
+        "archiveBytes": { "$ref": "#/$defs/positiveInt" },
+        "archiveSha256": { "$ref": "#/$defs/sha256" },
+        "members": { "$ref": "#/$defs/positiveInt" }
+      }
+    },
+    "installedCircuit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["circuitVersion", "membersSha256", "verifiedBy"],
+      "properties": {
+        "circuitVersion": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+        "membersSha256": { "$ref": "#/$defs/sha256" },
+        "verifiedBy": { "type": "string", "minLength": 1 }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executableSha256", "executableBytes", "sourceTree", "sourceCommit", "repository"],
+      "properties": {
+        "executableSha256": { "$ref": "#/$defs/sha256" },
+        "executableBytes": { "$ref": "#/$defs/positiveInt" },
+        "sourceTree": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "repository": { "const": "Wallet-Wall/walletwall-vault" }
+      }
+    },
+    "proofInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fixture", "sha256"],
+      "properties": {
+        "fixture": { "const": "zkvm/fixtures/mldsa65-withdrawal.inputs.json" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "gnark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "digest", "imageRef"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "imageRef": { "type": "string", "pattern": "^[^@:]+@sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "prover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "frozenEnv", "gate"],
+      "properties": {
+        "mode": { "const": "cpu" },
+        "frozenEnv": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["SP1_PROVER", "SP1_GROTH16_CIRCUIT_PATH", "SP1_GNARK_IMAGE", "DOCKER_CONTEXT"],
+          "properties": {
+            "SP1_PROVER": { "const": "cpu" },
+            "SP1_GROTH16_CIRCUIT_PATH": { "type": "string", "pattern": "^/" },
+            "SP1_GNARK_IMAGE": { "type": "string", "pattern": "^[^@:]+@sha256:[0-9a-f]{64}$" },
+            "DOCKER_CONTEXT": { "const": "default" }
+          }
+        },
+        "gate": { "const": "sp1:prove:archive-only" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vkey", "selector", "publicValuesSha256", "proofBytesSha256"],
+      "properties": {
+        "vkey": { "$ref": "#/$defs/bytes32" },
+        "selector": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
+        "publicValuesSha256": { "$ref": "#/$defs/sha256" },
+        "proofBytesSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observation", "verifier", "checks", "acceptance"],
+      "properties": {
+        "observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "host"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-verification-[a-z0-9-]+\\.raw\\.json$"
+            },
+            "host": { "type": "string", "minLength": 1 }
+          }
+        },
+        "verifier": { "$ref": "#/$defs/verifier" },
+        "checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["chainId", "address", "runtimeCodeKeccak", "mode", "verdicts", "block"],
+            "properties": {
+              "chainId": { "type": "string", "pattern": "^[0-9]+$" },
+              "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+              "runtimeCodeKeccak": { "$ref": "#/$defs/bytes32" },
+              "mode": { "enum": ["AUTHENTICATED_RUNTIME_LOCAL", "DEPLOYED"] },
+              "verdicts": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["real", "tampered"],
+                "properties": {
+                  "real": { "const": "success" },
+                  "tampered": { "type": "string", "pattern": "^revert 0x[0-9a-f]{8}$" }
+                }
+              },
+              "block": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/positiveInt" }] }
+            }
+          }
+        },
+        "acceptance": { "const": "ACCEPTED" }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "wallClockSeconds",
+        "hostSeconds",
+        "rotationDelaySeconds",
+        "withinRotationDelay",
+        "rotationDelayFraction",
+        "peakMemory"
+      ],
+      "properties": {
+        "wallClockSeconds": { "$ref": "#/$defs/positiveInt" },
+        "hostSeconds": { "$ref": "#/$defs/positiveInt" },
+        "rotationDelaySeconds": { "const": 172800 },
+        "withinRotationDelay": { "type": "boolean" },
+        "rotationDelayFraction": { "type": "number", "exclusiveMinimum": 0 },
+        "peakMemory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hostProcess", "gnarkContainers"],
+          "properties": {
+            "hostProcess": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["bytes", "method"],
+              "properties": { "bytes": { "$ref": "#/$defs/positiveInt" }, "method": { "type": "string", "minLength": 1 } }
+            },
+            "gnarkContainers": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["bytes", "samples", "intervalMs", "method"],
+              "properties": {
+                "bytes": { "$ref": "#/$defs/positiveInt" },
+                "samples": { "$ref": "#/$defs/positiveInt" },
+                "intervalMs": { "$ref": "#/$defs/positiveInt" },
+                "method": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["condition", "enforcement", "probes"],
+      "properties": {
+        "condition": { "const": "EGRESS_DISABLED" },
+        "enforcement": { "type": "string", "minLength": 1 },
+        "probes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["before", "after", "targets"],
+          "properties": {
+            "before": { "$ref": "#/$defs/positiveInt" },
+            "after": { "$ref": "#/$defs/positiveInt" },
+            "targets": { "type": "array", "minItems": 4, "items": { "type": "string", "pattern": "^(dns|tcp):" } }
+          }
+        }
+      }
+    },
+    "derivedFrom": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "string",
+        "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-(run|verification)-[a-z0-9-]+\\.raw\\.json$"
+      }
+    },
+    "establishes": { "type": "string", "minLength": 1 },
+    "doesNotEstablish": { "type": "string", "minLength": 1 }
+  }
+}
