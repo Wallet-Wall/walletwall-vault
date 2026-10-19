@@ -1,0 +1,153 @@
+{
+  "schema": "walletwall.sp1-proving-archive.v2",
+  "subject": {
+    "circuitSystem": "groth16",
+    "circuitVersion": "v6.1.0",
+    "designation": "mldsa65-withdrawal-d1",
+    "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "verifier": {
+      "version": "v6.1.0",
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    },
+    "verifyingKey": {
+      "file": "groth16_vk.bin",
+      "sha256": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "bytes": 492
+    }
+  },
+  "archive": {
+    "file": "v6.1.0-groth16.tar.gz",
+    "format": "tar+gzip",
+    "bytes": 6211807514,
+    "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+    "acquiredAtUtc": "2026-10-17T22:22:39Z",
+    "sourceUrl": "https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz",
+    "sourceUrlRole": "PROVENANCE_ONLY"
+  },
+  "acquisitions": [
+    {
+      "host": "developer-workstation",
+      "observedAtUtc": "2026-10-17T22:22:39Z",
+      "bytes": 6211807514,
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      "agreement": "AGREES"
+    },
+    {
+      "host": "github-hosted-runner",
+      "observedAtUtc": "2026-10-19T00:02:38Z",
+      "bytes": 6211807514,
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      "agreement": "AGREES"
+    }
+  ],
+  "members": [
+    {
+      "path": "Groth16Verifier.sol",
+      "bytes": 26770,
+      "sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457"
+    },
+    {
+      "path": "SP1VerifierGroth16.sol",
+      "bytes": 3236,
+      "sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0"
+    },
+    {
+      "path": "constraints.json",
+      "bytes": 111997113,
+      "sha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b"
+    },
+    {
+      "path": "groth16_circuit.bin",
+      "bytes": 2437991441,
+      "sha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc"
+    },
+    {
+      "path": "groth16_pk.bin",
+      "bytes": 5862173061,
+      "sha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167"
+    },
+    {
+      "path": "groth16_vk.bin",
+      "bytes": 492,
+      "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    },
+    {
+      "path": "groth16_witness.json",
+      "bytes": 2802920,
+      "sha256": "ee2ac8e094712a87ec3b0dc50ed39704aa90ee066ce4c5bf6160d54f04014c94"
+    }
+  ],
+  "metadata": [
+    {
+      "path": "._.",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._Groth16Verifier.sol",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._SP1VerifierGroth16.sol",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._constraints.json",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._groth16_circuit.bin",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._groth16_pk.bin",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._groth16_vk.bin",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    },
+    {
+      "path": "._groth16_witness.json",
+      "bytes": 163,
+      "sha256": "a8d7edcaf5cde6ccdb9d056770ecd3edadcdd9010dad9d9b61e026f4732cd0e0",
+      "disposition": "IGNORED_APPLEDOUBLE_METADATA"
+    }
+  ],
+  "gnark": {
+    "repository": "ghcr.io/succinctlabs/sp1-gnark",
+    "tag": "v6.1.0",
+    "tagRole": "PROVENANCE_ONLY",
+    "digest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+    "observation": {
+      "host": "developer-workstation",
+      "observedAtUtc": "2026-10-19T00:16:41Z",
+      "method": "OCI distribution API: GET /v2/<repository>/manifests/<tag> with an anonymous pull token, the index digest being the sha256 of the raw index bytes and equal to the Docker-Content-Digest header; each platform manifest then fetched by digest and re-hashed; no image pulled; the index is application/vnd.oci.image.index.v1+json and its linux/amd64 image manifest is sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54 (config sha256:ceb60d80f46cd8e5869abd778f26dc34c4f3bab205f3d1d5275e532121cced4e); resolved identically on developer-workstation and github-hosted-runner"
+    },
+    "mirror": null
+  },
+  "mirrors": [
+    {
+      "location": "gs://walletwall-sp1-archive-328o457ytfv/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+    },
+    {
+      "location": "r2://b69bb874d4dd3937e1255b8527a84854/walletwall-sp1-archive/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+    }
+  ]
+}

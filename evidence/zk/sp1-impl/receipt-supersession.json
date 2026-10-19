@@ -1,0 +1,16 @@
+{
+  "schema": "walletwall.sp1-impl-receipt-supersession.v1",
+  "receipt": "evidence/zk/sp1-impl/implementation-receipt.json",
+  "receiptSha256": "b9f34d4531417015ae84475b76e98bb1444ff90f703a55b9e37c073ed8eba575",
+  "historicalSubject": "ab26dd6b3144695be58b3e82435fa6ffb189d989",
+  "supersedes": [
+    "PROVING_AVAILABILITY"
+  ],
+  "supersededBy": [
+    {
+      "lane": "SP1-PA2C",
+      "record": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "reason": "SP1-PA2C committed two WalletWall-controlled mirror observations and derived the production archive record from them and SP1-PA2B's acquisitions, which moved PROVING_AVAILABILITY from OWNER_DOWNLOAD_REQUIRED to ARCHIVED_VERIFIED_UNEXERCISED; the receipt's historical reading is pinned, never restamped"
+    }
+  ]
+}

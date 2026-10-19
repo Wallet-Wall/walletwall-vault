@@ -1,8 +1,8 @@
 {
   "schema": "walletwall.sp1-circuit-tooling.v1",
-  "lane": "SP1-PA2A",
+  "lane": "SP1-PA2B",
   "amendment": "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
-  "state": "TOOLING_READY_NO_ARTIFACT",
+  "state": "ARCHIVED_VERIFIED_UNEXERCISED",
   "states": [
     {
       "state": "TOOLING_NOT_PRESENT",
@@ -27,8 +27,8 @@
   ],
   "provingAvailability": {
     "path": "evidence/zk/sp1-impl/proving-availability.json",
-    "sha256": "0e228d0bbb3f43681767ffb5875b50ec4df63f0519e0a7636bb1260f77e922ee",
-    "status": "OWNER_DOWNLOAD_REQUIRED",
+    "sha256": "82bc0c5dfa2f5108afe663f71fdee3f274d397e2a3057445076fe2038c2cc668",
+    "status": "ARCHIVED_VERIFIED_UNEXERCISED",
     "consistentWithArchiveEvidence": true
   },
   "anchor": {
@@ -46,8 +46,47 @@
     }
   },
   "acquisition": {
-    "state": "NO_RECORD",
-    "record": null
+    "state": "ACCEPTED",
+    "record": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+    "derivedFrom": [
+      "evidence/zk/sp1-impl/observations/circuit-acquisition-developer-workstation.raw.json",
+      "evidence/zk/sp1-impl/observations/circuit-acquisition-github-hosted-runner.raw.json",
+      "evidence/zk/sp1-impl/observations/circuit-archive-mirror-gcs.raw.json",
+      "evidence/zk/sp1-impl/observations/circuit-archive-mirror-r2.raw.json"
+    ],
+    "archive": {
+      "file": "v6.1.0-groth16.tar.gz",
+      "bytes": 6211807514,
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810"
+    },
+    "acquisitions": [
+      {
+        "host": "developer-workstation",
+        "observedAtUtc": "2026-10-17T22:22:39Z"
+      },
+      {
+        "host": "github-hosted-runner",
+        "observedAtUtc": "2026-10-19T00:02:38Z"
+      }
+    ],
+    "members": 7,
+    "ignoredMetadata": 8,
+    "verifyingKey": {
+      "path": "groth16_vk.bin",
+      "bytes": 492,
+      "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+    },
+    "gnark": {
+      "repository": "ghcr.io/succinctlabs/sp1-gnark",
+      "tag": "v6.1.0",
+      "digest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
+    },
+    "mirrors": [
+      "gs://walletwall-sp1-archive-328o457ytfv/sp1/v6.1.0/v6.1.0-groth16.tar.gz",
+      "r2://b69bb874d4dd3937e1255b8527a84854/walletwall-sp1-archive/sp1/v6.1.0/v6.1.0-groth16.tar.gz"
+    ],
+    "establishes": "WalletWall independently identified, authenticated, recorded and mirrored the exact proving artifacts its designated verifier expects: two hosts acquired the same bytes, the merged inspector accepted them unchanged, every member and every ignored metadata entry is recorded, two WalletWall-controlled mirrors were re-read byte for byte when recorded, and the gnark image is pinned by its immutable digest",
+    "doesNotEstablish": "that the Groth16 trusted setup behind the key is sound (verifying-key equality is integrity and compatibility), that the self-hosted proving path works (no proof has been made), that the mirrors stay available (recorded assertions, never a continuous check), or production readiness"
   },
   "archiveRecord": {
     "schema": "walletwall.sp1-proving-archive.v2",
@@ -56,7 +95,7 @@
       "sha256": "e0cb829dee4ce214840b4780e1458b4bb9b51b64785d663c48fa7c04b2870dd9"
     },
     "authoritativeDir": "evidence/zk/sp1-impl/proving-archives",
-    "productionRecords": 0,
+    "productionRecords": 1,
     "requiredMembers": [
       "constraints.json",
       "groth16_circuit.bin",
@@ -1505,14 +1544,16 @@
     "installation authenticates bytes when it runs; read-only permissions are a liveness hardening, never the authority",
     "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
     "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
-    "an AppleDouble entry's header encoding (ustar or GNU, a NUL typeflag, a base-256 size, a linkname beside a regular file) is held only to the parser's general rules; its path, body, position and PAX-lessness are what the policy binds, and a record pins the exact entries"
+    "an AppleDouble entry's header encoding (ustar or GNU, a NUL typeflag, a base-256 size, a linkname beside a regular file) is held only to the parser's general rules; its path, body, position and PAX-lessness are what the policy binds, and a record pins the exact entries",
+    "the acquisition observations bind the measurement scripts by sha256 and the inspection by the committed anchor, and the record is re-derived from them in CI; the archive itself is never in CI, so a record that no longer matches the archive's bytes is caught only where the archive is (npm run sp1:circuit-archive:inspect -- --archive <file> --record <record>), as the installer and the prove gate do before every use"
   ],
   "notEstablished": [
-    "an accepted record of v6.1.0-groth16.tar.gz: its bytes were acquired on two hosts and every entry censused (the observations above), but no record exists, and passing the amended inspector on both copies is the acquisition lane's evidence, not this one's",
-    "the gnark image's digest: no committed observation, and the image is never pulled here",
-    "two independent acquisitions, two WalletWall mirrors, and a record in evidence/zk/sp1-impl/proving-archives",
-    "that the self-hosted path proves at all, or within the rotation delay",
-    "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound"
+    "that the self-hosted path proves at all, on what hardware, or within the 2-day rotation delay: no proof has been made from the archive (SELF_HOSTED_PATH_EXERCISED is the next lane's, never this one's)",
+    "that the mirrors keep serving the archive: each was re-read byte for byte when its observation was made; the record is that assertion, never a continuous check",
+    "that the two acquiring hosts and the two mirrors are independent beyond what their recorded identities and locations state",
+    "that the digest-pinned gnark image is archived under WalletWall's control: the record pins its identity (the registry's index digest and its linux/amd64 manifest), not a copy of its bytes, and the image is never pulled here",
+    "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound; archive provenance is where the bytes came from, never cryptographic soundness",
+    "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED"
   ],
-  "next": "SP1-PA2B: both independently acquired copies pass the merged inspector unchanged, the gnark image is resolved to its digest on both hosts, two WalletWall-controlled mirrors are re-read byte for byte, and the record is derived from those observations; still not a proof lane"
+  "next": "SP1-PA3: install exclusively from the committed verified archive, with the digest-pinned gnark image, network egress off; one real Groth16 proof of the designated program, verified through the designated verifier path, with peak memory and wall time recorded against the 2-day rotation delay; only then SELF_HOSTED_PATH_EXERCISED"
 }
