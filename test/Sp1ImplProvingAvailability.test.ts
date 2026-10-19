@@ -21,6 +21,7 @@ import {
   PROVING_ARCHIVES_DIR,
   PROVING_ARTIFACTS_OBSERVATION_REL,
   PROVING_AVAILABILITY_REL,
+  archiveEvidenceFromRepo,
   archiveRecordsIn,
   gnarkFeaturesOf,
   lockedCrates,
@@ -289,14 +290,22 @@ describe("SP1 implementation lane — proving availability (TD1-N9)", function (
   });
 
   it("the committed observation and record re-derive, and the status is OWNER_DOWNLOAD_REQUIRED", function () {
+    // The title is the implementation receipt's citation (SP1-IMPL derived OWNER_DOWNLOAD_REQUIRED, and the receipt is
+    // historical, never restamped). What it pins: with no archive record the status is OWNER_DOWNLOAD_REQUIRED, and the
+    // committed record is exactly what the committed evidence derives, whichever state SP1-PA2B's archive evidence holds.
     expect(provingAvailabilityErrors(".")).to.deep.equal([]);
     const record = JSON.parse(readFileSync(PROVING_AVAILABILITY_REL, "utf8"));
-    expect(record.status).to.equal("OWNER_DOWNLOAD_REQUIRED");
-    expect(provingAvailabilityStatus(committedObservation(), archiveRecordsIn("."))).to.equal(
-      "OWNER_DOWNLOAD_REQUIRED",
-    );
+    const obs = committedObservation();
+    expect(provingAvailabilityStatus(obs, [])).to.equal("OWNER_DOWNLOAD_REQUIRED");
+    const records = archiveRecordsIn(".");
+    const evidence = archiveEvidenceFromRepo(".", obs, designations());
+    const status = provingAvailabilityStatus(obs, records, evidence);
+    expect(record.status).to.equal(status);
+    expect(status).to.equal(records.length === 0 ? "OWNER_DOWNLOAD_REQUIRED" : "ARCHIVED_VERIFIED_UNEXERCISED");
     expect(record.selfHostedPath.exercised).to.equal(false);
-    expect(record.expectedArtifacts.tarball.sha256).to.equal(null);
+    expect(record.expectedArtifacts.tarball.sha256).to.equal(
+      records.length === 0 ? null : evidence?.record?.archive.sha256,
+    );
   });
 
   it("the expected groth16_vk.bin is the designated VERIFIER_HASH and the wrapper's SP1_VERIFIER_HASH", function () {

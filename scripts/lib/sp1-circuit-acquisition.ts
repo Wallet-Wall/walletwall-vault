@@ -25,8 +25,8 @@
  * and no proof has been made from the archive. Research prototype. Not audited. Testnet/local only.
  */
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 
 import {
   AGREES,
@@ -47,7 +47,7 @@ import {
   type ArchiveRecord,
   type Inspection,
 } from "./sp1-circuit-archive";
-import { type Census } from "./sp1-circuit-archive-census";
+import { CENSUS_SCHEMA, type Census } from "./sp1-circuit-archive-census";
 import { type ProgramDesignation } from "./sp1-designation";
 import { uncommittedEvidenceError } from "./committed-evidence";
 
@@ -81,6 +81,88 @@ export const acquisitionObservationRel = (host: string) => `${OBSERVATIONS_DIR}/
 export const ACQUISITION_OBSERVATIONS_REL: readonly string[] = ACQUISITION_HOSTS.map(acquisitionObservationRel);
 /** Mirror observations: one file per WalletWall-controlled location, circuit-archive-mirror-<id>.raw.json. */
 export const MIRROR_OBSERVATION_PREFIX = "circuit-archive-mirror-";
+/**
+ * A platform line each host's observation must carry: the runner its run id (an ephemeral machine names its run),
+ * the workstation its operating system. A copy of one host's observation relabeled as the other carries the wrong
+ * lines; agreement on measured facts never substitutes for a host's own identity.
+ */
+export const HOST_IDENTITY_MARKERS: Readonly<Record<string, RegExp>> = {
+  "developer-workstation": /^os=/,
+  "github-hosted-runner": /^run_id=[0-9]+$/,
+};
+/**
+ * The storage providers a WalletWall mirror may live at (the owner's choice: Google Cloud Storage and Cloudflare R2),
+ * each with its location grammar and the hosts a re-read of it may be served from. A location names an object as
+ * `<scheme>://<bucket>/<object>` (R2: `<account>/<bucket>/<object>`); a re-read's host and path must name the same
+ * object under either of the provider's addressing styles (path-style on the provider host, or virtual-hosted on a
+ * bucket subdomain). Everything else, the upstream S3 bucket under any alias included, is no WalletWall mirror.
+ */
+export const MIRROR_PROVIDERS: readonly {
+  readonly id: string;
+  readonly scheme: string;
+  readonly segments: number;
+  readonly host: RegExp;
+}[] = [
+  {
+    id: "gcs",
+    scheme: "gs",
+    segments: 1,
+    host: /^(?:([a-z0-9][a-z0-9._-]{1,221}[a-z0-9])\.)?storage\.googleapis\.com$/,
+  },
+  {
+    id: "r2",
+    scheme: "r2",
+    segments: 2,
+    host: /^(?:([a-z0-9][a-z0-9-]{1,61}[a-z0-9])\.)?([a-f0-9]{32})\.r2\.cloudflarestorage\.com$/,
+  },
+];
+/** The fields an observation names, level by level: an unknown field (a refusal marker, say) is refused, not ignored. */
+export const OBSERVATION_FIELDS = {
+  acquisition: [
+    "schema",
+    "host",
+    "measuredAtUtc",
+    "tool",
+    "anchor",
+    "archive",
+    "transfer",
+    "independentDigests",
+    "inspection",
+    "census",
+    "gnark",
+    "platform",
+  ],
+  tool: ["script", "scriptSha256"],
+  archive: ["file", "bytes", "sha256"],
+  transfer: [
+    "sourceUrl",
+    "urlEffective",
+    "httpCode",
+    "remoteIp",
+    "timeTotalSeconds",
+    "startedAtUtc",
+    "finishedAtUtc",
+    "responseHeaders",
+  ],
+  inspection: ["members", "directories", "metadata", "provenance"],
+  census: ["schema", "sha256", "entries", "decompressedBytes", "appleDoubleEntries"],
+  gnark: ["repository", "tag", "index", "platforms", "method", "crossCheck", "observedAtUtc"],
+  mirror: [
+    "schema",
+    "host",
+    "measuredAtUtc",
+    "tool",
+    "location",
+    "control",
+    "fetch",
+    "bytes",
+    "sha256",
+    "expected",
+    "agreement",
+  ],
+  fetch: ["urlHost", "urlPath", "httpCode", "startedAtUtc", "finishedAtUtc", "responseHeaders"],
+  expected: ["bytes", "sha256"],
+} as const;
 /**
  * The census of the upstream v6.1.0 archive (scripts/sp1-circuit-archive-census.ts output, verbatim) on each host that
  * acquired it in SP1-PA2A's amendment: the AppleDouble and provenance policies are derived from them, and every
@@ -360,17 +442,75 @@ export async function resolveImageTag(
 // Agreement: every reason a set of observations does not derive one record
 // ---------------------------------------------------------------------------------------------------------------
 
+/**
+ * What the committed census of the upstream archive says about its bytes: the archive's length and sha256, every
+ * regular member (path, length, sha256) and every AppleDouble entry. The census was taken on two hosts and merged with
+ * the PA2A amendment: it is the independently reviewed fact an acquisition observation must match, so a pair of
+ * observations forged consistently with each other still names another archive than the one the repository censused.
+ */
+export interface CensusFacts {
+  /** sha256 of the census tool's output: what each observation's own census of its copy must hash to. */
+  sha256: string;
+  archive: { bytes: number; sha256: string };
+  members: ArchiveMember[];
+  metadata: { path: string; bytes: number; sha256: string }[];
+}
+
 export interface AcquisitionExpectations {
   anchor: ArchiveAnchor;
   /** The gnark image the pinned prover defaults to (repository:tag), from the proving-artifacts observation. */
   gnarkImage: string;
-  /** sha256 of the committed census of the upstream archive (both PA2A census files are this one census). */
-  censusSha256: string;
-  /** sha256 of the committed measurement scripts, which the observations' tool bindings must name. */
-  scripts: { acquisition: string; mirror: string };
+  /** The committed census (both PA2A census files are this one census). */
+  census: CensusFacts;
+  /** sha256 of the committed measurement scripts (null when a script is absent: then nothing binds). */
+  scripts: { acquisition: string | null; mirror: string | null };
 }
 
 const EXPECTED_DIRECTORIES: readonly string[] = [];
+const byPath = <T extends { path: string }>(xs: readonly T[]) => [...xs].sort((a, b) => (a.path < b.path ? -1 : 1));
+const censusPath = (p: string) => (p.startsWith("./") ? p.slice(2) : p).replace(/\/+$/, "");
+const isAppleDoubleShaped = (path: string): boolean => path.split("/").some((p) => p.startsWith("._"));
+
+/** The facts a census states about the archive it walked; throws when `census` is not a census. */
+export function censusFacts(census: unknown, serialized: string): CensusFacts {
+  const c = census as Census;
+  if (!isObject(c) || c.schema !== CENSUS_SCHEMA || !isObject(c.archive) || !Array.isArray(c.entries)) {
+    throw new Error(`the committed census is not ${CENSUS_SCHEMA}`);
+  }
+  const members = c.entries
+    .filter((e) => e.typeflag === "0" && !isAppleDoubleShaped(censusPath(e.path)) && censusPath(e.path) !== "")
+    .map((e) => ({ path: censusPath(e.path), bytes: e.size, sha256: e.dataSha256 }));
+  const metadata = (Array.isArray(c.appleDouble) ? c.appleDouble : []).map((r) => ({
+    path: r.path,
+    bytes: r.size,
+    sha256: r.sha256,
+  }));
+  return {
+    sha256: sha256(serialized),
+    archive: { bytes: c.archive.bytes, sha256: c.archive.sha256 },
+    members: byPath(members),
+    metadata: byPath(metadata),
+  };
+}
+
+/** A shape check: `o` must name exactly `keys`; reports the extra and missing ones under `reason`. */
+function exactly(
+  o: unknown,
+  keys: readonly string[],
+  where: string,
+  reason: string,
+  no: (reason: string, detail: string) => void,
+): o is Record<string, any> {
+  if (!isObject(o)) {
+    no(reason, `${where} is not an object`);
+    return false;
+  }
+  const extra = Object.keys(o).filter((k) => !keys.includes(k));
+  const missing = keys.filter((k) => !(k in o));
+  if (extra.length > 0) no(reason, `${where} names ${extra.join(", ")}`);
+  if (missing.length > 0) no(reason, `${where} lacks ${missing.join(", ")}`);
+  return extra.length === 0 && missing.length === 0;
+}
 
 function transferErrors(t: unknown, i: number, no: (reason: string, detail: string) => void): void {
   const where = `observations[${i}].transfer`;
@@ -399,21 +539,23 @@ export function acquisitionObservationErrors(
   const out: { reason: string; detail: string }[] = [];
   const no = (reason: string, detail: string) => out.push({ reason, detail });
   const where = `observations[${i}]`;
-  if (!isObject(value)) {
-    no("OBSERVATION_SHAPE", `${where} is not an object`);
-    return out;
-  }
+  if (!exactly(value, OBSERVATION_FIELDS.acquisition, where, "OBSERVATION_SHAPE", no)) return out;
   const o = value as AcquisitionObservation;
   if (o.schema !== ACQUISITION_SCHEMA) no("OBSERVATION_SCHEMA", `${where} must be ${ACQUISITION_SCHEMA}`);
   if (!HOST_LABEL.test(String(o.host))) no("OBSERVATION_HOST", `${where}.host is not a host label`);
   if (!UTC.test(String(o.measuredAtUtc))) no("OBSERVATION_FIELD", `${where}.measuredAtUtc`);
-  if (o.tool?.script !== ACQUISITION_SCRIPT_REL || o.tool?.scriptSha256 !== expect.scripts.acquisition) {
+  if (
+    !exactly(o.tool, OBSERVATION_FIELDS.tool, `${where}.tool`, "OBSERVATION_SHAPE", no) ||
+    o.tool.script !== ACQUISITION_SCRIPT_REL ||
+    expect.scripts.acquisition === null ||
+    o.tool.scriptSha256 !== expect.scripts.acquisition
+  ) {
     no("TOOL_NOT_BOUND", `${where} was not made by ${ACQUISITION_SCRIPT_REL} as committed: re-measure`);
   }
   if (!same(o.anchor, expect.anchor)) no("ANCHOR_MISMATCH", `${where} measured against another anchor than d1's`);
   const a = o.archive;
   if (
-    !isObject(a) ||
+    !exactly(a, OBSERVATION_FIELDS.archive, `${where}.archive`, "OBSERVATION_SHAPE", no) ||
     !/^[A-Za-z0-9._-]+\.tar\.gz$/.test(String(a.file)) ||
     !isCount(a.bytes) ||
     a.bytes === 0 ||
@@ -427,7 +569,17 @@ export function acquisitionObservationErrors(
       `${where}.archive.file ${String(a.file)} is not the ${expect.anchor.circuitVersion} Groth16 archive`,
     );
   }
-  transferErrors(o.transfer, i, no);
+  // The copy is the archive the repository censused: its length and sha256 are the committed census's, not merely
+  // what two observations agree on between themselves.
+  if (isObject(a) && (a.bytes !== expect.census.archive.bytes || a.sha256 !== expect.census.archive.sha256)) {
+    no(
+      "CENSUS_MISMATCH",
+      `${where}: ${String(a.bytes)} bytes, sha256 ${String(a.sha256)} is not the archive the committed census observed (${expect.census.archive.bytes} bytes, sha256 ${expect.census.archive.sha256})`,
+    );
+  }
+  if (exactly(o.transfer, OBSERVATION_FIELDS.transfer, `${where}.transfer`, "OBSERVATION_SHAPE", no)) {
+    transferErrors(o.transfer, i, no);
+  }
   if (isObject(o.transfer) && isObject(a)) {
     const t = o.transfer;
     if (typeof t.urlEffective === "string" && !t.urlEffective.endsWith(`/${a.file}`)) {
@@ -465,6 +617,7 @@ export function acquisitionObservationErrors(
   ) {
     no("INSPECTION_MISSING", `${where} holds no inspection: the inspector refused this copy, or it was never run`);
   } else {
+    exactly(ins, OBSERVATION_FIELDS.inspection, `${where}.inspection`, "OBSERVATION_SHAPE", no);
     if (ins.members.length === 0) no("INSPECTION_MISSING", `${where}: the inspection names no member`);
     if (!same(ins.directories, EXPECTED_DIRECTORIES)) no("INSPECTION_FIELD", `${where}: the archive holds directories`);
     const vk = ins.members.find((m) => m?.path === VK_FILE);
@@ -475,25 +628,42 @@ export function acquisitionObservationErrors(
     ) {
       no("VK_MISMATCH", `${where}: ${VK_FILE} is not the designated verifying key`);
     }
+    // Every member and every AppleDouble entry the inspector measured is one the committed census listed, with its
+    // length and sha256, and none is missing: the member set is the census's, never the observation's own.
+    const members = byPath(ins.members.map((m) => ({ path: m?.path, bytes: m?.bytes, sha256: m?.sha256 })));
+    if (!same(members, expect.census.members)) {
+      no("CENSUS_MISMATCH", `${where}: the members measured are not the members the committed census listed`);
+    }
+    const metadata = byPath(ins.metadata.map((m) => ({ path: m?.path, bytes: m?.bytes, sha256: m?.sha256 })));
+    if (!same(metadata, expect.census.metadata)) {
+      no("CENSUS_MISMATCH", `${where}: the AppleDouble entries measured are not the committed census's`);
+    }
   }
   const c = o.census;
   if (
-    !isObject(c) ||
+    !exactly(c, OBSERVATION_FIELDS.census, `${where}.census`, "OBSERVATION_SHAPE", no) ||
     !HEX64.test(String(c.sha256)) ||
     !isCount(c.entries) ||
     !isCount(c.decompressedBytes) ||
     !isCount(c.appleDoubleEntries)
   ) {
     no("CENSUS_MISSING", `${where} holds no census`);
-  } else if (c.sha256 !== expect.censusSha256) {
+  } else if (c.sha256 !== expect.census.sha256) {
     no(
       "CENSUS_MISMATCH",
-      `${where}: the census of this copy (${c.sha256}) is not the committed census (${expect.censusSha256})`,
+      `${where}: the census of this copy (${c.sha256}) is not the committed census (${expect.census.sha256})`,
     );
   }
-  gnarkErrors(o.gnark, where, expect.gnarkImage, no);
+  if (exactly(o.gnark, OBSERVATION_FIELDS.gnark, `${where}.gnark`, "OBSERVATION_SHAPE", no)) {
+    gnarkErrors(o.gnark, where, expect.gnarkImage, no);
+  }
   if (!Array.isArray(o.platform) || !o.platform.every(isText) || o.platform.length === 0) {
     no("OBSERVATION_FIELD", `${where}.platform names no host identity`);
+  } else {
+    const marker = HOST_IDENTITY_MARKERS[String(o.host)];
+    if (marker && !o.platform.some((line) => marker.test(line))) {
+      no("OBSERVATION_FIELD", `${where}.platform carries no ${String(marker)} line, which ${String(o.host)} records`);
+    }
   }
   return out;
 }
@@ -557,27 +727,35 @@ export function mirrorObservationErrors(
   value: unknown,
   i: number,
   archive: { bytes: number; sha256: string; upstreamHost: string },
-  scriptSha256: string,
+  scriptSha256: string | null,
 ): { reason: string; detail: string }[] {
   const out: { reason: string; detail: string }[] = [];
   const no = (reason: string, detail: string) => out.push({ reason, detail });
   const where = `mirrors[${i}]`;
-  if (!isObject(value)) {
-    no("MIRROR_SHAPE", `${where} is not an object`);
-    return out;
-  }
+  if (!exactly(value, OBSERVATION_FIELDS.mirror, where, "MIRROR_SHAPE", no)) return out;
   const m = value as MirrorObservation;
   if (m.schema !== MIRROR_SCHEMA) no("MIRROR_SCHEMA", `${where} must be ${MIRROR_SCHEMA}`);
   if (!HOST_LABEL.test(String(m.host))) no("MIRROR_FIELD", `${where}.host is not a host label`);
   if (!UTC.test(String(m.measuredAtUtc))) no("MIRROR_FIELD", `${where}.measuredAtUtc`);
-  if (m.tool?.script !== MIRROR_SCRIPT_REL || m.tool?.scriptSha256 !== scriptSha256) {
+  if (
+    !exactly(m.tool, OBSERVATION_FIELDS.tool, `${where}.tool`, "MIRROR_SHAPE", no) ||
+    m.tool.script !== MIRROR_SCRIPT_REL ||
+    scriptSha256 === null ||
+    m.tool.scriptSha256 !== scriptSha256
+  ) {
     no("TOOL_NOT_BOUND", `${where} was not made by ${MIRROR_SCRIPT_REL} as committed: re-measure`);
   }
-  if (!isText(m.location) || m.location !== m.location.trim()) no("MIRROR_FIELD", `${where}.location`);
+  const identity = isText(m.location) ? mirrorIdentity(m.location) : null;
+  if (identity === null) {
+    no(
+      "MIRROR_FIELD",
+      `${where}.location ${JSON.stringify(m.location)} is not a WalletWall mirror location (gs://<bucket>/<object> or r2://<account>/<bucket>/<object>, no query, fragment or credential)`,
+    );
+  }
   if (!isText(m.control)) no("MIRROR_FIELD", `${where}.control names no controller`);
   const f = m.fetch;
   if (
-    !isObject(f) ||
+    !exactly(f, OBSERVATION_FIELDS.fetch, `${where}.fetch`, "MIRROR_SHAPE", no) ||
     !isText(f.urlHost) ||
     !isText(f.urlPath) ||
     !UTC.test(String(f.startedAtUtc)) ||
@@ -587,32 +765,109 @@ export function mirrorObservationErrors(
     no("MIRROR_FIELD", `${where}.fetch is incomplete`);
   } else {
     if (f.httpCode !== 200) no("MIRROR_INCOMPLETE", `${where}: the re-read ended with HTTP ${String(f.httpCode)}`);
-    if (f.urlHost === archive.upstreamHost)
+    // The upstream host itself, or any host under its registrable domain (a CDN alias, say).
+    if (registrableDomain(f.urlHost) === registrableDomain(archive.upstreamHost)) {
       no("MIRROR_IS_UPSTREAM", `${where} re-read ${f.urlHost}, the upstream source, which is no WalletWall mirror`);
-    if (f.urlPath.includes("?"))
-      no("MIRROR_FIELD", `${where}.fetch.urlPath carries a query (a signed URL is never recorded)`);
+    }
+    if (f.urlPath.includes("?") || f.urlPath.includes("#") || !f.urlPath.startsWith("/")) {
+      no("MIRROR_FIELD", `${where}.fetch.urlPath is not a plain path (a signed URL is never recorded)`);
+    }
+    const served = fetchIdentity(f.urlHost, f.urlPath);
+    if (served === null) {
+      no(
+        "MIRROR_HOST_UNKNOWN",
+        `${where} re-read ${f.urlHost}, which is no host of ${MIRROR_PROVIDERS.map((p) => p.id).join(" or ")}: not a WalletWall mirror location`,
+      );
+    } else if (identity !== null && served !== identity) {
+      no("MIRROR_LOCATION_MISMATCH", `${where} re-read ${served}, not its location ${identity}`);
+    }
     const cl = f.responseHeaders.contentLength;
     if (cl !== null && cl !== undefined && cl !== archive.bytes)
       no("MIRROR_INCOMPLETE", `${where}: Content-Length ${String(cl)}`);
     if (!(f.finishedAtUtc <= m.measuredAtUtc)) no("MIRROR_FIELD", `${where} was measured before its re-read ended`);
   }
-  if (isText(m.location) && urlHost(m.location) === archive.upstreamHost) {
-    no("MIRROR_IS_UPSTREAM", `${where}.location is the upstream source`);
-  }
   if (m.bytes !== archive.bytes || m.sha256 !== archive.sha256) {
     no("MIRROR_DISAGREES", `${where} holds ${String(m.bytes)} bytes, sha256 ${String(m.sha256)}: not the archive`);
   }
-  if (!same(m.expected, { bytes: archive.bytes, sha256: archive.sha256 }) || m.agreement !== AGREES) {
+  if (
+    !exactly(m.expected, OBSERVATION_FIELDS.expected, `${where}.expected`, "MIRROR_SHAPE", no) ||
+    !same(m.expected, { bytes: archive.bytes, sha256: archive.sha256 }) ||
+    m.agreement !== AGREES
+  ) {
     no("MIRROR_DISAGREES", `${where} was not checked against the archive, or did not agree`);
   }
   return out;
 }
 
-/** A location's spelling for distinctness: scheme and host case-folded, trailing slashes dropped. */
-export function normalizedLocation(location: string): string {
-  const m = /^([a-z][a-z0-9+.-]*):\/\/([^/]+)(.*)$/i.exec(location.trim());
-  if (!m) return location.trim().replace(/\/+$/, "");
-  return `${m[1].toLowerCase()}://${m[2].toLowerCase()}${m[3].replace(/\/+$/, "")}`;
+/** The last two labels of a host: the domain an alias of the upstream bucket still sits under (good enough here). */
+export function registrableDomain(host: string): string {
+  return host.toLowerCase().split(".").slice(-2).join(".");
+}
+
+const OBJECT_SEGMENT = /^[^/?#\s]+$/;
+const BUCKET = /^[a-z0-9][a-z0-9._-]{1,221}[a-z0-9]$/;
+const R2_ACCOUNT = /^[a-f0-9]{32}$/;
+/** Each path segment percent-decoded (a decoding that fails, or decodes to a separator, names no object). */
+function decodedSegments(path: string): string[] | null {
+  const segments = path.split("/");
+  const out: string[] = [];
+  for (const s of segments) {
+    if (!OBJECT_SEGMENT.test(s)) return null;
+    let d: string;
+    try {
+      d = decodeURIComponent(s);
+    } catch {
+      return null;
+    }
+    if (d.includes("/") || d.includes("\\") || d.trim() !== d || d === "" || d === "." || d === "..") return null;
+    out.push(d);
+  }
+  return out;
+}
+
+/**
+ * The object a mirror location names, canonically (`gcs:<bucket>/<object>`, `r2:<account>/<bucket>/<object>`), or
+ * null when the location is not exactly a provider's grammar: a query, a fragment, a credential, an empty or dotted
+ * segment, an upper-case bucket, another scheme. The object key keeps its case (object stores are case-sensitive).
+ */
+export function mirrorIdentity(location: string): string | null {
+  const m = /^([a-z0-9]+):\/\/(.+)$/.exec(location);
+  if (!m || /[?#@\s]/.test(location)) return null;
+  const provider = MIRROR_PROVIDERS.find((p) => p.scheme === m[1]);
+  if (!provider) return null;
+  const segments = decodedSegments(m[2]);
+  if (segments === null || segments.length < provider.segments + 1) return null;
+  const head = segments.slice(0, provider.segments);
+  const key = segments.slice(provider.segments).join("/");
+  if (provider.id === "gcs" && !BUCKET.test(head[0])) return null;
+  if (provider.id === "r2" && (!R2_ACCOUNT.test(head[0]) || !BUCKET.test(head[1]))) return null;
+  return `${provider.id}:${head.join("/")}/${key}`;
+}
+
+/**
+ * The object a re-read's host and path name, canonically, under the providers' addressing styles: path-style on the
+ * provider host (`storage.googleapis.com/<bucket>/<object>`, `<account>.r2.cloudflarestorage.com/<bucket>/<object>`)
+ * or virtual-hosted on a bucket subdomain; null for any other host.
+ */
+export function fetchIdentity(host: string, path: string): string | null {
+  const h = host.toLowerCase().replace(/:443$/, "");
+  const segments = decodedSegments(path.replace(/^\//, ""));
+  if (segments === null) return null;
+  for (const p of MIRROR_PROVIDERS) {
+    const m = p.host.exec(h);
+    if (!m) continue;
+    if (p.id === "gcs") {
+      const bucket = m[1];
+      const [b, ...key] = bucket === undefined ? segments : [bucket, ...segments];
+      if (!b || !BUCKET.test(b) || key.length === 0) return null;
+      return `gcs:${b}/${key.join("/")}`;
+    }
+    const [bucketLabel, account] = [m[1], m[2]];
+    const [b, ...key] = bucketLabel === undefined ? segments : [bucketLabel, ...segments];
+    if (!b || !BUCKET.test(b) || key.length === 0) return null;
+    return `r2:${account}/${b}/${key.join("/")}`;
+  }
+  return null;
 }
 
 /**
@@ -641,6 +896,32 @@ export function acquisitionErrors(
     if (hosts.has(o.host)) no("ACQUISITION_NOT_INDEPENDENT", `host ${o.host} is counted twice`);
     hosts.add(o.host);
   }
+  if ([...hosts].sort().join() !== [...ACQUISITION_HOSTS].sort().join()) {
+    no("ACQUISITION_HOSTS_MISMATCH", `the hosts are ${[...hosts].join(", ")}, not ${ACQUISITION_HOSTS.join(" and ")}`);
+  }
+  // Two observations of one acquisition relabeled as two hosts share what two machines cannot: the transfer (its
+  // remote address and window), the measurement and resolution times, or the identity lines.
+  obs.forEach((o, k) =>
+    obs.slice(0, k).forEach((p, j) => {
+      const shared: string[] = [];
+      if (
+        o.transfer.remoteIp === p.transfer.remoteIp &&
+        o.transfer.startedAtUtc === p.transfer.startedAtUtc &&
+        o.transfer.finishedAtUtc === p.transfer.finishedAtUtc
+      ) {
+        shared.push("the transfer's remote address and window");
+      }
+      if (o.measuredAtUtc === p.measuredAtUtc) shared.push("the measurement time");
+      if (o.gnark.observedAtUtc === p.gnark.observedAtUtc) shared.push("the image resolution time");
+      if (same(o.platform, p.platform)) shared.push("the identity lines");
+      if (shared.length > 0) {
+        no(
+          "ACQUISITION_NOT_INDEPENDENT",
+          `observations[${k}] (${o.host}) repeats observations[${j}]'s (${p.host}) ${shared.join(", ")}: one acquisition under two labels`,
+        );
+      }
+    }),
+  );
   // Every observation passed its own checks above, which already bind two facts to constants on every host: the
   // archive's file name (the anchor's circuit version) and the census (the committed census). Those cannot differ
   // between hosts that both passed, so only the measured facts are compared here.
@@ -671,11 +952,13 @@ export function acquisitionErrors(
     );
   }
   mirrors.forEach((m, i) => out.push(...mirrorObservationErrors(m, i, archive, expect.scripts.mirror)));
+  // Distinct objects, not distinct spellings: the canonical identity of each location (its re-read was held to the
+  // same identity above), so one object under two addressing styles, spellings or versions is one mirror.
   const seen = new Map<string, number>();
   (mirrors as MirrorObservation[]).forEach((m, i) => {
-    const key = isText(m?.location) ? normalizedLocation(m.location) : `#${i}`;
+    const key = (isText(m?.location) ? mirrorIdentity(m.location) : null) ?? `#${i}`;
     const prior = seen.get(key);
-    if (prior !== undefined) no("MIRRORS_NOT_DISTINCT", `mirrors[${i}] and mirrors[${prior}] name one location`);
+    if (prior !== undefined) no("MIRRORS_NOT_DISTINCT", `mirrors[${i}] and mirrors[${prior}] name one object (${key})`);
     seen.set(key, i);
   });
   return out;
@@ -782,15 +1065,18 @@ function readJson(repoRoot: string, rel: string): unknown {
 
 /** The acquisition expectations the repository holds for `input`'s anchor (the committed census and scripts). */
 export function acquisitionExpectations(repoRoot: string, input: ArchiveEvidenceInput): AcquisitionExpectations {
-  const census = readFileSync(resolve(repoRoot, CENSUS_OBSERVATIONS_REL[0]), "utf8").replace(/\r\n/g, "\n");
-  const scriptSha = (rel: string) => {
+  const censusText = readFileSync(resolve(repoRoot, CENSUS_OBSERVATIONS_REL[0]), "utf8").replace(/\r\n/g, "\n");
+  const census = JSON.parse(censusText) as unknown;
+  // A script is bound by the sha256 of its LF bytes (what the tool computes of itself on an LF checkout, and what git
+  // commits); a checkout that converts line endings still binds, and an absent script binds nothing.
+  const scriptSha = (rel: string): string | null => {
     const p = resolve(repoRoot, rel);
-    return existsSync(p) ? sha256(readFileSync(p)) : "absent";
+    return existsSync(p) ? sha256(readFileSync(p, "utf8").replace(/\r\n/g, "\n")) : null;
   };
   return {
     anchor: input.anchor,
     gnarkImage: input.gnarkImage,
-    censusSha256: sha256(serializeJson(JSON.parse(census) as Census)),
+    census: censusFacts(census, serializeJson(census)),
     scripts: { acquisition: scriptSha(ACQUISITION_SCRIPT_REL), mirror: scriptSha(MIRROR_SCRIPT_REL) },
   };
 }
@@ -810,12 +1096,34 @@ export function productionArchiveEvidence(repoRoot: string, input: ArchiveEviden
   if (records.length !== 1 || records[0] !== want) {
     errors.push(`${PROVING_ARCHIVES_DIR} must hold exactly ${want}; it holds ${records.join(", ")}`);
   }
+  // The record is a regular file in the directory itself, as the gate's authoritativeRecordError reads it: a link
+  // placed there, wherever it points, is no record, so the state and the gate never disagree.
+  for (const rel of records) {
+    const full = resolve(repoRoot, rel);
+    let regular = false;
+    try {
+      regular =
+        lstatSync(full).isFile() &&
+        dirname(realpathSync(full)) === realpathSync(resolve(repoRoot, PROVING_ARCHIVES_DIR));
+    } catch {
+      regular = false;
+    }
+    if (!regular) errors.push(`${rel} is not a regular file directly in ${PROVING_ARCHIVES_DIR}`);
+  }
   const observations = [...ACQUISITION_OBSERVATIONS_REL, ...mirrorObservationsIn(repoRoot)];
   const absent = observations.filter((rel) => !existsSync(resolve(repoRoot, rel)));
   if (absent.length > 0) errors.push(`acquisition observations are missing: ${absent.join(", ")}`);
   if (errors.length > 0) return { records, record: null, observations, errors };
   const expect = acquisitionExpectations(repoRoot, input);
   const acquisitions = ACQUISITION_OBSERVATIONS_REL.map((rel) => readJson(repoRoot, rel));
+  // Each observation file is one host's, by name: the host it claims must be the host the file is for.
+  acquisitions.forEach((o, i) => {
+    const host = (o as { host?: unknown })?.host;
+    if (host !== ACQUISITION_HOSTS[i]) {
+      errors.push(`${ACQUISITION_OBSERVATIONS_REL[i]} claims host ${String(host)}, not ${ACQUISITION_HOSTS[i]}`);
+    }
+  });
+  if (errors.length > 0) return { records, record: null, observations, errors };
   const mirrors = mirrorObservationsIn(repoRoot).map((rel) => readJson(repoRoot, rel));
   const agreement = acquisitionErrors(acquisitions, mirrors, expect);
   if (agreement.length > 0) {

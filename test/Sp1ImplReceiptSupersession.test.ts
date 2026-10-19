@@ -32,7 +32,7 @@ import { tempDirs } from "./helpers/circuit-tooling";
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const RECORD = `${PROVING_ARCHIVES_DIR}/v6.1.0-groth16.json`;
 const RECEIPT = Buffer.from('{"schema":"walletwall.sp1-impl-receipt.v1","synthetic":true}\n');
-const ARCHIVED: LiveAvailability = { errors: [], status: "ARCHIVED_VERIFIED_UNEXERCISED" };
+const ARCHIVED: LiveAvailability = { errors: [], status: "ARCHIVED_VERIFIED_UNEXERCISED", acceptedRecord: RECORD };
 
 describe("SP1-PA2B: the implementation receipt's supersession", function () {
   const dirs = tempDirs();
@@ -182,14 +182,14 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
       /supersedes must be exactly/,
     );
     for (const status of LIVE_AVAILABILITY_STATUSES) {
-      expect(errs(w.supersession(), { errors: [], status })).to.match(
+      expect(errs(w.supersession(), { errors: [], status, acceptedRecord: null })).to.match(
         new RegExp(`still ${status}: nothing superseded the receipt`),
       );
     }
-    expect(errs(w.supersession(), { errors: ["the observation drifted"], status: null })).to.match(
-      /does not validate, so nothing supersedes the receipt: the observation drifted/,
-    );
-    expect(errs(w.supersession(), { errors: [], status: null })).to.match(/still null/);
+    expect(
+      errs(w.supersession(), { errors: ["the observation drifted"], status: null, acceptedRecord: null }),
+    ).to.match(/does not validate, so nothing supersedes the receipt: the observation drifted/);
+    expect(errs(w.supersession(), { errors: [], status: null, acceptedRecord: null })).to.match(/still null/);
   });
 
   it("names its superseding records: the archive record first, each with a lane and a reason, each present", function () {
@@ -197,9 +197,18 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
     const w = world();
     const errs = (s: ImplSupersession) => implSupersessionErrors(s, RECEIPT, w.d, ARCHIVED).join("\n");
     expect(errs(w.supersession({ supersededBy: [] }))).to.match(/at least one superseding record/);
+    // The record named must be the one the live availability accepted, and a file, never the directory itself.
+    const other = `${PROVING_ARCHIVES_DIR}/other.json`;
+    w.write(other, "{}\n");
+    expect(errs(w.supersession({ supersededBy: [{ lane: "SP1-PA2B", record: other, reason: "r" }] }))).to.match(
+      /not the archive record the live availability accepted/,
+    );
+    expect(
+      errs(w.supersession({ supersededBy: [{ lane: "SP1-PA2B", record: `${PROVING_ARCHIVES_DIR}/`, reason: "r" }] })),
+    ).to.match(/is not a file/);
     expect(
       errs(w.supersession({ supersededBy: [{ lane: "SP1-PA2B", record: "docs/notes.md", reason: "r" }] })),
-    ).to.match(/must be the archive record under evidence\/zk\/sp1-impl\/proving-archives[\s\S]*does not exist/);
+    ).to.match(/must be the archive record under evidence\/zk\/sp1-impl\/proving-archives[\s\S]*is not a file/);
     expect(errs(w.supersession({ supersededBy: [{ lane: "", record: RECORD, reason: "" }] }))).to.match(
       /each superseding record has a lane and a reason/,
     );
@@ -209,7 +218,7 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
           supersededBy: [{ lane: "SP1-PA2B", record: `${PROVING_ARCHIVES_DIR}/absent.json`, reason: "r" }],
         }),
       ),
-    ).to.match(/does not exist/);
+    ).to.match(/is not a file/);
   });
 
   it("derives the superseded availability at the historical subject, read from git, and binds the supersession before the receipt", function () {
@@ -225,6 +234,7 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
     expect(then).to.deep.equal({
       errors: [],
       status: "OWNER_DOWNLOAD_REQUIRED",
+      acceptedRecord: null,
       bytes: Buffer.from('{"status":"OWNER_DOWNLOAD_REQUIRED"}\n'),
     });
     expect(provingAvailabilityInputs(w.d, { commit: w.l1 }).status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
@@ -232,11 +242,15 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
     // The binding: none while no supersession is filed; the subject when it validates; a refusal naming the reasons.
     expect(boundSupersession(w.d, ARCHIVED)).to.equal(null);
     w.write(IMPL_SUPERSESSION_REL, `${JSON.stringify(w.supersession(), null, 2)}\n`);
+    // Written but not committed: it supersedes nothing yet.
+    expect(() => boundSupersession(w.d, ARCHIVED)).to.throw(/not as committed: UNTRACKED/);
+    w.commit("the supersession");
     expect(boundSupersession(w.d, ARCHIVED)).to.deep.equal({ commit: w.m1 });
-    expect(() => boundSupersession(w.d, { errors: [], status: "OWNER_DOWNLOAD_REQUIRED" })).to.throw(
-      /receipt-supersession\.json is invalid: proving availability is still OWNER_DOWNLOAD_REQUIRED/,
-    );
+    expect(() =>
+      boundSupersession(w.d, { errors: [], status: "OWNER_DOWNLOAD_REQUIRED", acceptedRecord: null }),
+    ).to.throw(/receipt-supersession\.json is invalid: proving availability is still OWNER_DOWNLOAD_REQUIRED/);
     w.write(IMPL_SUPERSESSION_REL, `${JSON.stringify(w.supersession({ historicalSubject: w.l1 }), null, 2)}\n`);
+    w.commit("an invalid supersession");
     expect(() => boundSupersession(w.d, ARCHIVED)).to.throw(/no commit of origin\/main's first-parent history/);
   });
 

@@ -370,8 +370,14 @@ A mirror counts only as a mirror observation (`walletwall.sp1-circuit-mirror.v1`
 `npm run sp1:measure-circuit-mirror -- --location <as the record names it> --url <https URL> --control "<who controls it>"
 --host <label> --expect-bytes 6211807514 --expect-sha256 18beebb6…`: it re-reads the location byte for byte and
 records the host and path (never a signed URL's query or a token), the length and sha256 served, and the verdict.
-The record requires at least two, at distinct locations (scheme and host case-folded, trailing slashes dropped), each
-serving exactly the archive's bytes, none at the upstream host; the upstream Succinct S3 location is never a mirror.
+The record requires at least two, each serving exactly the archive's bytes, at the owner's two providers only: a
+location is `gs://<bucket>/<object>` (Google Cloud Storage) or `r2://<account>/<bucket>/<object>` (Cloudflare R2, the
+account its 32-hex id), with no query, fragment, credential or whitespace (a signed URL is never a location), and the
+re-read must have been served by that provider's host for that object (`storage.googleapis.com/<bucket>/<object>` or
+`<bucket>.storage.googleapis.com/<object>`; `<account>.r2.cloudflarestorage.com/<bucket>/<object>` or
+`<bucket>.<account>.r2.cloudflarestorage.com/<object>`): a re-read from any other host (the upstream host or its
+domain, a CDN, a release page) or of another object than the location names is refused. Two mirrors are two objects:
+one object under two addressing styles or spellings is one mirror. The upstream Succinct S3 location is never a mirror.
 "Controlled by WalletWall" is an assertion the observation records and the validator cannot verify, and a mirror
 observation is a re-read at one moment: **a recorded mirror assertion is not continuously verified availability.**
 Two mirrors improve availability; they do not prove eternal availability, and the record says so.
@@ -399,15 +405,21 @@ designated key), which the measure-only runner also runs when its checkout holds
 
 `productionArchiveEvidence` judges the archive directory: no record (state 1); exactly the one record, named after the
 archive, that is byte for byte what the committed observations derive, accepted by the PA2A validator for d1's anchor,
-with the two acquisition observations present, bound to the committed scripts and agreeing on every fact, their census
-the committed census, their image the pinned prover's and resolved to one index digest with one linux/amd64 manifest,
-at least two mirror observations at distinct locations serving the archive's bytes, and every one of these files
-exactly as HEAD commits them (state 2); anything else is refused with every reason. The transition fails,
-independently, for: a record absent, a second file, another schema, another designation or key, another tar sha256 or
-length, one acquisition, a host counted twice, hosts that disagree, fewer than two mirrors, one location twice, a
-mirror serving other bytes or sitting upstream, a tag without a digest, hosts resolving the tag to different images,
-a member missing or added, metadata other than the census-derived policy, uncommitted evidence, or a record outside
-the authoritative directory. `selfHostedPath.exercised` stays `false`: SELF_HOSTED_PATH_EXERCISED is never derived
+with the two acquisition observations present (each file holding its own host's observation, each carrying that
+host's identity line: the runner its run id, the workstation its operating system), bound to the committed scripts (a
+script absent from the checkout binds nothing) and agreeing on every fact, each a copy whose length, sha256, members
+and AppleDouble entries are exactly the committed census's, their image the pinned prover's and resolved to one index
+digest with one linux/amd64 manifest, at least two mirror observations at distinct objects at the two providers
+serving the archive's bytes, and every one of these files exactly as HEAD commits them (state 2); anything else is
+refused with every reason. The transition fails, independently, for: a record absent, a second file, a record that is
+a link, another schema, another designation or key, another tar sha256 or length, one acquisition, a host counted
+twice, two labels that are not the lane's two, one acquisition relabeled as the other (one transfer window, one
+measurement time, one image-resolution time or one set of identity lines under two labels), hosts that disagree, a
+copy that is not the censused archive (its length, sha256, a member or an AppleDouble entry), an observation with a
+field the schema does not name (a refusal marker beside an inspection, say), fewer than two mirrors, one object twice,
+a mirror outside the two providers, a re-read of another object than its location names, a mirror serving other bytes
+or sitting upstream, a tag without a digest, hosts resolving the tag to different images, a member missing or added,
+metadata other than the census-derived policy, uncommitted evidence, or a record outside the authoritative directory. `selfHostedPath.exercised` stays `false`: SELF_HOSTED_PATH_EXERCISED is never derived
 here. Each of those failures is pinned by a test in `test/Sp1CircuitAcquisition.test.ts`.
 
 ### What admission changes, and what it does not
@@ -498,7 +510,8 @@ npx hardhat test test/Sp1CircuitArchive.test.ts test/Sp1CircuitInstall.test.ts t
 npm run sp1:measure-circuit-upstream -- --cargo-home ~/.cargo && npm run sp1:circuit-tooling
 # census an acquired archive (read-only; prints JSON that depends only on the archive's bytes)
 npm run --silent sp1:circuit-archive:census -- --archive v6.1.0-groth16.tar.gz
-# SP1-PA2B, on a host that acquired the archive (curl -D headers.txt -w '<json>' > transfer.json as the runner does):
+# SP1-PA2B, on a host that acquired the archive (curl -D headers.txt -w '<json>' > transfer.json as the runner does;
+# --source-url <URL> records the URL asked for when a redirect made the effective URL differ, the default):
 npm run sp1:measure-circuit-acquisition -- --archive v6.1.0-groth16.tar.gz --host <label> --transfer transfer.json \
   --headers headers.txt --started-at <UTC> --finished-at <UTC> --digest coreutils=@sha256.txt --digest openssl=@sha256-openssl.txt \
   --gnark-image ghcr.io/succinctlabs/sp1-gnark:v6.1.0 --platform-file runner.txt \
@@ -511,6 +524,9 @@ npm run sp1:measure-circuit-mirror -- --location "<as the record names it>" --ur
 npm run sp1:proving-archive-record && npm run sp1:proving-availability && npm run sp1:circuit-tooling && npm run sp1:host-advisories
 npx tsx scripts/generate-sp1-impl-receipt.ts --supersession --lane SP1-PA2B \
   --record evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json --reason "the archive record moved proving availability"
+# and state the new status at the top of this page (`PROVING_AVAILABILITY = ARCHIVED_VERIFIED_UNEXERCISED`): the
+# tooling suite holds the page to the status the evidence derives; commit the record, the observations, the
+# regenerated records, the supersession and the page together, then every validator above passes on the commit
 # and verify the record against the real archive wherever the archive is:
 npm run sp1:circuit-archive:inspect -- --archive v6.1.0-groth16.tar.gz --record evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json
 ```

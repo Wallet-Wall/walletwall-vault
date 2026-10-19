@@ -1,13 +1,14 @@
 /**
  * SP1-PA2B: the acquisition observations, their agreement, the derived archive record and the state the committed
  * evidence derives (scripts/lib/sp1-circuit-acquisition.ts). Everything here is synthetic: observations made for the
- * synthetic anchor, a fake registry, a temporary git repository. Offline: no network, no archive, no docker.
+ * synthetic anchor, a synthetic census, a fake registry, a temporary git repository. Offline: no network, no archive,
+ * no docker.
  *
  * The rule under test: a record is derived from measurements and accepted only when every fact holds; each
- * production-only requirement (two distinct hosts that agree, the inspection and census identical on both, the tag
- * resolved to one immutable digest on both, two distinct WalletWall mirrors re-read byte for byte, the record byte
- * for byte what the observations derive, all of it committed) can fail on its own, and a failure is never read as
- * "no record".
+ * production-only requirement (two distinct hosts that agree with each other AND with the committed census, the
+ * inspection identical on both, the tag resolved to one immutable digest on both, two distinct WalletWall mirrors at
+ * the owner's providers re-read byte for byte, the record byte for byte what the observations derive, all of it
+ * committed) can fail on its own, and a failure is never read as "no record".
  */
 import { expect } from "chai";
 import { spawnSync } from "node:child_process";
@@ -16,6 +17,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join, resolve } from "node:path";
 
 import {
+  ACQUISITION_HOSTS,
   ACQUISITION_OBSERVATIONS_REL,
   ACQUISITION_SCHEMA,
   ACQUISITION_SCRIPT_REL,
@@ -33,13 +35,16 @@ import {
   acquisitionObservationErrors,
   anchorFromDesignation,
   archiveEvidenceState,
+  censusFacts,
   deriveArchiveRecord,
+  fetchIdentity,
+  mirrorIdentity,
   mirrorObservationErrors,
   mirrorObservationsIn,
-  normalizedLocation,
   parseTaggedRef,
   productionArchiveEvidence,
   productionRecordRel,
+  registrableDomain,
   resolveImageTag,
   serializeJson,
   type AcquisitionExpectations,
@@ -59,6 +64,7 @@ import {
   archiveRecordsIn,
   type ArchiveRecord,
 } from "../scripts/lib/sp1-circuit-archive";
+import { CENSUS_SCHEMA } from "../scripts/lib/sp1-circuit-archive-census";
 import {
   APPLEDOUBLE_BODY,
   SYNTHETIC_ANCHOR,
@@ -78,14 +84,14 @@ import {
   provingAvailabilityStatus,
   type ProvingArtifactsObservation,
 } from "../scripts/lib/sp1-proving-availability";
-import { tempDirs } from "./helpers/circuit-tooling";
+import { symlinkOrSkip, tempDirs } from "./helpers/circuit-tooling";
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const reasons = (errs: readonly { reason: string }[]) => [...new Set(errs.map((e) => e.reason))];
 
 // ---------------------------------------------------------------------------------------------------------------
-// Synthetic observations: two hosts, two mirrors, one archive, all for the synthetic anchor
+// Synthetic observations: two hosts, two mirrors, one archive, one census, all for the synthetic anchor
 // ---------------------------------------------------------------------------------------------------------------
 
 const ARCHIVE = { file: "v6.1.0-groth16.tar.gz", bytes: 6211, sha256: sha256("synthetic archive bytes") };
@@ -95,18 +101,62 @@ const AMD64_MANIFEST = `sha256:${sha256("amd64 manifest")}`;
 const ATTESTATION_MANIFEST = `sha256:${sha256("attestation manifest")}`;
 const INDEX_DIGEST = `sha256:${sha256("the index")}`;
 const SCRIPTS = { acquisition: sha256("the acquisition script"), mirror: sha256("the mirror script") };
-const CENSUS_SHA = sha256("the census");
+const R2_ACCOUNT = "0123456789abcdef0123456789abcdef";
+const OBJECT = "sp1/groth16/v6.1.0/v6.1.0-groth16.tar.gz";
+
+/** The members in archive order, as the inspector reports them (never sorted: the record sorts). */
+const membersInArchiveOrder = () =>
+  UPSTREAM_SHAPED_FILES.map(([path, data]) => ({ path, bytes: data.length, sha256: sha256(data) }));
+const metadataInArchiveOrder = () =>
+  [APPLEDOUBLE_ROOT, ...UPSTREAM_SHAPED_FILES.map(([p]) => `._${p}`)].map((path) => ({
+    path,
+    bytes: APPLEDOUBLE_BODY.length,
+    sha256: sha256(APPLEDOUBLE_BODY),
+    disposition: "IGNORED_APPLEDOUBLE_METADATA" as const,
+  }));
+
+/**
+ * A census of the synthetic archive, in the census tool's shape as far as the facts go (archive, each entry's type,
+ * path, size and data sha256, each AppleDouble entry's relation), so that censusFacts reads the synthetic members.
+ */
+function syntheticCensus() {
+  const entries: { typeflag: string; path: string; size: number; dataSha256: string }[] = [
+    { typeflag: "0", path: "._.", size: APPLEDOUBLE_BODY.length, dataSha256: sha256(APPLEDOUBLE_BODY) },
+    { typeflag: "x", path: "PaxHeader/currentdir", size: 10, dataSha256: sha256("pax") },
+    { typeflag: "5", path: "./", size: 0, dataSha256: sha256("") },
+  ];
+  for (const [path, data] of UPSTREAM_SHAPED_FILES) {
+    entries.push({
+      typeflag: "0",
+      path: `./._${path}`,
+      size: APPLEDOUBLE_BODY.length,
+      dataSha256: sha256(APPLEDOUBLE_BODY),
+    });
+    entries.push({ typeflag: "x", path: `./PaxHeader/${path}`, size: 10, dataSha256: sha256("pax") });
+    entries.push({ typeflag: "0", path: `./${path}`, size: data.length, dataSha256: sha256(data) });
+  }
+  return {
+    schema: CENSUS_SCHEMA,
+    archive: { bytes: ARCHIVE.bytes, sha256: ARCHIVE.sha256 },
+    tar: { decompressedBytes: 12345, entries: entries.length, endOfArchiveOffset: 12000, trailingZeroBytes: 1024 },
+    entries: entries.map((e, index) => ({ index, ...e })),
+    appleDouble: metadataInArchiveOrder().map((m) => ({ path: m.path, size: m.bytes, sha256: m.sha256 })),
+  };
+}
+const CENSUS = censusFacts(syntheticCensus(), serializeJson(syntheticCensus()));
 
 const EXPECT: AcquisitionExpectations = {
   anchor: SYNTHETIC_ANCHOR,
   gnarkImage: IMAGE,
-  censusSha256: CENSUS_SHA,
+  census: CENSUS,
   scripts: SCRIPTS,
 };
 
 function observation(
   host: string,
   when: { started: string; finished: string; measured: string },
+  platform: string[],
+  remoteIp: string,
 ): AcquisitionObservation {
   return {
     schema: ACQUISITION_SCHEMA,
@@ -119,7 +169,7 @@ function observation(
       sourceUrl: UPSTREAM,
       urlEffective: UPSTREAM,
       httpCode: 200,
-      remoteIp: "192.0.2.1",
+      remoteIp,
       timeTotalSeconds: 74.4,
       startedAtUtc: when.started,
       finishedAtUtc: when.finished,
@@ -135,15 +185,9 @@ function observation(
       { tool: "openssl", sha256: ARCHIVE.sha256 },
     ],
     inspection: {
-      // In archive order, as the inspector reports them (never sorted): the record sorts.
-      members: UPSTREAM_SHAPED_FILES.map(([path, data]) => ({ path, bytes: data.length, sha256: sha256(data) })),
+      members: membersInArchiveOrder(),
       directories: [],
-      metadata: [APPLEDOUBLE_ROOT, ...UPSTREAM_SHAPED_FILES.map(([p]) => `._${p}`)].map((path) => ({
-        path,
-        bytes: APPLEDOUBLE_BODY.length,
-        sha256: sha256(APPLEDOUBLE_BODY),
-        disposition: "IGNORED_APPLEDOUBLE_METADATA" as const,
-      })),
+      metadata: metadataInArchiveOrder(),
       provenance: PROVENANCE_ENTRIES.map((e) => ({
         entry: e.path === "" ? "." : e.path,
         key: PROVENANCE_PAX_KEY,
@@ -151,8 +195,8 @@ function observation(
       })),
     },
     census: {
-      schema: "walletwall.sp1-circuit-archive-census.v1",
-      sha256: CENSUS_SHA,
+      schema: CENSUS_SCHEMA,
+      sha256: CENSUS.sha256,
       entries: 24,
       decompressedBytes: 8415018496,
       appleDoubleEntries: 8,
@@ -198,24 +242,26 @@ function observation(
       crossCheck: { tool: "docker buildx imagetools inspect --raw", indexSha256: INDEX_DIGEST.slice(7) },
       observedAtUtc: when.measured,
     },
-    platform: [`host=${host}`],
+    platform,
   };
 }
 const hostA = () =>
-  observation("developer-workstation", {
-    started: "2026-10-17T22:16:46Z",
-    finished: "2026-10-17T22:22:39Z",
-    measured: "2026-10-18T23:58:29Z",
-  });
+  observation(
+    "developer-workstation",
+    { started: "2026-10-17T22:16:46Z", finished: "2026-10-17T22:22:39Z", measured: "2026-10-18T23:58:29Z" },
+    ["host=developer-workstation", "os=win32 10.0.26200 x64"],
+    "192.0.2.1",
+  );
 // Host B acquired EARLIER than host A here, so the record's acquisition time is the earliest transfer, not host A's.
 const hostB = () =>
-  observation("github-hosted-runner", {
-    started: "2026-10-16T10:00:00Z",
-    finished: "2026-10-16T10:01:20Z",
-    measured: "2026-10-16T10:05:00Z",
-  });
+  observation(
+    "github-hosted-runner",
+    { started: "2026-10-16T10:00:00Z", finished: "2026-10-16T10:01:20Z", measured: "2026-10-16T10:05:00Z" },
+    ["host=github-hosted-runner", "runner_os=Linux", "run_id=39178864704"],
+    "192.0.2.2",
+  );
 
-function mirror(location: string, urlHost: string): MirrorObservation {
+function mirror(location: string, urlHost: string, urlPath: string): MirrorObservation {
   return {
     schema: MIRROR_SCHEMA,
     host: "developer-workstation",
@@ -225,7 +271,7 @@ function mirror(location: string, urlHost: string): MirrorObservation {
     control: "WalletWall (synthetic)",
     fetch: {
       urlHost,
-      urlPath: "/sp1/groth16/v6.1.0/v6.1.0-groth16.tar.gz",
+      urlPath,
       httpCode: 200,
       startedAtUtc: "2026-10-19T00:50:00Z",
       finishedAtUtc: "2026-10-19T00:59:00Z",
@@ -238,14 +284,18 @@ function mirror(location: string, urlHost: string): MirrorObservation {
   };
 }
 const mirrorA = () =>
-  mirror("gs://walletwall-synthetic-a/sp1/groth16/v6.1.0/v6.1.0-groth16.tar.gz#generation=1", "storage.googleapis.com");
+  mirror(`gs://walletwall-synthetic-a/${OBJECT}`, "storage.googleapis.com", `/walletwall-synthetic-a/${OBJECT}`);
 const mirrorB = () =>
-  mirror("r2://walletwall-synthetic-b/sp1/groth16/v6.1.0/v6.1.0-groth16.tar.gz", "synthetic-b.r2.invalid");
+  mirror(
+    `r2://${R2_ACCOUNT}/walletwall-synthetic-b/${OBJECT}`,
+    `${R2_ACCOUNT}.r2.cloudflarestorage.com`,
+    `/walletwall-synthetic-b/${OBJECT}`,
+  );
 
-const errorsOf = (f: (a: AcquisitionObservation) => void) => {
+const errorsOf = (f: (a: AcquisitionObservation) => void, expect_: AcquisitionExpectations = EXPECT) => {
   const a = hostA();
   f(a);
-  return reasons(acquisitionObservationErrors(a, 0, EXPECT));
+  return reasons(acquisitionObservationErrors(a, 0, expect_));
 };
 const agreementOf = (f: (a: AcquisitionObservation, b: AcquisitionObservation, m: MirrorObservation[]) => void) => {
   const a = hostA();
@@ -362,7 +412,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(reg.calls.every((c) => !c.includes("/blobs/"))).to.equal(true);
     });
 
-    it("refuses a served digest that is not the bytes', a non-index tag, a manifest with other bytes, a size mismatch, and a refusal", async function () {
+    it("refuses a served digest that is not the bytes', a non-index tag, a manifest with other bytes, a size mismatch, a refusal, and an index without platforms", async function () {
       const fail = async (reg: ReturnType<typeof fakeRegistry>, re: RegExp) => {
         let message = "";
         try {
@@ -431,19 +481,70 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
     });
   });
 
+  describe("the committed census, read as facts", function () {
+    it("lists the archive, every regular member and every AppleDouble entry, and refuses what is not a census", function () {
+      expect(CENSUS.archive).to.deep.equal({ bytes: ARCHIVE.bytes, sha256: ARCHIVE.sha256 });
+      expect(CENSUS.members).to.deep.equal(membersOf(UPSTREAM_SHAPED_FILES));
+      expect(CENSUS.metadata).to.deep.equal(
+        appleDoubleMetadata(UPSTREAM_SHAPED_FILES).map((m) => ({ path: m.path, bytes: m.bytes, sha256: m.sha256 })),
+      );
+      expect(CENSUS.sha256).to.equal(sha256(serializeJson(syntheticCensus())));
+      expect(() => censusFacts({ schema: "other" }, "{}")).to.throw(/not walletwall.sp1-circuit-archive-census.v1/);
+      // The real committed census reads the same way: seven members, eight AppleDouble entries, the designated key.
+      const real = JSON.parse(readFileSync(CENSUS_OBSERVATIONS_REL[0], "utf8"));
+      const facts = censusFacts(real, serializeJson(real));
+      expect(facts.archive).to.deep.equal({
+        bytes: 6211807514,
+        sha256: "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      });
+      expect(facts.members.map((m) => m.path)).to.deep.equal([
+        "Groth16Verifier.sol",
+        "SP1VerifierGroth16.sol",
+        "constraints.json",
+        "groth16_circuit.bin",
+        "groth16_pk.bin",
+        "groth16_vk.bin",
+        "groth16_witness.json",
+      ]);
+      expect(facts.members.find((m) => m.path === VK_FILE)).to.deep.equal({
+        path: VK_FILE,
+        bytes: 492,
+        sha256: "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      });
+      expect(facts.metadata).to.have.length(8);
+      expect(facts.metadata.every((m) => m.bytes === 163)).to.equal(true);
+    });
+  });
+
   describe("one host's observation", function () {
-    it("accepts the synthetic observation (the positive control)", function () {
+    it("accepts the synthetic observations (the positive control)", function () {
       expect(acquisitionObservationErrors(hostA(), 0, EXPECT)).to.deep.equal([]);
+      expect(acquisitionObservationErrors(hostB(), 1, EXPECT)).to.deep.equal([]);
     });
 
-    it("binds the schema, the host label, the measuring script and the anchor", function () {
+    it("names exactly its fields: a refusal marker beside an inspection, or any unknown or missing field, is refused", function () {
+      expect(errorsOf((a) => ((a as any).refusal = "ARCHIVE_UNSAFE_ENTRY (TRAILING_DOT)"))).to.include(
+        "OBSERVATION_SHAPE",
+      );
+      expect(errorsOf((a) => delete (a as any).platform)).to.include("OBSERVATION_SHAPE");
+      expect(errorsOf((a) => ((a.gnark as any).pulled = true))).to.include("OBSERVATION_SHAPE");
+      expect(errorsOf((a) => ((a.inspection as any).note = "x"))).to.include("OBSERVATION_SHAPE");
+      expect(errorsOf((a) => ((a.census as any).extra = 1))).to.include("OBSERVATION_SHAPE");
+      expect(errorsOf((a) => ((a.transfer as any).proxy = "x"))).to.include("OBSERVATION_SHAPE");
+      expect(reasons(acquisitionObservationErrors(null, 0, EXPECT))).to.deep.equal(["OBSERVATION_SHAPE"]);
+    });
+
+    it("binds the schema, the host label, the measuring script (which must exist) and the anchor", function () {
       expect(errorsOf((a) => (a.schema = "walletwall.sp1-circuit-acquisition.v0"))).to.include("OBSERVATION_SCHEMA");
       expect(errorsOf((a) => (a.host = "Host A"))).to.include("OBSERVATION_HOST");
       expect(errorsOf((a) => (a.tool.scriptSha256 = sha256("another script")))).to.include("TOOL_NOT_BOUND");
       expect(errorsOf((a) => (a.tool.script = "scripts/other.ts"))).to.include("TOOL_NOT_BOUND");
+      // The script absent from the repository binds nothing, whatever the observation claims.
+      expect(errorsOf(() => undefined, { ...EXPECT, scripts: { ...SCRIPTS, acquisition: null } })).to.include(
+        "TOOL_NOT_BOUND",
+      );
       expect(errorsOf((a) => (a.anchor.verifier.verifierHash = `0x${"1".repeat(64)}`))).to.include("ANCHOR_MISMATCH");
       expect(errorsOf((a) => (a.anchor.designation = "mldsa65-withdrawal-d1"))).to.include("ANCHOR_MISMATCH");
-      expect(reasons(acquisitionObservationErrors(null, 0, EXPECT))).to.deep.equal(["OBSERVATION_SHAPE"]);
     });
 
     it("holds the archive to its name, and the transfer to a complete https download of exactly those bytes", function () {
@@ -456,19 +557,53 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(errorsOf((a) => (a.transfer.urlEffective = "http://upstream.invalid/v6.1.0-groth16.tar.gz"))).to.include(
         "TRANSFER_FIELD",
       );
+      expect(errorsOf((a) => (a.transfer.sourceUrl = "http://upstream.invalid/v6.1.0-groth16.tar.gz"))).to.include(
+        "TRANSFER_FIELD",
+      );
       expect(errorsOf((a) => (a.transfer.urlEffective = "https://upstream.invalid/other.tar.gz"))).to.include(
         "TRANSFER_FIELD",
       );
       expect(errorsOf((a) => (a.transfer.finishedAtUtc = "2026-10-17T22:00:00Z"))).to.include("TRANSFER_FIELD");
       expect(errorsOf((a) => (a.measuredAtUtc = "2026-10-17T22:20:00Z"))).to.include("OBSERVATION_FIELD");
       expect(errorsOf((a) => (a.measuredAtUtc = "yesterday"))).to.include("OBSERVATION_FIELD");
-      expect(errorsOf((a) => (a.transfer.sourceUrl = "http://upstream.invalid/v6.1.0-groth16.tar.gz"))).to.include(
-        "TRANSFER_FIELD",
-      );
       expect(errorsOf((a) => (a.gnark.observedAtUtc = "soon"))).to.include("GNARK_FIELD");
       expect(errorsOf((a) => delete (a.transfer.responseHeaders as any).etag)).to.include("TRANSFER_FIELD");
       // A null Content-Length (a server that sent none) is allowed: the measured length is the fact.
       expect(errorsOf((a) => (a.transfer.responseHeaders.contentLength = null))).to.deep.equal([]);
+    });
+
+    it("binds the copy to the committed census: its length and sha256, its members, its AppleDouble entries", function () {
+      // A self-consistent observation of another archive (length, sha256, digests and Content-Length all agreeing).
+      const otherBytes = (a: AcquisitionObservation, bytes: number, digest: string) => {
+        a.archive.bytes = bytes;
+        a.archive.sha256 = digest;
+        a.transfer.responseHeaders.contentLength = bytes;
+        a.independentDigests = a.independentDigests.map((d) => ({ ...d, sha256: digest }));
+      };
+      expect(errorsOf((a) => otherBytes(a, 4242, sha256("another archive")))).to.deep.equal(["CENSUS_MISMATCH"]);
+      expect(errorsOf((a) => otherBytes(a, ARCHIVE.bytes + 1, ARCHIVE.sha256))).to.deep.equal(["CENSUS_MISMATCH"]);
+      const pk = (a: AcquisitionObservation) => a.inspection.members.find((m) => m.path === "groth16_pk.bin")!;
+      expect(errorsOf((a) => (pk(a).sha256 = sha256("another proving key")))).to.deep.equal(["CENSUS_MISMATCH"]);
+      expect(errorsOf((a) => (pk(a).bytes += 1))).to.deep.equal(["CENSUS_MISMATCH"]);
+      expect(
+        errorsOf((a) => a.inspection.members.push({ path: "extra.bin", bytes: 1, sha256: sha256("x") })),
+      ).to.deep.equal(["CENSUS_MISMATCH"]);
+      expect(
+        errorsOf((a) => (a.inspection.members = a.inspection.members.filter((m) => m.path !== "constraints.json"))),
+      ).to.deep.equal(["CENSUS_MISMATCH"]);
+      expect(errorsOf((a) => (a.inspection.metadata = a.inspection.metadata.slice(1)))).to.deep.equal([
+        "CENSUS_MISMATCH",
+      ]);
+      expect(errorsOf((a) => (a.inspection.metadata[0].sha256 = sha256("another body")))).to.deep.equal([
+        "CENSUS_MISMATCH",
+      ]);
+      // An AppleDouble entry promoted to a member is both a missing entry and an extra member.
+      expect(
+        errorsOf((a) => {
+          const [ad] = a.inspection.metadata.splice(1, 1);
+          a.inspection.members.push({ path: ad.path, bytes: ad.bytes, sha256: ad.sha256 });
+        }),
+      ).to.deep.equal(["CENSUS_MISMATCH"]);
     });
 
     it("needs two independent digest implementations that agree with the inspector's", function () {
@@ -481,16 +616,17 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(errorsOf((a) => ((a as any).inspection = null))).to.include("INSPECTION_MISSING");
       expect(errorsOf((a) => (a.inspection.members = []))).to.include("INSPECTION_MISSING");
       expect(errorsOf((a) => (a.inspection.directories = ["extra"]))).to.include("INSPECTION_FIELD");
+      // Another key than the anchor's is VK_MISMATCH on its own (the census would refuse it too).
+      const keyOf = (a: AcquisitionObservation) => a.inspection.members.find((m) => m.path === VK_FILE)!;
+      const otherKey = {
+        ...EXPECT,
+        anchor: { ...SYNTHETIC_ANCHOR, verifyingKey: { sha256: `0x${sha256("other key")}`, bytes: 492 } },
+      };
+      expect(errorsOf((a) => (a.anchor = clone(otherKey.anchor)), otherKey)).to.include("VK_MISMATCH");
+      expect(errorsOf((a) => (keyOf(a).sha256 = sha256("other key")))).to.include("VK_MISMATCH");
+      expect(errorsOf((a) => (keyOf(a).bytes += 1))).to.include("VK_MISMATCH");
       expect(
         errorsOf((a) => (a.inspection.members = a.inspection.members.filter((m) => m.path !== VK_FILE))),
-      ).to.include("VK_MISMATCH");
-      expect(
-        errorsOf(
-          (a) =>
-            (a.inspection.members = a.inspection.members.map((m) =>
-              m.path === VK_FILE ? { ...m, sha256: sha256("other key") } : m,
-            )),
-        ),
       ).to.include("VK_MISMATCH");
     });
 
@@ -519,20 +655,31 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         errorsOf((a) => (a.gnark.index.manifests[0].platform = { architecture: "arm64", os: "linux" })),
       ).to.include("GNARK_PLATFORM_AMBIGUOUS");
       expect(errorsOf((a) => (a.gnark.platforms = []))).to.include("GNARK_PLATFORM_UNRESOLVED");
+      expect(errorsOf((a) => (a.gnark.platforms[0].digest = `sha256:${"1".repeat(64)}`))).to.include(
+        "GNARK_PLATFORM_UNRESOLVED",
+      );
       expect(errorsOf((a) => (a.gnark.platforms[0].config.digest = "sha256:short"))).to.include(
         "GNARK_PLATFORM_UNRESOLVED",
       );
       expect(errorsOf((a) => (a.gnark.index.bytes = 0))).to.include("GNARK_FIELD");
-      expect(errorsOf((a) => (a.gnark.platforms[0].digest = `sha256:${"1".repeat(64)}`))).to.include(
-        "GNARK_PLATFORM_UNRESOLVED",
-      );
       expect(errorsOf((a) => (a.gnark.method = "docker pull"))).to.include("GNARK_METHOD");
       expect(errorsOf((a) => ((a.gnark.crossCheck as any).indexSha256 = "0".repeat(64)))).to.include(
         "GNARK_CROSS_CHECK_DISAGREES",
       );
       expect(errorsOf((a) => (a.gnark.crossCheck = null))).to.deep.equal([]);
-      expect(errorsOf((a) => ((a as any).gnark = null))).to.include("GNARK_MISSING");
+      expect(errorsOf((a) => ((a as any).gnark = null))).to.include("OBSERVATION_SHAPE");
+    });
+
+    it("needs the host's own identity lines: the runner its run id, the workstation its operating system", function () {
       expect(errorsOf((a) => (a.platform = []))).to.include("OBSERVATION_FIELD");
+      expect(errorsOf((a) => (a.platform = ["host=developer-workstation"]))).to.include("OBSERVATION_FIELD");
+      const b = hostB();
+      b.platform = ["host=github-hosted-runner", "runner_os=Linux"];
+      expect(reasons(acquisitionObservationErrors(b, 1, EXPECT))).to.include("OBSERVATION_FIELD");
+      b.platform.push("run_id=not-a-number");
+      expect(reasons(acquisitionObservationErrors(b, 1, EXPECT))).to.include("OBSERVATION_FIELD");
+      b.platform.push("run_id=39178864704");
+      expect(acquisitionObservationErrors(b, 1, EXPECT)).to.deep.equal([]);
     });
   });
 
@@ -541,59 +688,73 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(acquisitionErrors([hostA(), hostB()], [mirrorA(), mirrorB()], EXPECT)).to.deep.equal([]);
     });
 
-    it("needs at least two observations from distinct host labels", function () {
+    it("needs the two lane hosts, each once, and refuses one acquisition under two labels", function () {
       expect(reasons(acquisitionErrors([hostA()], [mirrorA(), mirrorB()], EXPECT))).to.include("ACQUISITIONS_MISSING");
       // A malformed observation is reported, never compared: the cross-host rules run only over observations that
       // passed their own checks, so a null or a refused copy cannot make the comparison throw.
       expect(reasons(acquisitionErrors([null, hostB()], [mirrorA(), mirrorB()], EXPECT))).to.deep.equal([
         "OBSERVATION_SHAPE",
       ]);
-      expect(agreementOf((_a, b) => (b.host = "developer-workstation"))).to.include("ACQUISITION_NOT_INDEPENDENT");
-      // One host relabeled as another: the same transfer window and platform lines are two observations only in name.
+      // The same label twice (each observation carrying that host's own identity line) is one host, not two.
       expect(
-        reasons(
-          acquisitionErrors([hostA(), { ...hostA(), host: "github-hosted-runner" }], [mirrorA(), mirrorB()], EXPECT),
-        ),
-      ).to.deep.equal([]);
-      // That is why the record binds the hosts' own identity lines and transfer windows: the review checks them, the
-      // validator cannot tell two machines apart. The observations' agreement is what it can check.
+        agreementOf((_a, b) => {
+          b.host = "developer-workstation";
+          b.platform.push("os=linux 6.8.0 x64");
+        }),
+      ).to.include("ACQUISITION_NOT_INDEPENDENT");
+      // Two other labels are two hosts, but not the lane's two.
+      expect(
+        agreementOf((a, b) => {
+          a.host = "alpha";
+          b.host = "beta";
+        }),
+      ).to.include("ACQUISITION_HOSTS_MISMATCH");
+      // One host's observation relabeled as the other: the same transfer, times and identity lines.
+      const copy = { ...hostA(), host: "github-hosted-runner", platform: [...hostA().platform, "run_id=1"] };
+      expect(reasons(acquisitionErrors([hostA(), copy], [mirrorA(), mirrorB()], EXPECT))).to.deep.equal([
+        "ACQUISITION_NOT_INDEPENDENT",
+      ]);
+      // Each shared fact is refused on its own.
+      expect(
+        agreementOf((a, b) => {
+          b.transfer.remoteIp = a.transfer.remoteIp;
+          b.transfer.startedAtUtc = a.transfer.startedAtUtc;
+          b.transfer.finishedAtUtc = a.transfer.finishedAtUtc;
+          // Measured after that window, at its own times: only the transfer is shared.
+          b.measuredAtUtc = "2026-10-17T23:00:00Z";
+          b.gnark.observedAtUtc = "2026-10-17T23:00:00Z";
+        }),
+      ).to.include("ACQUISITION_NOT_INDEPENDENT");
+      expect(agreementOf((a, b) => (b.measuredAtUtc = a.measuredAtUtc))).to.include("ACQUISITION_NOT_INDEPENDENT");
+      expect(agreementOf((a, b) => (b.gnark.observedAtUtc = a.gnark.observedAtUtc))).to.include(
+        "ACQUISITION_NOT_INDEPENDENT",
+      );
+      // One host's identity lines copied to the other lack that host's own marker: refused as the observation's own
+      // fault; identical lines that carry both markers are one machine under two labels.
+      expect(agreementOf((a, b) => (b.platform = [...a.platform]))).to.include("OBSERVATION_FIELD");
+      expect(
+        agreementOf((a, b) => {
+          a.platform = ["host=x", "os=win32 10.0.26200 x64", "run_id=39178864704"];
+          b.platform = [...a.platform];
+        }),
+      ).to.include("ACQUISITION_NOT_INDEPENDENT");
+      // The transfer's remote address alone may repeat (one CDN endpoint): the window must repeat with it.
+      expect(agreementOf((a, b) => (b.transfer.remoteIp = a.transfer.remoteIp))).to.deep.equal([]);
     });
 
-    it("stops on any disagreement: bytes, sha256, file, URL, inspection, census, image or platform manifests", function () {
-      // Each host B is tampered self-consistently (its own Content-Length, digests and file agree with its copy), so
-      // only the cross-host layer can refuse it: a host whose own measurement is inconsistent is refused earlier.
-      expect(agreementOf((_a, b) => (b.transfer.responseHeaders.contentLength = ++b.archive.bytes))).to.include(
-        "HOSTS_DISAGREE",
-      );
+    it("stops on any disagreement: bytes, sha256, URL, inspection, image or platform manifests", function () {
+      // Each host B is tampered self-consistently; a disagreement with the census is reported by the per-observation
+      // layer first, so the cross-host facts below are the ones the census does not bind (URL, image) or are made
+      // to differ in a way the census cannot see (another expectation for host B's census check).
       expect(
         agreementOf((_a, b) => {
           b.archive.file = "v6.1.0-groth16.tar.gz";
           b.transfer.urlEffective = b.transfer.sourceUrl = "https://upstream.invalid/mirror/v6.1.0-groth16.tar.gz";
         }),
       ).to.include("HOSTS_DISAGREE");
-      expect(
-        agreementOf(
-          (_a, b) => (b.archive.sha256 = b.independentDigests[0].sha256 = b.independentDigests[1].sha256 = sha256("x")),
-        ),
-      ).to.include("HOSTS_DISAGREE");
-      expect(
-        agreementOf(
-          (_a, b) => (b.transfer.urlEffective = b.transfer.sourceUrl = "https://mirror.invalid/v6.1.0-groth16.tar.gz"),
-        ),
-      ).to.include("HOSTS_DISAGREE");
-      expect(agreementOf((_a, b) => (b.inspection.metadata = b.inspection.metadata.slice(1)))).to.include(
-        "HOSTS_DISAGREE",
-      );
       expect(agreementOf((_a, b) => (b.inspection.provenance = b.inspection.provenance.slice(1)))).to.include(
         "HOSTS_DISAGREE",
       );
-      // A member other than the verifying key (which the per-observation layer binds on its own): the proving key.
-      expect(
-        agreementOf((_a, b) => {
-          const pk = b.inspection.members.find((m) => m.path === "groth16_pk.bin") as { sha256: string };
-          pk.sha256 = sha256("tampered member");
-        }),
-      ).to.include("HOSTS_DISAGREE");
       expect(
         agreementOf((_a, b) => (b.gnark.platforms[0].config.digest = `sha256:${sha256("other config")}`)),
       ).to.include("HOSTS_DISAGREE");
@@ -604,6 +765,17 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
           (b.gnark.crossCheck as any).indexSha256 = otherIndex.slice(7);
         }),
       ).to.include("HOSTS_DISAGREE");
+      // Bytes, sha256 and members that differ between hosts are, with the census bound, a copy that is not the
+      // censused archive: refused as CENSUS_MISMATCH before any comparison.
+      expect(agreementOf((_a, b) => (b.transfer.responseHeaders.contentLength = ++b.archive.bytes))).to.deep.equal([
+        "CENSUS_MISMATCH",
+      ]);
+      expect(
+        agreementOf((_a, b) => {
+          const pk = b.inspection.members.find((m) => m.path === "groth16_pk.bin")!;
+          pk.sha256 = sha256("tampered member");
+        }),
+      ).to.deep.equal(["CENSUS_MISMATCH"]);
     });
   });
 
@@ -615,25 +787,125 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       return reasons(mirrorObservationErrors(m, 0, archive, SCRIPTS.mirror));
     };
 
-    it("accepts a mirror re-read byte for byte (the positive control)", function () {
+    it("accepts a mirror re-read byte for byte at one of the owner's providers (the positive control)", function () {
       expect(mirrorObservationErrors(mirrorA(), 0, archive, SCRIPTS.mirror)).to.deep.equal([]);
+      expect(mirrorObservationErrors(mirrorB(), 1, archive, SCRIPTS.mirror)).to.deep.equal([]);
+      // Virtual-hosted re-reads of the same objects name the same identity.
+      const va = mirror(
+        `gs://walletwall-synthetic-a/${OBJECT}`,
+        "walletwall-synthetic-a.storage.googleapis.com",
+        `/${OBJECT}`,
+      );
+      expect(mirrorObservationErrors(va, 0, archive, SCRIPTS.mirror)).to.deep.equal([]);
+      const vb = mirror(
+        `r2://${R2_ACCOUNT}/walletwall-synthetic-b/${OBJECT}`,
+        `walletwall-synthetic-b.${R2_ACCOUNT}.r2.cloudflarestorage.com`,
+        `/${OBJECT}`,
+      );
+      expect(mirrorObservationErrors(vb, 1, archive, SCRIPTS.mirror)).to.deep.equal([]);
     });
 
-    it("needs two mirrors at distinct locations, neither the upstream source", function () {
+    it("names the object a location is, and the object a re-read served, canonically", function () {
+      expect(mirrorIdentity(`gs://walletwall-synthetic-a/${OBJECT}`)).to.equal(`gcs:walletwall-synthetic-a/${OBJECT}`);
+      expect(mirrorIdentity(`r2://${R2_ACCOUNT}/bkt/${OBJECT}`)).to.equal(`r2:${R2_ACCOUNT}/bkt/${OBJECT}`);
+      expect(mirrorIdentity("gs://bucket/dir/obj%20one.tar.gz")).to.equal("gcs:bucket/dir/obj one.tar.gz");
+      for (const bad of [
+        "GS://bucket/obj",
+        "gs://Bucket/obj",
+        "gs://bucket/",
+        "gs://bucket",
+        "gs://bucket//obj",
+        "gs://bucket/./obj",
+        "gs://bucket/../obj",
+        "gs://bucket/obj?X-Goog-Signature=SECRET",
+        "gs://bucket/obj#generation=1",
+        "gs://user:pass@bucket/obj",
+        " gs://bucket/obj",
+        "gs://bucket/obj ",
+        "https://storage.googleapis.com/bucket/obj",
+        "s3://bucket/obj",
+        `r2://not-an-account/b/${OBJECT}`,
+        `r2://${R2_ACCOUNT}/Bkt/${OBJECT}`,
+        `r2://${R2_ACCOUNT}/b/${OBJECT}`,
+        `r2://${R2_ACCOUNT}/bkt`,
+        UPSTREAM,
+      ]) {
+        expect(mirrorIdentity(bad), bad).to.equal(null);
+      }
+      expect(fetchIdentity("storage.googleapis.com", "/bucket/dir/obj")).to.equal("gcs:bucket/dir/obj");
+      expect(fetchIdentity("STORAGE.GOOGLEAPIS.COM:443", "/bucket/dir/obj")).to.equal("gcs:bucket/dir/obj");
+      expect(fetchIdentity("bucket.storage.googleapis.com", "/dir/obj")).to.equal("gcs:bucket/dir/obj");
+      expect(fetchIdentity("storage.googleapis.com", "/bucket/dir/obj%20one")).to.equal("gcs:bucket/dir/obj one");
+      expect(fetchIdentity(`${R2_ACCOUNT}.r2.cloudflarestorage.com`, "/bkt/obj")).to.equal(`r2:${R2_ACCOUNT}/bkt/obj`);
+      expect(fetchIdentity(`bkt.${R2_ACCOUNT}.r2.cloudflarestorage.com`, "/obj")).to.equal(`r2:${R2_ACCOUNT}/bkt/obj`);
+      for (const [host, path] of [
+        ["sp1-circuits.s3-us-east-2.amazonaws.com", "/v6.1.0-groth16.tar.gz"],
+        ["sp1-circuits.s3.us-east-2.amazonaws.com", "/v6.1.0-groth16.tar.gz"],
+        ["s3.us-east-2.amazonaws.com", "/sp1-circuits/v6.1.0-groth16.tar.gz"],
+        ["github.com", "/Wallet-Wall/x/releases/download/v1/v6.1.0-groth16.tar.gz"],
+        ["objects.githubusercontent.com", "/x"],
+        ["storage.googleapis.com", "/bucket"],
+        ["storage.googleapis.com", "/bucket/obj?sig=1"],
+        ["r2.cloudflarestorage.com", "/bkt/obj"],
+        [`${R2_ACCOUNT}.r2.cloudflarestorage.com`, "/b/obj"],
+        ["evil.storage.googleapis.com.invalid", "/b/obj"],
+      ]) {
+        expect(fetchIdentity(host, path), `${host}${path}`).to.equal(null);
+      }
+      expect(registrableDomain("sp1-circuits.s3.us-east-2.amazonaws.com")).to.equal("amazonaws.com");
+    });
+
+    it("needs two mirrors at distinct objects, at the owner's providers, never the upstream source", function () {
       expect(reasons(acquisitionErrors([hostA(), hostB()], [mirrorA()], EXPECT))).to.include("MIRRORS_MISSING");
-      expect(agreementOf((_a, _b, m) => (m[1].location = m[0].location))).to.include("MIRRORS_NOT_DISTINCT");
-      // One location spelled twice: scheme and host case-folded, a trailing slash; the object path keeps its case.
+      expect(agreementOf((_a, _b, m) => (m[1] = mirrorA()))).to.include("MIRRORS_NOT_DISTINCT");
+      // One object under two addressing styles is one mirror.
       expect(
         agreementOf(
           (_a, _b, m) =>
-            (m[1].location = `${m[0].location.replace("gs://walletwall-synthetic-a", "GS://WALLETWALL-SYNTHETIC-A")}/`),
+            (m[1] = mirror(
+              `gs://walletwall-synthetic-a/${OBJECT}`,
+              "walletwall-synthetic-a.storage.googleapis.com",
+              `/${OBJECT}`,
+            )),
         ),
       ).to.include("MIRRORS_NOT_DISTINCT");
-      expect(agreementOf((_a, _b, m) => (m[1].location = m[0].location.replace("/sp1/", "/SP1/")))).to.deep.equal([]);
+      expect(
+        agreementOf(
+          (_a, _b, m) =>
+            (m[1] = mirror(
+              `gs://walletwall-synthetic-a/${OBJECT.replace("v6.1.0-groth16", "v6.1.0%2Dgroth16")}`,
+              "storage.googleapis.com",
+              `/walletwall-synthetic-a/${OBJECT}`,
+            )),
+        ),
+      ).to.include("MIRRORS_NOT_DISTINCT");
+      // Two buckets at one provider are two objects (two mirrors, though one provider: the record says so).
+      expect(
+        agreementOf(
+          (_a, _b, m) =>
+            (m[1] = mirror(
+              `gs://walletwall-synthetic-c/${OBJECT}`,
+              "storage.googleapis.com",
+              `/walletwall-synthetic-c/${OBJECT}`,
+            )),
+        ),
+      ).to.deep.equal([]);
+      // The upstream host, exactly or under its domain, and any host outside the providers.
       expect(agreementOf((_a, _b, m) => (m[1].fetch.urlHost = "upstream.invalid"))).to.include("MIRROR_IS_UPSTREAM");
-      expect(agreementOf((_a, _b, m) => (m[1].location = UPSTREAM))).to.include("MIRROR_IS_UPSTREAM");
-      expect(normalizedLocation("GS://Bucket/Obj/")).to.equal("gs://bucket/Obj");
-      expect(normalizedLocation(" gs://bucket/obj ")).to.equal("gs://bucket/obj");
+      expect(agreementOf((_a, _b, m) => (m[1].fetch.urlHost = "cdn.upstream.invalid"))).to.include(
+        "MIRROR_IS_UPSTREAM",
+      );
+      expect(agreementOf((_a, _b, m) => (m[1].fetch.urlHost = "objects.githubusercontent.com"))).to.include(
+        "MIRROR_HOST_UNKNOWN",
+      );
+      expect(agreementOf((_a, _b, m) => (m[1].location = UPSTREAM))).to.include("MIRROR_FIELD");
+      // A re-read of another object than the location names.
+      expect(agreementOf((_a, _b, m) => (m[1].fetch.urlPath = `/walletwall-synthetic-other/${OBJECT}`))).to.include(
+        "MIRROR_LOCATION_MISMATCH",
+      );
+      expect(agreementOf((_a, _b, m) => (m[1].fetch.urlHost = "storage.googleapis.com"))).to.include(
+        "MIRROR_LOCATION_MISMATCH",
+      );
     });
 
     it("needs the archive's bytes, agreed, by the committed script, in one complete read with no signed query recorded", function () {
@@ -642,15 +914,23 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(mirrorErrors((m) => (m.agreement = "DISAGREES"))).to.include("MIRROR_DISAGREES");
       expect(mirrorErrors((m) => (m.expected.sha256 = sha256("other")))).to.include("MIRROR_DISAGREES");
       expect(mirrorErrors((m) => (m.tool.scriptSha256 = sha256("other script")))).to.include("TOOL_NOT_BOUND");
+      expect(reasons(mirrorObservationErrors(mirrorA(), 0, archive, null))).to.include("TOOL_NOT_BOUND");
       expect(mirrorErrors((m) => (m.fetch.httpCode = 206))).to.include("MIRROR_INCOMPLETE");
       expect(mirrorErrors((m) => (m.fetch.responseHeaders.contentLength = 1))).to.include("MIRROR_INCOMPLETE");
-      expect(mirrorErrors((m) => (m.fetch.urlPath = "/obj?X-Goog-Signature=abc"))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => (m.fetch.urlPath = `${m.fetch.urlPath}?X-Goog-Signature=abc`))).to.include(
+        "MIRROR_FIELD",
+      );
+      expect(mirrorErrors((m) => (m.fetch.urlPath = m.fetch.urlPath.slice(1)))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => (m.location = `${m.location}?X-Goog-Signature=SECRET`))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => (m.location = `${m.location}#generation=1`))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.schema = "walletwall.sp1-circuit-mirror.v0"))).to.include("MIRROR_SCHEMA");
       expect(mirrorErrors((m) => (m.control = ""))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.location = ` ${m.location}`))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.host = "Host A"))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.measuredAtUtc = "never"))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.measuredAtUtc = "2026-10-19T00:55:00Z"))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => ((m as any).signedUrl = "https://x"))).to.include("MIRROR_SHAPE");
+      expect(mirrorErrors((m) => ((m.fetch as any).token = "x"))).to.include("MIRROR_SHAPE");
       expect(reasons(mirrorObservationErrors("not an object", 0, archive, SCRIPTS.mirror))).to.deep.equal([
         "MIRROR_SHAPE",
       ]);
@@ -668,7 +948,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         sourceUrl: UPSTREAM,
         sourceUrlRole: "PROVENANCE_ONLY",
       });
-      expect(r.acquisitions.map((a) => a.host)).to.deep.equal(["developer-workstation", "github-hosted-runner"]);
+      expect(r.acquisitions.map((a) => a.host)).to.deep.equal([...ACQUISITION_HOSTS]);
       expect(
         r.acquisitions.every((a) => a.agreement === AGREES && a.sha256 === ARCHIVE.sha256 && a.bytes === ARCHIVE.bytes),
       ).to.equal(true);
@@ -696,7 +976,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
 
     it("is not derived at all from observations that do not agree, naming every reason", function () {
       const b = hostB();
-      b.transfer.responseHeaders.contentLength = ++b.archive.bytes;
+      b.transfer.urlEffective = b.transfer.sourceUrl = "https://upstream.invalid/mirror/v6.1.0-groth16.tar.gz";
       expect(() => deriveArchiveRecord([hostA(), b], [mirrorA()], EXPECT)).to.throw(
         /HOSTS_DISAGREE[\s\S]*MIRRORS_MISSING/,
       );
@@ -709,13 +989,15 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
 
   describe("the committed evidence (a temporary repository)", function () {
     const git = (cwd: string, ...args: string[]) => {
-      const r = spawnSync("git", args, { cwd, encoding: "utf8" });
+      const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd, encoding: "utf8" });
       if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
       return r.stdout;
     };
     const input = { anchor: SYNTHETIC_ANCHOR, gnarkImage: IMAGE };
     /** A repository holding the synthetic census, the real measuring scripts and, optionally, the observations and record. */
-    function repo(opts: { observations?: boolean; record?: boolean; commit?: boolean } = {}): string {
+    function repo(
+      opts: { observations?: boolean; record?: boolean; commit?: boolean; scripts?: boolean } = {},
+    ): string {
       const d = dirs.make("sp1-pa2b-");
       git(d, "init", "-q");
       git(d, "config", "user.email", "test@example.invalid");
@@ -723,21 +1005,14 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       git(d, "config", "commit.gpgsign", "false");
       mkdirSync(join(d, OBSERVATIONS_DIR), { recursive: true });
       mkdirSync(join(d, "scripts/lib"), { recursive: true });
-      for (const rel of CENSUS_OBSERVATIONS_REL) {
-        writeFileSync(
-          join(d, rel),
-          serializeJson({ schema: "walletwall.sp1-circuit-archive-census.v1", synthetic: true }),
-        );
+      for (const rel of CENSUS_OBSERVATIONS_REL) writeFileSync(join(d, rel), serializeJson(syntheticCensus()));
+      if (opts.scripts !== false) {
+        cpSync(resolve(ACQUISITION_SCRIPT_REL), join(d, ACQUISITION_SCRIPT_REL));
+        cpSync(resolve(MIRROR_SCRIPT_REL), join(d, MIRROR_SCRIPT_REL));
       }
-      cpSync(resolve(ACQUISITION_SCRIPT_REL), join(d, ACQUISITION_SCRIPT_REL));
-      cpSync(resolve(MIRROR_SCRIPT_REL), join(d, MIRROR_SCRIPT_REL));
       const expect = acquisitionExpectations(d, input);
-      const bind = <T extends { tool: { scriptSha256: string }; census?: { sha256: string } }>(
-        o: T,
-        script: string,
-      ): T => {
-        o.tool.scriptSha256 = script;
-        if (o.census) o.census.sha256 = expect.censusSha256;
+      const bind = <T extends { tool: { scriptSha256: string } }>(o: T, script: string | null): T => {
+        o.tool.scriptSha256 = String(script);
         return o;
       };
       const a = bind(hostA(), expect.scripts.acquisition);
@@ -785,9 +1060,18 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(mirrorObservationsIn(d)).to.have.length(2);
       expect((e.record as ArchiveRecord).archive.sha256).to.equal(ARCHIVE.sha256);
       expect(archiveRecordsIn(d)).to.deep.equal(e.records);
+      // The committed census, in that repository, binds the same way: an edited census refuses the observations.
+      const census = syntheticCensus();
+      census.archive.sha256 = sha256("another archive");
+      for (const rel of CENSUS_OBSERVATIONS_REL) writeFileSync(join(d, rel), serializeJson(census));
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "-m", "another census");
+      const refused = judge(d);
+      expect(archiveEvidenceState(refused)).to.equal("REFUSED");
+      expect(refused.errors.join("\n")).to.match(/CENSUS_MISMATCH/);
     });
 
-    it("is REFUSED, never NO_RECORD, for an uncommitted record, a hand-edited one, a second file, a missing or edited observation, or a mirror removed", function () {
+    it("is REFUSED, never NO_RECORD, for an uncommitted record, a hand-edited one, a second file, a missing, edited or relabeled observation, a mirror removed, or a link", function () {
       this.timeout(120_000);
       const recordPath = (d: string) => join(d, productionRecordRel(SYNTHETIC_ANCHOR));
       const refused = (d: string, re: RegExp) => {
@@ -799,7 +1083,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       refused(repo({ commit: false }), /not as committed: NOT_A_GIT_CHECKOUT|UNTRACKED|UNCOMMITTED/);
       let d = repo();
       const edited = JSON.parse(readFileSync(recordPath(d), "utf8")) as ArchiveRecord;
-      edited.mirrors[0].location = "gs://walletwall-synthetic-c/v6.1.0-groth16.tar.gz";
+      edited.mirrors[0].location = `gs://walletwall-synthetic-c/${OBJECT}`;
       writeFileSync(recordPath(d), serializeJson(edited));
       refused(d, /is not the record the committed observations derive/);
       d = repo();
@@ -822,9 +1106,17 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       refused(d, /observations are missing/);
       d = repo();
       const b = JSON.parse(readFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[1]), "utf8")) as AcquisitionObservation;
-      b.archive.sha256 = sha256("other bytes");
+      b.independentDigests[0].sha256 = sha256("other bytes");
       writeFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[1]), serializeJson(b));
-      refused(d, /DIGEST_DISAGREES|HOSTS_DISAGREE/);
+      refused(d, /DIGEST_DISAGREES/);
+      // The file for one host holding the other host's observation (relabeled files).
+      d = repo();
+      const swapped = readFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]));
+      writeFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]), readFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[1])));
+      writeFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[1]), swapped);
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "-m", "swapped");
+      refused(d, /claims host github-hosted-runner, not developer-workstation/);
       d = repo();
       rmSync(join(d, OBSERVATIONS_DIR, "circuit-archive-mirror-b.raw.json"));
       git(d, "add", "-A");
@@ -837,22 +1129,71 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       git(d, "add", "-A");
       git(d, "commit", "-q", "-m", "renamed");
       refused(d, /must hold exactly/);
+      // A directory named like the record is no record: the gate reads only a regular file there.
+      d = repo();
+      rmSync(recordPath(d));
+      mkdirSync(recordPath(d));
+      writeFileSync(join(recordPath(d), "inner.json"), "{}\n");
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "-m", "a directory");
+      refused(d, /is not a regular file directly in/);
       d = repo();
       const a = JSON.parse(readFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]), "utf8")) as AcquisitionObservation;
       a.platform.push("edited after the commit");
       writeFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]), serializeJson(a));
       refused(d, /not as committed: UNCOMMITTED/);
-      // Observations that agree with each other but describe members the record validator refuses (a traversal
-      // path on both hosts): the derived record is refused by the PA2A validator, independently of the agreement.
+      // Observations that agree with each other and the census but describe a member the record validator refuses
+      // cannot arise from a census the validator accepts; a census with a traversal path is refused by derivation.
       d = repo();
+      const census = syntheticCensus();
+      census.entries.push({
+        index: census.entries.length,
+        typeflag: "0",
+        path: "./../escaped.bin",
+        size: 1,
+        dataSha256: sha256("escaped"),
+      });
+      for (const rel of CENSUS_OBSERVATIONS_REL) writeFileSync(join(d, rel), serializeJson(census));
       for (const rel of ACQUISITION_OBSERVATIONS_REL) {
         const o = JSON.parse(readFileSync(join(d, rel), "utf8")) as AcquisitionObservation;
         o.inspection.members.push({ path: "../escaped.bin", bytes: 1, sha256: sha256("escaped") });
+        o.census.sha256 = sha256(serializeJson(census));
         writeFileSync(join(d, rel), serializeJson(o));
       }
       git(d, "add", "-A");
       git(d, "commit", "-q", "-m", "a traversal member on both hosts");
       refused(d, /derived record refused: MEMBER_PATH_INVALID/);
+    });
+
+    it("binds nothing to a measuring script the checkout does not hold: the observations are refused whatever digest they claim", function () {
+      this.timeout(60_000);
+      const d = repo({ scripts: false, record: false });
+      const expectation = acquisitionExpectations(d, input);
+      expect(expectation.scripts).to.deep.equal({ acquisition: null, mirror: null });
+      const o = JSON.parse(readFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]), "utf8")) as AcquisitionObservation;
+      for (const claimed of [o.tool.scriptSha256, sha256(""), "null", ""]) {
+        o.tool.scriptSha256 = claimed;
+        expect(reasons(acquisitionObservationErrors(o, 0, expectation)), claimed).to.include("TOOL_NOT_BOUND");
+      }
+      const m = JSON.parse(
+        readFileSync(join(d, OBSERVATIONS_DIR, "circuit-archive-mirror-a.raw.json"), "utf8"),
+      ) as MirrorObservation;
+      const archive = { bytes: ARCHIVE.bytes, sha256: ARCHIVE.sha256, upstreamHost: "upstream.invalid" };
+      expect(reasons(mirrorObservationErrors(m, 0, archive, expectation.scripts.mirror))).to.include("TOOL_NOT_BOUND");
+    });
+
+    it("a record that is a link, wherever it points, is REFUSED (the gate reads the directory the same way)", function () {
+      this.timeout(60_000);
+      const d = repo();
+      const target = join(d, "elsewhere.json");
+      writeFileSync(target, readFileSync(join(d, productionRecordRel(SYNTHETIC_ANCHOR))));
+      rmSync(join(d, productionRecordRel(SYNTHETIC_ANCHOR)));
+      symlinkOrSkip(this, target, join(d, productionRecordRel(SYNTHETIC_ANCHOR)), "file");
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "-m", "a link");
+      const e = judge(d);
+      expect(archiveEvidenceState(e)).to.equal("REFUSED");
+      expect(e.errors.join("\n")).to.match(/is not a regular file directly in/);
     });
   });
 
@@ -907,7 +1248,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
   });
 
   describe("the committed observations, when present, are this lane's measurements", function () {
-    it("each acquisition observation is bound to the committed script and agrees with the committed census and designation d1", function () {
+    it("each acquisition observation is bound to the committed script and census and agrees with designation d1; both agree with each other", function () {
       const expect_ = acquisitionExpectations(".", {
         anchor: productionAnchor("."),
         gnarkImage: pinnedGnarkImage("."),
@@ -921,9 +1262,11 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         }
       });
       if (present.length === 0) this.skip();
-      present.forEach((rel, i) => {
+      expect(expect_.scripts.acquisition).to.not.equal(null);
+      const observations = present.map((rel, i) => {
         const o = JSON.parse(readFileSync(rel, "utf8")) as AcquisitionObservation;
         expect(acquisitionObservationErrors(o, i, expect_), rel).to.deep.equal([]);
+        expect(o.host).to.equal(ACQUISITION_HOSTS[i]);
         expect(o.archive).to.deep.equal({
           file: "v6.1.0-groth16.tar.gz",
           bytes: 6211807514,
@@ -943,7 +1286,12 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         expect(o.gnark.platforms.map((p) => p.digest)).to.deep.equal([
           "sha256:be8555f1ad90870acd8c6ec7fd3ba0b1a2133ea9cddf25e130665aa651129e54",
         ]);
+        return o;
       });
+      if (observations.length === 2) {
+        // Both hosts together: only the mirrors are missing (the owner's step), nothing between the hosts.
+        expect(reasons(acquisitionErrors(observations, [], expect_))).to.deep.equal(["MIRRORS_MISSING"]);
+      }
     });
   });
 });

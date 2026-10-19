@@ -23,7 +23,16 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -31,6 +40,7 @@ import { getAddress, type Provider } from "ethers";
 
 import { collectReports } from "../validate-bytecode-size";
 import { fileHistoryErrors } from "./append-only-history";
+import { uncommittedEvidenceError } from "./committed-evidence";
 import {
   MAIN_RULESET_OBSERVATION_REL,
   historyProtectionGaps,
@@ -1391,6 +1401,14 @@ export interface ImplSupersession {
   supersededBy: { lane: string; record: string; reason: string }[];
 }
 
+function isRegularFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
 /** The supersession record, or null while the receipt is live. */
 export function readImplSupersession(repoRoot = "."): unknown {
   const path = resolve(repoRoot, IMPL_SUPERSESSION_REL);
@@ -1411,11 +1429,15 @@ function availabilityStatusAt(repoRoot: string, commit: string): string | null {
 export interface LiveAvailability {
   errors: string[];
   status: string | null;
+  /** The archive record the live availability accepted (the one a supersession may name), null before admission. */
+  acceptedRecord: string | null;
 }
 
 export function liveAvailability(repoRoot = "."): LiveAvailability {
   const errors = provingAvailabilityErrors(repoRoot);
-  return { errors, status: errors.length === 0 ? provingAvailabilityFromRepo(repoRoot).status : null };
+  if (errors.length > 0) return { errors, status: null, acceptedRecord: null };
+  const record = provingAvailabilityFromRepo(repoRoot);
+  return { errors, status: record.status, acceptedRecord: record.archives.accepted?.record ?? null };
 }
 
 /**
@@ -1433,7 +1455,7 @@ export function provingAvailabilityInputs(
   }
   const bytes = gitObjects(repoRoot, ["show", `${historical.commit}:${PROVING_AVAILABILITY_REL}`]);
   const doc = JSON.parse(bytes.toString("utf8"));
-  return { errors: [], status: typeof doc?.status === "string" ? doc.status : null, bytes };
+  return { errors: [], status: typeof doc?.status === "string" ? doc.status : null, acceptedRecord: null, bytes };
 }
 
 /**
@@ -1447,6 +1469,9 @@ export function boundSupersession(
   const supersession = readImplSupersession(repoRoot);
   if (supersession === null) return null;
   const bad = implSupersessionErrors(supersession, readFileSync(resolve(repoRoot, IMPL_RECEIPT_REL)), repoRoot, live);
+  // A supersession counts only as committed: a file written in the working tree supersedes nothing.
+  const dirty = uncommittedEvidenceError([IMPL_SUPERSESSION_REL], repoRoot);
+  if (dirty !== null) bad.push(`the supersession is not as committed: ${dirty}`);
   if (bad.length > 0) throw new Error(`${IMPL_SUPERSESSION_REL} is invalid: ${bad.join("; ")}`);
   return { commit: (supersession as ImplSupersession).historicalSubject };
 }
@@ -1523,6 +1548,10 @@ export function implSupersessionErrors(
     const first = s.supersededBy[0];
     if (typeof first?.record !== "string" || !first.record.startsWith(`${PROVING_ARCHIVES_DIR}/`)) {
       errors.push(`the first superseding record must be the archive record under ${PROVING_ARCHIVES_DIR}`);
+    } else if (live.acceptedRecord !== null && first.record !== live.acceptedRecord) {
+      errors.push(
+        `the first superseding record is ${first.record}, not the archive record the live availability accepted (${live.acceptedRecord})`,
+      );
     }
     for (const r of s.supersededBy) {
       if (
@@ -1533,8 +1562,8 @@ export function implSupersessionErrors(
       ) {
         errors.push("each superseding record has a lane and a reason");
       }
-      if (typeof r?.record !== "string" || !existsSync(resolve(repoRoot, r.record))) {
-        errors.push(`superseding record ${String(r?.record)} does not exist`);
+      if (typeof r?.record !== "string" || !isRegularFile(resolve(repoRoot, r.record))) {
+        errors.push(`superseding record ${String(r?.record)} is not a file`);
       }
     }
   }
