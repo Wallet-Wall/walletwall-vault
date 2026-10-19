@@ -27,12 +27,19 @@ import {
   RUN_SCRIPT_REL,
   VERIFICATION_SCHEMA,
   VERIFICATION_SCRIPT_REL,
+  deriveExerciseRecord,
+  exerciseErrors,
+  exerciseRecordRel,
   runObservationErrors,
+  verificationObservationErrors,
   type EgressProbe,
   type ExerciseExpectations,
   type RunObservation,
   type VerificationObservation,
 } from "../scripts/lib/sp1-proof-exercise";
+
+const RUN_REL = "evidence/zk/sp1-impl/observations/proof-exercise-run-proving-host-a.raw.json";
+const VERIFICATION_REL = "evidence/zk/sp1-impl/observations/proof-exercise-verification-proving-host-a.raw.json";
 
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const hex = (b: Buffer) => `0x${b.toString("hex")}`;
@@ -326,7 +333,214 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(runRefusals((o) => (o.platform = []))).to.include("OBSERVATION_FIELD");
     });
   });
-});
 
-// Exported for the verifier suite and the temporary-repository tests below.
-assert.ok(EXPECTATIONS);
+  describe("the verification observation", function () {
+    /** The reasons the `mutate`d verification of the synthetic run is refused. */
+    function refusals(
+      mutate: (v: VerificationObservation, run: RunObservation) => void,
+      expect: ExerciseExpectations = EXPECTATIONS,
+    ): string[] {
+      const run = runObservation();
+      const v = verificationObservation(run);
+      mutate(v, run);
+      return verificationObservationErrors(v, { path: RUN_REL, sha256: runSha(run), observation: run }, expect).map(
+        (r) => r.reason,
+      );
+    }
+
+    it("accepts the synthetic verification of the synthetic run", function () {
+      expect(refusals(() => undefined)).to.deep.equal([]);
+    });
+
+    it("refuses another schema, an unnamed field, an unbound tool, a bad host or stamp", function () {
+      expect(refusals((v) => (v.schema = "walletwall.sp1-proof-exercise-verification.v0"))).to.include(
+        "OBSERVATION_SCHEMA",
+      );
+      expect(refusals((v) => ((v as Record<string, unknown>).note = "fine"))).to.include("OBSERVATION_SHAPE");
+      expect(refusals((v) => (v.tool.scriptSha256 = "00".repeat(32)))).to.include("TOOL_NOT_BOUND");
+      expect(
+        refusals(() => undefined, { ...EXPECTATIONS, scripts: { run: RUN_SCRIPT_SHA, verification: null } }),
+      ).to.include("TOOL_NOT_BOUND");
+      expect(refusals((v) => (v.host = "Host"))).to.include("OBSERVATION_FIELD");
+      // Verified before the run was measured: not a verification of that run.
+      expect(refusals((v) => (v.measuredAtUtc = "2026-11-01T12:00:00Z"))).to.include("OBSERVATION_FIELD");
+    });
+
+    it("binds the run observation's bytes and path, and the proof's identity", function () {
+      // The run observation edited after the verification: its sha256 no longer binds.
+      expect(refusals((v) => (v.run.sha256 = "00".repeat(32)))).to.include("RUN_NOT_BOUND");
+      expect(refusals((v) => (v.run.path = RUN_REL.replace("host-a", "host-b")))).to.include("RUN_NOT_BOUND");
+      expect(refusals((v) => (v.proof.proofBytesSha256 = "00".repeat(32)))).to.include("PROOF_MISMATCH");
+      expect(refusals((v) => (v.proof.publicValuesSha256 = "00".repeat(32)))).to.include("PROOF_MISMATCH");
+      expect(refusals((v) => (v.proof.vkey = `0x${"00".repeat(32)}`))).to.include("PROOF_MISMATCH");
+    });
+
+    it("needs the designated verifier: its identity, its runtime at the called address, the authenticated runtime once", function () {
+      expect(refusals((v) => (v.verifier.runtimeCodeKeccak = `0x${"00".repeat(32)}`))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.verifier.verifierHash = `0x${"00".repeat(32)}`))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.checks[0].runtimeCodeKeccak = `0x${"00".repeat(32)}`))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.checks[0].mode = "DEPLOYED"))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.checks = []))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.checks[0].address = "0x1234"))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.checks[0].chainId = "mainnet"))).to.include("VERIFIER_MISMATCH");
+      expect(refusals((v) => (v.checks[0].mode = "SIMULATED" as never))).to.include("VERIFIER_MISMATCH");
+      // A second, deployed check must carry the same runtime and the same verdicts.
+      expect(
+        refusals((v) => v.checks.push({ ...v.checks[0], chainId: "11155111", mode: "DEPLOYED", block: 12_000_000 })),
+      ).to.deep.equal([]);
+      expect(
+        refusals((v) =>
+          v.checks.push({
+            ...v.checks[0],
+            chainId: "11155111",
+            mode: "DEPLOYED",
+            block: 12_000_000,
+            verdicts: { real: `revert ${PROOF_INVALID}`, tampered: `revert ${PROOF_INVALID}` },
+          }),
+        ),
+      ).to.include("VERIFIER_REJECTED");
+    });
+
+    it("needs the verifier to accept the proof and refuse its tampered copy", function () {
+      expect(refusals((v) => (v.checks[0].verdicts.real = `revert ${PROOF_INVALID}`))).to.include("VERIFIER_REJECTED");
+      expect(refusals((v) => (v.checks[0].verdicts.real = "success 0x01"))).to.include("VERIFIER_REJECTED");
+      expect(refusals((v) => (v.checks[0].verdicts.tampered = "success"))).to.include("VERIFIER_REJECTED");
+      expect(refusals((v) => (v.checks[0].verdicts.tampered = "revert 0x"))).to.include("VERIFIER_REJECTED");
+      expect(refusals((v) => (v.acceptance = "REJECTED"))).to.include("VERIFIER_REJECTED");
+      expect(refusals((v) => (v.acceptance = "accepted" as never))).to.include("VERIFIER_REJECTED");
+    });
+  });
+
+  describe("the derived record", function () {
+    const bound = (run: RunObservation) => ({ runSha256: runSha(run), verificationPath: VERIFICATION_REL });
+
+    it("is derived from the two observations, never written: every binding is carried", function () {
+      const run = runObservation();
+      const v = verificationObservation(run);
+      expect(exerciseErrors(run, v, bound(run), EXPECTATIONS)).to.deep.equal([]);
+      const r = deriveExerciseRecord(run, v, bound(run), EXPECTATIONS);
+      expect(r.schema).to.equal(EXERCISE_RECORD_SCHEMA);
+      expect(r.lane).to.equal("SP1-PA3B");
+      expect(r.exercise).to.deep.equal({
+        id: `${ANCHOR.designation}:${runSha(run).slice(0, 16)}`,
+        host: "proving-host-a",
+        performedAtUtc: "2026-11-01T10:00:00Z",
+        verifiedAtUtc: "2026-11-01T12:30:00Z",
+      });
+      expect(r.subject).to.deep.equal({
+        designation: ANCHOR.designation,
+        circuitSystem: "groth16",
+        circuitVersion: ANCHOR.circuitVersion,
+        programVKey: ANCHOR.programVKey,
+        verifier: ANCHOR.verifier,
+        verifyingKey: { file: "groth16_vk.bin", ...ANCHOR.verifyingKey },
+      });
+      expect(r.archiveRecord).to.deep.equal({
+        path: EXPECTATIONS.archiveRecord.path,
+        sha256: EXPECTATIONS.archiveRecord.sha256,
+        archiveFile: ARCHIVE_RECORD.archive.file,
+        archiveBytes: ARCHIVE_RECORD.archive.bytes,
+        archiveSha256: ARCHIVE_RECORD.archive.sha256,
+        members: ARCHIVE_RECORD.members.length,
+      });
+      expect(r.installedCircuit).to.deep.equal({
+        circuitVersion: ANCHOR.circuitVersion,
+        membersSha256: sha256(serializeJson(ARCHIVE_RECORD.members)),
+        verifiedBy: "the archive-only gate: re-hashed against the record before the host started and after it exited",
+      });
+      expect(r.host).to.deep.equal({
+        executableSha256: run.hostExecutable.sha256,
+        executableBytes: run.hostExecutable.bytes,
+        sourceTree: HOST_TREE,
+        sourceCommit: SOURCE_COMMIT,
+        repository: REPOSITORY_ID,
+      });
+      expect(r.proofInput).to.deep.equal({
+        fixture: "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+        sha256: INPUT_SHA,
+      });
+      expect(r.gnark).to.deep.equal({
+        repository: ARCHIVE_RECORD.gnark.repository,
+        digest: ARCHIVE_RECORD.gnark.digest,
+        imageRef: IMAGE_REF,
+      });
+      expect(r.prover).to.deep.equal({ mode: "cpu", frozenEnv: run.prover.frozenEnv, gate: "sp1:prove:archive-only" });
+      expect(r.proof).to.deep.equal({
+        vkey: ANCHOR.programVKey,
+        selector: `0x${SELECTOR}`,
+        publicValuesSha256: sha256(PUBLIC_VALUES),
+        proofBytesSha256: sha256(PROOF_BYTES),
+      });
+      expect(r.verification).to.deep.equal({
+        observation: { path: VERIFICATION_REL, host: "proving-host-a" },
+        verifier: ANCHOR.verifier,
+        checks: v.checks,
+        acceptance: "ACCEPTED",
+      });
+      expect(r.performance).to.deep.equal({
+        wallClockSeconds: 7180,
+        hostSeconds: 4800,
+        rotationDelaySeconds: ROTATION_DELAY_SECONDS,
+        withinRotationDelay: true,
+        rotationDelayFraction: 0.041551,
+        peakMemory: run.peakMemory,
+      });
+      expect(r.egress).to.deep.equal({
+        condition: EGRESS_DISABLED,
+        enforcement: run.egress.enforcement,
+        probes: {
+          before: 4,
+          after: 4,
+          targets: [
+            `dns:${UPSTREAM_HOST}`,
+            `dns:${REGISTRY_HOST}`,
+            `tcp:${UPSTREAM_HOST}:443`,
+            `tcp:${REGISTRY_HOST}:443`,
+          ].sort(),
+        },
+      });
+      expect(r.derivedFrom).to.deep.equal([RUN_REL, VERIFICATION_REL]);
+      expect(r.establishes).to.be.a("string").and.include("liveness");
+      expect(r.doesNotEstablish).to.be.a("string").and.include("production readiness");
+      expect(exerciseRecordRel(ANCHOR)).to.equal(`${PROOF_EXERCISES_DIR}/${ANCHOR.designation}.json`);
+    });
+
+    it("records a run longer than the rotation delay as such, never as availability", function () {
+      const run = runObservation();
+      run.timing = {
+        startedAtUtc: "2026-11-01T00:00:00Z",
+        finishedAtUtc: "2026-11-03T01:00:00Z",
+        gateSeconds: 176_400,
+        hostStartedAtUtc: "2026-11-01T00:10:00Z",
+        hostFinishedAtUtc: "2026-11-03T00:50:00Z",
+        hostSeconds: 175_200,
+      };
+      run.egress.before = probes("2026-10-31T23:59:00Z");
+      run.egress.after = probes("2026-11-03T01:00:30Z");
+      run.measuredAtUtc = "2026-11-03T01:01:00Z";
+      const v = verificationObservation(run);
+      v.measuredAtUtc = "2026-11-03T02:00:00Z";
+      const r = deriveExerciseRecord(run, v, bound(run), EXPECTATIONS);
+      expect(r.performance.withinRotationDelay).to.equal(false);
+      expect(r.performance.rotationDelayFraction).to.equal(1.020833);
+    });
+
+    it("derives nothing from a refused pair, naming every reason", function () {
+      const run = runObservation();
+      const v = verificationObservation(run);
+      run.proof.vkey = `0x${"00".repeat(32)}`;
+      expect(exerciseErrors(run, v, bound(run), EXPECTATIONS).map((r) => r.reason)).to.include("PROOF_MISMATCH");
+      assert.throws(() => deriveExerciseRecord(run, v, bound(run), EXPECTATIONS), /PROOF_MISMATCH/);
+      // A verification of another run (the run edited after it was verified) derives nothing either.
+      const run2 = runObservation();
+      run2.platform.push("edited after verification");
+      const v2 = verificationObservation(runObservation());
+      const reasons = exerciseErrors(run2, v2, bound(run2), EXPECTATIONS).map((r) => r.reason);
+      expect(reasons).to.include("RUN_NOT_BOUND");
+      // Two partial records never combine: a verification whose proof digests are another run's.
+      const v3 = verificationObservation(run2);
+      v3.proof.proofBytesSha256 = "ff".repeat(32);
+      expect(exerciseErrors(run2, v3, bound(run2), EXPECTATIONS).map((r) => r.reason)).to.include("PROOF_MISMATCH");
+    });
+  });
+});

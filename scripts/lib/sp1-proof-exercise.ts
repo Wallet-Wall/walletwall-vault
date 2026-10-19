@@ -517,4 +517,280 @@ export function runObservationErrors(value: unknown, expect: ExerciseExpectation
   return out;
 }
 
+/** The run observation a verification must bind: its committed path, the sha256 of its committed bytes, itself. */
+export interface BoundRun {
+  path: string;
+  sha256: string;
+  observation: RunObservation;
+}
+
+/** Every reason `value` is not the designated verifier's acceptance of `run`'s proof; [] accepts it. */
+export function verificationObservationErrors(value: unknown, run: BoundRun, expect: ExerciseExpectations): Refusal[] {
+  const out: Refusal[] = [];
+  const no = (reason: string, detail: string) => out.push({ reason, detail });
+  const where = "verification";
+  if (!exactly(value, OBSERVATION_FIELDS.verification, where, "OBSERVATION_SHAPE", no)) return out;
+  const v = value as VerificationObservation;
+  if (v.schema !== VERIFICATION_SCHEMA) no("OBSERVATION_SCHEMA", `${where} must be ${VERIFICATION_SCHEMA}`);
+  if (!HOST_LABEL.test(String(v.host))) no("OBSERVATION_FIELD", `${where}.host is not a host label`);
+  if (!UTC.test(String(v.measuredAtUtc))) no("OBSERVATION_FIELD", `${where}.measuredAtUtc`);
+  else if (
+    UTC.test(String(run.observation.measuredAtUtc)) &&
+    !(seconds(run.observation.measuredAtUtc) <= seconds(v.measuredAtUtc))
+  ) {
+    no("OBSERVATION_FIELD", `${where} was made before the run it verifies was measured`);
+  }
+  if (
+    !exactly(v.tool, OBSERVATION_FIELDS.tool, `${where}.tool`, "OBSERVATION_SHAPE", no) ||
+    v.tool.script !== VERIFICATION_SCRIPT_REL ||
+    expect.scripts.verification === null ||
+    v.tool.scriptSha256 !== expect.scripts.verification
+  ) {
+    no("TOOL_NOT_BOUND", `${where} was not made by ${VERIFICATION_SCRIPT_REL} as committed: re-verify`);
+  }
+  if (
+    exactly(v.run, OBSERVATION_FIELDS.archiveRecord, `${where}.run`, "OBSERVATION_SHAPE", no) &&
+    (v.run.path !== run.path || v.run.sha256 !== run.sha256)
+  ) {
+    no(
+      "RUN_NOT_BOUND",
+      `${where} verified ${String(v.run.path)} (sha256 ${String(v.run.sha256)}), not the committed ${run.path} (${run.sha256}): the run observation changed after it was verified, or another run was verified`,
+    );
+  }
+  const rp = run.observation.proof;
+  if (
+    exactly(v.proof, OBSERVATION_FIELDS.verificationProof, `${where}.proof`, "OBSERVATION_SHAPE", no) &&
+    (v.proof.vkey !== rp?.vkey ||
+      v.proof.publicValuesSha256 !== rp?.publicValuesSha256 ||
+      v.proof.proofBytesSha256 !== rp?.proofBytesSha256)
+  ) {
+    no("PROOF_MISMATCH", `${where} verified another proof than the run observation holds`);
+  }
+  if (!same(v.verifier, expect.anchor.verifier)) {
+    no("VERIFIER_MISMATCH", `${where} names another verifier than the designation's`);
+  }
+  const checks = Array.isArray(v.checks) ? v.checks : null;
+  if (checks === null || checks.length === 0) {
+    no("VERIFIER_MISMATCH", `${where} holds no check: the designated verifier was never asked`);
+  } else {
+    let local = 0;
+    checks.forEach((c, i) => {
+      const at = `${where}.checks[${i}]`;
+      if (!exactly(c, OBSERVATION_FIELDS.check, at, "OBSERVATION_SHAPE", no)) return;
+      if (!/^[0-9]+$/.test(String(c.chainId))) no("VERIFIER_MISMATCH", `${at}.chainId is not a chain id`);
+      if (!ADDRESS.test(String(c.address))) no("VERIFIER_MISMATCH", `${at}.address is not an address`);
+      if (c.runtimeCodeKeccak !== expect.anchor.verifier.runtimeCodeKeccak) {
+        no(
+          "VERIFIER_MISMATCH",
+          `${at}: the code at ${String(c.address)} on chain ${String(c.chainId)} is ${String(c.runtimeCodeKeccak)}, not the designated verifier's ${expect.anchor.verifier.runtimeCodeKeccak}`,
+        );
+      }
+      if (c.mode !== LOCAL_RUNTIME && c.mode !== DEPLOYED_RUNTIME)
+        no("VERIFIER_MISMATCH", `${at}.mode ${String(c.mode)}`);
+      if (c.mode === LOCAL_RUNTIME) local++;
+      if (c.block !== null && !isPositiveInt(c.block)) no("VERIFIER_MISMATCH", `${at}.block`);
+      if (!exactly(c.verdicts, OBSERVATION_FIELDS.verdicts, `${at}.verdicts`, "OBSERVATION_SHAPE", no)) return;
+      if (c.verdicts.real !== "success") {
+        no("VERIFIER_REJECTED", `${at}: the designated verifier answered ${String(c.verdicts.real)} to the proof`);
+      }
+      if (c.verdicts.tampered !== `revert ${PROOF_INVALID}`) {
+        no(
+          "VERIFIER_REJECTED",
+          `${at}: the tampered copy was answered ${String(c.verdicts.tampered)}, not revert ${PROOF_INVALID}: not the designated verifier's behavior`,
+        );
+      }
+    });
+    if (local === 0) {
+      no("VERIFIER_MISMATCH", `${where}: no check ran the CREATE2-authenticated runtime itself (${LOCAL_RUNTIME})`);
+    }
+  }
+  if (v.acceptance !== ACCEPTED) {
+    no("VERIFIER_REJECTED", `${where}.acceptance is ${String(v.acceptance)}: the proof was not accepted`);
+  }
+  return out;
+}
+
+/** What binds the pair: the run observation's committed bytes, and where the verification is committed. */
+export interface ExerciseBinding {
+  runSha256: string;
+  verificationPath: string;
+}
+
+/** Every reason `run` and `verification` do not derive one record for `expect`: the run first, then the acceptance. */
+export function exerciseErrors(
+  run: unknown,
+  verification: unknown,
+  binding: ExerciseBinding,
+  expect: ExerciseExpectations,
+): Refusal[] {
+  const out = runObservationErrors(run, expect);
+  if (out.length > 0) return out;
+  const r = run as RunObservation;
+  const runPath = isObject((verification as VerificationObservation)?.run)
+    ? String((verification as VerificationObservation).run.path)
+    : "";
+  // The run's path is the verification's claim; its content is bound by the sha256 of the committed bytes. The judge
+  // (productionExerciseEvidence) checks the path against the file it read; here the sha256 is the authority.
+  return verificationObservationErrors(
+    verification,
+    { path: runPath, sha256: binding.runSha256, observation: r },
+    expect,
+  );
+}
+
+export interface ProofExerciseRecord {
+  schema: string;
+  lane: string;
+  exercise: { id: string; host: string; performedAtUtc: string; verifiedAtUtc: string };
+  subject: {
+    designation: string;
+    circuitSystem: string;
+    circuitVersion: string;
+    programVKey: string;
+    verifier: ArchiveAnchor["verifier"];
+    verifyingKey: { file: string; sha256: string; bytes: number };
+  };
+  archiveRecord: {
+    path: string;
+    sha256: string;
+    archiveFile: string;
+    archiveBytes: number;
+    archiveSha256: string;
+    members: number;
+  };
+  installedCircuit: { circuitVersion: string; membersSha256: string; verifiedBy: string };
+  host: {
+    executableSha256: string;
+    executableBytes: number;
+    sourceTree: string;
+    sourceCommit: string;
+    repository: string;
+  };
+  proofInput: { fixture: string; sha256: string };
+  gnark: { repository: string; digest: string; imageRef: string };
+  prover: { mode: string; frozenEnv: Record<string, string>; gate: string };
+  proof: { vkey: string; selector: string; publicValuesSha256: string; proofBytesSha256: string };
+  verification: {
+    observation: { path: string; host: string };
+    verifier: ArchiveAnchor["verifier"];
+    checks: VerificationCheck[];
+    acceptance: string;
+  };
+  performance: {
+    wallClockSeconds: number;
+    hostSeconds: number;
+    rotationDelaySeconds: number;
+    withinRotationDelay: boolean;
+    rotationDelayFraction: number;
+    peakMemory: RunObservation["peakMemory"];
+  };
+  egress: {
+    condition: string;
+    enforcement: string;
+    probes: { before: number; after: number; targets: string[] };
+  };
+  derivedFrom: string[];
+  establishes: string;
+  doesNotEstablish: string;
+}
+
+export const EXERCISE_LANE = "SP1-PA3B";
+export const PROVE_GATE_COMMAND = "sp1:prove:archive-only";
+const VERIFIED_BY = "the archive-only gate: re-hashed against the record before the host started and after it exited";
+
+/** The record `run` and `verification` derive; throws naming every reason when they derive none. */
+export function deriveExerciseRecord(
+  run: unknown,
+  verification: unknown,
+  binding: ExerciseBinding,
+  expect: ExerciseExpectations,
+): ProofExerciseRecord {
+  const errors = exerciseErrors(run, verification, binding, expect);
+  if (errors.length > 0) {
+    throw new Error(
+      `the observations derive no proof-exercise record:\n - ${errors.map((e) => `${e.reason}: ${e.detail}`).join("\n - ")}`,
+    );
+  }
+  const r = run as RunObservation;
+  const v = verification as VerificationObservation;
+  const a = expect.anchor;
+  const record = expect.archiveRecord.record;
+  const probes = [...r.egress.before, ...r.egress.after].map((p) => `${p.kind}:${p.target}`);
+  return {
+    schema: EXERCISE_RECORD_SCHEMA,
+    lane: EXERCISE_LANE,
+    exercise: {
+      id: `${a.designation}:${binding.runSha256.slice(0, 16)}`,
+      host: r.host,
+      performedAtUtc: r.timing.startedAtUtc,
+      verifiedAtUtc: v.measuredAtUtc,
+    },
+    subject: {
+      designation: a.designation,
+      circuitSystem: record.subject.circuitSystem,
+      circuitVersion: a.circuitVersion,
+      programVKey: a.programVKey,
+      verifier: { ...a.verifier },
+      verifyingKey: {
+        file: record.subject.verifyingKey.file,
+        sha256: a.verifyingKey.sha256,
+        bytes: a.verifyingKey.bytes,
+      },
+    },
+    archiveRecord: {
+      path: expect.archiveRecord.path,
+      sha256: expect.archiveRecord.sha256,
+      archiveFile: record.archive.file,
+      archiveBytes: record.archive.bytes,
+      archiveSha256: record.archive.sha256,
+      members: record.members.length,
+    },
+    installedCircuit: {
+      circuitVersion: r.installedCircuit.circuitVersion,
+      membersSha256: sha256(serializeJson(byPath(record.members))),
+      verifiedBy: VERIFIED_BY,
+    },
+    host: {
+      executableSha256: r.hostExecutable.sha256,
+      executableBytes: r.hostExecutable.bytes,
+      sourceTree: r.source.zkvmHostTree,
+      sourceCommit: r.source.commit,
+      repository: r.source.repository,
+    },
+    proofInput: { fixture: PROOF_INPUT_FIXTURE_REL, sha256: r.inputs.sha256 },
+    gnark: { repository: r.gnark.repository, digest: r.gnark.digest, imageRef: r.gnark.imageRef },
+    prover: { mode: r.prover.mode, frozenEnv: { ...r.prover.frozenEnv }, gate: PROVE_GATE_COMMAND },
+    proof: {
+      vkey: r.proof.vkey,
+      selector: r.proof.selector,
+      publicValuesSha256: r.proof.publicValuesSha256,
+      proofBytesSha256: r.proof.proofBytesSha256,
+    },
+    verification: {
+      observation: { path: binding.verificationPath, host: v.host },
+      verifier: { ...v.verifier },
+      checks: v.checks.map((c) => ({ ...c, verdicts: { ...c.verdicts } })),
+      acceptance: v.acceptance,
+    },
+    performance: {
+      wallClockSeconds: r.timing.gateSeconds,
+      hostSeconds: r.timing.hostSeconds,
+      rotationDelaySeconds: ROTATION_DELAY_SECONDS,
+      withinRotationDelay: r.timing.gateSeconds <= ROTATION_DELAY_SECONDS,
+      rotationDelayFraction: Math.round((r.timing.gateSeconds / ROTATION_DELAY_SECONDS) * 1e6) / 1e6,
+      peakMemory: structuredClone(r.peakMemory),
+    },
+    egress: {
+      condition: r.egress.condition,
+      enforcement: r.egress.enforcement,
+      probes: { before: r.egress.before.length, after: r.egress.after.length, targets: [...new Set(probes)].sort() },
+    },
+    derivedFrom: [v.run.path, binding.verificationPath],
+    establishes:
+      "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, SP1_PROVER=cpu and network egress refused before and after the run, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time",
+    doesNotEstablish:
+      "that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); that any other hardware proves within the rotation delay; that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); that the archive, the mirrors or the image remain available; or production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)",
+  };
+}
+
 export { serializeJson, type ArchiveEvidence };
