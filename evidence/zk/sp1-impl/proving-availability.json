@@ -112,6 +112,10 @@
       "gnarkDigest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
     }
   },
+  "exercises": {
+    "dir": "evidence/zk/sp1-impl/proof-exercises",
+    "records": 0
+  },
   "selfHostedPath": {
     "exercised": false,
     "requirements": [
@@ -124,7 +128,7 @@
     ]
   },
   "ownerAction": [
-    "authorize the self-hosted proving run (SP1-PA3): install from the committed verified archive only, with the digest-pinned gnark image, network egress off, one real Groth16 proof of the designated program verified through the designated verifier path, peak memory and wall time recorded against the 2-day rotation delay; only then SELF_HOSTED_PATH_EXERCISED"
+    "authorize the self-hosted proving run (SP1-PA3B): install from the committed verified archive only, with the digest-pinned gnark image, network egress off, one real Groth16 proof of the designated program through the archive-only gate under measurement (sp1:measure-proof-exercise), verified through the designated verifier path (sp1:verify-proof-exercise), peak memory and wall time recorded against the 2-day rotation delay, the two observations committed and the record derived (sp1:proof-exercise-record); only then SELF_HOSTED_PATH_EXERCISED, from facts"
   ],
   "notEstablished": [
     "that the self-hosted path proves at all, on what hardware, and within the 2-day rotation delay: no proof has been made from the archive",

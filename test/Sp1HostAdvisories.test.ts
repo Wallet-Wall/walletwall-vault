@@ -329,6 +329,7 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
       hostLock: lock,
       provingAvailability: s.provingAvailability?.doc ?? null,
       archiveRecords: s.archiveRecords,
+      exerciseRecords: s.exerciseRecords,
       ...over,
     });
     const evaluate = (id: string, over: Parameters<typeof input>[0]) =>
@@ -349,6 +350,7 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
       hostLock: lock,
       provingAvailability: s.provingAvailability?.doc ?? null,
       archiveRecords: s.archiveRecords,
+      exerciseRecords: s.exerciseRecords,
     };
     for (const a of ASSUMPTIONS) expect(a.evaluate(base).holds, a.id).to.equal(true);
     const add = (name: string) => [...lock, { name, version: "1.0.0", source: null, checksum: null, dependencies: [] }];
@@ -384,6 +386,7 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
       hostLock: lock,
       provingAvailability: s.provingAvailability?.doc ?? null,
       archiveRecords: [],
+      exerciseRecords: [],
     });
     expect(a.evaluate(input(`${s.hostMainText}\n// a network prover: .plonk()\n`)).holds).to.equal(true);
     expect(a.evaluate(input(`${s.hostMainText}\nfn n() { let _ = "x"; network(); }\n`)).holds).to.equal(false);
@@ -395,7 +398,11 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
     const a = ASSUMPTIONS.find((x) => x.id === "A_NO_PROVING_WITHOUT_ARCHIVE") as (typeof ASSUMPTIONS)[number];
     const record = "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json";
     const live = structuredClone((s.provingAvailability as { doc: any }).doc);
-    const archived = (over: (pa: any) => void = () => undefined, onDisk: string[] = [record]) => {
+    const archived = (
+      over: (pa: any) => void = () => undefined,
+      onDisk: string[] = [record],
+      exercisesOnDisk: string[] = [],
+    ) => {
       const pa = structuredClone(live);
       pa.status = "ARCHIVED_VERIFIED_UNEXERCISED";
       pa.archives = { ...pa.archives, records: 1, accepted: { record } };
@@ -406,6 +413,7 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
         hostLock: lock,
         provingAvailability: pa,
         archiveRecords: onDisk,
+        exerciseRecords: exercisesOnDisk,
       });
     };
     expect(archived().holds).to.equal(true);
@@ -424,6 +432,41 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
     expect(archived((pa) => (pa.selfHostedPath.requirements = [])).holds).to.equal(false);
     expect(archived((pa) => (pa.status = "LOCAL_COPY_NOT_ARCHIVED")).holds).to.equal(false);
     expect(archived((pa) => (pa.status = "SELF_HOSTED_PATH_EXERCISED")).holds).to.equal(false);
+    // SP1-PA3A: the exercised state holds only with exactly the one accepted proof-exercise record, on disk and in
+    // the availability record, named by selfHostedPath; a status or flag set without those facts does not.
+    const exercise = "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json";
+    const exercised = (over: (pa: any) => void = () => undefined, exercisesOnDisk: string[] = [exercise]) =>
+      archived(
+        (pa) => {
+          pa.status = "SELF_HOSTED_PATH_EXERCISED";
+          pa.exercises = { dir: "evidence/zk/sp1-impl/proof-exercises", records: 1, accepted: { record: exercise } };
+          pa.selfHostedPath = { ...pa.selfHostedPath, exercised: true, record: exercise };
+          over(pa);
+        },
+        [record],
+        exercisesOnDisk,
+      );
+    expect(exercised().holds).to.equal(true);
+    expect(exercised().observed).to.include("proof-exercise records 1 recorded, 1 on disk");
+    expect(exercised((pa) => (pa.selfHostedPath.exercised = false)).holds).to.equal(false);
+    expect(exercised(() => undefined, []).holds).to.equal(false);
+    expect(exercised(() => undefined, [exercise, "evidence/zk/sp1-impl/proof-exercises/second.json"]).holds).to.equal(
+      false,
+    );
+    expect(exercised((pa) => (pa.exercises.records = 0)).holds).to.equal(false);
+    expect(exercised((pa) => delete pa.exercises.accepted).holds).to.equal(false);
+    expect(
+      exercised((pa) => (pa.selfHostedPath.record = "evidence/zk/sp1-impl/proof-exercises/other.json")).holds,
+    ).to.equal(false);
+    expect(exercised((pa) => (pa.selfHostedPath.requirements = [])).holds).to.equal(false);
+    expect(exercised((pa) => (pa.archives.records = 0)).holds).to.equal(false);
+    // The exercised facts without the exercised status, the one on-disk record under another name, and the
+    // archived state claiming a recorded exercise it has not got on disk: none holds.
+    expect(exercised((pa) => (pa.status = "ARCHIVED_VERIFIED_UNEXERCISED")).holds).to.equal(false);
+    expect(exercised(() => undefined, ["evidence/zk/sp1-impl/proof-exercises/other.json"]).holds).to.equal(false);
+    expect(archived((pa) => (pa.exercises.records = 1)).holds).to.equal(false);
+    // The archived state with an exercise record on disk that the availability record does not account for.
+    expect(archived(() => undefined, [record], [exercise]).holds).to.equal(false);
   });
 
   it("a WalletWall archive or a changed proving availability breaks the archive assumption behind rustls's condition", function () {
@@ -1121,6 +1164,7 @@ describe("SP1 host advisory record — each check refuses on its own", function 
     hostLock: parseCargoLock(s.locks.host as string),
     provingAvailability: s.provingAvailability?.doc ?? null,
     archiveRecords: s.archiveRecords,
+    exerciseRecords: s.exerciseRecords,
     ...over,
   });
   const obsOf = (s: AdvisoryState) => s.observation as NonNullable<AdvisoryState["observation"]>;

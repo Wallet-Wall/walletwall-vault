@@ -303,6 +303,8 @@ describe("SP1 implementation lane — proving availability (TD1-N9)", function (
     expect(record.status).to.equal(status);
     expect(status).to.equal(records.length === 0 ? "OWNER_DOWNLOAD_REQUIRED" : "ARCHIVED_VERIFIED_UNEXERCISED");
     expect(record.selfHostedPath.exercised).to.equal(false);
+    // SP1-PA3A: the exercise directory is judged too; it holds nothing, so the third state is not derived.
+    expect(record.exercises).to.deep.equal({ dir: "evidence/zk/sp1-impl/proof-exercises", records: 0 });
     expect(record.expectedArtifacts.tarball.sha256).to.equal(
       records.length === 0 ? null : evidence?.record?.archive.sha256,
     );

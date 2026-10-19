@@ -1,33 +1,37 @@
 {
   "schema": "walletwall.sp1-circuit-tooling.v1",
-  "lane": "SP1-PA2B",
+  "lane": "SP1-PA3A",
   "amendment": "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
   "state": "ARCHIVED_VERIFIED_UNEXERCISED",
   "states": [
     {
       "state": "TOOLING_NOT_PRESENT",
       "meaning": "no WalletWall archive inspection, installer or prove gate exists (main before SP1-PA2A)",
-      "reachableInThisLane": true
+      "reachableInThisLane": true,
+      "reached": true
     },
     {
       "state": "TOOLING_READY_NO_ARTIFACT",
       "meaning": "the inspection, installer and archive-only prove gate exist and pass their self-test, and no WalletWall archive record exists",
-      "reachableInThisLane": true
+      "reachableInThisLane": true,
+      "reached": true
     },
     {
       "state": "ARCHIVED_VERIFIED_UNEXERCISED",
       "meaning": "an owner-authorized acquisition produced an accepted record (two agreeing hosts, two WalletWall mirrors, the gnark image by digest); no proof has been made from it",
-      "reachableInThisLane": true
+      "reachableInThisLane": true,
+      "reached": true
     },
     {
       "state": "SELF_HOSTED_PATH_EXERCISED",
-      "meaning": "a real Groth16 proof was made through this gate from the archive, egress off, and accepted by the designated verifier",
-      "reachableInThisLane": false
+      "meaning": "a real Groth16 proof was made through this gate from the archive, egress off, and accepted by the designated verifier: exactly one committed proof-exercise record, derived from the run and verification observations (SP1-PA3A built the derivation; the evidence is a later, owner-authorized lane's)",
+      "reachableInThisLane": true,
+      "reached": false
     }
   ],
   "provingAvailability": {
     "path": "evidence/zk/sp1-impl/proving-availability.json",
-    "sha256": "82bc0c5dfa2f5108afe663f71fdee3f274d397e2a3057445076fe2038c2cc668",
+    "sha256": "057d369ccec19535a1f20fe96407746989816a2983713ab464676a20f5c5785a",
     "status": "ARCHIVED_VERIFIED_UNEXERCISED",
     "consistentWithArchiveEvidence": true
   },
@@ -697,6 +701,27 @@
       "CIRCUIT_INTEGRITY_FAILED_AFTER_PROVE",
       "PROOF_OUTPUT_REFUSED"
     ]
+  },
+  "exercise": {
+    "state": "NO_RECORD",
+    "authoritativeDir": "evidence/zk/sp1-impl/proof-exercises",
+    "schema": "walletwall.sp1-proof-exercise.v1",
+    "jsonSchema": {
+      "path": "evidence/zk/schema/sp1-proof-exercise.v1.schema.json",
+      "sha256": "a8863f4ac2a94205db51439e42d05d59cfeb0626515a7a2235936c2ae06eff62"
+    },
+    "derivation": "two committed observations (the measured gate run, scripts/measure-sp1-proof-exercise.ts; the designated verifier's acceptance, scripts/verify-sp1-proof-exercise.ts) derive the record (npm run sp1:proof-exercise-record), never a hand-written one; the state follows from the record, and a record that any invariant refuses derives no state at all",
+    "requires": [
+      "exactly one record in evidence/zk/sp1-impl/proof-exercises, named after the designation, byte for byte what the committed observations derive (never written by hand), committed with them",
+      "exactly one run observation (scripts/measure-sp1-proof-exercise.ts, bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable by sha256 (the canonical-build host binary the committed canonical rebuild observation names for the designated host tree), the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable",
+      "network egress refused within ten minutes before and after the gate run: at the archive's upstream host and the image registry by name and by TCP 443, and by a refused connection at the acquisitions' upstream addresses and two canary addresses (TCP 443), with the enforcement stated",
+      "a possible wall time (the host run inside the gate run, positive whole seconds that match the stamps) and a positive peak-memory measurement of the host process and of the gnark containers",
+      "a proof naming the designated PROGRAM_VKEY whose first four bytes are the designated verifying key's selector, with its public values' and bytes' sha256",
+      "exactly one verification observation (scripts/verify-sp1-proof-exercise.ts, bound by sha256) binding the run observation's committed bytes and the proof's digests, in which the designation's verifier (the CREATE2-authenticated v6.1.0 runtime, its code hash checked at the called address) accepted the proof and refused its tampered copy",
+      "the run's source commit in this repository's history and holding what the run claims it ran from (the designated host tree, the archive record and the measurement tool as committed), and this repository's identity; observations and records committed as regular LF files in their directories",
+      "the accepted archive record still accepted: exercise evidence without it derives no state"
+    ],
+    "record": null
   },
   "selfTest": {
     "fixtures": [
@@ -1555,5 +1580,5 @@
     "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound; archive provenance is where the bytes came from, never cryptographic soundness",
     "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED"
   ],
-  "next": "SP1-PA3: install exclusively from the committed verified archive, with the digest-pinned gnark image, network egress off; one real Groth16 proof of the designated program, verified through the designated verifier path, with peak memory and wall time recorded against the 2-day rotation delay; only then SELF_HOSTED_PATH_EXERCISED"
+  "next": "SP1-PA3B (owner-authorized): install exclusively from the committed verified archive, with the digest-pinned gnark image in the local store and network egress off; one real Groth16 proof of the designated program through sp1:measure-proof-exercise (the archive-only gate under measurement), verified through sp1:verify-proof-exercise (the designated verifier path), the two observations committed, the record derived by sp1:proof-exercise-record; only then SELF_HOSTED_PATH_EXERCISED, from facts"
 }

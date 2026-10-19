@@ -1217,12 +1217,18 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
     });
 
     it("toolingState: the self-test, then the archive evidence; a refused record derives no state", function () {
-      expect(toolingState({ selfTestPassed: false, archive: noRecord })).to.equal("TOOLING_NOT_PRESENT");
-      expect(toolingState({ selfTestPassed: true, archive: noRecord })).to.equal("TOOLING_READY_NO_ARTIFACT");
-      expect(toolingState({ selfTestPassed: true, archive: accepted })).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
-      expect(() => toolingState({ selfTestPassed: true, archive: refused })).to.throw(/no state is derivable/);
+      // No proof-exercise evidence (SP1-PA3A): the archive evidence alone decides between the first three states.
+      const exercise = { records: [], record: null, observations: [], errors: [] };
+      expect(toolingState({ selfTestPassed: false, archive: noRecord, exercise })).to.equal("TOOLING_NOT_PRESENT");
+      expect(toolingState({ selfTestPassed: true, archive: noRecord, exercise })).to.equal("TOOLING_READY_NO_ARTIFACT");
+      expect(toolingState({ selfTestPassed: true, archive: accepted, exercise })).to.equal(
+        "ARCHIVED_VERIFIED_UNEXERCISED",
+      );
+      expect(() => toolingState({ selfTestPassed: true, archive: refused, exercise })).to.throw(
+        /no state is derivable/,
+      );
       expect(archiveEvidenceState({ ...accepted, errors: ["x"] })).to.equal("REFUSED");
-      expect(() => toolingState({ selfTestPassed: true, archive: { ...noRecord, errors: ["x"] } })).to.throw(
+      expect(() => toolingState({ selfTestPassed: true, archive: { ...noRecord, errors: ["x"] }, exercise })).to.throw(
         /no state is derivable/,
       );
       expect(availabilityStatusesFor("ARCHIVED_VERIFIED_UNEXERCISED")).to.deep.equal(["ARCHIVED_VERIFIED_UNEXERCISED"]);
