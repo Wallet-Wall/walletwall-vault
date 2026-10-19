@@ -50,6 +50,7 @@ import {
 } from "../scripts/lib/sp1-circuit-acquisition";
 import {
   AGREES,
+  APPLEDOUBLE_ROOT,
   PROVENANCE_ENTRIES,
   PROVENANCE_PAX_KEY,
   PROVING_ARCHIVES_DIR,
@@ -59,6 +60,7 @@ import {
   type ArchiveRecord,
 } from "../scripts/lib/sp1-circuit-archive";
 import {
+  APPLEDOUBLE_BODY,
   SYNTHETIC_ANCHOR,
   UPSTREAM_SHAPED_FILES,
   appleDoubleMetadata,
@@ -133,9 +135,15 @@ function observation(
       { tool: "openssl", sha256: ARCHIVE.sha256 },
     ],
     inspection: {
-      members: membersOf(UPSTREAM_SHAPED_FILES),
+      // In archive order, as the inspector reports them (never sorted): the record sorts.
+      members: UPSTREAM_SHAPED_FILES.map(([path, data]) => ({ path, bytes: data.length, sha256: sha256(data) })),
       directories: [],
-      metadata: appleDoubleMetadata(UPSTREAM_SHAPED_FILES),
+      metadata: [APPLEDOUBLE_ROOT, ...UPSTREAM_SHAPED_FILES.map(([p]) => `._${p}`)].map((path) => ({
+        path,
+        bytes: APPLEDOUBLE_BODY.length,
+        sha256: sha256(APPLEDOUBLE_BODY),
+        disposition: "IGNORED_APPLEDOUBLE_METADATA" as const,
+      })),
       provenance: PROVENANCE_ENTRIES.map((e) => ({
         entry: e.path === "" ? "." : e.path,
         key: PROVENANCE_PAX_KEY,
@@ -199,11 +207,12 @@ const hostA = () =>
     finished: "2026-10-17T22:22:39Z",
     measured: "2026-10-18T23:58:29Z",
   });
+// Host B acquired EARLIER than host A here, so the record's acquisition time is the earliest transfer, not host A's.
 const hostB = () =>
   observation("github-hosted-runner", {
-    started: "2026-10-19T00:02:00Z",
-    finished: "2026-10-19T00:03:20Z",
-    measured: "2026-10-19T00:08:00Z",
+    started: "2026-10-16T10:00:00Z",
+    finished: "2026-10-16T10:01:20Z",
+    measured: "2026-10-16T10:05:00Z",
   });
 
 function mirror(location: string, urlHost: string): MirrorObservation {
@@ -383,6 +392,25 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       // A Docker manifest list is an index too.
       const list = fakeRegistry({ indexMediaType: DOCKER_MANIFEST_LIST });
       expect((await resolveImageTag(IMAGE, list.fetchImpl)).index.mediaType).to.equal(DOCKER_MANIFEST_LIST);
+      // An index that lists no platform image manifest (attestations only) resolves to no image at all.
+      const bare = fakeRegistry();
+      const noPlatform = Buffer.from(JSON.stringify({ schemaVersion: 2, mediaType: OCI_INDEX, manifests: [] }));
+      const onlyAttestations: Fetch = (url, init) =>
+        url.endsWith("/manifests/v6.1.0")
+          ? Promise.resolve(
+              new Response(noPlatform, {
+                status: 200,
+                headers: { "docker-content-digest": `sha256:${sha256(noPlatform)}`, "content-type": OCI_INDEX },
+              }),
+            )
+          : bare.fetchImpl(url, init);
+      message = "";
+      try {
+        await resolveImageTag(IMAGE, onlyAttestations);
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).to.match(/lists no platform image manifest/);
     });
 
     it("parses only fully qualified registry/repository:tag references", function () {
@@ -433,6 +461,11 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       );
       expect(errorsOf((a) => (a.transfer.finishedAtUtc = "2026-10-17T22:00:00Z"))).to.include("TRANSFER_FIELD");
       expect(errorsOf((a) => (a.measuredAtUtc = "2026-10-17T22:20:00Z"))).to.include("OBSERVATION_FIELD");
+      expect(errorsOf((a) => (a.measuredAtUtc = "yesterday"))).to.include("OBSERVATION_FIELD");
+      expect(errorsOf((a) => (a.transfer.sourceUrl = "http://upstream.invalid/v6.1.0-groth16.tar.gz"))).to.include(
+        "TRANSFER_FIELD",
+      );
+      expect(errorsOf((a) => (a.gnark.observedAtUtc = "soon"))).to.include("GNARK_FIELD");
       expect(errorsOf((a) => delete (a.transfer.responseHeaders as any).etag)).to.include("TRANSFER_FIELD");
       // A null Content-Length (a server that sent none) is allowed: the measured length is the fact.
       expect(errorsOf((a) => (a.transfer.responseHeaders.contentLength = null))).to.deep.equal([]);
@@ -464,6 +497,9 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
     it("needs the census of this copy to be the committed census", function () {
       expect(errorsOf((a) => (a.census.sha256 = sha256("another census")))).to.include("CENSUS_MISMATCH");
       expect(errorsOf((a) => ((a as any).census = null))).to.include("CENSUS_MISSING");
+      expect(errorsOf((a) => (a.census.entries = -1))).to.include("CENSUS_MISSING");
+      expect(errorsOf((a) => (a.census.decompressedBytes = 1.5))).to.include("CENSUS_MISSING");
+      expect(errorsOf((a) => (a.census.appleDoubleEntries = "8" as never))).to.include("CENSUS_MISSING");
     });
 
     it("needs the pinned prover's image resolved to one immutable index with one linux/amd64 manifest, fetched by digest", function () {
@@ -483,6 +519,10 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
         errorsOf((a) => (a.gnark.index.manifests[0].platform = { architecture: "arm64", os: "linux" })),
       ).to.include("GNARK_PLATFORM_AMBIGUOUS");
       expect(errorsOf((a) => (a.gnark.platforms = []))).to.include("GNARK_PLATFORM_UNRESOLVED");
+      expect(errorsOf((a) => (a.gnark.platforms[0].config.digest = "sha256:short"))).to.include(
+        "GNARK_PLATFORM_UNRESOLVED",
+      );
+      expect(errorsOf((a) => (a.gnark.index.bytes = 0))).to.include("GNARK_FIELD");
       expect(errorsOf((a) => (a.gnark.platforms[0].digest = `sha256:${"1".repeat(64)}`))).to.include(
         "GNARK_PLATFORM_UNRESOLVED",
       );
@@ -503,6 +543,11 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
 
     it("needs at least two observations from distinct host labels", function () {
       expect(reasons(acquisitionErrors([hostA()], [mirrorA(), mirrorB()], EXPECT))).to.include("ACQUISITIONS_MISSING");
+      // A malformed observation is reported, never compared: the cross-host rules run only over observations that
+      // passed their own checks, so a null or a refused copy cannot make the comparison throw.
+      expect(reasons(acquisitionErrors([null, hostB()], [mirrorA(), mirrorB()], EXPECT))).to.deep.equal([
+        "OBSERVATION_SHAPE",
+      ]);
       expect(agreementOf((_a, b) => (b.host = "developer-workstation"))).to.include("ACQUISITION_NOT_INDEPENDENT");
       // One host relabeled as another: the same transfer window and platform lines are two observations only in name.
       expect(
@@ -542,9 +587,13 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(agreementOf((_a, b) => (b.inspection.provenance = b.inspection.provenance.slice(1)))).to.include(
         "HOSTS_DISAGREE",
       );
-      expect(agreementOf((_a, b) => (b.inspection.members[0].sha256 = sha256("tampered member")))).to.include(
-        "HOSTS_DISAGREE",
-      );
+      // A member other than the verifying key (which the per-observation layer binds on its own): the proving key.
+      expect(
+        agreementOf((_a, b) => {
+          const pk = b.inspection.members.find((m) => m.path === "groth16_pk.bin") as { sha256: string };
+          pk.sha256 = sha256("tampered member");
+        }),
+      ).to.include("HOSTS_DISAGREE");
       expect(
         agreementOf((_a, b) => (b.gnark.platforms[0].config.digest = `sha256:${sha256("other config")}`)),
       ).to.include("HOSTS_DISAGREE");
@@ -598,6 +647,9 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(mirrorErrors((m) => (m.fetch.urlPath = "/obj?X-Goog-Signature=abc"))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.schema = "walletwall.sp1-circuit-mirror.v0"))).to.include("MIRROR_SCHEMA");
       expect(mirrorErrors((m) => (m.control = ""))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => (m.location = ` ${m.location}`))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => (m.host = "Host A"))).to.include("MIRROR_FIELD");
+      expect(mirrorErrors((m) => (m.measuredAtUtc = "never"))).to.include("MIRROR_FIELD");
       expect(mirrorErrors((m) => (m.measuredAtUtc = "2026-10-19T00:55:00Z"))).to.include("MIRROR_FIELD");
       expect(reasons(mirrorObservationErrors("not an object", 0, archive, SCRIPTS.mirror))).to.deep.equal([
         "MIRROR_SHAPE",
@@ -612,7 +664,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       expect(r.subject.verifyingKey).to.deep.equal({ file: VK_FILE, ...SYNTHETIC_ANCHOR.verifyingKey });
       expect(r.archive).to.deep.include({
         ...ARCHIVE,
-        acquiredAtUtc: "2026-10-17T22:22:39Z",
+        acquiredAtUtc: "2026-10-16T10:01:20Z",
         sourceUrl: UPSTREAM,
         sourceUrlRole: "PROVENANCE_ONLY",
       });
@@ -753,6 +805,18 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       d = repo();
       writeFileSync(join(d, PROVING_ARCHIVES_DIR, "another.json"), "{}\n");
       refused(d, /must hold exactly/);
+      // A stray file that sorts after the record is a second file all the same.
+      d = repo();
+      writeFileSync(join(d, PROVING_ARCHIVES_DIR, "zzz-stray.json"), "{}\n");
+      refused(d, /must hold exactly/);
+      // A file in the observations directory that is not a mirror observation (another suffix) is not one.
+      d = repo();
+      writeFileSync(join(d, OBSERVATIONS_DIR, "circuit-archive-mirror-notes.txt"), "not an observation\n");
+      writeFileSync(join(d, OBSERVATIONS_DIR, "circuit-archive-mirror-c.json"), "{}\n");
+      expect(mirrorObservationsIn(d)).to.deep.equal([
+        `${OBSERVATIONS_DIR}/circuit-archive-mirror-a.raw.json`,
+        `${OBSERVATIONS_DIR}/circuit-archive-mirror-b.raw.json`,
+      ]);
       d = repo();
       rmSync(join(d, ACQUISITION_OBSERVATIONS_REL[1]));
       refused(d, /observations are missing/);
@@ -778,6 +842,17 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
       a.platform.push("edited after the commit");
       writeFileSync(join(d, ACQUISITION_OBSERVATIONS_REL[0]), serializeJson(a));
       refused(d, /not as committed: UNCOMMITTED/);
+      // Observations that agree with each other but describe members the record validator refuses (a traversal
+      // path on both hosts): the derived record is refused by the PA2A validator, independently of the agreement.
+      d = repo();
+      for (const rel of ACQUISITION_OBSERVATIONS_REL) {
+        const o = JSON.parse(readFileSync(join(d, rel), "utf8")) as AcquisitionObservation;
+        o.inspection.members.push({ path: "../escaped.bin", bytes: 1, sha256: sha256("escaped") });
+        writeFileSync(join(d, rel), serializeJson(o));
+      }
+      git(d, "add", "-A");
+      git(d, "commit", "-q", "-m", "a traversal member on both hosts");
+      refused(d, /derived record refused: MEMBER_PATH_INVALID/);
     });
   });
 

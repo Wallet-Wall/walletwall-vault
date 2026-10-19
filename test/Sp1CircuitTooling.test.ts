@@ -10,7 +10,7 @@
 import { expect } from "chai";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
@@ -35,6 +35,7 @@ import {
 import {
   ARCHIVE_JSON_SCHEMA_REL,
   CENSUS_OBSERVATIONS_REL,
+  NOT_ESTABLISHED_ARCHIVED,
   STATES,
   TOOLING_REL,
   TOOLING_SCHEMA,
@@ -51,19 +52,35 @@ import {
   environmentReads,
   gateCoverageErrors,
   measureUpstream,
+  pinnedGnarkImage,
   productionAnchor,
   readUpstreamFacts,
+  serializeTooling,
   toolingErrors,
+  toolingRecordFromRepo,
   toolingState,
   uncommittedEvidenceError,
   upstreamObservationErrors,
   type UpstreamObservation,
 } from "../scripts/lib/sp1-circuit-tooling";
 import {
+  ACQUISITION_OBSERVATIONS_REL,
+  MIRROR_SCHEMA,
+  MIRROR_SCRIPT_REL,
+  OBSERVATIONS_DIR,
+  acquisitionExpectations,
+  deriveArchiveRecord,
+  mirrorObservationsIn,
+  productionRecordRel,
+  serializeJson,
+} from "../scripts/lib/sp1-circuit-acquisition";
+import {
   PROVING_ARCHIVES_DIR,
   PROVING_AVAILABILITY_REL,
   archiveRecordsIn,
   provingAvailabilityErrors,
+  provingAvailabilityFromRepo,
+  serializeProvingAvailability,
 } from "../scripts/lib/sp1-proving-availability";
 import { refusalOf, symlinkOrSkip, tempDirs } from "./helpers/circuit-tooling";
 
@@ -236,6 +253,108 @@ describe("SP1-PA2A circuit tooling contract", function () {
       mkdirSync(join(repo, PROVING_ARCHIVES_DIR), { recursive: true });
       if (archiveRecordsIn(repo).length === 0) writeFileSync(stray, "{}\n");
       else writeFileSync(join(repo, PROVING_ARCHIVES_DIR, "stray.json"), "{}\n");
+      const errors = await toolingErrors(repo);
+      expect(errors).to.have.length(1);
+      expect(errors[0]).to.match(/no state is derivable/);
+    });
+
+    it("derives ARCHIVED_VERIFIED_UNEXERCISED in a repository holding the record the committed observations derive", async function () {
+      this.timeout(300_000);
+      const present = ACQUISITION_OBSERVATIONS_REL.every((rel) => existsSync(resolve(rel)));
+      if (!present) this.skip();
+      const repo = dirs.make();
+      for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock", "package.json"]) {
+        cpSync(resolve(p), join(repo, p), { recursive: true });
+      }
+      const git = (...args: string[]) => {
+        const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
+        if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+        return r.stdout;
+      };
+      git("init", "-q");
+      git("config", "user.email", "test@example.invalid");
+      git("config", "user.name", "test");
+      git("config", "commit.gpgsign", "false");
+      // Two synthetic mirror observations of the REAL archive (locations that are plainly not mirrors): the record
+      // then derives from the real acquisition observations, and every dependent record follows from it.
+      const input = { anchor: productionAnchor(repo), gnarkImage: pinnedGnarkImage(repo) };
+      const expectation = acquisitionExpectations(repo, input);
+      const real = JSON.parse(read(ACQUISITION_OBSERVATIONS_REL[0]).toString("utf8"));
+      const mirror = (id: string, location: string, urlHost: string) =>
+        writeFileSync(
+          join(repo, OBSERVATIONS_DIR, `circuit-archive-mirror-${id}.raw.json`),
+          serializeJson({
+            schema: MIRROR_SCHEMA,
+            host: "developer-workstation",
+            measuredAtUtc: "2026-10-19T01:00:00Z",
+            tool: { script: MIRROR_SCRIPT_REL, scriptSha256: expectation.scripts.mirror },
+            location,
+            control: "TEST ONLY: a synthetic location in a temporary repository, never committed",
+            fetch: {
+              urlHost,
+              urlPath: "/test/v6.1.0-groth16.tar.gz",
+              httpCode: 200,
+              startedAtUtc: "2026-10-19T00:50:00Z",
+              finishedAtUtc: "2026-10-19T00:59:00Z",
+              responseHeaders: { lastModified: null, etag: null, contentLength: real.archive.bytes },
+            },
+            bytes: real.archive.bytes,
+            sha256: real.archive.sha256,
+            expected: { bytes: real.archive.bytes, sha256: real.archive.sha256 },
+            agreement: "AGREES",
+          }),
+        );
+      mirror(
+        "test-a",
+        "gs://walletwall-test-only-not-a-mirror-a/v6.1.0-groth16.tar.gz#generation=0",
+        "storage.googleapis.com",
+      );
+      mirror("test-b", "r2://walletwall-test-only-not-a-mirror-b/v6.1.0-groth16.tar.gz", "test-b.r2.invalid");
+      const observations = ACQUISITION_OBSERVATIONS_REL.map((rel) => JSON.parse(read(rel).toString("utf8")));
+      const record = deriveArchiveRecord(
+        observations,
+        mirrorObservationsIn(repo).map((rel) => JSON.parse(readFileSync(join(repo, rel), "utf8"))),
+        expectation,
+      );
+      mkdirSync(join(repo, PROVING_ARCHIVES_DIR), { recursive: true });
+      writeFileSync(join(repo, productionRecordRel(input.anchor)), serializeJson(record));
+      git("add", "-A");
+      git("commit", "-q", "-m", "the record");
+      // Availability must follow the record, else the pair is stale.
+      expect(await toolingErrors(repo)).to.deep.equal([
+        "proving availability is OWNER_DOWNLOAD_REQUIRED, but the archive evidence derives ARCHIVED_VERIFIED_UNEXERCISED: regenerate it (npm run sp1:proving-availability)",
+      ]);
+      const pa = provingAvailabilityFromRepo(repo);
+      expect(pa.status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(pa.selfHostedPath.exercised).to.equal(false);
+      expect(pa.archives).to.deep.include({ records: 1 });
+      expect(pa.archives.accepted?.record).to.equal(productionRecordRel(input.anchor));
+      expect(pa.archives.accepted?.mirrors).to.have.length(2);
+      expect(pa.expectedArtifacts.tarball).to.deep.include({
+        sha256: record.archive.sha256,
+        status: "ARCHIVED_VERIFIED",
+      });
+      expect(pa.expectedArtifacts.gnark.imageDigest).to.equal(record.gnark.digest);
+      writeFileSync(join(repo, PROVING_AVAILABILITY_REL), serializeProvingAvailability(pa));
+      expect(provingAvailabilityErrors(repo)).to.deep.equal([]);
+      const tooling = await toolingRecordFromRepo(repo);
+      expect(tooling.state).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(tooling.lane).to.equal("SP1-PA2B");
+      const acquisition = tooling.acquisition as { state: string; record: string; mirrors: string[]; members: number };
+      expect(acquisition.state).to.equal("ACCEPTED");
+      expect(acquisition.record).to.equal(productionRecordRel(input.anchor));
+      expect(acquisition.members).to.equal(7);
+      expect((tooling.archiveRecord as { productionRecords: number }).productionRecords).to.equal(1);
+      expect(tooling.notEstablished).to.deep.equal(NOT_ESTABLISHED_ARCHIVED);
+      writeFileSync(join(repo, TOOLING_REL), serializeTooling(tooling));
+      git("add", "-A");
+      git("commit", "-q", "-m", "availability and tooling");
+      expect(await toolingErrors(repo)).to.deep.equal([]);
+      // And the record alone, uncommitted after an edit, derives no state again.
+      writeFileSync(
+        join(repo, productionRecordRel(input.anchor)),
+        serializeJson({ ...record, mirrors: [...record.mirrors].reverse() }),
+      );
       const errors = await toolingErrors(repo);
       expect(errors).to.have.length(1);
       expect(errors[0]).to.match(/no state is derivable/);

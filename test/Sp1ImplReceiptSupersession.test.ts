@@ -19,7 +19,9 @@ import {
   IMPL_SUPERSESSION_SCHEMA,
   LIVE_AVAILABILITY_STATUSES,
   SUPERSEDABLE_STATUSES,
+  boundSupersession,
   implSupersessionErrors,
+  provingAvailabilityInputs,
   readImplSupersession,
   type ImplSupersession,
   type LiveAvailability,
@@ -40,22 +42,35 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
    *  and admits the record (l1: the archive record and an archived availability). HEAD is the lane. */
   function world() {
     const d = dirs.make("sp1-supersession-");
-    const git = (...args: string[]) =>
-      execFileSync(
-        "git",
-        [
-          "-c",
-          "core.autocrlf=false",
-          "-c",
-          "commit.gpgsign=false",
-          "-c",
-          "user.email=t@example.invalid",
-          "-c",
-          "user.name=t",
-          ...args,
-        ],
-        { cwd: d, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-      ).trim();
+    const git = (...args: string[]): string => {
+      const run = () =>
+        execFileSync(
+          "git",
+          [
+            "-c",
+            "core.autocrlf=false",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "user.email=t@example.invalid",
+            "-c",
+            "user.name=t",
+            ...args,
+          ],
+          { cwd: d, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
+        ).trim();
+      // On Windows a scanner can hold a just-written object file for a moment, and git's rename into .git/objects
+      // then fails with "Permission denied". That is the host, not the code under test: retry it, and only it.
+      for (let attempt = 1; ; attempt++) {
+        try {
+          return run();
+        } catch (error) {
+          const stderr = String((error as { stderr?: unknown }).stderr ?? "");
+          if (attempt === 5 || !/unable to write file \.git\/objects\/.*: Permission denied/.test(stderr)) throw error;
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200 * attempt);
+        }
+      }
+    };
     const write = (rel: string, text: string) => {
       mkdirSync(dirname(join(d, rel)), { recursive: true });
       writeFileSync(join(d, rel), text);
@@ -195,6 +210,34 @@ describe("SP1-PA2B: the implementation receipt's supersession", function () {
         }),
       ),
     ).to.match(/does not exist/);
+  });
+
+  it("derives the superseded availability at the historical subject, read from git, and binds the supersession before the receipt", function () {
+    this.timeout(60_000);
+    const w = world();
+    // Live: the working tree's bytes, judged by the live validator (in this tiny repository: invalid, no status).
+    const live = provingAvailabilityInputs(w.d, null);
+    expect(live.bytes.toString()).to.equal('{"status":"ARCHIVED_VERIFIED_UNEXERCISED"}\n');
+    expect(live.errors.length).to.be.greaterThan(0);
+    expect(live.status).to.equal(null);
+    // Superseded: the file as the historical subject committed it, its status, and no live errors.
+    const then = provingAvailabilityInputs(w.d, { commit: w.m1 });
+    expect(then).to.deep.equal({
+      errors: [],
+      status: "OWNER_DOWNLOAD_REQUIRED",
+      bytes: Buffer.from('{"status":"OWNER_DOWNLOAD_REQUIRED"}\n'),
+    });
+    expect(provingAvailabilityInputs(w.d, { commit: w.l1 }).status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+    expect(() => provingAvailabilityInputs(w.d, { commit: "0".repeat(40) })).to.throw();
+    // The binding: none while no supersession is filed; the subject when it validates; a refusal naming the reasons.
+    expect(boundSupersession(w.d, ARCHIVED)).to.equal(null);
+    w.write(IMPL_SUPERSESSION_REL, `${JSON.stringify(w.supersession(), null, 2)}\n`);
+    expect(boundSupersession(w.d, ARCHIVED)).to.deep.equal({ commit: w.m1 });
+    expect(() => boundSupersession(w.d, { errors: [], status: "OWNER_DOWNLOAD_REQUIRED" })).to.throw(
+      /receipt-supersession\.json is invalid: proving availability is still OWNER_DOWNLOAD_REQUIRED/,
+    );
+    w.write(IMPL_SUPERSESSION_REL, `${JSON.stringify(w.supersession({ historicalSubject: w.l1 }), null, 2)}\n`);
+    expect(() => boundSupersession(w.d, ARCHIVED)).to.throw(/no commit of origin\/main's first-parent history/);
   });
 
   it("the committed repository holds no supersession while proving availability is not archived", function () {

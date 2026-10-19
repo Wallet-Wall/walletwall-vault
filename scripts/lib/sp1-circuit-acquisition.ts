@@ -514,11 +514,9 @@ function gnarkErrors(g: unknown, where: string, image: string, no: (reason: stri
     );
   }
   const idx = g.index;
-  if (
-    !isObject(idx) ||
-    !DIGEST.test(String(idx.digest)) ||
-    imageRefError(`${String(g.repository)}@${String(idx.digest)}`) !== null
-  ) {
+  // imageRefError refuses a malformed digest (MALFORMED_DIGEST) as well as a tag, an unqualified or malformed
+  // repository: it is the one check, the same the prove gate applies to SP1_GNARK_IMAGE.
+  if (!isObject(idx) || imageRefError(`${String(g.repository)}@${String(idx.digest)}`) !== null) {
     no("GNARK_NOT_DIGEST_PINNED", `${where}: the tag was not resolved to registry/repository@sha256:<digest>`);
     return;
   }
@@ -643,10 +641,12 @@ export function acquisitionErrors(
     if (hosts.has(o.host)) no("ACQUISITION_NOT_INDEPENDENT", `host ${o.host} is counted twice`);
     hosts.add(o.host);
   }
+  // Every observation passed its own checks above, which already bind two facts to constants on every host: the
+  // archive's file name (the anchor's circuit version) and the census (the committed census). Those cannot differ
+  // between hosts that both passed, so only the measured facts are compared here.
   const first = obs[0];
   obs.slice(1).forEach((o, k) => {
     const where = `observations[${k + 1}] (${o.host})`;
-    if (o.archive.file !== first.archive.file) no("HOSTS_DISAGREE", `${where} acquired another file name`);
     if (o.archive.bytes !== first.archive.bytes || o.archive.sha256 !== first.archive.sha256) {
       no(
         "HOSTS_DISAGREE",
@@ -657,8 +657,6 @@ export function acquisitionErrors(
       no("HOSTS_DISAGREE", `${where} acquired from another URL`);
     if (!same(o.inspection, first.inspection))
       no("HOSTS_DISAGREE", `${where}: the inspection differs from ${first.host}'s`);
-    if (o.census.sha256 !== first.census.sha256)
-      no("HOSTS_DISAGREE", `${where}: the census differs from ${first.host}'s`);
     if (o.gnark.index.digest !== first.gnark.index.digest)
       no("HOSTS_DISAGREE", `${where}: the tag resolved to another index than on ${first.host}`);
     if (!same(o.gnark.platforms, first.gnark.platforms))

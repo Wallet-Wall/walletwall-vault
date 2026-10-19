@@ -1418,6 +1418,39 @@ export function liveAvailability(repoRoot = "."): LiveAvailability {
   return { errors, status: errors.length === 0 ? provingAvailabilityFromRepo(repoRoot).status : null };
 }
 
+/**
+ * The proving-availability inputs the receipt derives from: live (the working tree, validated), or, once superseded,
+ * the file as the historical subject committed it, read from git, with the status it names there and no live errors
+ * (the supersession already established that the record was valid and live at that commit).
+ */
+export function provingAvailabilityInputs(
+  repoRoot: string,
+  historical: { commit: string } | null,
+): LiveAvailability & { bytes: Buffer } {
+  if (historical === null) {
+    const live = liveAvailability(repoRoot);
+    return { ...live, bytes: readFileSync(resolve(repoRoot, PROVING_AVAILABILITY_REL)) };
+  }
+  const bytes = gitObjects(repoRoot, ["show", `${historical.commit}:${PROVING_AVAILABILITY_REL}`]);
+  const doc = JSON.parse(bytes.toString("utf8"));
+  return { errors: [], status: typeof doc?.status === "string" ? doc.status : null, bytes };
+}
+
+/**
+ * The validated supersession's historical subject, null while the receipt is live; an invalid supersession throws
+ * naming every reason (a descendant that files one cannot make the receipt derive by it).
+ */
+export function boundSupersession(
+  repoRoot = ".",
+  live: LiveAvailability = liveAvailability(repoRoot),
+): { commit: string } | null {
+  const supersession = readImplSupersession(repoRoot);
+  if (supersession === null) return null;
+  const bad = implSupersessionErrors(supersession, readFileSync(resolve(repoRoot, IMPL_RECEIPT_REL)), repoRoot, live);
+  if (bad.length > 0) throw new Error(`${IMPL_SUPERSESSION_REL} is invalid: ${bad.join("; ")}`);
+  return { commit: (supersession as ImplSupersession).historicalSubject };
+}
+
 /** Every reason `value` is not a valid supersession of the committed receipt bytes in this repository. */
 export function implSupersessionErrors(
   value: unknown,
@@ -1610,10 +1643,9 @@ export async function readImplReceiptInputs(
       `${REAL_PROOF_RECORDS_DIR}: real-proof records have no validator in this lane; a lane must define and validate them before they count`,
     );
   }
+  const proving = provingAvailabilityInputs(repoRoot, historical);
   const read = (rel: string) =>
-    historical !== null && rel === PROVING_AVAILABILITY_REL
-      ? gitObjects(repoRoot, ["show", `${historical.commit}:${rel}`])
-      : readFileSync(resolve(repoRoot, rel));
+    rel === PROVING_AVAILABILITY_REL ? proving.bytes : readFileSync(resolve(repoRoot, rel));
 
   const td1 = JSON.parse(read(TD1_RECEIPT_REL).toString("utf8"));
   const td2 = JSON.parse(read(TD2_RECORD_REL).toString("utf8"));
@@ -1641,14 +1673,6 @@ export async function readImplReceiptInputs(
     ? git(repoRoot, ["ls-files", "--", canonRecords]).split("\n").filter(Boolean).sort()
     : [];
 
-  // Superseded: the status the receipt derived at its historical subject, as the supersession validated it there.
-  const provingErrors = historical === null ? provingAvailabilityErrors(repoRoot) : [];
-  const provingStatus =
-    historical !== null
-      ? String(JSON.parse(read(PROVING_AVAILABILITY_REL).toString("utf8")).status)
-      : provingErrors.length === 0
-        ? provingAvailabilityFromRepo(repoRoot).status
-        : null;
   const { abi, contract } = compiledWrapper(repoRoot);
   const contractsChanged = contractsChangedSince(repoRoot, baseCommit);
   const multisig = (Array.isArray(td2.authorizationCut) ? td2.authorizationCut : []).find(
@@ -1720,7 +1744,7 @@ export async function readImplReceiptInputs(
         )
         .map((b) => b.hostId),
     },
-    proving: { status: provingStatus, errors: provingErrors },
+    proving: { status: proving.status, errors: proving.errors },
     ast: wrapperAstFacts(contract, abi),
     journalTypesAtBase: journalTypesInSource(git(repoRoot, ["show", `${baseCommit}:${WRAPPER_SOURCE}`])),
     contractsChanged,
@@ -1750,18 +1774,11 @@ export async function readBoundReceiptInputs(repoRoot = "."): Promise<ImplReceip
   if (record === null) throw new Error(errors.join("; "));
   const drift = descendantDriftErrors(repoRoot, record.descendantDriftBaseline);
   if (drift.length > 0) throw new Error(drift.join("; "));
-  const supersession = readImplSupersession(repoRoot);
-  let historical: { commit: string } | null = null;
-  if (supersession !== null) {
-    const bad = implSupersessionErrors(supersession, readFileSync(resolve(repoRoot, IMPL_RECEIPT_REL)), repoRoot);
-    if (bad.length > 0) throw new Error(`${IMPL_SUPERSESSION_REL} is invalid: ${bad.join("; ")}`);
-    historical = { commit: (supersession as ImplSupersession).historicalSubject };
-  }
   return readImplReceiptInputs(
     repoRoot,
     record.historicalReceipt.historicalLaneBase,
     record.historicalReceipt.writtenAt,
-    historical,
+    boundSupersession(repoRoot),
   );
 }
 
