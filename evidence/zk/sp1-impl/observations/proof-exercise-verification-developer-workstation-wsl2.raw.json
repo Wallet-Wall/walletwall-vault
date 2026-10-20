@@ -1,0 +1,37 @@
+{
+  "schema": "walletwall.sp1-proof-exercise-verification.v1",
+  "host": "developer-workstation-wsl2",
+  "measuredAtUtc": "2026-10-20T00:35:18Z",
+  "tool": {
+    "script": "scripts/verify-sp1-proof-exercise.ts",
+    "scriptSha256": "1af664236a277c7c854b76a5e56f8d69148c47f96e6ebc9377c214e61c41b656"
+  },
+  "run": {
+    "path": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
+    "sha256": "5cc66ed58a4a2cf8a9439737e3b6246b59710bab6f22357410def81e761db3ff"
+  },
+  "proof": {
+    "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+    "proofBytesSha256": "dfe975da331d53bee1485d55f032566fd43ddc0350904a30f74bcd83f7370eee"
+  },
+  "verifier": {
+    "version": "v6.1.0",
+    "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+    "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+  },
+  "checks": [
+    {
+      "chainId": "31337",
+      "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "mode": "AUTHENTICATED_RUNTIME_LOCAL",
+      "verdicts": {
+        "real": "success",
+        "tampered": "revert 0x7fcdd1f4"
+      },
+      "block": 1
+    }
+  ],
+  "acceptance": "ACCEPTED"
+}
