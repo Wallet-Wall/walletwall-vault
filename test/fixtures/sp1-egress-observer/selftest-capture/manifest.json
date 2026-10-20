@@ -1,0 +1,15 @@
+{
+  "schema": "walletwall.sp1-egress-observer-raw.v1",
+  "files": [
+    {
+      "name": "trace.txt",
+      "bytes": 15203,
+      "sha256": "556072219866bf5471f201de3dacd54f988a9f1aad1bde72e4957fdedb992936"
+    },
+    {
+      "name": "facts.json",
+      "bytes": 19301,
+      "sha256": "96f9a1435b0eb882df42a3fd3156e103d8a1ef144108f0d82d6f88415cd2c053"
+    }
+  ]
+}

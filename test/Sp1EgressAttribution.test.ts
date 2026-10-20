@@ -9,6 +9,8 @@
  * EDGE_PROBES_ONLY with nothing measured read into it. Research prototype. Not audited.
  */
 import { expect } from "chai";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { PassThrough } from "node:stream";
 
 import {
@@ -37,11 +39,12 @@ import {
   userDev,
   type Attribution,
   type NormEvent,
+  type HostExecutable,
   type ObserverEvidence,
   type ObserverExpectations,
   type RawEvidence,
 } from "../scripts/lib/sp1-egress-attribution";
-import { OBSERVER_SCRIPT_REL, formatCtl } from "../scripts/sp1-egress-observer";
+import { OBSERVER_SCRIPT_REL, formatCtl, sha256Hex } from "../scripts/sp1-egress-observer";
 import {
   BOOT_ID,
   CONTAINER_NETNS,
@@ -918,6 +921,62 @@ describe("SP1-PA3C — continuous egress attribution", function () {
     });
   });
 
+  describe("a real capture: the committed observer's self-test on the proving host's kernel", function () {
+    // Made as root on developer-workstation-wsl2 (6.18.33.1-microsoft-standard-WSL2): the self-test workload's TEST-NET
+    // connections and one DNS query, under a table refusing 192.0.2.0/24 only; reviewed for privacy before it was
+    // committed (the observer, nft, setpriv and node; the test user; private addresses). The kernel wrote LF bytes: a
+    // CRLF checkout of them is read back as written.
+    const DIR = "test/fixtures/sp1-egress-observer/selftest-capture";
+    const read = (f: string) => readFileSync(join(DIR, f), "latin1").replace(/\r\n/g, "\n");
+    const raw: RawEvidence = { trace: read("trace.txt"), facts: read("facts.json"), manifest: read("manifest.json") };
+    // The stand-in host the workload executes: the node binary, as stat named it on that host.
+    const host: HostExecutable = { path: "/opt/node/node-v24.16.0-linux-x64/bin/node", dev: "8:48", ino: 1021 };
+    const committed = sha256Hex(readFileSync(OBSERVER_SCRIPT_REL, "utf8").replace(/\r\n/g, "\n"));
+    const selfTest: ObserverExpectations = {
+      observerScriptSha256: committed,
+      mode: "SELF_TEST",
+      probes: (["before", "after"] as const).map((phase) => ({
+        phase,
+        kind: "tcp" as const,
+        target: "192.0.2.10:443",
+      })),
+      gate: null,
+      run: { commit: "0".repeat(40), host: "self-test" },
+    };
+
+    it("was made by the observer as committed (a change to the observer needs a new capture)", function () {
+      expect((JSON.parse(raw.facts) as { observer: { scriptSha256: string } }).observer.scriptSha256).to.equal(
+        committed,
+      );
+    });
+
+    it("reads every kernel line, normalizes to the pinned digest, and derives continuous, complete attribution", function () {
+      const o = normalizeObserverRaw(raw, host);
+      expect(o.normalizedSha256).to.equal("d0597999a55d97c16ac5e4911fc63ac7df1ec54cf43814aa1af64a94700a0db2");
+      const j = observerEvidenceErrors(o, selfTest);
+      expect(j.refusals).to.deep.equal([]);
+      const a = j.attribution as Attribution;
+      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([970, 983, 990]);
+      expect(a.attempts.map((x) => [x.scope, x.kind, `${x.dest?.addr}:${x.dest?.port}`, x.outcome])).to.deep.equal([
+        ["TOOL", "connect", "192.0.2.10:443", "REFUSED"],
+        ["PROOF", "send", "192.0.2.53:53", "REFUSED"],
+        ["TOOL", "connect", "192.0.2.10:443", "REFUSED"],
+      ]);
+      expect(a.attempts[1].dns?.qname).to.equal("pa3c-selftest.example");
+      expect(a.drops.map((d) => d.class)).to.deep.equal(["ATTEMPT_PACKET", "ATTEMPT_PACKET", "ATTEMPT_PACKET"]);
+      expect(reconcile(a.drops, a.markers, o.boundary)).to.deep.equal({ counted: 3, inner: 3, outer: 3, ok: true });
+      expect(assuranceOf(o, a)).to.deep.include({
+        level: "CONTINUOUS_ATTRIBUTED",
+        processAttribution: "COMPLETE",
+        unattributedEvents: 0,
+      });
+      // The same capture judged as a proof exercise's: another mode, refused.
+      expect(observerEvidenceErrors(o, { ...selfTest, mode: "RUN" }).refusals.map((r) => r.reason)).to.include(
+        "OBSERVER_MODE",
+      );
+    });
+  });
+
   // Each check below has a case in which it, and no other check, refuses: a weakened check is observed (mutation
   // testing found every one of these surviving a weakening while the broader cases above still passed).
   describe("every check, observed on its own", function () {
@@ -1236,7 +1295,8 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         for (const hooks of [
           { startOfWindow: decoy(TOOL, 1050) }, // the tool's, before HOST_SPAWN
           { afterWindow: decoy(TOOL, 1051) }, // the tool's, after HOST_EXIT
-          { duringProof: decoy(stranger, 1052) }, // inside, but not the tool's
+          { duringProof: decoy(stranger, 1052) }, // inside, but not the tool's (and its exec is not even committed)
+          { duringProof: decoy(HOST, 1054) }, // inside, the proof's own child: still the proof, not a second root
         ]) {
           const j = judge(normalize(standardRaw(hooks)));
           expect(j.refusals, Object.keys(hooks)[0]).to.deep.equal([]);
