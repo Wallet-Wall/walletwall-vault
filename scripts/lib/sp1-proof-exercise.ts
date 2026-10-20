@@ -1611,6 +1611,85 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
 }
 
 /**
+ * The record of the one exercise whose observations are committed and whose record is not, and where it goes (the v1
+ * slot for the v1 slot's observations, `<designation>.v2.<token>.json` for a v2 exercise's): what
+ * `npm run sp1:proof-exercise-record` writes, write-once. Throws naming why there is none: a directory the names
+ * refuse, no exercise without its record (a record is never derived twice) or more than one (one at a time), an
+ * exercise short of an observation, a generation already at MAX_RECORDS, observations not as committed, a run of
+ * another generation than its names say, or files named after another exercise than the run they hold.
+ */
+export function derivePendingExerciseRecord(
+  repoRoot: string,
+  input: ExerciseEvidenceInput,
+): { rel: string; record: ProofExerciseRecord } {
+  const archiveState = archiveEvidenceState(input.archive);
+  if (archiveState !== "ACCEPTED") {
+    throw new Error(`no accepted archive record (${archiveState}): nothing an exercise could have run from`);
+  }
+  const records = exerciseRecordsIn(repoRoot);
+  const dir = exerciseDirectoryOf(
+    records.map((rel) => rel.slice(PROOF_EXERCISES_DIR.length + 1)),
+    exerciseObservationNamesIn(repoRoot),
+    input.anchor.designation,
+  );
+  if (dir.errors.length > 0) {
+    throw new Error(`the exercise directory is refused, so no record is derived:\n - ${dir.errors.join("\n - ")}`);
+  }
+  const pending = dir.groups.filter((g) => g.record === null);
+  if (pending.length !== 1) {
+    throw new Error(
+      pending.length === 0
+        ? `nothing to derive: every committed exercise in ${OBSERVATIONS_DIR} already has its record (${records.join(", ") || "none"}); a record is never derived twice`
+        : `${pending.length} exercises have no record (${pending.map((g) => g.token ?? "the v1 slot").join(", ")}): derive one at a time`,
+    );
+  }
+  const g = pending[0];
+  const what = g.token === null ? "the v1 slot" : `exercise ${g.token}`;
+  if (g.runs.length !== 1 || g.verifications.length !== 1) {
+    throw new Error(
+      `${what} needs exactly one run observation and exactly one verification observation (it has ${g.runs.length} run, ${g.verifications.length} verification)`,
+    );
+  }
+  const held = dir.groups.filter((x) => x.generation === g.generation && x.record !== null).length;
+  if (held >= MAX_RECORDS[g.generation]) {
+    throw new Error(
+      `${PROOF_EXERCISES_DIR} already holds ${held} ${g.generation} record(s), the most the contract admits: a second needs it raised in its own lane`,
+    );
+  }
+  const dirty = uncommittedEvidenceError([g.runs[0], g.verifications[0]], repoRoot);
+  if (dirty !== null) {
+    throw new Error(`the observations are not as committed (the record binds their committed bytes): ${dirty}`);
+  }
+  const runText = lf(readFileSync(resolve(repoRoot, g.runs[0]), "utf8"));
+  const run = JSON.parse(runText);
+  const want = GENERATION_SCHEMAS[g.generation].run;
+  if (run?.schema !== want) {
+    const named =
+      run?.schema === RUN_SCHEMA_V2 && g.token === null
+        ? `: a v2 exercise's files are named after its token (${attributedExerciseFiles(input.anchor, String(run?.host), runText).run})`
+        : "";
+    throw new Error(`${g.runs[0]} holds ${String(run?.schema)}, but ${what} admits only a ${want} run${named}`);
+  }
+  if (g.token !== null && exerciseToken(runText) !== g.token) {
+    const right = attributedExerciseFiles(input.anchor, String(run?.host), runText);
+    throw new Error(
+      `${g.runs[0]} is exercise ${right.token}, not ${g.token}: name its files after it (${right.run}, ${right.verification}, ${right.record})`,
+    );
+  }
+  const verification = JSON.parse(lf(readFileSync(resolve(repoRoot, g.verifications[0]), "utf8")));
+  const record = deriveExerciseRecord(
+    run,
+    verification,
+    { runSha256: sha256(runText), verificationPath: g.verifications[0], runPath: g.runs[0] },
+    exerciseExpectations(repoRoot, input),
+  );
+  return {
+    rel: g.token === null ? exerciseRecordRel(input.anchor) : attributedExerciseRecordRel(input.anchor, g.token),
+    record,
+  };
+}
+
+/**
  * The state the exercise evidence is in, as the tooling record names it: NO_RECORD (nothing, and no history
  * withdrawn), ACCEPTED (every record accepted, one or many: two exercises are still one state) or REFUSED.
  */

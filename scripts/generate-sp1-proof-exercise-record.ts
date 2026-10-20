@@ -16,38 +16,25 @@
  * binds their committed bytes. No network, no docker, no proof: the observations are the measurements. Research
  * prototype. Not audited.
  */
-import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { uncommittedEvidenceError } from "./lib/committed-evidence";
 import { archiveEvidenceState, serializeJson } from "./lib/sp1-circuit-acquisition";
 import { committedProductionAnchor, productionArchiveEvidenceOf } from "./lib/sp1-circuit-tooling";
 import {
-  GENERATION_SCHEMAS,
-  MAX_RECORDS,
-  OBSERVATIONS_DIR,
   PROOF_EXERCISES_DIR,
   ROTATION_DELAY_SECONDS,
-  attributedExerciseFiles,
-  attributedExerciseRecordRel,
-  deriveExerciseRecord,
+  derivePendingExerciseRecord,
   egressAssuranceOfRecord,
-  exerciseDirectoryOf,
   exerciseEvidenceState,
-  exerciseExpectations,
   exerciseRecordRel,
-  exerciseRecordsIn,
-  exerciseToken,
   productionExerciseEvidence,
 } from "./lib/sp1-proof-exercise";
 import { runScript } from "./lib/run-script";
 import { writeNewFiles } from "./lib/write-once";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
-const sha256 = (b: string) => createHash("sha256").update(b).digest("hex");
-const lf = (text: string) => text.replace(/\r\n/g, "\n");
 
 runScript(async () => {
   const anchor = committedProductionAnchor(REPO);
@@ -82,68 +69,7 @@ runScript(async () => {
     );
     return;
   }
-  if (archiveState !== "ACCEPTED") {
-    throw new Error(`no accepted archive record (${archiveState}): nothing an exercise could have run from`);
-  }
-  const names = (rel: string) => {
-    try {
-      return readdirSync(resolve(REPO, rel));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-      throw error;
-    }
-  };
-  const dir = exerciseDirectoryOf(names(PROOF_EXERCISES_DIR), names(OBSERVATIONS_DIR), anchor.designation);
-  if (dir.errors.length > 0) {
-    throw new Error(`the exercise directory is refused, so no record is derived:\n - ${dir.errors.join("\n - ")}`);
-  }
-  const pending = dir.groups.filter((g) => g.record === null);
-  if (pending.length !== 1) {
-    throw new Error(
-      pending.length === 0
-        ? `nothing to derive: every committed exercise in ${OBSERVATIONS_DIR} already has its record (${exerciseRecordsIn(REPO).join(", ") || "none"}); a record is never derived twice`
-        : `${pending.length} exercises have no record (${pending.map((g) => g.token ?? "the v1 slot").join(", ")}): derive one at a time`,
-    );
-  }
-  const g = pending[0];
-  if (g.runs.length !== 1 || g.verifications.length !== 1) {
-    throw new Error(
-      `the exercise ${g.token ?? "of the v1 slot"} needs exactly one run observation and exactly one verification observation (it has ${g.runs.length} run, ${g.verifications.length} verification)`,
-    );
-  }
-  const held = dir.groups.filter((x) => x.generation === g.generation && x.record !== null).length;
-  if (held >= MAX_RECORDS[g.generation]) {
-    throw new Error(
-      `${PROOF_EXERCISES_DIR} already holds ${held} ${g.generation} record(s), the most the contract admits: a second needs it raised in its own lane`,
-    );
-  }
-  const dirty = uncommittedEvidenceError([g.runs[0], g.verifications[0]], REPO);
-  if (dirty !== null)
-    throw new Error(`the observations are not as committed (the record binds their committed bytes): ${dirty}`);
-  const runText = lf(readFileSync(resolve(REPO, g.runs[0]), "utf8"));
-  const run = JSON.parse(runText);
-  if (run?.schema !== GENERATION_SCHEMAS[g.generation].run) {
-    throw new Error(
-      `${g.runs[0]} holds ${String(run?.schema)}, but ${g.token === null ? "the v1 slot" : `exercise ${g.token}`} admits only a ${GENERATION_SCHEMAS[g.generation].run} run${run?.schema === GENERATION_SCHEMAS.v2.run && g.token === null ? `: a v2 exercise's files are named after its token (${attributedExerciseFiles(anchor, String(run?.host), runText).run})` : ""}`,
-    );
-  }
-  if (g.token !== null && exerciseToken(runText) !== g.token) {
-    throw new Error(
-      `${g.runs[0]} is exercise ${exerciseToken(runText)}, not ${g.token}: name its files after it (${Object.values(
-        attributedExerciseFiles(anchor, String(run?.host), runText),
-      )
-        .slice(1)
-        .join(", ")})`,
-    );
-  }
-  const verification = JSON.parse(lf(readFileSync(resolve(REPO, g.verifications[0]), "utf8")));
-  const record = deriveExerciseRecord(
-    run,
-    verification,
-    { runSha256: sha256(runText), verificationPath: g.verifications[0], runPath: g.runs[0] },
-    exerciseExpectations(REPO, input),
-  );
-  const rel = g.token === null ? exerciseRecordRel(anchor) : attributedExerciseRecordRel(anchor, g.token);
+  const { rel, record } = derivePendingExerciseRecord(REPO, input);
   mkdirSync(dirname(resolve(REPO, rel)), { recursive: true });
   writeNewFiles([[resolve(REPO, rel), serializeJson(record)]], "a proof-exercise record is never overwritten");
   console.log(
