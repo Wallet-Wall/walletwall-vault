@@ -1552,21 +1552,23 @@ function judgeExercise(
  * for a refused one, and the state never depends on which file a listing returns first.
  */
 export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvidenceInput): ExerciseEvidence {
+  // The history is judged beside everything else, never instead of it: a withdrawn or edited record is reported with
+  // whatever else the directory holds, and refuses it even when nothing is left in it.
   const history = exerciseHistoryErrors(repoRoot);
   const records = exerciseRecordsIn(repoRoot);
   const refused = (observations: string[], errors: string[]): ExerciseEvidence => ({
     records,
     accepted: [],
     observations,
-    errors,
+    errors: [...history, ...errors],
   });
-  if (records.length === 0) return refused([], history);
+  if (records.length === 0) return refused([], []);
   const dir = exerciseDirectoryOf(
     records.map((rel) => rel.slice(PROOF_EXERCISES_DIR.length + 1)),
     exerciseObservationNamesIn(repoRoot),
     input.anchor.designation,
   );
-  const errors = [...history, ...dir.errors, ...unrecordedExerciseErrors(dir)];
+  const errors = [...dir.errors, ...unrecordedExerciseErrors(dir)];
   for (const rel of dir.records) {
     if (!regularFileIn(repoRoot, rel, PROOF_EXERCISES_DIR)) {
       errors.push(`${rel} is not a regular file directly in ${PROOF_EXERCISES_DIR}`);
@@ -1603,8 +1605,8 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
   errors.push(...crlfCommittedErrors(repoRoot, files));
   const dirty = uncommittedEvidenceError([...files, archivePath], repoRoot);
   if (dirty !== null) errors.push(`the proof-exercise evidence is not as committed: ${dirty}`);
-  return errors.length === 0
-    ? { records, accepted, observations: dir.observations, errors }
+  return errors.length === 0 && history.length === 0
+    ? { records, accepted, observations: dir.observations, errors: [] }
     : refused(dir.observations, errors);
 }
 
