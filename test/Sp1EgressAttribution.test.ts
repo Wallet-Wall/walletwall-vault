@@ -989,11 +989,11 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
     it("reads every kernel line, normalizes to the pinned digest, and derives continuous, complete attribution", function () {
       const o = normalizeObserverRaw(raw, host);
-      expect(o.normalizedSha256).to.equal("557856f2fde1e651f9e8461629c22654547fcae687403e6877160442716bd176");
+      expect(o.normalizedSha256).to.equal("9dcd2b879078d580b5feb30a576fdfe66c63a541a11381bfa059c9f9cb77a126");
       const j = observerEvidenceErrors(o, selfTest);
       expect(j.refusals).to.deep.equal([]);
       const a = j.attribution as Attribution;
-      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([979, 992, 999]);
+      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([984, 997, 1004]);
       expect(a.attempts.map((x) => [x.scope, x.kind, `${x.dest?.addr}:${x.dest?.port}`, x.outcome])).to.deep.equal([
         ["TOOL", "connect", "192.0.2.10:443", "REFUSED"],
         ["PROOF", "send", "192.0.2.53:53", "REFUSED"],

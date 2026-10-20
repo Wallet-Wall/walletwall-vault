@@ -6,9 +6,14 @@
  * test/Sp1EgressObserverLinux.test.ts (Linux, root, opt-in). Research prototype. Not audited.
  */
 import { expect } from "chai";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   BUFFER_KB,
+  appendTo,
+  bytesOf,
   ControlProtocol,
   GLOBAL_ARM,
   HEARTBEAT_MS,
@@ -415,6 +420,36 @@ describe("SP1-PA3C — the root egress observer", function () {
       expect(probeMisses(`${profile}\n${line("tcp4", 1, 3)}\n`, ["udp4", "udp4ret", "tcp4"])).to.equal(5);
       expect(() => probeMisses(profile, ["udp4", "exec"])).to.throw(/does not list exec/);
       expect(() => probeMisses(`${profile}\nudp4 1 x\n`, ["udp4"])).to.throw(/does not read/);
+    });
+
+    it("reads and appends the raw trace through its one descriptor, by position, never moving its offset", function () {
+      const dir = mkdtempSync(join(tmpdir(), "sp1obs-fd-"));
+      try {
+        const path = join(dir, "trace.txt");
+        const fd = openSync(path, "wx+", 0o640);
+        try {
+          expect(bytesOf(fd).length).to.equal(0);
+          appendTo(fd, Buffer.from("line one\n", "latin1"));
+          appendTo(fd, Buffer.from([0x63, 0x6f, 0x6d, 0x6d, 0xe9, 0x0a])); // a comm byte above 0x7f, kept as is
+          expect([...bytesOf(fd)]).to.deep.equal([
+            ...Buffer.from("line one\n", "latin1"),
+            0x63,
+            0x6f,
+            0x6d,
+            0x6d,
+            0xe9,
+            0x0a,
+          ]);
+          // The drain shares the descriptor and writes at its offset: the observer's reads and appends never moved it.
+          writeSync(fd, "L");
+          expect(bytesOf(fd).toString("latin1").startsWith("Line one\n")).to.equal(true);
+        } finally {
+          closeSync(fd);
+        }
+        expect(readFileSync(path, "latin1")).to.equal("Line one\ncommé\n");
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
 
     it("tightens the umask it hands to the tool and the gate, never loosening it", function () {

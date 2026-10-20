@@ -1011,27 +1011,28 @@ even root's read) is the raw facts' `kprobesGlobalArm`, kept with the raw eviden
 ### Raw evidence and privacy
 
 The observer writes the raw trace, its facts and a manifest of both (each file's length and sha256) to a new directory,
-where they stay with the operator (`OPERATOR_LOCAL`), owned by root and readable only by root and the proving user's
-primary group (the directory `0750`, each file `0640`): the tool reads them back after the proof as that user, and no
-user outside that group can. That holds while the group is the user's own: a primary group shared with other users, or a
-default access-control list on the parent directory, widens it, and the group can read the trace while the run writes
-it; the observer checks neither. The observer also tightens its own umask (adding `022`, never loosening it), so nothing
-the tool or the gate creates is group- or world-writable. The measurement tool normalizes them deterministically into
-the run observation, which commits the manifest's digest, the configuration (rebuilt from the committed observer by
-every validator), the counter snapshots, the per-CPU statistics, the normalized events and their own digest. DNS names
-are committed only for attempts of the observer, the tool, the proof and the proof's registered containers, exec paths
-only for the observer's, the tool's and the proof's processes; any other process's spawn name is `null`, its execs and
-exits are dropped, and its DNS names are withheld (`qname: null, withheld: true`). Packet bytes are committed only as
-header fields and a DNS question, never as payload; no environment variable's value, token, credential, cookie or SSH
-material is committed; local paths appear only as the executables the disclosed scopes ran (the measured host binary
-among them), and the observer's own facts (the proving user, the tool's command line) stay in the raw directory. The
-host's interface addresses are committed (a WSL2 machine's private and link-local ones; a link-local IPv6 address can
-encode its virtual interface's MAC). Anyone can re-derive from the committed observation the coverage, continuity,
-lineage, joins, reconciliation, leaks and privacy filter, and check the digests it can check itself: the normalized
-events' digest, the configuration's (rebuilt from the committed observer), and the observer's and the tool's as
-committed. The manifest's digest and the raw files' lengths and digests can be checked only against the raw files: the
-operator's raw directory re-checks the normalization (its re-normalization must reproduce the committed digest), and
-even that shows the normalization faithful to those files, not the files unedited.
+each file created exclusively and then used only through its own descriptor (the manifest binds the bytes written or
+read through it, never a path opened again), where they stay with the operator (`OPERATOR_LOCAL`), owned by root and
+readable only by root and the proving user's primary group (the directory `0750`, each file `0640`): the tool reads them
+back after the proof as that user, and no user outside that group can. That holds while the group is the user's own: a
+primary group shared with other users, or a default access-control list on the parent directory, widens it, and the
+group can read the trace while the run writes it; the observer checks neither. The observer also tightens its own umask
+(adding `022`, never loosening it), so nothing the tool or the gate creates is group- or world-writable. The measurement
+tool normalizes them deterministically into the run observation, which commits the manifest's digest, the configuration
+(rebuilt from the committed observer by every validator), the counter snapshots, the per-CPU statistics, the normalized
+events and their own digest. DNS names are committed only for attempts of the observer, the tool, the proof and the
+proof's registered containers, exec paths only for the observer's, the tool's and the proof's processes; any other
+process's spawn name is `null`, its execs and exits are dropped, and its DNS names are withheld (`qname: null, withheld:
+true`). Packet bytes are committed only as header fields and a DNS question, never as payload; no environment variable's
+value, token, credential, cookie or SSH material is committed; local paths appear only as the executables the disclosed
+scopes ran (the measured host binary among them), and the observer's own facts (the proving user, the tool's command
+line) stay in the raw directory. The host's interface addresses are committed (a WSL2 machine's private and link-local
+ones; a link-local IPv6 address can encode its virtual interface's MAC). Anyone can re-derive from the committed
+observation the coverage, continuity, lineage, joins, reconciliation, leaks and privacy filter, and check the digests it
+can check itself: the normalized events' digest, the configuration's (rebuilt from the committed observer), and the
+observer's and the tool's as committed. The manifest's digest and the raw files' lengths and digests can be checked only
+against the raw files: the operator's raw directory re-checks the normalization (its re-normalization must reproduce the
+committed digest), and even that shows the normalization faithful to those files, not the files unedited.
 
 Trust, stated plainly: every digest the repository holds is computed from the files the operator keeps, and the counters
 the reconciliation uses were read into those same facts, so the evidence is consistent with itself, not independent of

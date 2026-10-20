@@ -35,10 +35,12 @@ import {
   existsSync,
   fchmodSync,
   fchownSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
+  readSync,
   readdirSync,
   readlinkSync,
   realpathSync,
@@ -876,6 +878,29 @@ function argValue(argv: string[], name: string, count = 1): string[] {
  */
 export const tightenedUmask = (current: number) => current | 0o022;
 
+/**
+ * Every byte the file behind `fd` holds, read by position: the descriptor's offset (which the drain shares) never
+ * moves, and the path is never opened again.
+ */
+export function bytesOf(fd: number): Buffer {
+  const size = fstatSync(fd).size;
+  const buf = Buffer.alloc(size);
+  let off = 0;
+  while (off < size) {
+    const n = readSync(fd, buf, off, size - off, off);
+    if (n === 0) break;
+    off += n;
+  }
+  return buf.subarray(0, off);
+}
+
+/** Writes all of `bytes` after the last byte of the file behind `fd`, by position (the offset never moves). */
+export function appendTo(fd: number, bytes: Buffer): void {
+  const at = fstatSync(fd).size;
+  let off = 0;
+  while (off < bytes.length) off += writeSync(fd, bytes, off, bytes.length - off, at + off);
+}
+
 async function main(argv: string[]): Promise<number> {
   process.umask(tightenedUmask(process.umask()));
   const mode: Mode | null = argv[0] === "run" ? "RUN" : argv[0] === "self-test" ? "SELF_TEST" : null;
@@ -985,6 +1010,10 @@ async function main(argv: string[]): Promise<number> {
   };
 
   let exitCode = 3;
+  // The raw trace, created once and exclusively, is only ever used through this descriptor: the drain writes to it, and
+  // the observer reads it back and appends to it by position, so no other file can stand in for it between two uses
+  // (the directory is root's alone besides: see rawDirErrors).
+  let traceFd: number | null = null;
   try {
     const nfDropReason = session.precheck();
     const config = session.open(facts.hostNetns as number, nfDropReason);
@@ -995,11 +1024,10 @@ async function main(argv: string[]): Promise<number> {
       kprobeReadBack: session.readBack,
       kprobesGlobalArm: session.globalArmShown ? "SHOWN" : "NOT_SHOWN",
     });
-    const rawFd = openSync(rawTrace, "wx", 0o640);
-    fchownSync(rawFd, 0, user.gid);
-    fchmodSync(rawFd, 0o640);
-    drain = spawn("cat", [join(session.instance, "trace_pipe")], { stdio: ["ignore", rawFd, "pipe"], env: {} });
-    closeSync(rawFd);
+    traceFd = openSync(rawTrace, "wx+", 0o640);
+    fchownSync(traceFd, 0, user.gid);
+    fchmodSync(traceFd, 0o640);
+    drain = spawn("cat", [join(session.instance, "trace_pipe")], { stdio: ["ignore", traceFd, "pipe"], env: {} });
     const clock = { utc: utcNow(), monoNs: process.hrtime.bigint().toString() };
     facts.readyClock = clock;
     session.mark("READY", {
@@ -1090,7 +1118,8 @@ async function main(argv: string[]): Promise<number> {
     session.stopTracing();
     const deadline = Date.now() + 30_000;
     while (
-      !readFileSync(rawTrace, "latin1")
+      !bytesOf(traceFd)
+        .toString("latin1")
         .split("\n")
         .some((l) => l.endsWith(stopLine))
     ) {
@@ -1109,7 +1138,7 @@ async function main(argv: string[]): Promise<number> {
       .split("\n")
       .filter((l) => l !== "" && !l.startsWith("#"));
     facts.leftoverLines = leftover.length;
-    if (leftover.length > 0) writeFileSync(rawTrace, `${leftover.join("\n")}\n`, { flag: "a" });
+    if (leftover.length > 0) appendTo(traceFd, Buffer.from(`${leftover.join("\n")}\n`, "latin1"));
     facts.stats = session.stats();
     facts.probeMisses = session.misses();
     if (early !== null) exitCode = early === 0 ? 4 : early;
@@ -1122,19 +1151,29 @@ async function main(argv: string[]): Promise<number> {
     const left = session.close();
     facts.cleanup = left;
     if (left.length > 0) failures.push(`CLEANUP_INCOMPLETE: ${left.join("; ")}`);
+    // The manifest binds the bytes each file holds, read from or written through its own descriptor: no path is
+    // opened twice.
+    const files: { name: string; bytes: number; sha256: string }[] = [];
+    if (traceFd !== null) {
+      const trace = bytesOf(traceFd);
+      closeSync(traceFd);
+      traceFd = null;
+      files.push({ name: RAW_TRACE_FILE, bytes: trace.length, sha256: sha256Hex(trace) });
+    }
     const write = (name: string, text: string) => {
-      const p = join(rawArg, name);
-      writeFileSync(p, text, { mode: 0o640, flag: "wx" });
-      chownSync(p, 0, user.gid);
-      chmodSync(p, 0o640);
+      const bytes = Buffer.from(text, "utf8");
+      const fd = openSync(join(rawArg, name), "wx", 0o640);
+      try {
+        fchownSync(fd, 0, user.gid);
+        fchmodSync(fd, 0o640);
+        appendTo(fd, bytes);
+      } finally {
+        closeSync(fd);
+      }
+      return bytes;
     };
-    write(RAW_FACTS_FILE, `${JSON.stringify(facts, null, 2)}\n`);
-    const files = [RAW_TRACE_FILE, RAW_FACTS_FILE]
-      .filter((name) => existsSync(join(rawArg, name)))
-      .map((name) => {
-        const bytes = readFileSync(join(rawArg, name));
-        return { name, bytes: bytes.length, sha256: sha256Hex(bytes) };
-      });
+    const factsBytes = write(RAW_FACTS_FILE, `${JSON.stringify(facts, null, 2)}\n`);
+    files.push({ name: RAW_FACTS_FILE, bytes: factsBytes.length, sha256: sha256Hex(factsBytes) });
     const manifest = `${JSON.stringify({ schema: MANIFEST_SCHEMA, files }, null, 2)}\n`;
     write(RAW_MANIFEST_FILE, manifest);
     if (failures.length === 0) toTool("STOPPED", sha256Hex(manifest), rawArg);
