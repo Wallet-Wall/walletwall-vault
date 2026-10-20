@@ -1170,6 +1170,11 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host", "zkvm/fixtures"]) {
           cpSync(resolve(p), join(d, p), { recursive: true });
         }
+        // Since SP1-PA3B the real evidence holds a real exercise; the copy starts from the archived state (the real
+        // exercise evidence removed), so the synthetic exercise alone makes the transition here.
+        for (const rel of [...exerciseRecordsIn(d), ...Object.values(exerciseObservationsIn(d)).flat()]) {
+          rmSync(join(d, rel));
+        }
         git("add", "-A");
         git("commit", "-q", "-m", "the real evidence, copied");
         const anchor = productionAnchor(d);
@@ -1271,25 +1276,44 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       }
     });
 
-    it("the real checkout has not reached the third state: no record, no exercise evidence, exercised false", function () {
+    it("the real checkout has reached the third state: exactly one record, derived from exactly one run and one verification observation, exercised true", function () {
       this.timeout(120_000);
-      expect(exerciseRecordsIn(".")).to.deep.equal([]);
-      expect(exerciseObservationsIn(".")).to.deep.equal({ run: [], verification: [], other: [] });
+      const anchor = productionAnchor(".");
       const archive = productionArchiveEvidenceOf(".");
-      const exercise = productionExerciseEvidence(".", { anchor: productionAnchor("."), archive });
-      expect(exerciseEvidenceState(exercise)).to.equal("NO_RECORD");
-      expect(exercise).to.deep.equal(NO_EXERCISE);
-      expect(toolingState({ selfTestPassed: true, archive, exercise })).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+      const records = exerciseRecordsIn(".");
+      expect(records).to.deep.equal([exerciseRecordRel(anchor)]);
+      const observations = exerciseObservationsIn(".");
+      expect(observations.run).to.have.length(1);
+      expect(observations.verification).to.have.length(1);
+      expect(observations.other).to.deep.equal([]);
+      const exercise = productionExerciseEvidence(".", { anchor, archive });
+      expect(exercise.errors).to.deep.equal([]);
+      expect(exerciseEvidenceState(exercise)).to.equal("ACCEPTED");
+      expect(exercise.observations).to.deep.equal([...observations.run, ...observations.verification]);
+      const committed = JSON.parse(readFileSync(records[0], "utf8"));
+      expect(exercise.record).to.deep.equal(committed);
+      expect(toolingState({ selfTestPassed: true, archive, exercise })).to.equal("SELF_HOSTED_PATH_EXERCISED");
       const pa = provingAvailabilityFromRepo(".");
-      expect(pa.status).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
-      expect(pa.selfHostedPath.exercised).to.equal(false);
-      expect(pa.selfHostedPath).to.not.have.property("record");
-      expect(pa.exercises).to.deep.equal({ dir: PROOF_EXERCISES_DIR, records: 0 });
-      // SP1-PA2C's evidence is not SP1-PA3's: the archive record is no run observation and no verification.
-      const x = exerciseExpectations(".", { anchor: productionAnchor("."), archive });
+      expect(pa.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
+      expect(pa.selfHostedPath.exercised).to.equal(true);
+      expect(pa.selfHostedPath.record).to.equal(records[0]);
+      expect(pa.exercises.records).to.equal(1);
+      expect(pa.exercises.accepted?.record).to.equal(records[0]);
+      // SP1-PA3B's record is bound to the real expectations: the canonical host binary for the designated host tree,
+      // the committed proof input and archive record, the acquisitions' addresses; it was accepted by the designated
+      // verifier with egress refused, within the rotation delay. SP1-PA2C's evidence is still not SP1-PA3's: the
+      // archive record is no run observation and no verification.
+      const x = exerciseExpectations(".", { anchor, archive });
       expect(x.upstreamIps).to.deep.equal(["3.5.90.58", "3.5.93.98"]);
       expect(x.hostBinarySha256).to.equal("fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b");
       expect(x.zkvmHostTree).to.equal("30f72596c430974bf8113892bf41c26dce3629f3");
+      expect(committed.host).to.deep.include({ executableSha256: x.hostBinarySha256, sourceTree: x.zkvmHostTree });
+      expect(committed.proofInput.sha256).to.equal(x.proofInputSha256);
+      expect(committed.archiveRecord.sha256).to.equal(x.archiveRecord.sha256);
+      expect(committed.prover.mode).to.equal("cpu");
+      expect(committed.verification.acceptance).to.equal("ACCEPTED");
+      expect(committed.egress.condition).to.equal("EGRESS_DISABLED");
+      expect(committed.performance.withinRotationDelay).to.equal(true);
       expect(runObservationErrors(archive.record, x).map((r) => r.reason)).to.include("OBSERVATION_SHAPE");
       expect(
         verificationObservationErrors(archive.record, { path: "", sha256: "", observation: runObservation() }, x).map(
@@ -1521,25 +1545,31 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         timeout: 120_000,
       });
 
-    it("sp1:proof-exercise-record --validate: no record exists, and the archive record is accepted", function () {
+    it("sp1:proof-exercise-record --validate: the committed record is what the committed observations derive (SELF_HOSTED_PATH_EXERCISED)", function () {
       this.timeout(120_000);
       const r = run("scripts/generate-sp1-proof-exercise-record.ts", "--validate");
       expect(r.status, r.stderr).to.equal(0);
       expect(r.stdout).to.include("OK:");
-      expect(r.stdout).to.include("no proof-exercise record");
-      expect(r.stdout).to.include("ARCHIVED_VERIFIED_UNEXERCISED");
+      expect(r.stdout).to.include(exerciseRecordsIn(".")[0]);
+      expect(r.stdout).to.include("verifier ACCEPTED");
+      expect(r.stdout).to.include("within the 172800 s rotation delay");
+      expect(r.stdout).to.include("SELF_HOSTED_PATH_EXERCISED");
     });
 
-    it("sp1:proof-exercise-record: derives nothing while no observations exist (and never overwrites)", function () {
+    it("sp1:proof-exercise-record: never overwrites the committed record (the same observations derive it again, and it exists)", function () {
       this.timeout(120_000);
+      const rel = exerciseRecordsIn(".")[0];
+      const before = readFileSync(rel);
       const r = run("scripts/generate-sp1-proof-exercise-record.ts");
       expect(r.status).to.equal(1);
-      expect(`${r.stdout}\n${r.stderr}`).to.match(/exactly one run observation/);
-      expect(exerciseRecordsIn(".")).to.deep.equal([]);
+      expect(`${r.stdout}\n${r.stderr}`).to.match(/exists: a proof-exercise record is never overwritten/);
+      expect(readFileSync(rel).equals(before)).to.equal(true);
+      expect(exerciseRecordsIn(".")).to.deep.equal([rel]);
     });
 
     it("sp1:measure-proof-exercise refuses before any act: the arguments, then the host, then the record", function () {
       this.timeout(120_000);
+      const committed = exerciseObservationsIn(".");
       const none = run("scripts/measure-sp1-proof-exercise.ts");
       expect(none.status).to.equal(1);
       expect(`${none.stdout}\n${none.stderr}`).to.include("--record is required");
@@ -1564,7 +1594,8 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(`${absent.stdout}\n${absent.stderr}`).to.match(
         /PROVE_HOST_UNSUPPORTED \(NOT_LINUX\)|RECORD_NOT_AUTHORITATIVE/,
       );
-      expect(exerciseObservationsIn(".")).to.deep.equal({ run: [], verification: [], other: [] });
+      // Nothing was written: the committed observations (SP1-PA3B's one pair) are exactly what is there.
+      expect(exerciseObservationsIn(".")).to.deep.equal(committed);
     });
   });
 });

@@ -23,9 +23,11 @@ runScript(async () => {
     console.log(`OK: ${TOOLING_REL} is what the evidence and the self-test derive (${r.state}).`);
     console.log(
       `PROVING_AVAILABILITY = ${r.provingAvailability.status} (${
-        r.state === "ARCHIVED_VERIFIED_UNEXERCISED"
-          ? "an accepted archive record; no proof has been made from it"
-          : "no archive record: tooling is not an artifact"
+        r.state === "SELF_HOSTED_PATH_EXERCISED"
+          ? "an accepted archive record and exactly one accepted proof-exercise record: liveness on one host, never soundness or production readiness"
+          : r.state === "ARCHIVED_VERIFIED_UNEXERCISED"
+            ? "an accepted archive record; no proof has been made from it"
+            : "no archive record: tooling is not an artifact"
       }).`,
     );
   } else {

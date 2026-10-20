@@ -74,6 +74,7 @@ import {
   productionRecordRel,
   serializeJson,
 } from "../scripts/lib/sp1-circuit-acquisition";
+import { exerciseRecordsIn } from "../scripts/lib/sp1-proof-exercise";
 import {
   PROVING_ARCHIVES_DIR,
   PROVING_AVAILABILITY_REL,
@@ -182,28 +183,45 @@ const srcOf =
 
 /** Whether the committed repository holds an archive record (SP1-PA2B admitted): the state the suites must hold to. */
 const archived = () => archiveRecordsIn(".").length > 0;
+/** Whether it also holds a proof-exercise record (SP1-PA3B exercised the path): the third state. */
+const exercised = () => exerciseRecordsIn(".").length > 0;
+/** The tooling state the committed evidence derives, and the proving availability that goes with it. */
+const committedState = () =>
+  exercised()
+    ? "SELF_HOSTED_PATH_EXERCISED"
+    : archived()
+      ? "ARCHIVED_VERIFIED_UNEXERCISED"
+      : "TOOLING_READY_NO_ARTIFACT";
+const committedAvailability = () =>
+  exercised() ? "SELF_HOSTED_PATH_EXERCISED" : archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "OWNER_DOWNLOAD_REQUIRED";
 
 describe("SP1-PA2A circuit tooling contract", function () {
   const dirs = tempDirs();
   afterEach(() => dirs.cleanup());
 
-  /** A copy of the evidence, scripts and fixtures as a git repository with one commit: committed evidence judges as
-   *  committed, so the copy derives what the repository derives (an uncommitted copy would refuse an archive record). */
+  /** A copy of the evidence, scripts, fixtures and the proof input as a git repository with one commit: committed
+   *  evidence judges as committed, so the copy derives what the repository derives (an uncommitted copy would refuse
+   *  an archive record). The commit descends from this checkout's HEAD (its objects fetched, nothing else copied), so a
+   *  committed exercise's source commit, which the judge requires in the repository's history, is in the copy's too. */
   function copyAsRepo(): string {
     const repo = dirs.make();
-    for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock", "package.json"]) {
+    for (const p of ["evidence", "scripts", "test/fixtures", "zkvm/host/Cargo.lock", "zkvm/fixtures", "package.json"]) {
       cpSync(resolve(p), join(repo, p), { recursive: true });
     }
-    const git = (...args: string[]) => {
+    const git = (...args: string[]): string => {
       const r = spawnSync("git", ["-c", "core.autocrlf=false", ...args], { cwd: repo, encoding: "utf8" });
       if (r.status !== 0) throw new Error(`git ${args.join(" ")}: ${r.stderr}`);
+      return r.stdout.trim();
     };
     git("init", "-q");
     git("config", "user.email", "test@example.invalid");
     git("config", "user.name", "test");
     git("config", "commit.gpgsign", "false");
+    git("fetch", "-q", resolve("."), "HEAD");
     git("add", "-A");
-    git("commit", "-q", "-m", "evidence");
+    // The index already holds the copied tree, so only HEAD moves (no index rewrite, which Windows sometimes refuses).
+    const commit = git("commit-tree", git("write-tree"), "-p", git("rev-parse", "FETCH_HEAD"), "-m", "evidence");
+    git("update-ref", "HEAD", commit);
     return repo;
   }
 
@@ -213,11 +231,10 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(await toolingErrors(".")).to.deep.equal([]);
       const r = JSON.parse(read(TOOLING_REL).toString("utf8"));
       expect(r.schema).to.equal(TOOLING_SCHEMA);
-      // Before SP1-PA2B admits a record: TOOLING_READY_NO_ARTIFACT and OWNER_DOWNLOAD_REQUIRED; after: the archived pair.
-      expect(r.state).to.equal(archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "TOOLING_READY_NO_ARTIFACT");
-      expect(r.provingAvailability.status).to.equal(
-        archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "OWNER_DOWNLOAD_REQUIRED",
-      );
+      // Before SP1-PA2B admits a record: TOOLING_READY_NO_ARTIFACT and OWNER_DOWNLOAD_REQUIRED; after: the archived
+      // pair; after SP1-PA3B's exercise record: the exercised pair.
+      expect(r.state).to.equal(committedState());
+      expect(r.provingAvailability.status).to.equal(committedAvailability());
       expect(r.provingAvailability.sha256).to.equal(sha256(read(PROVING_AVAILABILITY_REL)));
       expect(r.archiveRecord.productionRecords).to.equal(archived() ? 1 : 0);
       expect(r.lane).to.equal(archived() ? "SP1-PA3A" : "SP1-PA2A");
@@ -240,12 +257,12 @@ describe("SP1-PA2A circuit tooling contract", function () {
         ["TOOLING_NOT_PRESENT", true],
         ["TOOLING_READY_NO_ARTIFACT", true],
         ["ARCHIVED_VERIFIED_UNEXERCISED", archived()],
-        ["SELF_HOSTED_PATH_EXERCISED", false],
+        ["SELF_HOSTED_PATH_EXERCISED", exercised()],
       ]);
       // The state is derived from the archive and exercise evidence, and the record says which state it holds and why.
       expect(r.acquisition.state).to.equal(r.state === "TOOLING_READY_NO_ARTIFACT" ? "NO_RECORD" : "ACCEPTED");
-      expect(r.exercise.state).to.equal("NO_RECORD");
-      expect(r.exercise.record).to.equal(null);
+      expect(r.exercise.state).to.equal(exercised() ? "ACCEPTED" : "NO_RECORD");
+      expect(r.exercise.record).to.equal(exercised() ? exerciseRecordsIn(".")[0] : null);
       expect(r.exercise.authoritativeDir).to.equal("evidence/zk/sp1-impl/proof-exercises");
       expect(availabilityStatusesFor(r.state)).to.include(r.provingAvailability.status);
     });
@@ -253,11 +270,19 @@ describe("SP1-PA2A circuit tooling contract", function () {
     it("leaves proving availability exactly as its own validator derives it, counting exactly the archive records", function () {
       expect(provingAvailabilityErrors(".")).to.deep.equal([]);
       const pa = JSON.parse(read(PROVING_AVAILABILITY_REL).toString("utf8"));
-      expect(pa.status).to.equal(archived() ? "ARCHIVED_VERIFIED_UNEXERCISED" : "OWNER_DOWNLOAD_REQUIRED");
+      expect(pa.status).to.equal(committedAvailability());
       expect(pa.archives.records).to.equal(archiveRecordsIn(".").length);
-      expect(pa.selfHostedPath.exercised).to.equal(false);
+      expect(pa.exercises.records).to.equal(exerciseRecordsIn(".").length);
+      expect(pa.selfHostedPath.exercised).to.equal(exercised());
       if (archived()) expect(pa.archives.accepted.record).to.equal(archiveRecordsIn(".")[0]);
       else expect(pa.archives).to.not.have.property("accepted");
+      if (exercised()) {
+        expect(pa.selfHostedPath.record).to.equal(exerciseRecordsIn(".")[0]);
+        expect(pa.exercises.accepted.record).to.equal(exerciseRecordsIn(".")[0]);
+      } else {
+        expect(pa.selfHostedPath).to.not.have.property("record");
+        expect(pa.exercises).to.not.have.property("accepted");
+      }
     });
 
     it("refuses a stale tooling record", async function () {
@@ -295,7 +320,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
       expect(errors[0]).to.match(/no state is derivable/);
     });
 
-    it("derives ARCHIVED_VERIFIED_UNEXERCISED in a repository holding the record the committed observations derive", async function () {
+    it("derives the committed state in a repository holding the records the committed observations derive", async function () {
       this.timeout(300_000);
       const present = ACQUISITION_OBSERVATIONS_REL.every((rel) => existsSync(resolve(rel)));
       if (!present) this.skip();
@@ -307,12 +332,13 @@ describe("SP1-PA2A circuit tooling contract", function () {
       };
       const input = { anchor: productionAnchor(repo), gnarkImage: pinnedGnarkImage(repo) };
       if (archived()) {
-        // The repository already holds the admitted record: the copy derives the archived state as committed, and a
-        // record edited after its commit derives no state again.
+        // The repository already holds the admitted record (and, since SP1-PA3B, the exercise record): the copy
+        // derives the committed state as committed, and a record edited after its commit derives no state again.
         expect(await toolingErrors(repo)).to.deep.equal([]);
         const tooling = await toolingRecordFromRepo(repo);
-        expect(tooling.state).to.equal("ARCHIVED_VERIFIED_UNEXERCISED");
+        expect(tooling.state).to.equal(committedState());
         expect((tooling.acquisition as { state: string }).state).to.equal("ACCEPTED");
+        expect((tooling.exercise as { state: string }).state).to.equal(exercised() ? "ACCEPTED" : "NO_RECORD");
         const record = JSON.parse(readFileSync(join(repo, productionRecordRel(input.anchor)), "utf8"));
         writeFileSync(
           join(repo, productionRecordRel(input.anchor)),

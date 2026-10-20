@@ -15,7 +15,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
 
+import { committedProductionAnchor } from "../scripts/lib/sp1-circuit-tooling";
 import { readDesignations } from "../scripts/lib/sp1-designation";
+import { exerciseRecordsIn, productionExerciseEvidence } from "../scripts/lib/sp1-proof-exercise";
 import {
   HOST_LOCK_REL,
   PROVING_ARCHIVES_DIR,
@@ -299,12 +301,31 @@ describe("SP1 implementation lane — proving availability (TD1-N9)", function (
     expect(provingAvailabilityStatus(obs, [])).to.equal("OWNER_DOWNLOAD_REQUIRED");
     const records = archiveRecordsIn(".");
     const evidence = archiveEvidenceFromRepo(".", obs, designations());
-    const status = provingAvailabilityStatus(obs, records, evidence);
+    // SP1-PA3A: the exercise directory is judged too; SP1-PA3B's one accepted record derives the third state.
+    const exerciseRecords = exerciseRecordsIn(".");
+    const exercise =
+      evidence === null
+        ? null
+        : productionExerciseEvidence(".", { anchor: committedProductionAnchor("."), archive: evidence });
+    const status = provingAvailabilityStatus(obs, records, evidence, exerciseRecords, exercise);
     expect(record.status).to.equal(status);
-    expect(status).to.equal(records.length === 0 ? "OWNER_DOWNLOAD_REQUIRED" : "ARCHIVED_VERIFIED_UNEXERCISED");
-    expect(record.selfHostedPath.exercised).to.equal(false);
-    // SP1-PA3A: the exercise directory is judged too; it holds nothing, so the third state is not derived.
-    expect(record.exercises).to.deep.equal({ dir: "evidence/zk/sp1-impl/proof-exercises", records: 0 });
+    expect(status).to.equal(
+      records.length === 0
+        ? "OWNER_DOWNLOAD_REQUIRED"
+        : exerciseRecords.length === 0
+          ? "ARCHIVED_VERIFIED_UNEXERCISED"
+          : "SELF_HOSTED_PATH_EXERCISED",
+    );
+    expect(record.selfHostedPath.exercised).to.equal(exerciseRecords.length > 0);
+    expect(record.exercises.dir).to.equal("evidence/zk/sp1-impl/proof-exercises");
+    expect(record.exercises.records).to.equal(exerciseRecords.length);
+    if (exerciseRecords.length > 0) {
+      expect(exercise?.errors).to.deep.equal([]);
+      expect(record.exercises.accepted.record).to.equal(exerciseRecords[0]);
+      expect(record.selfHostedPath.record).to.equal(exerciseRecords[0]);
+    } else {
+      expect(record.exercises).to.not.have.property("accepted");
+    }
     expect(record.expectedArtifacts.tarball.sha256).to.equal(
       records.length === 0 ? null : evidence?.record?.archive.sha256,
     );
