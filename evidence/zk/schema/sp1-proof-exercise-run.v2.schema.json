@@ -1,0 +1,321 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "walletwall.sp1-proof-exercise-run.v2",
+  "title": "WalletWall SP1 proof-exercise run observation (v2: continuous egress attribution)",
+  "description": "What scripts/measure-sp1-attributed-proof-exercise.ts records of one run through the unchanged archive-only gate while the root egress observer (scripts/sp1-egress-observer.ts) watched the host's network stack: every field of a v1 run observation (walletwall.sp1-proof-exercise-run.v1, which scripts/lib/sp1-proof-exercise.ts validates and which SP1-PA3B's merged observation remains), with egress.observer beside the edge probes. The observer section is the deterministic, privacy-minimal normalization of the raw capture (kept by the operator, bound by its manifest's sha256): the observer's identity and configuration (rebuilt by the validator from the committed observer, never trusted from here), host facts, both snapshots of the declared enforcement table, the ring buffer's loss counters, and the kernel events in trace order. Facts only: no field claims coverage, attribution or assurance; scripts/lib/sp1-egress-attribution.ts derives those. The shape only: the libraries are the validators. Research prototype; not audited; testnet/local only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "host",
+    "measuredAtUtc",
+    "tool",
+    "source",
+    "anchor",
+    "archiveRecord",
+    "installedCircuit",
+    "hostExecutable",
+    "inputs",
+    "gnark",
+    "prover",
+    "egress",
+    "timing",
+    "peakMemory",
+    "proof",
+    "platform"
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "walletwall.sp1-proof-exercise-run.v2"
+    },
+    "host": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$"
+    },
+    "measuredAtUtc": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "script",
+        "scriptSha256"
+      ],
+      "properties": {
+        "script": {
+          "const": "scripts/measure-sp1-attributed-proof-exercise.ts"
+        },
+        "scriptSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "anchor": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "archiveRecord": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "installedCircuit": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "hostExecutable": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "inputs": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "gnark": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "prover": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "timing": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "peakMemory": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "proof": {
+      "type": "object",
+      "description": "as in v1"
+    },
+    "platform": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "as in v1, and one line `bootId=<the boot the observer watched>`"
+    },
+    "egress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enforcement",
+        "before",
+        "after",
+        "condition",
+        "observer"
+      ],
+      "properties": {
+        "enforcement": {
+          "type": "string",
+          "minLength": 1
+        },
+        "before": {
+          "type": "array",
+          "minItems": 1,
+          "description": "the edge probes, as in v1"
+        },
+        "after": {
+          "type": "array",
+          "minItems": 1,
+          "description": "the edge probes, as in v1"
+        },
+        "condition": {
+          "const": "EGRESS_DISABLED"
+        },
+        "observer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "tool",
+            "mechanism",
+            "mode",
+            "nonce",
+            "kernelRelease",
+            "bootId",
+            "config",
+            "configSha256",
+            "host",
+            "table",
+            "boundary",
+            "stats",
+            "lostLines",
+            "raw",
+            "hostExecutable",
+            "events",
+            "normalizedSha256"
+          ],
+          "properties": {
+            "tool": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "script",
+                "scriptSha256"
+              ],
+              "properties": {
+                "script": {
+                  "const": "scripts/sp1-egress-observer.ts"
+                },
+                "scriptSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                }
+              }
+            },
+            "mechanism": {
+              "const": "LINUX_TRACEFS_KPROBES"
+            },
+            "mode": {
+              "const": "RUN"
+            },
+            "nonce": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16}$"
+            },
+            "kernelRelease": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bootId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "config": {
+              "type": "object",
+              "description": "the probes, filters, clock and buffer the observer installed: equal to what the committed observer renders for this nonce and these host facts"
+            },
+            "configSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "host": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "netns",
+                "nfDropReason",
+                "interfaces",
+                "uplinks",
+                "resolvers",
+                "wslInterop"
+              ],
+              "properties": {
+                "netns": {
+                  "type": "integer"
+                },
+                "nfDropReason": {
+                  "type": "integer"
+                },
+                "interfaces": {
+                  "type": "array"
+                },
+                "uplinks": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer"
+                  }
+                },
+                "resolvers": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "wslInterop": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "table": {
+              "type": "string",
+              "pattern": "^(inet|ip|ip6) [A-Za-z0-9_]{1,64}$"
+            },
+            "boundary": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "the declared table's rules (expression, verdict, counter) at the first and second snapshot"
+            },
+            "stats": {
+              "type": "array",
+              "minItems": 1,
+              "description": "per-CPU ring buffer counters at the stop: overrun, commit overrun and dropped events must be 0"
+            },
+            "lostLines": {
+              "const": 0
+            },
+            "raw": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "manifestSha256",
+                "files"
+              ],
+              "properties": {
+                "manifestSha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "files": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2
+                }
+              }
+            },
+            "hostExecutable": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "dev",
+                "ino"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "pattern": "^/"
+                },
+                "dev": {
+                  "type": "string",
+                  "pattern": "^[0-9]+:[0-9]+$"
+                },
+                "ino": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            },
+            "events": {
+              "type": "array",
+              "description": "kernel events in trace order (k: marker, spawn, exec, exit, send, sendret, connect, connectret, tcpstate, retransmit, xsk, drop, xmit); DNS names only for attempts of the observer, the tool, the proof and the registered gnark containers, exec paths only for the observer's, the tool's and the proof's processes, withheld or dropped elsewhere"
+            },
+            "normalizedSha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        }
+      }
+    }
+  }
+}
