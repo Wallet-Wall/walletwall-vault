@@ -1435,9 +1435,21 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
       it("joins a container's refused ping by its address: a refused echo is no leak", function () {
         const c: Proc = { comm: "gnark", tid: 3060, tgid: 3060 };
+        const dhcp: Proc = { comm: "dhclient", tid: 610, tgid: 610 };
         const o = normalize(
           standardRaw({
             duringProof: (b) => {
+              // The host's own packet socket (a DHCP client's) crafts nothing a container's join would trust less.
+              b.probe(dhcp, "pkt", {
+                sk: "0xffff88800004fa00",
+                len: 342,
+                namelen: 20,
+                nfam: 17,
+                nproto: 0x8,
+                nifindex: 2,
+                netns: HOST_NETNS,
+              });
+              b.probe(dhcp, "pktret", { ret: 342, sk: "0xffff88800004fa00" });
               b.probe(c, "ping4", {
                 sk: "0xffff88800004f300",
                 len: 8,
