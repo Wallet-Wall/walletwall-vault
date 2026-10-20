@@ -9,6 +9,7 @@ import { expect } from "chai";
 
 import {
   BUFFER_KB,
+  ControlProtocol,
   HEARTBEAT_MS,
   NONCE,
   ObserverRefusal,
@@ -18,9 +19,11 @@ import {
   TraceSession,
   canonicalJson,
   configSha256,
+  containerNetns,
   formatCtl,
   formatMarker,
   groupOf,
+  heartbeatOf,
   interfacesOf,
   netfilterDropReason,
   nsInode,
@@ -236,6 +239,132 @@ describe("SP1-PA3C — the root egress observer", function () {
       ]) {
         expect(() => parseCtl(bad), bad).to.throw(/malformed control line/);
       }
+    });
+  });
+
+  describe("the observer's decisions", function () {
+    const COMMIT = "c".repeat(40);
+    const ID = "a".repeat(64);
+    const hello = { kind: "HELLO", commit: COMMIT, host: "proving-host-a" } as const;
+    const phase = (p: (typeof PHASES)[number]) => ({ kind: "PHASE", phase: p }) as const;
+    const done = { kind: "DONE" } as const;
+    const noNetns = () => {
+      throw new Error("the namespace is resolved only for a container");
+    };
+    /** The refusal a request gets (its message, `code: why`), or null when it is served. */
+    const refusal = (p: ControlProtocol, msg: Parameters<ControlProtocol["accept"]>[0]) => {
+      try {
+        p.accept(msg, noNetns);
+        return null;
+      } catch (error) {
+        expect(error).to.be.instanceOf(ObserverRefusal);
+        // The message is `code: why`, so it pins the code too.
+        return (error as Error).message;
+      }
+    };
+
+    it("serves HELLO, every phase in order, containers and DONE as markers, and passes ABORT through", function () {
+      const p = new ControlProtocol();
+      expect(p.accept({ kind: "ABORT", reason: "PRECONDITION" }, noNetns)).to.deep.equal({ abort: "PRECONDITION" });
+      expect(p.accept(hello, noNetns)).to.deep.equal({
+        mark: { kind: "HELLO", fields: { commit: COMMIT, host: "proving-host-a" } },
+      });
+      const asked: [string, number][] = [];
+      const resolve = (id: string, pid: number) => {
+        asked.push([id, pid]);
+        return "4026532999";
+      };
+      for (const [i, name] of PHASES.entries()) {
+        expect(p.accept(phase(name), noNetns), name).to.deep.equal({ mark: { kind: "PHASE", fields: { name } } });
+        if (i === 3) {
+          expect(p.accept({ kind: "CONTAINER", id: ID, pid: 4321 }, resolve)).to.deep.equal({
+            mark: { kind: "CONTAINER", fields: { id: ID, pid: 4321, netns: "4026532999" } },
+          });
+        }
+      }
+      expect(asked).to.deep.equal([[ID, 4321]]);
+      expect(p.accept(done, noNetns)).to.deep.equal({ done: true });
+    });
+
+    it("refuses HELLO twice, a phase or a container before HELLO, a phase out of order or repeated, and DONE early", function () {
+      expect(refusal(new ControlProtocol(), phase(PHASES[0]))).to.equal("PHASE_ORDER: a phase before HELLO");
+      expect(refusal(new ControlProtocol(), { kind: "CONTAINER", id: ID, pid: 1 })).to.equal(
+        "PHASE_ORDER: a container before HELLO",
+      );
+      expect(refusal(new ControlProtocol(), done)).to.equal(`PHASE_ORDER: DONE before ${PHASES[0]}`);
+      const twice = new ControlProtocol();
+      twice.accept(hello, noNetns);
+      expect(refusal(twice, hello)).to.equal("PHASE_ORDER: HELLO comes once, before the first phase");
+      const after = new ControlProtocol();
+      after.accept(hello, noNetns);
+      after.accept(phase(PHASES[0]), noNetns);
+      expect(refusal(after, hello)).to.equal("PHASE_ORDER: HELLO comes once, before the first phase");
+      expect(refusal(after, phase(PHASES[0]))).to.equal(
+        `PHASE_ORDER: ${PHASES[0]} out of order (expected ${PHASES[1]})`,
+      );
+      expect(refusal(after, phase(PHASES[2]))).to.equal(
+        `PHASE_ORDER: ${PHASES[2]} out of order (expected ${PHASES[1]})`,
+      );
+      for (const name of PHASES.slice(1, -1)) after.accept(phase(name), noNetns);
+      expect(refusal(after, done)).to.equal(`PHASE_ORDER: DONE before ${PHASES.at(-1)}`);
+      after.accept(phase(PHASES.at(-1) as (typeof PHASES)[number]), noNetns);
+      expect(refusal(after, phase(PHASES[0]))).to.equal(`PHASE_ORDER: ${PHASES[0]} out of order (expected none)`);
+    });
+
+    it("refuses every request after DONE, an ABORT included", function () {
+      const p = new ControlProtocol();
+      p.accept(hello, noNetns);
+      for (const name of PHASES) p.accept(phase(name), noNetns);
+      p.accept(done, noNetns);
+      for (const msg of [done, hello, phase(PHASES[0]), { kind: "ABORT", reason: "LATE" } as const]) {
+        expect(refusal(p, msg), msg.kind).to.equal("PHASE_ORDER: a request after DONE");
+      }
+    });
+
+    it("records a container's namespace only when its cgroup names it, and says why not otherwise", function () {
+      const cgroup = `0::/system.slice/docker-${ID}.scope\n`;
+      const link = "net:[4026532999]";
+      const seen: number[] = [];
+      const read = (text: string) => (pid: number) => {
+        seen.push(pid);
+        return text;
+      };
+      const fails = () => {
+        throw new Error("ENOENT");
+      };
+      expect(containerNetns(ID, read(cgroup), read(link), 4321)).to.equal("4026532999");
+      expect(seen).to.deep.equal([4321, 4321]);
+      expect(containerNetns(ID, read("0::/user.slice/session-3.scope\n"), fails, 4321)).to.equal("unverified");
+      expect(containerNetns(ID, fails, read(link), 4321)).to.equal("unknown");
+      expect(containerNetns(ID, read(cgroup), fails, 4321)).to.equal("unknown");
+      expect(containerNetns(ID, read(cgroup), read("net:4026532999"), 4321)).to.equal("unknown");
+    });
+
+    it("lets a heartbeat pass only with tracing on, per-CPU stats read, and no event lost on any CPU", function () {
+      const cpu = (n: number, overrun = 0, commitOverrun = 0, droppedEvents = 0) => ({
+        cpu: n,
+        entries: 9,
+        overrun,
+        commitOverrun,
+        droppedEvents,
+        readEvents: 61,
+      });
+      expect(heartbeatOf(4, [cpu(0), cpu(1)], true)).to.deep.equal({
+        fields: { n: 4, tracingOn: 1, loss: 0 },
+        ok: true,
+      });
+      expect(heartbeatOf(5, [cpu(0), cpu(1)], false)).to.deep.equal({
+        fields: { n: 5, tracingOn: 0, loss: 0 },
+        ok: false,
+      });
+      expect(heartbeatOf(6, [cpu(0, 2, 3), cpu(1, 0, 0, 5)], true)).to.deep.equal({
+        fields: { n: 6, tracingOn: 1, loss: 10 },
+        ok: false,
+      });
+      for (const lost of [cpu(1, 1), cpu(1, 0, 1), cpu(1, 0, 0, 1)]) {
+        expect(heartbeatOf(7, [cpu(0), lost], true).ok, JSON.stringify(lost)).to.equal(false);
+      }
+      expect(heartbeatOf(8, [], true)).to.deep.equal({ fields: { n: 8, tracingOn: 1, loss: 0 }, ok: false });
     });
   });
 

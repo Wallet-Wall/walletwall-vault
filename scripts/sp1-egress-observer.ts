@@ -632,6 +632,81 @@ export class TraceSession {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// The observer's decisions, pure (the command below only acts on them)
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * The tool's requests, in the only order the observer serves them: HELLO once, before any phase; the phases in PHASES
+ * order, each once; DONE only after the last. Each served request is a marker to write (then acknowledged); anything
+ * out of order is refused, and a refusal fails the run.
+ */
+export class ControlProtocol {
+  private next = 0;
+  private hello = false;
+  private done = false;
+
+  accept(
+    msg: CtlMessage,
+    resolveNetns: (id: string, pid: number) => string,
+  ): { mark: { kind: string; fields: Record<string, string | number> } } | { abort: string } | { done: true } {
+    if (this.done) throw new ObserverRefusal("PHASE_ORDER", "a request after DONE");
+    if (msg.kind === "HELLO") {
+      // A phase needs HELLO first, so a second HELLO is the only HELLO that could follow a phase.
+      if (this.hello) throw new ObserverRefusal("PHASE_ORDER", "HELLO comes once, before the first phase");
+      this.hello = true;
+      return { mark: { kind: "HELLO", fields: { commit: msg.commit, host: msg.host } } };
+    }
+    if (msg.kind === "PHASE") {
+      if (!this.hello) throw new ObserverRefusal("PHASE_ORDER", "a phase before HELLO");
+      if (PHASES[this.next] !== msg.phase) {
+        throw new ObserverRefusal("PHASE_ORDER", `${msg.phase} out of order (expected ${PHASES[this.next] ?? "none"})`);
+      }
+      this.next++;
+      return { mark: { kind: "PHASE", fields: { name: msg.phase } } };
+    }
+    if (msg.kind === "CONTAINER") {
+      if (!this.hello) throw new ObserverRefusal("PHASE_ORDER", "a container before HELLO");
+      return {
+        mark: { kind: "CONTAINER", fields: { id: msg.id, pid: msg.pid, netns: resolveNetns(msg.id, msg.pid) } },
+      };
+    }
+    if (msg.kind === "ABORT") return { abort: msg.reason };
+    if (this.next !== PHASES.length) throw new ObserverRefusal("PHASE_ORDER", `DONE before ${PHASES[this.next]}`);
+    this.done = true;
+    return { done: true };
+  }
+}
+
+/**
+ * The network namespace of a container's process, as the observer may record it: its inode only when the process's
+ * cgroup names the container (else "unverified": the tool cannot vouch a process into the proof's scope), "unknown"
+ * when the process cannot be read (it ended, or it is not there).
+ */
+export function containerNetns(
+  id: string,
+  readCgroup: (pid: number) => string,
+  readNetnsLink: (pid: number) => string,
+  pid: number,
+): string {
+  try {
+    if (!readCgroup(pid).includes(id)) return "unverified";
+    return String(nsInode(readNetnsLink(pid)));
+  } catch {
+    return "unknown";
+  }
+}
+
+/** A heartbeat's marker fields and whether the run may continue: tracing on, and no event lost on any CPU. */
+export function heartbeatOf(
+  n: number,
+  stats: readonly CpuStats[],
+  tracingOn: boolean,
+): { fields: { n: number; tracingOn: number; loss: number }; ok: boolean } {
+  const loss = stats.reduce((s, c) => s + c.overrun + c.commitOverrun + c.droppedEvents, 0);
+  return { fields: { n, tracingOn: tracingOn ? 1 : 0, loss }, ok: tracingOn && loss === 0 && stats.length > 0 };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // The command (root): facts, session, the tool, heartbeats, stop, raw evidence
 // ---------------------------------------------------------------------------------------------------------------
 
@@ -751,12 +826,11 @@ async function main(argv: string[]): Promise<number> {
     session.mark("COUNTERS_END", { n, sha256: sha256Hex(text) });
   };
   const beat = () => {
-    const stats = session.stats();
-    const loss = stats.reduce((s, c) => s + c.overrun + c.commitOverrun + c.droppedEvents, 0);
-    const on = session.tracingOn();
     facts.heartbeats = (facts.heartbeats as number) + 1;
-    session.mark("HEARTBEAT", { n: facts.heartbeats as number, tracingOn: on ? 1 : 0, loss });
-    if (!on || loss !== 0) throw new ObserverRefusal("OBSERVER_LOSS", `tracing_on ${on ? 1 : 0}, ${loss} events lost`);
+    const h = heartbeatOf(facts.heartbeats as number, session.stats(), session.tracingOn());
+    session.mark("HEARTBEAT", h.fields);
+    if (!h.ok)
+      throw new ObserverRefusal("OBSERVER_LOSS", `tracing_on ${h.fields.tracingOn}, ${h.fields.loss} events lost`);
   };
   const fail = (code: string, why: string) => {
     if (failures.length === 0) process.stderr.write(`observer: ${code}: ${why}\n`);
@@ -817,8 +891,14 @@ async function main(argv: string[]): Promise<number> {
       );
       session.mark("SPAWNED", { pid: tool.pid ?? 0 });
       toTool("READY", nonce, session.group, facts.bootId as string, mode);
-      let next = 0;
-      let hello = false;
+      const protocol = new ControlProtocol();
+      const resolveNetns = (id: string, pid: number) =>
+        containerNetns(
+          id,
+          (p) => readFileSync(`/proc/${p}/cgroup`, "utf8"),
+          (p) => readlinkSync(`/proc/${p}/ns/net`),
+          pid,
+        );
       const lines = createInterface({ input: tool.stdout as NodeJS.ReadableStream });
       lines.on("line", (line) => {
         let msg: CtlMessage | null;
@@ -834,33 +914,10 @@ async function main(argv: string[]): Promise<number> {
         }
         if (stopping) return;
         try {
-          if (msg.kind === "HELLO") {
-            if (hello || next !== 0)
-              throw new ObserverRefusal("PHASE_ORDER", "HELLO comes once, before the first phase");
-            hello = true;
-            toTool("ACK", session.mark("HELLO", { commit: msg.commit, host: msg.host }));
-          } else if (msg.kind === "PHASE") {
-            if (!hello) throw new ObserverRefusal("PHASE_ORDER", "a phase before HELLO");
-            if (PHASES[next] !== msg.phase)
-              throw new ObserverRefusal(
-                "PHASE_ORDER",
-                `${msg.phase} out of order (expected ${PHASES[next] ?? "none"})`,
-              );
-            next++;
-            toTool("ACK", session.mark("PHASE", { name: msg.phase }));
-          } else if (msg.kind === "CONTAINER") {
-            let netns = "unknown";
-            try {
-              const cgroup = readFileSync(`/proc/${msg.pid}/cgroup`, "utf8");
-              netns = cgroup.includes(msg.id) ? String(nsInode(readlinkSync(`/proc/${msg.pid}/ns/net`))) : "unverified";
-            } catch {
-              netns = "unknown";
-            }
-            toTool("ACK", session.mark("CONTAINER", { id: msg.id, pid: msg.pid, netns }));
-          } else if (msg.kind === "ABORT") {
-            fail("TOOL_ABORTED", msg.reason);
-          } else {
-            if (next !== PHASES.length) throw new ObserverRefusal("PHASE_ORDER", `DONE before ${PHASES[next]}`);
+          const act = protocol.accept(msg, resolveNetns);
+          if ("mark" in act) toTool("ACK", session.mark(act.mark.kind, act.mark.fields));
+          else if ("abort" in act) fail("TOOL_ABORTED", act.abort);
+          else {
             stopping = true;
             resolveDone(null);
           }
