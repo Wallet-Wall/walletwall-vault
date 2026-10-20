@@ -631,7 +631,8 @@
                 "byScope",
                 "boundaryResponses",
                 "kernelResponses",
-                "unattributedOutsideWindow"
+                "unattributedOutsideWindow",
+                "unknownOutcomes"
               ],
               "properties": {
                 "attempts": {
@@ -689,6 +690,10 @@
                   "minimum": 0
                 },
                 "unattributedOutsideWindow": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "unknownOutcomes": {
                   "type": "integer",
                   "minimum": 0
                 }

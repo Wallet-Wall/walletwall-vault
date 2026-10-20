@@ -31,6 +31,8 @@ import {
   parseCpuStats,
   parseCtl,
   probeFilters,
+  probeMisses,
+  rawDirErrors,
   renderProbes,
   resolversOf,
   rootOwnedPathErrors,
@@ -57,12 +59,23 @@ class FakeTraceFs implements TraceFs {
   refuseProbe: string | null = null;
   dropFromReadBack: string | null = null;
   rmdirFails = false;
+  /** Misses kprobe_profile reports per event name (every defined probe is listed, with 0 unless set here). */
+  misses = new Map<string, number>();
   constructor() {
     this.files.set(`${ROOT}/kprobe_events`, "");
     this.files.set(`${ROOT}/error_log`, "[ 4.85] trace_kprobe: error: something\n");
     this.files.set(`${ROOT}/events/skb/kfree_skb/format`, FORMAT);
   }
   read(p: string): string {
+    if (p === `${ROOT}/kprobe_profile`) {
+      const names = (this.files.get(`${ROOT}/kprobe_events`) ?? "")
+        .split("\n")
+        .filter((l) => l !== "")
+        .map((l) => l.split(" ")[0].split("/")[1]);
+      return names
+        .map((n) => `  ${n.padEnd(44)} ${"3".padStart(15)} ${String(this.misses.get(n) ?? 0).padStart(15)}\n`)
+        .join("");
+    }
     if (p.endsWith("/kprobe_events")) {
       const lines = (this.files.get(p) ?? "").split("\n").filter((l) => l !== "");
       return lines
@@ -340,7 +353,7 @@ describe("SP1-PA3C — the root egress observer", function () {
       expect(containerNetns(ID, read(cgroup), read("net:4026532999"), 4321)).to.equal("unknown");
     });
 
-    it("lets a heartbeat pass only with tracing on, per-CPU stats read, and no event lost on any CPU", function () {
+    it("lets a heartbeat pass only with tracing on, per-CPU stats read, and nothing lost on any CPU or by any probe", function () {
       const cpu = (n: number, overrun = 0, commitOverrun = 0, droppedEvents = 0) => ({
         cpu: n,
         entries: 9,
@@ -349,22 +362,59 @@ describe("SP1-PA3C — the root egress observer", function () {
         droppedEvents,
         readEvents: 61,
       });
-      expect(heartbeatOf(4, [cpu(0), cpu(1)], true)).to.deep.equal({
+      expect(heartbeatOf(4, [cpu(0), cpu(1)], true, 0)).to.deep.equal({
         fields: { n: 4, tracingOn: 1, loss: 0 },
         ok: true,
       });
-      expect(heartbeatOf(5, [cpu(0), cpu(1)], false)).to.deep.equal({
+      expect(heartbeatOf(5, [cpu(0), cpu(1)], false, 0)).to.deep.equal({
         fields: { n: 5, tracingOn: 0, loss: 0 },
         ok: false,
       });
-      expect(heartbeatOf(6, [cpu(0, 2, 3), cpu(1, 0, 0, 5)], true)).to.deep.equal({
-        fields: { n: 6, tracingOn: 1, loss: 10 },
+      expect(heartbeatOf(6, [cpu(0, 2, 3), cpu(1, 0, 0, 5)], true, 7)).to.deep.equal({
+        fields: { n: 6, tracingOn: 1, loss: 17 },
         ok: false,
       });
       for (const lost of [cpu(1, 1), cpu(1, 0, 1), cpu(1, 0, 0, 1)]) {
-        expect(heartbeatOf(7, [cpu(0), lost], true).ok, JSON.stringify(lost)).to.equal(false);
+        expect(heartbeatOf(7, [cpu(0), lost], true, 0).ok, JSON.stringify(lost)).to.equal(false);
       }
-      expect(heartbeatOf(8, [], true)).to.deep.equal({ fields: { n: 8, tracingOn: 1, loss: 0 }, ok: false });
+      // A probe's miss is a lost event: a return the observer never saw leaves an attempt's outcome unknown.
+      expect(heartbeatOf(8, [cpu(0), cpu(1)], true, 1)).to.deep.equal({
+        fields: { n: 8, tracingOn: 1, loss: 1 },
+        ok: false,
+      });
+      expect(heartbeatOf(9, [], true, 0)).to.deep.equal({ fields: { n: 9, tracingOn: 1, loss: 0 }, ok: false });
+    });
+
+    it("reads the probes' misses from kprobe_profile as the kernel prints it, or refuses", function () {
+      // The kernel's "  %-44s %15lu %15lu" per event (6.18: the event name only, never its group).
+      const line = (name: string, hits: number, misses: number) =>
+        `  ${name.padEnd(44)} ${String(hits).padStart(15)} ${String(misses).padStart(15)}`;
+      expect(line("exitp", 0, 0)).to.equal(
+        "  exitp                                                      0               0",
+      );
+      const profile = [line("udp4", 12, 0), line("udp4ret", 12, 2), line("tcp4", 3, 0), line("other", 9, 40)].join(
+        "\n",
+      );
+      expect(probeMisses(`${profile}\n`, ["udp4", "udp4ret", "tcp4"])).to.equal(2);
+      // Another group's event of one of these names is summed in: its miss stops the run too.
+      expect(probeMisses(`${profile}\n${line("tcp4", 1, 3)}\n`, ["udp4", "udp4ret", "tcp4"])).to.equal(5);
+      expect(() => probeMisses(profile, ["udp4", "exec"])).to.throw(/does not list exec/);
+      expect(() => probeMisses(`${profile}\nudp4 1 x\n`, ["udp4"])).to.throw(/does not read/);
+    });
+
+    it("refuses a raw directory that exists, is not plain and absolute, or sits where a non-root user could swap it", function () {
+      const owners: Record<string, { uid: number; mode: number }> = {
+        "/srv/prover": { uid: 1001, mode: 0o755 },
+        "/srv/shared": { uid: 0, mode: 0o1777 },
+      };
+      const stat = (p: string) => owners[p.replace(/\\/g, "/").replace(/^[A-Za-z]:/, "")] ?? { uid: 0, mode: 0o755 };
+      const none = () => false;
+      expect(rawDirErrors("/root/sp1-raw-20261101T100000Z", none, stat)).to.deep.equal([]);
+      expect(rawDirErrors("/root/sp1-raw", () => true, stat).join()).to.match(/does not exist yet/);
+      expect(rawDirErrors("root/sp1-raw", none, stat).join()).to.match(/absolute path/);
+      expect(rawDirErrors("/root/sp1 raw", none, stat).join()).to.match(/plain characters/);
+      expect(rawDirErrors("/srv/prover/raw", none, stat).join()).to.match(/owned by uid 1001/);
+      expect(rawDirErrors("/srv/shared/raw", none, stat).join()).to.match(/writable by group or others/);
     });
   });
 
@@ -475,9 +525,15 @@ describe("SP1-PA3C — the root egress observer", function () {
       expect(fs.markers).to.deep.equal([`SP1OBS ${NONCE_A} 1 READY mode=RUN`, `SP1OBS ${NONCE_A} 2 STOP`]);
       expect(s.tracingOn()).to.equal(true);
       expect(s.stats().map((c) => c.cpu)).to.deep.equal([0, 1]);
+      expect(s.misses()).to.equal(0);
+      fs.misses.set("udp4ret", 2);
+      fs.misses.set("newtask", 1);
+      expect(s.misses()).to.equal(3);
       expect(s.close()).to.deep.equal([]);
       expect(fs.files.get(`${ROOT}/kprobe_events`)).to.equal("");
       expect(fs.exists(`${ROOT}/instances/sp1obs_${NONCE_A}`)).to.equal(false);
+      // Its probes gone, the session vouches for nothing.
+      expect(() => s.misses()).to.throw(/defined no probe/);
     });
 
     it("undoes everything when the kernel refuses a probe part-way, and names it", function () {

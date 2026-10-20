@@ -1,6 +1,7 @@
 /**
- * SP1-PA3C test helper: synthetic raw observer evidence, line for line in the exact text tracefs prints (the format
- * test/fixtures/sp1-egress-observer/selftest-capture holds from a real kernel), so the parser, the normalizer and the
+ * SP1-PA3C test helper: synthetic raw observer evidence, line for line in the exact text tracefs prints for a kprobe
+ * event (the one format the real capture in test/fixtures/sp1-egress-observer/selftest-capture shows for the 9 probes
+ * its self-test exercises, the other 16 printed by the same kernel function), so the parser, the normalizer and the
  * derivation can be driven through every case without a kernel, a network or a proof. TraceBuilder writes events in
  * order on a monotonic clock; standardRun() composes one complete, consistent attributed run (the observer, the tool,
  * its probes, the proof's host and a docker CLI, both counter snapshots) that each test changes in exactly one way.

@@ -8,7 +8,9 @@
  *     [--proof-out <new file>] [--interval-ms 2000] [--platform-file <file of identity lines>]
  *
  * It does everything scripts/measure-sp1-proof-exercise.ts does (that tool stays byte-identical: SP1-PA3B's run
- * observation binds it) and, around it: refuses unless the observer started it on this boot (READY on stdin); asks the
+ * observation binds it) and, around it: refuses unless its stdin opens with a READY for this boot in run mode (a check
+ * of form: anything could write that line, and what binds the evidence is the observer's markers, which only root
+ * writes, never this check); asks the
  * observer to mark HELLO (this checkout's commit and the host label) and every phase before acting on it, so each
  * marker precedes the act in the trace; registers each gnark container it samples (the observer resolves and marks the
  * container's network namespace); and after the after-probes asks the observer to stop, reads the raw evidence the
@@ -80,8 +82,13 @@ runScript(async () => {
   const intervalMs = Number(arg("--interval-ms", false) ?? "2000");
   const platformFile = arg("--platform-file", false);
   if (!Number.isSafeInteger(intervalMs) || intervalMs <= 0) throw new Error("--interval-ms must be a positive integer");
-  if (!isAbsolute(hostExecutable))
-    throw new Error("--host must be absolute: the observer follows its exec by that path");
+  // The observer reads an exec's path from its first 128 bytes and names the proof's root only by the whole path, so
+  // a path it could not read whole (or would read as other bytes) is refused here, before any act, not after a proof.
+  if (!isAbsolute(hostExecutable) || !/^\/[\x21-\x7e]{1,126}$/.test(hostExecutable)) {
+    throw new Error(
+      "--host must be an absolute path of at most 127 printable ASCII bytes: the observer follows its exec by that path",
+    );
+  }
   if (process.platform !== "linux") {
     throw refuse(
       "PROVE_HOST_UNSUPPORTED",

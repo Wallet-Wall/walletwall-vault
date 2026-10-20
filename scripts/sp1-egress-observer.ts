@@ -14,7 +14,9 @@
  * unprivileged measurement tool (`run`) or the fixed synthetic workload (`self-test`) through setpriv. The tool asks
  * for every phase marker over its own stdin and stdout, which none of its children inherit; this process writes the
  * marker as root with the run's nonce and a sequence number before it answers, so the marker precedes the tool's next
- * act in the trace. Heartbeats record that the instance kept tracing without loss. After the tool's DONE the counters
+ * act in the trace. Heartbeats sample, once a second, that the instance is tracing and has lost nothing: no ring-buffer
+ * overrun or dropped event on any CPU and no miss by any of its probes (a return probe misses when more calls are in
+ * flight than it can follow); any loss stops the run. After the tool's DONE the counters
  * are snapshotted again, STOP is marked, the trace is drained into the raw directory with the host facts, every probe
  * and the instance are removed, and the tool is told where the raw evidence is (it normalizes it; the validators in
  * scripts/lib/sp1-egress-attribution.ts decide). Untrusted strings never reach the trace as text: paths and payloads
@@ -364,6 +366,28 @@ export function parseCpuStats(cpu: number, text: string): CpuStats {
   };
 }
 
+/**
+ * The misses of the probes `names` in tracefs's kprobe_profile (`  <event> <hits> <misses>` per kprobe event, every
+ * group's, the group not printed): every line must read so, and every name must be listed, or nothing is vouched for.
+ * A name another group also uses is summed with it: such a miss stops the run too (the safe side).
+ */
+export function probeMisses(profile: string, names: readonly string[]): number {
+  const wanted = new Set(names);
+  const seen = new Set<string>();
+  let misses = 0;
+  for (const line of profile.split("\n")) {
+    if (line === "") continue;
+    const m = /^ +(\S+) +(\d+) +(\d+)$/.exec(line);
+    if (!m) throw new Error(`kprobe_profile holds a line that does not read: ${line.slice(0, 80)}`);
+    if (!wanted.has(m[1])) continue;
+    seen.add(m[1]);
+    misses += Number(m[3]);
+  }
+  const absent = names.filter((n) => !seen.has(n));
+  if (absent.length > 0) throw new Error(`kprobe_profile does not list ${absent.join(", ")}`);
+  return misses;
+}
+
 /** The resolvers /etc/resolv.conf names (nameserver lines), in order. */
 export function resolversOf(resolvConf: string): string[] {
   return resolvConf
@@ -588,6 +612,12 @@ export class TraceSession {
       .sort((a, b) => a.cpu - b.cpu);
   }
 
+  /** The misses of every probe this session defined, from kprobe_profile (a missed hit is a lost event). */
+  misses(): number {
+    if (this.defined.length === 0) throw new Error("the session defined no probe");
+    return probeMisses(this.fs.read(tjoin(this.root, "kprobe_profile")), this.defined);
+  }
+
   stopTracing(): void {
     if (this.created) this.fs.write(tjoin(this.instance, "tracing_on"), "0");
   }
@@ -696,14 +726,34 @@ export function containerNetns(
   }
 }
 
-/** A heartbeat's marker fields and whether the run may continue: tracing on, and no event lost on any CPU. */
+/**
+ * A heartbeat's marker fields and whether the run may continue: tracing on, per-CPU stats read, and nothing lost (`loss`
+ * counts every CPU's overruns and dropped events and every probe's misses).
+ */
 export function heartbeatOf(
   n: number,
   stats: readonly CpuStats[],
   tracingOn: boolean,
+  misses: number,
 ): { fields: { n: number; tracingOn: number; loss: number }; ok: boolean } {
-  const loss = stats.reduce((s, c) => s + c.overrun + c.commitOverrun + c.droppedEvents, 0);
+  const loss = stats.reduce((s, c) => s + c.overrun + c.commitOverrun + c.droppedEvents, 0) + misses;
   return { fields: { n, tracingOn: tracingOn ? 1 : 0, loss }, ok: tracingOn && loss === 0 && stats.length > 0 };
+}
+
+/**
+ * Why `dir` may not hold the raw evidence: it must be an absolute path of plain characters that does not exist yet, under
+ * directories only root can change (else the proving user could swap the directory under the observer and have it bind
+ * a capture of the user's making).
+ */
+export function rawDirErrors(
+  dir: string,
+  exists: (p: string) => boolean,
+  statOf: (p: string) => { uid: number; mode: number },
+): string[] {
+  if (!isAbsolute(dir) || !RAW_DIR.test(dir) || exists(dir)) {
+    return ["--raw-dir must be an absolute path of plain characters that does not exist yet"];
+  }
+  return rootOwnedPathErrors(dirname(dir), statOf);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -768,9 +818,8 @@ async function main(argv: string[]): Promise<number> {
   const [rawArg] = argValue(own, "--raw-dir");
   if (!["inet", "ip", "ip6"].includes(family) || !/^[A-Za-z0-9_]{1,64}$/.test(table))
     throw new Error("--table takes a family (inet, ip, ip6) and a table name");
-  if (!isAbsolute(rawArg) || !RAW_DIR.test(rawArg) || existsSync(rawArg)) {
-    throw new Error("--raw-dir must be an absolute path of plain characters that does not exist yet");
-  }
+  const rawErrors = rawDirErrors(rawArg, existsSync, (p) => lstatSync(p));
+  if (rawErrors.length > 0) throw new ObserverRefusal("RAW_DIR_REFUSED", rawErrors.join("; "));
   const repo = realpathSync(repoArg);
   const user = userOf(run("getent", ["passwd", userName]));
   const command =
@@ -827,7 +876,7 @@ async function main(argv: string[]): Promise<number> {
   };
   const beat = () => {
     facts.heartbeats = (facts.heartbeats as number) + 1;
-    const h = heartbeatOf(facts.heartbeats as number, session.stats(), session.tracingOn());
+    const h = heartbeatOf(facts.heartbeats as number, session.stats(), session.tracingOn(), session.misses());
     session.mark("HEARTBEAT", h.fields);
     if (!h.ok)
       throw new ObserverRefusal("OBSERVER_LOSS", `tracing_on ${h.fields.tracingOn}, ${h.fields.loss} events lost`);
@@ -967,6 +1016,7 @@ async function main(argv: string[]): Promise<number> {
     facts.leftoverLines = leftover.length;
     if (leftover.length > 0) writeFileSync(rawTrace, `${leftover.join("\n")}\n`, { flag: "a" });
     facts.stats = session.stats();
+    facts.probeMisses = session.misses();
     if (early !== null) exitCode = early === 0 ? 4 : early;
     else exitCode = 0;
   } catch (error) {

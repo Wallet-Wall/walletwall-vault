@@ -1,7 +1,8 @@
 /**
  * SP1-PA3C: continuous egress attribution (scripts/lib/sp1-egress-attribution.ts), driven through every case with
  * synthetic raw evidence written line for line in tracefs's own format (test/helpers/sp1EgressTrace.ts) and checked
- * against a real capture (test/fixtures/sp1-egress-observer/selftest-capture). No kernel, no network, no proof.
+ * against a real capture (test/fixtures/sp1-egress-observer/selftest-capture: the committed observer's self-test on the
+ * proving host's kernel, 9 of its 25 probes exercised). No kernel, no network, no proof.
  *
  * What it pins: a raw line is read exactly or refused; the normalized evidence is deterministic and privacy-minimal;
  * every claim is derived from facts (coverage, continuity, who made each attempt, how each refused packet joins an
@@ -40,6 +41,7 @@ import {
   type Attribution,
   type NormEvent,
   type HostExecutable,
+  type Packet,
   type ObserverEvidence,
   type ObserverExpectations,
   type RawEvidence,
@@ -62,6 +64,7 @@ import {
   TraceBuilder,
   facts,
   ipv4,
+  le32,
   rawOf,
   refusedConnect,
   refusedLookup,
@@ -106,12 +109,14 @@ const details = (o: ObserverEvidence, reason: string, expect: ObserverExpectatio
   judge(o, expect)
     .refusals.filter((r) => r.reason === reason)
     .map((r) => r.detail);
-/** The class of every refused packet sent to `dst`, in trace order. */
-const classesTo = (o: ObserverEvidence, dst: string) => {
+/** The class of every refused packet matching `match`, in trace order. */
+const classesWhere = (o: ObserverEvidence, match: (p: Packet) => boolean) => {
   const drops = (judge(o).attribution as Attribution).drops;
-  const at = new Set(o.events.filter((e) => e.k === "drop" && e.packet.dst === dst).map((e) => e.i));
+  const at = new Set(o.events.filter((e) => e.k === "drop" && match(e.packet)).map((e) => e.i));
   return drops.filter((d) => at.has(d.i)).map((d) => d.class);
 };
+/** The class of every refused packet sent to `dst`, in trace order. */
+const classesTo = (o: ObserverEvidence, dst: string) => classesWhere(o, (p) => p.dst === dst);
 const OTHER: Proc = { comm: "systemd-timesyn", tid: 777, tgid: 777 };
 /** A refused UDP packet no observed attempt sent, outside any process context. */
 const stray = (b: TraceBuilder) =>
@@ -923,9 +928,9 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
   describe("a real capture: the committed observer's self-test on the proving host's kernel", function () {
     // Made as root on developer-workstation-wsl2 (6.18.33.1-microsoft-standard-WSL2): the self-test workload's TEST-NET
-    // connections and one DNS query, under a table refusing 192.0.2.0/24 only; reviewed for privacy before it was
-    // committed (the observer, nft, setpriv and node; the test user; private addresses). The kernel wrote LF bytes: a
-    // CRLF checkout of them is read back as written.
+    // connections and one DNS query, under a table refusing the host's resolver and 192.0.2.0/24; reviewed for privacy
+    // before it was committed (the observer, nft, setpriv and node; the test user; private addresses). The kernel wrote
+    // LF bytes: a CRLF checkout of them is read back as written.
     const DIR = "test/fixtures/sp1-egress-observer/selftest-capture";
     const read = (f: string) => readFileSync(join(DIR, f), "latin1").replace(/\r\n/g, "\n");
     const raw: RawEvidence = { trace: read("trace.txt"), facts: read("facts.json"), manifest: read("manifest.json") };
@@ -952,11 +957,11 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
     it("reads every kernel line, normalizes to the pinned digest, and derives continuous, complete attribution", function () {
       const o = normalizeObserverRaw(raw, host);
-      expect(o.normalizedSha256).to.equal("d0597999a55d97c16ac5e4911fc63ac7df1ec54cf43814aa1af64a94700a0db2");
+      expect(o.normalizedSha256).to.equal("5745cb341faa6cd4c8b08f41756cd3112f48d496fb0ca4bdcbecc5b3ed87e643");
       const j = observerEvidenceErrors(o, selfTest);
       expect(j.refusals).to.deep.equal([]);
       const a = j.attribution as Attribution;
-      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([970, 983, 990]);
+      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([929, 942, 949]);
       expect(a.attempts.map((x) => [x.scope, x.kind, `${x.dest?.addr}:${x.dest?.port}`, x.outcome])).to.deep.equal([
         ["TOOL", "connect", "192.0.2.10:443", "REFUSED"],
         ["PROOF", "send", "192.0.2.53:53", "REFUSED"],
@@ -1303,6 +1308,105 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           expect(j.attribution?.lineage.proofRoot, Object.keys(hooks)[0]).to.equal(HOST.tgid);
         }
         expect(reasons(normalize(standardRaw({ duringProof: decoy(TOOL, 1053) })))).to.include("HOST_AMBIGUOUS");
+      });
+
+      it("names the kernel's multicast report a kernel message, and a container's own reset never one", function () {
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "224.0.0.22", 2, [0x22, 0, 0, 0, 0, 0, 0, 1]), { flags: "..s2." });
+              b.drop(IDLE, "0x0", ipv4("172.17.0.2", "198.51.100.30", 6, tcp(5555, 80, 0x14)), { flags: "..s1." });
+              b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "198.51.100.31", 6, tcp(22, 61001, 0x14)), { flags: "..s2." });
+            },
+          }),
+        );
+        expect(classesTo(o, "224.0.0.22")).to.deep.equal(["KERNEL_RESPONSE"]);
+        expect(classesTo(o, "198.51.100.30")).to.deep.equal(["UNATTRIBUTED"]);
+        expect(classesTo(o, "198.51.100.31")).to.deep.equal(["KERNEL_RESPONSE"]);
+      });
+
+      it("joins nothing by addresses and ports in a namespace that sent through a packet socket: a crafted copy hides no leak", function () {
+        const c: Proc = { comm: "gnark", tid: 3050, tgid: 3050 };
+        const copy = ipv4("172.17.0.2", RESOLVER, 17, udp(36800, 53, dnsQuery(11, "exfil.example")));
+        const run = (craft: boolean) =>
+          normalize(
+            standardRaw({
+              duringProof: (b) => {
+                b.marker("CONTAINER", { id: "d".repeat(64), pid: 4321, netns: CONTAINER_NETNS });
+                b.udp4(c, "0xffff88800004f100", RESOLVER, 53, { netns: CONTAINER_NETNS });
+                b.udp4ret(c, "0xffff88800004f100", 39, 36800); // the datagram passed the boundary
+                if (craft) {
+                  b.probe(c, "pkt", {
+                    sk: "0xffff88800004f200",
+                    len: 81,
+                    namelen: 20,
+                    nfam: 17,
+                    nproto: 0x8,
+                    nifindex: 2,
+                    netns: CONTAINER_NETNS,
+                  });
+                  b.probe(c, "pktret", { ret: 81, sk: "0xffff88800004f200" });
+                }
+                b.drop(c, "0x0", copy, { flags: "..s1." }); // a copy of it, refused at the host's input
+              },
+            }),
+          );
+        const outcome = (o: ObserverEvidence) =>
+          judge(o).attribution?.attempts.find((x) => x.sk === "0xffff88800004f100")?.outcome;
+        // Without a crafted send the join stands, and the datagram reads as refused (the residual the rule closes).
+        expect(outcome(run(false))).to.equal("REFUSED");
+        const crafted = run(true);
+        expect(outcome(crafted)).to.equal("SENT");
+        expect(details(crafted, "EGRESS_LEAKED")).to.have.length(1);
+        expect(classesWhere(crafted, (p) => p.sport === 36800)).to.deep.equal(["UNATTRIBUTED"]);
+      });
+
+      it("joins a container's refused ping by its address: a refused echo is no leak", function () {
+        const c: Proc = { comm: "gnark", tid: 3060, tgid: 3060 };
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.probe(c, "ping4", {
+                sk: "0xffff88800004f300",
+                len: 8,
+                namelen: 16,
+                nfam: 2,
+                naddr: le32(RESOLVER),
+                daddr: 0,
+                netns: CONTAINER_NETNS,
+              });
+              b.probe(c, "ping4ret", { ret: 8, sk: "0xffff88800004f300" });
+              b.drop(c, "0x0", ipv4("172.17.0.2", RESOLVER, 1, [8, 0, 0, 0, 0, 1, 0, 1]), { flags: "..s1." });
+            },
+          }),
+        );
+        expect(judge(o).attribution?.attempts.find((x) => x.sk === "0xffff88800004f300")).to.deep.include({
+          outcome: "REFUSED",
+          destClass: "RESOLVER",
+        });
+        expect(reasons(o)).to.not.include("EGRESS_LEAKED");
+      });
+
+      it("leaves the attribution partial when an attempt toward a resolver or beyond the VM has no outcome in the capture", function () {
+        const o = normalize(
+          standardRaw({ duringProof: (b) => b.udp4(HOST, "0xffff88800004f400", RESOLVER, 53, { connected: true }) }),
+        );
+        const j = judge(o);
+        expect(j.refusals).to.deep.equal([]);
+        const a = assuranceOf(o, j.attribution as Attribution);
+        expect([a.level, a.processAttribution, a.unattributedEvents, a.events?.unknownOutcomes]).to.deep.equal([
+          "CONTINUOUS_PARTIALLY_ATTRIBUTED",
+          "PARTIAL",
+          0,
+          1,
+        ]);
+        // Toward the host itself it decides nothing about the boundary.
+        const local = normalize(
+          standardRaw({ duringProof: (b) => b.udp4(HOST, "0xffff88800004f500", "127.0.0.1", 9) }),
+        );
+        expect(assuranceOf(local, judge(local).attribution as Attribution)).to.deep.include({
+          level: "CONTINUOUS_ATTRIBUTED",
+        });
       });
 
       it("names a refused echo request no attempt sent UNATTRIBUTED, in IPv4 and IPv6: a request is no response", function () {

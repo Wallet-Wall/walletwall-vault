@@ -493,7 +493,13 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
         "absent-out.json",
       ];
       const relative = run(ATTRIBUTED_RUN_SCRIPT_REL, args("mldsa65-host"));
-      expect(`${relative.stdout}\n${relative.stderr}`).to.include("--host must be absolute");
+      expect(`${relative.stdout}\n${relative.stderr}`).to.include("--host must be an absolute path");
+      // A path the observer could not read whole, or would read as other bytes: refused before the proof, not after.
+      for (const host of [`/srv/${"a".repeat(123)}`, "/srv/prüfer/mldsa65-host", "/srv/a b/mldsa65-host"]) {
+        const r = run(ATTRIBUTED_RUN_SCRIPT_REL, args(host));
+        expect(`${r.stdout}\n${r.stderr}`, host).to.include("at most 127 printable ASCII bytes");
+      }
+      expect(Buffer.byteLength(`/srv/${"a".repeat(122)}`)).to.equal(127);
       const full = run(ATTRIBUTED_RUN_SCRIPT_REL, args("/srv/absent/mldsa65-host"));
       expect(full.status).to.equal(1);
       expect(`${full.stdout}\n${full.stderr}`).to.match(
@@ -527,6 +533,25 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
       ]);
       expect(sha256(readFileSync("evidence/zk/schema/sp1-proof-exercise.v1.schema.json"))).to.equal(
         "a8863f4ac2a94205db51439e42d05d59cfeb0626515a7a2235936c2ae06eff62",
+      );
+    });
+
+    it("the record v2 schema's assurance names exactly the keys the derivation writes", function () {
+      const run = attributedRun();
+      const rec = deriveExerciseRecord(
+        run,
+        verificationObservation(run as unknown as RunObservation),
+        {
+          runSha256: runSha(run as unknown as RunObservation),
+          verificationPath: `${OBSERVATIONS_DIR}/proof-exercise-verification-proving-host-a.raw.json`,
+          runPath: `${OBSERVATIONS_DIR}/proof-exercise-run-proving-host-a.raw.json`,
+        },
+        X2,
+      ) as AttributedProofExerciseRecord;
+      const schema = rec2.properties.egress.properties.assurance;
+      expect(Object.keys(rec.egress.assurance).sort()).to.deep.equal([...schema.required].sort());
+      expect(Object.keys(rec.egress.assurance.events ?? {}).sort()).to.deep.equal(
+        [...schema.properties.events.required].sort(),
       );
     });
   });

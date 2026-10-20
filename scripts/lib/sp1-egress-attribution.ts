@@ -67,6 +67,7 @@ const TCP_SYN_SENT = 2;
 const TCP_CLOSE = 7;
 const PF_KTHREAD = 0x00200000;
 const IPPROTO_ICMP = 1;
+const IPPROTO_IGMP = 2;
 const IPPROTO_TCP = 6;
 const IPPROTO_UDP = 17;
 const IPPROTO_ICMPV6 = 58;
@@ -1181,6 +1182,8 @@ const isResponse = (p: Packet) =>
   (p.proto === IPPROTO_ICMPV6 &&
     p.icmp !== undefined &&
     [1, 2, 3, 4, 129, 133, 134, 135, 136, 143].includes(p.icmp.type));
+/** What the kernel sends of itself: its answers (above) and its multicast membership reports (IGMP). */
+const isKernelMessage = (p: Packet) => isResponse(p) || p.proto === IPPROTO_IGMP;
 
 /** The order the observer's markers must take (each once, CONTAINER and HEARTBEAT aside). */
 const ORDER = [
@@ -1384,12 +1387,14 @@ export function deriveAttribution(
         judge("ATTEMPT_PACKET", session, "a retransmission of the attempt's connection, by its socket");
         continue;
       }
-      // J3 waits for every return: a container's packet reaches the host after it left the container's socket.
-      if (e.sk === "0x0" && e.packet.v !== null && !isResponse(e.packet)) {
+      // J3 waits for every return: a container's packet reaches the host after it left the container's socket. A
+      // packet from a container's own address is the container's whatever its shape: never the kernel's answer.
+      const fromContainer = e.sk === "0x0" && e.packet.src !== null && destinationClass(ctx, e.packet.src) === "IN_VM";
+      if (e.sk === "0x0" && e.packet.v !== null && (fromContainer || !isKernelMessage(e.packet))) {
         deferred.push(e);
         continue;
       }
-      if (isResponse(e.packet))
+      if (isKernelMessage(e.packet))
         judge(
           "KERNEL_RESPONSE",
           null,
@@ -1407,17 +1412,28 @@ export function deriveAttribution(
   }
   // J3: a container's datagram or connection, refused in the host (no socket crosses the namespaces), joined by its
   // protocol, addresses and ports to an earlier attempt from a container namespace; a datagram is one packet.
+  // A namespace that sent through a packet or raw socket could have crafted any header: no packet joins its attempts by
+  // addresses and ports (a crafted copy of a leaked datagram would otherwise make that datagram read as refused).
+  const crafting = new Set(
+    attempts
+      .filter((a) => !a.delegated && a.netns !== ctx.hostNetns && (a.probe === "pkt" || a.probe.startsWith("raw")))
+      .map((a) => a.netns),
+  );
+  const echo = (p: Packet) =>
+    (p.proto === IPPROTO_ICMP && p.icmp?.type === 8) || (p.proto === IPPROTO_ICMPV6 && p.icmp?.type === 128);
   for (const e of deferred) {
     const candidates = attempts.filter(
       (a) =>
         !a.delegated &&
         a.netns !== ctx.hostNetns &&
+        !crafting.has(a.netns) &&
         a.i < e.i &&
         a.dest !== null &&
         a.dest.addr === e.packet.dst &&
         a.dest.port === e.packet.dport &&
         a.sport === e.packet.sport &&
         ((a.kind === "send" && a.probe.startsWith("udp") && e.packet.proto === IPPROTO_UDP && a.packets.length === 0) ||
+          (a.kind === "send" && a.probe.startsWith("ping") && echo(e.packet) && a.packets.length === 0) ||
           (a.kind === "connect" && e.packet.proto === IPPROTO_TCP)),
     );
     const a = candidates[0];
@@ -1558,9 +1574,12 @@ export interface EgressAssurance {
     byScope: Record<string, number>;
     boundaryResponses: number;
     kernelResponses: number;
-    /** Refused packets no attempt sent, outside the critical window but inside the observed one (they too make the
-     * attribution PARTIAL). */
+    /** Refused packets no attempt sent, outside the critical window but in the capture (they too make the attribution
+     * PARTIAL). */
     unattributedOutsideWindow: number;
+    /** Attempts inside the window, to a resolver from any namespace or beyond the VM from the host, whose outcome the
+     * capture does not show (no return, or a connection neither established nor closed): PARTIAL, never complete. */
+    unknownOutcomes: number;
   } | null;
   /** Refused packets inside the critical window (the probes and the proof) that no observed attempt sent. */
   unattributedEvents: number | null;
@@ -1590,8 +1609,16 @@ export function assuranceOf(o: ObserverEvidence, a: Attribution): EgressAssuranc
   const inWindow = (i: number) => a.window !== null && i > a.window.begin && i < a.window.end;
   const unattributedAll = a.drops.filter((d) => d.class === "UNATTRIBUTED");
   const unattributed = unattributedAll.filter((d) => inWindow(d.i)).length;
-  // Complete means every refused packet the observer saw, READY to STOP; the window's count is reported on its own.
-  const complete = unattributedAll.length === 0;
+  // An attempt that may have gone past the boundary, its outcome unseen, is not attributed either.
+  const unknown = counted.filter(
+    (x) =>
+      inWindow(x.i) &&
+      x.outcome === "UNKNOWN" &&
+      (x.destClass === "RESOLVER" || (x.destClass === "EGRESS" && x.netns === o.host.netns)),
+  ).length;
+  // Complete means every refused packet the capture holds is attributed (its first line to its last, READY's
+  // surroundings included) and no attempt that matters has an unseen outcome; the window's own count is reported apart.
+  const complete = unattributedAll.length === 0 && unknown === 0;
   const beats = a.markers.filter((m) => m.kind === "HEARTBEAT");
   let maxGap = 0;
   for (let k = 1; k < beats.length; k++) maxGap = Math.max(maxGap, beats[k].t - beats[k - 1].t);
@@ -1610,6 +1637,7 @@ export function assuranceOf(o: ObserverEvidence, a: Attribution): EgressAssuranc
       boundaryResponses: a.drops.filter((d) => d.class === "BOUNDARY_RESPONSE").length,
       kernelResponses: a.drops.filter((d) => d.class === "KERNEL_RESPONSE").length,
       unattributedOutsideWindow: unattributedAll.length - unattributed,
+      unknownOutcomes: unknown,
     },
     unattributedEvents: unattributed,
     observer: {

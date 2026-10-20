@@ -5,11 +5,13 @@
  *   SP1_EGRESS_OBSERVER_INTEGRATION=1 SP1_EGRESS_OBSERVER_USER=<unprivileged user who can read this checkout> \
  *     node node_modules/tsx/dist/cli.mjs node_modules/mocha/bin/mocha.js test/Sp1EgressObserverLinux.test.ts   # as root
  *
- * It creates a private nft table refusing only 192.0.2.0/24 (TEST-NET-1, never routed), copies the observer to a
- * root-owned directory (the observer refuses any other location), and runs `self-test`: the observer installs its
- * probes in a private tracefs instance and starts the fixed workload (test/fixtures/sp1-egress-observer/workload.mjs)
- * as the unprivileged user, which probes 192.0.2.10:443 before and after and, between HOST_SPAWN and HOST_EXIT, starts
- * a child that sends one DNS query for pa3c-selftest.example to 192.0.2.53. The raw evidence must normalize
+ * It creates a private nft table refusing 192.0.2.0/24 (TEST-NET-1, never routed) and the host's resolvers (as a proof
+ * exercise's boundary does, so a lookup elsewhere on the host is refused rather than read as a leak), copies the
+ * observer to a root-owned directory (the observer refuses any other location), and runs `self-test`: the observer
+ * installs its probes in a private tracefs instance and starts the fixed workload
+ * (test/fixtures/sp1-egress-observer/workload.mjs) as the unprivileged user, which probes 192.0.2.10:443 before and
+ * after and, between HOST_SPAWN and HOST_EXIT, starts a child that sends one DNS query for pa3c-selftest.example to
+ * 192.0.2.53. The raw evidence must normalize
  * deterministically and derive, with no refusal: the child's query attributed to the proof's scope with its name, the
  * probes to the tool, every refused packet joined, the counters reconciled exactly, nothing left in the kernel. It runs
  * no SP1, makes no proof, touches no evidence and reaches no real host. Research prototype. Not audited.
@@ -26,6 +28,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import { isIP } from "node:net";
 import { join, resolve } from "node:path";
 
 import {
@@ -36,7 +39,7 @@ import {
   userDev,
   type HostExecutable,
 } from "../scripts/lib/sp1-egress-attribution";
-import { RAW_FACTS_FILE, RAW_MANIFEST_FILE, RAW_TRACE_FILE } from "../scripts/sp1-egress-observer";
+import { RAW_FACTS_FILE, RAW_MANIFEST_FILE, RAW_TRACE_FILE, resolversOf } from "../scripts/sp1-egress-observer";
 
 const TABLE = "sp1obs_selftest";
 const USER = process.env.SP1_EGRESS_OBSERVER_USER ?? "";
@@ -70,11 +73,17 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
     // Written, not copied: a copy can keep the checkout owner's uid, and the observer refuses a file root does not own.
     writeFileSync(join(dir, "sp1-egress-observer.ts"), readFileSync("scripts/sp1-egress-observer.ts"), { mode: 0o644 });
     writeFileSync(join(dir, "package.json"), '{ "type": "module" }\n');
-    // nft reads a ruleset from a regular file (it refuses a pipe on stdin).
+    // nft reads a ruleset from a regular file (it refuses a pipe on stdin). The host's resolvers are refused too, as a
+    // proof exercise's boundary refuses them: a lookup anything on the host makes meanwhile is refused and attributed,
+    // never a resolver send that passed (which the derivation rightly calls a leak).
     const rules = join(dir, "table.nft");
+    const resolvers = resolversOf(existsSync("/etc/resolv.conf") ? readFileSync("/etc/resolv.conf", "utf8") : "")
+      .filter((r) => isIP(r) !== 0)
+      .map((r) => `    ${isIP(r) === 6 ? "ip6" : "ip"} daddr ${r} counter reject\n`)
+      .join("");
     writeFileSync(
       rules,
-      `table inet ${TABLE} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n`,
+      `table inet ${TABLE} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${resolvers}    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n`,
     );
     const made = nft(["-f", rules]);
     if (made.status !== 0) throw new Error(`could not create the test table: ${made.stderr}`);
@@ -175,9 +184,17 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
       ["192.0.2.10", 443, "REFUSED"],
       ["192.0.2.10", 443, "REFUSED"],
     ]);
-    expect(a.drops.every((d) => d.class === "ATTEMPT_PACKET")).to.equal(true);
+    // The workload's three refused packets, each joined to its own attempt; anything else the host refused meanwhile (a
+    // lookup at a refused resolver, say) is attributed too: nothing is unattributed.
+    const own = a.drops.filter(
+      (d) => d.attempt !== null && (d.attempt.scope === "TOOL" || d.attempt.scope === "PROOF"),
+    );
+    expect(own.map((d) => d.class)).to.deep.equal(["ATTEMPT_PACKET", "ATTEMPT_PACKET", "ATTEMPT_PACKET"]);
+    expect(a.drops.filter((d) => d.class === "UNATTRIBUTED")).to.deep.equal([]);
     const rec = reconcile(a.drops, a.markers, o.boundary);
-    expect(rec).to.deep.include({ ok: true, counted: 3, inner: 3, outer: 3 });
+    expect(rec.ok).to.equal(true);
+    expect([rec.counted, rec.outer]).to.deep.equal([rec.inner, rec.inner]);
+    expect(rec.inner).to.be.at.least(3);
     expect(assuranceOf(o, a)).to.deep.include({
       level: "CONTINUOUS_ATTRIBUTED",
       processAttribution: "COMPLETE",
