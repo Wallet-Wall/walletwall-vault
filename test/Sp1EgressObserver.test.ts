@@ -6,7 +6,7 @@
  * test/Sp1EgressObserverLinux.test.ts (Linux, root, opt-in). Research prototype. Not audited.
  */
 import { expect } from "chai";
-import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, writeSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, rmSync, writeSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -442,11 +442,10 @@ describe("SP1-PA3C — the root egress observer", function () {
           ]);
           // The drain shares the descriptor and writes at its offset: the observer's reads and appends never moved it.
           writeSync(fd, "L");
-          expect(bytesOf(fd).toString("latin1").startsWith("Line one\n")).to.equal(true);
+          expect(bytesOf(fd).toString("latin1")).to.equal("Line one\ncommé\n");
         } finally {
           closeSync(fd);
         }
-        expect(readFileSync(path, "latin1")).to.equal("Line one\ncommé\n");
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

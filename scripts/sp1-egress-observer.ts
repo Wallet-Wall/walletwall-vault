@@ -464,9 +464,12 @@ export function uplinksOf(routesJson: string[], interfaces: readonly Interface[]
   return [...out].sort((a, b) => a - b);
 }
 
-/** `getent passwd <user>` -> uid, gid, home; refuses root (the tool and the gate run unprivileged). */
-export function userOf(passwdLine: string): { name: string; uid: number; gid: number; home: string } {
-  const f = passwdLine.trim().split(":");
+/**
+ * An account's line as `getent passwd <user>` prints it (name, uid, gid, home; no password is ever read) -> uid, gid,
+ * home; refuses root (the tool and the gate run unprivileged).
+ */
+export function userOf(accountLine: string): { name: string; uid: number; gid: number; home: string } {
+  const f = accountLine.trim().split(":");
   if (f.length < 7 || !/^\d+$/.test(f[2]) || !/^\d+$/.test(f[3])) throw new Error("not a passwd entry");
   const uid = Number(f[2]);
   if (uid === 0) throw new Error("the tool must run as an unprivileged user, not root");
