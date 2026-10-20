@@ -11,11 +11,12 @@
     "plan": "archive the v6.1.0 circuit artifacts by hash and keep a self-hosted proving path before real value",
     "dependency": "Groth16 proof generation for circuit v6.1.0 needs Succinct's v6.1.0 circuit artifacts (about 6.21 GB) or the Succinct prover network; integrity is checked on chain by the pinned verifier key, availability is not WalletWall's."
   },
-  "status": "ARCHIVED_VERIFIED_UNEXERCISED",
+  "status": "SELF_HOSTED_PATH_EXERCISED",
   "basis": [
     "the circuit v6.1.0 Groth16 artifacts are absent on developer-workstation: ~/.sp1/circuits/groth16/v6.1.0 does not exist, nor does ~/.sp1/circuits",
     "WalletWall archived v6.1.0-groth16.tar.gz: 6211807514 bytes, sha256 18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810, acquired independently on developer-workstation and github-hosted-runner (both measured the same bytes), inspected member by member by the SP1-PA2A tooling (7 members; 8 AppleDouble entries ignored), mirrored at 2 WalletWall-controlled locations each recorded with that sha256, with the gnark image pinned by digest sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d; the record is evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json, derived from the committed acquisition observations",
-    "an archive is not an exercised proving path: no proof has been made from it, and archiving establishes availability of the bytes, never that the Groth16 trusted setup behind the key is sound",
+    "one real Groth16 proof of the designated program was made on developer-workstation-wsl2 through the archive-only gate from that archive, with SP1_PROVER=cpu, the digest-pinned image ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d and network egress refused before and after the run, and the designated verifier accepted it and refused its tampered copy (1 check(s) of the v6.1.0 runtime at code hash 0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd); the gate run took 647 s against the 172800 s rotation delay (within it, 0.003744 of it), with peak memory 23366266880 bytes (host process) and 18962280612 bytes (gnark containers, sampled); the record is evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json, derived from the committed run and verification observations",
+    "an exercised path is liveness on one host at one time: it establishes neither that the Groth16 trusted setup behind the key is sound nor production readiness",
     "upstream (sp1-circuits.s3-us-east-2.amazonaws.com) hosting them is not availability: it can stop, and nothing here relies on what it serves",
     "known offline: their groth16_vk.bin must have sha256 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 (492 bytes), the key sp1-verifier 6.3.1 embeds; that crate is the one zkvm/host/Cargo.lock pins, and the hash is the designated VERIFIER_HASH"
   ],
@@ -114,10 +115,34 @@
   },
   "exercises": {
     "dir": "evidence/zk/sp1-impl/proof-exercises",
-    "records": 0
+    "records": 1,
+    "accepted": {
+      "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json",
+      "derivedFrom": [
+        "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
+        "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json"
+      ],
+      "host": "developer-workstation-wsl2",
+      "performedAtUtc": "2026-10-19T23:24:14Z",
+      "verifiedAtUtc": "2026-10-20T00:35:18Z",
+      "wallClockSeconds": 647,
+      "hostSeconds": 606,
+      "rotationDelaySeconds": 172800,
+      "withinRotationDelay": true,
+      "peakMemory": {
+        "hostProcessBytes": 23366266880,
+        "gnarkContainersBytes": 18962280612
+      },
+      "verifier": {
+        "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+        "checks": 1
+      },
+      "egress": "EGRESS_DISABLED"
+    }
   },
   "selfHostedPath": {
-    "exercised": false,
+    "exercised": true,
+    "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json",
     "requirements": [
       "archive v6.1.0-groth16.tar.gz once, from an owner-authorized download, with its sha256 and every member's sha256 and size; upstream hosting is no archive",
       "accept it only if its groth16_vk.bin has sha256 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696 and is byte-identical to sp1-verifier 6.3.1's vk-artifacts/groth16_vk.bin; the other members are checked by proving, never trusted",
@@ -128,14 +153,15 @@
     ]
   },
   "ownerAction": [
-    "authorize the self-hosted proving run (SP1-PA3B): install from the committed verified archive only, with the digest-pinned gnark image, network egress off, one real Groth16 proof of the designated program through the archive-only gate under measurement (sp1:measure-proof-exercise), verified through the designated verifier path (sp1:verify-proof-exercise), peak memory and wall time recorded against the 2-day rotation delay, the two observations committed and the record derived (sp1:proof-exercise-record); only then SELF_HOSTED_PATH_EXERCISED, from facts"
+    "production binding (the implementation receipt's PRODUCTION_SP1_BINDING) is a later, owner-authorized lane: an exercised path is liveness on one host at one time, never production readiness"
   ],
   "notEstablished": [
-    "that the self-hosted path proves at all, on what hardware, and within the 2-day rotation delay: no proof has been made from the archive",
-    "that the mirrors keep serving the archive: each was re-read byte for byte when its observation was made, and the record is that assertion, never a continuous check",
-    "that the mirrors are independent of each other beyond what their locations and controller state",
-    "that the digest-pinned gnark image is archived under WalletWall's control: the record pins its identity (the registry's index digest and the linux/amd64 manifest), not a copy of its bytes",
-    "the Groth16 trusted setup behind the v6.1.0 key: an upstream assumption the designated verifier inherits, which archiving does not change; the verifying-key equality is integrity and compatibility, never soundness"
+    "the provenance of the proving beyond what the repository binds (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing): the designated verifier accepts a valid proof whoever made it, however it was made; the rest is the operator's observation under the owner's review",
+    "that any other hardware proves within the 172800 s rotation delay: one measured run on one host (a run over the delay is still an exercised path, recorded as EXCEEDING, never a timely one)",
+    "that egress stayed refused between the two probes, or that the proving host's enforcement reached every container",
+    "that the mirrors keep serving the archive, or that the image stays in the registry: the exercise used them once",
+    "the Groth16 trusted setup behind the v6.1.0 key: a proof the designated verifier accepts is compatibility with the key, never soundness",
+    "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED until its own lane"
   ],
   "observation": {
     "path": "evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json",

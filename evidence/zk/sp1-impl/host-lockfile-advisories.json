@@ -55,7 +55,7 @@
       },
       {
         "path": "evidence/zk/sp1-impl/proving-availability.json",
-        "sha256": "057d369ccec19535a1f20fe96407746989816a2983713ab464676a20f5c5785a"
+        "sha256": "d7fd9c20c153ae6db1153cd4d1352e0cc072c3fe2360e75455ed7efc091dc480"
       }
     ]
   },
@@ -96,9 +96,9 @@
     ],
     "circuit": {
       "version": "v6.1.0",
-      "provingAvailability": "ARCHIVED_VERIFIED_UNEXERCISED",
+      "provingAvailability": "SELF_HOSTED_PATH_EXERCISED",
       "walletWallArchives": 1,
-      "walletWallProofExercises": 0,
+      "walletWallProofExercises": 1,
       "sp1DownloadsWhenAbsent": true
     }
   },
@@ -1575,7 +1575,7 @@
       "kind": "assumption",
       "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy), ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B, and no proof-exercise record) or SELF_HOSTED_PATH_EXERCISED (that archive record plus exactly the one proof-exercise record derived from a run through the archive-only gate, SP1-PA3A), never an unverified local copy where SP1 reads; the self-hosted path proves only from a verified archive through that gate, which never lets SP1 download the circuit, and it is exercised only as the committed proof-exercise record says",
       "holds": true,
-      "observed": "status ARCHIVED_VERIFIED_UNEXERCISED; archive records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json); proof-exercise records 0 recorded, 0 on disk; self-hosted path exercised false; proves only from an archive: yes"
+      "observed": "status SELF_HOSTED_PATH_EXERCISED; archive records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json); proof-exercise records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json); self-hosted path exercised true; proves only from an archive: yes"
     },
     {
       "id": "F_SP1_SDK_NO_NETWORK",
