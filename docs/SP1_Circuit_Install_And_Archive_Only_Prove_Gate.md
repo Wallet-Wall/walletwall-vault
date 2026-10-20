@@ -945,18 +945,19 @@ host's do), by protocol, destination address and ports, a datagram once, and onl
 one namespace (ports are per namespace: attempts of two that could each have sent it name neither), unless anything in
 such a namespace sent through a packet or raw socket (which could craft any header, as any address: then no packet joins
 a container's attempt this way). Any other refused packet is a kernel message (a reset, an ICMP answer, a neighbour or
-multicast-group message, by its header, and only from a source the host's kernel uses: one of its own addresses as read
-at the start, the unspecified address, or an IPv6 link-local one; never once a container crafted) or `UNATTRIBUTED`. The
-declared table's refusing rules must have counted, between the two snapshots, no fewer refused packets than the observer
-saw strictly inside the counters' window and no more than it saw inside their outer brackets (the reads take time), with
-the rules unchanged: fewer means another table refused (the declared boundary is not the boundary), more means a refusal
-went unobserved. Both counts come from the capture (the observer reads the counters into its facts), so the
-reconciliation finds a gap or a second boundary in an honest capture, not an edited one. Inside the window, a frame
-leaving through an uplink, an attempt from the host's namespace (a container on the host's network among them) to a
-destination beyond the VM that was sent or connected, or an attempt from any namespace to a resolver that was sent or
-connected (a resolver on the host forwards beyond the VM, on a channel no device transmit shows) is a leak, and refuses.
-A container's attempt beyond the VM is a leak only by the transmit that carries it out: its own namespace's send shows
-only that it left the container.
+multicast-group message, by its header, and only from one of the host's own addresses as read at the start, or from a
+link-scoped source a kernel uses before or beside them, the unspecified address or an IPv6 link-local one, which no
+router forwards and for which the reason says the drop cannot tell the host's message from a link neighbour's; never
+once a container crafted) or `UNATTRIBUTED`. The declared table's refusing rules must have counted, between the two
+snapshots, no fewer refused packets than the observer saw strictly inside the counters' window and no more than it saw
+inside their outer brackets (the reads take time), with the rules unchanged: fewer means another table refused (the
+declared boundary is not the boundary), more means a refusal went unobserved. Both counts come from the capture (the
+observer reads the counters into its facts), so the reconciliation finds a gap or a second boundary in an honest
+capture, not an edited one. Inside the window, a frame leaving through an uplink, an attempt from the host's namespace
+(a container on the host's network among them) to a destination beyond the VM that was sent or connected, or an attempt
+from any namespace to a resolver that was sent or connected (a resolver on the host forwards beyond the VM, on a channel
+no device transmit shows) is a leak, and refuses. A container's attempt beyond the VM is a leak only by the transmit
+that carries it out: its own namespace's send shows only that it left the container.
 
 A v2 record carries the result as `egress.assurance`, metadata orthogonal to the state; no new state was created:
 
@@ -984,8 +985,11 @@ process, which could also switch the probes or the trace off and on again betwee
 that tracing is on, every probe enabled and, where debugfs shows it, the kernel's global kprobe switch armed: it sees
 one left off, never one switched back in time, and not a probe left enabled but silenced by a filter or a CPU mask); the
 requester behind a daemon (an attempt `dockerd` or `systemd-resolved` makes on another process's behalf is the
-daemon's). Whether the global switch was shown (not where debugfs is unmounted, nor under a locked-down kernel, which
-refuses even root's read) is the raw facts' `kprobesGlobalArm`, kept with the raw evidence and not committed.
+daemon's); the direction of a refused packet (the drop probe records none: a link neighbour's message from a link-scoped
+source, refused on its way in, reads as a kernel message, as the host's own would; the label hides no leak, since it
+joins the packet to no attempt, so no attempt reads refused by it). Whether the global switch was shown (not where
+debugfs is unmounted, nor under a locked-down kernel, which refuses even root's read) is the raw facts'
+`kprobesGlobalArm`, kept with the raw evidence and not committed.
 
 ### Raw evidence and privacy
 

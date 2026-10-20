@@ -1464,6 +1464,22 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         for (const dst of ["198.51.100.30", "198.51.100.32", "2001:db8::9", "203.0.113.9", "ff02::2"]) {
           expect(classesTo(o, dst), dst).to.deep.equal(["UNATTRIBUTED"]);
         }
+        // The drop records no direction: from a link-scoped source, the reason says a link neighbour's reads the same.
+        const why = (dst: string) => {
+          const at = new Set(o.events.filter((e) => e.k === "drop" && e.packet.dst === dst).map((e) => e.i));
+          return (judge(o).attribution as Attribution).drops.filter((d) => at.has(d.i)).map((d) => d.why);
+        };
+        expect(own.map((dst) => why(dst)[0].startsWith("a kernel's message from a link-scoped source"))).to.deep.equal([
+          false,
+          false,
+          true,
+          true,
+          true,
+        ]);
+        expect(why("224.0.0.22")).to.deep.equal([
+          "a reset, ICMP answer or neighbour/multicast message the kernel itself sent, refused",
+        ]);
+        expect(why("ff02::16")[0]).to.include("or a link neighbour's: the drop does not tell them apart");
         // Once a container could have crafted any header as any address, not even the host's own reads as the kernel's.
         const crafted = run(true);
         for (const dst of own) expect(classesTo(crafted, dst), dst).to.deep.equal(["UNATTRIBUTED"]);

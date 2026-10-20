@@ -1397,17 +1397,17 @@ export function deriveAttribution(
         judge("ATTEMPT_PACKET", session, "a retransmission of the attempt's connection, by its socket");
         continue;
       }
-      // J3 waits for every return: a container's packet reaches the host after it left the container's socket. Only a
-      // packet from one of the host's own addresses can be the kernel's message (one from anywhere else is someone's
-      // packet, whatever its shape), and none can once a container crafted.
-      // The host's own addresses (as read at the start), and the sources a kernel uses before or beside them: the
-      // unspecified address (duplicate-address detection, a membership report before an address) and IPv6 link-local
-      // (a bridge or a veth gets one when it comes up, mid-run).
+      // J3 waits for every return: a container's packet reaches the host after it left the container's socket. A
+      // socketless packet of a kernel message's shape is a kernel's only from one of the host's own addresses (as read
+      // at the start) or from a link-scoped source a kernel uses before or beside them: the unspecified address
+      // (duplicate-address detection, a membership report before an address) or IPv6 link-local (a bridge or a veth
+      // gets one when it comes up, mid-run). From anywhere else it is someone's packet, whatever its shape, and none is
+      // a kernel's once a container crafted. The drop records no direction, so a link neighbour's message from a
+      // link-scoped source reads as a kernel's too: its reason says so.
       const src = e.packet.src;
-      const ownSource =
-        src !== null &&
-        (isLoopback(src) || ctx.localAddresses.includes(src) || src === "0.0.0.0" || src === "::" || isLinkLocal6(src));
-      const kernelMessage = isKernelMessage(e.packet) && ownSource && !containerCrafted;
+      const hostSource = src !== null && (isLoopback(src) || ctx.localAddresses.includes(src));
+      const linkScoped = src !== null && (src === "0.0.0.0" || src === "::" || isLinkLocal6(src));
+      const kernelMessage = isKernelMessage(e.packet) && (hostSource || linkScoped) && !containerCrafted;
       if (e.sk === "0x0" && e.packet.v !== null && !kernelMessage) {
         deferred.push(e);
         continue;
@@ -1416,7 +1416,9 @@ export function deriveAttribution(
         judge(
           "KERNEL_RESPONSE",
           null,
-          "a reset, ICMP answer or neighbour/multicast message the kernel itself sent, refused",
+          hostSource
+            ? "a reset, ICMP answer or neighbour/multicast message the kernel itself sent, refused"
+            : "a kernel's message from a link-scoped source (the host's, a container namespace's or a link neighbour's: the drop does not tell them apart), refused",
         );
       else judge("UNATTRIBUTED", null, "refused, but no observed attempt sent it");
     } else if (e.k === "xmit") {
