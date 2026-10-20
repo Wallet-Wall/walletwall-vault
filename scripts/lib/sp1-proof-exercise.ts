@@ -20,7 +20,7 @@
  *
  * Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-import { spawn, spawnSync } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
@@ -47,6 +47,14 @@ import {
   type Refusal,
 } from "./sp1-circuit-archive";
 import { readDesignations, type ProgramDesignation } from "./sp1-designation";
+import { OBSERVER_SCRIPT_REL } from "../sp1-egress-observer";
+import {
+  EDGE_PROBES_ONLY,
+  assuranceOf,
+  observerEvidenceErrors,
+  type EgressAssurance,
+  type ObserverEvidence,
+} from "./sp1-egress-attribution";
 import {
   DOCKER_CONTEXT_FROZEN,
   FROZEN_ENV,
@@ -62,6 +70,15 @@ import {
 export const PROOF_EXERCISES_DIR = "evidence/zk/sp1-impl/proof-exercises";
 export const EXERCISE_RECORD_SCHEMA = "walletwall.sp1-proof-exercise.v1";
 export const RUN_SCHEMA = "walletwall.sp1-proof-exercise-run.v1";
+/**
+ * SP1-PA3C: a run observed continuously (scripts/sp1-egress-observer.ts) and attributed process by process
+ * (scripts/lib/sp1-egress-attribution.ts). A v1 run is never read as one: it stays what it was, edge-probed only.
+ */
+export const RUN_SCHEMA_V2 = "walletwall.sp1-proof-exercise-run.v2";
+export const EXERCISE_RECORD_SCHEMA_V2 = "walletwall.sp1-proof-exercise.v2";
+export const ATTRIBUTED_RUN_SCRIPT_REL = "scripts/measure-sp1-attributed-proof-exercise.ts";
+/** The lane expected to make the first attributed exercise (no v2 record exists; that lane confirms the name). */
+export const ATTRIBUTED_EXERCISE_LANE = "SP1-PA3D";
 export const VERIFICATION_SCHEMA = "walletwall.sp1-proof-exercise-verification.v1";
 export const RUN_SCRIPT_REL = "scripts/measure-sp1-proof-exercise.ts";
 export const VERIFICATION_SCRIPT_REL = "scripts/verify-sp1-proof-exercise.ts";
@@ -270,8 +287,9 @@ export interface ExerciseExpectations {
   /** The canonical-build host binary's sha256 for the designated host tree (null when the committed canonical
    * rebuild observation names none, or more than one: then no host executable binds). */
   hostBinarySha256: string | null;
-  /** sha256 of the committed tools' LF bytes (null when a tool is absent: then nothing binds). */
-  scripts: { run: string | null; verification: string | null };
+  /** sha256 of the committed tools' LF bytes (null when a tool is absent: then nothing binds). A v2 run binds the
+   * attributed measurement tool and the root observer instead of `run`. */
+  scripts: { run: string | null; verification: string | null; attributedRun?: string | null; observer?: string | null };
   repository: string;
 }
 
@@ -584,6 +602,67 @@ export function runObservationErrors(value: unknown, expect: ExerciseExpectation
   return out;
 }
 
+/** A v2 run observation: the v1 fields, and in `egress` the observer's continuous evidence beside the edge probes. */
+export interface AttributedRunObservation extends Omit<RunObservation, "egress"> {
+  egress: RunObservation["egress"] & { observer: ObserverEvidence };
+}
+
+export const EGRESS_V2_FIELDS = ["enforcement", "before", "after", "condition", "observer"] as const;
+
+/** Stands in for the v1 tool's digest while the v1 checks judge a v2 run's shared fields (never written anywhere). */
+const PROJECTED_TOOL = "v2-projection";
+
+/**
+ * Every reason `value` is not a v2 run observation: every v1 rule on the fields v1 and v2 share (the same function,
+ * on a projection that differs only in the schema, the tool and the egress keys), the attributed tool bound as
+ * committed, and the observer's evidence judged by scripts/lib/sp1-egress-attribution.ts: coverage of the whole run,
+ * continuity, every attempt attributed or named as not, the boundary's counters reconciled, the edge probes seen in
+ * the trace, the capture bound to this run's commit, host label, boot and clock. [] accepts it.
+ */
+export function attributedRunObservationErrors(value: unknown, expect: ExerciseExpectations): Refusal[] {
+  const out: Refusal[] = [];
+  const no = (reason: string, detail: string) => out.push({ reason, detail });
+  const where = "run";
+  if (!exactly(value, OBSERVATION_FIELDS.run, where, "OBSERVATION_SHAPE", no)) return out;
+  const o = value as AttributedRunObservation;
+  if (o.schema !== RUN_SCHEMA_V2) no("OBSERVATION_SCHEMA", `${where} must be ${RUN_SCHEMA_V2}`);
+  if (
+    !exactly(o.tool, OBSERVATION_FIELDS.tool, `${where}.tool`, "OBSERVATION_SHAPE", no) ||
+    o.tool.script !== ATTRIBUTED_RUN_SCRIPT_REL ||
+    (expect.scripts.attributedRun ?? null) === null ||
+    o.tool.scriptSha256 !== expect.scripts.attributedRun
+  ) {
+    no("TOOL_NOT_BOUND", `${where} was not made by ${ATTRIBUTED_RUN_SCRIPT_REL} as committed: re-measure`);
+  }
+  if (!exactly(o.egress, EGRESS_V2_FIELDS, `${where}.egress`, "OBSERVATION_SHAPE", no)) return out;
+  const { observer, ...edges } = o.egress;
+  const projected = {
+    ...o,
+    schema: RUN_SCHEMA,
+    tool: { script: RUN_SCRIPT_REL, scriptSha256: PROJECTED_TOOL },
+    egress: edges,
+  };
+  out.push(...runObservationErrors(projected, { ...expect, scripts: { ...expect.scripts, run: PROJECTED_TOOL } }));
+  out.push(...observerEvidenceErrors(observer, observerExpectationsOf(o, expect)).refusals);
+  if (isObject(observer)) {
+    const exe = observer.hostExecutable;
+    if (isObject(exe) && isObject(o.hostExecutable) && basename(String(exe.path)) !== o.hostExecutable.file) {
+      no(
+        "HOST_IDENTITY_MISMATCH",
+        `${where}: the observer followed ${String(exe.path)}, not the measured ${String(o.hostExecutable.file)}`,
+      );
+    }
+    const lines = Array.isArray(o.platform) ? o.platform.map(String) : [];
+    if (!lines.includes(`bootId=${String(observer.bootId)}`)) {
+      no(
+        "OBSERVER_NOT_THIS_RUN",
+        `${where}.platform does not name the boot the observer watched: another host or another boot`,
+      );
+    }
+  }
+  return out;
+}
+
 /** The run observation a verification must bind: its committed path, the sha256 of its committed bytes, itself. */
 export interface BoundRun {
   path: string;
@@ -692,7 +771,7 @@ export function exerciseErrors(
   binding: ExerciseBinding,
   expect: ExerciseExpectations,
 ): Refusal[] {
-  const out = runObservationErrors(run, expect);
+  const out = isAttributedRun(run) ? attributedRunObservationErrors(run, expect) : runObservationErrors(run, expect);
   if (out.length > 0) return out;
   const r = run as RunObservation;
   const claimed = isObject((verification as VerificationObservation)?.run)
@@ -787,7 +866,7 @@ export function deriveExerciseRecord(
   const a = expect.anchor;
   const record = expect.archiveRecord.record;
   const probes = [...r.egress.before, ...r.egress.after].map((p) => `${p.kind}:${p.target}`);
-  return {
+  const derived: ProofExerciseRecord = {
     schema: EXERCISE_RECORD_SCHEMA,
     lane: EXERCISE_LANE,
     exercise: {
@@ -862,6 +941,70 @@ export function deriveExerciseRecord(
     doesNotEstablish:
       "the provenance of the proving: the verifier proves the proof's validity under the designated key, never that it was made through the gate, with SP1_PROVER=cpu, with egress refused, by this host binary, in this time or with this memory; those facts are the operator's observation, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise rest on the owner's review of the pull request that commits them; nor that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); nor that any other hardware proves within the rotation delay; nor that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)",
   };
+  return isAttributedRun(run) ? attributedRecordOf(derived, run, expect) : derived;
+}
+
+/** Whether `run` claims the v2 form; anything else (a v1 run, or nothing readable) is judged as v1 always was. */
+export const isAttributedRun = (run: unknown): run is AttributedRunObservation =>
+  isObject(run) && run.schema === RUN_SCHEMA_V2;
+
+/** A record an attributed run derives: the v1 record's facts plus the assurance the observer's evidence supports. */
+export type AttributedProofExerciseRecord = ProofExerciseRecord & {
+  egress: ProofExerciseRecord["egress"] & { assurance: EgressAssurance };
+};
+
+export const ATTRIBUTED_ESTABLISHES =
+  "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image and SP1_PROVER=cpu, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; a root observer watched the host's network stack from before the first egress probe to after the last (kernel probes on every send and connect, every netfilter drop and every transmit on a host device), every attempt in that window is attributed to the process, container or kernel that made it or named as unattributed, and the refused packets reconcile with the declared boundary's counters; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time, with continuous egress attribution";
+export const ATTRIBUTED_DOES_NOT_ESTABLISH =
+  "the provenance of the proving beyond what the repository binds (the operator's observation, bound by the proof's digests, the run's commit content, the canonical host binary, the committed input, the observer's configuration and the raw capture's digests; the raw capture itself stays with the operator); a channel outside the observed IP stack (WSL interop, the 9P file system, AF_VSOCK, or a root process, which could also stop the trace between two heartbeats); the requester behind a daemon's attempt (an attempt dockerd or systemd-resolved makes on another process's behalf is the daemon's); the soundness of the Groth16 trusted setup behind the key; that any other hardware proves within the rotation delay; that the archive, the mirrors or the image remain available; production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)";
+
+/** The observer expectations of `run` (its probes, gate stamps, commit and host label) under `expect`. */
+function observerExpectationsOf(run: AttributedRunObservation, expect: ExerciseExpectations) {
+  return {
+    observerScriptSha256: expect.scripts.observer ?? null,
+    mode: "RUN" as const,
+    probes: (["before", "after"] as const).flatMap((phase) =>
+      (Array.isArray(run.egress?.[phase]) ? run.egress[phase] : []).map((p) => ({
+        phase,
+        kind: p.kind,
+        target: p.target,
+      })),
+    ),
+    gate: isObject(run.timing)
+      ? { startedAtUtc: String(run.timing.startedAtUtc), finishedAtUtc: String(run.timing.finishedAtUtc) }
+      : null,
+    run: { commit: isObject(run.source) ? String(run.source.commit) : "", host: String(run.host) },
+  };
+}
+
+function attributedRecordOf(
+  derived: ProofExerciseRecord,
+  run: AttributedRunObservation,
+  expect: ExerciseExpectations,
+): AttributedProofExerciseRecord {
+  const judged = observerEvidenceErrors(run.egress.observer, observerExpectationsOf(run, expect));
+  if (judged.attribution === null || judged.refusals.length > 0)
+    throw new Error("the observer's evidence derives no assurance");
+  return {
+    ...derived,
+    schema: EXERCISE_RECORD_SCHEMA_V2,
+    lane: ATTRIBUTED_EXERCISE_LANE,
+    egress: { ...derived.egress, assurance: assuranceOf(run.egress.observer, judged.attribution) },
+    establishes: ATTRIBUTED_ESTABLISHES,
+    doesNotEstablish: ATTRIBUTED_DOES_NOT_ESTABLISH,
+  };
+}
+
+/**
+ * The egress assurance an accepted record carries: a v1 record (SP1-PA3B's) was edge-probed only, so it carries
+ * EDGE_PROBES_ONLY whatever else is known about its host; nothing measured later is read into it.
+ */
+export function egressAssuranceOfRecord(record: ProofExerciseRecord): EgressAssurance {
+  if (record.schema === EXERCISE_RECORD_SCHEMA) return EDGE_PROBES_ONLY;
+  const assurance = (record as AttributedProofExerciseRecord).egress?.assurance;
+  if (record.schema !== EXERCISE_RECORD_SCHEMA_V2 || !isObject(assurance))
+    throw new Error(`${String(record.schema)} carries no egress assurance`);
+  return assurance;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -940,9 +1083,20 @@ export function exerciseExpectations(repoRoot: string, input: ExerciseEvidenceIn
     registryHost: record.gnark.repository.split("/")[0],
     upstreamIps: upstreamAddresses(repoRoot),
     hostBinarySha256: canonicalHostBinarySha256(repoRoot, tree),
-    scripts: { run: fileSha(repoRoot, RUN_SCRIPT_REL), verification: fileSha(repoRoot, VERIFICATION_SCRIPT_REL) },
+    scripts: {
+      run: fileSha(repoRoot, RUN_SCRIPT_REL),
+      verification: fileSha(repoRoot, VERIFICATION_SCRIPT_REL),
+      ...v2Tools(repoRoot),
+    },
     repository: REPOSITORY_ID,
   };
+}
+
+/** The v2 tools' digests, named only where they are committed (absent is unbound, as null is: a v2 run is refused). */
+function v2Tools(repoRoot: string): { attributedRun?: string; observer?: string } {
+  const attributedRun = fileSha(repoRoot, ATTRIBUTED_RUN_SCRIPT_REL);
+  const observer = fileSha(repoRoot, OBSERVER_SCRIPT_REL);
+  return { ...(attributedRun === null ? {} : { attributedRun }), ...(observer === null ? {} : { observer }) };
 }
 
 /** The addresses the committed acquisition observations were served from (transfer.remoteIp), unique and sorted. */
@@ -1015,7 +1169,12 @@ const gitOut = (repoRoot: string, args: string[]) =>
  * host tree at zkvm/host, the archive record as committed (by the sha256 of its LF bytes), and the measurement tool
  * as committed. An ancestor commit from before the archive record or the tools is thereby refused.
  */
-export function commitContentErrors(repoRoot: string, commit: string, expect: ExerciseExpectations): string[] {
+export function commitContentErrors(
+  repoRoot: string,
+  commit: string,
+  expect: ExerciseExpectations,
+  schema: string = RUN_SCHEMA,
+): string[] {
   const errors: string[] = [];
   const tree = gitOut(repoRoot, ["rev-parse", `${commit}:${HOST_SOURCE_DIR}`]);
   const held = tree.status === 0 ? tree.stdout.trim() : null;
@@ -1033,7 +1192,16 @@ export function commitContentErrors(repoRoot: string, commit: string, expect: Ex
       `the run's source commit ${commit} does not hold the archive record ${expect.archiveRecord.path} as committed`,
     );
   }
-  if (expect.scripts.run === null || blobSha(RUN_SCRIPT_REL) !== expect.scripts.run) {
+  if (schema === RUN_SCHEMA_V2) {
+    // An attributed run was made by the attributed tool under the root observer: both as committed, at its commit.
+    for (const [rel, want] of [
+      [ATTRIBUTED_RUN_SCRIPT_REL, expect.scripts.attributedRun ?? null],
+      [OBSERVER_SCRIPT_REL, expect.scripts.observer ?? null],
+    ] as const) {
+      if (want === null || blobSha(rel) !== want)
+        errors.push(`the run's source commit ${commit} does not hold ${rel} as committed`);
+    }
+  } else if (expect.scripts.run === null || blobSha(RUN_SCRIPT_REL) !== expect.scripts.run) {
     errors.push(`the run's source commit ${commit} does not hold ${RUN_SCRIPT_REL} as committed`);
   }
   return errors;
@@ -1155,7 +1323,9 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
   if (!inHistory(repoRoot, commit)) {
     errors.push(`the run's source commit ${commit} is not in this repository's history`);
   } else {
-    errors.push(...commitContentErrors(repoRoot, commit, expect));
+    errors.push(
+      ...commitContentErrors(repoRoot, commit, expect, isAttributedRun(run.value) ? RUN_SCHEMA_V2 : RUN_SCHEMA),
+    );
   }
   errors.push(...crlfCommittedErrors(repoRoot, [...records, ...observations]));
   const dirty = uncommittedEvidenceError([...records, ...observations, archivePath], repoRoot);
@@ -1250,6 +1420,8 @@ export interface MeasurementDeps {
   containerBytes: () => number | null;
   clock?: () => string;
   maxStdout?: number;
+  /** Told the host's process once it is spawned (SP1-PA3C's attributed tool kills it if the observer fails). */
+  onChild?: (child: ChildProcess) => void;
 }
 
 export interface RunMeasurement {
@@ -1283,6 +1455,7 @@ export function measuringSpawner(deps: MeasurementDeps): { spawner: Spawner; mea
         stdio: ["ignore", "pipe", "inherit"],
         windowsHide: true,
       });
+      deps.onChild?.(child);
       let hostPeak: number | null = null;
       let containerPeak: number | null = null;
       let samples = 0;

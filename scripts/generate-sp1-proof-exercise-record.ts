@@ -25,6 +25,7 @@ import {
   OBSERVATIONS_DIR,
   ROTATION_DELAY_SECONDS,
   deriveExerciseRecord,
+  egressAssuranceOfRecord,
   exerciseEvidenceState,
   exerciseExpectations,
   exerciseObservationsIn,
@@ -58,10 +59,12 @@ runScript(async () => {
       return;
     }
     const r = e.record;
+    const assurance = r === null ? null : egressAssuranceOfRecord(r);
     console.log(
       `OK: ${e.records[0]} is what ${e.observations.length} committed observations derive, accepted for ${anchor.designation} on ${r?.archiveRecord.path}: ` +
         `${r?.exercise.id} on ${r?.exercise.host}, ${r?.performance.wallClockSeconds} s (${r?.performance.withinRotationDelay ? "within" : "EXCEEDING"} the ${ROTATION_DELAY_SECONDS} s rotation delay), ` +
-        `verifier ${r?.verification.acceptance} (${r?.verification.checks.length} check(s)), egress ${r?.egress.condition} (SELF_HOSTED_PATH_EXERCISED).`,
+        `verifier ${r?.verification.acceptance} (${r?.verification.checks.length} check(s)), egress ${r?.egress.condition} (SELF_HOSTED_PATH_EXERCISED); ` +
+        `egress assurance ${assurance?.level} (continuous observation ${assurance?.continuousObservation}, process attribution ${assurance?.processAttribution}).`,
     );
     return;
   }
