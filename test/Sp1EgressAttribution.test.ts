@@ -1325,17 +1325,17 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         expect(classesTo(o, "198.51.100.31")).to.deep.equal(["KERNEL_RESPONSE"]);
       });
 
-      it("joins nothing by addresses and ports in a namespace that sent through a packet socket: a crafted copy hides no leak", function () {
+      it("joins nothing by addresses and ports in a namespace that sent through a packet or raw socket: a crafted copy hides no leak", function () {
         const c: Proc = { comm: "gnark", tid: 3050, tgid: 3050 };
         const copy = ipv4("172.17.0.2", RESOLVER, 17, udp(36800, 53, dnsQuery(11, "exfil.example")));
-        const run = (craft: boolean) =>
+        const run = (craft: "pkt" | "raw" | null) =>
           normalize(
             standardRaw({
               duringProof: (b) => {
                 b.marker("CONTAINER", { id: "d".repeat(64), pid: 4321, netns: CONTAINER_NETNS });
                 b.udp4(c, "0xffff88800004f100", RESOLVER, 53, { netns: CONTAINER_NETNS });
                 b.udp4ret(c, "0xffff88800004f100", 39, 36800); // the datagram passed the boundary
-                if (craft) {
+                if (craft === "pkt") {
                   b.probe(c, "pkt", {
                     sk: "0xffff88800004f200",
                     len: 81,
@@ -1346,6 +1346,18 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                     netns: CONTAINER_NETNS,
                   });
                   b.probe(c, "pktret", { ret: 81, sk: "0xffff88800004f200" });
+                } else if (craft === "raw") {
+                  b.probe(c, "raw4", {
+                    sk: "0xffff88800004f200",
+                    len: 67,
+                    proto: 255,
+                    namelen: 16,
+                    nfam: 2,
+                    naddr: le32(RESOLVER),
+                    daddr: 0,
+                    netns: CONTAINER_NETNS,
+                  });
+                  b.probe(c, "raw4ret", { ret: 67, sk: "0xffff88800004f200" });
                 }
                 b.drop(c, "0x0", copy, { flags: "..s1." }); // a copy of it, refused at the host's input
               },
@@ -1354,11 +1366,16 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         const outcome = (o: ObserverEvidence) =>
           judge(o).attribution?.attempts.find((x) => x.sk === "0xffff88800004f100")?.outcome;
         // Without a crafted send the join stands, and the datagram reads as refused (the residual the rule closes).
-        expect(outcome(run(false))).to.equal("REFUSED");
-        const crafted = run(true);
-        expect(outcome(crafted)).to.equal("SENT");
-        expect(details(crafted, "EGRESS_LEAKED")).to.have.length(1);
-        expect(classesWhere(crafted, (p) => p.sport === 36800)).to.deep.equal(["UNATTRIBUTED"]);
+        expect(outcome(run(null))).to.equal("REFUSED");
+        for (const craft of ["pkt", "raw"] as const) {
+          const crafted = run(craft);
+          expect(outcome(crafted), craft).to.equal("SENT");
+          expect(details(crafted, "EGRESS_LEAKED"), craft).to.have.length(1);
+          expect(
+            classesWhere(crafted, (p) => p.sport === 36800),
+            craft,
+          ).to.deep.equal(["UNATTRIBUTED"]);
+        }
       });
 
       it("joins a container's refused ping by its address: a refused echo is no leak", function () {
@@ -1376,7 +1393,10 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                 netns: CONTAINER_NETNS,
               });
               b.probe(c, "ping4ret", { ret: 8, sk: "0xffff88800004f300" });
+              // the container's own unreachable answer to that address: not the echo, and never the kernel's either
+              b.drop(c, "0x0", ipv4("172.17.0.2", RESOLVER, 1, [3, 3, 0, 0, 0, 0, 0, 0]), { flags: "..s1." });
               b.drop(c, "0x0", ipv4("172.17.0.2", RESOLVER, 1, [8, 0, 0, 0, 0, 1, 0, 1]), { flags: "..s1." });
+              b.drop(c, "0x0", ipv4("172.17.0.2", RESOLVER, 1, [8, 0, 0, 0, 0, 1, 0, 2]), { flags: "..s1." });
             },
           }),
         );
@@ -1384,6 +1404,12 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           outcome: "REFUSED",
           destClass: "RESOLVER",
         });
+        // The echo joins its ping once; the answer, and a second echo the ping never sent, are no one's.
+        expect(classesWhere(o, (p) => p.src === "172.17.0.2" && p.proto === 1)).to.deep.equal([
+          "UNATTRIBUTED",
+          "ATTEMPT_PACKET",
+          "UNATTRIBUTED",
+        ]);
         expect(reasons(o)).to.not.include("EGRESS_LEAKED");
       });
 
@@ -1400,13 +1426,24 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           0,
           1,
         ]);
-        // Toward the host itself it decides nothing about the boundary.
-        const local = normalize(
-          standardRaw({ duringProof: (b) => b.udp4(HOST, "0xffff88800004f500", "127.0.0.1", 9) }),
+        const levelOf = (hooks: Parameters<typeof standardRaw>[0]) => {
+          const x = normalize(standardRaw(hooks));
+          const s = assuranceOf(x, judge(x).attribution as Attribution);
+          return [s.level, s.events?.unknownOutcomes];
+        };
+        const c: Proc = { comm: "gnark", tid: 3070, tgid: 3070 };
+        // Beyond the VM from the host counts; toward the host itself, from a container toward the outside (a transmit
+        // through an uplink shows that one leaving), or outside the window, it decides nothing about the boundary.
+        expect(levelOf({ duringProof: (b) => b.tcp4(HOST, "0xffff88800004f600", "93.184.216.34", 443) })).to.deep.equal(
+          ["CONTINUOUS_PARTIALLY_ATTRIBUTED", 1],
         );
-        expect(assuranceOf(local, judge(local).attribution as Attribution)).to.deep.include({
-          level: "CONTINUOUS_ATTRIBUTED",
-        });
+        for (const hooks of [
+          { duringProof: (b: TraceBuilder) => b.udp4(HOST, "0xffff88800004f500", "127.0.0.1", 9) },
+          { duringProof: (b: TraceBuilder) => b.tcp4(c, "0xffff88800004f700", "93.184.216.34", 443, CONTAINER_NETNS) },
+          { afterWindow: (b: TraceBuilder) => b.udp4(TOOL, "0xffff88800004f800", RESOLVER, 53, { connected: true }) },
+        ]) {
+          expect(levelOf(hooks), Object.keys(hooks)[0]).to.deep.equal(["CONTINUOUS_ATTRIBUTED", 0]);
+        }
       });
 
       it("names a refused echo request no attempt sent UNATTRIBUTED, in IPv4 and IPv6: a request is no response", function () {

@@ -1415,9 +1415,7 @@ export function deriveAttribution(
   // A namespace that sent through a packet or raw socket could have crafted any header: no packet joins its attempts by
   // addresses and ports (a crafted copy of a leaked datagram would otherwise make that datagram read as refused).
   const crafting = new Set(
-    attempts
-      .filter((a) => !a.delegated && a.netns !== ctx.hostNetns && (a.probe === "pkt" || a.probe.startsWith("raw")))
-      .map((a) => a.netns),
+    attempts.filter((a) => !a.delegated && (a.probe === "pkt" || a.probe.startsWith("raw"))).map((a) => a.netns),
   );
   const echo = (p: Packet) =>
     (p.proto === IPPROTO_ICMP && p.icmp?.type === 8) || (p.proto === IPPROTO_ICMPV6 && p.icmp?.type === 128);
