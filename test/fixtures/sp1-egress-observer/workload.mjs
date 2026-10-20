@@ -6,8 +6,10 @@
 // nothing and reaches no real host. It acts only when node runs it (the observer does); a test runner that loads every
 // script under test/ finds nothing to run here. Research prototype. Not audited.
 import { spawn } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { readFileSync, realpathSync } from "node:fs";
 import { connect } from "node:net";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
@@ -80,7 +82,17 @@ async function main() {
   send("DONE");
   const stopped = await next();
   console.error(stopped);
-  process.exit(stopped !== null && stopped.startsWith(`${TAG} STOPPED `) ? 0 : 1);
+  const m = stopped === null ? null : new RegExp(`^${TAG} STOPPED ([0-9a-f]{64}) (/\\S+)$`).exec(stopped);
+  if (m === null) process.exit(1);
+  // As the attributed tool does after a proof, as this unprivileged user: read the raw evidence the observer names,
+  // and find the manifest it bound (a raw directory this user cannot read would lose a real run's observation).
+  const manifest = readFileSync(join(m[2], "manifest.json"));
+  if (createHash("sha256").update(manifest).digest("hex") !== m[1]) {
+    console.error("the raw manifest is not the one the observer named");
+    process.exit(3);
+  }
+  console.error("raw evidence readable by the workload's user");
+  process.exit(0);
 }
 
 const self = fileURLToPath(import.meta.url);

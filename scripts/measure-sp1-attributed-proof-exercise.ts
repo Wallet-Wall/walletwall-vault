@@ -86,7 +86,7 @@ runScript(async () => {
   // a path it could not read whole (or would read as other bytes) is refused here, before any act, not after a proof.
   if (!isAbsolute(hostExecutable) || !/^\/[\x21-\x7e]{1,126}$/.test(hostExecutable)) {
     throw new Error(
-      "--host must be an absolute path of at most 127 printable ASCII bytes: the observer follows its exec by that path",
+      "--host must be an absolute path of at most 127 printable ASCII bytes, no space: the observer follows its exec by that path",
     );
   }
   if (process.platform !== "linux") {

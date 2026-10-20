@@ -522,10 +522,19 @@ export class TraceSession {
       if (!this.fs.exists(tjoin(this.root, f)))
         throw new ObserverRefusal("TRACEFS_UNAVAILABLE", `${tjoin(this.root, f)} is missing`);
     }
-    if (this.fs.exists(this.instance)) throw new ObserverRefusal("INSTANCE_EXISTS", `${this.instance} already exists`);
-    const existing = this.fs.read(tjoin(this.root, "kprobe_events"));
-    if (existing.includes(`${this.group}/`))
-      throw new ObserverRefusal("PROBES_EXIST", `probes of ${this.group} are already defined`);
+    // Any observer's leftovers (a run that crashed): their probes could hit, miss and be counted as this run's.
+    const leftInstances = this.fs.list(tjoin(this.root, "instances")).filter((n) => n.startsWith("sp1obs_"));
+    if (leftInstances.length > 0)
+      throw new ObserverRefusal(
+        "INSTANCE_EXISTS",
+        `an observer's instance is still there: ${leftInstances.join(", ")}`,
+      );
+    const left = this.fs
+      .read(tjoin(this.root, "kprobe_events"))
+      .split("\n")
+      .filter((l) => /^[pr]\d*:sp1obs_/.test(l));
+    if (left.length > 0)
+      throw new ObserverRefusal("PROBES_EXIST", `${left.length} probes of an earlier observer are still defined`);
     return netfilterDropReason(this.fs.read(tjoin(this.root, "events/skb/kfree_skb/format")));
   }
 
@@ -610,6 +619,20 @@ export class TraceSession {
       .filter((d) => /^cpu\d+$/.test(d))
       .map((d) => parseCpuStats(Number(d.slice(3)), this.fs.read(tjoin(dir, d, "stats"))))
       .sort((a, b) => a.cpu - b.cpu);
+  }
+
+  /**
+   * Whether every probe is still enabled in the instance, and kprobes still armed where debugfs shows it. Sampled at each
+   * heartbeat: a probe switched off and back on between two samples is not seen (a root process can do that: see the
+   * docs' trust statement), one left off is.
+   */
+  armed(): boolean {
+    if (this.enabled.length === 0) return false;
+    const on = this.enabled.every(
+      (name) => this.fs.read(tjoin(this.instance, `events/${this.group}/${name}/enable`)).trim() === "1",
+    );
+    const global = "/sys/kernel/debug/kprobes/enabled";
+    return on && (!this.fs.exists(global) || this.fs.read(global).trim() === "1");
   }
 
   /** The misses of every probe this session defined, from kprobe_profile (a missed hit is a lost event). */
@@ -727,33 +750,45 @@ export function containerNetns(
 }
 
 /**
- * A heartbeat's marker fields and whether the run may continue: tracing on, per-CPU stats read, and nothing lost (`loss`
- * counts every CPU's overruns and dropped events and every probe's misses).
+ * A heartbeat's marker fields and whether the run may continue: tracing on (the instance tracing and every probe still
+ * armed: `tracingOn` is 1 only for both), per-CPU stats read, and nothing lost (`loss` counts every CPU's overruns and
+ * dropped events and every probe's misses).
  */
 export function heartbeatOf(
   n: number,
   stats: readonly CpuStats[],
   tracingOn: boolean,
   misses: number,
+  armed: boolean,
 ): { fields: { n: number; tracingOn: number; loss: number }; ok: boolean } {
   const loss = stats.reduce((s, c) => s + c.overrun + c.commitOverrun + c.droppedEvents, 0) + misses;
-  return { fields: { n, tracingOn: tracingOn ? 1 : 0, loss }, ok: tracingOn && loss === 0 && stats.length > 0 };
+  const on = tracingOn && armed;
+  return { fields: { n, tracingOn: on ? 1 : 0, loss }, ok: on && loss === 0 && stats.length > 0 };
 }
 
 /**
- * Why `dir` may not hold the raw evidence: it must be an absolute path of plain characters that does not exist yet, under
- * directories only root can change (else the proving user could swap the directory under the observer and have it bind
- * a capture of the user's making).
+ * Why `dir` may not hold the raw evidence: it must be an absolute path of plain characters, with no `.` or `..`
+ * component, that does not exist yet, under directories only root can change (else the proving user could swap it under
+ * the observer and have it bind a capture of the user's making) and that let anyone pass (the tool reads the raw
+ * evidence as the proving user, after the proof: a directory it cannot enter would lose the proof's observation).
  */
 export function rawDirErrors(
   dir: string,
   exists: (p: string) => boolean,
   statOf: (p: string) => { uid: number; mode: number },
 ): string[] {
-  if (!isAbsolute(dir) || !RAW_DIR.test(dir) || exists(dir)) {
-    return ["--raw-dir must be an absolute path of plain characters that does not exist yet"];
+  if (!isAbsolute(dir) || !RAW_DIR.test(dir) || dir.split("/").some((c) => c === "." || c === "..") || exists(dir)) {
+    return [
+      "--raw-dir must be an absolute path of plain characters, with no . or .. component, that does not exist yet",
+    ];
   }
-  return rootOwnedPathErrors(dirname(dir), statOf);
+  const errors = rootOwnedPathErrors(dirname(dir), statOf);
+  for (let p = dirname(resolve(dir)); ; p = dirname(p)) {
+    if ((statOf(p).mode & 0o001) === 0)
+      errors.push(`${p} does not let others pass: the tool could not read the raw evidence`);
+    if (dirname(p) === p) break;
+  }
+  return errors;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -799,6 +834,9 @@ function argValue(argv: string[], name: string, count = 1): string[] {
 }
 
 async function main(argv: string[]): Promise<number> {
+  // The raw directory and files are made with the modes written below (0755, 0644), whatever root's umask: the tool
+  // reads them as the proving user.
+  process.umask(0o022);
   const mode: Mode | null = argv[0] === "run" ? "RUN" : argv[0] === "self-test" ? "SELF_TEST" : null;
   if (mode === null)
     throw new Error(
@@ -876,7 +914,13 @@ async function main(argv: string[]): Promise<number> {
   };
   const beat = () => {
     facts.heartbeats = (facts.heartbeats as number) + 1;
-    const h = heartbeatOf(facts.heartbeats as number, session.stats(), session.tracingOn(), session.misses());
+    const h = heartbeatOf(
+      facts.heartbeats as number,
+      session.stats(),
+      session.tracingOn(),
+      session.misses(),
+      session.armed(),
+    );
     session.mark("HEARTBEAT", h.fields);
     if (!h.ok)
       throw new ObserverRefusal("OBSERVER_LOSS", `tracing_on ${h.fields.tracingOn}, ${h.fields.loss} events lost`);

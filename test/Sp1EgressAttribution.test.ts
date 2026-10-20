@@ -957,11 +957,11 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
     it("reads every kernel line, normalizes to the pinned digest, and derives continuous, complete attribution", function () {
       const o = normalizeObserverRaw(raw, host);
-      expect(o.normalizedSha256).to.equal("5745cb341faa6cd4c8b08f41756cd3112f48d496fb0ca4bdcbecc5b3ed87e643");
+      expect(o.normalizedSha256).to.equal("7f29035444f727d7105fa4bd620779310deb31ee5b1e172cf95bcdd599c3347b");
       const j = observerEvidenceErrors(o, selfTest);
       expect(j.refusals).to.deep.equal([]);
       const a = j.attribution as Attribution;
-      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([929, 942, 949]);
+      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([935, 948, 955]);
       expect(a.attempts.map((x) => [x.scope, x.kind, `${x.dest?.addr}:${x.dest?.port}`, x.outcome])).to.deep.equal([
         ["TOOL", "connect", "192.0.2.10:443", "REFUSED"],
         ["PROOF", "send", "192.0.2.53:53", "REFUSED"],
@@ -1310,25 +1310,75 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         expect(reasons(normalize(standardRaw({ duringProof: decoy(TOOL, 1053) })))).to.include("HOST_AMBIGUOUS");
       });
 
-      it("names the kernel's multicast report a kernel message, and a container's own reset never one", function () {
-        const o = normalize(
-          standardRaw({
-            duringProof: (b) => {
-              b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "224.0.0.22", 2, [0x22, 0, 0, 0, 0, 0, 0, 1]), { flags: "..s2." });
-              b.drop(IDLE, "0x0", ipv4("172.17.0.2", "198.51.100.30", 6, tcp(5555, 80, 0x14)), { flags: "..s1." });
-              b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "198.51.100.31", 6, tcp(22, 61001, 0x14)), { flags: "..s2." });
-            },
-          }),
-        );
+      it("names a refused packet the kernel's message only from the host's own address, and none once a container crafted", function () {
+        const v6 = (src: number, dst: number, l4: number[]) => [
+          0x60,
+          0,
+          0,
+          0,
+          0,
+          l4.length,
+          6,
+          64,
+          0xfd,
+          ...new Array(14).fill(0),
+          src,
+          0x20,
+          0x01,
+          0x0d,
+          0xb8,
+          ...new Array(11).fill(0),
+          dst,
+          ...l4,
+        ];
+        const run = (craft: boolean) =>
+          normalize(
+            standardRaw({
+              duringProof: (b) => {
+                if (craft) {
+                  const c: Proc = { comm: "gnark", tid: 3080, tgid: 3080 };
+                  b.probe(c, "pkt", {
+                    sk: "0xffff88800004f900",
+                    len: 60,
+                    namelen: 20,
+                    nfam: 17,
+                    nproto: 0x8,
+                    nifindex: 2,
+                    netns: CONTAINER_NETNS,
+                  });
+                  b.probe(c, "pktret", { ret: 60, sk: "0xffff88800004f900" });
+                }
+                b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "224.0.0.22", 2, [0x22, 0, 0, 0, 0, 0, 0, 1]), { flags: "..s2." });
+                b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "198.51.100.31", 6, tcp(22, 61001, 0x14)), { flags: "..s2." });
+                // Not the host's own: a container's address, a stranger's, an IPv6 bridge's; protocol 2 to a host.
+                b.drop(IDLE, "0x0", ipv4("172.17.0.2", "198.51.100.30", 6, tcp(5555, 80, 0x14)), { flags: "..s1." });
+                b.drop(IDLE, "0x0", ipv4("198.51.100.7", "198.51.100.32", 6, tcp(5556, 80, 0x14)), {
+                  flags: "..s1.",
+                });
+                b.drop(IDLE, "0x0", v6(2, 9, tcp(5557, 80, 0x14)), { flags: "..s1.", ethertype: 0x86dd });
+                b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "203.0.113.9", 2, [0x22, 0, 0, 0, 0, 0, 0, 1]), { flags: "..s2." });
+              },
+            }),
+          );
+        const o = run(false);
         expect(classesTo(o, "224.0.0.22")).to.deep.equal(["KERNEL_RESPONSE"]);
-        expect(classesTo(o, "198.51.100.30")).to.deep.equal(["UNATTRIBUTED"]);
         expect(classesTo(o, "198.51.100.31")).to.deep.equal(["KERNEL_RESPONSE"]);
+        for (const dst of ["198.51.100.30", "198.51.100.32", "2001:db8::9", "203.0.113.9"]) {
+          expect(classesTo(o, dst), dst).to.deep.equal(["UNATTRIBUTED"]);
+        }
+        // Once a container could have crafted any header as any address, not even the host's own reads as the kernel's.
+        const crafted = run(true);
+        for (const dst of ["224.0.0.22", "198.51.100.31"]) {
+          expect(classesTo(crafted, dst), dst).to.deep.equal(["UNATTRIBUTED"]);
+        }
       });
 
-      it("joins nothing by addresses and ports in a namespace that sent through a packet or raw socket: a crafted copy hides no leak", function () {
+      it("joins no packet by addresses and ports once any container sent through a packet or raw socket: a crafted copy hides no leak", function () {
         const c: Proc = { comm: "gnark", tid: 3050, tgid: 3050 };
         const copy = ipv4("172.17.0.2", RESOLVER, 17, udp(36800, 53, dnsQuery(11, "exfil.example")));
-        const run = (craft: "pkt" | "raw" | null) =>
+        // The crafting send may come from the leaking container's namespace or from any other container's.
+        const OTHER_NETNS = 4026532400;
+        const run = (craft: "pkt" | "raw" | null, netns = CONTAINER_NETNS) =>
           normalize(
             standardRaw({
               duringProof: (b) => {
@@ -1343,7 +1393,7 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                     nfam: 17,
                     nproto: 0x8,
                     nifindex: 2,
-                    netns: CONTAINER_NETNS,
+                    netns,
                   });
                   b.probe(c, "pktret", { ret: 81, sk: "0xffff88800004f200" });
                 } else if (craft === "raw") {
@@ -1355,7 +1405,7 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                     nfam: 2,
                     naddr: le32(RESOLVER),
                     daddr: 0,
-                    netns: CONTAINER_NETNS,
+                    netns,
                   });
                   b.probe(c, "raw4ret", { ret: 67, sk: "0xffff88800004f200" });
                 }
@@ -1367,8 +1417,13 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           judge(o).attribution?.attempts.find((x) => x.sk === "0xffff88800004f100")?.outcome;
         // Without a crafted send the join stands, and the datagram reads as refused (the residual the rule closes).
         expect(outcome(run(null))).to.equal("REFUSED");
-        for (const craft of ["pkt", "raw"] as const) {
-          const crafted = run(craft);
+        for (const [craft, netns] of [
+          ["pkt", CONTAINER_NETNS],
+          ["raw", CONTAINER_NETNS],
+          ["pkt", OTHER_NETNS],
+          ["raw", OTHER_NETNS],
+        ] as const) {
+          const crafted = run(craft, netns);
           expect(outcome(crafted), craft).to.equal("SENT");
           expect(details(crafted, "EGRESS_LEAKED"), craft).to.have.length(1);
           expect(

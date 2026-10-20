@@ -1182,8 +1182,10 @@ const isResponse = (p: Packet) =>
   (p.proto === IPPROTO_ICMPV6 &&
     p.icmp !== undefined &&
     [1, 2, 3, 4, 129, 133, 134, 135, 136, 143].includes(p.icmp.type));
-/** What the kernel sends of itself: its answers (above) and its multicast membership reports (IGMP). */
-const isKernelMessage = (p: Packet) => isResponse(p) || p.proto === IPPROTO_IGMP;
+const isMulticast4 = (a: string | null) =>
+  a !== null && isIP(a) === 4 && Math.floor(Number(a.split(".")[0]) / 16) === 14;
+/** What the kernel sends of itself: its answers (above) and its multicast membership reports (IGMP, to a group). */
+const isKernelMessage = (p: Packet) => isResponse(p) || (p.proto === IPPROTO_IGMP && isMulticast4(p.dst));
 
 /** The order the observer's markers must take (each once, CONTAINER and HEARTBEAT aside). */
 const ORDER = [
@@ -1304,6 +1306,12 @@ export function deriveAttribution(
   const drops: DropJudgement[] = [];
   const leaks: { i: number; why: string }[] = [];
   const inWindow = (i: number) => window !== null && i > window.begin && i < window.end;
+  // A container namespace that sent through a packet or raw socket (anywhere in the capture) could have crafted any
+  // header, as any address: a copy of another container's leaked datagram, or a reset shaped like the kernel's. Then no
+  // packet without a socket is joined to a container's attempt by addresses and ports, and none is the kernel's message.
+  const containerCrafted = events.some(
+    (e) => e.k === "send" && e.netns !== ctx.hostNetns && (e.probe === "pkt" || e.probe.startsWith("raw")),
+  );
   for (const e of events) {
     live.advance(e);
     if (e.k === "send" || e.k === "connect") {
@@ -1387,14 +1395,17 @@ export function deriveAttribution(
         judge("ATTEMPT_PACKET", session, "a retransmission of the attempt's connection, by its socket");
         continue;
       }
-      // J3 waits for every return: a container's packet reaches the host after it left the container's socket. A
-      // packet from a container's own address is the container's whatever its shape: never the kernel's answer.
-      const fromContainer = e.sk === "0x0" && e.packet.src !== null && destinationClass(ctx, e.packet.src) === "IN_VM";
-      if (e.sk === "0x0" && e.packet.v !== null && (fromContainer || !isKernelMessage(e.packet))) {
+      // J3 waits for every return: a container's packet reaches the host after it left the container's socket. Only a
+      // packet from one of the host's own addresses can be the kernel's message (one from anywhere else is someone's
+      // packet, whatever its shape), and none can once a container crafted.
+      const ownSource =
+        e.packet.src !== null && (isLoopback(e.packet.src) || ctx.localAddresses.includes(e.packet.src));
+      const kernelMessage = isKernelMessage(e.packet) && ownSource && !containerCrafted;
+      if (e.sk === "0x0" && e.packet.v !== null && !kernelMessage) {
         deferred.push(e);
         continue;
       }
-      if (isKernelMessage(e.packet))
+      if (kernelMessage)
         judge(
           "KERNEL_RESPONSE",
           null,
@@ -1412,19 +1423,14 @@ export function deriveAttribution(
   }
   // J3: a container's datagram or connection, refused in the host (no socket crosses the namespaces), joined by its
   // protocol, addresses and ports to an earlier attempt from a container namespace; a datagram is one packet.
-  // A namespace that sent through a packet or raw socket could have crafted any header: no packet joins its attempts by
-  // addresses and ports (a crafted copy of a leaked datagram would otherwise make that datagram read as refused).
-  const crafting = new Set(
-    attempts.filter((a) => !a.delegated && (a.probe === "pkt" || a.probe.startsWith("raw"))).map((a) => a.netns),
-  );
   const echo = (p: Packet) =>
     (p.proto === IPPROTO_ICMP && p.icmp?.type === 8) || (p.proto === IPPROTO_ICMPV6 && p.icmp?.type === 128);
   for (const e of deferred) {
     const candidates = attempts.filter(
       (a) =>
+        !containerCrafted &&
         !a.delegated &&
         a.netns !== ctx.hostNetns &&
-        !crafting.has(a.netns) &&
         a.i < e.i &&
         a.dest !== null &&
         a.dest.addr === e.packet.dst &&

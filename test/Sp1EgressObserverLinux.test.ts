@@ -69,7 +69,10 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
       console.log(`      skipped: ${why}`);
       this.skip();
     }
-    dir = mkdtempSync("/root/sp1obs-int-");
+    // Root-owned, writable by root alone, and open to pass through: the raw directory inside it is read by the
+    // workload as the unprivileged user, as a proof exercise's tool reads it after the proof.
+    dir = mkdtempSync("/var/lib/sp1obs-int-");
+    chmodSync(dir, 0o755);
     // Written, not copied: a copy can keep the checkout owner's uid, and the observer refuses a file root does not own.
     writeFileSync(join(dir, "sp1-egress-observer.ts"), readFileSync("scripts/sp1-egress-observer.ts"), { mode: 0o644 });
     writeFileSync(join(dir, "package.json"), '{ "type": "module" }\n');
@@ -152,6 +155,7 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
     expect(r.status, `${r.stdout}\n${r.stderr}`).to.equal(0);
     expect(r.stderr).to.match(/probe before: ECONNREFUSED/);
     expect(r.stderr).to.match(/host udp EPERM/);
+    expect(r.stderr).to.match(/raw evidence readable by the workload's user/);
     expect(kprobes()).to.not.match(/sp1obs_/);
     expect(readdirSync("/sys/kernel/tracing/instances").filter((n) => n.startsWith("sp1obs_"))).to.deep.equal([]);
     const evidence = {
@@ -191,9 +195,10 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
     );
     expect(own.map((d) => d.class)).to.deep.equal(["ATTEMPT_PACKET", "ATTEMPT_PACKET", "ATTEMPT_PACKET"]);
     expect(a.drops.filter((d) => d.class === "UNATTRIBUTED")).to.deep.equal([]);
+    // Within its read brackets (a lookup elsewhere on the host may land while nft reads the counters), never outside.
     const rec = reconcile(a.drops, a.markers, o.boundary);
     expect(rec.ok).to.equal(true);
-    expect([rec.counted, rec.outer]).to.deep.equal([rec.inner, rec.inner]);
+    expect(rec.inner <= (rec.counted ?? -1) && (rec.counted ?? Infinity) <= rec.outer).to.equal(true);
     expect(rec.inner).to.be.at.least(3);
     expect(assuranceOf(o, a)).to.deep.include({
       level: "CONTINUOUS_ATTRIBUTED",

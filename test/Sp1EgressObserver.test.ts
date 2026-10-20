@@ -127,7 +127,9 @@ class FakeTraceFs implements TraceFs {
     const prefix = `${p}/`;
     return [
       ...new Set(
-        [...this.files.keys()].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length).split("/")[0]),
+        [...this.files.keys(), ...this.dirs]
+          .filter((k) => k.startsWith(prefix))
+          .map((k) => k.slice(prefix.length).split("/")[0]),
       ),
     ];
   }
@@ -362,27 +364,32 @@ describe("SP1-PA3C — the root egress observer", function () {
         droppedEvents,
         readEvents: 61,
       });
-      expect(heartbeatOf(4, [cpu(0), cpu(1)], true, 0)).to.deep.equal({
+      expect(heartbeatOf(4, [cpu(0), cpu(1)], true, 0, true)).to.deep.equal({
         fields: { n: 4, tracingOn: 1, loss: 0 },
         ok: true,
       });
-      expect(heartbeatOf(5, [cpu(0), cpu(1)], false, 0)).to.deep.equal({
+      expect(heartbeatOf(5, [cpu(0), cpu(1)], false, 0, true)).to.deep.equal({
         fields: { n: 5, tracingOn: 0, loss: 0 },
         ok: false,
       });
-      expect(heartbeatOf(6, [cpu(0, 2, 3), cpu(1, 0, 0, 5)], true, 7)).to.deep.equal({
+      expect(heartbeatOf(6, [cpu(0, 2, 3), cpu(1, 0, 0, 5)], true, 7, true)).to.deep.equal({
         fields: { n: 6, tracingOn: 1, loss: 17 },
         ok: false,
       });
       for (const lost of [cpu(1, 1), cpu(1, 0, 1), cpu(1, 0, 0, 1)]) {
-        expect(heartbeatOf(7, [cpu(0), lost], true, 0).ok, JSON.stringify(lost)).to.equal(false);
+        expect(heartbeatOf(7, [cpu(0), lost], true, 0, true).ok, JSON.stringify(lost)).to.equal(false);
       }
       // A probe's miss is a lost event: a return the observer never saw leaves an attempt's outcome unknown.
-      expect(heartbeatOf(8, [cpu(0), cpu(1)], true, 1)).to.deep.equal({
+      expect(heartbeatOf(8, [cpu(0), cpu(1)], true, 1, true)).to.deep.equal({
         fields: { n: 8, tracingOn: 1, loss: 1 },
         ok: false,
       });
-      expect(heartbeatOf(9, [], true, 0)).to.deep.equal({ fields: { n: 9, tracingOn: 1, loss: 0 }, ok: false });
+      expect(heartbeatOf(9, [], true, 0, true)).to.deep.equal({ fields: { n: 9, tracingOn: 1, loss: 0 }, ok: false });
+      // A probe switched off (tracing itself on) is tracing off for the evidence: the marker says 0 and the run stops.
+      expect(heartbeatOf(10, [cpu(0), cpu(1)], true, 0, false)).to.deep.equal({
+        fields: { n: 10, tracingOn: 0, loss: 0 },
+        ok: false,
+      });
     });
 
     it("reads the probes' misses from kprobe_profile as the kernel prints it, or refuses", function () {
@@ -409,12 +416,21 @@ describe("SP1-PA3C — the root egress observer", function () {
       };
       const stat = (p: string) => owners[p.replace(/\\/g, "/").replace(/^[A-Za-z]:/, "")] ?? { uid: 0, mode: 0o755 };
       const none = () => false;
-      expect(rawDirErrors("/root/sp1-raw-20261101T100000Z", none, stat)).to.deep.equal([]);
-      expect(rawDirErrors("/root/sp1-raw", () => true, stat).join()).to.match(/does not exist yet/);
-      expect(rawDirErrors("root/sp1-raw", none, stat).join()).to.match(/absolute path/);
-      expect(rawDirErrors("/root/sp1 raw", none, stat).join()).to.match(/plain characters/);
+      expect(rawDirErrors("/var/lib/sp1-observer/raw-20261101T100000Z", none, stat)).to.deep.equal([]);
+      expect(rawDirErrors("/var/lib/sp1-raw", () => true, stat).join()).to.match(/does not exist yet/);
+      expect(rawDirErrors("var/lib/sp1-raw", none, stat).join()).to.match(/absolute path/);
+      expect(rawDirErrors("/var/lib/sp1 raw", none, stat).join()).to.match(/plain characters/);
+      // A lexical parent is not the real one when a component is . or .. (a symlink above could lead anywhere).
+      expect(rawDirErrors("/var/lib/sp1-observer/../raw", none, stat).join()).to.match(/no \. or \.\. component/);
+      expect(rawDirErrors("/var/lib/./raw", none, stat).join()).to.match(/no \. or \.\. component/);
       expect(rawDirErrors("/srv/prover/raw", none, stat).join()).to.match(/owned by uid 1001/);
       expect(rawDirErrors("/srv/shared/raw", none, stat).join()).to.match(/writable by group or others/);
+      // Root's own home (0700 on Ubuntu) is safe from the user, and closed to the tool: the proof's observation would
+      // be lost after the proof, when the tool reads the raw evidence as the proving user.
+      owners["/root"] = { uid: 0, mode: 0o700 };
+      expect(rawDirErrors("/root/sp1-raw-20261101T100000Z", none, stat).join()).to.match(
+        /root does not let others pass/,
+      );
     });
   });
 
@@ -487,6 +503,18 @@ describe("SP1-PA3C — the root egress observer", function () {
       const three = new FakeTraceFs();
       three.files.set(`${ROOT}/kprobe_events`, `p:sp1obs_${NONCE_A}/exit do_exit code=code:s64`);
       expect(() => new TraceSession(three, NONCE_A).precheck()).to.throw(/PROBES_EXIST/);
+      // Another run's leftovers too (a crash): their probes would be counted with this run's.
+      const left = new FakeTraceFs();
+      left.files.set(`${ROOT}/kprobe_events`, `r32:sp1obs_${"f".repeat(16)}/udp4ret udp_sendmsg ret=$retval:s32`);
+      expect(() => new TraceSession(left, NONCE_A).precheck()).to.throw(/PROBES_EXIST: 1 probes of an earlier/);
+      const leftInstance = new FakeTraceFs();
+      leftInstance.dirs.add(`${ROOT}/instances/sp1obs_${"f".repeat(16)}`);
+      expect(() => new TraceSession(leftInstance, NONCE_A).precheck()).to.throw(/INSTANCE_EXISTS/);
+      // Other tools' probes and instances are theirs.
+      const others = new FakeTraceFs();
+      others.files.set(`${ROOT}/kprobe_events`, "p:kprobes/my_probe do_sys_open");
+      others.dirs.add(`${ROOT}/instances/foo`);
+      expect(new TraceSession(others, NONCE_A).precheck()).to.equal(12);
       const four = new FakeTraceFs();
       four.files.set(`${ROOT}/events/skb/kfree_skb/format`, "no reasons");
       expect(() => new TraceSession(four, NONCE_A).precheck()).to.throw(/NETFILTER_DROP/);
@@ -529,11 +557,22 @@ describe("SP1-PA3C — the root egress observer", function () {
       fs.misses.set("udp4ret", 2);
       fs.misses.set("newtask", 1);
       expect(s.misses()).to.equal(3);
+      // Every probe enabled, and kprobes armed where debugfs shows it; one switched off, or all disarmed, is not.
+      expect(s.armed()).to.equal(true);
+      const enable = at("events/sp1obs_0123456789abcdef/xmit/enable");
+      fs.files.set(enable, "0");
+      expect(s.armed()).to.equal(false);
+      fs.files.set(enable, "1");
+      fs.files.set("/sys/kernel/debug/kprobes/enabled", "0\n");
+      expect(s.armed()).to.equal(false);
+      fs.files.set("/sys/kernel/debug/kprobes/enabled", "1\n");
+      expect(s.armed()).to.equal(true);
       expect(s.close()).to.deep.equal([]);
       expect(fs.files.get(`${ROOT}/kprobe_events`)).to.equal("");
       expect(fs.exists(`${ROOT}/instances/sp1obs_${NONCE_A}`)).to.equal(false);
       // Its probes gone, the session vouches for nothing.
       expect(() => s.misses()).to.throw(/defined no probe/);
+      expect(s.armed()).to.equal(false);
     });
 
     it("undoes everything when the kernel refuses a probe part-way, and names it", function () {
