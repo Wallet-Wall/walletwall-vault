@@ -1515,7 +1515,9 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
       it("names a refused echo request no attempt sent UNATTRIBUTED, in IPv4 and IPv6: a request is no response", function () {
         const addr6 = (last: number) => [0x20, 0x01, 0x0d, 0xb8, ...new Array(11).fill(0), last];
-        const echo6 = [0x60, 0, 0, 0, 0, 8, 58, 64, ...addr6(1), ...addr6(2), 128, 0, 0, 0, 0, 1, 0, 1];
+        // From the host's own addresses (HOST_ADDR, ::1), where a response would be the kernel's: a request never is.
+        const loopback6 = [...new Array(15).fill(0), 1];
+        const echo6 = [0x60, 0, 0, 0, 0, 8, 58, 64, ...loopback6, ...addr6(2), 128, 0, 0, 0, 0, 1, 0, 1];
         const o = normalize(
           standardRaw({
             duringProof: (b) => {
