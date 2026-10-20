@@ -5,7 +5,8 @@ the designated program through the unchanged archive-only gate, on a Linux provi
 from the committed verified archive, with the digest-pinned gnark image, the canonical-build host binary and the
 committed proof input; the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted the proof and
 refused its tampered copy. The run took 647 s of wall time (the host process 606 s), 0.37 % of the 2-day rotation
-delay, with a host-process peak RSS of 23,366,266,880 bytes and 18,962,280,612 bytes sampled in the gnark container.
+delay, with a host-process peak resident set (`VmHWM`) of 23,366,266,880 bytes, a lower bound of its demand under the
+host's 24 GB memory cap with swap in use, and 18,962,280,612 bytes sampled in the gnark container.
 `PROVING_AVAILABILITY = SELF_HOSTED_PATH_EXERCISED` and `selfHostedPath.exercised = true`, derived from the two
 committed observations and the record by `validate:sp1-circuit-tooling`, never set
 ([SP1-PA3B](#sp1-pa3b-the-first-real-self-hosted-proof-exercise)). An exercised path is liveness on one host at one
@@ -40,8 +41,9 @@ the derivation that SP1-PA3B's evidence now satisfies
 > **SP1-PA3A** (no proof): the repository now knows how to recognize authoritative proof-exercise evidence. One real
 > run through the archive-only gate, measured, and the designated verifier's acceptance of its proof are two
 > committed observations; a record is derived from them, never written; and `SELF_HOSTED_PATH_EXERCISED` follows from
-> exactly one accepted record on the accepted archive record, or not at all. No real proof exists, no image was
-> pulled, nothing was downloaded, deployed or written to a chain, and `selfHostedPath.exercised` is still `false`.
+> exactly one accepted record on the accepted archive record, or not at all. At the time no real proof existed, no
+> image was pulled, nothing was downloaded, deployed or written to a chain, and `selfHostedPath.exercised` was still
+> `false`.
 > SP1-PA3B, under its own owner authorization, supplies the evidence; production binding is later still.
 >
 > **SP1-PA3B** (owner-authorized, one proof): the gate was run once, unchanged, on a Linux proving host whose egress
@@ -733,12 +735,12 @@ not a line anyone wrote.
 
 | | |
 |---|---|
-| Host | `developer-workstation-wsl2`: the SP1-PA2B acquisition workstation (AMD Ryzen 7 9800X3D, 8 cores / 16 threads) running Ubuntu 24.04.4 LTS in WSL2 (kernel 6.18.33.1-microsoft-standard-WSL2), its virtual machine capped at 24 GB of memory with 40 GB of swap; an unprivileged user (uid 1001), as the gate's POSIX guard requires |
+| Host | `developer-workstation-wsl2`: the SP1-PA2B acquisition workstation (AMD Ryzen 7 9800X3D, 8 cores / 16 threads) running Ubuntu 24.04.4 LTS in WSL2 (kernel 6.18.33.1-microsoft-standard-WSL2), its virtual machine capped at 24 GB of memory with 40 GB of swap, raised for this lane from the default 16 GB before the run (the preparation logs show 16.3 GB at 23:06Z and 24.6 GB at 23:24Z); an unprivileged user (uid 1001), as the gate's POSIX guard requires |
 | Docker | a native Docker Engine (Ubuntu `docker.io` 29.1.3) inside that distribution, reached at `unix:///var/run/docker.sock`, context `default`; no Docker Desktop integration, so the gnark container's bridge is in the proving host's own network namespace |
 | Checkout | a clone of this repository at protected main `da7936bb…` (the merge of SP1-PA3A), `zkvm/host` tree `30f72596…`, clean when the measurement started |
 | gnark image | pulled by the committed digest before the boundary: `docker image inspect` lists exactly `ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62…48c4d` (39,957,988 bytes, linux/amd64) |
 | Archive | the SP1-PA2B host A copy, copied to the proving host and re-measured there: 6,211,807,514 bytes, sha256 `18beebb6…a9147810`; installed by `sp1:circuit-install` against the committed record into a root only that user can change (7 members, 166 s, the tree left read-only) |
-| Host binary | rebuilt by the committed canonical procedure (`scripts/sp1-canonical/canonical-build.sh`: a fresh container of the vendor image by digest, SP1-TD1's entrypoint unchanged) from the checkout's `zkvm/guest` and `zkvm/host`; it reproduced the committed canonical rebuild observation byte for byte: `mldsa65-host` sha256 `fc8eff69…abf1b` (57,567,008 bytes), the same ELF digests, the same `PROGRAM_VKEY` |
+| Host binary | rebuilt by the committed canonical procedure (`scripts/sp1-canonical/canonical-build.sh`: a fresh container of the vendor image by digest, SP1-TD1's entrypoint unchanged) from the lane checkout's `zkvm/guest` and `zkvm/host` at `da7936bb…`, through a scratch copy of that driver differing in one line only (it keeps the binary the committed driver deletes after hashing it), on the workstation's Docker Desktop engine (the Windows side, where the vendor image was already local), not on the proving host's engine; it reproduced the committed canonical rebuild observation byte for byte: `mldsa65-host` sha256 `fc8eff69…abf1b` (57,567,008 bytes), the same ELF digests, the same source digests, the same `PROGRAM_VKEY` |
 | Proof input | the committed [`zkvm/fixtures/mldsa65-withdrawal.inputs.json`](../zkvm/fixtures/mldsa65-withdrawal.inputs.json), sha256 `5f317816…a0e9` |
 
 ### The egress boundary
@@ -751,12 +753,27 @@ to the refusing socket), and refuses everything else the host originates (TCP by
 the rest by ICMP admin-prohibited); the forward hook (policy drop) refuses every forwarded packet, so every container of
 the local engine, the gnark container included; the input hook drops every packet a container sends to the host, so no
 container reaches the host's resolver. The exact statement is the observation's `egress.enforcement`. It was rehearsed
-twice before the run with the same probes from the host and from a container (every probe refused; the docker endpoint
-still answering) and after its removal (every name resolved, every address connected); it was created before the
-before-probes and deleted after the after-probes (11 minutes), with no Windows-side rule. Every required probe was
-refused on both sides of the run: the two hosts by name with `EAI_AGAIN`, and the four addresses (the acquisitions'
-`3.5.90.58` and `3.5.93.98`, the canaries `1.1.1.1` and `8.8.8.8`) with `ECONNREFUSED` at the connection. The table's
-counters afterwards showed only refused traffic and nothing forwarded from the bridge: the gnark container never tried.
+twice before the run with the same probes from the host and from a container: the first rehearsal used a precursor
+ruleset (no explicit rule for the DNS-tunnelling resolver, loopback accepted by address rather than `fib daddr type
+local`), under which every probe was refused too but the address probes ended `ETIMEDOUT` after ten seconds because the
+kernel's own reset and ICMP answers to the host's address were caught by the table; the `fib daddr type local` accept
+was added and the second rehearsal, with the ruleset the run then used, found every probe refused at once (the docker
+endpoint still answering), and every name resolved and every address connected after the table's removal. For the run
+it was created at 23:24:12Z, before the before-probes, and deleted at 23:35:29Z, after the after-probes (11 minutes
+17 seconds), with no Windows-side rule. Every required probe was refused on both sides of the run: the two hosts by
+name with `EAI_AGAIN`, and the four addresses (the acquisitions' `3.5.90.58` and `3.5.93.98`, the canaries `1.1.1.1`
+and `8.8.8.8`) with `ECONNREFUSED` at the connection. The table's counters at its removal: 176 packets refused at the
+DNS-tunnelling resolver rule, 8 TCP packets reset (the four address probes before and after: the only outbound TCP
+attempted, so no download or pull was even tried), 4 UDP and 23 other packets refused, and 0 packets in the forward
+and `docker0` input chains: the gnark container never sent a packet. The tool's two probe sets account for about 64 of
+the 176 resolver packets (a refused lookup is retried: one probe set was measured at 32 packets); the remaining ~112
+were refused name resolutions by something else on the host during the run, and are unattributed: a capture on the
+resolver's interface afterwards, with no block in place, saw no DNS query at all from four idle minutes, from thirty
+rounds of the docker calls the measurement makes, from an `npm run`, or from the SP1 host's SDK setup path
+(`mldsa65-host vkey`); the proving path itself was not re-run for the capture (that would be a second proof), and the
+host's journal for the window was volatile and gone. Whatever asked, the table refused it, and the TCP counter shows
+nothing but the probes tried to connect anywhere. Egress is attested by the probes at the edges, the stated
+enforcement and these counters, not by watching the run.
 
 ### The run
 
@@ -769,7 +786,7 @@ developer-workstation-wsl2`) wrote
 |---|---|
 | Gate run | 2026-10-19T23:24:14Z–23:35:00Z, `gateSeconds` 647 (the record check, the re-hash of the installation, the host, the re-hash again) |
 | Host run | 23:24:26Z–23:34:31Z, `hostSeconds` 606 (core proving, compression, the BN254 wrap and the Groth16 wrap in the gnark container) |
-| Peak memory | host process 23,366,266,880 bytes (`VmHWM`); gnark container 18,962,280,612 bytes, the largest of 61 `docker stats` samples at 2 s (a lower bound of its peak) |
+| Peak memory | host process 23,366,266,880 bytes: the kernel's resident-set high-water mark (`VmHWM`), a lower bound of the process's demand under the host's 24 GB cap with swap in use; gnark container 18,962,280,612 bytes, the largest of 61 `docker stats` samples at 2 s (a lower bound of its peak) |
 | Prover | `SP1_PROVER=cpu`; the gate's four frozen variables; six variables passed through (`HOME`, `LANG`, `LOGNAME`, `PATH`, `USER`, `XDG_RUNTIME_DIR`); every other caller variable dropped by name; no refused variable set |
 | Proof | `vkey` = the designated `PROGRAM_VKEY` `0x0001a4c6…c2dc`; selector `0x4388a21c` (the designated verifying key's); `publicValuesSha256` `64e08d05…67db`; `proofBytesSha256` `dfe975da…0eee` |
 | Rotation delay | 647 s of 172,800 s: `withinRotationDelay = true`, fraction 0.003744 |
@@ -782,9 +799,10 @@ measurement depends on these notes.
 ### The verification
 
 `npm run sp1:verify-proof-exercise` (the default local path; the deployed-chain check was not requested, since it would
-add nothing the designation does not already pin and this lane writes to no chain) wrote
+add nothing the designation does not already pin and this lane writes to no chain), run on the proving host in the
+same Linux checkout, moved to the commit that holds the committed run observation, wrote
 [`proof-exercise-verification-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json)
-(sha256 `07d9c42c…da63`), bound to the committed run observation's bytes: the CREATE2-authenticated v6.1.0 initcode
+(sha256 `6057bf21…b918`), bound to the committed run observation's bytes: the CREATE2-authenticated v6.1.0 initcode
 deployed on the development chain (chain id 31337), the code hash at the address measured equal to the designated
 `runtimeCodeKeccak` `0xcceb864c…04dd`, `verifyProof` answered `success` to the proof and `revert ProofInvalid`
 (`0x7fcdd1f4`) to its tampered copy; `acceptance = ACCEPTED`, computed from the chain's answers.
@@ -802,7 +820,10 @@ probes' shape and timing). `npm run validate:sp1-proof-exercise-record` accepts 
 and never by hand: `sp1:proving-availability` wrote status `SELF_HOSTED_PATH_EXERCISED` with `selfHostedPath.exercised
 = true`, the record it follows, and the exercise directory judged (one record, its host, times, memory, verifier check
 and egress condition); `sp1:circuit-tooling` derived state `SELF_HOSTED_PATH_EXERCISED` with the fourth state
-reached, `exercise.state = ACCEPTED` and `next` = production binding; `sp1:host-advisories` regenerated the record in
+reached, `exercise.state = ACCEPTED` and `next` = production binding (its `lane` field stays `SP1-PA3A`, the lane that
+built the derivation it runs, as it stayed `SP1-PA2B` through SP1-PA2C; and the availability record's first basis line
+still restates the 2026-10-16 proving-artifacts observation, under which the artifacts were absent on
+`developer-workstation`: a derived line about that observation, never hand-edited); `sp1:host-advisories` regenerated the record in
 the exercised state (`A_NO_PROVING_WITHOUT_ARCHIVE` holds with exactly the one accepted archive record and exactly the
 one accepted exercise record; still `ASSESSMENT_VALID` and still `NOT_DEPENDENCY_SAFE`, nothing patched). The
 implementation receipt and its supersession are byte-identical: the supersession reads `PROVING_AVAILABILITY` at

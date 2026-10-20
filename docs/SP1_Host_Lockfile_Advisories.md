@@ -75,9 +75,10 @@ item holds. Evidence is of three kinds:
   `=6.3.1` with features `["blocking"]` only (no `network`, `cuda` or `native-gnark`); no network-only, `aws-lc`,
   `brotli` or `sp1-cuda` crate in the lockfile; backtrace locked without ruzstd; `src/main.rs` proving only with
   `.groth16()`; proving availability either `OWNER_DOWNLOAD_REQUIRED` with no WalletWall archive record and no local
-  copy, or (SP1-PA2B) `ARCHIVED_VERIFIED_UNEXERCISED` with exactly the one accepted archive record, or (SP1-PA3A)
-  `SELF_HOSTED_PATH_EXERCISED` with that archive record and exactly the one accepted proof-exercise record derived
-  from a run through the archive-only gate, never an unverified local copy where SP1 reads, and in every state the
+  copy, or (SP1-PA2B) `ARCHIVED_VERIFIED_UNEXERCISED` with exactly the one accepted archive record, or
+  `SELF_HOSTED_PATH_EXERCISED` (SP1-PA3A's derivation, SP1-PA3B's evidence) with that archive record and exactly the
+  one accepted proof-exercise record derived from a run through the archive-only gate, never an unverified local copy
+  where SP1 reads, and in every state the
   self-hosted path archive-only and exercised only as the committed proof-exercise record says.
 - **Feature facts** from `cargo tree -e features`: sp1-sdk without `network`; reqwest without `http2`/`http3`; rustls
   without `brotli` and with the ring provider only; backtrace without `ruzstd`.

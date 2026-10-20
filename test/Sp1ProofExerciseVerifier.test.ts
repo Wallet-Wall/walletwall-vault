@@ -9,7 +9,8 @@
  * proof with one byte flipped. Whenever a proof-exercise record is committed, its proof must verify here, on every
  * run: a verification observation forged without a proof the runtime accepts fails this suite.
  *
- * Nothing here proves. The real checkout holds no proof-exercise evidence. Research prototype. Not audited.
+ * Nothing here proves. Since SP1-PA3B the real checkout holds one proof-exercise record, whose proof is re-executed
+ * here. Research prototype. Not audited.
  */
 import { expect } from "chai";
 import assert from "node:assert/strict";
@@ -172,7 +173,7 @@ describe("SP1-PA3A — the designated verifier path (a development chain)", func
     ).to.equal("REJECTED");
   });
 
-  it("the real checkout holds no proof-exercise evidence; a committed exercise's proof is re-executed here on every run", async function () {
+  it("a committed exercise's proof is re-executed here on every run (the real checkout holds SP1-PA3B's); without a record there is no exercise evidence", async function () {
     this.timeout(300_000);
     const observations = exerciseObservationsIn(".");
     if (exerciseRecordsIn(".").length === 0) {
