@@ -1,5 +1,5 @@
 {
-  "schema": "walletwall.sp1-circuit-tooling.v1",
+  "schema": "walletwall.sp1-circuit-tooling.v2",
   "lane": "SP1-PA3A",
   "amendment": "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
   "state": "SELF_HOSTED_PATH_EXERCISED",
@@ -31,7 +31,7 @@
   ],
   "provingAvailability": {
     "path": "evidence/zk/sp1-impl/proving-availability.json",
-    "sha256": "d7fd9c20c153ae6db1153cd4d1352e0cc072c3fe2360e75455ed7efc091dc480",
+    "sha256": "3ec175f0ced53f72680e1dae585fdbc57e11204969feff2d0c2e5d84df17b072",
     "status": "SELF_HOSTED_PATH_EXERCISED",
     "consistentWithArchiveEvidence": true
   },
@@ -705,94 +705,122 @@
   "exercise": {
     "state": "ACCEPTED",
     "authoritativeDir": "evidence/zk/sp1-impl/proof-exercises",
-    "schema": "walletwall.sp1-proof-exercise.v1",
-    "jsonSchema": {
-      "path": "evidence/zk/schema/sp1-proof-exercise.v1.schema.json",
-      "sha256": "a8863f4ac2a94205db51439e42d05d59cfeb0626515a7a2235936c2ae06eff62"
-    },
-    "derivation": "two committed observations (the measured gate run, scripts/measure-sp1-proof-exercise.ts; the designated verifier's acceptance, scripts/verify-sp1-proof-exercise.ts) derive the record (npm run sp1:proof-exercise-record), never a hand-written one; the state follows from the record, and a record that any invariant refuses derives no state at all",
+    "generations": [
+      {
+        "generation": "v1",
+        "name": "<designation>.json",
+        "schema": "walletwall.sp1-proof-exercise.v1",
+        "runSchema": "walletwall.sp1-proof-exercise-run.v1",
+        "maxRecords": 1,
+        "jsonSchema": {
+          "path": "evidence/zk/schema/sp1-proof-exercise.v1.schema.json",
+          "sha256": "a8863f4ac2a94205db51439e42d05d59cfeb0626515a7a2235936c2ae06eff62"
+        }
+      },
+      {
+        "generation": "v2",
+        "name": "<designation>.v2.<token>.json",
+        "schema": "walletwall.sp1-proof-exercise.v2",
+        "runSchema": "walletwall.sp1-proof-exercise-run.v2",
+        "maxRecords": 1,
+        "jsonSchema": {
+          "path": "evidence/zk/schema/sp1-proof-exercise.v2.schema.json",
+          "sha256": "fb5c9872547a48b8fa50fe80917f3a1c6dbd5a4076cf99c531627b24346e90e8"
+        }
+      }
+    ],
+    "derivation": "each exercise's two committed observations (its measured gate run: scripts/measure-sp1-proof-exercise.ts for a v1 run, scripts/measure-sp1-attributed-proof-exercise.ts under the root observer for a v2 run; the designated verifier's acceptance, scripts/verify-sp1-proof-exercise.ts) derive its record (npm run sp1:proof-exercise-record), never a hand-written one; the state follows from the records, one or several, each keeping its own egress assurance, and a record that any invariant refuses derives no state at all",
     "requires": [
-      "exactly one record in evidence/zk/sp1-impl/proof-exercises, named after the designation, byte for byte what the committed observations derive (never written by hand), committed with them",
-      "exactly one run observation (scripts/measure-sp1-proof-exercise.ts, bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable by sha256 (the canonical-build host binary the committed canonical rebuild observation names for the designated host tree), the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable",
+      "evidence/zk/sp1-impl/proof-exercises holds only the designation's v1 slot (<designation>.json, walletwall.sp1-proof-exercise.v1: SP1-PA3B's) and v2 records named after their exercise (<designation>.v2.<token>.json, walletwall.sp1-proof-exercise.v2, at most 1), the token being the first 16 hex digits of the sha256 of the exercise's run observation; any other name, a link, or a generation over its count refuses every record",
+      "each record is byte for byte what its own two committed observations derive (never written by hand), committed with them; every proof-exercise observation belongs to exactly one record (the v1 slot's names carry no token, a v2 exercise's carry its token); no proof is recorded twice; and no record the directory ever committed is withdrawn or edited (its git history is append-only)",
+      "for each record, exactly one run observation (a v1 run by scripts/measure-sp1-proof-exercise.ts, a v2 run by scripts/measure-sp1-attributed-proof-exercise.ts under the root observer, each bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable by sha256 (the canonical-build host binary the committed canonical rebuild observation names for the designated host tree), the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable",
       "network egress refused within ten minutes before and after the gate run: at the archive's upstream host and the image registry by name and by TCP 443, and by a refused connection at the acquisitions' upstream addresses and two canary addresses (TCP 443), with the enforcement stated",
       "a possible wall time (the host run inside the gate run, positive whole seconds that match the stamps) and a positive peak-memory measurement of the host process and of the gnark containers",
       "a proof naming the designated PROGRAM_VKEY whose first four bytes are the designated verifying key's selector, with its public values' and bytes' sha256",
-      "exactly one verification observation (scripts/verify-sp1-proof-exercise.ts, bound by sha256) binding the run observation's committed bytes and the proof's digests, in which the designation's verifier (the CREATE2-authenticated v6.1.0 runtime, its code hash checked at the called address) accepted the proof and refused its tampered copy",
+      "for each record, exactly one verification observation (scripts/verify-sp1-proof-exercise.ts, bound by sha256) binding the run observation's committed bytes and the proof's digests, in which the designation's verifier (the CREATE2-authenticated v6.1.0 runtime, its code hash checked at the called address) accepted the proof and refused its tampered copy",
       "the run's source commit in this repository's history and holding what the run claims it ran from (the designated host tree, the archive record and the measurement tool as committed), and this repository's identity; observations and records committed as regular LF files in their directories",
       "the accepted archive record still accepted: exercise evidence without it derives no state"
     ],
-    "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json",
-    "derivedFrom": [
-      "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
-      "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json"
-    ],
-    "host": "developer-workstation-wsl2",
-    "performedAtUtc": "2026-10-19T23:24:14Z",
-    "verifiedAtUtc": "2026-10-20T00:35:18Z",
-    "archiveRecord": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
-    "hostExecutableSha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
-    "proofInputSha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
-    "gnark": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
-    "prover": "cpu",
-    "proof": {
-      "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
-      "selector": "0x4388a21c",
-      "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
-      "proofBytesSha256": "dfe975da331d53bee1485d55f032566fd43ddc0350904a30f74bcd83f7370eee"
-    },
-    "verifier": {
-      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
-      "checks": [
-        {
-          "chainId": "31337",
-          "mode": "AUTHENTICATED_RUNTIME_LOCAL",
-          "verdicts": {
-            "real": "success",
-            "tampered": "revert 0x7fcdd1f4"
-          }
-        }
-      ],
-      "acceptance": "ACCEPTED"
-    },
-    "performance": {
-      "wallClockSeconds": 647,
-      "hostSeconds": 606,
-      "rotationDelaySeconds": 172800,
-      "withinRotationDelay": true,
-      "rotationDelayFraction": 0.003744,
-      "peakMemory": {
-        "hostProcess": {
-          "bytes": 23366266880,
-          "method": "/proc/<pid>/status VmHWM of the host process, polled every 2000 ms and at exit (the kernel's high-water mark)"
+    "records": [
+      {
+        "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json",
+        "schema": "walletwall.sp1-proof-exercise.v1",
+        "lane": "SP1-PA3B",
+        "exercise": "mldsa65-withdrawal-d1:5cc66ed58a4a2cf8",
+        "derivedFrom": [
+          "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
+          "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json"
+        ],
+        "host": "developer-workstation-wsl2",
+        "performedAtUtc": "2026-10-19T23:24:14Z",
+        "verifiedAtUtc": "2026-10-20T00:35:18Z",
+        "archiveRecord": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+        "hostExecutableSha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
+        "proofInputSha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+        "gnark": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+        "prover": "cpu",
+        "proof": {
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+          "selector": "0x4388a21c",
+          "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+          "proofBytesSha256": "dfe975da331d53bee1485d55f032566fd43ddc0350904a30f74bcd83f7370eee"
         },
-        "gnarkContainers": {
-          "bytes": 18962280612,
-          "samples": 61,
-          "intervalMs": 2000,
-          "method": "docker stats --no-stream MemUsage of the running containers whose ancestor is ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d, summed, polled every 2000 ms (a sampled lower bound of the peak)"
-        }
+        "verifier": {
+          "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+          "checks": [
+            {
+              "chainId": "31337",
+              "mode": "AUTHENTICATED_RUNTIME_LOCAL",
+              "verdicts": {
+                "real": "success",
+                "tampered": "revert 0x7fcdd1f4"
+              }
+            }
+          ],
+          "acceptance": "ACCEPTED"
+        },
+        "performance": {
+          "wallClockSeconds": 647,
+          "hostSeconds": 606,
+          "rotationDelaySeconds": 172800,
+          "withinRotationDelay": true,
+          "rotationDelayFraction": 0.003744,
+          "peakMemory": {
+            "hostProcess": {
+              "bytes": 23366266880,
+              "method": "/proc/<pid>/status VmHWM of the host process, polled every 2000 ms and at exit (the kernel's high-water mark)"
+            },
+            "gnarkContainers": {
+              "bytes": 18962280612,
+              "samples": 61,
+              "intervalMs": 2000,
+              "method": "docker stats --no-stream MemUsage of the running containers whose ancestor is ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d, summed, polled every 2000 ms (a sampled lower bound of the peak)"
+            }
+          }
+        },
+        "egress": {
+          "condition": "EGRESS_DISABLED",
+          "enforcement": "nftables table inet pa3b_egress_off, created as root in the root network namespace of the WSL2 virtual machine that the Linux proving host (Ubuntu 24.04) shares with every other WSL2 distribution on this machine and with Docker Desktop's engine: output hook (priority -10) first refuses every packet to the WSL DNS-tunnelling resolver 10.255.255.254 (an address on lo that proxies to the Windows host; TCP by tcp reset, the rest by ICMP port-unreachable), then accepts packets to the host's own addresses only (fib daddr type local: 127.0.0.0/8, ::1 and its eth0 address, which never leave the VM and carry the kernel's own reset and ICMP answers back to the refusing socket), then refuses every other packet the host originates (TCP by tcp reset, UDP by ICMP port-unreachable, the rest by ICMP admin-prohibited); forward hook (priority -10, policy drop) refuses every forwarded packet the same way (the local Docker Engine's bridge docker0, so every container, the gnark container included); input hook drops every packet a container sends to the host (iifname docker0), so a container cannot reach the host's resolver either; the docker endpoint is the local engine's unix:///var/run/docker.sock (Ubuntu docker.io 29.1.3 running in this distribution, no Docker Desktop integration); the table was created before the before-probes and deleted after the after-probes, no Windows-side rule was used, and nothing was pulled, downloaded or installed while it existed; rehearsed before the run with the same probes from the host and from a container (all refused) and after its removal (all resolved and connected)",
+          "probes": {
+            "before": 8,
+            "after": 8,
+            "targets": [
+              "dns:ghcr.io",
+              "dns:sp1-circuits.s3-us-east-2.amazonaws.com",
+              "tcp:1.1.1.1:443",
+              "tcp:3.5.90.58:443",
+              "tcp:3.5.93.98:443",
+              "tcp:8.8.8.8:443",
+              "tcp:ghcr.io:443",
+              "tcp:sp1-circuits.s3-us-east-2.amazonaws.com:443"
+            ]
+          }
+        },
+        "egressAssurance": "EDGE_PROBES_ONLY",
+        "establishes": "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, SP1_PROVER=cpu and network egress refused before and after the run, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time",
+        "doesNotEstablish": "the provenance of the proving: the verifier proves the proof's validity under the designated key, never that it was made through the gate, with SP1_PROVER=cpu, with egress refused, by this host binary, in this time or with this memory; those facts are the operator's observation, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise rest on the owner's review of the pull request that commits them; nor that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); nor that any other hardware proves within the rotation delay; nor that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)"
       }
-    },
-    "egress": {
-      "condition": "EGRESS_DISABLED",
-      "enforcement": "nftables table inet pa3b_egress_off, created as root in the root network namespace of the WSL2 virtual machine that the Linux proving host (Ubuntu 24.04) shares with every other WSL2 distribution on this machine and with Docker Desktop's engine: output hook (priority -10) first refuses every packet to the WSL DNS-tunnelling resolver 10.255.255.254 (an address on lo that proxies to the Windows host; TCP by tcp reset, the rest by ICMP port-unreachable), then accepts packets to the host's own addresses only (fib daddr type local: 127.0.0.0/8, ::1 and its eth0 address, which never leave the VM and carry the kernel's own reset and ICMP answers back to the refusing socket), then refuses every other packet the host originates (TCP by tcp reset, UDP by ICMP port-unreachable, the rest by ICMP admin-prohibited); forward hook (priority -10, policy drop) refuses every forwarded packet the same way (the local Docker Engine's bridge docker0, so every container, the gnark container included); input hook drops every packet a container sends to the host (iifname docker0), so a container cannot reach the host's resolver either; the docker endpoint is the local engine's unix:///var/run/docker.sock (Ubuntu docker.io 29.1.3 running in this distribution, no Docker Desktop integration); the table was created before the before-probes and deleted after the after-probes, no Windows-side rule was used, and nothing was pulled, downloaded or installed while it existed; rehearsed before the run with the same probes from the host and from a container (all refused) and after its removal (all resolved and connected)",
-      "probes": {
-        "before": 8,
-        "after": 8,
-        "targets": [
-          "dns:ghcr.io",
-          "dns:sp1-circuits.s3-us-east-2.amazonaws.com",
-          "tcp:1.1.1.1:443",
-          "tcp:3.5.90.58:443",
-          "tcp:3.5.93.98:443",
-          "tcp:8.8.8.8:443",
-          "tcp:ghcr.io:443",
-          "tcp:sp1-circuits.s3-us-east-2.amazonaws.com:443"
-        ]
-      }
-    },
-    "establishes": "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, SP1_PROVER=cpu and network egress refused before and after the run, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time",
-    "doesNotEstablish": "the provenance of the proving: the verifier proves the proof's validity under the designated key, never that it was made through the gate, with SP1_PROVER=cpu, with egress refused, by this host binary, in this time or with this memory; those facts are the operator's observation, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise rest on the owner's review of the pull request that commits them; nor that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); nor that any other hardware proves within the rotation delay; nor that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)"
+    ]
   },
   "selfTest": {
     "fixtures": [
@@ -1656,5 +1684,5 @@
     "the Groth16 trusted setup behind the v6.1.0 key: a proof the verifier accepts is compatibility with the key, never soundness",
     "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED until its own lane"
   ],
-  "next": "production binding (the implementation receipt's PRODUCTION_SP1_BINDING): a later, owner-authorized lane; an exercised path is liveness on one host at one time, never production readiness"
+  "next": "the directory admits SP1-PA3B's v1 record and, beside it, the v2 record of an attributed exercise under the root observer (SP1-PA3D, owner-authorized; room made by SP1-PA3D0), each its own history; production binding (the implementation receipt's PRODUCTION_SP1_BINDING) is a later, owner-authorized lane: an exercised path is liveness on one host at one time, never production readiness"
 }

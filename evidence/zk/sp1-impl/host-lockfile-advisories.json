@@ -55,7 +55,7 @@
       },
       {
         "path": "evidence/zk/sp1-impl/proving-availability.json",
-        "sha256": "d7fd9c20c153ae6db1153cd4d1352e0cc072c3fe2360e75455ed7efc091dc480"
+        "sha256": "3ec175f0ced53f72680e1dae585fdbc57e11204969feff2d0c2e5d84df17b072"
       }
     ]
   },
@@ -1573,9 +1573,9 @@
     {
       "id": "A_NO_PROVING_WITHOUT_ARCHIVE",
       "kind": "assumption",
-      "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy), ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B, and no proof-exercise record) or SELF_HOSTED_PATH_EXERCISED (that archive record plus exactly the one proof-exercise record derived from a run through the archive-only gate, SP1-PA3A), never an unverified local copy where SP1 reads; the self-hosted path proves only from a verified archive through that gate, which never lets SP1 download the circuit, and it is exercised only as the committed proof-exercise record says",
+      "statement": "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy), ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B, and no proof-exercise record) or SELF_HOSTED_PATH_EXERCISED (that archive record plus proof-exercise records, each derived from a run through the archive-only gate, SP1-PA3A: every record on disk accepted and named by the availability record both as an accepted exercise and as a witness of the exercised path, and no other, SP1-PA3D0), never an unverified local copy where SP1 reads; the self-hosted path proves only from a verified archive through that gate, which never lets SP1 download the circuit, and it is exercised only as the committed proof-exercise records say",
       "holds": true,
-      "observed": "status SELF_HOSTED_PATH_EXERCISED; archive records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json); proof-exercise records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json); self-hosted path exercised true; proves only from an archive: yes"
+      "observed": "status SELF_HOSTED_PATH_EXERCISED; archive records 1 recorded, 1 on disk (the accepted evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json); proof-exercise records 1 recorded, 1 on disk (each accepted and a witness: evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json); self-hosted path exercised true; proves only from an archive: yes"
     },
     {
       "id": "F_SP1_SDK_NO_NETWORK",
