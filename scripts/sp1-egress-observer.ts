@@ -29,8 +29,12 @@ import { spawn, spawnSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import {
+  chmodSync,
+  chownSync,
   closeSync,
   existsSync,
+  fchmodSync,
+  fchownSync,
   lstatSync,
   mkdirSync,
   openSync,
@@ -51,6 +55,8 @@ export const OBSERVER_MECHANISM = "LINUX_TRACEFS_KPROBES";
 export const FACTS_SCHEMA = "walletwall.sp1-egress-observer-facts.v1";
 export const MANIFEST_SCHEMA = "walletwall.sp1-egress-observer-raw.v1";
 export const TRACEFS = "/sys/kernel/tracing";
+/** kprobes' global arm switch, in debugfs (not every kernel lets root read it: lockdown). */
+export const GLOBAL_ARM = "/sys/kernel/debug/kprobes/enabled";
 /** CLOCK_MONOTONIC: the clock Node's process.hrtime reads on Linux, so trace stamps and the tool's readings compare. */
 export const TRACE_CLOCK = "mono";
 /** Per-CPU ring buffer; a full buffer drops new events (overwrite 0), which the stats count and the validator refuses. */
@@ -502,6 +508,7 @@ export class TraceSession {
   private defined: string[] = [];
   private enabled: string[] = [];
   private created = false;
+  private globalArm: string | null = null;
   private marker: { write(line: string): void; close(): void } | null = null;
   private seq = 0;
   config: ObserverConfig | null = null;
@@ -597,6 +604,16 @@ export class TraceSession {
     this.marker = this.fs.openMarker(at("trace_marker"));
     this.fs.write(at("tracing_on"), "1");
     this.config = config;
+    // kprobes' global arm, where debugfs shows it: decided once (a kernel under lockdown refuses even root's read, and
+    // the facts then say it was not shown), then read at every heartbeat.
+    try {
+      if (this.fs.exists(GLOBAL_ARM)) {
+        this.fs.read(GLOBAL_ARM);
+        this.globalArm = GLOBAL_ARM;
+      }
+    } catch {
+      this.globalArm = null;
+    }
     return config;
   }
 
@@ -624,15 +641,19 @@ export class TraceSession {
   /**
    * Whether every probe is still enabled in the instance, and kprobes still armed where debugfs shows it. Sampled at each
    * heartbeat: a probe switched off and back on between two samples is not seen (a root process can do that: see the
-   * docs' trust statement), one left off is.
+   * docs' trust statement), one left off is, and one left enabled but silenced (a filter, the instance's CPU mask) is not.
    */
   armed(): boolean {
     if (this.enabled.length === 0) return false;
     const on = this.enabled.every(
       (name) => this.fs.read(tjoin(this.instance, `events/${this.group}/${name}/enable`)).trim() === "1",
     );
-    const global = "/sys/kernel/debug/kprobes/enabled";
-    return on && (!this.fs.exists(global) || this.fs.read(global).trim() === "1");
+    return on && (this.globalArm === null || this.fs.read(this.globalArm).trim() === "1");
+  }
+
+  /** Whether kprobes' global arm is shown to this session (debugfs mounted and readable: not under kernel lockdown). */
+  get globalArmShown(): boolean {
+    return this.globalArm !== null;
   }
 
   /** The misses of every probe this session defined, from kprobe_profile (a missed hit is a lost event). */
@@ -834,9 +855,6 @@ function argValue(argv: string[], name: string, count = 1): string[] {
 }
 
 async function main(argv: string[]): Promise<number> {
-  // The raw directory and files are made with the modes written below (0755, 0644), whatever root's umask: the tool
-  // reads them as the proving user.
-  process.umask(0o022);
   const mode: Mode | null = argv[0] === "run" ? "RUN" : argv[0] === "self-test" ? "SELF_TEST" : null;
   if (mode === null)
     throw new Error(
@@ -894,7 +912,11 @@ async function main(argv: string[]): Promise<number> {
     heartbeats: 0,
     failures: [] as string[],
   };
-  mkdirSync(rawArg, { mode: 0o755 });
+  // The raw evidence is root's and the proving user's group's alone (the tool reads it as that user, after the proof):
+  // 0750 and 0640, set explicitly (chmod is not subject to the umask, which stays as it was for every child).
+  mkdirSync(rawArg, { mode: 0o750 });
+  chownSync(rawArg, 0, user.gid);
+  chmodSync(rawArg, 0o750);
   const rawTrace = join(rawArg, RAW_TRACE_FILE);
   const session = new TraceSession(realTraceFs, nonce);
   const failures = facts.failures as string[];
@@ -923,7 +945,10 @@ async function main(argv: string[]): Promise<number> {
     );
     session.mark("HEARTBEAT", h.fields);
     if (!h.ok)
-      throw new ObserverRefusal("OBSERVER_LOSS", `tracing_on ${h.fields.tracingOn}, ${h.fields.loss} events lost`);
+      throw new ObserverRefusal(
+        "OBSERVER_LOSS",
+        `tracing ${h.fields.tracingOn === 1 ? "on" : "off, or a probe disabled"}, ${h.fields.loss} events lost`,
+      );
   };
   const fail = (code: string, why: string) => {
     if (failures.length === 0) process.stderr.write(`observer: ${code}: ${why}\n`);
@@ -945,8 +970,11 @@ async function main(argv: string[]): Promise<number> {
       config,
       configSha256: configSha256(config),
       kprobeReadBack: session.readBack,
+      kprobesGlobalArm: session.globalArmShown ? "SHOWN" : "NOT_SHOWN",
     });
-    const rawFd = openSync(rawTrace, "wx", 0o644);
+    const rawFd = openSync(rawTrace, "wx", 0o640);
+    fchownSync(rawFd, 0, user.gid);
+    fchmodSync(rawFd, 0o640);
     drain = spawn("cat", [join(session.instance, "trace_pipe")], { stdio: ["ignore", rawFd, "pipe"], env: {} });
     closeSync(rawFd);
     const clock = { utc: utcNow(), monoNs: process.hrtime.bigint().toString() };
@@ -1071,7 +1099,12 @@ async function main(argv: string[]): Promise<number> {
     const left = session.close();
     facts.cleanup = left;
     if (left.length > 0) failures.push(`CLEANUP_INCOMPLETE: ${left.join("; ")}`);
-    const write = (name: string, text: string) => writeFileSync(join(rawArg, name), text, { mode: 0o644, flag: "wx" });
+    const write = (name: string, text: string) => {
+      const p = join(rawArg, name);
+      writeFileSync(p, text, { mode: 0o640, flag: "wx" });
+      chownSync(p, 0, user.gid);
+      chmodSync(p, 0o640);
+    };
     write(RAW_FACTS_FILE, `${JSON.stringify(facts, null, 2)}\n`);
     const files = [RAW_TRACE_FILE, RAW_FACTS_FILE]
       .filter((name) => existsSync(join(rawArg, name)))

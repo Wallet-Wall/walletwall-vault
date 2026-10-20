@@ -939,18 +939,24 @@ the tool refuses such a `--host` before the run), the proof's containers (networ
 after checking that each container process's cgroup names the container), other containers, other processes, and the
 kernel. A refused packet joins an attempt by structure, never by timing: refused inside the attempt's own send, on its
 socket; the boundary's own reset or ICMP answer, refused while the attempt was being sent; a later packet of a
-connection the attempt opened, by its socket, until it closes; a container's datagram, echo or connection, by protocol,
-destination address and ports, a datagram once, unless any container sent through a packet or raw socket (which could
-craft any header, as any address: then no packet joins a container's attempt this way). Any other refused packet is a
-kernel message (a reset, an ICMP answer, a neighbour or multicast-group message, by its header, and only from one of the
-host's own addresses, never once a container crafted) or `UNATTRIBUTED`. The declared table's refusing rules must have
-counted, between the two snapshots, no fewer refused packets than the observer saw strictly inside the counters' window
-and no more than it saw inside their outer brackets (the reads take time), with the rules unchanged: fewer means another
-table refused (the declared boundary is not the boundary), more means a refusal went unobserved. Both counts come from
-the capture (the observer reads the counters into its facts), so the reconciliation finds a gap or a second boundary in
-an honest capture, not an edited one. Inside the window, a frame leaving through an uplink, an attempt from the host to
-a destination beyond the VM that was sent or connected, or an attempt from any namespace to a resolver that was sent or
+connection the attempt opened, by its socket, until it closes; a datagram, echo or connection from a network namespace
+other than the host's (a container's: one on the host's network is in the host's namespace, and its sockets join as the
+host's do), by protocol, destination address and ports, a datagram once, and only when every attempt it could join is of
+one namespace (ports are per namespace: attempts of two that could each have sent it name neither), unless anything in
+such a namespace sent through a packet or raw socket (which could craft any header, as any address: then no packet joins
+a container's attempt this way). Any other refused packet is a kernel message (a reset, an ICMP answer, a neighbour or
+multicast-group message, by its header, and only from a source the host's kernel uses: one of its own addresses as read
+at the start, the unspecified address, or an IPv6 link-local one; never once a container crafted) or `UNATTRIBUTED`. The
+declared table's refusing rules must have counted, between the two snapshots, no fewer refused packets than the observer
+saw strictly inside the counters' window and no more than it saw inside their outer brackets (the reads take time), with
+the rules unchanged: fewer means another table refused (the declared boundary is not the boundary), more means a refusal
+went unobserved. Both counts come from the capture (the observer reads the counters into its facts), so the
+reconciliation finds a gap or a second boundary in an honest capture, not an edited one. Inside the window, a frame
+leaving through an uplink, an attempt from the host's namespace (a container on the host's network among them) to a
+destination beyond the VM that was sent or connected, or an attempt from any namespace to a resolver that was sent or
 connected (a resolver on the host forwards beyond the VM, on a channel no device transmit shows) is a leak, and refuses.
+A container's attempt beyond the VM is a leak only by the transmit that carries it out: its own namespace's send shows
+only that it left the container.
 
 A v2 record carries the result as `egress.assurance`, metadata orthogonal to the state; no new state was created:
 
@@ -975,28 +981,33 @@ A v2 record carries the result as `egress.assurance`, metadata orthogonal to the
 
 Not observed at all: channels outside the observed IP stack (WSL interop, the 9P file system, `AF_VSOCK`); a root
 process, which could also switch the probes or the trace off and on again between two heartbeats (a heartbeat samples
-that tracing is on and every probe enabled, and sees one left off, never one switched back in time); the requester
-behind a daemon (an attempt `dockerd` or `systemd-resolved` makes on another process's behalf is the daemon's).
+that tracing is on, every probe enabled and, where debugfs shows it, the kernel's global kprobe switch armed: it sees
+one left off, never one switched back in time, and not a probe left enabled but silenced by a filter or a CPU mask); the
+requester behind a daemon (an attempt `dockerd` or `systemd-resolved` makes on another process's behalf is the
+daemon's). Whether the global switch was shown (not where debugfs is unmounted, nor under a locked-down kernel, which
+refuses even root's read) is the raw facts' `kprobesGlobalArm`, kept with the raw evidence and not committed.
 
 ### Raw evidence and privacy
 
-The observer writes the raw trace, its facts and a manifest of both (each file's length and sha256) to a new root-owned
-directory, where they stay with the operator (`OPERATOR_LOCAL`). The measurement tool normalizes them deterministically
-into the run observation, which commits the manifest's digest, the configuration (rebuilt from the committed observer by
-every validator), the counter snapshots, the per-CPU statistics, the normalized events and their own digest. DNS names
-are committed only for attempts of the observer, the tool, the proof and the proof's registered containers, exec paths
-only for the observer's, the tool's and the proof's processes; any other process's spawn name is `null`, its execs and
-exits are dropped, and its DNS names are withheld (`qname: null, withheld: true`). Packet bytes are committed only as
-header fields and a DNS question, never as payload; no environment variable's value, token, credential, cookie or SSH
-material is committed; local paths appear only as the executables the disclosed scopes ran (the measured host binary
-among them), and the observer's own facts (the proving user, the tool's command line) stay in the raw directory. The
-host's interface addresses are committed (a WSL2 machine's private and link-local ones; a link-local IPv6 address can
-encode its virtual interface's MAC). Anyone can re-derive from the committed observation the coverage, continuity,
-lineage, joins, reconciliation, leaks and privacy filter, and check the digests it can check itself: the normalized
-events' digest, the configuration's (rebuilt from the committed observer), and the observer's and the tool's as
-committed. The manifest's digest and the raw files' lengths and digests can be checked only against the raw files: the
-operator's raw directory re-checks the normalization (its re-normalization must reproduce the committed digest), and
-even that shows the normalization faithful to those files, not the files unedited.
+The observer writes the raw trace, its facts and a manifest of both (each file's length and sha256) to a new directory,
+where they stay with the operator (`OPERATOR_LOCAL`), owned by root and readable only by root and the proving user's
+primary group (the directory `0750`, each file `0640`): the tool reads them back after the proof as that user, and no
+user outside that group can. The measurement tool normalizes them deterministically into the run observation, which
+commits the manifest's digest, the configuration (rebuilt from the committed observer by every validator), the counter
+snapshots, the per-CPU statistics, the normalized events and their own digest. DNS names are committed only for attempts
+of the observer, the tool, the proof and the proof's registered containers, exec paths only for the observer's, the
+tool's and the proof's processes; any other process's spawn name is `null`, its execs and exits are dropped, and its DNS
+names are withheld (`qname: null, withheld: true`). Packet bytes are committed only as header fields and a DNS question,
+never as payload; no environment variable's value, token, credential, cookie or SSH material is committed; local paths
+appear only as the executables the disclosed scopes ran (the measured host binary among them), and the observer's own
+facts (the proving user, the tool's command line) stay in the raw directory. The host's interface addresses are
+committed (a WSL2 machine's private and link-local ones; a link-local IPv6 address can encode its virtual interface's
+MAC). Anyone can re-derive from the committed observation the coverage, continuity, lineage, joins, reconciliation,
+leaks and privacy filter, and check the digests it can check itself: the normalized events' digest, the configuration's
+(rebuilt from the committed observer), and the observer's and the tool's as committed. The manifest's digest and the raw
+files' lengths and digests can be checked only against the raw files: the operator's raw directory re-checks the
+normalization (its re-normalization must reproduce the committed digest), and even that shows the normalization faithful
+to those files, not the files unedited.
 
 Trust, stated plainly: every digest the repository holds is computed from the files the operator keeps, and the counters
 the reconciliation uses were read into those same facts, so the evidence is consistent with itself, not independent of
@@ -1032,15 +1043,15 @@ that encodes the virtual interface's MAC), judged by the suite on every run: eve
 tool and the stand-in host are identified, the tool's two connections and the stand-in host's DNS query are each refused
 inside its own send, the table's 3 refused packets reconcile with the 3 the observer saw, no probe missed, and the
 derivation reaches `CONTINUOUS_ATTRIBUTED`; the workload, as the unprivileged user, then reads the raw evidence back as
-the tool does after a proof. That capture exercises 9 of the 25 probes (process creation, exec and exit; UDP and TCP
-over IPv4 with their returns; TCP states; the netfilter drop); the other 16 are read in the format the same kernel
-function prints, against the observer's own definitions, and the opt-in integration test installs and verifies all 25 on
-the kernel as root. Two host behaviours were measured with the self-test; they are stated here and not applied to
-SP1-PA3B. A reject rule on a resolver address on `lo` counts each refused query twice: the query, and the kernel's own
-ICMP answer to that address, which the same rule refuses first. WSL's own processes (`GnsEngine` and `DnsTunneling`, in
-the virtual machine's root PID namespace) send DNS queries and TCP connectivity checks in the shared network namespace.
-SP1-PA3B's ~112 refused resolver packets remain refused but unattributed; neither behaviour is evidence about a window
-nothing watched.
+the tool does after a proof, and checks each file against the manifest the observer named. That capture exercises 9 of
+the 25 probes (process creation, exec and exit; UDP and TCP over IPv4 with their returns; TCP states; the netfilter
+drop); the other 16 are read in the format the same kernel function prints, against the observer's own definitions, and
+the opt-in integration test installs and verifies all 25 on the kernel as root. Two host behaviours were measured with
+the self-test; they are stated here and not applied to SP1-PA3B. A reject rule on a resolver address on `lo` counts each
+refused query twice: the query, and the kernel's own ICMP answer to that address, which the same rule refuses first.
+WSL's own processes (`GnsEngine` and `DnsTunneling`, in the virtual machine's root PID namespace) send DNS queries and
+TCP connectivity checks in the shared network namespace. SP1-PA3B's ~112 refused resolver packets remain refused but
+unattributed; neither behaviour is evidence about a window nothing watched.
 
 ### A future proof exercise under the observer (procedure; not executed here)
 
@@ -1059,11 +1070,13 @@ node /root/sp1-observer/sp1-egress-observer.ts run --as <user> --repo <checkout>
 ```
 
 The verification tool and the record generator are the v1 commands; the record they derive from a v2 run is v2. Keep the
-raw directory: it is the only way to re-check the normalization. Before the first owner-authorized run, two things are
-for the host to show, by a long self-test on it: how often its probes miss (any miss stops the run, and an unprivileged
-process can force misses by keeping more calls in flight than a return probe follows: the run fails closed), and whether
-the Docker engine sends through a packet socket inside a container's namespace (an engine announcing a container's
-address that way makes every container's packets unjoinable and its refused lookups read as leaks: again closed).
+raw directory: it is the only way to re-check the normalization. Two things remain for the host to show before the first
+owner-authorized run, and the committed self-test (a window of under a second, with no container) shows neither: how
+often its probes miss over hours (any miss stops the run, and an unprivileged process can force misses by keeping more
+calls in flight than a return probe follows: the run fails closed), and whether the Docker engine sends through a packet
+socket inside a container's namespace (an engine announcing a container's address that way makes every container's
+packets unjoinable and its refused lookups read as leaks: again closed). A soak self-test of hours and a self-test that
+starts a container, both on the proving host, are recommended before SP1-PA3D; neither ran in this lane.
 
 ### What SP1-PA3C establishes, and what it does not
 
@@ -1073,9 +1086,10 @@ address that way makes every container's packets unjoinable and its refused look
   proving host's kernel in self-test mode. SP1-PA3B's evidence is byte-identical and classified `EDGE_PROBES_ONLY`.
 - Not established: anything about SP1-PA3B's unattributed packets (they stay refused but unattributed); that a future
   capture is complete or unedited (it rests on the operator, as the edge probes do, and the proving user reaches root
-  through the Docker engine); that a future run will be `CONTINUOUS_ATTRIBUTED` (the evidence decides); that the
-  observer sees channels outside the IP stack or survives a hostile root; a second proof; production readiness
-  (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`).
+  through the Docker engine); that a future run will be `CONTINUOUS_ATTRIBUTED` (the evidence decides); how often the
+  host's probes miss over hours, or whether its Docker engine sends through a packet socket in a container's namespace
+  (the soak and container self-tests recommended above); that the observer sees channels outside the IP stack or
+  survives a hostile root; a second proof; production readiness (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`).
 - Next lane: a proof exercise under the observer (`SP1-PA3D`, owner-authorized), after the exercise directory accepts a
   v2 record beside SP1-PA3B's.
 

@@ -1119,6 +1119,8 @@ function inSubnet(addr: string, s: { base: string; prefix: number }): boolean {
   return (ip4Int(addr) & mask) >>> 0 === (ip4Int(s.base) & mask) >>> 0;
 }
 const isLoopback = (a: string) => a.startsWith("127.") || a === "::1";
+/** fe80::/10, as ip6() writes it (lower case, the first group whole). */
+const isLinkLocal6 = (a: string) => isIP(a) === 6 && /^fe[89ab][0-9a-f]:/.test(a);
 
 /** Where a destination is: the host itself, a network inside the VM (a container bridge), or beyond (egress). */
 export function destinationClass(ctx: AttributionContext, addr: string): "RESOLVER" | "LOCAL" | "IN_VM" | "EGRESS" {
@@ -1398,8 +1400,13 @@ export function deriveAttribution(
       // J3 waits for every return: a container's packet reaches the host after it left the container's socket. Only a
       // packet from one of the host's own addresses can be the kernel's message (one from anywhere else is someone's
       // packet, whatever its shape), and none can once a container crafted.
+      // The host's own addresses (as read at the start), and the sources a kernel uses before or beside them: the
+      // unspecified address (duplicate-address detection, a membership report before an address) and IPv6 link-local
+      // (a bridge or a veth gets one when it comes up, mid-run).
+      const src = e.packet.src;
       const ownSource =
-        e.packet.src !== null && (isLoopback(e.packet.src) || ctx.localAddresses.includes(e.packet.src));
+        src !== null &&
+        (isLoopback(src) || ctx.localAddresses.includes(src) || src === "0.0.0.0" || src === "::" || isLinkLocal6(src));
       const kernelMessage = isKernelMessage(e.packet) && ownSource && !containerCrafted;
       if (e.sk === "0x0" && e.packet.v !== null && !kernelMessage) {
         deferred.push(e);
@@ -1440,7 +1447,9 @@ export function deriveAttribution(
           (a.kind === "send" && a.probe.startsWith("ping") && echo(e.packet) && a.packets.length === 0) ||
           (a.kind === "connect" && e.packet.proto === IPPROTO_TCP)),
     );
-    const a = candidates[0];
+    // Attempts of two namespaces that could each have sent it name neither: a second container's datagram on the same
+    // port numbers (ports are per namespace) would otherwise make another's leaked one read as refused.
+    const a = new Set(candidates.map((x) => x.netns)).size === 1 ? candidates[0] : undefined;
     if (a) {
       a.packets.push(e.i);
       if (e.packet.dns && a.dns === null) a.dns = e.packet.dns;
@@ -1457,7 +1466,10 @@ export function deriveAttribution(
         t: e.t,
         class: "UNATTRIBUTED",
         attempt: null,
-        why: "refused, but no observed attempt sent it",
+        why:
+          candidates.length > 0
+            ? "refused; attempts of more than one namespace could have sent it, so none is named"
+            : "refused, but no observed attempt sent it",
       });
     }
   }

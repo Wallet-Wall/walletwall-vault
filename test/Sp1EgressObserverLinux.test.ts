@@ -39,7 +39,13 @@ import {
   userDev,
   type HostExecutable,
 } from "../scripts/lib/sp1-egress-attribution";
-import { RAW_FACTS_FILE, RAW_MANIFEST_FILE, RAW_TRACE_FILE, resolversOf } from "../scripts/sp1-egress-observer";
+import {
+  GLOBAL_ARM,
+  RAW_FACTS_FILE,
+  RAW_MANIFEST_FILE,
+  RAW_TRACE_FILE,
+  resolversOf,
+} from "../scripts/sp1-egress-observer";
 
 const TABLE = "sp1obs_selftest";
 const USER = process.env.SP1_EGRESS_OBSERVER_USER ?? "";
@@ -155,7 +161,17 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
     expect(r.status, `${r.stdout}\n${r.stderr}`).to.equal(0);
     expect(r.stderr).to.match(/probe before: ECONNREFUSED/);
     expect(r.stderr).to.match(/host udp EPERM/);
-    expect(r.stderr).to.match(/raw evidence readable by the workload's user/);
+    expect(r.stderr).to.include("raw evidence readable by the workload's user: manifest.json, trace.txt, facts.json");
+    // Root's, and readable by root and the user's group only: nobody else on the host reads a run's raw evidence.
+    const gid = Number(spawnSync("id", ["-g", USER], { encoding: "utf8" }).stdout.trim());
+    const modes = [raw, ...[RAW_TRACE_FILE, RAW_FACTS_FILE, RAW_MANIFEST_FILE].map((n) => join(raw, n))].map((p) => {
+      const s = statSync(p);
+      return [p, s.mode & 0o7777, s.uid, s.gid];
+    });
+    expect(modes).to.deep.equal([
+      [raw, 0o750, 0, gid],
+      ...[RAW_TRACE_FILE, RAW_FACTS_FILE, RAW_MANIFEST_FILE].map((n) => [join(raw, n), 0o640, 0, gid]),
+    ]);
     expect(kprobes()).to.not.match(/sp1obs_/);
     expect(readdirSync("/sys/kernel/tracing/instances").filter((n) => n.startsWith("sp1obs_"))).to.deep.equal([]);
     const evidence = {
@@ -163,6 +179,14 @@ describe("SP1-PA3C — the real observer on this kernel (integration, opt-in)", 
       facts: readFileSync(join(raw, RAW_FACTS_FILE), "latin1"),
       manifest: readFileSync(join(raw, RAW_MANIFEST_FILE), "latin1"),
     };
+    // The facts say whether debugfs showed kprobes' global switch to root, as it shows it to root here.
+    let shown = "SHOWN";
+    try {
+      readFileSync(GLOBAL_ARM, "utf8");
+    } catch {
+      shown = "NOT_SHOWN";
+    }
+    expect((JSON.parse(evidence.facts) as { kprobesGlobalArm: string }).kprobesGlobalArm).to.equal(shown);
     const exe = statSync(process.execPath, { bigint: true });
     const host: HostExecutable = { path: process.execPath, dev: userDev(exe.dev), ino: Number(exe.ino) };
     const o = normalizeObserverRaw(evidence, host);

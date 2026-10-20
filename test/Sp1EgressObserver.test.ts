@@ -10,6 +10,7 @@ import { expect } from "chai";
 import {
   BUFFER_KB,
   ControlProtocol,
+  GLOBAL_ARM,
   HEARTBEAT_MS,
   NONCE,
   ObserverRefusal,
@@ -61,12 +62,15 @@ class FakeTraceFs implements TraceFs {
   rmdirFails = false;
   /** Misses kprobe_profile reports per event name (every defined probe is listed, with 0 unless set here). */
   misses = new Map<string, number>();
+  /** Paths that exist but refuse a read (as debugfs does under kernel lockdown, even for root). */
+  unreadable = new Set<string>();
   constructor() {
     this.files.set(`${ROOT}/kprobe_events`, "");
     this.files.set(`${ROOT}/error_log`, "[ 4.85] trace_kprobe: error: something\n");
     this.files.set(`${ROOT}/events/skb/kfree_skb/format`, FORMAT);
   }
   read(p: string): string {
+    if (this.unreadable.has(p)) throw new Error(`EPERM ${p}`);
     if (p === `${ROOT}/kprobe_profile`) {
       const names = (this.files.get(`${ROOT}/kprobe_events`) ?? "")
         .split("\n")
@@ -563,16 +567,35 @@ describe("SP1-PA3C — the root egress observer", function () {
       fs.files.set(enable, "0");
       expect(s.armed()).to.equal(false);
       fs.files.set(enable, "1");
-      fs.files.set("/sys/kernel/debug/kprobes/enabled", "0\n");
-      expect(s.armed()).to.equal(false);
-      fs.files.set("/sys/kernel/debug/kprobes/enabled", "1\n");
       expect(s.armed()).to.equal(true);
+      expect(s.globalArmShown).to.equal(false); // no debugfs here: the facts say the global arm was not shown
       expect(s.close()).to.deep.equal([]);
       expect(fs.files.get(`${ROOT}/kprobe_events`)).to.equal("");
       expect(fs.exists(`${ROOT}/instances/sp1obs_${NONCE_A}`)).to.equal(false);
       // Its probes gone, the session vouches for nothing.
       expect(() => s.misses()).to.throw(/defined no probe/);
       expect(s.armed()).to.equal(false);
+    });
+
+    it("reads kprobes' global arm at every heartbeat where root may read it, and says when it may not (lockdown)", function () {
+      const shown = new FakeTraceFs();
+      shown.files.set(GLOBAL_ARM, "1\n");
+      const s = new TraceSession(shown, NONCE_A);
+      s.precheck();
+      s.open(4026531833, 12);
+      expect([s.globalArmShown, s.armed()]).to.deep.equal([true, true]);
+      shown.files.set(GLOBAL_ARM, "0\n");
+      expect(s.armed()).to.equal(false);
+      expect(s.close()).to.deep.equal([]);
+      // Under lockdown debugfs refuses even root's read: the arm is not shown (and said so), never a throw at a heartbeat.
+      const locked = new FakeTraceFs();
+      locked.files.set(GLOBAL_ARM, "1\n");
+      locked.unreadable.add(GLOBAL_ARM);
+      const l = new TraceSession(locked, NONCE_A);
+      l.precheck();
+      l.open(4026531833, 12);
+      expect([l.globalArmShown, l.armed()]).to.deep.equal([false, true]);
+      expect(l.close()).to.deep.equal([]);
     });
 
     it("undoes everything when the kernel refuses a probe part-way, and names it", function () {

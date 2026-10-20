@@ -85,13 +85,28 @@ async function main() {
   const m = stopped === null ? null : new RegExp(`^${TAG} STOPPED ([0-9a-f]{64}) (/\\S+)$`).exec(stopped);
   if (m === null) process.exit(1);
   // As the attributed tool does after a proof, as this unprivileged user: read the raw evidence the observer names,
-  // and find the manifest it bound (a raw directory this user cannot read would lose a real run's observation).
+  // the manifest it bound and every file that manifest binds (a raw file this user cannot read would lose a real
+  // run's observation).
+  const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
   const manifest = readFileSync(join(m[2], "manifest.json"));
-  if (createHash("sha256").update(manifest).digest("hex") !== m[1]) {
+  if (sha256(manifest) !== m[1]) {
     console.error("the raw manifest is not the one the observer named");
     process.exit(3);
   }
-  console.error("raw evidence readable by the workload's user");
+  const names = [];
+  for (const f of JSON.parse(manifest.toString("utf8")).files) {
+    const bytes = readFileSync(join(m[2], f.name));
+    if (bytes.length !== f.bytes || sha256(bytes) !== f.sha256) {
+      console.error(`the raw ${f.name} is not the one the manifest bound`);
+      process.exit(3);
+    }
+    names.push(f.name);
+  }
+  if (names.join(" ") !== "trace.txt facts.json") {
+    console.error(`the manifest binds ${names.join(", ") || "nothing"}, not the trace and the facts`);
+    process.exit(3);
+  }
+  console.error("raw evidence readable by the workload's user: manifest.json, trace.txt, facts.json");
   process.exit(0);
 }
 
