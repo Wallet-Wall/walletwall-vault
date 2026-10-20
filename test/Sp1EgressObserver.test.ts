@@ -37,6 +37,7 @@ import {
   renderProbes,
   resolversOf,
   rootOwnedPathErrors,
+  tightenedUmask,
   uplinksOf,
   userOf,
   type TraceFs,
@@ -171,6 +172,9 @@ describe("SP1-PA3C — the root egress observer", function () {
         expect(symbols.has(`p:${s}`) && symbols.has(`r:${s}`), s).to.equal(true);
       }
       for (const s of [
+        // an AF_XDP socket transmits when sent to or polled; neither passes another probed send
+        "p:xsk_sendmsg",
+        "p:xsk_poll",
         "p:tcp_set_state",
         "p:tcp_retransmit_skb",
         "p:sk_skb_reason_drop",
@@ -413,6 +417,13 @@ describe("SP1-PA3C — the root egress observer", function () {
       expect(() => probeMisses(`${profile}\nudp4 1 x\n`, ["udp4"])).to.throw(/does not read/);
     });
 
+    it("tightens the umask it hands to the tool and the gate, never loosening it", function () {
+      // Group and others never write what the tool or the gate creates; a stricter umask stays as strict.
+      expect([0o000, 0o002, 0o022, 0o027, 0o077].map(tightenedUmask)).to.deep.equal([
+        0o022, 0o022, 0o022, 0o027, 0o077,
+      ]);
+    });
+
     it("refuses a raw directory that exists, is not plain and absolute, or sits where a non-root user could swap it", function () {
       const owners: Record<string, { uid: number; mode: number }> = {
         "/srv/prover": { uid: 1001, mode: 0o755 },
@@ -586,6 +597,11 @@ describe("SP1-PA3C — the root egress observer", function () {
       expect([s.globalArmShown, s.armed()]).to.deep.equal([true, true]);
       shown.files.set(GLOBAL_ARM, "0\n");
       expect(s.armed()).to.equal(false);
+      // Shown at the start and unreadable later: the heartbeat throws (the run fails), never reads it as armed.
+      shown.files.set(GLOBAL_ARM, "1\n");
+      shown.unreadable.add(GLOBAL_ARM);
+      expect(() => s.armed()).to.throw(/EPERM/);
+      shown.unreadable.delete(GLOBAL_ARM);
       expect(s.close()).to.deep.equal([]);
       // Under lockdown debugfs refuses even root's read: the arm is not shown (and said so), never a throw at a heartbeat.
       const locked = new FakeTraceFs();

@@ -2,7 +2,7 @@
  * SP1-PA3C: continuous egress attribution (scripts/lib/sp1-egress-attribution.ts), driven through every case with
  * synthetic raw evidence written line for line in tracefs's own format (test/helpers/sp1EgressTrace.ts) and checked
  * against a real capture (test/fixtures/sp1-egress-observer/selftest-capture: the committed observer's self-test on the
- * proving host's kernel, 9 of its 25 probes exercised). No kernel, no network, no proof.
+ * proving host's kernel, 9 of its 27 probes exercised). No kernel, no network, no proof.
  *
  * What it pins: a raw line is read exactly or refused; the normalized evidence is deterministic and privacy-minimal;
  * every claim is derived from facts (coverage, continuity, who made each attempt, how each refused packet joins an
@@ -232,7 +232,39 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         dst: RESOLVER,
         sport: 5555,
         dport: 53,
+        udpLength: 8 + dnsQuery(7, "ghcr.io").length,
         dns: { id: 7, qname: "ghcr.io" },
+      });
+      const query6 = [
+        0x60,
+        0,
+        0,
+        0,
+        0,
+        8 + 3,
+        17,
+        64,
+        ...new Array(15).fill(0),
+        1,
+        ...new Array(15).fill(0),
+        1,
+        ...udp(5556, 9, [1, 2, 3]),
+      ];
+      expect(packetOf(query6, query6.length)).to.deep.include({ v: 6, sport: 5556, dport: 9, udpLength: 11 });
+      // A first fragment (more fragments, offset 0) carries the datagram's header; a later one's first bytes are
+      // payload, read as nothing.
+      const first = [...query];
+      first[6] = 0x20;
+      expect(packetOf(first, first.length)).to.deep.include({ sport: 5555, dport: 53 });
+      const later = [...query];
+      later[7] = 0x05;
+      expect(packetOf(later, later.length)).to.deep.equal({
+        v: 4,
+        proto: 17,
+        src: "10.0.0.1",
+        dst: RESOLVER,
+        sport: null,
+        dport: null,
       });
       const syn = ipv4(HOST_ADDR, "1.1.1.1", 6, tcp(40000, 443, 0x02));
       expect(packetOf(syn, syn.length)).to.deep.include({ proto: 6, dport: 443, tcpFlags: 2 });
@@ -957,11 +989,11 @@ describe("SP1-PA3C — continuous egress attribution", function () {
 
     it("reads every kernel line, normalizes to the pinned digest, and derives continuous, complete attribution", function () {
       const o = normalizeObserverRaw(raw, host);
-      expect(o.normalizedSha256).to.equal("c74f4b7c5fe0cae8fc4ca7d63e2d9cf1a2b6cc5450f7103dd19d4e199520b8a5");
+      expect(o.normalizedSha256).to.equal("557856f2fde1e651f9e8461629c22654547fcae687403e6877160442716bd176");
       const j = observerEvidenceErrors(o, selfTest);
       expect(j.refusals).to.deep.equal([]);
       const a = j.attribution as Attribution;
-      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([1041, 1054, 1061]);
+      expect([a.lineage.observerTgid, a.lineage.toolTgid, a.lineage.proofRoot]).to.deep.equal([979, 992, 999]);
       expect(a.attempts.map((x) => [x.scope, x.kind, `${x.dest?.addr}:${x.dest?.port}`, x.outcome])).to.deep.equal([
         ["TOOL", "connect", "192.0.2.10:443", "REFUSED"],
         ["PROOF", "send", "192.0.2.53:53", "REFUSED"],
@@ -1212,8 +1244,9 @@ describe("SP1-PA3C — continuous egress attribution", function () {
       it("joins a container's packet only to an earlier container attempt of its protocol, addresses and ports, once", function () {
         const c: Proc = { comm: "gnark", tid: 3030, tgid: 3030 };
         const sk = (n: number) => `0xffff8880000c${n.toString(16).padStart(4, "0")}`;
-        const send = (b: TraceBuilder, n: number, dst: string, sport: number, netns = CONTAINER_NETNS, ret = 39) => {
-          b.udp4(c, sk(n), dst, 9, { netns });
+        // Each send is of one byte, and each refused datagram carries one: a datagram of a send's whole length.
+        const send = (b: TraceBuilder, n: number, dst: string, sport: number, netns = CONTAINER_NETNS, ret = 1) => {
+          b.udp4(c, sk(n), dst, 9, { netns, len: 1 });
           b.udp4ret(c, sk(n), ret, sport);
         };
         const refused = (b: TraceBuilder, dst: string, dport: number, sport: number) =>
@@ -1250,32 +1283,29 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         expect(reasons(o)).to.not.include("EGRESS_LEAKED");
       });
 
-      it("names no container attempt for a packet attempts of two namespaces could each have sent", function () {
+      it("names a container attempt only when no other could have sent the packet: of another namespace or socket, segmented, or across the window's edge", function () {
         const c1: Proc = { comm: "dig", tid: 3040, tgid: 3040 };
         const c2: Proc = { comm: "dig", tid: 3050, tgid: 3050 };
         const OTHER_NETNS = CONTAINER_NETNS + 7;
-        const lookup = (b: TraceBuilder, p: Proc, sk: string, netns: number) => {
-          b.udp4(p, sk, RESOLVER, 53, { netns });
-          b.udp4ret(p, sk, 39, 5300);
+        const L = dnsQuery(0, "example.com").length;
+        const [S1, S2] = ["0xffff8880000d0001", "0xffff8880000d0002"];
+        const lookup = (b: TraceBuilder, p: Proc, sk: string, netns: number, len = L) => {
+          b.udp4(p, sk, RESOLVER, 53, { netns, len });
+          b.udp4ret(p, sk, len, 5300);
         };
         const refused = (b: TraceBuilder, id: number) =>
           b.drop(IDLE, "0x0", ipv4("172.17.0.2", RESOLVER, 17, udp(5300, 53, dnsQuery(id, "example.com"))), {
             flags: "..s1.",
           });
-        const run = (secondNamespace: boolean) =>
+        const run = (during: (b: TraceBuilder) => void, afterWindow?: (b: TraceBuilder) => void) =>
           normalize(
             standardRaw({
               duringProof: (b) => {
                 b.marker("CONTAINER", { id: "e".repeat(64), pid: 4321, netns: CONTAINER_NETNS });
                 b.marker("CONTAINER", { id: "f".repeat(64), pid: 4322, netns: OTHER_NETNS });
-                // One lookup's A and AAAA questions, from one socket of the first container.
-                lookup(b, c1, "0xffff8880000d0001", CONTAINER_NETNS);
-                lookup(b, c1, "0xffff8880000d0001", CONTAINER_NETNS);
-                // Ports are per namespace: a socket of the second container may hold the same one.
-                if (secondNamespace) lookup(b, c2, "0xffff8880000d0002", OTHER_NETNS);
-                refused(b, 0x0a0a);
-                refused(b, 0x1c1c);
+                during(b);
               },
+              ...(afterWindow ? { afterWindow } : {}),
             }),
           );
         /** The class and reason of each refused container datagram. */
@@ -1287,22 +1317,133 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           judge(o)
             .attribution?.attempts.filter((a) => a.tgid === c1.tgid || a.tgid === c2.tgid)
             .map((a) => a.outcome);
-        // One namespace: each datagram joins one of its attempts, and nothing passed.
-        const one = run(false);
-        expect(theirs(one).map(([c]) => c)).to.deep.equal(["ATTEMPT_PACKET", "ATTEMPT_PACKET"]);
-        expect(outcomes(one)).to.deep.equal(["REFUSED", "REFUSED"]);
-        expect(reasons(one)).to.not.include("EGRESS_LEAKED");
-        // Two: either container could have sent each, so neither is named, and every attempt is SENT to the resolver.
-        const two = run(true);
-        expect(theirs(two)).to.deep.equal(
-          new Array(2).fill([
-            "UNATTRIBUTED",
-            "refused; attempts of more than one namespace could have sent it, so none is named",
-          ]),
+        const leaks = (o: ObserverEvidence) => judge(o).attribution?.leaks.length;
+        // One socket's A and AAAA questions, each the whole of a datagram: each joins one, in order, and nothing passed.
+        const one = run((b) => {
+          lookup(b, c1, S1, CONTAINER_NETNS);
+          lookup(b, c1, S1, CONTAINER_NETNS);
+          refused(b, 0x0a0a);
+          refused(b, 0x1c1c);
+        });
+        expect([theirs(one).map(([c]) => c), outcomes(one), leaks(one)]).to.deep.equal([
+          ["ATTEMPT_PACKET", "ATTEMPT_PACKET"],
+          ["REFUSED", "REFUSED"],
+          0,
+        ]);
+        // A leaked lookup, and refused datagrams another attempt could each have sent: none is named, and the lookup
+        // stays SENT (a leak, the resolver's), as does the other attempt where it is inside the window.
+        const AMBIGUOUS =
+          "refused; more than one attempt could have sent it (of two namespaces or sockets, segmented, or across the window's edge), so none is named";
+        const cases: [string, (b: TraceBuilder) => void, ((b: TraceBuilder) => void) | undefined, number, number][] = [
+          [
+            "another namespace's socket on the same ports",
+            (b) => {
+              lookup(b, c1, S1, CONTAINER_NETNS);
+              lookup(b, c2, S2, OTHER_NETNS);
+              refused(b, 1);
+            },
+            undefined,
+            1,
+            2,
+          ],
+          [
+            "another namespace's socket at the reused socket address",
+            (b) => {
+              lookup(b, c1, S1, CONTAINER_NETNS);
+              lookup(b, c2, S1, OTHER_NETNS);
+              refused(b, 1);
+            },
+            undefined,
+            1,
+            2,
+          ],
+          [
+            "another socket of the namespace (on another local address)",
+            (b) => {
+              lookup(b, c1, S1, CONTAINER_NETNS);
+              lookup(b, c1, S2, CONTAINER_NETNS);
+              refused(b, 1);
+            },
+            undefined,
+            1,
+            2,
+          ],
+          [
+            "a segmented send of the socket's reused address, two datagrams",
+            (b) => {
+              lookup(b, c1, S1, CONTAINER_NETNS);
+              lookup(b, c1, S1, CONTAINER_NETNS, 2 * L);
+              refused(b, 1);
+              refused(b, 2);
+            },
+            undefined,
+            2,
+            2,
+          ],
+          [
+            "the socket's reused address, once the window closed",
+            (b) => lookup(b, c1, S1, CONTAINER_NETNS),
+            (b) => {
+              lookup(b, c1, S1, CONTAINER_NETNS);
+              refused(b, 1);
+            },
+            1,
+            1,
+          ],
+        ];
+        for (const [name, during, after, refusedCount, leakCount] of cases) {
+          const o = run(during, after);
+          expect(theirs(o), name).to.deep.equal(new Array(refusedCount).fill(["UNATTRIBUTED", AMBIGUOUS]));
+          expect(outcomes(o)?.[0], name).to.equal("SENT");
+          expect(leaks(o), name).to.equal(leakCount);
+        }
+        // A segmented send alone: every datagram is one of its own.
+        const segmented = run((b) => {
+          lookup(b, c1, S2, CONTAINER_NETNS, 2 * L);
+          refused(b, 1);
+          refused(b, 2);
+        });
+        expect([theirs(segmented).map(([c]) => c), outcomes(segmented)]).to.deep.equal([
+          ["ATTEMPT_PACKET", "ATTEMPT_PACKET"],
+          ["REFUSED"],
+        ]);
+        // A datagram longer than the only send that could be its own: no attempt sent it.
+        const longer = run((b) => {
+          lookup(b, c1, S1, CONTAINER_NETNS, L - 1);
+          refused(b, 1);
+        });
+        expect(theirs(longer)).to.deep.equal([["UNATTRIBUTED", "refused, but no observed attempt sent it"]]);
+      });
+
+      it("joins a container's refused segment only to a connection whose socket had not closed before it", function () {
+        const c: Proc = { comm: "gnark", tid: 3060, tgid: 3060 };
+        const dst = "192.0.2.90";
+        const [K1, K2] = ["0xffff8880000e0001", "0xffff8880000e0002"];
+        const connect = (b: TraceBuilder, sk: string) => {
+          b.tcp4(c, sk, dst, 443, CONTAINER_NETNS);
+          b.tcpst(c, sk, 7, 2);
+          b.tcp4ret(c, sk, 0, 40500);
+        };
+        const syn = (b: TraceBuilder) =>
+          b.drop(IDLE, "0x0", ipv4("172.17.0.2", dst, 6, tcp(40500, 443, 0x02)), { flags: "..s1." });
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.marker("CONTAINER", { id: "e".repeat(64), pid: 4321, netns: CONTAINER_NETNS });
+              connect(b, K1);
+              syn(b);
+              b.tcpst(IDLE, K1, 2, 7, "..s1."); // the first connection gave up: its socket closed
+              connect(b, K2); // another socket, on the same local port
+              syn(b);
+            },
+          }),
         );
-        expect(outcomes(two)).to.deep.equal(["SENT", "SENT", "SENT"]);
-        expect(details(two, "EGRESS_LEAKED")).to.deep.equal([
-          `3 packet(s) passed the boundary inside the window: dig (${c1.tgid}) SENT to ${RESOLVER}:53`,
+        const j = judge(o).attribution as Attribution;
+        const own = j.attempts.filter((a) => a.tgid === c.tgid);
+        const at = new Set(o.events.filter((e) => e.k === "drop" && e.packet.dst === dst).map((e) => e.i));
+        expect(j.drops.filter((d) => at.has(d.i)).map((d) => [d.class, d.attempt?.i])).to.deep.equal([
+          ["ATTEMPT_PACKET", own[0].i],
+          ["ATTEMPT_PACKET", own[1].i],
         ]);
       });
 
@@ -1366,7 +1507,7 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         expect(reasons(normalize(standardRaw({ duringProof: decoy(TOOL, 1053) })))).to.include("HOST_AMBIGUOUS");
       });
 
-      it("names a refused packet the kernel's message only from the host's own address, and none once a container crafted", function () {
+      it("names a refused packet a kernel's message only from the host's own address or a link-scoped source, and none once a container crafted", function () {
         const SOLICITED = [0xff, 0x02, ...new Array(9).fill(0), 1, 0xff, 0, 0, 1];
         const MLDV2 = [0xff, 0x02, ...new Array(13).fill(0), 0x16];
         const ROUTERS = [0xff, 0x02, ...new Array(13).fill(0), 2];
@@ -1445,7 +1586,8 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                     ethertype: 0x86dd,
                   },
                 );
-                // Beside link-local (fe80::/10), not in it: a site-local source (fec0::/10) is someone's address.
+                // Beside link-local (fe80::/10), not in it: a site-local source (fec0::/10) is someone's address; its
+                // upper end (febf::) is inside.
                 b.drop(
                   IDLE,
                   "0x0",
@@ -1455,13 +1597,36 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                     ethertype: 0x86dd,
                   },
                 );
+                const group = (last: number) => [0xff, 0x02, ...new Array(13).fill(0), last];
+                b.drop(IDLE, "0x0", icmp6([0xfe, 0xbf, ...new Array(13).fill(0), 1], group(1), [143, 0, 0, 0]), {
+                  flags: "..s2.",
+                  ethertype: 0x86dd,
+                });
+                // An IPv6 packet from an IPv4-mapped address (written as the IPv4 one) is no kernel's: none sends so.
+                const mapped = (v4: number[]) => [...new Array(10).fill(0), 0xff, 0xff, ...v4];
+                b.drop(IDLE, "0x0", icmp6(mapped([0, 0, 0, 0]), group(0x0c), [143, 0, 0, 0]), {
+                  flags: "..s2.",
+                  ethertype: 0x86dd,
+                });
+                b.drop(IDLE, "0x0", icmp6(mapped(HOST_ADDR.split(".").map(Number)), group(0x0d), [143, 0, 0, 0]), {
+                  flags: "..s2.",
+                  ethertype: 0x86dd,
+                });
               },
             }),
           );
-        const own = ["224.0.0.22", "198.51.100.31", "224.0.0.251", "ff02::1:ff00:1", "ff02::16"];
+        const own = ["224.0.0.22", "198.51.100.31", "224.0.0.251", "ff02::1:ff00:1", "ff02::16", "ff02::1"];
         const o = run(false);
         for (const dst of own) expect(classesTo(o, dst), dst).to.deep.equal(["KERNEL_RESPONSE"]);
-        for (const dst of ["198.51.100.30", "198.51.100.32", "2001:db8::9", "203.0.113.9", "ff02::2"]) {
+        for (const dst of [
+          "198.51.100.30",
+          "198.51.100.32",
+          "2001:db8::9",
+          "203.0.113.9",
+          "ff02::2",
+          "ff02::c",
+          "ff02::d",
+        ]) {
           expect(classesTo(o, dst), dst).to.deep.equal(["UNATTRIBUTED"]);
         }
         // The drop records no direction: from a link-scoped source, the reason says a link neighbour's reads the same.
@@ -1475,28 +1640,30 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           true,
           true,
           true,
+          true,
         ]);
         expect(why("224.0.0.22")).to.deep.equal([
           "a reset, ICMP answer or neighbour/multicast message the kernel itself sent, refused",
         ]);
-        expect(why("ff02::16")[0]).to.include("or a link neighbour's: the drop does not tell them apart");
+        expect(why("ff02::16")[0]).to.include("or a link neighbour's on its way in (the drop records no direction)");
         // Once a container could have crafted any header as any address, not even the host's own reads as the kernel's.
         const crafted = run(true);
         for (const dst of own) expect(classesTo(crafted, dst), dst).to.deep.equal(["UNATTRIBUTED"]);
       });
 
-      it("joins no packet by addresses and ports once any container sent through a packet or raw socket: a crafted copy hides no leak", function () {
+      it("joins no packet by addresses and ports once any container sent through a packet, raw or AF_XDP socket: a crafted copy hides no leak", function () {
         const c: Proc = { comm: "gnark", tid: 3050, tgid: 3050 };
-        const copy = ipv4("172.17.0.2", RESOLVER, 17, udp(36800, 53, dnsQuery(11, "exfil.example")));
+        const query = dnsQuery(11, "exfil.example");
+        const copy = ipv4("172.17.0.2", RESOLVER, 17, udp(36800, 53, query));
         // The crafting send may come from the leaking container's namespace or from any other container's.
         const OTHER_NETNS = 4026532400;
-        const run = (craft: "pkt" | "raw" | null, netns = CONTAINER_NETNS) =>
+        const run = (craft: "pkt" | "raw" | "xsk" | "xskpoll" | null, netns = CONTAINER_NETNS) =>
           normalize(
             standardRaw({
               duringProof: (b) => {
                 b.marker("CONTAINER", { id: "d".repeat(64), pid: 4321, netns: CONTAINER_NETNS });
-                b.udp4(c, "0xffff88800004f100", RESOLVER, 53, { netns: CONTAINER_NETNS });
-                b.udp4ret(c, "0xffff88800004f100", 39, 36800); // the datagram passed the boundary
+                b.udp4(c, "0xffff88800004f100", RESOLVER, 53, { netns: CONTAINER_NETNS, len: query.length });
+                b.udp4ret(c, "0xffff88800004f100", query.length, 36800); // the datagram passed the boundary
                 if (craft === "pkt") {
                   b.probe(c, "pkt", {
                     sk: "0xffff88800004f200",
@@ -1520,6 +1687,10 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                     netns,
                   });
                   b.probe(c, "raw4ret", { ret: 67, sk: "0xffff88800004f200" });
+                } else if (craft === "xsk") {
+                  b.probe(c, "xsksend", { sk: "0xffff88800004f200", len: 0, netns });
+                } else if (craft === "xskpoll") {
+                  b.probe(c, "xskpoll", { sk: "0xffff88800004f200", netns });
                 }
                 b.drop(c, "0x0", copy, { flags: "..s1." }); // a copy of it, refused at the host's input
               },
@@ -1534,6 +1705,8 @@ describe("SP1-PA3C — continuous egress attribution", function () {
           ["raw", CONTAINER_NETNS],
           ["pkt", OTHER_NETNS],
           ["raw", OTHER_NETNS],
+          ["xsk", CONTAINER_NETNS],
+          ["xskpoll", OTHER_NETNS],
         ] as const) {
           const crafted = run(craft, netns);
           expect(outcome(crafted), craft).to.equal("SENT");
@@ -1562,6 +1735,8 @@ describe("SP1-PA3C — continuous egress attribution", function () {
                 netns: HOST_NETNS,
               });
               b.probe(dhcp, "pktret", { ret: 342, sk: "0xffff88800004fa00" });
+              // Nor does the host's own AF_XDP socket (its frames leave the host's devices, they reach no container's).
+              b.probe(dhcp, "xskpoll", { sk: "0xffff88800004fa80", netns: HOST_NETNS });
               b.probe(c, "ping4", {
                 sk: "0xffff88800004f300",
                 len: 8,
@@ -1623,6 +1798,75 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         ]) {
           expect(levelOf(hooks), Object.keys(hooks)[0]).to.deep.equal(["CONTINUOUS_ATTRIBUTED", 0]);
         }
+      });
+
+      it("leaves the attribution partial when a send's destination is unread or untrusted: a packet, raw or AF_XDP socket's", function () {
+        const c: Proc = { comm: "gnark", tid: 3090, tgid: 3090 };
+        const levelOf = (hooks: Parameters<typeof standardRaw>[0]) => {
+          const x = normalize(standardRaw(hooks));
+          const j = judge(x);
+          const s = assuranceOf(x, j.attribution as Attribution);
+          return [s.level, s.events?.unseenDestinations, j.refusals.map((r) => r.reason)];
+        };
+        const PKT = "0xffff88800004fb00";
+        const RAW = "0xffff88800004fc00";
+        const pkt = (b: TraceBuilder, ret: number, netns = CONTAINER_NETNS) => {
+          b.probe(c, "pkt", { sk: PKT, len: 60, namelen: 20, nfam: 17, nproto: 0x8, nifindex: 2, netns });
+          b.probe(c, "pktret", { ret, sk: PKT });
+        };
+        // An IP_HDRINCL send naming a decoy beyond the VM: its header's own destination (the host's resolver) is unread.
+        const raw = (b: TraceBuilder, ret: number, refusedInside = false) => {
+          const fields = { sk: RAW, len: 57, proto: 255, namelen: 16, nfam: 2, naddr: le32("192.0.2.200"), daddr: 0 };
+          b.probe(c, "raw4", { ...fields, netns: CONTAINER_NETNS });
+          if (refusedInside)
+            b.drop(c, RAW, ipv4("172.17.0.2", RESOLVER, 17, udp(40000, 53, dnsQuery(3, "decoy.example"))));
+          b.probe(c, "raw4ret", { ret, sk: RAW });
+        };
+        const PARTIAL = "CONTINUOUS_PARTIALLY_ATTRIBUTED";
+        const COMPLETE = "CONTINUOUS_ATTRIBUTED";
+        const cases: [string, Parameters<typeof standardRaw>[0], [string, number]][] = [
+          ["a container's packet-socket send", { duringProof: (b) => pkt(b, 60) }, [PARTIAL, 1]],
+          ["the host's packet-socket send", { duringProof: (b) => pkt(b, 60, HOST_NETNS) }, [PARTIAL, 1]],
+          ["a packet-socket send that failed", { duringProof: (b) => pkt(b, -1) }, [COMPLETE, 0]],
+          ["a raw send naming a decoy", { duringProof: (b) => raw(b, 57) }, [PARTIAL, 1]],
+          ["a raw send refused inside it", { duringProof: (b) => raw(b, -1, true) }, [COMPLETE, 0]],
+          ["a raw send the boundary refused unseen", { duringProof: (b) => raw(b, -1) }, [COMPLETE, 0]],
+          [
+            "an AF_XDP send",
+            { duringProof: (b) => b.probe(c, "xsksend", { sk: PKT, len: 0, netns: CONTAINER_NETNS }) },
+            [PARTIAL, 1],
+          ],
+          [
+            "an AF_XDP poll",
+            { duringProof: (b) => b.probe(c, "xskpoll", { sk: PKT, netns: CONTAINER_NETNS }) },
+            [PARTIAL, 1],
+          ],
+          [
+            "an AF_XDP send after the window",
+            { afterWindow: (b) => b.probe(c, "xsksend", { sk: PKT, len: 0, netns: CONTAINER_NETNS }) },
+            [COMPLETE, 0],
+          ],
+          ["a packet-socket send after the window", { afterWindow: (b) => pkt(b, 60) }, [COMPLETE, 0]],
+        ];
+        for (const [name, hooks, [level, unseen]] of cases) {
+          // None is a leak by itself: a leak is a send the capture reads reaching a resolver, or a transmit out.
+          expect(levelOf(hooks), name).to.deep.equal([level, unseen, []]);
+        }
+        // An AF_XDP call is committed as what it was: which call, on which socket, in which namespace, by whom.
+        const xdp = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.probe(c, "xsksend", { sk: PKT, len: 64, netns: CONTAINER_NETNS });
+              b.probe(c, "xskpoll", { sk: PKT, netns: CONTAINER_NETNS });
+            },
+          }),
+        );
+        expect(
+          xdp.events.flatMap((e) => (e.k === "xsk" ? [[e.via, e.sk, e.netns, e.comm, e.tgid]] : [])),
+        ).to.deep.equal([
+          ["sendmsg", PKT, CONTAINER_NETNS, "gnark", c.tgid],
+          ["poll", PKT, CONTAINER_NETNS, "gnark", c.tgid],
+        ]);
       });
 
       it("names a refused echo request no attempt sent UNATTRIBUTED, in IPv4 and IPv6: a request is no response", function () {

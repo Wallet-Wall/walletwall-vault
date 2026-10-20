@@ -106,7 +106,9 @@ const V6NAME =
  * Every probe, as tracefs kprobe_events takes it (`<kind>:<group>/<name> <symbol> <fetch>`). Destinations come from
  * the message's address when one was given (`namelen`), else from the connected socket; netfilter drops carry the
  * refused packet's first 192 bytes from kernel memory (the DNS query a refused lookup asked, for one); transmits are
- * filtered to the host's namespace and non-loopback devices. Strings an unprivileged process controls (exec paths,
+ * filtered to the host's namespace and non-loopback devices. A packet socket's send names no destination, a raw
+ * socket's may not be its header's (IP_HDRINCL), and an AF_XDP socket's frames carry none the probes read: the
+ * derivation counts those sends as of unseen destination. Strings an unprivileged process controls (exec paths,
  * payloads) are hex arrays, never text.
  */
 export const PROBES: readonly ProbeSpec[] = [
@@ -213,6 +215,20 @@ export const PROBES: readonly ProbeSpec[] = [
     fetch: `sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 ${C}`,
   },
   { name: "pktret", kind: "r", symbol: "packet_sendmsg", fetch: "ret=$retval:s32 sk=sock->sk:x64" },
+  // An AF_XDP socket transmits its ring's frames when sent to or polled (copy mode drives transmission from either);
+  // its frames pass no other probed send, and no destination is read: each call is recorded, never a single attempt.
+  {
+    name: "xsksend",
+    kind: "p",
+    symbol: "xsk_sendmsg",
+    fetch: `sk=sock->sk:x64 len=total_len:u64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 ${C}`,
+  },
+  {
+    name: "xskpoll",
+    kind: "p",
+    symbol: "xsk_poll",
+    fetch: `sk=sock->sk:x64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 ${C}`,
+  },
   {
     name: "nfdrop",
     kind: "p",
@@ -854,7 +870,14 @@ function argValue(argv: string[], name: string, count = 1): string[] {
   return values;
 }
 
+/**
+ * The umask the observer runs with, and hands to the tool and the gate: the operator's, tightened (never loosened) so
+ * nothing they create is group- or world-writable (the raw evidence's own modes are set explicitly).
+ */
+export const tightenedUmask = (current: number) => current | 0o022;
+
 async function main(argv: string[]): Promise<number> {
+  process.umask(tightenedUmask(process.umask()));
   const mode: Mode | null = argv[0] === "run" ? "RUN" : argv[0] === "self-test" ? "SELF_TEST" : null;
   if (mode === null)
     throw new Error(

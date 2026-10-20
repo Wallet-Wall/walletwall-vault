@@ -268,6 +268,8 @@ export interface Packet {
   sport: number | null;
   dport: number | null;
   tcpFlags?: number;
+  /** A UDP datagram's length field (header and payload): which send of how many bytes it can be. */
+  udpLength?: number;
   icmp?: { type: number; code: number };
   /** The header an ICMP error quotes (what the refused packet it answers was). */
   inner?: { proto: number | null; src: string | null; dst: string | null; sport: number | null; dport: number | null };
@@ -318,10 +320,13 @@ export function packetOf(b: readonly number[], valid: number): Packet {
       dport: null,
     };
     if (ihl < 20) return out;
+    // A later fragment carries no transport header: its first bytes are payload anyone chose, never ports.
+    if ((((b[6] & 0x1f) << 8) | b[7]) !== 0) return out;
     if (proto === IPPROTO_TCP || proto === IPPROTO_UDP) {
       const p = ports(ihl);
       if (p) Object.assign(out, { sport: p.s, dport: p.d });
       if (proto === IPPROTO_TCP && ihl + 14 <= end) out.tcpFlags = b[ihl + 13];
+      if (proto === IPPROTO_UDP && ihl + 6 <= end) out.udpLength = (b[ihl + 4] << 8) | b[ihl + 5];
       if (proto === IPPROTO_UDP && out.dport === DNS_PORT) {
         const q = dnsQuestion(b, ihl + 8, end);
         if (q) out.dns = q;
@@ -350,6 +355,7 @@ export function packetOf(b: readonly number[], valid: number): Packet {
       const p = ports(40);
       if (p) Object.assign(out, { sport: p.s, dport: p.d });
       if (proto === IPPROTO_TCP && 54 <= end) out.tcpFlags = b[53];
+      if (proto === IPPROTO_UDP && 46 <= end) out.udpLength = (b[44] << 8) | b[45];
       if (proto === IPPROTO_UDP && out.dport === DNS_PORT) {
         const q = dnsQuestion(b, 48, end);
         if (q) out.dns = q;
@@ -405,6 +411,8 @@ export type NormEvent =
   | (Base & { k: "connectret"; probe: ConnectProbe; sk: string; ret: number; sport: number | null })
   | (Base & { k: "tcpstate"; sk: string; from: number; to: number })
   | (Base & { k: "retransmit"; sk: string })
+  /** An AF_XDP socket sent to or polled: it may have transmitted its ring's frames, to no destination the probes read. */
+  | (Base & { k: "xsk"; via: "sendmsg" | "poll"; comm: string; sk: string; netns: number })
   | (Base & { k: "drop"; comm: string; ctx: Ctx; sk: string; skns: number | null; ethertype: number; packet: Packet })
   | (Base & {
       k: "xmit";
@@ -614,6 +622,16 @@ export function normalizeEvent(e: TraceEvent): NormEvent | null {
       return { ...base, k: "tcpstate", sk: ptr(f.sk), from: num(f.old), to: num(f.state) };
     case "tcpretx":
       return { ...base, k: "retransmit", sk: ptr(f.sk) };
+    case "xsksend":
+    case "xskpoll":
+      return {
+        ...base,
+        k: "xsk",
+        via: e.event === "xsksend" ? "sendmsg" : "poll",
+        comm: String(f.comm),
+        sk: ptr(f.sk),
+        netns: num(f.netns),
+      };
     case "nfdrop": {
       const sk = ptr(f.sk);
       const ethertype = swap16(num(f.proto));
@@ -1148,6 +1166,8 @@ export interface Attempt {
   destClass: ReturnType<typeof destinationClass> | null;
   ret: number | null;
   sport: number | null;
+  /** A send's message length (a datagram of exactly that payload is its whole; null for a connect). */
+  len: number | null;
   /** The packets the boundary refused for it (drop indexes), and the boundary's own responses to it. */
   packets: number[];
   responses: number[];
@@ -1303,16 +1323,19 @@ export function deriveAttribution(
   const attempts: Attempt[] = [];
   const open = new Map<number, Attempt[]>();
   const sessions = new Map<string, Attempt>();
-  const tcp = new Map<Attempt, { established: boolean; closedInSynSent: boolean }>();
+  const tcp = new Map<Attempt, { established: boolean; closedInSynSent: boolean; closedAt: number | null }>();
   const deferred: Extract<NormEvent, { k: "drop" }>[] = [];
   const drops: DropJudgement[] = [];
   const leaks: { i: number; why: string }[] = [];
   const inWindow = (i: number) => window !== null && i > window.begin && i < window.end;
-  // A container namespace that sent through a packet or raw socket (anywhere in the capture) could have crafted any
-  // header, as any address: a copy of another container's leaked datagram, or a reset shaped like the kernel's. Then no
-  // packet without a socket is joined to a container's attempt by addresses and ports, and none is the kernel's message.
+  // A container namespace that sent through a packet, raw or AF_XDP socket (anywhere in the capture) could have crafted
+  // any header, as any address: a copy of another container's leaked datagram, or a reset shaped like the kernel's. Then
+  // no packet without a socket is joined to a container's attempt by addresses and ports, and none is the kernel's
+  // message.
   const containerCrafted = events.some(
-    (e) => e.k === "send" && e.netns !== ctx.hostNetns && (e.probe === "pkt" || e.probe.startsWith("raw")),
+    (e) =>
+      (e.k === "send" && e.netns !== ctx.hostNetns && (e.probe === "pkt" || e.probe.startsWith("raw"))) ||
+      (e.k === "xsk" && e.netns !== ctx.hostNetns),
   );
   for (const e of events) {
     live.advance(e);
@@ -1334,6 +1357,7 @@ export function deriveAttribution(
         destClass: e.dest === null ? null : destinationClass(ctx, e.dest.addr),
         ret: null,
         sport: null,
+        len: e.k === "send" ? e.len : null,
         packets: [],
         responses: [],
         outcome: "UNKNOWN",
@@ -1359,7 +1383,7 @@ export function deriveAttribution(
       top.sport = e.sport;
       if (top.kind === "connect" && e.ret >= 0 && !top.delegated) {
         sessions.set(top.sk, top);
-        tcp.set(top, { established: false, closedInSynSent: false });
+        tcp.set(top, { established: false, closedInSynSent: false, closedAt: null });
       }
     } else if (e.k === "tcpstate") {
       const s = sessions.get(e.sk);
@@ -1367,7 +1391,10 @@ export function deriveAttribution(
       if (st === undefined) continue;
       if (e.from === TCP_SYN_SENT && e.to === TCP_ESTABLISHED) st.established = true;
       else if (e.from === TCP_SYN_SENT && e.to === TCP_CLOSE) st.closedInSynSent = true;
-      if (e.to === TCP_CLOSE) sessions.delete(e.sk);
+      if (e.to === TCP_CLOSE) {
+        st.closedAt = e.i;
+        sessions.delete(e.sk);
+      }
     } else if (e.k === "drop") {
       const judge = (cls: DropClass, a: Attempt | null, why: string) =>
         drops.push({ i: e.i, t: e.t, class: cls, attempt: a ? { i: a.i, scope: a.scope } : null, why });
@@ -1402,11 +1429,13 @@ export function deriveAttribution(
       // at the start) or from a link-scoped source a kernel uses before or beside them: the unspecified address
       // (duplicate-address detection, a membership report before an address) or IPv6 link-local (a bridge or a veth
       // gets one when it comes up, mid-run). From anywhere else it is someone's packet, whatever its shape, and none is
-      // a kernel's once a container crafted. The drop records no direction, so a link neighbour's message from a
+      // a kernel's once a container crafted. The source must read in the packet's own family (an IPv6 packet from an
+      // IPv4-mapped address is no kernel's). The drop records no direction, so a link neighbour's message from a
       // link-scoped source reads as a kernel's too: its reason says so.
       const src = e.packet.src;
-      const hostSource = src !== null && (isLoopback(src) || ctx.localAddresses.includes(src));
-      const linkScoped = src !== null && (src === "0.0.0.0" || src === "::" || isLinkLocal6(src));
+      const family = src !== null && isIP(src) === e.packet.v;
+      const hostSource = family && src !== null && (isLoopback(src) || ctx.localAddresses.includes(src));
+      const linkScoped = family && (src === "0.0.0.0" || src === "::" || (src !== null && isLinkLocal6(src)));
       const kernelMessage = isKernelMessage(e.packet) && (hostSource || linkScoped) && !containerCrafted;
       if (e.sk === "0x0" && e.packet.v !== null && !kernelMessage) {
         deferred.push(e);
@@ -1418,7 +1447,7 @@ export function deriveAttribution(
           null,
           hostSource
             ? "a reset, ICMP answer or neighbour/multicast message the kernel itself sent, refused"
-            : "a kernel's message from a link-scoped source (the host's, a container namespace's or a link neighbour's: the drop does not tell them apart), refused",
+            : "a kernel's message from a link-scoped source, refused: the host's, a container namespace's (perhaps for a process there) or a link neighbour's on its way in (the drop records no direction)",
         );
       else judge("UNATTRIBUTED", null, "refused, but no observed attempt sent it");
     } else if (e.k === "xmit") {
@@ -1430,28 +1459,47 @@ export function deriveAttribution(
       }
     }
   }
-  // J3: a container's datagram or connection, refused in the host (no socket crosses the namespaces), joined by its
-  // protocol, addresses and ports to an earlier attempt from a container namespace; a datagram is one packet.
+  // J3: a datagram, echo or connection of a namespace other than the host's, refused in the host (no socket crosses
+  // the namespaces), joined by its protocol, addresses and ports to an earlier attempt of such a namespace. A send of
+  // n bytes leaves as one datagram of exactly n (or, segmented, as several shorter ones); an echo once; a connection's
+  // packets until its socket closes.
   const echo = (p: Packet) =>
     (p.proto === IPPROTO_ICMP && p.icmp?.type === 8) || (p.proto === IPPROTO_ICMPV6 && p.icmp?.type === 128);
   for (const e of deferred) {
-    const candidates = attempts.filter(
-      (a) =>
-        !containerCrafted &&
-        !a.delegated &&
-        a.netns !== ctx.hostNetns &&
-        a.i < e.i &&
-        a.dest !== null &&
-        a.dest.addr === e.packet.dst &&
-        a.dest.port === e.packet.dport &&
-        a.sport === e.packet.sport &&
-        ((a.kind === "send" && a.probe.startsWith("udp") && e.packet.proto === IPPROTO_UDP && a.packets.length === 0) ||
-          (a.kind === "send" && a.probe.startsWith("ping") && echo(e.packet) && a.packets.length === 0) ||
-          (a.kind === "connect" && e.packet.proto === IPPROTO_TCP)),
-    );
-    // Attempts of two namespaces that could each have sent it name neither: a second container's datagram on the same
-    // port numbers (ports are per namespace) would otherwise make another's leaked one read as refused.
-    const a = new Set(candidates.map((x) => x.netns)).size === 1 ? candidates[0] : undefined;
+    const p = e.packet;
+    const payload = p.proto === IPPROTO_UDP && p.udpLength !== undefined ? p.udpLength - 8 : null;
+    /** Whether the attempt can have sent the packet: as its one packet, as one of several, or not at all. */
+    const fit = (a: Attempt): "one" | "several" | null => {
+      if (containerCrafted || a.delegated || a.netns === ctx.hostNetns || a.i >= e.i || a.dest === null) return null;
+      if (a.dest.addr !== p.dst || a.dest.port !== p.dport || a.sport !== p.sport) return null;
+      if (a.kind === "connect") {
+        const closedAt = tcp.get(a)?.closedAt ?? null;
+        return p.proto === IPPROTO_TCP && (closedAt === null || closedAt > e.i) ? "several" : null;
+      }
+      if (a.probe.startsWith("ping")) return echo(p) && a.packets.length === 0 ? "one" : null;
+      if (!a.probe.startsWith("udp") || payload === null || a.len === null) return null;
+      if (a.len === payload) return a.packets.length === 0 ? "one" : null;
+      return a.len > payload ? "several" : null;
+    };
+    const candidates = attempts.flatMap((a) => {
+      const f = fit(a);
+      return f === null ? [] : [{ a, f }];
+    });
+    // An attempt is named only when no other could have sent the packet: it is the one candidate, or every candidate
+    // is a send of one socket of exactly this datagram's length (a socket's datagrams leave in order), all inside the
+    // window or all outside it. A second socket on the same ports (ports are per namespace and per local address), a
+    // segmented send or one across the window's edge would otherwise make another's leaked datagram read as refused.
+    const first = candidates[0];
+    const oneSocket =
+      candidates.length > 1 &&
+      candidates.every(
+        (c) =>
+          c.f === "one" &&
+          c.a.sk === first.a.sk &&
+          c.a.netns === first.a.netns &&
+          inWindow(c.a.i) === inWindow(first.a.i),
+      );
+    const a = candidates.length === 1 || oneSocket ? first.a : undefined;
     if (a) {
       a.packets.push(e.i);
       if (e.packet.dns && a.dns === null) a.dns = e.packet.dns;
@@ -1470,7 +1518,7 @@ export function deriveAttribution(
         attempt: null,
         why:
           candidates.length > 0
-            ? "refused; attempts of more than one namespace could have sent it, so none is named"
+            ? "refused; more than one attempt could have sent it (of two namespaces or sockets, segmented, or across the window's edge), so none is named"
             : "refused, but no observed attempt sent it",
       });
     }
@@ -1598,6 +1646,10 @@ export interface EgressAssurance {
     /** Attempts inside the window, to a resolver from any namespace or beyond the VM from the host, whose outcome the
      * capture does not show (no return, or a connection neither established nor closed): PARTIAL, never complete. */
     unknownOutcomes: number;
+    /** Sends inside the window, from any namespace, whose destination the capture cannot read or trust and that may
+     * have let a packet out: through a packet socket (it names none), a raw socket (the destination given may not be
+     * its header's) or an AF_XDP socket (its frames pass no probed send): PARTIAL, never complete. */
+    unseenDestinations: number;
   } | null;
   /** Refused packets inside the critical window (the probes and the proof) that no observed attempt sent. */
   unattributedEvents: number | null;
@@ -1634,9 +1686,21 @@ export function assuranceOf(o: ObserverEvidence, a: Attribution): EgressAssuranc
       x.outcome === "UNKNOWN" &&
       (x.destClass === "RESOLVER" || (x.destClass === "EGRESS" && x.netns === o.host.netns)),
   ).length;
+  // A send whose destination the capture cannot read or trust, and that may have let a packet out, is not attributed
+  // either: a packet socket's send (even one refused, as a ring may carry several frames) unless it failed; a raw
+  // socket's unless a refused packet shows it stopped or it failed; every call that may drive an AF_XDP socket's ring.
+  const unseen =
+    counted.filter(
+      (x) =>
+        inWindow(x.i) &&
+        (x.probe === "pkt"
+          ? x.outcome !== "NO_PACKET" && x.outcome !== "REFUSED_NO_PACKET_SEEN"
+          : (x.probe === "raw4" || x.probe === "raw6") && (x.outcome === "SENT" || x.outcome === "UNKNOWN")),
+    ).length + o.events.filter((e) => e.k === "xsk" && inWindow(e.i)).length;
   // Complete means every refused packet the capture holds is attributed (its first line to its last, READY's
-  // surroundings included) and no attempt that matters has an unseen outcome; the window's own count is reported apart.
-  const complete = unattributedAll.length === 0 && unknown === 0;
+  // surroundings included) and no send that matters has an unseen outcome or destination; the window's own count is
+  // reported apart.
+  const complete = unattributedAll.length === 0 && unknown === 0 && unseen === 0;
   const beats = a.markers.filter((m) => m.kind === "HEARTBEAT");
   let maxGap = 0;
   for (let k = 1; k < beats.length; k++) maxGap = Math.max(maxGap, beats[k].t - beats[k - 1].t);
@@ -1656,6 +1720,7 @@ export function assuranceOf(o: ObserverEvidence, a: Attribution): EgressAssuranc
       kernelResponses: a.drops.filter((d) => d.class === "KERNEL_RESPONSE").length,
       unattributedOutsideWindow: unattributedAll.length - unattributed,
       unknownOutcomes: unknown,
+      unseenDestinations: unseen,
     },
     unattributedEvents: unattributed,
     observer: {

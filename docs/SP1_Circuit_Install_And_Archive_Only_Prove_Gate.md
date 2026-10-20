@@ -882,23 +882,26 @@ written: the audit subsystem refuses rule control outside the initial PID namesp
 own; eBPF front ends (bpftrace, BCC) are not installed, and installing them would change the proving host; tracefs
 kprobes and kretprobes with BTF arguments (`CONFIG_PROBE_EVENTS_BTF_ARGS=y`) are built in. The observer
 ([`scripts/sp1-egress-observer.ts`](../scripts/sp1-egress-observer.ts)) uses those, in a private tracefs instance of its
-own (`sp1obs_<nonce>`: `trace_clock` `mono`, thread groups recorded, overwrite off, 4,096 KB per CPU), with 25 probes:
+own (`sp1obs_<nonce>`: `trace_clock` `mono`, thread groups recorded, overwrite off, 4,096 KB per CPU), with 27 probes:
 
 | What | Probes |
 |---|---|
-| Every send a process starts on a UDP, raw, ping or packet socket, and every TCP connect | entry and return of `udp_sendmsg`, `udpv6_sendmsg`, `tcp_v4_connect`, `tcp_v6_connect`, `raw_sendmsg`, `rawv6_sendmsg`, `ping_v4_sendmsg`, `ping_v6_sendmsg` and `packet_sendmsg`: the socket, the destination (the message's address, or the connected peer), the network namespace, the result and the source port |
+| Every send a process starts on a UDP, raw, ping or packet socket, and every TCP connect | entry and return of `udp_sendmsg`, `udpv6_sendmsg`, `tcp_v4_connect`, `tcp_v6_connect`, `raw_sendmsg`, `rawv6_sendmsg`, `ping_v4_sendmsg`, `ping_v6_sendmsg` and `packet_sendmsg`: the socket, the destination (the message's address, or the connected peer), the message's length, the network namespace, the result and the source port |
+| Every call that may drive an AF_XDP socket's transmission (the kernel on the proving host has AF_XDP: `CONFIG_XDP_SOCKETS=y`) | `xsk_sendmsg`, `xsk_poll`: the socket and its namespace (no destination is read) |
 | A connection's life | `tcp_set_state`, `tcp_retransmit_skb` |
 | Every refused packet | `sk_skb_reason_drop`, filtered to `NETFILTER_DROP` (its number read from the running kernel): the socket, its namespace and the packet's first 192 bytes |
-| Every packet leaving through a device (but paths that skip it: `PACKET_QDISC_BYPASS`, XDP, netpoll, each needing root or `CAP_NET_RAW` in the host's namespace) | `dev_hard_start_xmit`, filtered to the host's namespace and every device but `lo` |
+| Every packet leaving through a device (but frames that skip it: `PACKET_QDISC_BYPASS`, an AF_XDP ring, an XDP program's redirect, netpoll, each needing root, `CAP_NET_RAW` or `CAP_NET_ADMIN` in the host's namespace) | `dev_hard_start_xmit`, filtered to the host's namespace and every device but `lo` |
 | Lineage | `wake_up_new_task`, `begin_new_exec` (device, inode, the first 128 bytes of the path), `do_exit` |
 
 Data on a TCP connection opened before the observer started, and protocols outside these (SCTP), are not seen as
 attempts: their packets are seen only where the boundary refuses them (unattributed) or where they leave through a
-device (a leak). Two kernel behaviours, found by experiment, shaped the probes. A string fetched as text is printed raw,
-so an exec path holding a newline could forge whole trace lines: every string an unprivileged process controls is
-fetched as a hex array, and the only text field, the kernel's 15-byte `comm`, is last on its line and read by position.
-User memory cannot be fetched as an array, so a DNS question name is read from the refused packet's bytes, never from
-the sender's buffer.
+device (a leak). A packet socket's send names no destination, a raw socket's names one its header may not carry
+(`IP_HDRINCL` writes the header itself), and an AF_XDP socket's frames carry none the probes read: each such send is
+counted as one of unseen destination (below), never read as harmless. Two kernel behaviours, found by experiment, shaped
+the probes. A string fetched as text is printed raw, so an exec path holding a newline could forge whole trace lines:
+every string an unprivileged process controls is fetched as a hex array, and the only text field, the kernel's 15-byte
+`comm`, is last on its line and read by position. User memory cannot be fetched as an array, so a DNS question name is
+read from the refused packet's bytes, never from the sender's buffer.
 
 The observer runs as root under plain Node.js from a root-owned copy (it refuses to start when its file or any directory
 above it is owned by anyone but root or writable by group or others, and refuses a raw directory under any such
@@ -941,31 +944,43 @@ kernel. A refused packet joins an attempt by structure, never by timing: refused
 socket; the boundary's own reset or ICMP answer, refused while the attempt was being sent; a later packet of a
 connection the attempt opened, by its socket, until it closes; a datagram, echo or connection from a network namespace
 other than the host's (a container's: one on the host's network is in the host's namespace, and its sockets join as the
-host's do), by protocol, destination address and ports, a datagram once, and only when every attempt it could join is of
-one namespace (ports are per namespace: attempts of two that could each have sent it name neither), unless anything in
-such a namespace sent through a packet or raw socket (which could craft any header, as any address: then no packet joins
-a container's attempt this way). Any other refused packet is a kernel message (a reset, an ICMP answer, a neighbour or
-multicast-group message, by its header, and only from one of the host's own addresses as read at the start, or from a
-link-scoped source a kernel uses before or beside them, the unspecified address or an IPv6 link-local one, which no
-router forwards and for which the reason says the drop cannot tell the host's message from a link neighbour's; never
-once a container crafted) or `UNATTRIBUTED`. The declared table's refusing rules must have counted, between the two
-snapshots, no fewer refused packets than the observer saw strictly inside the counters' window and no more than it saw
-inside their outer brackets (the reads take time), with the rules unchanged: fewer means another table refused (the
-declared boundary is not the boundary), more means a refusal went unobserved. Both counts come from the capture (the
-observer reads the counters into its facts), so the reconciliation finds a gap or a second boundary in an honest
-capture, not an edited one. Inside the window, a frame leaving through an uplink, an attempt from the host's namespace
-(a container on the host's network among them) to a destination beyond the VM that was sent or connected, or an attempt
-from any namespace to a resolver that was sent or connected (a resolver on the host forwards beyond the VM, on a channel
-no device transmit shows) is a leak, and refuses. A container's attempt beyond the VM is a leak only by the transmit
-that carries it out: its own namespace's send shows only that it left the container.
+host's do), by protocol, destination address and ports, unless anything in such a namespace sent through a packet, raw
+or AF_XDP socket (which could craft any header, as any address: then no packet joins a container's attempt this way).
+Such a packet joins only an attempt that could have sent it, and only when no other could: a send of n bytes leaves as
+one datagram of exactly n bytes (or, segmented, as several shorter ones), an echo once, a connection's packets until its
+socket closes; and it is named only when it has one candidate, or when every candidate is a send of one socket of
+exactly its length, all inside the window or all outside it (a socket's datagrams leave in order). Another namespace's
+socket or another socket of the namespace on the same ports (ports are per namespace and per local address), a segmented
+send, or a send across the window's edge could otherwise make another's leaked datagram read as refused: then none is
+named. Any other refused packet is a kernel message (a reset, an ICMP answer, a neighbour or multicast-group message, by
+its header, and only from one of the host's own addresses as read at the start, or from a link-scoped source a kernel
+uses before or beside them, the unspecified address or an IPv6 link-local one, read in the packet's own family, which no
+router forwards and for which the reason says the drop records no direction; never once a container crafted) or
+`UNATTRIBUTED`. A link-scoped message may be one a process caused its kernel to send (a membership report for groups it
+joined, a reset on its own link-local connection): it reads as a kernel's, and joins no attempt. The declared table's
+refusing rules must have counted, between the two snapshots, no fewer refused packets than the observer saw strictly
+inside the counters' window and no more than it saw inside their outer brackets (the reads take time), with the rules
+unchanged: fewer means another table refused (the declared boundary is not the boundary), more means a refusal went
+unobserved. Both counts come from the capture (the observer reads the counters into its facts), so the reconciliation
+finds a gap or a second boundary in an honest capture, not an edited one. Inside the window, a frame leaving through an
+uplink, an attempt from the host's namespace (a container on the host's network among them) to a destination beyond the
+VM that was sent or connected, or an attempt from any namespace to a resolver that was sent or connected (a resolver on
+the host forwards beyond the VM, on a channel no device transmit shows) is a leak, and refuses. A container's attempt
+beyond the VM is a leak only by the transmit that carries it out: its own namespace's send shows only that it left the
+container. A send whose destination the capture cannot read or trust (a packet socket's, a raw socket's, an AF_XDP
+socket's send or poll), inside the window, from any namespace, that may have let a packet out (it did not fail; a raw
+send no refused packet shows stopped) is no leak by itself, but one of unseen destination: it may have reached a
+resolver, so the attribution is partial (`unseenDestinations`). A boundary that also refuses traffic from containers to
+the host at the input hook and every forwarded packet at the forward hook (as SP1-PA3B's table did) turns such a send's
+packet into a refused one instead.
 
 A v2 record carries the result as `egress.assurance`, metadata orthogonal to the state; no new state was created:
 
 | Level | Meaning |
 |---|---|
 | `EDGE_PROBES_ONLY` | refusal attested by probes at the edges, a stated enforcement and the table's counters; nothing watched. SP1-PA3B's v1 record, always: its attribution counts are `null` (unknown), never 0 |
-| `CONTINUOUS_ATTRIBUTED` | the whole run watched and reconciled; every refused packet the capture holds attributed (around `READY` and in the drain after `STOP` too), and no attempt inside the window, toward a resolver from any namespace or beyond the VM from the host, whose outcome the capture does not show |
-| `CONTINUOUS_PARTIALLY_ATTRIBUTED` | the whole run watched and reconciled, with refused packets no observed attempt sent (`unattributedEvents` inside the window of the probes and the proof, `unattributedOutsideWindow` outside it) or attempts of unseen outcome (`unknownOutcomes`) |
+| `CONTINUOUS_ATTRIBUTED` | the whole run watched and reconciled; every refused packet the capture holds attributed (around `READY` and in the drain after `STOP` too), no attempt inside the window, toward a resolver from any namespace or beyond the VM from the host, whose outcome the capture does not show, and no send inside the window whose destination it cannot read or trust |
+| `CONTINUOUS_PARTIALLY_ATTRIBUTED` | the whole run watched and reconciled, with refused packets no observed attempt sent (`unattributedEvents` inside the window of the probes and the proof, `unattributedOutsideWindow` outside it), attempts of unseen outcome (`unknownOutcomes`) or sends of unseen destination (`unseenDestinations`) |
 
 ### What is observed, and what is not
 
@@ -976,42 +991,47 @@ A v2 record carries the result as `egress.assurance`, metadata orthogonal to the
 | Executable identity | `begin_new_exec`: device, inode and path bytes | an exec outside the disclosed scopes is not committed |
 | Time | `CLOCK_MONOTONIC` microseconds, mapped to UTC through `READY` | never |
 | Protocol | the probe (UDP, TCP, raw, ping, packet socket) and the refused packet's IP protocol | never |
-| Destination and port | the message's address or the connected peer | neither given, as for a packet socket (`null`) |
+| Destination and port | the message's address or the connected peer | neither given, as for a packet socket (`null`); a raw socket's is the message's address, which its header may not carry, and an AF_XDP socket's is never read: each such send counts as one of unseen destination |
 | DNS question name | the refused packet's bytes | the query was not refused (it then left: a leak, whose name is not read), it does not decode, or it is outside the disclosed scopes (`withheld`) |
 | Outcome | the joins, the return value and the TCP states | no return seen, or a connect that neither connected nor closed (`UNKNOWN`) |
 
-Not observed at all: channels outside the observed IP stack (WSL interop, the 9P file system, `AF_VSOCK`); a root
-process, which could also switch the probes or the trace off and on again between two heartbeats (a heartbeat samples
-that tracing is on, every probe enabled and, where debugfs shows it, the kernel's global kprobe switch armed: it sees
-one left off, never one switched back in time, and not a probe left enabled but silenced by a filter or a CPU mask); the
-requester behind a daemon (an attempt `dockerd` or `systemd-resolved` makes on another process's behalf is the
-daemon's); the direction of a refused packet (the drop probe records none: a link neighbour's message from a link-scoped
-source, refused on its way in, reads as a kernel message, as the host's own would; the label hides no leak, since it
-joins the packet to no attempt, so no attempt reads refused by it). Whether the global switch was shown (not where
-debugfs is unmounted, nor under a locked-down kernel, which refuses even root's read) is the raw facts'
-`kprobesGlobalArm`, kept with the raw evidence and not committed.
+Not observed at all: channels outside the observed IP stack (WSL interop, the 9P file system, `AF_VSOCK`); a packet a
+TUN or TAP device injects (it enters the stack as received, past no send probe; opening one needs a device root made); a
+frame that leaves without the device transmit (`PACKET_QDISC_BYPASS`, an AF_XDP ring, an XDP program's redirect,
+netpoll), seen at most as a send of unseen destination; a root process, which could also switch the probes or the trace
+off and on again between two heartbeats (a heartbeat samples that tracing is on, every probe enabled and, where debugfs
+shows it, the kernel's global kprobe switch armed: it sees one left off, never one switched back in time, and not a
+probe left enabled but silenced by a filter or a CPU mask); the requester behind a daemon (an attempt `dockerd` or
+`systemd-resolved` makes on another process's behalf is the daemon's); the direction of a refused packet (the drop probe
+records none: a link neighbour's message from a link-scoped source, refused on its way in, reads as a kernel message, as
+the host's own would; the label hides no leak, since it joins the packet to no attempt, so no attempt reads refused by
+it). Whether the global switch was shown (not where debugfs is unmounted, nor under a locked-down kernel, which refuses
+even root's read) is the raw facts' `kprobesGlobalArm`, kept with the raw evidence and not committed.
 
 ### Raw evidence and privacy
 
 The observer writes the raw trace, its facts and a manifest of both (each file's length and sha256) to a new directory,
 where they stay with the operator (`OPERATOR_LOCAL`), owned by root and readable only by root and the proving user's
 primary group (the directory `0750`, each file `0640`): the tool reads them back after the proof as that user, and no
-user outside that group can. The measurement tool normalizes them deterministically into the run observation, which
-commits the manifest's digest, the configuration (rebuilt from the committed observer by every validator), the counter
-snapshots, the per-CPU statistics, the normalized events and their own digest. DNS names are committed only for attempts
-of the observer, the tool, the proof and the proof's registered containers, exec paths only for the observer's, the
-tool's and the proof's processes; any other process's spawn name is `null`, its execs and exits are dropped, and its DNS
-names are withheld (`qname: null, withheld: true`). Packet bytes are committed only as header fields and a DNS question,
-never as payload; no environment variable's value, token, credential, cookie or SSH material is committed; local paths
-appear only as the executables the disclosed scopes ran (the measured host binary among them), and the observer's own
-facts (the proving user, the tool's command line) stay in the raw directory. The host's interface addresses are
-committed (a WSL2 machine's private and link-local ones; a link-local IPv6 address can encode its virtual interface's
-MAC). Anyone can re-derive from the committed observation the coverage, continuity, lineage, joins, reconciliation,
-leaks and privacy filter, and check the digests it can check itself: the normalized events' digest, the configuration's
-(rebuilt from the committed observer), and the observer's and the tool's as committed. The manifest's digest and the raw
-files' lengths and digests can be checked only against the raw files: the operator's raw directory re-checks the
-normalization (its re-normalization must reproduce the committed digest), and even that shows the normalization faithful
-to those files, not the files unedited.
+user outside that group can. That holds while the group is the user's own: a primary group shared with other users, or a
+default access-control list on the parent directory, widens it, and the group can read the trace while the run writes
+it; the observer checks neither. The observer also tightens its own umask (adding `022`, never loosening it), so nothing
+the tool or the gate creates is group- or world-writable. The measurement tool normalizes them deterministically into
+the run observation, which commits the manifest's digest, the configuration (rebuilt from the committed observer by
+every validator), the counter snapshots, the per-CPU statistics, the normalized events and their own digest. DNS names
+are committed only for attempts of the observer, the tool, the proof and the proof's registered containers, exec paths
+only for the observer's, the tool's and the proof's processes; any other process's spawn name is `null`, its execs and
+exits are dropped, and its DNS names are withheld (`qname: null, withheld: true`). Packet bytes are committed only as
+header fields and a DNS question, never as payload; no environment variable's value, token, credential, cookie or SSH
+material is committed; local paths appear only as the executables the disclosed scopes ran (the measured host binary
+among them), and the observer's own facts (the proving user, the tool's command line) stay in the raw directory. The
+host's interface addresses are committed (a WSL2 machine's private and link-local ones; a link-local IPv6 address can
+encode its virtual interface's MAC). Anyone can re-derive from the committed observation the coverage, continuity,
+lineage, joins, reconciliation, leaks and privacy filter, and check the digests it can check itself: the normalized
+events' digest, the configuration's (rebuilt from the committed observer), and the observer's and the tool's as
+committed. The manifest's digest and the raw files' lengths and digests can be checked only against the raw files: the
+operator's raw directory re-checks the normalization (its re-normalization must reproduce the committed digest), and
+even that shows the normalization faithful to those files, not the files unedited.
 
 Trust, stated plainly: every digest the repository holds is computed from the files the operator keeps, and the counters
 the reconciliation uses were read into those same facts, so the evidence is consistent with itself, not independent of
@@ -1048,9 +1068,9 @@ tool and the stand-in host are identified, the tool's two connections and the st
 inside its own send, the table's 3 refused packets reconcile with the 3 the observer saw, no probe missed, and the
 derivation reaches `CONTINUOUS_ATTRIBUTED`; the workload, as the unprivileged user, then reads the raw evidence back as
 the tool does after a proof, and checks each file against the manifest the observer named. That capture exercises 9 of
-the 25 probes (process creation, exec and exit; UDP and TCP over IPv4 with their returns; TCP states; the netfilter
-drop); the other 16 are read in the format the same kernel function prints, against the observer's own definitions, and
-the opt-in integration test installs and verifies all 25 on the kernel as root. Two host behaviours were measured with
+the 27 probes (process creation, exec and exit; UDP and TCP over IPv4 with their returns; TCP states; the netfilter
+drop); the other 18 are read in the format the same kernel function prints, against the observer's own definitions, and
+the opt-in integration test installs and verifies all 27 on the kernel as root. Two host behaviours were measured with
 the self-test; they are stated here and not applied to SP1-PA3B. A reject rule on a resolver address on `lo` counts each
 refused query twice: the query, and the kernel's own ICMP answer to that address, which the same rule refuses first.
 WSL's own processes (`GnsEngine` and `DnsTunneling`, in the virtual machine's root PID namespace) send DNS queries and
@@ -1066,8 +1086,10 @@ unattributed; neither behaviour is evidence about a window nothing watched.
 install -d -m 0755 /root/sp1-observer && install -m 0644 scripts/sp1-egress-observer.ts /root/sp1-observer/
 install -d -m 0755 /var/lib/sp1-observer
 # the declared boundary table in place (every refusal from a counted rule, the host's resolvers refused at the output
-# hook), no observer's probes or instance left over; --host is an absolute path of at most 127 printable ASCII bytes,
-# no space (the observer reads the exec's path whole from 128 bytes); the raw directory must not exist yet
+# hook, and, as SP1-PA3B's table did, traffic from containers to the host refused at the input hook and every forwarded
+# packet at the forward hook), no observer's probes or instance left over; --host is an absolute path of at most 127
+# printable ASCII bytes, no space (the observer reads the exec's path whole from 128 bytes); the raw directory must not
+# exist yet
 node /root/sp1-observer/sp1-egress-observer.ts run --as <user> --repo <checkout> --table inet <table> \
   --raw-dir /var/lib/sp1-observer/raw-<UTC> -- --record <record.json> --circuit-root <dir> --host <absolute path> \
   --inputs <absolute path> --host-label <label> --enforcement "<statement>" --out <new file>
@@ -1079,8 +1101,9 @@ owner-authorized run, and the committed self-test (a window of under a second, w
 often its probes miss over hours (any miss stops the run, and an unprivileged process can force misses by keeping more
 calls in flight than a return probe follows: the run fails closed), and whether the Docker engine sends through a packet
 socket inside a container's namespace (an engine announcing a container's address that way makes every container's
-packets unjoinable and its refused lookups read as leaks: again closed). A soak self-test of hours and a self-test that
-starts a container, both on the proving host, are recommended before SP1-PA3D; neither ran in this lane.
+packets unjoinable, no refused packet a kernel's message, the host's own included, every such send one of unseen
+destination, and its refused lookups read as leaks: again closed). A soak self-test of hours and a self-test that starts
+a container, both on the proving host, are recommended before SP1-PA3D; neither ran in this lane.
 
 ### What SP1-PA3C establishes, and what it does not
 

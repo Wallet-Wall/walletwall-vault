@@ -1,14 +1,14 @@
 {
   "schema": "walletwall.sp1-egress-observer-facts.v1",
   "mode": "SELF_TEST",
-  "nonce": "cd3a7ff79735f4fa",
-  "group": "sp1obs_cd3a7ff79735f4fa",
+  "nonce": "2d3c48973bf6f979",
+  "group": "sp1obs_2d3c48973bf6f979",
   "observer": {
     "script": "scripts/sp1-egress-observer.ts",
-    "scriptSha256": "917767a5591357fb7da6043b47d4ddabcac8e02c9b29fab75cebcdad44e4eb48"
+    "scriptSha256": "151a4f2dd413039b58fa4c265377532df13635bb4f9a1ff41a70200abc8e9a4c"
   },
   "kernelRelease": "6.18.33.1-microsoft-standard-WSL2",
-  "bootId": "bb0b4faa-b9ee-48bb-966e-f4c247e06491",
+  "bootId": "242c06d5-5f93-44ea-9c89-df2c2a294b0b",
   "hostNetns": 4026531833,
   "resolvers": [
     "10.255.255.254"
@@ -29,7 +29,7 @@
       "name": "eth0",
       "addresses": [
         "172.22.169.196/20",
-        "fe80::215:5dff:fe84:5aea/64"
+        "fe80::215:5dff:fe84:5a3a/64"
       ]
     },
     {
@@ -376,69 +376,73 @@
     "recordTgid": 1,
     "heartbeatMs": 1000,
     "probes": [
-      "p:sp1obs_cd3a7ff79735f4fa/newtask wake_up_new_task cpid=p->pid:s32 ctgid=p->tgid:s32 pflags=p->flags:x32 comm=$comm",
-      "p:sp1obs_cd3a7ff79735f4fa/exec begin_new_exec ino=bprm->file->f_inode->i_ino:u64 dev=bprm->file->f_inode->i_sb->s_dev:u32 f0=+0(bprm->filename):x8[64] f1=+64(bprm->filename):x8[64] comm=$comm",
-      "p:sp1obs_cd3a7ff79735f4fa/exit do_exit code=code:s64 comm=$comm",
-      "p:sp1obs_cd3a7ff79735f4fa/udp4 udp_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 naddr=+4(msg->msg_name):x32 n6t=+20(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 dport=sk->__sk_common.skc_dport:x16 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/udp4ret udp_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-      "p:sp1obs_cd3a7ff79735f4fa/udp6 udpv6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] dport=sk->__sk_common.skc_dport:x16 da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/udp6ret udpv6_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-      "p:sp1obs_cd3a7ff79735f4fa/tcp4 tcp_v4_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 addr=+4(uaddr):x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/tcp4ret tcp_v4_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-      "p:sp1obs_cd3a7ff79735f4fa/tcp6 tcp_v6_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 a=+8(uaddr):x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/tcp6ret tcp_v6_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-      "p:sp1obs_cd3a7ff79735f4fa/tcpst tcp_set_state sk=$arg1:x64 state=$arg2:s32 old=sk->__sk_common.skc_state:u8",
-      "p:sp1obs_cd3a7ff79735f4fa/tcpretx tcp_retransmit_skb sk=$arg1:x64 segs=$arg3:s32",
-      "p:sp1obs_cd3a7ff79735f4fa/raw4 raw_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/raw4ret raw_sendmsg ret=$retval:s32 sk=$arg1:x64",
-      "p:sp1obs_cd3a7ff79735f4fa/raw6 rawv6_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/raw6ret rawv6_sendmsg ret=$retval:s32 sk=$arg1:x64",
-      "p:sp1obs_cd3a7ff79735f4fa/ping4 ping_v4_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/ping4ret ping_v4_sendmsg ret=$retval:s32 sk=$arg1:x64",
-      "p:sp1obs_cd3a7ff79735f4fa/ping6 ping_v6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/ping6ret ping_v6_sendmsg ret=$retval:s32 sk=$arg1:x64",
-      "p:sp1obs_cd3a7ff79735f4fa/pkt packet_sendmsg sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-      "r:sp1obs_cd3a7ff79735f4fa/pktret packet_sendmsg ret=$retval:s32 sk=sock->sk:x64",
-      "p:sp1obs_cd3a7ff79735f4fa/nfdrop sk_skb_reason_drop reason=reason:s32 sk=skb->sk:x64 skns=skb->sk->__sk_common.skc_net.net->ns.inum:u32 proto=skb->protocol:x16 len=skb->len:u32 h0=+0(skb->data):x8[64] h1=+64(skb->data):x8[64] h2=+128(skb->data):x8[64] comm=$comm",
-      "p:sp1obs_cd3a7ff79735f4fa/xmit dev_hard_start_xmit skb=first:x64 ifindex=dev->ifindex:s32 netns=dev->nd_net.net->ns.inum:u32 proto=first->protocol:x16 len=first->len:u32 h0=+0(first->data):x8[64] comm=$comm"
+      "p:sp1obs_2d3c48973bf6f979/newtask wake_up_new_task cpid=p->pid:s32 ctgid=p->tgid:s32 pflags=p->flags:x32 comm=$comm",
+      "p:sp1obs_2d3c48973bf6f979/exec begin_new_exec ino=bprm->file->f_inode->i_ino:u64 dev=bprm->file->f_inode->i_sb->s_dev:u32 f0=+0(bprm->filename):x8[64] f1=+64(bprm->filename):x8[64] comm=$comm",
+      "p:sp1obs_2d3c48973bf6f979/exit do_exit code=code:s64 comm=$comm",
+      "p:sp1obs_2d3c48973bf6f979/udp4 udp_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 naddr=+4(msg->msg_name):x32 n6t=+20(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 dport=sk->__sk_common.skc_dport:x16 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/udp4ret udp_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+      "p:sp1obs_2d3c48973bf6f979/udp6 udpv6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] dport=sk->__sk_common.skc_dport:x16 da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/udp6ret udpv6_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+      "p:sp1obs_2d3c48973bf6f979/tcp4 tcp_v4_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 addr=+4(uaddr):x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/tcp4ret tcp_v4_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+      "p:sp1obs_2d3c48973bf6f979/tcp6 tcp_v6_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 a=+8(uaddr):x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/tcp6ret tcp_v6_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+      "p:sp1obs_2d3c48973bf6f979/tcpst tcp_set_state sk=$arg1:x64 state=$arg2:s32 old=sk->__sk_common.skc_state:u8",
+      "p:sp1obs_2d3c48973bf6f979/tcpretx tcp_retransmit_skb sk=$arg1:x64 segs=$arg3:s32",
+      "p:sp1obs_2d3c48973bf6f979/raw4 raw_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/raw4ret raw_sendmsg ret=$retval:s32 sk=$arg1:x64",
+      "p:sp1obs_2d3c48973bf6f979/raw6 rawv6_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/raw6ret rawv6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+      "p:sp1obs_2d3c48973bf6f979/ping4 ping_v4_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/ping4ret ping_v4_sendmsg ret=$retval:s32 sk=$arg1:x64",
+      "p:sp1obs_2d3c48973bf6f979/ping6 ping_v6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/ping6ret ping_v6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+      "p:sp1obs_2d3c48973bf6f979/pkt packet_sendmsg sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "r:sp1obs_2d3c48973bf6f979/pktret packet_sendmsg ret=$retval:s32 sk=sock->sk:x64",
+      "p:sp1obs_2d3c48973bf6f979/xsksend xsk_sendmsg sk=sock->sk:x64 len=total_len:u64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "p:sp1obs_2d3c48973bf6f979/xskpoll xsk_poll sk=sock->sk:x64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+      "p:sp1obs_2d3c48973bf6f979/nfdrop sk_skb_reason_drop reason=reason:s32 sk=skb->sk:x64 skns=skb->sk->__sk_common.skc_net.net->ns.inum:u32 proto=skb->protocol:x16 len=skb->len:u32 h0=+0(skb->data):x8[64] h1=+64(skb->data):x8[64] h2=+128(skb->data):x8[64] comm=$comm",
+      "p:sp1obs_2d3c48973bf6f979/xmit dev_hard_start_xmit skb=first:x64 ifindex=dev->ifindex:s32 netns=dev->nd_net.net->ns.inum:u32 proto=first->protocol:x16 len=first->len:u32 h0=+0(first->data):x8[64] comm=$comm"
     ],
     "filters": {
       "nfdrop": "reason == 12",
       "xmit": "netns == 4026531833 && ifindex != 1"
     }
   },
-  "configSha256": "d54d5c4609e8ea2899fba881fd7cb66e8f3e05467d13549b4717147fb20f0ef4",
+  "configSha256": "52af9f2951b7e71830429e3c9ef5293469111cc3894eacf7bd094b6f409c9148",
   "kprobeReadBack": [
-    "p:sp1obs_cd3a7ff79735f4fa/newtask wake_up_new_task cpid=p->pid:s32 ctgid=p->tgid:s32 pflags=p->flags:x32 comm=$comm",
-    "p:sp1obs_cd3a7ff79735f4fa/exec begin_new_exec ino=bprm->file->f_inode->i_ino:u64 dev=bprm->file->f_inode->i_sb->s_dev:u32 f0=+0(bprm->filename):x8[64] f1=+64(bprm->filename):x8[64] comm=$comm",
-    "p:sp1obs_cd3a7ff79735f4fa/exit do_exit code=code:s64 comm=$comm",
-    "p:sp1obs_cd3a7ff79735f4fa/udp4 udp_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 naddr=+4(msg->msg_name):x32 n6t=+20(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 dport=sk->__sk_common.skc_dport:x16 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/udp4ret udp_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-    "p:sp1obs_cd3a7ff79735f4fa/udp6 udpv6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] dport=sk->__sk_common.skc_dport:x16 da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/udp6ret udpv6_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-    "p:sp1obs_cd3a7ff79735f4fa/tcp4 tcp_v4_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 addr=+4(uaddr):x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/tcp4ret tcp_v4_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-    "p:sp1obs_cd3a7ff79735f4fa/tcp6 tcp_v6_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 a=+8(uaddr):x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/tcp6ret tcp_v6_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
-    "p:sp1obs_cd3a7ff79735f4fa/tcpst tcp_set_state sk=$arg1:x64 state=$arg2:s32 old=sk->__sk_common.skc_state:u8",
-    "p:sp1obs_cd3a7ff79735f4fa/tcpretx tcp_retransmit_skb sk=$arg1:x64 segs=$arg3:s32",
-    "p:sp1obs_cd3a7ff79735f4fa/raw4 raw_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/raw4ret raw_sendmsg ret=$retval:s32 sk=$arg1:x64",
-    "p:sp1obs_cd3a7ff79735f4fa/raw6 rawv6_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/raw6ret rawv6_sendmsg ret=$retval:s32 sk=$arg1:x64",
-    "p:sp1obs_cd3a7ff79735f4fa/ping4 ping_v4_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/ping4ret ping_v4_sendmsg ret=$retval:s32 sk=$arg1:x64",
-    "p:sp1obs_cd3a7ff79735f4fa/ping6 ping_v6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/ping6ret ping_v6_sendmsg ret=$retval:s32 sk=$arg1:x64",
-    "p:sp1obs_cd3a7ff79735f4fa/pkt packet_sendmsg sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
-    "r32:sp1obs_cd3a7ff79735f4fa/pktret packet_sendmsg ret=$retval:s32 sk=sock->sk:x64",
-    "p:sp1obs_cd3a7ff79735f4fa/nfdrop sk_skb_reason_drop reason=reason:s32 sk=skb->sk:x64 skns=skb->sk->__sk_common.skc_net.net->ns.inum:u32 proto=skb->protocol:x16 len=skb->len:u32 h0=+0(skb->data):x8[64] h1=+64(skb->data):x8[64] h2=+128(skb->data):x8[64] comm=$comm",
-    "p:sp1obs_cd3a7ff79735f4fa/xmit dev_hard_start_xmit skb=first:x64 ifindex=dev->ifindex:s32 netns=dev->nd_net.net->ns.inum:u32 proto=first->protocol:x16 len=first->len:u32 h0=+0(first->data):x8[64] comm=$comm"
+    "p:sp1obs_2d3c48973bf6f979/newtask wake_up_new_task cpid=p->pid:s32 ctgid=p->tgid:s32 pflags=p->flags:x32 comm=$comm",
+    "p:sp1obs_2d3c48973bf6f979/exec begin_new_exec ino=bprm->file->f_inode->i_ino:u64 dev=bprm->file->f_inode->i_sb->s_dev:u32 f0=+0(bprm->filename):x8[64] f1=+64(bprm->filename):x8[64] comm=$comm",
+    "p:sp1obs_2d3c48973bf6f979/exit do_exit code=code:s64 comm=$comm",
+    "p:sp1obs_2d3c48973bf6f979/udp4 udp_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 naddr=+4(msg->msg_name):x32 n6t=+20(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 dport=sk->__sk_common.skc_dport:x16 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/udp4ret udp_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+    "p:sp1obs_2d3c48973bf6f979/udp6 udpv6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] dport=sk->__sk_common.skc_dport:x16 da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/udp6ret udpv6_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+    "p:sp1obs_2d3c48973bf6f979/tcp4 tcp_v4_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 addr=+4(uaddr):x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/tcp4ret tcp_v4_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+    "p:sp1obs_2d3c48973bf6f979/tcp6 tcp_v6_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 a=+8(uaddr):x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/tcp6ret tcp_v6_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+    "p:sp1obs_2d3c48973bf6f979/tcpst tcp_set_state sk=$arg1:x64 state=$arg2:s32 old=sk->__sk_common.skc_state:u8",
+    "p:sp1obs_2d3c48973bf6f979/tcpretx tcp_retransmit_skb sk=$arg1:x64 segs=$arg3:s32",
+    "p:sp1obs_2d3c48973bf6f979/raw4 raw_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/raw4ret raw_sendmsg ret=$retval:s32 sk=$arg1:x64",
+    "p:sp1obs_2d3c48973bf6f979/raw6 rawv6_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/raw6ret rawv6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+    "p:sp1obs_2d3c48973bf6f979/ping4 ping_v4_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/ping4ret ping_v4_sendmsg ret=$retval:s32 sk=$arg1:x64",
+    "p:sp1obs_2d3c48973bf6f979/ping6 ping_v6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/ping6ret ping_v6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+    "p:sp1obs_2d3c48973bf6f979/pkt packet_sendmsg sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "r32:sp1obs_2d3c48973bf6f979/pktret packet_sendmsg ret=$retval:s32 sk=sock->sk:x64",
+    "p:sp1obs_2d3c48973bf6f979/xsksend xsk_sendmsg sk=sock->sk:x64 len=total_len:u64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "p:sp1obs_2d3c48973bf6f979/xskpoll xsk_poll sk=sock->sk:x64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+    "p:sp1obs_2d3c48973bf6f979/nfdrop sk_skb_reason_drop reason=reason:s32 sk=skb->sk:x64 skns=skb->sk->__sk_common.skc_net.net->ns.inum:u32 proto=skb->protocol:x16 len=skb->len:u32 h0=+0(skb->data):x8[64] h1=+64(skb->data):x8[64] h2=+128(skb->data):x8[64] comm=$comm",
+    "p:sp1obs_2d3c48973bf6f979/xmit dev_hard_start_xmit skb=first:x64 ifindex=dev->ifindex:s32 netns=dev->nd_net.net->ns.inum:u32 proto=first->protocol:x16 len=first->len:u32 h0=+0(first->data):x8[64] comm=$comm"
   ],
   "kprobesGlobalArm": "SHOWN",
   "readyClock": {
-    "utc": "2026-10-20T06:03:41Z",
-    "monoNs": "4986082198"
+    "utc": "2026-10-20T07:21:37Z",
+    "monoNs": "124951169142"
   },
   "leftoverLines": 0,
   "stats": [
@@ -448,7 +452,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 1
+      "readEvents": 13
     },
     {
       "cpu": 1,
@@ -472,7 +476,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 23
+      "readEvents": 0
     },
     {
       "cpu": 4,
@@ -488,7 +492,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 26
+      "readEvents": 24
     },
     {
       "cpu": 6,
@@ -496,7 +500,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 6
+      "readEvents": 2
     },
     {
       "cpu": 7,
@@ -504,7 +508,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 0
+      "readEvents": 19
     },
     {
       "cpu": 8,
@@ -512,7 +516,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 3
+      "readEvents": 1
     },
     {
       "cpu": 9,
@@ -528,7 +532,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 1
+      "readEvents": 0
     },
     {
       "cpu": 11,
@@ -536,7 +540,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 0
+      "readEvents": 1
     },
     {
       "cpu": 12,
@@ -544,7 +548,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 1
+      "readEvents": 2
     },
     {
       "cpu": 13,
@@ -560,7 +564,7 @@
       "overrun": 0,
       "commitOverrun": 0,
       "droppedEvents": 0,
-      "readEvents": 2
+      "readEvents": 1
     },
     {
       "cpu": 15,

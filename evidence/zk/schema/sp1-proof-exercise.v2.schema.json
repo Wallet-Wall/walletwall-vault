@@ -632,7 +632,8 @@
                 "boundaryResponses",
                 "kernelResponses",
                 "unattributedOutsideWindow",
-                "unknownOutcomes"
+                "unknownOutcomes",
+                "unseenDestinations"
               ],
               "properties": {
                 "attempts": {
@@ -696,6 +697,11 @@
                 "unknownOutcomes": {
                   "type": "integer",
                   "minimum": 0
+                },
+                "unseenDestinations": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "sends inside the window whose destination the capture cannot read or trust (a packet socket's, a raw socket's, an AF_XDP socket's) and that may have let a packet out: 0 for CONTINUOUS_ATTRIBUTED"
                 }
               }
             },

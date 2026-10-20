@@ -307,7 +307,7 @@
             },
             "events": {
               "type": "array",
-              "description": "kernel events in trace order (k: marker, spawn, exec, exit, send, sendret, connect, connectret, tcpstate, retransmit, drop, xmit); DNS names only for attempts of the observer, the tool, the proof and the registered gnark containers, exec paths only for the observer's, the tool's and the proof's processes, withheld or dropped elsewhere"
+              "description": "kernel events in trace order (k: marker, spawn, exec, exit, send, sendret, connect, connectret, tcpstate, retransmit, xsk, drop, xmit); DNS names only for attempts of the observer, the tool, the proof and the registered gnark containers, exec paths only for the observer's, the tool's and the proof's processes, withheld or dropped elsewhere"
             },
             "normalizedSha256": {
               "type": "string",
