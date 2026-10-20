@@ -13,6 +13,14 @@
  * and `productionExerciseEvidence` holds the committed record to the committed observations, byte for byte, with the
  * accepted archive record they ran from.
  *
+ * SP1-PA3D0: the directory holds history, never ambiguity. SP1-PA3B's v1 record keeps its slot,
+ * evidence/zk/sp1-impl/proof-exercises/<designation>.json, and its observations their names; a v2 exercise (SP1-PA3C's
+ * attributed run) is recorded beside it as <designation>.v2.<token>.json, its two observations named after the same
+ * token (exerciseToken: its run observation's digest, the one its exercise.id carries). Every record is judged on its
+ * own and the directory as a whole (exerciseDirectoryOf, productionExerciseEvidence): one or more accepted records are
+ * one state, any refused file refuses it, and a record once committed is never withdrawn (exerciseHistoryErrors).
+ * Each record keeps its own egress assurance; a stronger one never rewrites an older record's.
+ *
  * Five facts, kept apart: artifact identity (the archive record, SP1-PA2B/C), proving execution (the run), verifier
  * acceptance (the verification), performance (wall time and memory against the 2-day rotation delay) and production
  * readiness (the implementation receipt's, never derived here). SELF_HOSTED_PATH_EXERCISED needs the first three and
@@ -29,6 +37,7 @@ import { basename, dirname, posix, resolve } from "node:path";
 
 import { Interface, getBytes, hexlify, keccak256, type Provider, type Signer } from "ethers";
 
+import { directoryHistoryErrors } from "./append-only-history";
 import { uncommittedEvidenceError } from "./committed-evidence";
 import { CANONICAL_REBUILD_OBSERVATION_REL } from "./sp1-canonical-build";
 import { PROOF_INVALID, VERIFIER_BYTECODE_REL, verdictOf } from "./sp1-chain-execution";
@@ -116,8 +125,14 @@ export const LOCAL_RUNTIME = "AUTHENTICATED_RUNTIME_LOCAL";
 export const DEPLOYED_RUNTIME = "DEPLOYED";
 export const ACCEPTED = "ACCEPTED";
 export const REJECTED = "REJECTED";
-/** The record's path for `anchor`'s designation: one file, named after the designation. */
+/**
+ * The v1 slot of `anchor`'s designation: `<designation>.json`, the only name a v1 record may have. SP1-PA3B's record
+ * holds it; SP1-PA3D0 keeps it where it is and adds the v2 records beside it, never in its place.
+ */
 export const exerciseRecordRel = (anchor: ArchiveAnchor) => `${PROOF_EXERCISES_DIR}/${anchor.designation}.json`;
+/** A v2 record's path: `<designation>.v2.<token>.json`, named after its exercise (exerciseToken) (SP1-PA3D0). */
+export const attributedExerciseRecordRel = (anchor: ArchiveAnchor, token: string) =>
+  `${PROOF_EXERCISES_DIR}/${anchor.designation}.v2.${token}.json`;
 
 const HEX64 = /^[0-9a-f]{64}$/;
 const HEX40 = /^[0-9a-f]{40}$/;
@@ -1021,31 +1036,206 @@ export function exerciseRecordsIn(repoRoot = "."): string[] {
     : [];
 }
 
-/** The committed proof-exercise observations by kind; anything else under the prefix is `other` (and refused). */
+/** The names under OBSERVATIONS_DIR that carry the proof-exercise prefix, sorted (none when the directory is absent). */
+function exerciseObservationNamesIn(repoRoot: string): string[] {
+  let names: string[];
+  try {
+    names = readdirSync(resolve(repoRoot, OBSERVATIONS_DIR));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  return names.filter((f) => f.startsWith(EXERCISE_OBSERVATION_PREFIX)).sort();
+}
+
+/** The committed proof-exercise observations by kind, as their names read (observationSlotOf); anything else under
+ * the prefix is `other` (and refused). */
 export function exerciseObservationsIn(repoRoot = "."): { run: string[]; verification: string[]; other: string[] } {
-  const dir = resolve(repoRoot, OBSERVATIONS_DIR);
   const out = { run: [] as string[], verification: [] as string[], other: [] as string[] };
-  if (!existsSync(dir)) return out;
-  for (const f of readdirSync(dir).sort()) {
-    if (!f.startsWith(EXERCISE_OBSERVATION_PREFIX)) continue;
-    const rel = `${OBSERVATIONS_DIR}/${f}`;
-    const raw = f.endsWith(".raw.json");
-    if (raw && f.startsWith(RUN_OBSERVATION_PREFIX)) out.run.push(rel);
-    else if (raw && f.startsWith(VERIFICATION_OBSERVATION_PREFIX)) out.verification.push(rel);
-    else out.other.push(rel);
+  for (const name of exerciseObservationNamesIn(repoRoot)) {
+    const slot = observationSlotOf(name);
+    (slot === null ? out.other : out[slot.kind]).push(`${OBSERVATIONS_DIR}/${name}`);
   }
   return out;
 }
-
-/** The host label an observation file is for, from its name. */
-export const hostOfObservationFile = (rel: string, prefix: string) =>
-  rel.slice(rel.lastIndexOf("/") + 1 + prefix.length, rel.length - ".raw.json".length);
 
 const lf = (text: string) => text.replace(/\r\n/g, "\n");
 /** sha256 of a committed text file's LF bytes (what git commits and an LF checkout reads); null when absent. */
 function fileSha(repoRoot: string, rel: string): string | null {
   const p = resolve(repoRoot, rel);
   return existsSync(p) ? sha256(lf(readFileSync(p, "utf8"))) : null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The exercise directory (SP1-PA3D0): history, never ambiguity. One designation's directory holds SP1-PA3B's v1
+// record in the v1 slot and, beside it, v2 records each named after its own exercise; every record is judged on its
+// own, every observation belongs to exactly one record, and no name, order, time or schema chooses an authority.
+// ---------------------------------------------------------------------------------------------------------------
+
+export type ExerciseGeneration = "v1" | "v2";
+/** The schemas a generation's files hold: its record, and the run observation the record is derived from. */
+export const GENERATION_SCHEMAS: Readonly<Record<ExerciseGeneration, { record: string; run: string }>> = {
+  v1: { record: EXERCISE_RECORD_SCHEMA, run: RUN_SCHEMA },
+  v2: { record: EXERCISE_RECORD_SCHEMA_V2, run: RUN_SCHEMA_V2 },
+};
+/**
+ * How many records of each generation one designation's directory admits: v1, SP1-PA3B's slot (its single name makes
+ * it one); v2, the one attributed exercise SP1-PA3D0 makes room for. Every v2 file already carries its exercise's
+ * token, so a later lane admits a second v2 by raising this number, never by renaming a committed file.
+ */
+export const MAX_RECORDS: Readonly<Record<ExerciseGeneration, number>> = { v1: 1, v2: 1 };
+const TOKEN = /^[0-9a-f]{16}$/;
+/**
+ * An exercise's token: the first 16 hex digits of the sha256 of its run observation's committed (LF) bytes, the
+ * digest its record's exercise.id already carries (`<designation>:<token>`). A v2 exercise's three files are named
+ * after it, so a file's name is a function of the exercise it holds: two names for one exercise cannot both be right.
+ */
+export const exerciseToken = (runText: string) => sha256(lf(runText)).slice(0, 16);
+
+/** What a name under PROOF_EXERCISES_DIR is for `designation`: its v1 slot, a v2 record of one token, or nothing
+ * (null): no other name is a record, whatever it holds. */
+export function recordSlotOf(
+  name: string,
+  designation: string,
+): { generation: ExerciseGeneration; token: string | null } | null {
+  if (name === `${designation}.json`) return { generation: "v1", token: null };
+  const prefix = `${designation}.v2.`;
+  const token = name.startsWith(prefix) && name.endsWith(".json") ? name.slice(prefix.length, -".json".length) : "";
+  return TOKEN.test(token) ? { generation: "v2", token } : null;
+}
+
+const OBSERVATION_NAME = new RegExp(
+  `^${EXERCISE_OBSERVATION_PREFIX}(run|verification)-(${HOST_LABEL.source.slice(1, -1)})(?:\\.([0-9a-f]{16}))?\\.raw\\.json$`,
+);
+/** What a proof-exercise observation's name says: run or verification, the host label, and no token (the v1 slot's
+ * names, SP1-PA3B's) or the token of the exercise it belongs to; null for any other name (refused). */
+export function observationSlotOf(
+  name: string,
+): { kind: "run" | "verification"; host: string; token: string | null } | null {
+  const m = OBSERVATION_NAME.exec(name);
+  return m === null ? null : { kind: m[1] as "run" | "verification", host: m[2], token: m[3] ?? null };
+}
+
+/** The committed paths of a v2 exercise whose run observation is `runText`, run and verified on `host`. */
+export function attributedExerciseFiles(anchor: ArchiveAnchor, host: string, runText: string) {
+  const token = exerciseToken(runText);
+  return {
+    token,
+    run: `${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}${host}.${token}.raw.json`,
+    verification: `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}${host}.${token}.raw.json`,
+    record: attributedExerciseRecordRel(anchor, token),
+  };
+}
+
+/** One exercise as the names describe it: its record (if the directory holds one) and its observations. */
+export interface ExerciseGroup {
+  /** null: the v1 slot (SP1-PA3B's names carry no token); else the token every file of the exercise is named after. */
+  token: string | null;
+  generation: ExerciseGeneration;
+  /** The record's path; null when the directory holds no record of these observations. */
+  record: string | null;
+  runs: string[];
+  verifications: string[];
+}
+
+export interface ExerciseDirectory {
+  /** Every entry under PROOF_EXERCISES_DIR, repository-relative and sorted (the directory's membership). */
+  records: string[];
+  /** Every name under OBSERVATIONS_DIR with the proof-exercise prefix, repository-relative and sorted. */
+  observations: string[];
+  /** The exercises the names describe: the v1 slot first, then by token (never by any file's position or time). */
+  groups: ExerciseGroup[];
+  /** Every name the contract does not admit, every record short of an observation or with an extra one, every
+   * generation over its count. */
+  errors: string[];
+}
+
+/**
+ * The exercise directory of `designation` as the names alone describe it: a pure function of the two listings, which
+ * it sorts itself, so no listing order chooses anything. A record is named `<designation>.json` (the v1 slot) or
+ * `<designation>.v2.<token>.json`; an observation `proof-exercise-<run|verification>-<host>.raw.json` (the v1 slot's)
+ * or `proof-exercise-<run|verification>-<host>.<token>.raw.json`. Every other name is refused, never ignored; each
+ * record needs exactly one run and one verification observation of its own; and no generation holds more records than
+ * MAX_RECORDS. Observations without a record form a group with `record: null` (unrecordedExerciseErrors refuses it).
+ */
+export function exerciseDirectoryOf(
+  recordNames: readonly string[],
+  observationNames: readonly string[],
+  designation: string,
+): ExerciseDirectory {
+  const errors: string[] = [];
+  const byToken = new Map<string, ExerciseGroup>();
+  const group = (token: string | null): ExerciseGroup => {
+    const found = byToken.get(token ?? "");
+    if (found !== undefined) return found;
+    const created: ExerciseGroup = {
+      token,
+      generation: token === null ? "v1" : "v2",
+      record: null,
+      runs: [],
+      verifications: [],
+    };
+    byToken.set(token ?? "", created);
+    return created;
+  };
+  const records = [...recordNames].sort().map((name) => `${PROOF_EXERCISES_DIR}/${name}`);
+  for (const rel of records) {
+    const slot = recordSlotOf(rel.slice(PROOF_EXERCISES_DIR.length + 1), designation);
+    if (slot === null) {
+      errors.push(
+        `${rel} is no proof-exercise record of ${designation}: ${PROOF_EXERCISES_DIR} admits only ${designation}.json (the v1 record) and ${designation}.v2.<token>.json (a v2 record, named after its exercise)`,
+      );
+    } else group(slot.token).record = rel;
+  }
+  const observations = observationNames
+    .filter((name) => name.startsWith(EXERCISE_OBSERVATION_PREFIX))
+    .sort()
+    .map((name) => `${OBSERVATIONS_DIR}/${name}`);
+  for (const rel of observations) {
+    const slot = observationSlotOf(rel.slice(OBSERVATIONS_DIR.length + 1));
+    if (slot === null) {
+      errors.push(
+        `${OBSERVATIONS_DIR} holds ${rel}, which is no proof-exercise observation (${RUN_OBSERVATION_PREFIX}<host>[.<token>].raw.json or ${VERIFICATION_OBSERVATION_PREFIX}<host>[.<token>].raw.json)`,
+      );
+    } else (slot.kind === "run" ? group(slot.token).runs : group(slot.token).verifications).push(rel);
+  }
+  const groups = [...byToken.values()].sort((a, b) => ((a.token ?? "") < (b.token ?? "") ? -1 : 1));
+  for (const g of groups) {
+    const suffix = g.token === null ? "" : `.${g.token}`;
+    if (g.record === null) continue;
+    if (g.runs.length !== 1) {
+      errors.push(
+        `${g.record} needs exactly one run observation (${RUN_OBSERVATION_PREFIX}<host>${suffix}.raw.json); ${OBSERVATIONS_DIR} holds ${g.runs.length}`,
+      );
+    }
+    if (g.verifications.length !== 1) {
+      errors.push(
+        `${g.record} needs exactly one verification observation (${VERIFICATION_OBSERVATION_PREFIX}<host>${suffix}.raw.json); ${OBSERVATIONS_DIR} holds ${g.verifications.length}`,
+      );
+    }
+  }
+  for (const generation of ["v1", "v2"] as const) {
+    const held = groups.filter((g) => g.generation === generation && g.record !== null).map((g) => g.record);
+    if (held.length > MAX_RECORDS[generation]) {
+      errors.push(
+        `${PROOF_EXERCISES_DIR} holds ${held.length} ${generation} records (${held.join(", ")}); the contract admits at most ${MAX_RECORDS[generation]} per designation, and a second needs it raised in its own lane, never a record beside it`,
+      );
+    }
+  }
+  return { records, observations, groups, errors };
+}
+
+/**
+ * The exercises `dir` holds observations of and no record of: each refused while the directory holds any record
+ * (evidence of an exercise is never left unaccounted); the generator derives exactly such an exercise's record.
+ */
+export function unrecordedExerciseErrors(dir: ExerciseDirectory): string[] {
+  return dir.groups
+    .filter((g) => g.record === null)
+    .map(
+      (g) =>
+        `${OBSERVATIONS_DIR} holds ${g.token === null ? "v1-slot observations" : `the observations of exercise ${g.token}`} (${[...g.runs, ...g.verifications].join(", ")}) and no record of them: derive it (npm run sp1:proof-exercise-record) or remove them; evidence of an exercise is never left unaccounted`,
+    );
 }
 
 export interface ExerciseEvidenceInput {
@@ -1139,12 +1329,26 @@ export function canonicalHostBinarySha256(repoRoot: string, zkvmHostTree: string
   return shas.size === 1 ? [...shas][0] : null;
 }
 
+/** One accepted exercise: its record, derived from its own committed observations and equal to the committed file. */
+export interface AcceptedExercise {
+  /** The record's path: the v1 slot, or a v2 record named after its token. */
+  path: string;
+  generation: ExerciseGeneration;
+  record: ProofExerciseRecord;
+  /** Its run and its verification observation (the record's derivedFrom). */
+  observations: [string, string];
+}
+
 export interface ExerciseEvidence {
-  /** Every file under PROOF_EXERCISES_DIR, as exerciseRecordsIn lists them. */
+  /** Every entry under PROOF_EXERCISES_DIR, as exerciseRecordsIn lists them (the directory's membership). */
   records: string[];
-  /** The one accepted record, derived from the committed observations and equal to the committed file; else null. */
-  record: ProofExerciseRecord | null;
-  /** The run and verification observation paths (empty while there is no record). */
+  /**
+   * Every record, each accepted on its own, sorted by path, when the whole directory is accepted; empty whenever
+   * anything is refused, so no consumer can take one exercise out of a refused directory. Never a "latest" or a
+   * "winner": each exercise is history, and each carries its own assurance (egressAssuranceOfRecord).
+   */
+  accepted: AcceptedExercise[];
+  /** Every proof-exercise observation under OBSERVATIONS_DIR (empty while there is no record: then none is judged). */
   observations: string[];
   errors: string[];
 }
@@ -1229,62 +1433,50 @@ function inHistory(repoRoot: string, commit: string): boolean {
 }
 
 /**
- * What the repository holds under PROOF_EXERCISES_DIR, judged: no record (the state before SP1-PA3B), or exactly one
- * record, named after the designation, that is byte for byte the record the committed run and verification
- * observations derive for the accepted archive record, with the run's source commit in this repository's history, and
- * every one of these files exactly as HEAD commits them. Anything else (a second file, a link, a record without its
- * two observations or with a third, a hand-edited record, an uncommitted one, an exercise of another baseline, or any
- * record while the archive evidence is not accepted) is refused with every reason, and never read as "no record".
+ * Every way the exercise directory's history withdrew or edited a record it had committed (SP1-PA3D0): exercises are
+ * history, so a newer one never replaces an older one, and a record once committed stays, byte for byte, in every
+ * later commit and in the working tree (scripts/lib/append-only-history.ts, every parent edge of every commit). A
+ * history git cannot show (no repository, a shallow clone, no commit) is refused, never read as clean.
  */
-export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvidenceInput): ExerciseEvidence {
-  const records = exerciseRecordsIn(repoRoot);
-  if (records.length === 0) return { records, record: null, observations: [], errors: [] };
-  const errors: string[] = [];
-  const want = exerciseRecordRel(input.anchor);
-  if (records.length !== 1 || records[0] !== want) {
-    errors.push(`${PROOF_EXERCISES_DIR} must hold exactly ${want}; it holds ${records.join(", ")}`);
-  }
-  for (const rel of records) {
-    if (!regularFileIn(repoRoot, rel, PROOF_EXERCISES_DIR)) {
-      errors.push(`${rel} is not a regular file directly in ${PROOF_EXERCISES_DIR}`);
-    }
-  }
-  const archiveState = archiveEvidenceState(input.archive);
-  if (archiveState !== "ACCEPTED" || input.archive.record === null) {
-    errors.push(
-      `a proof-exercise record exists but the archive evidence is not accepted (${archiveState}${input.archive.errors.length > 0 ? `: ${input.archive.errors.join("; ")}` : ""}): no exercise stands without the archive it ran from`,
-    );
-  }
-  const obs = exerciseObservationsIn(repoRoot);
-  if (obs.run.length !== 1) {
-    errors.push(
-      `${OBSERVATIONS_DIR} must hold exactly one run observation (${RUN_OBSERVATION_PREFIX}<host>.raw.json); it holds ${obs.run.length}`,
-    );
-  }
-  if (obs.verification.length !== 1) {
-    errors.push(
-      `${OBSERVATIONS_DIR} must hold exactly one verification observation (${VERIFICATION_OBSERVATION_PREFIX}<host>.raw.json); it holds ${obs.verification.length}`,
-    );
-  }
-  if (obs.other.length > 0) {
-    errors.push(`${OBSERVATIONS_DIR} holds ${obs.other.join(", ")}, which is no proof-exercise observation`);
-  }
-  const archivePath = productionRecordRel(input.anchor);
-  if (!existsSync(resolve(repoRoot, archivePath))) errors.push(`the archive record ${archivePath} is missing`);
-  const observations = [...obs.run, ...obs.verification];
-  for (const rel of observations) {
-    if (!regularFileIn(repoRoot, rel, OBSERVATIONS_DIR)) {
-      errors.push(`${rel} is not a regular file directly in ${OBSERVATIONS_DIR}`);
-    }
-  }
-  if (errors.length > 0) return { records, record: null, observations, errors };
-  let expect: ExerciseExpectations;
+export function exerciseHistoryErrors(repoRoot: string): string[] {
   try {
-    expect = exerciseExpectations(repoRoot, input);
+    return directoryHistoryErrors(repoRoot, PROOF_EXERCISES_DIR);
   } catch (error) {
-    return { records, record: null, observations, errors: [(error as Error).message] };
+    return [
+      `the history of ${PROOF_EXERCISES_DIR} cannot be read (${String((error as Error).message).split("\n")[0]}): no history is taken as clean`,
+    ];
   }
-  const readJson = (rel: string): { text: string; value: unknown } => {
+}
+
+/** Every way `accepted` holds one proving run twice: two records of one proof are one exercise described twice. */
+function duplicateProofErrors(accepted: readonly AcceptedExercise[]): string[] {
+  const byProof = new Map<string, string[]>();
+  for (const a of accepted) {
+    const sha = a.record.proof.proofBytesSha256;
+    byProof.set(sha, [...(byProof.get(sha) ?? []), a.path]);
+  }
+  return [...byProof]
+    .filter(([, paths]) => paths.length > 1)
+    .map(
+      ([sha, paths]) =>
+        `${paths.join(" and ")} hold one proof (proofBytesSha256 ${sha}): one proving run is one exercise, never two records`,
+    );
+}
+
+/**
+ * One exercise of the directory judged on its own: its record is what its own run and verification observations
+ * derive for the accepted archive record, of the generation its name says (the v1 slot holds a v1 run's record, a v2
+ * name a v2 run's, with the run's own token), with the run's source commit in this repository's history and holding
+ * what the run ran from. Every reason it is not; nothing about any other exercise.
+ */
+function judgeExercise(
+  repoRoot: string,
+  g: ExerciseGroup & { record: string },
+  expect: ExerciseExpectations,
+): { accepted: AcceptedExercise | null; errors: string[] } {
+  const errors: string[] = [];
+  const [runRel, verificationRel] = [g.runs[0], g.verifications[0]];
+  const readJson = (rel: string): { text: string; value: any } => {
     const text = lf(readFileSync(resolve(repoRoot, rel), "utf8"));
     try {
       return { text, value: JSON.parse(text) };
@@ -1293,50 +1485,136 @@ export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvid
       return { text, value: null };
     }
   };
-  const run = readJson(obs.run[0]);
-  const verification = readJson(obs.verification[0]);
-  for (const [rel, value, prefix] of [
-    [obs.run[0], run.value, RUN_OBSERVATION_PREFIX],
-    [obs.verification[0], verification.value, VERIFICATION_OBSERVATION_PREFIX],
+  const record = readJson(g.record);
+  const run = readJson(runRel);
+  const verification = readJson(verificationRel);
+  for (const [rel, value] of [
+    [runRel, run.value],
+    [verificationRel, verification.value],
   ] as const) {
-    const host = (value as { host?: unknown })?.host;
-    const named = hostOfObservationFile(rel, prefix);
-    if (host !== named) errors.push(`${rel} claims host ${String(host)}, not ${named}`);
+    const named = observationSlotOf(rel.slice(OBSERVATIONS_DIR.length + 1))?.host;
+    if (value !== null && value?.host !== named) errors.push(`${rel} claims host ${String(value?.host)}, not ${named}`);
   }
-  if (errors.length > 0) return { records, record: null, observations, errors };
+  const want = GENERATION_SCHEMAS[g.generation];
+  const slot = g.token === null ? "the v1 slot" : `exercise ${g.token}`;
+  if (record.value !== null && record.value?.schema !== want.record) {
+    errors.push(
+      `${g.record} holds ${String(record.value?.schema)}, but its name is a ${g.generation} record's (${want.record})`,
+    );
+  }
+  if (run.value !== null && run.value?.schema !== want.run) {
+    errors.push(`${runRel} holds ${String(run.value?.schema)}, but ${slot} admits only a ${want.run} run`);
+  }
+  if (g.token !== null && exerciseToken(run.text) !== g.token) {
+    errors.push(
+      `${runRel} is exercise ${exerciseToken(run.text)} (the first 16 hex digits of its sha256), not ${g.token}: an exercise's files are named after the exercise they hold`,
+    );
+  }
+  if (errors.length > 0) return { accepted: null, errors };
   const binding: ExerciseBinding = {
     runSha256: sha256(run.text),
-    verificationPath: obs.verification[0],
-    runPath: obs.run[0],
+    verificationPath: verificationRel,
+    runPath: runRel,
   };
   const agreement = exerciseErrors(run.value, verification.value, binding, expect);
-  if (agreement.length > 0) {
-    return { records, record: null, observations, errors: agreement.map((e) => `${e.reason}: ${e.detail}`) };
-  }
+  if (agreement.length > 0) return { accepted: null, errors: agreement.map((e) => `${e.reason}: ${e.detail}`) };
   const derived = deriveExerciseRecord(run.value, verification.value, binding, expect);
-  if (lf(readFileSync(resolve(repoRoot, records[0]), "utf8")) !== serializeJson(derived)) {
+  if (record.text !== serializeJson(derived)) {
     errors.push(
-      `${records[0]} is not the record the committed observations derive: regenerate it (npm run sp1:proof-exercise-record)`,
+      `${g.record} is not the record the committed observations derive: regenerate it (npm run sp1:proof-exercise-record)`,
     );
   }
   const commit = (run.value as RunObservation).source.commit;
   if (!inHistory(repoRoot, commit)) {
     errors.push(`the run's source commit ${commit} is not in this repository's history`);
   } else {
-    errors.push(
-      ...commitContentErrors(repoRoot, commit, expect, isAttributedRun(run.value) ? RUN_SCHEMA_V2 : RUN_SCHEMA),
-    );
+    errors.push(...commitContentErrors(repoRoot, commit, expect, want.run));
   }
-  errors.push(...crlfCommittedErrors(repoRoot, [...records, ...observations]));
-  const dirty = uncommittedEvidenceError([...records, ...observations, archivePath], repoRoot);
-  if (dirty !== null) errors.push(`the proof-exercise evidence is not as committed: ${dirty}`);
-  return { records, record: errors.length === 0 ? derived : null, observations, errors };
+  return {
+    accepted:
+      errors.length === 0
+        ? { path: g.record, generation: g.generation, record: derived, observations: [runRel, verificationRel] }
+        : null,
+    errors,
+  };
 }
 
-/** The state the exercise evidence is in, as the tooling record names it. */
+/**
+ * What the repository holds under PROOF_EXERCISES_DIR, judged (SP1-PA3D0): no record (the state before SP1-PA3B: its
+ * observations are then not judged), or one or more records, each accepted on its own: the v1 slot and up to
+ * MAX_RECORDS v2 records, each byte for byte what its own committed run and verification observations derive for the
+ * accepted archive record, of the generation its name says, with its run's source commit in this repository's
+ * history, every observation belonging to exactly one record, no proof recorded twice, every file exactly as HEAD
+ * commits it, and no record the directory's history committed ever withdrawn or edited. Anything else (a name the
+ * contract does not admit, a link, an exercise short of an observation or with an extra one, observations without a
+ * record, a hand-edited or uncommitted record, an exercise of another baseline, a record while the archive evidence
+ * is not accepted, a withdrawn record) refuses the whole directory with every reason: one good record never stands
+ * for a refused one, and the state never depends on which file a listing returns first.
+ */
+export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvidenceInput): ExerciseEvidence {
+  const history = exerciseHistoryErrors(repoRoot);
+  const records = exerciseRecordsIn(repoRoot);
+  const refused = (observations: string[], errors: string[]): ExerciseEvidence => ({
+    records,
+    accepted: [],
+    observations,
+    errors,
+  });
+  if (records.length === 0) return refused([], history);
+  const dir = exerciseDirectoryOf(
+    records.map((rel) => rel.slice(PROOF_EXERCISES_DIR.length + 1)),
+    exerciseObservationNamesIn(repoRoot),
+    input.anchor.designation,
+  );
+  const errors = [...history, ...dir.errors, ...unrecordedExerciseErrors(dir)];
+  for (const rel of dir.records) {
+    if (!regularFileIn(repoRoot, rel, PROOF_EXERCISES_DIR)) {
+      errors.push(`${rel} is not a regular file directly in ${PROOF_EXERCISES_DIR}`);
+    }
+  }
+  for (const rel of dir.observations) {
+    if (!regularFileIn(repoRoot, rel, OBSERVATIONS_DIR)) {
+      errors.push(`${rel} is not a regular file directly in ${OBSERVATIONS_DIR}`);
+    }
+  }
+  const archiveState = archiveEvidenceState(input.archive);
+  if (archiveState !== "ACCEPTED" || input.archive.record === null) {
+    errors.push(
+      `a proof-exercise record exists but the archive evidence is not accepted (${archiveState}${input.archive.errors.length > 0 ? `: ${input.archive.errors.join("; ")}` : ""}): no exercise stands without the archive it ran from`,
+    );
+  }
+  const archivePath = productionRecordRel(input.anchor);
+  if (!existsSync(resolve(repoRoot, archivePath))) errors.push(`the archive record ${archivePath} is missing`);
+  if (errors.length > 0) return refused(dir.observations, errors);
+  let expect: ExerciseExpectations;
+  try {
+    expect = exerciseExpectations(repoRoot, input);
+  } catch (error) {
+    return refused(dir.observations, [(error as Error).message]);
+  }
+  const accepted: AcceptedExercise[] = [];
+  for (const g of dir.groups) {
+    const judged = judgeExercise(repoRoot, g as ExerciseGroup & { record: string }, expect);
+    errors.push(...judged.errors.map((e) => `${g.record}: ${e}`));
+    if (judged.accepted !== null) accepted.push(judged.accepted);
+  }
+  errors.push(...duplicateProofErrors(accepted));
+  const files = [...dir.records, ...dir.observations];
+  errors.push(...crlfCommittedErrors(repoRoot, files));
+  const dirty = uncommittedEvidenceError([...files, archivePath], repoRoot);
+  if (dirty !== null) errors.push(`the proof-exercise evidence is not as committed: ${dirty}`);
+  return errors.length === 0
+    ? { records, accepted, observations: dir.observations, errors }
+    : refused(dir.observations, errors);
+}
+
+/**
+ * The state the exercise evidence is in, as the tooling record names it: NO_RECORD (nothing, and no history
+ * withdrawn), ACCEPTED (every record accepted, one or many: two exercises are still one state) or REFUSED.
+ */
 export function exerciseEvidenceState(e: ExerciseEvidence): "NO_RECORD" | "ACCEPTED" | "REFUSED" {
   if (e.records.length === 0) return e.errors.length === 0 ? "NO_RECORD" : "REFUSED";
-  return e.record !== null && e.errors.length === 0 ? "ACCEPTED" : "REFUSED";
+  return e.errors.length === 0 && e.accepted.length === e.records.length ? "ACCEPTED" : "REFUSED";
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -846,7 +846,7 @@ export const ASSUMPTIONS: readonly Assumption[] = [
   {
     id: "A_NO_PROVING_WITHOUT_ARCHIVE",
     statement:
-      "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy), ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B, and no proof-exercise record) or SELF_HOSTED_PATH_EXERCISED (that archive record plus exactly the one proof-exercise record derived from a run through the archive-only gate, SP1-PA3A), never an unverified local copy where SP1 reads; the self-hosted path proves only from a verified archive through that gate, which never lets SP1 download the circuit, and it is exercised only as the committed proof-exercise record says",
+      "proving availability is OWNER_DOWNLOAD_REQUIRED (no WalletWall archive record, no local copy), ARCHIVED_VERIFIED_UNEXERCISED (exactly the one archive record the acquisition lane admitted, SP1-PA2B, and no proof-exercise record) or SELF_HOSTED_PATH_EXERCISED (that archive record plus proof-exercise records, each derived from a run through the archive-only gate, SP1-PA3A: every record on disk accepted and named by the availability record both as an accepted exercise and as a witness of the exercised path, and no other, SP1-PA3D0), never an unverified local copy where SP1 reads; the self-hosted path proves only from a verified archive through that gate, which never lets SP1 download the circuit, and it is exercised only as the committed proof-exercise records say",
     evaluate(input) {
       const pa = input.provingAvailability as Record<string, any> | null;
       const reqs: unknown[] = Array.isArray(pa?.selfHostedPath?.requirements) ? pa.selfHostedPath.requirements : [];
@@ -860,28 +860,35 @@ export const ASSUMPTIONS: readonly Assumption[] = [
         onDisk === 1 &&
         input.archiveRecords[0] === pa?.archives?.accepted?.record;
       const exercisesRecorded = pa?.exercises?.records;
-      const exercisesOnDisk = input.exerciseRecords.length;
-      const acceptedExercise = pa?.exercises?.accepted?.record;
+      // Every exercise record on disk, and the availability record's two accounts of them: the same paths, in the same
+      // (path) order, or the account is not of these records.
+      const exercisesOnDisk = [...input.exerciseRecords].sort();
+      const sameAsOnDisk = (paths: unknown) =>
+        Array.isArray(paths) && JSON.stringify(paths) === JSON.stringify(exercisesOnDisk);
+      const acceptedExercises = Array.isArray(pa?.exercises?.accepted)
+        ? pa.exercises.accepted.map((a: { record?: unknown } | null) => a?.record)
+        : null;
       const exercised =
         pa?.status === "SELF_HOSTED_PATH_EXERCISED" &&
         recorded === 1 &&
         onDisk === 1 &&
         input.archiveRecords[0] === pa?.archives?.accepted?.record &&
-        exercisesRecorded === 1 &&
-        exercisesOnDisk === 1 &&
-        typeof acceptedExercise === "string" &&
-        input.exerciseRecords[0] === acceptedExercise &&
-        pa?.selfHostedPath?.record === acceptedExercise &&
+        exercisesOnDisk.length > 0 &&
+        exercisesRecorded === exercisesOnDisk.length &&
+        sameAsOnDisk(acceptedExercises) &&
+        sameAsOnDisk(pa?.selfHostedPath?.witnesses) &&
         pa?.selfHostedPath?.exercised === true;
       const unexercised =
         (none || archived) &&
         pa?.selfHostedPath?.exercised === false &&
         exercisesRecorded === 0 &&
-        exercisesOnDisk === 0;
+        exercisesOnDisk.length === 0 &&
+        pa?.exercises?.accepted === undefined &&
+        pa?.selfHostedPath?.witnesses === undefined;
       const holds = (unexercised || exercised) && archiveOnly;
       return {
         holds,
-        observed: `status ${String(pa?.status)}; archive records ${String(recorded)} recorded, ${onDisk} on disk${archived || exercised ? ` (the accepted ${String(pa?.archives?.accepted?.record)})` : ""}; proof-exercise records ${String(exercisesRecorded)} recorded, ${exercisesOnDisk} on disk${exercised ? ` (the accepted ${String(acceptedExercise)})` : ""}; self-hosted path exercised ${String(pa?.selfHostedPath?.exercised)}; proves only from an archive: ${archiveOnly ? "yes" : "no"}`,
+        observed: `status ${String(pa?.status)}; archive records ${String(recorded)} recorded, ${onDisk} on disk${archived || exercised ? ` (the accepted ${String(pa?.archives?.accepted?.record)})` : ""}; proof-exercise records ${String(exercisesRecorded)} recorded, ${exercisesOnDisk.length} on disk${exercised ? ` (each accepted and a witness: ${exercisesOnDisk.join(", ")})` : ""}; self-hosted path exercised ${String(pa?.selfHostedPath?.exercised)}; proves only from an archive: ${archiveOnly ? "yes" : "no"}`,
       };
     },
   },

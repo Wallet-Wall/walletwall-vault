@@ -81,12 +81,16 @@ import {
 import { installCircuitArchive, verifyInstalledCircuit } from "./sp1-circuit-install";
 import { DESIGNATIONS_DIR, designationSetErrors, latestDesignation, readDesignations } from "./sp1-designation";
 import {
-  EXERCISE_RECORD_SCHEMA,
+  ATTRIBUTED_RUN_SCRIPT_REL,
+  GENERATION_SCHEMAS,
+  MAX_RECORDS,
   PROOF_EXERCISES_DIR,
   RUN_SCRIPT_REL,
   VERIFICATION_SCRIPT_REL,
+  egressAssuranceOfRecord,
   exerciseEvidenceState,
   productionExerciseEvidence,
+  type AcceptedExercise,
   type ExerciseEvidence,
 } from "./sp1-proof-exercise";
 import {
@@ -108,9 +112,12 @@ import {
 } from "./sp1-proving-availability";
 
 export const TOOLING_REL = "evidence/zk/sp1-impl/circuit-tooling.json";
-export const TOOLING_SCHEMA = "walletwall.sp1-circuit-tooling.v1";
+/** v2 (SP1-PA3D0): `exercise.records` lists every accepted exercise and both record generations' JSON schemas are
+ * pinned; v1's scalar `exercise.record` and single `jsonSchema` are gone, never redefined. */
+export const TOOLING_SCHEMA = "walletwall.sp1-circuit-tooling.v2";
 export const ARCHIVE_JSON_SCHEMA_REL = "evidence/zk/schema/sp1-proving-archive.v2.schema.json";
 export const EXERCISE_JSON_SCHEMA_REL = "evidence/zk/schema/sp1-proof-exercise.v1.schema.json";
+export const EXERCISE_V2_JSON_SCHEMA_REL = "evidence/zk/schema/sp1-proof-exercise.v2.schema.json";
 export const UPSTREAM_OBSERVATION_REL =
   "evidence/zk/sp1-impl/observations/circuit-upstream-developer-workstation.raw.json";
 export const UPSTREAM_SCHEMA = "walletwall.sp1-circuit-upstream.v1";
@@ -785,10 +792,11 @@ export async function runSelfTest(repoRoot = "."): Promise<SelfTest> {
  * archive evidence (scripts/lib/sp1-circuit-acquisition.ts): no record is TOOLING_READY_NO_ARTIFACT; exactly the
  * accepted record (derived from the committed two-host acquisition and mirror observations, accepted for the
  * designation, committed) is ARCHIVED_VERIFIED_UNEXERCISED; then the proof-exercise evidence
- * (scripts/lib/sp1-proof-exercise.ts): exactly the accepted exercise record (derived from the committed run and
+ * (scripts/lib/sp1-proof-exercise.ts): every exercise record accepted (each derived from the committed run and
  * verification observations of one gate run from that archive record) on top of the accepted archive is
- * SELF_HOSTED_PATH_EXERCISED. Anything else under either directory, or exercise evidence without an accepted archive,
- * derives no state at all.
+ * SELF_HOSTED_PATH_EXERCISED, whether one record or SP1-PA3B's v1 beside a v2 (SP1-PA3D0): a second exercise is never
+ * a second state. Anything else under either directory, or exercise evidence without an accepted archive, derives no
+ * state at all.
  */
 export function toolingState(input: {
   selfTestPassed: boolean;
@@ -900,12 +908,13 @@ export const notEstablishedFor = (state: ToolingState): readonly string[] =>
 
 /** The invariants a proof-exercise record must satisfy before the third state is derived (the validator's rules). */
 export const EXERCISE_REQUIREMENTS: readonly string[] = [
-  `exactly one record in ${PROOF_EXERCISES_DIR}, named after the designation, byte for byte what the committed observations derive (never written by hand), committed with them`,
-  `exactly one run observation (${RUN_SCRIPT_REL}, bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable by sha256 (the canonical-build host binary the committed canonical rebuild observation names for the designated host tree), the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable`,
+  `${PROOF_EXERCISES_DIR} holds only the designation's v1 slot (<designation>.json, ${GENERATION_SCHEMAS.v1.record}: SP1-PA3B's) and v2 records named after their exercise (<designation>.v2.<token>.json, ${GENERATION_SCHEMAS.v2.record}, at most ${MAX_RECORDS.v2}), the token being the first 16 hex digits of the sha256 of the exercise's run observation; any other name, a link, or a generation over its count refuses every record`,
+  "each record is byte for byte what its own two committed observations derive (never written by hand), committed with them; every proof-exercise observation belongs to exactly one record (the v1 slot's names carry no token, a v2 exercise's carry its token); no proof is recorded twice; and no record the directory ever committed is withdrawn or edited (its git history is append-only)",
+  `for each record, exactly one run observation (a v1 run by ${RUN_SCRIPT_REL}, a v2 run by ${ATTRIBUTED_RUN_SCRIPT_REL} under the root observer, each bound by sha256) of one run through sp1:prove:archive-only: the committed production anchor, the committed archive record by sha256, the installation re-hashed as exactly the record's members, the host executable by sha256 (the canonical-build host binary the committed canonical rebuild observation names for the designated host tree), the committed proof input by sha256, the gnark image by the record's digest and present in the local store, SP1_PROVER=cpu with exactly the gate's frozen environment and no refused variable`,
   "network egress refused within ten minutes before and after the gate run: at the archive's upstream host and the image registry by name and by TCP 443, and by a refused connection at the acquisitions' upstream addresses and two canary addresses (TCP 443), with the enforcement stated",
   "a possible wall time (the host run inside the gate run, positive whole seconds that match the stamps) and a positive peak-memory measurement of the host process and of the gnark containers",
   "a proof naming the designated PROGRAM_VKEY whose first four bytes are the designated verifying key's selector, with its public values' and bytes' sha256",
-  `exactly one verification observation (${VERIFICATION_SCRIPT_REL}, bound by sha256) binding the run observation's committed bytes and the proof's digests, in which the designation's verifier (the CREATE2-authenticated v6.1.0 runtime, its code hash checked at the called address) accepted the proof and refused its tampered copy`,
+  `for each record, exactly one verification observation (${VERIFICATION_SCRIPT_REL}, bound by sha256) binding the run observation's committed bytes and the proof's digests, in which the designation's verifier (the CREATE2-authenticated v6.1.0 runtime, its code hash checked at the called address) accepted the proof and refused its tampered copy`,
   "the run's source commit in this repository's history and holding what the run claims it ran from (the designated host tree, the archive record and the measurement tool as committed), and this repository's identity; observations and records committed as regular LF files in their directories",
   "the accepted archive record still accepted: exercise evidence without it derives no state",
 ];
@@ -935,17 +944,41 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
       `proving availability is ${String(pa.status)}, but the archive and exercise evidence derive ${state}: regenerate it (npm run sp1:proving-availability)`,
     );
   }
+  // Every accepted exercise is accounted for by the availability record, as an accepted exercise and as a witness of
+  // the exercised path, and nothing else is (SP1-PA3D0): the same records, by path, in the same order.
+  const judged = exercise.accepted.map((a) => a.path);
+  const accounted = {
+    accepted: Array.isArray(pa?.exercises?.accepted)
+      ? pa.exercises.accepted.map((a: { record?: unknown }) => a?.record)
+      : [],
+    witnesses: Array.isArray(pa?.selfHostedPath?.witnesses) ? pa.selfHostedPath.witnesses : [],
+  };
+  for (const [what, paths] of Object.entries(accounted)) {
+    if (JSON.stringify(paths) !== JSON.stringify(judged)) {
+      throw new Error(
+        `proving availability names ${(paths as unknown[]).map(String).join(", ") || "no exercise"} as ${what}, but the exercise evidence accepts ${judged.join(", ") || "none"}: regenerate it (npm run sp1:proving-availability)`,
+      );
+    }
+  }
   const record = archive.record;
-  const x = exercise.record;
   const f = obs.facts;
   const reached = STATES.findIndex((s) => s.state === state);
   const exerciseBase = {
     state: exerciseEvidenceState(exercise),
     authoritativeDir: PROOF_EXERCISES_DIR,
-    schema: EXERCISE_RECORD_SCHEMA,
-    jsonSchema: { path: EXERCISE_JSON_SCHEMA_REL, sha256: sha256(readFileSync(at(EXERCISE_JSON_SCHEMA_REL))) },
+    generations: (["v1", "v2"] as const).map((generation) => {
+      const rel = generation === "v1" ? EXERCISE_JSON_SCHEMA_REL : EXERCISE_V2_JSON_SCHEMA_REL;
+      return {
+        generation,
+        name: generation === "v1" ? "<designation>.json" : "<designation>.v2.<token>.json",
+        schema: GENERATION_SCHEMAS[generation].record,
+        runSchema: GENERATION_SCHEMAS[generation].run,
+        maxRecords: MAX_RECORDS[generation],
+        jsonSchema: { path: rel, sha256: sha256(readFileSync(at(rel))) },
+      };
+    }),
     derivation:
-      "two committed observations (the measured gate run, scripts/measure-sp1-proof-exercise.ts; the designated verifier's acceptance, scripts/verify-sp1-proof-exercise.ts) derive the record (npm run sp1:proof-exercise-record), never a hand-written one; the state follows from the record, and a record that any invariant refuses derives no state at all",
+      "each exercise's two committed observations (its measured gate run: scripts/measure-sp1-proof-exercise.ts for a v1 run, scripts/measure-sp1-attributed-proof-exercise.ts under the root observer for a v2 run; the designated verifier's acceptance, scripts/verify-sp1-proof-exercise.ts) derive its record (npm run sp1:proof-exercise-record), never a hand-written one; the state follows from the records, one or several, each keeping its own egress assurance, and a record that any invariant refuses derives no state at all",
     requires: EXERCISE_REQUIREMENTS,
   };
   return {
@@ -1056,41 +1089,47 @@ export async function toolingRecordFromRepo(repoRoot = "."): Promise<Record<stri
       passThrough: PASS_THROUGH_ENV,
       refusals: REFUSAL_CODES,
     },
-    exercise:
-      x === null
-        ? { ...exerciseBase, record: null }
-        : {
-            ...exerciseBase,
-            record: exercise.records[0],
-            derivedFrom: exercise.observations,
-            host: x.exercise.host,
-            performedAtUtc: x.exercise.performedAtUtc,
-            verifiedAtUtc: x.exercise.verifiedAtUtc,
-            archiveRecord: x.archiveRecord.path,
-            hostExecutableSha256: x.host.executableSha256,
-            proofInputSha256: x.proofInput.sha256,
-            gnark: x.gnark.imageRef,
-            prover: x.prover.mode,
-            proof: x.proof,
-            verifier: {
-              runtimeCodeKeccak: x.verification.verifier.runtimeCodeKeccak,
-              checks: x.verification.checks.map((c) => ({ chainId: c.chainId, mode: c.mode, verdicts: c.verdicts })),
-              acceptance: x.verification.acceptance,
-            },
-            performance: x.performance,
-            egress: x.egress,
-            establishes: x.establishes,
-            doesNotEstablish: x.doesNotEstablish,
-          },
+    exercise: { ...exerciseBase, records: exercise.accepted.map(toolingExerciseOf) },
     selfTest,
     residuals: residualsFor(state),
     notEstablished: notEstablishedFor(state),
     next:
       record === null
         ? "SP1-PA2B: both independently acquired copies pass the merged inspector unchanged, the gnark image is resolved to its digest on both hosts, two WalletWall-controlled mirrors are re-read byte for byte, and the record is derived from those observations; still not a proof lane"
-        : x === null
+        : exercise.accepted.length === 0
           ? "SP1-PA3B (owner-authorized): install exclusively from the committed verified archive, with the digest-pinned gnark image in the local store and network egress off; one real Groth16 proof of the designated program through sp1:measure-proof-exercise (the archive-only gate under measurement), verified through sp1:verify-proof-exercise (the designated verifier path), the two observations committed, the record derived by sp1:proof-exercise-record; only then SELF_HOSTED_PATH_EXERCISED, from facts"
-          : "production binding (the implementation receipt's PRODUCTION_SP1_BINDING): a later, owner-authorized lane; an exercised path is liveness on one host at one time, never production readiness",
+          : "the directory admits SP1-PA3B's v1 record and, beside it, the v2 record of an attributed exercise under the root observer (SP1-PA3D, owner-authorized; room made by SP1-PA3D0), each its own history; production binding (the implementation receipt's PRODUCTION_SP1_BINDING) is a later, owner-authorized lane: an exercised path is liveness on one host at one time, never production readiness",
+  };
+}
+
+/** The tooling record's entry of one accepted exercise: its own facts, its own assurance, never another's. */
+function toolingExerciseOf(a: AcceptedExercise) {
+  const x = a.record;
+  return {
+    record: a.path,
+    schema: x.schema,
+    lane: x.lane,
+    exercise: x.exercise.id,
+    derivedFrom: [...a.observations],
+    host: x.exercise.host,
+    performedAtUtc: x.exercise.performedAtUtc,
+    verifiedAtUtc: x.exercise.verifiedAtUtc,
+    archiveRecord: x.archiveRecord.path,
+    hostExecutableSha256: x.host.executableSha256,
+    proofInputSha256: x.proofInput.sha256,
+    gnark: x.gnark.imageRef,
+    prover: x.prover.mode,
+    proof: x.proof,
+    verifier: {
+      runtimeCodeKeccak: x.verification.verifier.runtimeCodeKeccak,
+      checks: x.verification.checks.map((c) => ({ chainId: c.chainId, mode: c.mode, verdicts: c.verdicts })),
+      acceptance: x.verification.acceptance,
+    },
+    performance: x.performance,
+    egress: x.egress,
+    egressAssurance: egressAssuranceOfRecord(x).level,
+    establishes: x.establishes,
+    doesNotEstablish: x.doesNotEstablish,
   };
 }
 
