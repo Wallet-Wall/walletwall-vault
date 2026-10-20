@@ -2,7 +2,7 @@
   "schema": "walletwall.sp1-circuit-tooling.v1",
   "lane": "SP1-PA3A",
   "amendment": "AppleDouble metadata and binary provenance: closed policies derived from the two-host census of the upstream archive; ignored, never installed",
-  "state": "ARCHIVED_VERIFIED_UNEXERCISED",
+  "state": "SELF_HOSTED_PATH_EXERCISED",
   "states": [
     {
       "state": "TOOLING_NOT_PRESENT",
@@ -26,13 +26,13 @@
       "state": "SELF_HOSTED_PATH_EXERCISED",
       "meaning": "a real Groth16 proof was made through this gate from the archive, egress off, and accepted by the designated verifier: exactly one committed proof-exercise record, derived from the run and verification observations (SP1-PA3A built the derivation; the evidence is a later, owner-authorized lane's)",
       "reachableInThisLane": true,
-      "reached": false
+      "reached": true
     }
   ],
   "provingAvailability": {
     "path": "evidence/zk/sp1-impl/proving-availability.json",
-    "sha256": "057d369ccec19535a1f20fe96407746989816a2983713ab464676a20f5c5785a",
-    "status": "ARCHIVED_VERIFIED_UNEXERCISED",
+    "sha256": "d7fd9c20c153ae6db1153cd4d1352e0cc072c3fe2360e75455ed7efc091dc480",
+    "status": "SELF_HOSTED_PATH_EXERCISED",
     "consistentWithArchiveEvidence": true
   },
   "anchor": {
@@ -703,7 +703,7 @@
     ]
   },
   "exercise": {
-    "state": "NO_RECORD",
+    "state": "ACCEPTED",
     "authoritativeDir": "evidence/zk/sp1-impl/proof-exercises",
     "schema": "walletwall.sp1-proof-exercise.v1",
     "jsonSchema": {
@@ -721,7 +721,78 @@
       "the run's source commit in this repository's history and holding what the run claims it ran from (the designated host tree, the archive record and the measurement tool as committed), and this repository's identity; observations and records committed as regular LF files in their directories",
       "the accepted archive record still accepted: exercise evidence without it derives no state"
     ],
-    "record": null
+    "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json",
+    "derivedFrom": [
+      "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
+      "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json"
+    ],
+    "host": "developer-workstation-wsl2",
+    "performedAtUtc": "2026-10-19T23:24:14Z",
+    "verifiedAtUtc": "2026-10-20T00:35:18Z",
+    "archiveRecord": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+    "hostExecutableSha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
+    "proofInputSha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+    "gnark": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+    "prover": "cpu",
+    "proof": {
+      "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+      "selector": "0x4388a21c",
+      "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+      "proofBytesSha256": "dfe975da331d53bee1485d55f032566fd43ddc0350904a30f74bcd83f7370eee"
+    },
+    "verifier": {
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+      "checks": [
+        {
+          "chainId": "31337",
+          "mode": "AUTHENTICATED_RUNTIME_LOCAL",
+          "verdicts": {
+            "real": "success",
+            "tampered": "revert 0x7fcdd1f4"
+          }
+        }
+      ],
+      "acceptance": "ACCEPTED"
+    },
+    "performance": {
+      "wallClockSeconds": 647,
+      "hostSeconds": 606,
+      "rotationDelaySeconds": 172800,
+      "withinRotationDelay": true,
+      "rotationDelayFraction": 0.003744,
+      "peakMemory": {
+        "hostProcess": {
+          "bytes": 23366266880,
+          "method": "/proc/<pid>/status VmHWM of the host process, polled every 2000 ms and at exit (the kernel's high-water mark)"
+        },
+        "gnarkContainers": {
+          "bytes": 18962280612,
+          "samples": 61,
+          "intervalMs": 2000,
+          "method": "docker stats --no-stream MemUsage of the running containers whose ancestor is ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d, summed, polled every 2000 ms (a sampled lower bound of the peak)"
+        }
+      }
+    },
+    "egress": {
+      "condition": "EGRESS_DISABLED",
+      "enforcement": "nftables table inet pa3b_egress_off, created as root in the root network namespace of the WSL2 virtual machine that the Linux proving host (Ubuntu 24.04) shares with every other WSL2 distribution on this machine and with Docker Desktop's engine: output hook (priority -10) first refuses every packet to the WSL DNS-tunnelling resolver 10.255.255.254 (an address on lo that proxies to the Windows host; TCP by tcp reset, the rest by ICMP port-unreachable), then accepts packets to the host's own addresses only (fib daddr type local: 127.0.0.0/8, ::1 and its eth0 address, which never leave the VM and carry the kernel's own reset and ICMP answers back to the refusing socket), then refuses every other packet the host originates (TCP by tcp reset, UDP by ICMP port-unreachable, the rest by ICMP admin-prohibited); forward hook (priority -10, policy drop) refuses every forwarded packet the same way (the local Docker Engine's bridge docker0, so every container, the gnark container included); input hook drops every packet a container sends to the host (iifname docker0), so a container cannot reach the host's resolver either; the docker endpoint is the local engine's unix:///var/run/docker.sock (Ubuntu docker.io 29.1.3 running in this distribution, no Docker Desktop integration); the table was created before the before-probes and deleted after the after-probes, no Windows-side rule was used, and nothing was pulled, downloaded or installed while it existed; rehearsed before the run with the same probes from the host and from a container (all refused) and after its removal (all resolved and connected)",
+      "probes": {
+        "before": 8,
+        "after": 8,
+        "targets": [
+          "dns:ghcr.io",
+          "dns:sp1-circuits.s3-us-east-2.amazonaws.com",
+          "tcp:1.1.1.1:443",
+          "tcp:3.5.90.58:443",
+          "tcp:3.5.93.98:443",
+          "tcp:8.8.8.8:443",
+          "tcp:ghcr.io:443",
+          "tcp:sp1-circuits.s3-us-east-2.amazonaws.com:443"
+        ]
+      }
+    },
+    "establishes": "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, SP1_PROVER=cpu and network egress refused before and after the run, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time",
+    "doesNotEstablish": "the provenance of the proving: the verifier proves the proof's validity under the designated key, never that it was made through the gate, with SP1_PROVER=cpu, with egress refused, by this host binary, in this time or with this memory; those facts are the operator's observation, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise rest on the owner's review of the pull request that commits them; nor that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); nor that any other hardware proves within the rotation delay; nor that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)"
   },
   "selfTest": {
     "fixtures": [
@@ -1570,15 +1641,20 @@
     "the AppleDouble and provenance policies are the census of one archive, v6.1.0-groth16.tar.gz: another circuit version, or this one packed another way, needs its own two-host census and a reviewed amendment, never a widening of these constants",
     "extended-attribute PAX records other than the binary provenance one keep PA2A's inert-metadata rule: LIBARCHIVE.xattr.* and SCHILY.xattr.* records with UTF-8 values (the provenance record's base64 twin LIBARCHIVE.xattr.com.apple.provenance included) are accepted on any entry and never applied; the installer applies no extended attribute, so they change nothing installed",
     "an AppleDouble entry's header encoding (ustar or GNU, a NUL typeflag, a base-256 size, a linkname beside a regular file) is held only to the parser's general rules; its path, body, position and PAX-lessness are what the policy binds, and a record pins the exact entries",
-    "the acquisition observations bind the measurement scripts by sha256 and the inspection by the committed anchor, and the record is re-derived from them in CI; the archive itself is never in CI, so a record that no longer matches the archive's bytes is caught only where the archive is (npm run sp1:circuit-archive:inspect -- --archive <file> --record <record>), as the installer and the prove gate do before every use"
+    "the acquisition observations bind the measurement scripts by sha256 and the inspection by the committed anchor, and the record is re-derived from them in CI; the archive itself is never in CI, so a record that no longer matches the archive's bytes is caught only where the archive is (npm run sp1:circuit-archive:inspect -- --archive <file> --record <record>), as the installer and the prove gate do before every use",
+    "the designated verifier proves the proof's validity under the designated key, never its provenance: that the proof was made through the gate, with SP1_PROVER=cpu, with egress refused, by the canonical host binary, in the recorded time and memory are the operator's observations, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise resting on the owner's review of the pull request that commits them; a valid proof of the designated program made by any other means, wrapped in self-consistent observations, is refused only by that review",
+    "egress is attested by probes refused within ten minutes before and after the gate run (the archive's upstream host and the image registry by name and by TCP 443, the acquisitions' upstream addresses and two canary addresses by TCP 443 with a refused connection) and by the operator's statement of the enforcement; the probes do not watch the run itself, and a container's own egress is covered only as far as the host's enforcement reaches the docker bridge",
+    "the gnark containers' peak memory is sampled (docker stats at a fixed interval), a lower bound of the true peak; the host process's figure is the kernel's high-water mark (VmHWM)",
+    "one host, one run: the wall time and the memory are that hardware's at that time, never a bound for a user's machine",
+    "a pure validator cannot execute a pairing: the verification observation records the designated verifier's answer, and the suite re-executes a committed proof against the CREATE2-authenticated runtime (test/Sp1ProofExerciseVerifier.test.ts); a verification observation forged without a proof the runtime accepts fails there"
   ],
   "notEstablished": [
-    "that the self-hosted path proves at all, on what hardware, or within the 2-day rotation delay: no proof has been made from the archive (SELF_HOSTED_PATH_EXERCISED is the next lane's, never this one's)",
-    "that the mirrors keep serving the archive: each was re-read byte for byte when its observation was made; the record is that assertion, never a continuous check",
-    "that the two acquiring hosts and the two mirrors are independent beyond what their recorded identities and locations state",
-    "that the digest-pinned gnark image is archived under WalletWall's control: the record pins its identity (the registry's index digest and its linux/amd64 manifest), not a copy of its bytes, and the image is never pulled here",
-    "the Groth16 trusted setup behind the v6.1.0 key: groth16_vk.bin's hash is an integrity and compatibility check, never evidence that the setup is sound; archive provenance is where the bytes came from, never cryptographic soundness",
-    "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED"
+    "the provenance of the proving beyond what the repository binds: the verifier accepts a valid proof whoever made it, however it was made",
+    "that any other hardware proves within the 2-day rotation delay: one measured run on one host; a run over the delay is still an exercised path (the record carries withinRotationDelay = false and the availability record says EXCEEDING), never a timely one",
+    "that egress stayed refused between the two probes, or that the proving host's enforcement reached every container",
+    "that the archive, the mirrors or the image remain available: the exercise used them once, and no re-read is continuous",
+    "the Groth16 trusted setup behind the v6.1.0 key: a proof the verifier accepts is compatibility with the key, never soundness",
+    "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED until its own lane"
   ],
-  "next": "SP1-PA3B (owner-authorized): install exclusively from the committed verified archive, with the digest-pinned gnark image in the local store and network egress off; one real Groth16 proof of the designated program through sp1:measure-proof-exercise (the archive-only gate under measurement), verified through sp1:verify-proof-exercise (the designated verifier path), the two observations committed, the record derived by sp1:proof-exercise-record; only then SELF_HOSTED_PATH_EXERCISED, from facts"
+  "next": "production binding (the implementation receipt's PRODUCTION_SP1_BINDING): a later, owner-authorized lane; an exercised path is liveness on one host at one time, never production readiness"
 }

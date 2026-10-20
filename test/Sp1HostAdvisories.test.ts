@@ -404,8 +404,12 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
       exercisesOnDisk: string[] = [],
     ) => {
       const pa = structuredClone(live);
+      // The archived shape, whatever state the live record holds (since SP1-PA3B it holds the exercised one).
       pa.status = "ARCHIVED_VERIFIED_UNEXERCISED";
       pa.archives = { ...pa.archives, records: 1, accepted: { record } };
+      pa.exercises = { dir: "evidence/zk/sp1-impl/proof-exercises", records: 0 };
+      pa.selfHostedPath = { ...pa.selfHostedPath, exercised: false };
+      delete pa.selfHostedPath.record;
       over(pa);
       return a.evaluate({
         hostManifestText: s.hostManifestText,

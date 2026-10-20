@@ -1,13 +1,19 @@
-# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C, SP1-PA3A)
+# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C, SP1-PA3A, SP1-PA3B)
 
-**Status:** `ARCHIVED_VERIFIED_UNEXERCISED`: SP1-PA2C committed two WalletWall-controlled mirror observations (Google
-Cloud Storage and Cloudflare R2, each re-read byte for byte from its provider) and derived the production archive record
-from them and SP1-PA2B's two acquisition observations; `PROVING_AVAILABILITY = ARCHIVED_VERIFIED_UNEXERCISED` and
-`SELF_HOSTED_PATH_EXERCISED = false`: no real WalletWall Groth16 proof has been produced. The state is derived from the
-committed evidence by `validate:sp1-circuit-tooling`, never set
-([SP1-PA2C](#sp1-pa2c-two-walletwall-controlled-mirrors-the-record-admitted)). SP1-PA3A then built the evidence path
-and the derivation by which a later, owner-authorized lane (SP1-PA3B) can move the state to
-`SELF_HOSTED_PATH_EXERCISED` from committed facts alone; it generated no proof, and the state has not moved
+**Status:** `SELF_HOSTED_PATH_EXERCISED`: SP1-PA3B (owner-authorized) made the first real WalletWall Groth16 proof of
+the designated program through the unchanged archive-only gate, on a Linux proving host with network egress refused,
+from the committed verified archive, with the digest-pinned gnark image, the canonical-build host binary and the
+committed proof input; the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted the proof and
+refused its tampered copy. The run took 647 s of wall time (the host process 606 s), 0.37 % of the 2-day rotation
+delay, with a host-process peak resident set (`VmHWM`) of 23,366,266,880 bytes, a lower bound of its demand under the
+host's 24 GB memory cap with swap in use, and 18,962,280,612 bytes sampled in the gnark container.
+`PROVING_AVAILABILITY = SELF_HOSTED_PATH_EXERCISED` and `selfHostedPath.exercised = true`, derived from the two
+committed observations and the record by `validate:sp1-circuit-tooling`, never set
+([SP1-PA3B](#sp1-pa3b-the-first-real-self-hosted-proof-exercise)). An exercised path is liveness on one host at one
+time: it is not proof-system soundness and not production readiness, and `PRODUCTION_SP1_BINDING` stays
+`NOT_ESTABLISHED`. The earlier states remain as reached: SP1-PA2C admitted the archive record
+([SP1-PA2C](#sp1-pa2c-two-walletwall-controlled-mirrors-the-record-admitted)) and SP1-PA3A built the evidence path and
+the derivation that SP1-PA3B's evidence now satisfies
 ([SP1-PA3A](#sp1-pa3a-the-proof-exercise-evidence-path-no-proof-generated)).
 
 > Tooling is not an artifact, and an artifact is not proving. SP1-PA2A built the WalletWall-controlled path that
@@ -35,9 +41,17 @@ and the derivation by which a later, owner-authorized lane (SP1-PA3B) can move t
 > **SP1-PA3A** (no proof): the repository now knows how to recognize authoritative proof-exercise evidence. One real
 > run through the archive-only gate, measured, and the designated verifier's acceptance of its proof are two
 > committed observations; a record is derived from them, never written; and `SELF_HOSTED_PATH_EXERCISED` follows from
-> exactly one accepted record on the accepted archive record, or not at all. No real proof exists, no image was
-> pulled, nothing was downloaded, deployed or written to a chain, and `selfHostedPath.exercised` is still `false`.
+> exactly one accepted record on the accepted archive record, or not at all. At the time no real proof existed, no
+> image was pulled, nothing was downloaded, deployed or written to a chain, and `selfHostedPath.exercised` was still
+> `false`.
 > SP1-PA3B, under its own owner authorization, supplies the evidence; production binding is later still.
+>
+> **SP1-PA3B** (owner-authorized, one proof): the gate was run once, unchanged, on a Linux proving host whose egress
+> was refused by a stated and rehearsed packet filter, from the committed archive installed by the committed
+> installer, with the gnark image local by its committed digest and the host binary the canonical procedure
+> reproduced byte for byte; the designated verifier accepted the proof and refused its tampered copy; the two
+> observations were committed as written and the record derived from them. Proving succeeded on one host at one time:
+> that is liveness of the self-hosted path, not soundness of the trusted setup and not production readiness.
 
 Research prototype. Not audited. Testnet/local only. Do not use real funds.
 
@@ -51,9 +65,9 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 | Upstream observation (measured from the pinned crates) | [`evidence/zk/sp1-impl/observations/circuit-upstream-developer-workstation.raw.json`](../evidence/zk/sp1-impl/observations/circuit-upstream-developer-workstation.raw.json) |
 | Synthetic fixtures (test data only) | [`test/fixtures/sp1-proving-archives/`](../test/fixtures/sp1-proving-archives/), generated by [`scripts/lib/sp1-circuit-fixtures.ts`](../scripts/lib/sp1-circuit-fixtures.ts) |
 | Acquisition observations, record derivation, state from facts (SP1-PA2B) | [`scripts/lib/sp1-circuit-acquisition.ts`](../scripts/lib/sp1-circuit-acquisition.ts); the two hosts' observations: [`circuit-acquisition-developer-workstation.raw.json`](../evidence/zk/sp1-impl/observations/circuit-acquisition-developer-workstation.raw.json), [`circuit-acquisition-github-hosted-runner.raw.json`](../evidence/zk/sp1-impl/observations/circuit-acquisition-github-hosted-runner.raw.json) |
-| Proof-exercise observations, record derivation, state from facts (SP1-PA3A) | [`scripts/lib/sp1-proof-exercise.ts`](../scripts/lib/sp1-proof-exercise.ts) (`walletwall.sp1-proof-exercise.v1`; shape: [`evidence/zk/schema/sp1-proof-exercise.v1.schema.json`](../evidence/zk/schema/sp1-proof-exercise.v1.schema.json)); the authoritative directory `evidence/zk/sp1-impl/proof-exercises` holds nothing |
+| Proof-exercise observations, record derivation, state from facts (SP1-PA3A) | [`scripts/lib/sp1-proof-exercise.ts`](../scripts/lib/sp1-proof-exercise.ts) (`walletwall.sp1-proof-exercise.v1`; shape: [`evidence/zk/schema/sp1-proof-exercise.v1.schema.json`](../evidence/zk/schema/sp1-proof-exercise.v1.schema.json)); the authoritative directory `evidence/zk/sp1-impl/proof-exercises` holds exactly SP1-PA3B's [`mldsa65-withdrawal-d1.json`](../evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json), derived from [`proof-exercise-run-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json) and [`proof-exercise-verification-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json) |
 | Blocking, offline check | `npm run validate:sp1-circuit-tooling` in CI's `Build, lint & test` (it judges the archive evidence and the proof-exercise evidence too; `validate:sp1-proving-archive-record` and `validate:sp1-proof-exercise-record` are the same judgements on their own); `test/Sp1ProofExerciseVerifier.test.ts` re-executes a committed proof against the authenticated verifier runtime |
-| Commands for the later lanes | `sp1:circuit-archive:inspect`, `sp1:circuit-install`, `sp1:prove:archive-only`; SP1-PA2B's `sp1:measure-circuit-acquisition`, `sp1:measure-circuit-mirror`, `sp1:proving-archive-record`; SP1-PA3A's `sp1:measure-proof-exercise`, `sp1:verify-proof-exercise`, `sp1:proof-exercise-record` (for SP1-PA3B; none has run a proof) |
+| Commands for the later lanes | `sp1:circuit-archive:inspect`, `sp1:circuit-install`, `sp1:prove:archive-only`; SP1-PA2B's `sp1:measure-circuit-acquisition`, `sp1:measure-circuit-mirror`, `sp1:proving-archive-record`; SP1-PA3A's `sp1:measure-proof-exercise`, `sp1:verify-proof-exercise`, `sp1:proof-exercise-record` (each run exactly once by SP1-PA3B) |
 
 ## Four states, not interchangeable
 
@@ -61,7 +75,7 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 |---|---|---|
 | 1. Tooling exists (`TOOLING_READY_NO_ARTIFACT`) | the inspection, installer and archive-only gate exist and pass their self-test; no WalletWall archive record exists | **SP1-PA2A** |
 | 2. Verified archive exists (`ARCHIVED_VERIFIED_UNEXERCISED`) | an owner-authorized acquisition produced a record in `evidence/zk/sp1-impl/proving-archives`: two hosts agreeing on the archive's sha256, two WalletWall mirrors, the gnark image by digest | **SP1-PA2C** (the two mirror observations committed and the record derived; the acquisitions are SP1-PA2B's) |
-| 3. Self-hosted proving path exercised (`SELF_HOSTED_PATH_EXERCISED`) | a real Groth16 proof of the designated program made through this gate from the archive, egress off, accepted by the designated verifier: exactly one committed proof-exercise record derived from the run and verification observations | not reached: **SP1-PA3A** built the derivation; the evidence is SP1-PA3B's, under its own owner authorization |
+| 3. Self-hosted proving path exercised (`SELF_HOSTED_PATH_EXERCISED`) | a real Groth16 proof of the designated program made through this gate from the archive, egress off, accepted by the designated verifier: exactly one committed proof-exercise record derived from the run and verification observations | **SP1-PA3B** (the run and verification observations committed and the record derived; SP1-PA3A built the derivation) |
 | 4. Production binding established | the implementation receipt's `PRODUCTION_SP1_BINDING`; needs, among other things, state 3 | not reachable here |
 
 Before SP1-PA2A, main was `TOOLING_NOT_PRESENT`: no WalletWall inspection, installer or gate existed. The tooling
@@ -685,7 +699,7 @@ proof must verify there. A verification observation forged without a proof the r
   validator cannot know that the host was a distinct machine (the same limit SP1-PA2B records for its hosts and
   mirrors).
 
-### SP1-PA3B: what the owner must supply (not started)
+### SP1-PA3B: what the owner must supply (since executed: [SP1-PA3B](#sp1-pa3b-the-first-real-self-hosted-proof-exercise))
 
 1. Authorize the run and, on a Linux host, obtain the exact gnark image by the committed digest
    (`ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62…48c4d`, so that `docker image inspect` lists it by that digest).
@@ -707,6 +721,138 @@ proof must verify there. A verification observation forged without a proof the r
    `sp1:host-advisories`, each by its own generator; state the new status at the top of this page; commit, and every
    validator and suite above passes on the commit with `SELF_HOSTED_PATH_EXERCISED` derived from facts. No production
    binding and no deployment in that lane.
+
+## SP1-PA3B: the first real self-hosted proof exercise
+
+SP1-PA3A left one fact missing: a real proof. SP1-PA3B (owner-authorized) supplied it and nothing else: one run of
+the unchanged archive-only gate under measurement, the designated verifier's answer, and the record derived from the
+two. It changed no decision code, no gate rule, no schema, no designation, no `PROGRAM_VKEY`, no verifier identity, no
+archive record and no mirror; it deployed nothing and wrote to no chain. The transition
+`ARCHIVED_VERIFIED_UNEXERCISED` → `SELF_HOSTED_PATH_EXERCISED` is the generators' reading of the committed evidence,
+not a line anyone wrote.
+
+### The proving host, prepared before the boundary
+
+| | |
+|---|---|
+| Host | `developer-workstation-wsl2`: the SP1-PA2B acquisition workstation (AMD Ryzen 7 9800X3D, 8 cores / 16 threads) running Ubuntu 24.04.4 LTS in WSL2 (kernel 6.18.33.1-microsoft-standard-WSL2), its virtual machine capped at 24 GB of memory with 40 GB of swap, raised for this lane from the default 16 GB before the run (the preparation logs show 16.3 GB at 23:06Z and 24.6 GB at 23:24Z); an unprivileged user (uid 1001), as the gate's POSIX guard requires |
+| Docker | a native Docker Engine (Ubuntu `docker.io` 29.1.3) inside that distribution, reached at `unix:///var/run/docker.sock`, context `default`; no Docker Desktop integration, so the gnark container's bridge is in the proving host's own network namespace |
+| Checkout | a clone of this repository at protected main `da7936bb…` (the merge of SP1-PA3A), `zkvm/host` tree `30f72596…`, clean when the measurement started |
+| gnark image | pulled by the committed digest before the boundary: `docker image inspect` lists exactly `ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62…48c4d` (39,957,988 bytes, linux/amd64) |
+| Archive | the SP1-PA2B host A copy, copied to the proving host and re-measured there: 6,211,807,514 bytes, sha256 `18beebb6…a9147810`; installed by `sp1:circuit-install` against the committed record into a root only that user can change (7 members, 166 s, the tree left read-only) |
+| Host binary | rebuilt by the committed canonical procedure (`scripts/sp1-canonical/canonical-build.sh`: a fresh container of the vendor image by digest, SP1-TD1's entrypoint unchanged) from the lane checkout's `zkvm/guest` and `zkvm/host` at `da7936bb…`, through a scratch copy of that driver differing in one line only (it keeps the binary the committed driver deletes after hashing it), on the workstation's Docker Desktop engine (the Windows side, where the vendor image was already local), not on the proving host's engine; it reproduced the committed canonical rebuild observation byte for byte: `mldsa65-host` sha256 `fc8eff69…abf1b` (57,567,008 bytes), the same ELF digests, the same source digests, the same `PROGRAM_VKEY` |
+| Proof input | the committed [`zkvm/fixtures/mldsa65-withdrawal.inputs.json`](../zkvm/fixtures/mldsa65-withdrawal.inputs.json), sha256 `5f317816…a0e9` |
+
+### The egress boundary
+
+One nftables table (`inet pa3b_egress_off`) created as root in the root network namespace of the WSL2 virtual
+machine, which every WSL2 distribution on that machine shares: the output hook refuses the WSL DNS-tunnelling resolver
+(`10.255.255.254`, an address on `lo` that proxies to the Windows host) first, accepts packets to the host's own
+addresses (`fib daddr type local`, which never leave the machine and carry the kernel's own reset and ICMP answers back
+to the refusing socket), and refuses everything else the host originates (TCP by reset, UDP by ICMP port-unreachable,
+the rest by ICMP admin-prohibited); the forward hook (policy drop) refuses every forwarded packet, so every container of
+the local engine, the gnark container included; the input hook drops every packet a container sends to the host, so no
+container reaches the host's resolver. The exact statement is the observation's `egress.enforcement`. It was rehearsed
+twice before the run with the same probes from the host and from a container: the first rehearsal used a precursor
+ruleset (no explicit rule for the DNS-tunnelling resolver, loopback accepted by address rather than `fib daddr type
+local`), under which every probe was refused too but the address probes ended `ETIMEDOUT` after ten seconds because the
+kernel's own reset and ICMP answers to the host's address were caught by the table; the `fib daddr type local` accept
+was added and the second rehearsal, with the ruleset the run then used, found every probe refused at once (the docker
+endpoint still answering), and every name resolved and every address connected after the table's removal. For the run
+it was created at 23:24:12Z, before the before-probes, and deleted at 23:35:29Z, after the after-probes (11 minutes
+17 seconds), with no Windows-side rule. Every required probe was refused on both sides of the run: the two hosts by
+name with `EAI_AGAIN`, and the four addresses (the acquisitions' `3.5.90.58` and `3.5.93.98`, the canaries `1.1.1.1`
+and `8.8.8.8`) with `ECONNREFUSED` at the connection. The table's counters at its removal: 176 packets refused at the
+DNS-tunnelling resolver rule, 8 TCP packets reset (the four address probes before and after: the only outbound TCP
+attempted, so no download or pull was even tried), 4 UDP and 23 other packets refused, and 0 packets in the forward
+and `docker0` input chains: the gnark container never sent a packet. The tool's two probe sets account for about 64 of
+the 176 resolver packets (a refused lookup is retried: one probe set was measured at 32 packets); the remaining ~112
+were refused name resolutions by something else on the host during the run, and are unattributed: a capture on the
+resolver's interface afterwards, with no block in place, saw no DNS query at all from four idle minutes, from thirty
+rounds of the docker calls the measurement makes, from an `npm run`, or from the SP1 host's SDK setup path
+(`mldsa65-host vkey`); the proving path itself was not re-run for the capture (that would be a second proof), and the
+host's journal for the window was volatile and gone. Whatever asked, the table refused it, and the TCP counter shows
+nothing but the probes tried to connect anywhere. Egress is attested by the probes at the edges, the stated
+enforcement and these counters, not by watching the run.
+
+### The run
+
+`npm run sp1:measure-proof-exercise` (the command exactly as the SP1-PA3A section lists it, `--host-label
+developer-workstation-wsl2`) wrote
+[`proof-exercise-run-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json)
+(sha256 `5cc66ed5…b3ff`), committed as written:
+
+| | |
+|---|---|
+| Gate run | 2026-10-19T23:24:14Z–23:35:00Z, `gateSeconds` 647 (the record check, the re-hash of the installation, the host, the re-hash again) |
+| Host run | 23:24:26Z–23:34:31Z, `hostSeconds` 606 (core proving, compression, the BN254 wrap and the Groth16 wrap in the gnark container) |
+| Peak memory | host process 23,366,266,880 bytes: the kernel's resident-set high-water mark (`VmHWM`), a lower bound of the process's demand under the host's 24 GB cap with swap in use; gnark container 18,962,280,612 bytes, the largest of 61 `docker stats` samples at 2 s (a lower bound of its peak) |
+| Prover | `SP1_PROVER=cpu`; the gate's four frozen variables; six variables passed through (`HOME`, `LANG`, `LOGNAME`, `PATH`, `USER`, `XDG_RUNTIME_DIR`); every other caller variable dropped by name; no refused variable set |
+| Proof | `vkey` = the designated `PROGRAM_VKEY` `0x0001a4c6…c2dc`; selector `0x4388a21c` (the designated verifying key's); `publicValuesSha256` `64e08d05…67db`; `proofBytesSha256` `dfe975da…0eee` |
+| Rotation delay | 647 s of 172,800 s: `withinRotationDelay = true`, fraction 0.003744 |
+
+Operator's notes, outside the observation: the host process's resident set reached its peak within the first two
+minutes (core proving) and fell before the gnark container started; the virtual machine used about 6 GB of swap at
+the gnark stage, so the default WSL2 cap of half the machine's 32 GB would not have carried this run. Nothing in the
+measurement depends on these notes.
+
+### The verification
+
+`npm run sp1:verify-proof-exercise` (the default local path; the deployed-chain check was not requested, since it would
+add nothing the designation does not already pin and this lane writes to no chain), run on the proving host in the
+same Linux checkout, moved to the commit that holds the committed run observation, wrote
+[`proof-exercise-verification-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.raw.json)
+(sha256 `6057bf21…b918`), bound to the committed run observation's bytes: the CREATE2-authenticated v6.1.0 initcode
+deployed on the development chain (chain id 31337), the code hash at the address measured equal to the designated
+`runtimeCodeKeccak` `0xcceb864c…04dd`, `verifyProof` answered `success` to the proof and `revert ProofInvalid`
+(`0x7fcdd1f4`) to its tampered copy; `acceptance = ACCEPTED`, computed from the chain's answers.
+
+### The record and what followed from it
+
+`npm run sp1:proof-exercise-record` derived
+[`evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json`](../evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json)
+(`walletwall.sp1-proof-exercise.v1`, exercise id `mldsa65-withdrawal-d1:5cc66ed58a4a2cf8`) from the two committed
+observations, write-once: every binding the SP1-PA3A section requires agreed (designation, `PROGRAM_VKEY`, the archive
+record by its committed sha256 and the archive's sha256, the 7 members, the canonical host binary from the designated
+tree at `da7936bb…`, the committed input, the gnark digest, the `cpu` mode and the frozen environment, the proof's
+digests, the designated verifier's acceptance, the wall time, both peak-memory figures, the 172,800 s delay, the
+probes' shape and timing). `npm run validate:sp1-proof-exercise-record` accepts it. Then, each by its own generator
+and never by hand: `sp1:proving-availability` wrote status `SELF_HOSTED_PATH_EXERCISED` with `selfHostedPath.exercised
+= true`, the record it follows, and the exercise directory judged (one record, its host, times, memory, verifier check
+and egress condition); `sp1:circuit-tooling` derived state `SELF_HOSTED_PATH_EXERCISED` with the fourth state
+reached, `exercise.state = ACCEPTED` and `next` = production binding (its `lane` field stays `SP1-PA3A`, the lane that
+built the derivation it runs, as it stayed `SP1-PA2B` through SP1-PA2C; and the availability record's first basis line
+still restates the 2026-10-16 proving-artifacts observation, under which the artifacts were absent on
+`developer-workstation`: a derived line about that observation, never hand-edited); `sp1:host-advisories` regenerated the record in
+the exercised state (`A_NO_PROVING_WITHOUT_ARCHIVE` holds with exactly the one accepted archive record and exactly the
+one accepted exercise record; still `ASSESSMENT_VALID` and still `NOT_DEPENDENCY_SAFE`, nothing patched). The
+implementation receipt and its supersession are byte-identical: the supersession reads `PROVING_AVAILABILITY` at
+`ab26dd6b` and stays valid while the live status is an archived one, so nothing was restamped and no new supersession
+was filed. `PRODUCTION_SP1_BINDING` remains `NOT_ESTABLISHED`.
+
+### What SP1-PA3B establishes, and what it does not
+
+- Established: the self-hosted path is live on one host at one time. One real Groth16 proof of the designated program
+  was made through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, the
+  canonical-build host binary, the committed input and `SP1_PROVER=cpu`, with network egress refused by name and by
+  connection before and after the run; the designated verifier accepted it and refused its tampered copy; artifact
+  identity (the archive record), proving execution (the run) and verifier acceptance were each exercised, and the
+  performance facts (647 s against a 172,800 s rotation delay; 23.37 GB host peak, 18.96 GB container sample) are
+  recorded. The state follows from those facts through the generators and validators.
+- Not established: the provenance of the proving beyond what the repository binds (the designated verifier proves the
+  proof's validity under the designated key, whoever made it; that it was made through the gate, with egress refused,
+  by that binary, in that time and memory are the operator's observations, bound by the proof's digests, the run's
+  commit content, the canonical host binary, the committed input and the probes' shape and timing, and otherwise
+  resting on the owner's review of the pull request); that egress stayed refused between the two probe sets (an
+  attestation at the edges, plus the operator's statement and the table's counters); the soundness of the Groth16
+  trusted setup behind the key (acceptance is compatibility with the key, never soundness); that any other hardware
+  proves within the rotation delay (one run on one 16-thread host that needed more than 23 GB for the host process
+  alone); that the archive, the mirrors or the image remain available (each used once); a deployed-chain verification
+  (the local authenticated runtime only, whose code hash the designation pins to the measured chains); production
+  readiness (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`). Proving success is not proof-system soundness and
+  not production readiness.
+- Next lane: production binding (the implementation receipt's `PRODUCTION_SP1_BINDING`), under its own owner
+  authorization; nothing here is production ready.
 
 ## Relation to #220 and #221 (SP1-PA2A)
 
@@ -746,8 +892,13 @@ proof must verify there. A verification observation forged without a proof the r
   the derived record, the committed-evidence judge in a temporary repository, the state transitions, the
   measurement helpers with injected readers, the commands) and
   [`test/Sp1ProofExerciseVerifier.test.ts`](../test/Sp1ProofExerciseVerifier.test.ts) (the designated runtime on the
-  development chain); `npm run validate:sp1-proof-exercise-record` is the exercise judgement on its own, and the real
-  checkout answers "no proof-exercise record".
+  development chain); `npm run validate:sp1-proof-exercise-record` is the exercise judgement on its own (until
+  SP1-PA3B the real checkout answered "no proof-exercise record").
+- SP1-PA3B: the run and verification observations and the record are re-judged on every run by
+  `validate:sp1-proof-exercise-record` and `validate:sp1-circuit-tooling` (CI), and the committed proof is
+  re-executed against the authenticated v6.1.0 runtime by
+  [`test/Sp1ProofExerciseVerifier.test.ts`](../test/Sp1ProofExerciseVerifier.test.ts) on every run; the fresh-context
+  adversarial review of the real observations and the fail-closed checks against them are in its pull request.
 - Mutation and adversarial review: see the pull requests.
 
 ## Reproduce
