@@ -127,14 +127,15 @@ function fieldValue(spec: FieldSpec, text: string): { value: FieldValue; rest: s
     const comm = text.slice(1, -1);
     return Buffer.byteLength(comm, "latin1") <= 15 ? { value: comm, rest: "" } : null;
   }
+  // A value ends the line or is followed by exactly one space and the next field: no trailing or doubled space.
   const m =
     spec.type === "x"
-      ? /^0x([0-9a-f]+)(?: |$)/.exec(text)
+      ? /^0x([0-9a-f]+)(?: (?=\S)|$)/.exec(text)
       : spec.type === "s"
-        ? /^(-?\d+)(?: |$)/.exec(text)
+        ? /^(-?\d+)(?: (?=\S)|$)/.exec(text)
         : spec.type === "u"
-          ? /^(\d+)(?: |$)/.exec(text)
-          : /^\{([0-9a-fx,]*)\}(?: |$)/.exec(text);
+          ? /^(\d+)(?: (?=\S)|$)/.exec(text)
+          : /^\{([0-9a-fx,]*)\}(?: (?=\S)|$)/.exec(text);
   if (!m) return null;
   const rest = text.slice(m[0].length);
   if (spec.type === "x") {
@@ -758,23 +759,20 @@ export function lineageOf(
       if (isHost && inWindow && scopeOf.get(e.tgid) === "TOOL") {
         if (proofRoot !== null && proofRoot !== e.tgid)
           no("HOST_AMBIGUOUS", `the host executable was executed by ${proofRoot} and ${e.tgid}`);
-        else if (e.path !== null && e.path !== hostExecutable.path) {
-          no("HOST_IDENTITY_MISMATCH", `the host exec named ${e.path}, not ${hostExecutable.path}`);
+        else if (e.path !== hostExecutable.path) {
+          // A path the probe could not capture whole (longer than its 128 bytes) names nothing: refused, never assumed.
+          no(
+            "HOST_IDENTITY_MISMATCH",
+            `the host exec named ${e.path ?? "a path longer than the probe captures"}, not ${hostExecutable.path}`,
+          );
         } else {
           proofRoot = e.tgid;
           scopeOf.set(e.tgid, "PROOF");
         }
       }
-    } else if (
-      e.k === "exit" &&
-      e.tgid !== null &&
-      e.tgid !== observerTgid &&
-      e.tgid !== toolTgid &&
-      e.tgid !== proofRoot
-    ) {
-      // the number may be reused by an unrelated process later; the scope ends with the process
-      if (scopeOf.has(e.tgid)) scopeOf.delete(e.tgid);
     }
+    // An exit ends nothing here: a leader may exit while its threads still send, and a reused number arrives with its
+    // own creation, which sets its scope afresh.
   }
   if (hostExecutable !== null && proofRoot === null) {
     no("HOST_NOT_OBSERVED", "no exec of the measured host executable by the tool between HOST_SPAWN and HOST_EXIT");
@@ -976,7 +974,8 @@ export function normalizeObserverRaw(raw: RawEvidence, hostExecutable: HostExecu
   const connected = new Set<string>();
   for (const e of normalized) {
     live.advance(e);
-    const disclosed = DISCLOSED.includes(live.scope(e));
+    // A spawn's name and an exec's or exit's presence follow the scope of the process at that moment.
+    const disclosed = DISCLOSED.includes(live.scope({ tgid: e.tgid }));
     if (e.k === "spawn") {
       events.push({ ...e, comm: disclosed ? e.comm : null });
     } else if (e.k === "exec" || e.k === "exit") {
@@ -990,7 +989,6 @@ export function normalizeObserverRaw(raw: RawEvidence, hostExecutable: HostExecu
     } else {
       events.push(e);
     }
-    live.retire(e);
   }
   // A DNS name stays only where the attempt it belongs to is in a disclosed scope; deriveAttribution re-checks that.
   const derived = deriveAttribution(events, contextOf(facts, hostExecutable), { redactionCheck: false });
@@ -1044,17 +1042,7 @@ export function scopeReplayer(final: Lineage) {
         scopeOf.set(e.tgid, "PROOF");
       }
     },
-    retire(e: NormEvent) {
-      if (
-        e.k === "exit" &&
-        e.tgid !== null &&
-        ![final.observerTgid, final.toolTgid, final.proofRoot].includes(e.tgid)
-      ) {
-        scopeOf.delete(e.tgid);
-      }
-    },
-    scope(e: { tgid: number | null; ctx?: Ctx; netns?: number }): Scope {
-      if (e.ctx !== undefined && e.ctx !== "task") return "KERNEL";
+    scope(e: { tgid: number | null; netns?: number }): Scope {
       if (e.netns !== undefined && e.netns !== final.hostNetns)
         return final.proofNetns.has(e.netns) ? "PROOF_CONTAINER" : "CONTAINER";
       if (e.tgid === null || e.tgid === 0) return "KERNEL";
@@ -1415,8 +1403,6 @@ export function deriveAttribution(
           why: `a frame (ethertype 0x${e.ethertype.toString(16)}) left through uplink ${e.ifindex}`,
         });
       }
-    } else if (e.k === "exit") {
-      live.retire(e);
     }
   }
   // J3: a container's datagram or connection, refused in the host (no socket crosses the namespaces), joined by its
@@ -1468,9 +1454,12 @@ export function deriveAttribution(
     else a.outcome = a.kind === "send" ? "SENT" : "UNKNOWN";
     if (a.kind === "connect" && s?.established && a.packets.length > 0) a.outcome = "CONNECTED";
   }
-  // Leaks an attempt shows directly (the boundary let a packet past), inside the window.
+  // Leaks an attempt shows directly (the boundary let a packet past), inside the window: from the host to a destination
+  // beyond the VM, or from any namespace to a resolver (a resolver on the host forwards beyond the VM, on a channel no
+  // transmit on a device would show).
   for (const a of attempts) {
-    if (a.delegated || !inWindow(a.i) || a.destClass !== "EGRESS" || a.netns !== ctx.hostNetns) continue;
+    if (a.delegated || !inWindow(a.i)) continue;
+    if (!(a.destClass === "RESOLVER" || (a.destClass === "EGRESS" && a.netns === ctx.hostNetns))) continue;
     if (a.outcome === "SENT" || a.outcome === "CONNECTED") {
       leaks.push({ i: a.i, why: `${a.comm} (${a.tgid}) ${a.outcome} to ${a.dest?.addr}:${a.dest?.port}` });
     }
@@ -1526,12 +1515,14 @@ export interface Reconciliation {
 }
 
 /**
- * The only comparison that is exact: every netfilter drop is the kernel's own record of one packet a rule refused,
- * and the declared table's refusing rules count one per packet they refuse; between the end of the first counter read
- * and the beginning of the second, both see the same packets. A drop that falls while nft was reading lies in the
- * brackets, so the count must lie between the drops strictly inside (inner) and the drops inside the outer marks. A
- * count below inner means a refusal the table did not count (another table refused it: the declared boundary is not
- * the boundary); above outer, a packet the table refused that the observer never saw (an observation gap).
+ * Two records of the same packets, cross-checked: every netfilter drop is the kernel's own record of one packet a rule
+ * refused, and the declared table's refusing rules count one per packet they refuse; between the end of the first
+ * counter read and the beginning of the second, both see the same packets. A drop that falls while nft was reading lies
+ * in the brackets, so the count must lie between the drops strictly inside (inner) and the drops inside the outer marks.
+ * A count below inner means a refusal the table did not count (another table refused it: the declared boundary is not
+ * the boundary); above outer, a packet the table refused that the observer never saw (an observation gap). Both records
+ * come from the operator's capture (the observer reads the counters into its facts): this finds a gap or a second
+ * boundary in an honest capture, never an edited one.
  */
 export function reconcile(
   drops: readonly DropJudgement[],
@@ -1567,7 +1558,8 @@ export interface EgressAssurance {
     byScope: Record<string, number>;
     boundaryResponses: number;
     kernelResponses: number;
-    /** Refused packets no attempt sent, outside the critical window but inside the observed one (still recorded). */
+    /** Refused packets no attempt sent, outside the critical window but inside the observed one (they too make the
+     * attribution PARTIAL). */
     unattributedOutsideWindow: number;
   } | null;
   /** Refused packets inside the critical window (the probes and the proof) that no observed attempt sent. */
@@ -1598,15 +1590,17 @@ export function assuranceOf(o: ObserverEvidence, a: Attribution): EgressAssuranc
   const inWindow = (i: number) => a.window !== null && i > a.window.begin && i < a.window.end;
   const unattributedAll = a.drops.filter((d) => d.class === "UNATTRIBUTED");
   const unattributed = unattributedAll.filter((d) => inWindow(d.i)).length;
+  // Complete means every refused packet the observer saw, READY to STOP; the window's count is reported on its own.
+  const complete = unattributedAll.length === 0;
   const beats = a.markers.filter((m) => m.kind === "HEARTBEAT");
   let maxGap = 0;
   for (let k = 1; k < beats.length; k++) maxGap = Math.max(maxGap, beats[k].t - beats[k - 1].t);
   return {
-    level: unattributed === 0 ? "CONTINUOUS_ATTRIBUTED" : "CONTINUOUS_PARTIALLY_ATTRIBUTED",
+    level: complete ? "CONTINUOUS_ATTRIBUTED" : "CONTINUOUS_PARTIALLY_ATTRIBUTED",
     enforcement: "STATED_AND_COUNTED",
     edgeProbes: "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
     continuousObservation: "PRESENT",
-    processAttribution: unattributed === 0 ? "COMPLETE" : "PARTIAL",
+    processAttribution: complete ? "COMPLETE" : "PARTIAL",
     coverage: { window: "OBSERVER_READY..OBSERVER_STOP", heartbeats: beats.length, maxHeartbeatGapUs: maxGap },
     events: {
       attempts: counted.length,

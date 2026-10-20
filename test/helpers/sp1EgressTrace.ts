@@ -479,6 +479,8 @@ export function refusedConnect(b: TraceBuilder, p: Proc, sk: string, dst: string
 export interface RunHooks {
   /** Between READY and the window (after the first counters). */
   beforeWindow?: (b: TraceBuilder) => void;
+  /** Inside the window, after PROBES_BEFORE_BEGIN and before the before-probes (the tool is running). */
+  startOfWindow?: (b: TraceBuilder) => void;
   /** Inside the proof (after the host's exec, before its exit). */
   duringProof?: (b: TraceBuilder) => void;
   /** Inside the window, after the after-probes and before PROBES_AFTER_END. */
@@ -558,6 +560,7 @@ export function standardRun(hooks: RunHooks = {}): { b: TraceBuilder; trace: str
       refusedConnect(b, TOOL, `0xffff8880000${(sk++).toString(16)}`, ip, 443, sport++);
   };
   mark("PHASE", { name: "PROBES_BEFORE_BEGIN" }, tAt("2026-11-01T09:59:50Z"));
+  hooks.startOfWindow?.(b);
   probeSet();
   mark("PHASE", { name: "PROBES_BEFORE_END" });
   mark("PHASE", { name: "GATE_BEGIN" }, tAt("2026-11-01T10:00:00Z"));

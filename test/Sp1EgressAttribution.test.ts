@@ -14,7 +14,10 @@ import { PassThrough } from "node:stream";
 import {
   EDGE_PROBES_ONLY,
   MAX_HEARTBEAT_GAP_US,
+  OBSERVER_FIELDS,
   ObserverClient,
+  READY_CLOCK_TOLERANCE_US,
+  UTC_TOLERANCE_SECONDS,
   assuranceOf,
   counterDelta,
   deriveAttribution,
@@ -26,11 +29,13 @@ import {
   normalizedSha256Of,
   observerEvidenceErrors,
   packetOf,
+  parseMarker,
   parseTrace,
   parseTraceLine,
   port16,
   reconcile,
   userDev,
+  type Attribution,
   type NormEvent,
   type ObserverEvidence,
   type ObserverExpectations,
@@ -43,6 +48,7 @@ import {
   HOST,
   HOST_ADDR,
   HOST_EXE,
+  HOST_NETNS,
   IDLE,
   NONCE_A,
   OBSERVER,
@@ -86,7 +92,27 @@ function resealed(o: ObserverEvidence, edit: (x: ObserverEvidence) => void): Obs
   const { normalizedSha256: _drop, ...body } = c;
   return { ...c, normalizedSha256: normalizedSha256Of(body) };
 }
+/** Edits the text of the first marker holding `needle`, in a copy, and reseals the section. */
+const editMarker = (o: ObserverEvidence, needle: string, edit: (text: string) => string) =>
+  resealed(o, (x) => {
+    const m = x.events.find((e) => e.k === "marker" && e.text.includes(needle)) as Extract<NormEvent, { k: "marker" }>;
+    m.text = edit(m.text);
+  });
+/** The detail of every refusal of `reason`: a check observed by what it says, not only by its name. */
+const details = (o: ObserverEvidence, reason: string, expect: ObserverExpectations = EXPECT) =>
+  judge(o, expect)
+    .refusals.filter((r) => r.reason === reason)
+    .map((r) => r.detail);
+/** The class of every refused packet sent to `dst`, in trace order. */
+const classesTo = (o: ObserverEvidence, dst: string) => {
+  const drops = (judge(o).attribution as Attribution).drops;
+  const at = new Set(o.events.filter((e) => e.k === "drop" && e.packet.dst === dst).map((e) => e.i));
+  return drops.filter((d) => at.has(d.i)).map((d) => d.class);
+};
 const OTHER: Proc = { comm: "systemd-timesyn", tid: 777, tgid: 777 };
+/** A refused UDP packet no observed attempt sent, outside any process context. */
+const stray = (b: TraceBuilder) =>
+  b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "198.51.100.7", 17, udp(1234, 9999, [1, 2, 3])), { flags: "..s2." });
 
 describe("SP1-PA3C — continuous egress attribution", function () {
   describe("parse: one raw line, exactly", function () {
@@ -889,6 +915,481 @@ describe("SP1-PA3C — continuous egress attribution", function () {
         configSha256: o.configSha256,
       });
       expect(a.rawEvidence).to.deep.equal({ manifestSha256: o.raw.manifestSha256, retained: "OPERATOR_LOCAL" });
+    });
+  });
+
+  // Each check below has a case in which it, and no other check, refuses: a weakened check is observed (mutation
+  // testing found every one of these surviving a weakening while the broader cases above still passed).
+  describe("every check, observed on its own", function () {
+    describe("parse", function () {
+      const ret =
+        "      MainThread-1740    (   1740) [011] .....    35.719334: tcp4ret: (__inet_stream_connect+0x10c/0x3a0 <- tcp_v4_connect) ret=0 sk=0xffff89448a87d340 sport=38036";
+      const tcp4 =
+        '      MainThread-1740    (   1740) [011] .....    35.719196: tcp4: (tcp_v4_connect+0x4/0x520) sk=0xffff89448a87d340 fam=2 port=0xbb01 addr=0xa0200c0 netns=4026531833 comm="MainThread"';
+
+      it("refuses a field after the last, a renamed field of the same length, and a trailing or doubled space", function () {
+        expect(parseTraceLine(ret, 0).fields).to.deep.equal({ ret: 0, sk: "0xffff89448a87d340", sport: 38036 });
+        expect(() => parseTraceLine(`${ret} extra=1`, 0)).to.throw(/tcp4ret carries more than its fields/);
+        expect(() => parseTraceLine(tcp4.replace("fam=2", "fax=2"), 0)).to.throw(/tcp4 lacks fam where it belongs/);
+        expect(() => parseTraceLine(`${ret} `, 0)).to.throw(/tcp4ret\.sport does not read as its type/);
+        expect(() => parseTraceLine(ret.replace("ret=0 ", "ret=0  "), 0)).to.throw(/tcp4ret\.ret does not read/);
+        expect(() => parseTraceLine(ret.replace("d340 sport", "d340  sport"), 0)).to.throw(/tcp4ret\.sk does not read/);
+        const drop = new TraceBuilder().drop(IDLE, "0x0", ipv4(HOST_ADDR, "198.51.100.7", 17, udp(1, 9, [1]))).lines[0];
+        expect(parseTraceLine(drop, 0).event).to.equal("nfdrop");
+        expect(() => parseTraceLine(drop.replace("} h1=", "}  h1="), 0)).to.throw(/nfdrop\.h0 does not read/);
+      });
+
+      it("reads a marker's fields once each: a repeated field makes it no marker of the observer's", function () {
+        const at = { i: 0, t: 0, tid: 1, tgid: 1 };
+        expect(parseMarker({ ...at, text: `SP1OBS ${NONCE_A} 3 PHASE name=GATE_BEGIN` })?.fields.name).to.equal(
+          "GATE_BEGIN",
+        );
+        expect(parseMarker({ ...at, text: `SP1OBS ${NONCE_A} 3 PHASE name=GATE_BEGIN name=GATE_END` })).to.equal(null);
+      });
+    });
+
+    describe("normalize", function () {
+      it("binds each raw file by its sha256 and by its length, each on its own", function () {
+        const raw = standardRaw();
+        const flipped = raw.trace.replace("name=PROBES_BEFORE_END", "name=PROBES_BEFORE_ENX");
+        expect(flipped.length).to.equal(raw.trace.length);
+        expect(() => normalizeObserverRaw({ ...raw, trace: flipped }, HOST_EXE)).to.throw(/does not bind trace.txt/);
+        const m = JSON.parse(raw.manifest) as { files: { bytes: number }[] };
+        m.files[0].bytes += 1;
+        expect(() => normalizeObserverRaw({ ...raw, manifest: JSON.stringify(m) }, HOST_EXE)).to.throw(
+          /does not bind trace.txt/,
+        );
+      });
+
+      it("withholds an unregistered container's DNS name, and commits no TCP state of a socket no connect opened", function () {
+        const c: Proc = { comm: "MainThread", tid: 3020, tgid: 3020 };
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.udp4(c, "0xffff88800004bb00", RESOLVER, 53, { netns: 4026532300 });
+              b.udp4ret(c, "0xffff88800004bb00", 39, 36700);
+              b.drop(c, "0x0", ipv4("172.17.0.3", RESOLVER, 17, udp(36700, 53, dnsQuery(10, "other.example"))), {
+                flags: "..s1.",
+              });
+              b.tcpst(IDLE, "0xffff88800004cc00", 10, 3, "..s2.");
+            },
+          }),
+        );
+        const drop = o.events.find((e) => e.k === "drop" && e.packet.sport === 36700) as Extract<
+          NormEvent,
+          { k: "drop" }
+        >;
+        expect(drop.packet.dns).to.deep.include({ qname: null, withheld: true });
+        const j = judge(o);
+        expect(j.attribution?.attempts.find((x) => x.sk === "0xffff88800004bb00")).to.deep.include({
+          scope: "CONTAINER",
+          outcome: "REFUSED",
+        });
+        expect(o.events.some((e) => e.k === "tcpstate" && e.sk === "0xffff88800004cc00")).to.equal(false);
+        expect(j.refusals).to.deep.equal([]);
+      });
+    });
+
+    describe("derive: coverage, continuity and binding", function () {
+      it("refuses a READY of another mode, and a section of another mode, each on its own", function () {
+        const o = normalize();
+        const ready = editMarker(o, " READY ", (t) => t.replace("mode=RUN", "mode=SELF_TEST"));
+        expect(details(ready, "OBSERVER_MODE")).to.deep.equal(["the observer ran in SELF_TEST, not RUN"]);
+        expect(
+          details(
+            resealed(o, (x) => (x.mode = "SELF_TEST")),
+            "OBSERVER_MODE",
+          ),
+        ).to.deep.equal(["run.egress.observer ran in SELF_TEST, not RUN"]);
+      });
+
+      it("refuses READY stamped before the observer's own monotonic reading, or more than 2 s after it", function () {
+        expect(READY_CLOCK_TOLERANCE_US).to.equal(2_000_000);
+        const o = normalize();
+        const readyT = (o.events.find((e) => e.k === "marker" && e.text.includes(" READY ")) as NormEvent).t;
+        const read = (us: number) =>
+          details(
+            editMarker(o, " READY ", (t) => t.replace(/monoNs=\d+/, `monoNs=${us * 1000}`)),
+            "OBSERVER_CLOCK",
+          );
+        expect(read(readyT)).to.deep.equal([]);
+        expect(read(readyT - 2_000_000)).to.deep.equal([]);
+        expect(read(readyT - 2_000_001)).to.have.length(1);
+        expect(read(readyT + 1)).to.have.length(1);
+      });
+
+      it("identifies the tool only among the observer's children between READY and SPAWNED", function () {
+        const o = normalize();
+        // Without the nft read and the tool's own creation, the only earlier child is the drain started before READY.
+        const without = o.events.filter(
+          (e) => !(e.k === "spawn" && e.tgid === OBSERVER.tgid && (e.child === 1002 || e.child === TOOL.tgid)),
+        );
+        const lineage = deriveAttribution(without, ctxOf(o)).refusals.filter((r) => r.reason === "OBSERVER_LINEAGE");
+        expect(lineage.map((r) => r.detail)).to.deep.equal([
+          "no process the observer created before SPAWNED: the tool is not identified",
+        ]);
+      });
+
+      it("refuses a marker of a kind the observer never writes", function () {
+        const o = normalize(standardRaw({ endOfWindow: (b) => b.marker("BOGUS") }));
+        expect(details(o, "OBSERVER_MARKERS")).to.deep.equal(["an unknown marker BOGUS"]);
+      });
+
+      it("refuses events out of trace order, by position alone or by stamp alone", function () {
+        const o = normalize();
+        expect(deriveAttribution(o.events, ctxOf(o)).refusals).to.deep.equal([]);
+        const k = o.events.findIndex((e) => e.k === "marker" && e.text.includes("name=GATE_BEGIN"));
+        const byPosition = structuredClone(o.events);
+        [byPosition[k], byPosition[k + 1]] = [byPosition[k + 1], byPosition[k]];
+        byPosition[k] = { ...byPosition[k], t: byPosition[k + 1].t };
+        const byStamp = structuredClone(o.events);
+        byStamp[k + 1] = { ...byStamp[k + 1], t: byStamp[k].t - 1 };
+        for (const ev of [byPosition, byStamp]) {
+          expect(deriveAttribution(ev, ctxOf(o)).refusals.map((r) => r.reason)).to.include("OBSERVER_EVENT_ORDER");
+        }
+      });
+
+      it("refuses a heartbeat that saw tracing off with nothing lost", function () {
+        const off = editMarker(normalize(), " HEARTBEAT n=6 ", (t) => t.replace("tracingOn=1", "tracingOn=0"));
+        expect(details(off, "OBSERVER_LOSS")).to.deep.equal(["heartbeat 6 saw tracing off or lost events"]);
+      });
+
+      it("bounds the gap between heartbeats at 30 s, absolutely", function () {
+        expect(MAX_HEARTBEAT_GAP_US).to.equal(30_000_000);
+        expect(details(normalize(standardRaw({ heartbeatEvery: 31_000_000 })), "OBSERVER_GAP")).to.not.deep.equal([]);
+        expect(details(normalize(standardRaw({ heartbeatEvery: 29_000_000 })), "OBSERVER_GAP")).to.deep.equal([]);
+      });
+
+      it("needs a heartbeat before the window opens", function () {
+        const o = normalize();
+        const begin = (
+          o.events.find((e) => e.k === "marker" && e.text.includes("name=PROBES_BEFORE_BEGIN")) as NormEvent
+        ).i;
+        const noBefore = o.events.filter((e) => !(e.k === "marker" && e.text.includes(" HEARTBEAT ") && e.i < begin));
+        expect(deriveAttribution(noBefore, ctxOf(o)).refusals.map((r) => r.detail)).to.include(
+          "no heartbeat before the window opens",
+        );
+      });
+
+      it("opens the window at the first probe, not at the gate: what falls between them is inside it", function () {
+        const inside = normalize(standardRaw({ startOfWindow: stray }));
+        const a = assuranceOf(inside, judge(inside).attribution as Attribution);
+        expect([a.level, a.unattributedEvents, a.events?.unattributedOutsideWindow]).to.deep.equal([
+          "CONTINUOUS_PARTIALLY_ATTRIBUTED",
+          1,
+          0,
+        ]);
+        const frame = [...new Array(12).fill(0), 0x08, 0x00, ...ipv4(HOST_ADDR, "93.184.216.34", 6, tcp(1, 443, 0x02))];
+        expect(reasons(normalize(standardRaw({ startOfWindow: (b) => b.xmit(TOOL, 2, frame) })))).to.include(
+          "EGRESS_LEAKED",
+        );
+      });
+
+      it("counts a refused packet no attempt sent outside the window on its own, and it too makes attribution partial", function () {
+        const o = normalize(standardRaw({ beforeWindow: stray }));
+        const j = judge(o);
+        expect(j.refusals).to.deep.equal([]);
+        const a = assuranceOf(o, j.attribution as Attribution);
+        expect([
+          a.level,
+          a.processAttribution,
+          a.unattributedEvents,
+          a.events?.unattributedOutsideWindow,
+        ]).to.deep.equal(["CONTINUOUS_PARTIALLY_ATTRIBUTED", "PARTIAL", 0, 1]);
+      });
+
+      it("bounds the gate's recorded stamps by GATE_BEGIN and GATE_END on the trace's clock, 5 s either side", function () {
+        expect(UTC_TOLERANCE_SECONDS).to.equal(5);
+        const o = normalize();
+        const gate = (startedAtUtc: string, finishedAtUtc: string) =>
+          details(o, "OBSERVER_CLOCK", { ...EXPECT, gate: { startedAtUtc, finishedAtUtc } });
+        expect(gate("2026-11-01T09:59:56Z", "2026-11-01T11:59:44Z")).to.deep.equal([]);
+        expect(gate("2026-11-01T09:59:54Z", "2026-11-01T11:59:40Z")).to.have.length(1);
+        expect(gate("2026-11-01T10:00:00Z", "2026-11-01T11:59:46Z")).to.have.length(1);
+      });
+    });
+
+    describe("derive: who made each attempt", function () {
+      it("joins by a thread's open attempt only in task context, and only the boundary's own answers as responses", function () {
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.udp4(HOST, "0xffff888000046600", "192.0.2.53", 53);
+              // softirq on the attempt's own socket while it sends: the interrupted task is not known to be the sender
+              b.drop(HOST, "0xffff888000046600", ipv4(HOST_ADDR, "192.0.2.53", 17, udp(41000, 53, [1])), {
+                flags: "..s1.",
+              });
+              // task context, another socket, no response: not the open attempt's either
+              b.drop(HOST, "0xffff888000046699", ipv4(HOST_ADDR, "198.51.100.9", 17, udp(41001, 9, [1])));
+              b.drop(HOST, "0xffff888000046600", ipv4(HOST_ADDR, "192.0.2.53", 17, udp(41000, 53, [2])));
+              b.udp4ret(HOST, "0xffff888000046600", -1, 41000);
+            },
+          }),
+        );
+        expect(classesTo(o, "192.0.2.53")).to.deep.equal(["UNATTRIBUTED", "ATTEMPT_PACKET"]);
+        expect(classesTo(o, "198.51.100.9")).to.deep.equal(["UNATTRIBUTED"]);
+      });
+
+      it("never joins a refused packet to a connection whose socket closed", function () {
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              refusedConnect(b, HOST, "0xffff888000048800", "3.5.90.58", 443, 42000);
+              b.drop(IDLE, "0xffff888000048800", ipv4(HOST_ADDR, "3.5.90.59", 6, tcp(42001, 443, 0x02)), {
+                flags: "..s2.",
+              });
+            },
+          }),
+        );
+        expect(classesTo(o, "3.5.90.58")).to.deep.equal(["ATTEMPT_PACKET"]);
+        expect(classesTo(o, "3.5.90.59")).to.deep.equal(["UNATTRIBUTED"]);
+      });
+
+      it("joins a container's packet only to an earlier container attempt of its protocol, addresses and ports, once", function () {
+        const c: Proc = { comm: "gnark", tid: 3030, tgid: 3030 };
+        const sk = (n: number) => `0xffff8880000c${n.toString(16).padStart(4, "0")}`;
+        const send = (b: TraceBuilder, n: number, dst: string, sport: number, netns = CONTAINER_NETNS, ret = 39) => {
+          b.udp4(c, sk(n), dst, 9, { netns });
+          b.udp4ret(c, sk(n), ret, sport);
+        };
+        const refused = (b: TraceBuilder, dst: string, dport: number, sport: number) =>
+          b.drop(c, "0x0", ipv4("172.17.0.2", dst, 17, udp(sport, dport, [1])), { flags: "..s1." });
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.marker("CONTAINER", { id: "e".repeat(64), pid: 4321, netns: CONTAINER_NETNS });
+              send(b, 1, "192.0.2.60", 5001);
+              refused(b, "192.0.2.60", 9, 5001); // the join
+              refused(b, "192.0.2.60", 9, 5001); // a second packet of the same datagram
+              send(b, 2, "192.0.2.61", 5002);
+              refused(b, "192.0.2.62", 9, 5002); // another address
+              send(b, 3, "192.0.2.63", 5003);
+              refused(b, "192.0.2.63", 10, 5003); // another port
+              send(b, 4, "192.0.2.64", 5004);
+              refused(b, "192.0.2.64", 9, 5005); // another source port
+              send(b, 5, "192.0.2.65", 5006, HOST_NETNS, -1);
+              refused(b, "192.0.2.65", 9, 5006); // an attempt from the host's namespace
+              refused(b, "192.0.2.66", 9, 5007);
+              send(b, 6, "192.0.2.66", 5007); // the attempt after the packet
+              b.tcp4(c, sk(7), "192.0.2.67", 9, CONTAINER_NETNS);
+              b.tcp4ret(c, sk(7), 0, 5008);
+              refused(b, "192.0.2.67", 9, 5008); // a datagram, for a connect
+            },
+          }),
+        );
+        expect(classesTo(o, "192.0.2.60")).to.deep.equal(["ATTEMPT_PACKET", "UNATTRIBUTED"]);
+        for (const dst of ["192.0.2.62", "192.0.2.63", "192.0.2.64", "192.0.2.65", "192.0.2.66", "192.0.2.67"]) {
+          expect(classesTo(o, dst), dst).to.deep.equal(["UNATTRIBUTED"]);
+        }
+        // A container's datagram that left its own namespace unrefused is no leak by itself: only a transmit through
+        // an uplink shows one leaving the VM (its source port may be rewritten on the way).
+        expect(reasons(o)).to.not.include("EGRESS_LEAKED");
+      });
+
+      it("names a connection established after a refused packet CONNECTED (a leak), and a send refused unseen apart", function () {
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.tcp4(HOST, "0xffff888000049900", "93.184.216.34", 443);
+              b.tcpst(HOST, "0xffff888000049900", 7, 2);
+              b.drop(HOST, "0xffff888000049900", ipv4(HOST_ADDR, "93.184.216.34", 6, tcp(43000, 443, 0x02)));
+              b.tcp4ret(HOST, "0xffff888000049900", 0, 43000);
+              b.tcpst(IDLE, "0xffff888000049900", 2, 1, "..s2.");
+              b.udp4(HOST, "0xffff88800004aa00", "192.0.2.70", 9);
+              b.udp4ret(HOST, "0xffff88800004aa00", -1, 44000);
+              b.udp4(HOST, "0xffff88800004ab00", "192.0.2.71", 9);
+              b.udp4ret(HOST, "0xffff88800004ab00", -101, 44001);
+            },
+          }),
+        );
+        const j = judge(o);
+        const outcome = (sk: string) => j.attribution?.attempts.find((x) => x.sk === sk)?.outcome;
+        expect([
+          outcome("0xffff888000049900"),
+          outcome("0xffff88800004aa00"),
+          outcome("0xffff88800004ab00"),
+        ]).to.deep.equal(["CONNECTED", "REFUSED_NO_PACKET_SEEN", "NO_PACKET"]);
+        expect(j.refusals.filter((r) => r.reason === "EGRESS_LEAKED")).to.have.length(1);
+      });
+
+      it("finds the proof's root by device, inode and whole path, once, in the tool's tree between HOST_SPAWN and HOST_EXIT", function () {
+        const raw = standardRaw();
+        expect(reasons(normalizeObserverRaw(raw, { ...HOST_EXE, dev: "8:49" }))).to.include("HOST_NOT_OBSERVED");
+        expect(reasons(normalizeObserverRaw(raw, { ...HOST_EXE, ino: HOST_EXE.ino + 1 }))).to.include(
+          "HOST_NOT_OBSERVED",
+        );
+        expect(reasons(normalizeObserverRaw(raw, { ...HOST_EXE, path: "/srv/sp1/bin/mldsa65-host2" }))).to.include(
+          "HOST_IDENTITY_MISMATCH",
+        );
+        const truncated = resealed(normalize(raw), (x) => {
+          const e = x.events.find((v) => v.k === "exec" && v.tgid === HOST.tgid) as Extract<NormEvent, { k: "exec" }>;
+          e.path = null;
+        });
+        expect(details(truncated, "HOST_IDENTITY_MISMATCH")).to.deep.equal([
+          `the host exec named a path longer than the probe captures, not ${HOST_EXE.path}`,
+        ]);
+        const decoy = (parent: Proc, child: number) => (b: TraceBuilder) =>
+          b
+            .spawn(parent, child)
+            .exec({ comm: "MainThread", tid: child, tgid: child }, HOST_EXE.path, 8388656, HOST_EXE.ino);
+        const stranger: Proc = { comm: "x", tid: 31338, tgid: 31338 };
+        for (const hooks of [
+          { startOfWindow: decoy(TOOL, 1050) }, // the tool's, before HOST_SPAWN
+          { afterWindow: decoy(TOOL, 1051) }, // the tool's, after HOST_EXIT
+          { duringProof: decoy(stranger, 1052) }, // inside, but not the tool's
+        ]) {
+          const j = judge(normalize(standardRaw(hooks)));
+          expect(j.refusals, Object.keys(hooks)[0]).to.deep.equal([]);
+          expect(j.attribution?.lineage.proofRoot, Object.keys(hooks)[0]).to.equal(HOST.tgid);
+        }
+        expect(reasons(normalize(standardRaw({ duringProof: decoy(TOOL, 1053) })))).to.include("HOST_AMBIGUOUS");
+      });
+
+      it("names a refused echo request no attempt sent UNATTRIBUTED, in IPv4 and IPv6: a request is no response", function () {
+        const addr6 = (last: number) => [0x20, 0x01, 0x0d, 0xb8, ...new Array(11).fill(0), last];
+        const echo6 = [0x60, 0, 0, 0, 0, 8, 58, 64, ...addr6(1), ...addr6(2), 128, 0, 0, 0, 0, 1, 0, 1];
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.drop(IDLE, "0x0", ipv4(HOST_ADDR, "198.51.100.20", 1, [8, 0, 0, 0, 0, 1, 0, 1]), { flags: "..s2." });
+              b.drop(IDLE, "0x0", echo6, { flags: "..s2.", ethertype: 0x86dd });
+            },
+          }),
+        );
+        expect(classesTo(o, "198.51.100.20")).to.deep.equal(["UNATTRIBUTED"]);
+        expect(classesTo(o, "2001:db8::2")).to.deep.equal(["UNATTRIBUTED"]);
+      });
+    });
+
+    describe("derive: leaks", function () {
+      it("names a send to the uplink's own subnet egress: it leaves the VM", function () {
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.udp4(HOST, "0xffff88800004dd00", "172.22.160.1", 9);
+              b.udp4ret(HOST, "0xffff88800004dd00", 39, 45000);
+            },
+          }),
+        );
+        expect(details(o, "EGRESS_LEAKED")).to.have.length(1);
+      });
+
+      it("names a resolver send that passed a leak, from the host or from a container: a resolver forwards", function () {
+        const c: Proc = { comm: "MainThread", tid: 3040, tgid: 3040 };
+        const o = normalize(
+          standardRaw({
+            duringProof: (b) => {
+              b.udp4(HOST, "0xffff88800004de00", RESOLVER, 53, { connected: true });
+              b.udp4ret(HOST, "0xffff88800004de00", 39, 45001);
+              b.udp4(c, "0xffff88800004df00", RESOLVER, 53, { netns: CONTAINER_NETNS });
+              b.udp4ret(c, "0xffff88800004df00", 39, 45002);
+            },
+          }),
+        );
+        expect(judge(o).attribution?.leaks.map((l) => l.why)).to.deep.equal([
+          `mldsa65-host (${HOST.tgid}) SENT to ${RESOLVER}:53`,
+          `MainThread (3040) SENT to ${RESOLVER}:53`,
+        ]);
+        expect(reasons(o)).to.include("EGRESS_LEAKED");
+      });
+    });
+
+    describe("reconcile", function () {
+      it("refuses a third snapshot, and counts only refusing rules: an accept rule's counter never reconciles", function () {
+        const o = normalize();
+        const three = [...o.boundary, { n: 3, rules: o.boundary[1].rules }];
+        expect(counterDelta(three)).to.deep.equal({
+          delta: null,
+          errors: ["the boundary was not snapshotted exactly twice"],
+        });
+        expect(
+          details(
+            resealed(o, (x) => (x.boundary = three)),
+            "BOUNDARY_RECONCILIATION",
+          ),
+        ).to.have.length(1);
+        const accepted = resealed(o, (x) => {
+          x.boundary[0].rules[1].counter = { packets: 100, bytes: 6000 };
+          x.boundary[1].rules[1].counter = { packets: 140, bytes: 8400 };
+        });
+        expect(accepted.boundary[1].rules[1].verdict).to.equal("accept");
+        expect(details(accepted, "BOUNDARY_RECONCILIATION")).to.deep.equal([]);
+      });
+    });
+
+    describe("the section, judged whole", function () {
+      it("binds every field by the digest: any one edited without resealing is refused", function () {
+        const o = normalize();
+        const edits: Record<string, (x: ObserverEvidence) => void> = {
+          tool: (x) => (x.tool.scriptSha256 = "66".repeat(32)),
+          mechanism: (x) => (x.mechanism = "X"),
+          mode: (x) => (x.mode = "SELF_TEST"),
+          nonce: (x) => (x.nonce = "f".repeat(16)),
+          kernelRelease: (x) => (x.kernelRelease = "6.6.0"),
+          bootId: (x) => (x.bootId = "x"),
+          config: (x) => (x.config.bufferKb = 1),
+          configSha256: (x) => (x.configSha256 = "00".repeat(32)),
+          host: (x) => (x.host.wslInterop = "absent"),
+          table: (x) => (x.table = "inet other"),
+          boundary: (x) => ((x.boundary[1].rules[0].counter as { packets: number }).packets += 1),
+          stats: (x) => (x.stats[0].readEvents += 1),
+          lostLines: (x) => (x.lostLines = 1),
+          raw: (x) => (x.raw.manifestSha256 = "00".repeat(32)),
+          hostExecutable: (x) => (x.hostExecutable.ino += 1),
+          events: (x) => (x.events[0].t += 1),
+        };
+        expect(Object.keys(edits).sort()).to.deep.equal(
+          OBSERVER_FIELDS.observer.filter((k) => k !== "normalizedSha256").sort(),
+        );
+        for (const [field, edit] of Object.entries(edits)) {
+          const c = structuredClone(o);
+          edit(c);
+          expect(reasons(c), field).to.include("NORMALIZED_NOT_BOUND");
+        }
+      });
+
+      it("binds each raw file by a length and a sha256 of the right shape", function () {
+        const o = normalize();
+        expect(
+          details(
+            resealed(o, (x) => (x.raw.files[0].sha256 = "x")),
+            "RAW_NOT_BOUND",
+          ),
+        ).to.have.length(1);
+        expect(
+          details(
+            resealed(o, (x) => (x.raw.files[1].bytes = 1.5)),
+            "RAW_NOT_BOUND",
+          ),
+        ).to.have.length(1);
+      });
+
+      it("needs each recorded probe by its port, refused, by the tool, in its own phase", function () {
+        const o = normalize(
+          standardRaw({
+            startOfWindow: (b) => {
+              // the tool's connection that went through (a leak too), and another process's refused one
+              b.tcp4(TOOL, "0xffff88800004ee00", "192.0.2.77", 443);
+              b.tcpst(TOOL, "0xffff88800004ee00", 7, 2);
+              b.tcp4ret(TOOL, "0xffff88800004ee00", 0, 46000);
+              b.tcpst(IDLE, "0xffff88800004ee00", 2, 1, "..s2.");
+              refusedConnect(b, OTHER, "0xffff88800004ef00", "192.0.2.79", 443, 46001);
+            },
+            afterWindow: (b) => refusedConnect(b, TOOL, "0xffff88800004f000", "192.0.2.78", 443, 46002),
+          }),
+        );
+        const probe = (target: string) =>
+          details(o, "PROBE_NOT_OBSERVED", {
+            ...EXPECT,
+            probes: [...PROBE_LIST, { phase: "before", kind: "tcp", target }],
+          });
+        const why = (target: string) =>
+          `the before probe tcp:${target} has no refused attempt by the tool in its phase of the trace`;
+        expect(probe("203.0.113.5:443")).to.deep.equal([]);
+        for (const target of ["203.0.113.5:8443", "192.0.2.77:443", "192.0.2.78:443", "192.0.2.79:443"]) {
+          expect(probe(target), target).to.deep.equal([why(target)]);
+        }
+      });
     });
   });
 

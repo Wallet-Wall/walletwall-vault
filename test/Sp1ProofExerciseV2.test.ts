@@ -178,6 +178,8 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
 
     it("binds the attributed tool as committed, never the v1 tool", function () {
       expect(v2Reasons((r) => (r.tool.scriptSha256 = "00".repeat(32)))).to.include("TOOL_NOT_BOUND");
+      // The attributed tool's digest under the v1 tool's path is not the attributed tool either.
+      expect(v2Reasons((r) => (r.tool.script = RUN_SCRIPT_REL))).to.include("TOOL_NOT_BOUND");
       expect(
         v2Reasons((r) => (r.tool = { script: RUN_SCRIPT_REL, scriptSha256: String(EXPECTATIONS.scripts.run) })),
       ).to.include("TOOL_NOT_BOUND");
@@ -223,6 +225,10 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
             )),
         ),
       ).to.include("HOST_IDENTITY_MISMATCH");
+      // The measured file and the file the observer followed are one file: the tie on its own.
+      expect(v2Reasons((r) => (r.hostExecutable.file = "mldsa65-host-other"))).to.deep.equal([
+        "HOST_IDENTITY_MISMATCH",
+      ]);
       expect(v2Reasons((r) => (r.source.commit = "d".repeat(40)))).to.include("OBSERVER_NOT_THIS_RUN");
       expect(v2Reasons((r) => (r.host = "proving-host-b"))).to.include("OBSERVER_NOT_THIS_RUN");
       expect(v2Reasons((r) => (r.timing.startedAtUtc = "2026-11-01T09:30:00Z"))).to.include("OBSERVER_CLOCK");
@@ -308,6 +314,12 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
       };
       expect(() => egressAssuranceOfRecord(forged)).to.throw(/carries no egress assurance/);
       expect(() => egressAssuranceOfRecord({ ...forged, schema: "walletwall.sp1-proof-exercise.v0" })).to.throw();
+      // An assurance under a schema that is neither v1 nor v2 is read as nothing.
+      const ok = attributedRun();
+      const v2 = deriveExerciseRecord(ok, verificationObservation(ok as unknown as RunObservation), binding(ok), X2);
+      expect(() => egressAssuranceOfRecord({ ...v2, schema: "walletwall.sp1-proof-exercise.v3" })).to.throw(
+        /carries no egress assurance/,
+      );
     });
   });
 
@@ -337,8 +349,11 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
     const RUN_FILE = `${OBSERVATIONS_DIR}/proof-exercise-run-proving-host-a.raw.json`;
     const VERIFICATION_FILE = `${OBSERVATIONS_DIR}/proof-exercise-verification-proving-host-a.raw.json`;
 
-    /** The archived state with the attributed tool and the observer committed, then one attributed exercise. */
-    function repo(edit?: (run: AttributedRunObservation) => void) {
+    /**
+     * The archived state with the attributed tool and the observer committed, then one attributed exercise; with
+     * `olderObserverAtSource`, the run names the first commit, which held another observer than the one now committed.
+     */
+    function repo(edit?: (run: AttributedRunObservation) => void, opts: { olderObserverAtSource?: boolean } = {}) {
       const d = dirs.make("sp1-pa3c-");
       git(d, "init", "-q");
       git(d, "config", "user.email", "test@example.invalid");
@@ -350,7 +365,7 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
       write(d, RUN_SCRIPT_REL, "// synthetic v1 measurement tool\n");
       write(d, VERIFICATION_SCRIPT_REL, "// synthetic verification tool\n");
       write(d, ATTRIBUTED_RUN_SCRIPT_REL, "// synthetic attributed measurement tool\n");
-      write(d, OBSERVER_SCRIPT_REL, "// synthetic observer\n");
+      write(d, OBSERVER_SCRIPT_REL, opts.olderObserverAtSource ? "// an older observer\n" : "// synthetic observer\n");
       for (const host of ["developer-workstation", "github-hosted-runner"]) {
         write(
           d,
@@ -358,7 +373,8 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
           serializeJson({ host, transfer: { remoteIp: "203.0.113.5" } }),
         );
       }
-      commit(d, "the tools");
+      const first = commit(d, "the tools");
+      if (opts.olderObserverAtSource) write(d, OBSERVER_SCRIPT_REL, "// synthetic observer\n");
       const tree = git(d, "rev-parse", "HEAD:zkvm/host");
       write(
         d,
@@ -373,9 +389,10 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
         }),
       );
       const base = commit(d, "archived state");
+      const source = opts.olderObserverAtSource ? first : base;
       const x = exerciseExpectations(d, { anchor: ANCHOR, archive });
-      const run = attributedRun({ commit: base }, String(x.scripts.observer));
-      run.source.commit = base;
+      const run = attributedRun({ commit: source }, String(x.scripts.observer));
+      run.source.commit = source;
       run.source.zkvmHostTree = x.zkvmHostTree;
       run.inputs.sha256 = String(x.proofInputSha256);
       run.tool.scriptSha256 = String(x.scripts.attributedRun);
@@ -422,6 +439,14 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
         /does not hold scripts\/sp1-egress-observer\.ts as committed/,
       );
       expect(commitContentErrors(d, first, later)).to.deep.equal([]);
+    });
+
+    it("is REFUSED by the judge when the run's commit held another observer than the one it names", function () {
+      this.timeout(120_000);
+      const { d } = repo(undefined, { olderObserverAtSource: true });
+      const e = productionExerciseEvidence(d, { anchor: ANCHOR, archive });
+      expect(exerciseEvidenceState(e)).to.equal("REFUSED");
+      expect(e.errors.join("\n")).to.match(/does not hold scripts\/sp1-egress-observer\.ts as committed/);
     });
   });
 
