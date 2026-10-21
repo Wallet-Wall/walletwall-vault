@@ -13,7 +13,7 @@
 import { assert, expect } from "chai";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -473,7 +473,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       };
       const v1 = patternsOf(EXERCISE_JSON_SCHEMA_REL);
       const v2 = patternsOf(EXERCISE_V2_JSON_SCHEMA_REL);
-      // A v2 record as the derivation writes it, under its token's names, conforms to its schema ...
+      // A v2 record as the derivation writes it names its observations as its schema's two path patterns require ...
       const x2: ExerciseExpectations = {
         ...EXPECTATIONS,
         scripts: { ...EXPECTATIONS.scripts, attributedRun: "66".repeat(32), observer: OBSERVER_SHA },
@@ -482,14 +482,14 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       expect(x.record.derivedFrom).to.deep.equal([x.files.run, x.files.verification]);
       for (const p of x.record.derivedFrom) expect(v2.derivedFrom.test(p), p).to.equal(true);
       expect(v2.verification.test(x.record.verification.observation.path)).to.equal(true);
-      // ... and the v1 slot's names (no token) are no v2 record's.
+      // ... which the v1 slot's names (no token) do not match.
       const slot = [
         `${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}${HOST_A}.raw.json`,
         `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}${HOST_A}.raw.json`,
       ];
       for (const p of slot) expect(v2.derivedFrom.test(p), p).to.equal(false);
       expect(v2.verification.test(slot[1])).to.equal(false);
-      // SP1-PA3B's record conforms to the v1 schema, which is unchanged; a token's names are no v1 record's.
+      // SP1-PA3B's record matches the unchanged v1 schema's path patterns; a token's names do not.
       const pa3b = JSON.parse(readFileSync(PA3B.record, "utf8")) as ProofExerciseRecord;
       for (const p of pa3b.derivedFrom) expect(v1.derivedFrom.test(p), p).to.equal(true);
       expect(v1.verification.test(pa3b.verification.observation.path)).to.equal(true);
@@ -1244,6 +1244,61 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       write(r.d, verification, '{ "verified": 2 }\n');
       commit(r.d, "its observation edited");
       expect(exerciseHistoryErrors(r.d).join("\n")).to.include(`${basename(verification)} was changed`);
+    });
+
+    it("history: only a regular file is a record, failing closed never holds less, and an unreadable blob refuses", function () {
+      this.timeout(300_000);
+      const blobOf = (d: string, text: string) => {
+        const tmp = dirs.make("sp1-pa3d0-blob-");
+        writeFileSync(join(tmp, "blob"), text);
+        return git(d, "hash-object", "-w", join(tmp, "blob"));
+      };
+      // An attempt committed beside a records-directory entry of `mode` (staged by plumbing), then dropped: held?
+      const heldBeside = (mode: string, text: string) => {
+        const r = coexisting({ v2: false });
+        write(r.d, r.v2.files.run, serializeJson(r.v2.run));
+        git(r.d, "add", "-A");
+        git(
+          r.d,
+          "update-index",
+          "--add",
+          "--cacheinfo",
+          `${mode},${blobOf(r.d, text)},${PROOF_EXERCISES_DIR}/entry.json`,
+        );
+        git(r.d, "commit", "-q", "-m", `an attempt beside a ${mode} entry`);
+        git(r.d, "rm", "-q", "--cached", r.v2.files.run);
+        rmSync(join(r.d, r.v2.files.run));
+        git(r.d, "commit", "-q", "-m", "the attempt dropped");
+        return exerciseHistoryErrors(r.d)
+          .join("\n")
+          .includes(`${basename(r.v2.files.run)} was removed or renamed`);
+      };
+      // A link whose target text reads as a record naming nothing is no record: the attempt is held (failing closed).
+      // The same text as a regular file, plain or executable, is a record naming nothing: the attempt may be dropped.
+      const namingNothing = '{ "derivedFrom": [] }\n';
+      expect(heldBeside("120000", namingNothing), "a link").to.equal(true);
+      expect(heldBeside("100644", namingNothing), "a regular file").to.equal(false);
+      expect(heldBeside("100755", namingNothing), "an executable file").to.equal(false);
+      // Beside a stray, what a readable record names stays held, whatever its kind: failing closed only adds.
+      const r = coexisting({ v1: false, v2: false });
+      const other = `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`;
+      write(r.d, other, '{ "measured": 1 }\n');
+      write(r.d, `${PROOF_EXERCISES_DIR}/other-designation.json`, serializeJson({ derivedFrom: [other] }));
+      write(r.d, `${PROOF_EXERCISES_DIR}/README.md`, "# notes\n");
+      commit(r.d, "a record naming another kind's observation, beside a stray");
+      write(r.d, other, '{ "measured": 2 }\n');
+      commit(r.d, "that observation re-measured");
+      expect(exerciseHistoryErrors(r.d).join("\n")).to.include(`${basename(other)} was changed`);
+      // A record whose blob git cannot read (its loose object gone) refuses the history, never reads as no record.
+      const s = coexisting({ v2: false });
+      expect(exerciseHistoryErrors(s.d)).to.deep.equal([]);
+      const object = git(s.d, "rev-parse", `HEAD:${s.v1.files.record}`);
+      const loose = join(s.d, ".git", "objects", object.slice(0, 2), object.slice(2));
+      chmodSync(loose, 0o666);
+      rmSync(loose);
+      expect(exerciseHistoryErrors(s.d).join("\n")).to.match(
+        new RegExp(`^the history of ${OBSERVATIONS_DIR} cannot be read \\(git cat-file blob ${object} failed`),
+      );
     });
 
     it("a committed v2 freezes its tools: an edit refuses the directory, the v1 with it; only the old bytes restore it", function () {
