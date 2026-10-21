@@ -19,13 +19,13 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 
 ## What was found
 
-`cargo audit` (0.22.2, advisory-db `64f92cdc`, `--no-yanked`, with yanked status read from the crates.io index) reports
-**22 findings** in `zkvm/host/Cargo.lock`: 12 vulnerabilities and 10 warnings (3 unsound, 1 yanked, 6 unmaintained).
+`cargo audit` (0.22.2, advisory-db `4b587f00`, `--no-yanked`, with yanked status read from the crates.io index) reports
+**24 findings** in `zkvm/host/Cargo.lock`: 14 vulnerabilities and 10 warnings (3 unsound, 1 yanked, 6 unmaintained).
 
 | Bucket | Findings | Meaning |
 |---|---:|---|
 | `MUST_FIX_BEFORE_REAL_PROVING` | 0 | none is reachable on the frozen proving path |
-| `SHOULD_FIX_BEFORE_PRODUCTION` | 8 | compiled, and fixable by a lockfile-only update or reachable only on a path the frozen configuration excludes; deferred to the next program rebuild |
+| `SHOULD_FIX_BEFORE_PRODUCTION` | 10 | compiled, and fixable by a lockfile-only update or reachable only on a path the frozen configuration excludes; deferred to the next program rebuild |
 | `NOT_REACHABLE_OR_UPSTREAM_ONLY` | 14 | not compiled, a precondition measured absent with no compatible fix, or unmaintained (no fix exists) |
 
 | Finding | Kind | Compiled | Reachability | Bucket | Fix |
@@ -41,7 +41,9 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 | `RUSTSEC-2026-0346 rustls@0.23.40` | vulnerability | yes | PRECONDITION_ABSENT | SHOULD_FIX_BEFORE_PRODUCTION | lockfile-only → 0.23.46 |
 | `RUSTSEC-2026-0348 rustls@0.23.40` | vulnerability | yes | PRECONDITION_ABSENT | SHOULD_FIX_BEFORE_PRODUCTION | lockfile-only → 0.23.46 |
 | `RUSTSEC-2026-0349 rustls@0.23.40` | vulnerability | yes | PRECONDITION_ABSENT | SHOULD_FIX_BEFORE_PRODUCTION | lockfile-only → 0.23.46 |
+| `RUSTSEC-2026-0382 rustls-webpki@0.103.13` | vulnerability | yes | CONDITIONAL | SHOULD_FIX_BEFORE_PRODUCTION | lockfile-only → 0.103.16 |
 | `RUSTSEC-2026-0344 ruzstd@0.8.3` | vulnerability | yes | PRECONDITION_ABSENT | NOT_REACHABLE_OR_UPSTREAM_ONLY | upstream-blocked (object v0.37.3 requires ruzstd = "^0.8.1") |
+| `RUSTSEC-2026-0381 webpki-roots@1.0.7` | vulnerability | yes | CONDITIONAL | SHOULD_FIX_BEFORE_PRODUCTION | lockfile-only → 1.0.10 |
 | `RUSTSEC-2026-0002 lru@0.12.5` | unsound | yes | PRECONDITION_ABSENT | NOT_REACHABLE_OR_UPSTREAM_ONLY | upstream-blocked (sp1-prover v6.3.1 requires lru = "^0.12.4") |
 | `RUSTSEC-2026-0253 lru@0.12.5` | unsound | yes | PRECONDITION_ABSENT | NOT_REACHABLE_OR_UPSTREAM_ONLY | upstream-blocked (sp1-prover v6.3.1 requires lru = "^0.12.4") |
 | `RUSTSEC-2026-0186 memmap2@0.9.10` | unsound | yes | PRECONDITION_ABSENT | SHOULD_FIX_BEFORE_PRODUCTION | lockfile-only → 0.9.11 |
@@ -55,7 +57,7 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 
 The record carries, per finding, the advisory as RustSec states it, the dependency edge (direct dependents, the first
 path to `mldsa65-host`, whether it is a proc-macro), the exploit precondition, WalletWall's rationale, the evidence ids
-it rests on, the measured fix facts and the disposition (`DEFERRED_TO_NEXT_PROGRAM_REBUILD` for all 22).
+it rests on, the measured fix facts and the disposition (`DEFERRED_TO_NEXT_PROGRAM_REBUILD` for all 24).
 
 ## A lockfile is not the build graph
 
@@ -97,6 +99,16 @@ What they establish, in short:
   no proving run is authorized. **Before any real proving run, the archive-only install (step 2) must be in place.**
 - **rustls (0346, 0348, 0349)**: no custom session store anywhere rustls is configured; no brotli; ring offers only
   X25519/P-256/P-384, so there is no hybrid post-quantum group to downgrade from.
+- **webpki-roots (0381) and rustls-webpki (0382)**: CONDITIONAL, on the same download as rustls 0285. They are one
+  incident (CVE-2026-111943): the private keys of distrusted emSign intermediates are public, webpki-roots 1.0.7 still
+  bundles the root they chain to (`emSign ECC Root CA - G3`), and rustls-webpki 0.103.13 does not refuse their keys, so
+  whoever holds such a key and can intercept a connection can impersonate its server. Both act only while rustls checks
+  a certificate in a handshake: rustls validates certificate paths only in its verifiers, and the bundled roots enter a
+  client configuration only through reqwest, whose only dependent is sp1-prover, whose one HTTP client is the circuit
+  download. That download (sp1-prover 6.3.1, `src/build.rs`) fetches the circuit tarball with no checksum and extracts
+  it with `tar -Pxzf`, which keeps absolute and `..` member names, so on it a forged certificate could hand the prover
+  a tarball of the attacker's choosing: substituted circuit artifacts, or files written anywhere the prover's user can
+  write. One more reason the archive-only install, which never lets that download run, comes before any proving run.
 - **ruzstd**: its decoder is reached only through object's section decompression, which neither dependent of object
   calls (sp1-core-executor only writes ELF dumps; backtrace decompresses debug sections itself, its zstd path off).
 - **lru**: sp1-prover never calls `iter_mut`, `pop`, or `catch_unwind`, and its cache keys have no `Drop`.
@@ -113,7 +125,7 @@ Any change to `zkvm/host/Cargo.lock` moves `HEAD:zkvm/host` away from d1's subje
 refuses: it needs a successor designation. A host-only change leaves the guest, its lockfile and the SP1 pins as they
 are, so the ELF, the vkey and the identity stay d1's, and a successor whose identity equals an earlier one is refused
 (the alias rule). There is no admissible designation for a host-only refresh, so the owner deferred it to the next
-actual program rebuild, which changes the program identity anyway. Until then, the eight SHOULD_FIX findings stay
+actual program rebuild, which changes the program identity anyway. Until then, the ten SHOULD_FIX findings stay
 locked, none reachable on the frozen proving path.
 
 ## Two checks, two verdicts
@@ -152,8 +164,8 @@ the networked check's to judge; the offline check refuses only a recorded findin
 
 ## At the next program rebuild
 
-1. Apply the compatible refresh (`remediation.compatibleRefresh`: crossbeam-epoch, h2, quinn-proto, rustls (+
-   rustls-webpki), memmap2, spin) and any newer patched releases, and the guest's `der` update.
+1. Apply the compatible refresh (`remediation.compatibleRefresh`: crossbeam-epoch, h2, quinn-proto, rustls,
+   rustls-webpki, webpki-roots, memmap2, spin) and any newer patched releases, and the guest's `der` update.
 2. Re-audit every lockfile and re-measure this record's observation with the pinned cargo-audit.
 3. Publish a successor designation for the rebuilt program.
 4. Run the canonical two-host rebuild.
@@ -162,6 +174,19 @@ the networked check's to judge; the offline check refuses only a recorded findin
 
 The upstream-only findings (ruzstd, lru, the six unmaintained crates) remain until SP1 releases with newer
 requirements; an SP1 upgrade is a new procedure and needs its own decision.
+
+## Measurements
+
+The lockfile has not changed since the first measurement; RustSec has. Each row is one observation, made by the
+measurement script and then assessed, never typed.
+
+| Measured | Advisory-db | Why | Host findings | Buckets (must / should / not) |
+|---|---|---|---:|---|
+| 2026-10-17 | `64f92cdc` | the first record (PR #220) | 22 | 0 / 8 / 14 |
+| 2026-10-21 | `4b587f00` | the networked check reported `SECURITY_DRIFT`: RUSTSEC-2026-0381 and RUSTSEC-2026-0382 were published after the first measurement | 24 | 0 / 10 / 14 |
+
+The owner's deferral was decided for no MUST_FIX finding, and that premise still holds; the two new findings join the
+deferred SHOULD_FIX set under the same decision.
 
 ## Reproduce
 
@@ -182,4 +207,5 @@ npm run sp1:rustsec-drift -- --live <observation.json>  # reconcile a measuremen
 - `compiled` uses `--target all`: compiled for some target, an over-approximation.
 - The reachability judgments are WalletWall's; the advisories, their ranges and the yanked flags are upstream data as of
   the measurement.
-- Nothing here bears on SP1's soundness, the circuit artifacts' integrity or proving availability.
+- Nothing here vouches for SP1's soundness, the circuit artifacts' integrity (the archive-only install verifies those
+  by hash) or proving availability.
