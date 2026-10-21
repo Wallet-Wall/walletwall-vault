@@ -1462,35 +1462,44 @@ export function exerciseHistoryErrors(repoRoot: string): string[] {
 /**
  * Whether a file of OBSERVATIONS_DIR is, in `commit`'s tree, evidence of a committed record: named in the
  * `derivedFrom` of a file the records directory holds in that tree, whatever that file's name, so neither a
- * designation nor a slot decides it, only the record's own account of what it was derived from. A file there that is
- * no record naming its observations (not JSON, no list of paths: a subdirectory or a link among them) holds every
- * proof-exercise observation of that tree, so a history is never read as holding less than it might (such a file is
- * refused for good anyway: the records directory is append-only). Each commit's records are read once; a listing git
- * cannot give throws, and the history is then refused, never read as holding nothing.
+ * designation nor a slot decides it, only the record's own account of what it was derived from. Only a regular file
+ * can be a record: a subdirectory, a link or a submodule there is none, whatever it holds, and neither is a file that
+ * is not JSON or names no list of paths. Beside any such stray, every proof-exercise observation of that tree is held
+ * too, failing closed and never holding less than the records alone would (a stray is refused for good anyway: the
+ * records directory is append-only). Each commit's records are read once; a listing or a blob git cannot give throws,
+ * and the history is then refused, never read as holding nothing.
  */
 function derivedObservationAt(repoRoot: string): (path: string, commit: string) => boolean {
-  const read = new Map<string, Set<string> | null>();
-  const derivedAt = (commit: string): Set<string> | null => {
-    if (read.has(commit)) return read.get(commit) ?? null;
+  const read = new Map<string, { paths: Set<string>; stray: boolean }>();
+  const derivedAt = (commit: string): { paths: Set<string>; stray: boolean } => {
+    const known = read.get(commit);
+    if (known !== undefined) return known;
     const r = gitOut(repoRoot, ["ls-tree", "-z", commit, "--", `${PROOF_EXERCISES_DIR}/`]);
     if (r.status !== 0) throw new Error(`git ls-tree ${commit} -- ${PROOF_EXERCISES_DIR}/ failed: ${r.stderr.trim()}`);
-    let derived: Set<string> | null = new Set<string>();
+    const derived = { paths: new Set<string>(), stray: false };
     for (const entry of r.stdout.split("\0").filter(Boolean)) {
-      // `<mode> <type> <object>\t<name>`: a subdirectory's object is no blob, a link's is its target's name; no record.
-      const paths = derivedFromOf(gitOut(repoRoot, ["cat-file", "blob", entry.split("\t")[0].split(" ")[2]]).stdout);
-      if (paths === null) {
-        derived = null;
-        break;
-      }
-      for (const p of paths) derived.add(p);
+      // `<mode> <type> <object>\t<name>`: a regular file's mode is 100644 or 100755 (a link's 120000, a tree's 040000).
+      const [mode, , object] = entry.split("\t")[0].split(" ");
+      const paths = mode.startsWith("100") ? derivedFromOf(blobText(repoRoot, object)) : null;
+      if (paths === null) derived.stray = true;
+      else for (const p of paths) derived.paths.add(p);
     }
     read.set(commit, derived);
     return derived;
   };
   return (path, commit) => {
-    const derived = derivedAt(commit);
-    return derived === null ? observationSlotOf(path) !== null : derived.has(`${OBSERVATIONS_DIR}/${path}`);
+    const { paths, stray } = derivedAt(commit);
+    return paths.has(`${OBSERVATIONS_DIR}/${path}`) || (stray && observationSlotOf(path) !== null);
   };
+}
+
+/** The text of the blob `object`: one git cannot give (a missing object, a read error) throws, never reads as empty. */
+function blobText(repoRoot: string, object: string): string {
+  const r = gitOut(repoRoot, ["cat-file", "blob", object]);
+  if (r.status !== 0) {
+    throw new Error(`git cat-file blob ${object} failed: ${(r.stderr || String(r.error ?? "")).trim()}`);
+  }
+  return r.stdout;
 }
 
 /** A record's `derivedFrom` (the repository paths of its observations), or null when the text is no record naming them. */
