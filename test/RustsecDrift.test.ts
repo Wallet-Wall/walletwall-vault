@@ -49,11 +49,11 @@ describe("RustSec drift — reconciling a fresh measurement with the committed r
     LOCKS = s.locks;
   });
 
-  it("the committed observation, measured again unchanged, is a MATCH of all 28 recorded findings", function () {
+  it("the committed observation, measured again unchanged, is a MATCH of all 30 recorded findings", function () {
     const r = rustsecDrift(RECORD, live(), LOCKS);
     expect(r.items).to.deep.equal([]);
     expect(r.verdict).to.equal("MATCH");
-    expect(r.known).to.equal(28);
+    expect(r.known).to.equal(30);
     expect(DRIFT_EXIT[r.verdict]).to.equal(0);
   });
 

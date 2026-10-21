@@ -105,8 +105,8 @@
   "assessment": {
     "observation": {
       "path": "evidence/zk/sp1-impl/observations/host-advisories-developer-workstation.raw.json",
-      "sha256": "e342060cb018c1dbb3a996194fb4c9132c90195f6a3b47af053b9fbd129aefc4",
-      "measuredAtUtc": "2026-10-17T01:16:24Z",
+      "sha256": "2b5064bdf22d53029a698103940517b7f6fa0bb8481156bac8495d746282f664",
+      "measuredAtUtc": "2026-10-21T14:24:49Z",
       "host": "developer-workstation"
     },
     "tools": {
@@ -114,17 +114,17 @@
       "cargoAudit": "cargo-audit-audit 0.22.2"
     },
     "database": {
-      "lastCommit": "64f92cdc64401fab47baa10e2e11fe382aa57155",
-      "lastUpdated": "2026-10-17T01:27:42+02:00",
-      "advisoryCount": 1334
+      "lastCommit": "4b587f00996ebe5c05a73eaef105ef241e876414",
+      "lastUpdated": "2026-10-21T08:20:38+02:00",
+      "advisoryCount": 1348
     },
     "yankedSource": "https://index.crates.io/ (cargo audit ran with --no-yanked; an index that does not answer fails the measurement)",
     "counts": {
-      "findings": 22,
-      "vulnerabilities": 12,
+      "findings": 24,
+      "vulnerabilities": 14,
       "warnings": 10,
       "byKind": {
-        "vulnerability": 12,
+        "vulnerability": 14,
         "unsound": 3,
         "yanked": 1,
         "unmaintained": 6,
@@ -132,11 +132,11 @@
       },
       "byBucket": {
         "MUST_FIX_BEFORE_REAL_PROVING": 0,
-        "SHOULD_FIX_BEFORE_PRODUCTION": 8,
+        "SHOULD_FIX_BEFORE_PRODUCTION": 10,
         "NOT_REACHABLE_OR_UPSTREAM_ONLY": 14,
         "UNASSESSED": 0
       },
-      "compiled": 17
+      "compiled": 19
     },
     "dependencyStatus": "NOT_DEPENDENCY_SAFE",
     "dependencyStatusMeaning": "derived from the measured findings alone: NOT_DEPENDENCY_SAFE while any RustSec vulnerability or unsoundness is locked in zkvm/host/Cargo.lock, whatever its bucket. A valid assessment records what was assessed and why; it does not make a vulnerable dependency non-vulnerable."
@@ -150,6 +150,8 @@
       "RUSTSEC-2026-0346 rustls@0.23.40",
       "RUSTSEC-2026-0348 rustls@0.23.40",
       "RUSTSEC-2026-0349 rustls@0.23.40",
+      "RUSTSEC-2026-0382 rustls-webpki@0.103.13",
+      "RUSTSEC-2026-0381 webpki-roots@1.0.7",
       "RUSTSEC-2026-0186 memmap2@0.9.10",
       "yanked spin@0.9.8"
     ],
@@ -655,7 +657,7 @@
       "fix": {
         "compatibleVersion": "0.23.46",
         "alsoChanges": [
-          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+          "Updating rustls-webpki v0.103.13 -> v0.103.16"
         ],
         "upstreamBlocked": false,
         "blockedBy": null,
@@ -719,7 +721,7 @@
       "fix": {
         "compatibleVersion": "0.23.46",
         "alsoChanges": [
-          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+          "Updating rustls-webpki v0.103.13 -> v0.103.16"
         ],
         "upstreamBlocked": false,
         "blockedBy": null,
@@ -784,7 +786,7 @@
       "fix": {
         "compatibleVersion": "0.23.46",
         "alsoChanges": [
-          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+          "Updating rustls-webpki v0.103.13 -> v0.103.16"
         ],
         "upstreamBlocked": false,
         "blockedBy": null,
@@ -849,12 +851,80 @@
       "fix": {
         "compatibleVersion": "0.23.46",
         "alsoChanges": [
-          "Updating rustls-webpki v0.103.13 -> v0.103.15"
+          "Updating rustls-webpki v0.103.13 -> v0.103.16"
         ],
         "upstreamBlocked": false,
         "blockedBy": null,
         "lockfileOnly": true,
         "lowestPatched": "0.23.46",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0382 rustls-webpki@0.103.13",
+      "id": "RUSTSEC-2026-0382",
+      "kind": "vulnerability",
+      "crate": "rustls-webpki",
+      "version": "0.103.13",
+      "advisory": {
+        "title": "Certificate verification may accept distrusted intermediates",
+        "date": "2026-10-20",
+        "categories": [
+          "crypto-failure"
+        ],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=0.103.16, <0.104.0-alpha.1",
+          ">=0.104.0-alpha.8"
+        ],
+        "unaffected": [],
+        "functions": null,
+        "url": "https://github.com/rustls/webpki/pull/546"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "rustls@0.23.40"
+        ],
+        "pathToRoot": [
+          "rustls-webpki@0.103.13",
+          "rustls@0.23.40",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "CONDITIONAL",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a TLS client whose trust anchors admit a path through a distrusted emSign intermediate (webpki-roots before 1.0.10 do), on a connection an attacker can intercept",
+      "exploit": "whoever holds a distrusted intermediate's key and can intercept the connection presents a certificate path through it for the server's name, and the client accepts it: server impersonation (a man in the middle)",
+      "rationale": "rustls-webpki is compiled, and rustls, its only dependent, validates certificate paths only in its handshake verifiers; the only handshake the host makes is SP1's circuit download, whose anchors are webpki-roots's, which still admit paths through the distrusted intermediates (RUSTSEC-2026-0381)",
+      "condition": "rustls runs only inside SP1's own circuit download: release-mode install_circuit_artifacts at the Groth16/PLONK wrap stage, when the v6.1.0 circuit directory is absent (dev mode downloads with the aws CLI instead). The frozen proving configuration installs the circuit from a hash-verified WalletWall archive first, so that download never runs; until the archive path exists no proving run is authorized at all",
+      "evidence": [
+        "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
+        "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
+        "SF_PROVER_INSTALL_ONLY_AT_WRAP",
+        "SF_SDK_NEVER_INSTALLS_CIRCUITS",
+        "SF_PROVER_NO_NETWORK_TRANSPORT",
+        "F_SP1_SDK_NO_NETWORK",
+        "A_HOST_SOURCE",
+        "A_NO_PROVING_WITHOUT_ARCHIVE",
+        "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS"
+      ],
+      "fix": {
+        "compatibleVersion": "0.103.16",
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "0.103.16",
         "noPatchedRelease": false
       },
       "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
@@ -922,6 +992,75 @@
         "noPatchedRelease": false
       },
       "bucket": "NOT_REACHABLE_OR_UPSTREAM_ONLY",
+      "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
+    },
+    {
+      "key": "RUSTSEC-2026-0381 webpki-roots@1.0.7",
+      "id": "RUSTSEC-2026-0381",
+      "kind": "vulnerability",
+      "crate": "webpki-roots",
+      "version": "1.0.7",
+      "advisory": {
+        "title": "Bundled root certificates allow trust in distrusted emSign intermediates",
+        "date": "2026-10-19",
+        "categories": [
+          "crypto-failure"
+        ],
+        "cvss": null,
+        "informational": null,
+        "withdrawn": null,
+        "patched": [
+          ">=1.0.10"
+        ],
+        "unaffected": [
+          "=0.26.11"
+        ],
+        "functions": null,
+        "url": "https://github.com/rustls/webpki-roots/pull/133"
+      },
+      "compiled": true,
+      "dependency": {
+        "role": "LINKED",
+        "directDependents": [
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28"
+        ],
+        "pathToRoot": [
+          "webpki-roots@1.0.7",
+          "hyper-rustls@0.27.9",
+          "reqwest@0.12.28",
+          "sp1-prover@6.3.1",
+          "sp1-sdk@6.3.1",
+          "mldsa65-host@0.1.0"
+        ]
+      },
+      "reachability": "CONDITIONAL",
+      "reachableInFrozenProvingPath": false,
+      "precondition": "a TLS client that trusts webpki-roots's bundled roots, which include emSign ECC Root CA - G3, on a connection an attacker can intercept",
+      "exploit": "whoever holds a distrusted intermediate's key and can intercept the connection presents a certificate path through it for the server's name, and the client accepts it: server impersonation (a man in the middle)",
+      "rationale": "webpki-roots is compiled, and its roots are the trust anchors reqwest builds into its rustls client configuration (hyper-rustls's helper is reached only through reqwest); the host's only HTTPS client is SP1's circuit download, the one connection on which a certificate under a distrusted emSign intermediate could be presented",
+      "condition": "rustls runs only inside SP1's own circuit download: release-mode install_circuit_artifacts at the Groth16/PLONK wrap stage, when the v6.1.0 circuit directory is absent (dev mode downloads with the aws CLI instead). The frozen proving configuration installs the circuit from a hash-verified WalletWall archive first, so that download never runs; until the archive path exists no proving run is authorized at all",
+      "evidence": [
+        "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
+        "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
+        "SF_PROVER_INSTALL_ONLY_AT_WRAP",
+        "SF_SDK_NEVER_INSTALLS_CIRCUITS",
+        "SF_PROVER_NO_NETWORK_TRANSPORT",
+        "F_SP1_SDK_NO_NETWORK",
+        "A_HOST_SOURCE",
+        "A_NO_PROVING_WITHOUT_ARCHIVE",
+        "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG"
+      ],
+      "fix": {
+        "compatibleVersion": "1.0.10",
+        "alsoChanges": [],
+        "upstreamBlocked": false,
+        "blockedBy": null,
+        "lockfileOnly": true,
+        "lowestPatched": "1.0.10",
+        "noPatchedRelease": false
+      },
+      "bucket": "SHOULD_FIX_BEFORE_PRODUCTION",
       "disposition": "DEFERRED_TO_NEXT_PROGRAM_REBUILD"
     },
     {
@@ -1664,7 +1803,7 @@
     {
       "id": "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
       "kind": "source",
-      "statement": "sp1-prover builds its one HTTP client in src/build.rs (install_circuit_artifacts), nowhere else",
+      "statement": "sp1-prover, reqwest's only dependent, builds its one HTTP client in src/build.rs (install_circuit_artifacts), nowhere else",
       "holds": true,
       "observed": "1 match (sp1-prover:src/build.rs 1x) in sp1-prover 6.3.1 (38 files)"
     },
@@ -1702,6 +1841,20 @@
       "statement": "rustls's ring provider implements no ML-KEM (no hybrid post-quantum group)",
       "holds": true,
       "observed": "0 matches in rustls 0.23.40 (9 files)"
+    },
+    {
+      "id": "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG",
+      "kind": "source",
+      "statement": "webpki-roots's dependents (reqwest, hyper-rustls) read its bundled roots only where an HTTPS client's rustls configuration is built: reqwest's client builder (src/async_impl/client.rs) and hyper-rustls's with_webpki_roots helper (src/config.rs), whose only dependent is reqwest",
+      "holds": true,
+      "observed": "2 matches (hyper-rustls:src/config.rs 1x, reqwest:src/async_impl/client.rs 1x) in hyper-rustls 0.27.9 (5 files), reqwest 0.12.28 (40 files)"
+    },
+    {
+      "id": "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS",
+      "kind": "source",
+      "statement": "rustls-webpki's only dependent, rustls, validates a certificate path (verify_for_usage) only in its certificate verifiers, during a handshake: a client's check of the server's certificate (src/webpki/verify.rs) and a server's check of a client certificate (src/webpki/client_verifier.rs)",
+      "holds": true,
+      "observed": "2 matches (rustls:src/webpki/client_verifier.rs 1x, rustls:src/webpki/verify.rs 1x) in rustls 0.23.40 (107 files)"
     },
     {
       "id": "SF_LRU_ONLY_IN_TWO_CACHES",
@@ -1815,6 +1968,22 @@
           "RUSTSEC-2026-0346 rustls@0.23.40",
           "RUSTSEC-2026-0348 rustls@0.23.40",
           "RUSTSEC-2026-0349 rustls@0.23.40"
+        ]
+      },
+      {
+        "crate": "rustls-webpki",
+        "from": "0.103.13",
+        "to": "0.103.16",
+        "findings": [
+          "RUSTSEC-2026-0382 rustls-webpki@0.103.13"
+        ]
+      },
+      {
+        "crate": "webpki-roots",
+        "from": "1.0.7",
+        "to": "1.0.10",
+        "findings": [
+          "RUSTSEC-2026-0381 webpki-roots@1.0.7"
         ]
       },
       {
