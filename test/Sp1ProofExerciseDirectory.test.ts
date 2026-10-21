@@ -1192,7 +1192,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
 
     it("history: a records-directory file that is no record naming its observations holds every exercise observation", function () {
       this.timeout(300_000);
-      // Not JSON; JSON without derivedFrom; derivedFrom of no paths; null; a subdirectory (its object is no blob).
+      // Not JSON; JSON without derivedFrom; derivedFrom of no paths; null; a subdirectory (a tree's mode, no file's).
       const strays: Record<string, string> = {
         "README.md": "# notes\n",
         [`${D}.v2.${T1}.json`]: "{}\n",
@@ -1279,6 +1279,18 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       expect(heldBeside("120000", namingNothing), "a link").to.equal(true);
       expect(heldBeside("100644", namingNothing), "a regular file").to.equal(false);
       expect(heldBeside("100755", namingNothing), "an executable file").to.equal(false);
+      // A record is read whole, however large: a 2 MiB regular file naming nothing is a record naming nothing.
+      const big = coexisting({ v2: false });
+      write(big.d, big.v2.files.run, serializeJson(big.v2.run));
+      write(
+        big.d,
+        `${PROOF_EXERCISES_DIR}/large.json`,
+        `{ "derivedFrom": [], "pad": "${"x".repeat(2 * 1024 * 1024)}" }\n`,
+      );
+      commit(big.d, "an attempt beside a large record naming nothing");
+      rmSync(join(big.d, big.v2.files.run));
+      commit(big.d, "the attempt dropped");
+      expect(exerciseHistoryErrors(big.d)).to.deep.equal([]);
       // Beside a stray, what a readable record names stays held, whatever its kind: failing closed only adds.
       const r = coexisting({ v1: false, v2: false });
       const other = `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`;
