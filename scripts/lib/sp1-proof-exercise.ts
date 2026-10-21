@@ -1465,9 +1465,8 @@ export function exerciseHistoryErrors(repoRoot: string): string[] {
  * designation nor a slot decides it, only the record's own account of what it was derived from. Only a regular file
  * can be a record: a subdirectory, a link or a submodule there is none, whatever it holds, and neither is a file that
  * is not JSON or names no list of paths. Beside any such stray, every proof-exercise observation of that tree is held
- * too, failing closed and never holding less than the records alone would (a stray is refused for good anyway: the
- * records directory is append-only). Each commit's records are read once; a listing or a blob git cannot give throws,
- * and the history is then refused, never read as holding nothing.
+ * too: failing closed, and never holding less than the records alone would. Each commit's records are read once; a
+ * listing or a blob git cannot give throws, and the history is then refused, never read as holding nothing.
  */
 function derivedObservationAt(repoRoot: string): (path: string, commit: string) => boolean {
   const read = new Map<string, { paths: Set<string>; stray: boolean }>();
@@ -1493,9 +1492,16 @@ function derivedObservationAt(repoRoot: string): (path: string, commit: string) 
   };
 }
 
+/** A record is read whole, however large: spawnSync's default 1 MiB would take a larger one for unreadable. */
+const BLOB_MAX_BYTES = 512 * 1024 * 1024;
+
 /** The text of the blob `object`: one git cannot give (a missing object, a read error) throws, never reads as empty. */
 function blobText(repoRoot: string, object: string): string {
-  const r = gitOut(repoRoot, ["cat-file", "blob", object]);
+  const r = spawnSync("git", ["-C", repoRoot, "--no-optional-locks", "cat-file", "blob", object], {
+    encoding: "utf8",
+    shell: false,
+    maxBuffer: BLOB_MAX_BYTES,
+  });
   if (r.status !== 0) {
     throw new Error(`git cat-file blob ${object} failed: ${(r.stderr || String(r.error ?? "")).trim()}`);
   }
