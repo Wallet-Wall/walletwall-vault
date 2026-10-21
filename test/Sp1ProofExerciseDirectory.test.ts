@@ -20,6 +20,8 @@ import { pathToFileURL } from "node:url";
 import { productionRecordRel, serializeJson, type ArchiveEvidence } from "../scripts/lib/sp1-circuit-acquisition";
 import { CANONICAL_REBUILD_OBSERVATION_REL } from "../scripts/lib/sp1-canonical-build";
 import {
+  EXERCISE_JSON_SCHEMA_REL,
+  EXERCISE_V2_JSON_SCHEMA_REL,
   committedProductionAnchor,
   productionArchiveEvidenceOf,
   toolingRecordFromRepo,
@@ -83,7 +85,7 @@ import {
 } from "../scripts/lib/sp1-proving-availability";
 import { OBSERVER_SCRIPT_REL } from "../scripts/sp1-egress-observer";
 import { tempDirs } from "./helpers/circuit-tooling";
-import { BOOT_ID, HOST_EXE, standardRaw } from "./helpers/sp1EgressTrace";
+import { BOOT_ID, HOST_EXE, OBSERVER_SHA, standardRaw } from "./helpers/sp1EgressTrace";
 import {
   ANCHOR,
   ARCHIVE_RECORD,
@@ -461,6 +463,39 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       });
     });
 
+    it("the record schemas name each generation's observations as the contract does: a v2's carry its token", function () {
+      const patternsOf = (rel: string) => {
+        const s = JSON.parse(readFileSync(rel, "utf8"));
+        return {
+          derivedFrom: new RegExp(s.properties.derivedFrom.items.pattern),
+          verification: new RegExp(s.properties.verification.properties.observation.properties.path.pattern),
+        };
+      };
+      const v1 = patternsOf(EXERCISE_JSON_SCHEMA_REL);
+      const v2 = patternsOf(EXERCISE_V2_JSON_SCHEMA_REL);
+      // A v2 record as the derivation writes it, under its token's names, conforms to its schema ...
+      const x2: ExerciseExpectations = {
+        ...EXPECTATIONS,
+        scripts: { ...EXPECTATIONS.scripts, attributedRun: "66".repeat(32), observer: OBSERVER_SHA },
+      };
+      const x = exerciseOf(x2, SOURCE_COMMIT, "v2");
+      expect(x.record.derivedFrom).to.deep.equal([x.files.run, x.files.verification]);
+      for (const p of x.record.derivedFrom) expect(v2.derivedFrom.test(p), p).to.equal(true);
+      expect(v2.verification.test(x.record.verification.observation.path)).to.equal(true);
+      // ... and the v1 slot's names (no token) are no v2 record's.
+      const slot = [
+        `${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}${HOST_A}.raw.json`,
+        `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}${HOST_A}.raw.json`,
+      ];
+      for (const p of slot) expect(v2.derivedFrom.test(p), p).to.equal(false);
+      expect(v2.verification.test(slot[1])).to.equal(false);
+      // SP1-PA3B's record conforms to the v1 schema, which is unchanged; a token's names are no v1 record's.
+      const pa3b = JSON.parse(readFileSync(PA3B.record, "utf8")) as ProofExerciseRecord;
+      for (const p of pa3b.derivedFrom) expect(v1.derivedFrom.test(p), p).to.equal(true);
+      expect(v1.verification.test(pa3b.verification.observation.path)).to.equal(true);
+      for (const p of x.record.derivedFrom) expect(v1.derivedFrom.test(p), p).to.equal(false);
+    });
+
     it("exerciseEvidenceState: ACCEPTED only when every record is accepted and nothing is refused", function () {
       const x = exerciseOf(EXPECTATIONS, SOURCE_COMMIT, "v1");
       const one = {
@@ -586,7 +621,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       const { d, v1, v2 } = coexisting();
       const e = judge(d);
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
-      expect(exerciseHistoryErrors(d, D)).to.deep.equal([]);
+      expect(exerciseHistoryErrors(d)).to.deep.equal([]);
       expect(e.records).to.deep.equal([v1.files.record, v2.files.record]);
       expect(e.accepted.map((a) => [a.path, a.generation])).to.deep.equal([
         [v1.files.record, "v1"],
@@ -1063,6 +1098,154 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       refused(r.d, `${basename(r.v2.files.verification)} was changed; a published record is never edited`);
     });
 
+    it("history: a file no committed record was derived from may be dropped, even in a committed record's slot", function () {
+      this.timeout(300_000);
+      // A v2 run committed without its token, beside the v1 record: the v1 slot then holds two runs (refused), but the
+      // v1 record was never derived from it, so renaming it after its own token withdraws no evidence.
+      let r = coexisting({ v2: false });
+      const untokened = `${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}proving-host-b.raw.json`;
+      write(r.d, untokened, serializeJson(r.v2.run));
+      commit(r.d, "a v2 run committed without its token");
+      refused(r.d, `${r.v1.files.record} needs exactly one run observation`, "holds 2");
+      rmSync(join(r.d, untokened));
+      write(r.d, r.v2.files.run, serializeJson(r.v2.run));
+      write(r.d, r.v2.files.verification, serializeJson(r.v2.verification));
+      commit(r.d, "renamed after its token, and verified");
+      writeExercise(r.d, r.v2);
+      commit(r.d, "its record");
+      let e = judge(r.d);
+      expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
+      expect(e.accepted.map((a) => a.path)).to.deep.equal([r.v1.files.record, r.v2.files.record]);
+      // A second verification of the v1's proof under another host label, then dropped: the v1 stands alone again.
+      r = coexisting({ v2: false });
+      const second = `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}proving-host-b.raw.json`;
+      write(r.d, second, serializeJson({ ...r.v1.verification, host: "proving-host-b" }));
+      commit(r.d, "the v1's proof verified again on another host");
+      refused(r.d, `${r.v1.files.record} needs exactly one verification observation`, "holds 2");
+      rmSync(join(r.d, second));
+      commit(r.d, "the second verification dropped");
+      e = judge(r.d);
+      expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
+      expect(e.accepted.map((a) => a.path)).to.deep.equal([r.v1.files.record]);
+      // An extra verification under the committed v2's token, from another host, then dropped: both stand again.
+      r = coexisting();
+      const extra = `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}proving-host-b.${exerciseToken(serializeJson(r.v2.run))}.raw.json`;
+      write(r.d, extra, serializeJson({ ...r.v2.verification, host: "proving-host-b" }));
+      commit(r.d, "an extra verification under the v2's token");
+      refused(r.d, `${r.v2.files.record} needs exactly one verification observation`, "holds 2");
+      rmSync(join(r.d, extra));
+      commit(r.d, "the extra verification dropped");
+      e = judge(r.d);
+      expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
+      expect(e.accepted.map((a) => a.path)).to.deep.equal([r.v1.files.record, r.v2.files.record]);
+    });
+
+    it("history: the observations a committed record was derived from stay, under every change", function () {
+      this.timeout(300_000);
+      const cases: { name: string; change: (r: ReturnType<typeof coexisting>) => string[] }[] = [
+        {
+          name: "the v1's verification removed",
+          change: (r) => {
+            rmSync(join(r.d, r.v1.files.verification));
+            return [`${basename(r.v1.files.verification)} was removed or renamed`];
+          },
+        },
+        {
+          name: "the v1's run moved under another host label",
+          change: (r) => {
+            renameSync(join(r.d, r.v1.files.run), join(r.d, r.v1.files.run.replace(HOST_A, "proving-host-b")));
+            return [`${basename(r.v1.files.run)} was removed or renamed`];
+          },
+        },
+        {
+          name: "the v1's run moved under a token",
+          change: (r) => {
+            renameSync(join(r.d, r.v1.files.run), join(r.d, r.v1.files.run.replace(".raw.json", `.${T1}.raw.json`)));
+            return [`${basename(r.v1.files.run)} was removed or renamed`];
+          },
+        },
+        {
+          name: "the v2 record withdrawn while its verification is edited",
+          change: (r) => {
+            rmSync(join(r.d, r.v2.files.record));
+            write(
+              r.d,
+              r.v2.files.verification,
+              serializeJson({ ...r.v2.verification, measuredAtUtc: "2026-11-01T12:20:00Z" }),
+            );
+            return [
+              `${basename(r.v2.files.record)} was removed or renamed`,
+              `${basename(r.v2.files.verification)} was changed`,
+            ];
+          },
+        },
+      ];
+      for (const c of cases) {
+        const r = coexisting();
+        const expected = c.change(r);
+        commit(r.d, c.name);
+        const history = exerciseHistoryErrors(r.d).join("\n");
+        for (const x of expected) expect(history, c.name).to.include(x);
+        expect(exerciseEvidenceState(judge(r.d)), c.name).to.equal("REFUSED");
+      }
+    });
+
+    it("history: a records-directory file that is no record naming its observations holds every exercise observation", function () {
+      this.timeout(300_000);
+      // Not JSON; JSON without derivedFrom; derivedFrom of no paths; null; a subdirectory (its object is no blob).
+      const strays: Record<string, string> = {
+        "README.md": "# notes\n",
+        [`${D}.v2.${T1}.json`]: "{}\n",
+        [`${D}.v2.${T2}.json`]: '{ "derivedFrom": [1, 2] }\n',
+        "other-designation.json": "null\n",
+        [`sub/${D}.json`]: '{ "derivedFrom": [] }\n',
+      };
+      const attempt = (stray: string | null) => {
+        const r = coexisting({ v2: false });
+        // An attempt no record was derived from, and an observation of another kind, both committed ...
+        write(r.d, r.v2.files.run, serializeJson(r.v2.run));
+        write(r.d, `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`, '{ "measured": 1 }\n');
+        if (stray !== null) write(r.d, `${PROOF_EXERCISES_DIR}/${stray}`, strays[stray]);
+        commit(r.d, `an attempt beside ${stray ?? "the records alone"}`);
+        // ... then the attempt dropped and the other kind re-measured.
+        rmSync(join(r.d, r.v2.files.run));
+        write(r.d, `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`, '{ "measured": 2 }\n');
+        commit(r.d, "the attempt dropped, the other kind re-measured");
+        return {
+          history: exerciseHistoryErrors(r.d).join("\n"),
+          dropped: `${basename(r.v2.files.run)} was removed or renamed`,
+        };
+      };
+      // The control: beside records alone, the attempt may be dropped.
+      const control = attempt(null);
+      expect(control.history).to.not.include(control.dropped);
+      for (const stray of Object.keys(strays)) {
+        const { history, dropped } = attempt(stray);
+        expect(history, stray).to.include(dropped);
+        expect(history, stray).to.not.include("host-advisories-x.raw.json");
+      }
+    });
+
+    it("history: a record holds what it was derived from whatever its name or designation", function () {
+      this.timeout(120_000);
+      const r = coexisting({ v1: false, v2: false });
+      // Another designation's record (after a rotation, say): its name is no record of this designation, its account
+      // of what it was derived from still holds those files.
+      const verification = `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}${HOST_A}.raw.json`;
+      write(r.d, verification, '{ "verified": 1 }\n');
+      write(
+        r.d,
+        `${PROOF_EXERCISES_DIR}/other-designation.json`,
+        serializeJson({
+          derivedFrom: [`${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}${HOST_A}.raw.json`, verification],
+        }),
+      );
+      commit(r.d, "another designation's record");
+      write(r.d, verification, '{ "verified": 2 }\n');
+      commit(r.d, "its observation edited");
+      expect(exerciseHistoryErrors(r.d).join("\n")).to.include(`${basename(verification)} was changed`);
+    });
+
     it("a committed v2 freezes its tools: an edit refuses the directory, the v1 with it; only the old bytes restore it", function () {
       this.timeout(180_000);
       const r = coexisting();
@@ -1088,15 +1271,15 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
     it("a history git cannot show is refused, never read as clean: no repository, no commit, a shallow clone", function () {
       this.timeout(120_000);
       const bare = dirs.make("sp1-pa3d0-nogit-");
-      expect(exerciseHistoryErrors(bare, D).join("\n")).to.match(/needs a git repository with its full history/);
+      expect(exerciseHistoryErrors(bare).join("\n")).to.match(/needs a git repository with its full history/);
       expect(exerciseEvidenceState(judge(bare))).to.equal("REFUSED");
       const empty = dirs.make("sp1-pa3d0-empty-");
       git(empty, "init", "-q");
-      expect(exerciseHistoryErrors(empty, D).join("\n")).to.match(/cannot be read .*: no history is taken as clean/);
+      expect(exerciseHistoryErrors(empty).join("\n")).to.match(/cannot be read .*: no history is taken as clean/);
       const r = coexisting();
       const shallow = dirs.make("sp1-pa3d0-shallow-");
       git(shallow, "clone", "-q", "--depth", "1", pathToFileURL(r.d).href, ".");
-      expect(exerciseHistoryErrors(shallow, D).join("\n")).to.match(/this clone is shallow/);
+      expect(exerciseHistoryErrors(shallow).join("\n")).to.match(/this clone is shallow/);
       expect(exerciseEvidenceState(judge(shallow))).to.equal("REFUSED");
     });
 
@@ -1259,7 +1442,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       const { d, anchor, archive, v2 } = realWithV2();
       const e = productionExerciseEvidence(d, { anchor, archive });
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
-      expect(exerciseHistoryErrors(d, anchor.designation)).to.deep.equal([]);
+      expect(exerciseHistoryErrors(d)).to.deep.equal([]);
       expect(e.accepted.map((a) => a.path)).to.deep.equal([PA3B.record, v2.files.record]);
       expect(e.accepted[0].observations).to.deep.equal([PA3B.run, PA3B.verification]);
       expect([lfSha(PA3B.record, d), lfSha(PA3B.run, d), lfSha(PA3B.verification, d)]).to.deep.equal([
@@ -1420,7 +1603,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         verification: [PA3B.verification],
         other: [],
       });
-      expect(exerciseHistoryErrors(".", anchor.designation)).to.deep.equal([]);
+      expect(exerciseHistoryErrors(".")).to.deep.equal([]);
       const e = productionExerciseEvidence(".", { anchor, archive });
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
       expect(
