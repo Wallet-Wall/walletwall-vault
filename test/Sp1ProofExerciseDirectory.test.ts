@@ -1424,9 +1424,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         commit(slot.d, "a v2 in the v1 slot's names");
         assert.throws(
           () => pending(slot.d),
-          new RegExp(
-            `admits only a ${RUN_SCHEMA.replace(/\./g, "\\.")} run: a v2 exercise's files are named after its token \\(${v2.files.run.replace(/\./g, "\\.")}\\)`,
-          ),
+          `admits only a ${RUN_SCHEMA} run: a v2 exercise's files are named after its token (${v2.files.run})`,
         );
         // A v2 under another token than its run's.
         r = coexisting({ v2: false });
@@ -1759,7 +1757,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         edit(broken.accepted[1].record);
         assert.throws(
           () => deriveProvingAvailability({ ...base, exerciseRecords: broken.records, exercise: broken }),
-          new RegExp(`${v2.path.replace(/\./g, "\\.")} is not an exercise of the accepted archive record`),
+          `${v2.path} is not an exercise of the accepted archive record`,
         );
       }
     });
