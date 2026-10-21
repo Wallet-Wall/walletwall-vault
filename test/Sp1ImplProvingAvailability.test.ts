@@ -321,11 +321,13 @@ describe("SP1 implementation lane — proving availability (TD1-N9)", function (
     expect(record.exercises.records).to.equal(exerciseRecords.length);
     if (exerciseRecords.length > 0) {
       expect(exercise?.errors).to.deep.equal([]);
-      expect(record.exercises.accepted.record).to.equal(exerciseRecords[0]);
-      expect(record.selfHostedPath.record).to.equal(exerciseRecords[0]);
+      expect(record.exercises.accepted.map((a: { record: string }) => a.record)).to.deep.equal(exerciseRecords);
+      expect(record.selfHostedPath.witnesses).to.deep.equal(exerciseRecords);
     } else {
       expect(record.exercises).to.not.have.property("accepted");
+      expect(record.selfHostedPath).to.not.have.property("witnesses");
     }
+    expect(record.selfHostedPath).to.not.have.property("record");
     expect(record.expectedArtifacts.tarball.sha256).to.equal(
       records.length === 0 ? null : evidence?.record?.archive.sha256,
     );

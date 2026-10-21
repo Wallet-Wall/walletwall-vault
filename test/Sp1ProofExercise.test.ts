@@ -719,7 +719,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
     const refused = (d: string, re: RegExp, a: ArchiveEvidence = archive) => {
       const e = judge(d, a);
       expect(exerciseEvidenceState(e), e.errors.join("; ")).to.equal("REFUSED");
-      expect(e.record).to.equal(null);
+      expect(e.accepted).to.deep.equal([]);
       expect(e.errors.join("\n")).to.match(re);
     };
 
@@ -791,7 +791,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       for (const d of [repo({ record: false }), repo({ record: false, observations: false })]) {
         const e = judge(d.dir);
         expect(exerciseEvidenceState(e)).to.equal("NO_RECORD");
-        expect(e).to.deep.include({ records: [], record: null, errors: [] });
+        expect(e).to.deep.include({ records: [], accepted: [], errors: [] });
       }
       expect(exerciseRecordsIn(repo({ record: false }).dir)).to.deep.equal([]);
     });
@@ -803,8 +803,13 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(exerciseEvidenceState(e), e.errors.join("; ")).to.equal("ACCEPTED");
       expect(e.records).to.deep.equal([exerciseRecordRel(ANCHOR)]);
       expect(e.observations).to.deep.equal([RUN_FILE, VERIFICATION_FILE]);
-      expect(e.record?.proof.vkey).to.equal(ANCHOR.programVKey);
-      expect(serializeJson(e.record)).to.equal(readFileSync(join(r.dir, exerciseRecordRel(ANCHOR)), "utf8"));
+      expect(e.accepted).to.have.length(1);
+      expect(e.accepted[0]).to.deep.include({ path: exerciseRecordRel(ANCHOR), generation: "v1" });
+      expect(e.accepted[0].observations).to.deep.equal([RUN_FILE, VERIFICATION_FILE]);
+      expect(e.accepted[0].record.proof.vkey).to.equal(ANCHOR.programVKey);
+      expect(serializeJson(e.accepted[0].record)).to.equal(
+        readFileSync(join(r.dir, exerciseRecordRel(ANCHOR)), "utf8"),
+      );
       expect(exerciseObservationsIn(r.dir)).to.deep.equal({
         run: [RUN_FILE],
         verification: [VERIFICATION_FILE],
@@ -846,11 +851,16 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       let r = repo();
       write(r.dir, `${PROOF_EXERCISES_DIR}/another.json`, "{}\n");
       commit(r.dir, "second");
-      refused(r.dir, /must hold exactly/);
+      refused(r.dir, new RegExp(`another\\.json is no proof-exercise record of ${ANCHOR.designation}`));
       r = repo();
       renameSync(join(r.dir, exerciseRecordRel(ANCHOR)), join(r.dir, PROOF_EXERCISES_DIR, "other-designation.json"));
       commit(r.dir, "renamed");
-      refused(r.dir, /must hold exactly/);
+      // SP1-PA3D0: the new name is no record of the designation, and the history shows the committed one withdrawn.
+      refused(r.dir, /other-designation\.json is no proof-exercise record of/);
+      refused(
+        r.dir,
+        new RegExp(`${ANCHOR.designation}\\.json was removed or renamed; a published record is never withdrawn`),
+      );
       r = repo();
       write(
         r.dir,
@@ -988,7 +998,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
   });
 
   describe("the state, derived from facts", function () {
-    const NO_EXERCISE: ExerciseEvidence = { records: [], record: null, observations: [], errors: [] };
+    const NO_EXERCISE: ExerciseEvidence = { records: [], accepted: [], observations: [], errors: [] };
     const noArchive: ArchiveEvidence = { records: [], record: null, observations: [], errors: [] };
     const acceptedArchive: ArchiveEvidence = {
       records: [productionRecordRel(ANCHOR)],
@@ -1001,19 +1011,26 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       const v = verificationObservation(run);
       return {
         records: [exerciseRecordRel(ANCHOR)],
-        record: deriveExerciseRecord(
-          run,
-          v,
-          { runSha256: runSha(run), verificationPath: VERIFICATION_REL, runPath: RUN_REL },
-          EXPECTATIONS,
-        ),
+        accepted: [
+          {
+            path: exerciseRecordRel(ANCHOR),
+            generation: "v1",
+            record: deriveExerciseRecord(
+              run,
+              v,
+              { runSha256: runSha(run), verificationPath: VERIFICATION_REL, runPath: RUN_REL },
+              EXPECTATIONS,
+            ),
+            observations: [RUN_REL, VERIFICATION_REL],
+          },
+        ],
         observations: [RUN_REL, VERIFICATION_REL],
         errors: [],
       };
     };
     const refusedExercise = (): ExerciseEvidence => ({
       ...syntheticExercise(),
-      record: null,
+      accepted: [],
       errors: ["VERIFIER_REJECTED: the proof was not accepted"],
     });
 
@@ -1115,17 +1132,19 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       const d1 = designations[designations.length - 1];
       const bound = structuredClone(x);
       bound.records = [`${PROOF_EXERCISES_DIR}/${d1.id}.json`];
-      bound.record!.subject.designation = d1.id;
-      bound.record!.subject.programVKey = d1.programVKey;
-      bound.record!.archiveRecord.path = archive.records[0];
-      bound.record!.archiveRecord.archiveSha256 = archive.record!.archive.sha256;
-      bound.record!.archiveRecord.sha256 = sha256(readFileSync(archive.records[0], "utf8").replace(/\r\n/g, "\n"));
+      bound.accepted[0].path = bound.records[0];
+      const rec = (r: typeof bound) => r.accepted[0].record;
+      rec(bound).subject.designation = d1.id;
+      rec(bound).subject.programVKey = d1.programVKey;
+      rec(bound).archiveRecord.path = archive.records[0];
+      rec(bound).archiveRecord.archiveSha256 = archive.record!.archive.sha256;
+      rec(bound).archiveRecord.sha256 = sha256(readFileSync(archive.records[0], "utf8").replace(/\r\n/g, "\n"));
       // Each binding alone: the bound record with one fact changed derives nothing.
       for (const [what, mutate] of [
-        ["designation", (r: typeof bound) => (r.record!.subject.designation = "mldsa65-withdrawal-d9")],
-        ["PROGRAM_VKEY", (r: typeof bound) => (r.record!.subject.programVKey = `0x${"00".repeat(32)}`)],
-        ["archive path", (r: typeof bound) => (r.record!.archiveRecord.path = `${PROOF_EXERCISES_DIR}/other.json`)],
-        ["archive sha256", (r: typeof bound) => (r.record!.archiveRecord.archiveSha256 = "00".repeat(32))],
+        ["designation", (r: typeof bound) => (rec(r).subject.designation = "mldsa65-withdrawal-d9")],
+        ["PROGRAM_VKEY", (r: typeof bound) => (rec(r).subject.programVKey = `0x${"00".repeat(32)}`)],
+        ["archive path", (r: typeof bound) => (rec(r).archiveRecord.path = `${PROOF_EXERCISES_DIR}/other.json`)],
+        ["archive sha256", (r: typeof bound) => (rec(r).archiveRecord.archiveSha256 = "00".repeat(32))],
       ] as const) {
         const broken = structuredClone(bound);
         mutate(broken);
@@ -1138,15 +1157,20 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       const exercised = deriveProvingAvailability({ ...base, exerciseRecords: bound.records, exercise: bound });
       expect(exercised.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
       expect(exercised.selfHostedPath.exercised).to.equal(true);
-      expect(exercised.selfHostedPath.record).to.equal(bound.records[0]);
-      expect(exercised.exercises.accepted).to.deep.include({
+      expect(exercised.selfHostedPath.witnesses).to.deep.equal(bound.records);
+      expect(exercised.selfHostedPath).to.not.have.property("record");
+      expect(exercised.exercises.accepted).to.have.length(1);
+      expect(exercised.exercises.accepted?.[0]).to.deep.include({
         record: bound.records[0],
+        schema: EXERCISE_RECORD_SCHEMA,
+        lane: "SP1-PA3B",
         derivedFrom: [RUN_REL, VERIFICATION_REL],
         host: "proving-host-a",
         wallClockSeconds: 7180,
         hostSeconds: 4800,
         rotationDelaySeconds: ROTATION_DELAY_SECONDS,
         withinRotationDelay: true,
+        egressAssurance: "EDGE_PROBES_ONLY",
       });
       expect(exercised.basis.join("\n")).to.include(`${ROTATION_DELAY_SECONDS}`);
       expect(exercised.ownerAction.join("\n")).to.include("production binding");
@@ -1250,15 +1274,17 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         const pa = provingAvailabilityFromRepo(d);
         expect(pa.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
         expect(pa.selfHostedPath.exercised).to.equal(true);
-        expect(pa.exercises.accepted?.record).to.equal(exerciseRecordRel(anchor));
+        expect(pa.exercises.accepted?.map((a) => a.record)).to.deep.equal([exerciseRecordRel(anchor)]);
+        expect(pa.selfHostedPath.witnesses).to.deep.equal([exerciseRecordRel(anchor)]);
         writeFileSync(join(d, "evidence/zk/sp1-impl/proving-availability.json"), serializeProvingAvailability(pa));
         git("add", "-A");
         git("commit", "-q", "-m", "availability regenerated");
         expect(advisoryStateFromRepo(d).exerciseRecords).to.deep.equal([exerciseRecordRel(anchor)]);
         return toolingRecordFromRepo(d).then((tooling) => {
           expect(tooling.state).to.equal("SELF_HOSTED_PATH_EXERCISED");
-          expect((tooling.exercise as { state: string; record: string }).state).to.equal("ACCEPTED");
-          expect((tooling.exercise as { state: string; record: string }).record).to.equal(exerciseRecordRel(anchor));
+          const toolingExercise = tooling.exercise as { state: string; records: { record: string }[] };
+          expect(toolingExercise.state).to.equal("ACCEPTED");
+          expect(toolingExercise.records.map((r) => r.record)).to.deep.equal([exerciseRecordRel(anchor)]);
           expect((tooling.states as { reached: boolean }[]).map((s) => s.reached)).to.deep.equal([
             true,
             true,
@@ -1291,14 +1317,17 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(exerciseEvidenceState(exercise)).to.equal("ACCEPTED");
       expect(exercise.observations).to.deep.equal([...observations.run, ...observations.verification]);
       const committed = JSON.parse(readFileSync(records[0], "utf8"));
-      expect(exercise.record).to.deep.equal(committed);
+      expect(exercise.accepted).to.have.length(1);
+      expect(exercise.accepted[0]).to.deep.include({ path: records[0], generation: "v1" });
+      expect(exercise.accepted[0].record).to.deep.equal(committed);
       expect(toolingState({ selfTestPassed: true, archive, exercise })).to.equal("SELF_HOSTED_PATH_EXERCISED");
       const pa = provingAvailabilityFromRepo(".");
       expect(pa.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
       expect(pa.selfHostedPath.exercised).to.equal(true);
-      expect(pa.selfHostedPath.record).to.equal(records[0]);
+      expect(pa.selfHostedPath.witnesses).to.deep.equal(records);
       expect(pa.exercises.records).to.equal(1);
-      expect(pa.exercises.accepted?.record).to.equal(records[0]);
+      expect(pa.exercises.accepted?.map((a) => a.record)).to.deep.equal(records);
+      expect(pa.exercises.accepted?.[0].egressAssurance).to.equal("EDGE_PROBES_ONLY");
       // SP1-PA3B's record is bound to the real expectations: the canonical host binary for the designated host tree,
       // the committed proof input and archive record, the acquisitions' addresses; it was accepted by the designated
       // verifier with egress refused, within the rotation delay. SP1-PA2C's evidence is still not SP1-PA3's: the
@@ -1556,13 +1585,15 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       expect(r.stdout).to.include("SELF_HOSTED_PATH_EXERCISED");
     });
 
-    it("sp1:proof-exercise-record: never overwrites the committed record (the same observations derive it again, and it exists)", function () {
+    it("sp1:proof-exercise-record: never derives a committed exercise again (every exercise has its record), and writes nothing", function () {
       this.timeout(120_000);
       const rel = exerciseRecordsIn(".")[0];
       const before = readFileSync(rel);
       const r = run("scripts/generate-sp1-proof-exercise-record.ts");
       expect(r.status).to.equal(1);
-      expect(`${r.stdout}\n${r.stderr}`).to.match(/exists: a proof-exercise record is never overwritten/);
+      expect(`${r.stdout}\n${r.stderr}`).to.match(
+        /nothing to derive: every committed exercise in evidence\/zk\/sp1-impl\/observations already has its record/,
+      );
       expect(readFileSync(rel).equals(before)).to.equal(true);
       expect(exerciseRecordsIn(".")).to.deep.equal([rel]);
     });

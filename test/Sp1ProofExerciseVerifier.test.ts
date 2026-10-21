@@ -173,24 +173,28 @@ describe("SP1-PA3A — the designated verifier path (a development chain)", func
     ).to.equal("REJECTED");
   });
 
-  it("a committed exercise's proof is re-executed here on every run (the real checkout holds SP1-PA3B's); without a record there is no exercise evidence", async function () {
+  it("every committed exercise's proof is re-executed here on every run (the real checkout holds SP1-PA3B's; a v2 beside it is re-executed too); without a record there is no exercise evidence", async function () {
     this.timeout(300_000);
     const observations = exerciseObservationsIn(".");
     if (exerciseRecordsIn(".").length === 0) {
       expect(observations).to.deep.equal({ run: [], verification: [], other: [] });
       return;
     }
-    // Once SP1-PA3B commits an exercise: its proof must verify against the authenticated runtime, and name d1's key.
-    const run = JSON.parse(readFileSync(observations.run[0], "utf8")) as RunObservation;
-    expect(run.proof.vkey).to.equal(d1.programVKey);
-    const check = await verifyWithRuntime(ethers.provider, {
-      address,
-      programVKey: run.proof.vkey,
-      publicValues: run.proof.publicValues,
-      proofBytes: run.proof.proofBytes,
-      mode: LOCAL_RUNTIME,
-    });
-    expect(check.verdicts).to.deep.equal({ real: "success", tampered: `revert ${PROOF_INVALID}` });
-    expect(check.runtimeCodeKeccak).to.equal(d1.verifier.runtimeCodeKeccak);
+    // One run observation per exercise record (SP1-PA3D0: SP1-PA3B's v1, and any v2 beside it): each proof must
+    // verify against the authenticated runtime and name d1's key; none is skipped because another one verified.
+    expect(observations.run).to.have.length(exerciseRecordsIn(".").length);
+    for (const rel of observations.run) {
+      const run = JSON.parse(readFileSync(rel, "utf8")) as RunObservation;
+      expect(run.proof.vkey, rel).to.equal(d1.programVKey);
+      const check = await verifyWithRuntime(ethers.provider, {
+        address,
+        programVKey: run.proof.vkey,
+        publicValues: run.proof.publicValues,
+        proofBytes: run.proof.proofBytes,
+        mode: LOCAL_RUNTIME,
+      });
+      expect(check.verdicts, rel).to.deep.equal({ real: "success", tampered: `revert ${PROOF_INVALID}` });
+      expect(check.runtimeCodeKeccak, rel).to.equal(d1.verifier.runtimeCodeKeccak);
+    }
   });
 });

@@ -262,7 +262,10 @@ describe("SP1-PA2A circuit tooling contract", function () {
       // The state is derived from the archive and exercise evidence, and the record says which state it holds and why.
       expect(r.acquisition.state).to.equal(r.state === "TOOLING_READY_NO_ARTIFACT" ? "NO_RECORD" : "ACCEPTED");
       expect(r.exercise.state).to.equal(exercised() ? "ACCEPTED" : "NO_RECORD");
-      expect(r.exercise.record).to.equal(exercised() ? exerciseRecordsIn(".")[0] : null);
+      expect(r.exercise.records.map((x: { record: string }) => x.record)).to.deep.equal(
+        exercised() ? exerciseRecordsIn(".") : [],
+      );
+      expect(r.exercise).to.not.have.property("record");
       expect(r.exercise.authoritativeDir).to.equal("evidence/zk/sp1-impl/proof-exercises");
       expect(availabilityStatusesFor(r.state)).to.include(r.provingAvailability.status);
     });
@@ -277,12 +280,14 @@ describe("SP1-PA2A circuit tooling contract", function () {
       if (archived()) expect(pa.archives.accepted.record).to.equal(archiveRecordsIn(".")[0]);
       else expect(pa.archives).to.not.have.property("accepted");
       if (exercised()) {
-        expect(pa.selfHostedPath.record).to.equal(exerciseRecordsIn(".")[0]);
-        expect(pa.exercises.accepted.record).to.equal(exerciseRecordsIn(".")[0]);
+        expect(pa.selfHostedPath.witnesses).to.deep.equal(exerciseRecordsIn("."));
+        expect(pa.exercises.accepted.map((a: { record: string }) => a.record)).to.deep.equal(exerciseRecordsIn("."));
       } else {
-        expect(pa.selfHostedPath).to.not.have.property("record");
+        expect(pa.selfHostedPath).to.not.have.property("witnesses");
         expect(pa.exercises).to.not.have.property("accepted");
       }
+      // SP1-PA3D0: the v1 scalar is gone, never redefined.
+      expect(pa.selfHostedPath).to.not.have.property("record");
     });
 
     it("refuses a stale tooling record", async function () {
@@ -453,7 +458,7 @@ describe("SP1-PA2A circuit tooling contract", function () {
 
     it("derives the archived state only from accepted archive evidence, and no state from refused evidence", function () {
       const none = { records: [], record: null, observations: [], errors: [] };
-      const exercise = { records: [], record: null, observations: [], errors: [] };
+      const exercise = { records: [], accepted: [], observations: [], errors: [] };
       expect(toolingState({ selfTestPassed: true, archive: none, exercise })).to.equal("TOOLING_READY_NO_ARTIFACT");
       expect(toolingState({ selfTestPassed: false, archive: none, exercise })).to.equal("TOOLING_NOT_PRESENT");
       const stray = { records: [`${PROVING_ARCHIVES_DIR}/r.json`], record: null, observations: [], errors: ["stray"] };
