@@ -1148,7 +1148,9 @@ collided with SP1-PA3B's file names; the availability record, the tooling record
 named "the" record in scalars. A second legitimate exercise would therefore have lost state 3 merely by being
 second. This lane changes the evidence model only. Nothing was proved, observed or captured, the proving host was not
 used, and SP1-PA3B's run and verification observations and record, the archive record, the designation,
-`PROGRAM_VKEY`, the verifier, the prove gate and SP1-PA3C's observer, tools, schemas and fixture are byte-identical.
+`PROGRAM_VKEY`, the verifier, the prove gate and SP1-PA3C's observer, tools, run schema and fixture are
+byte-identical. SP1-PA3C's v2 record schema changed in its two observation-path patterns only (below), while no v2
+record exists.
 
 ### The names and the next exercise's procedure
 
@@ -1158,6 +1160,11 @@ used, and SP1-PA3B's run and verification observations and record, the archive r
 | Run observation (`evidence/zk/sp1-impl/observations/`) | `proof-exercise-run-<host>.raw.json`, run v1 | `proof-exercise-run-<host>.<token>.raw.json`, run v2 |
 | Verification observation | `proof-exercise-verification-<host>.raw.json` | `proof-exercise-verification-<host>.<token>.raw.json` |
 | Records per designation | 1 (its one name) | at most 1 (`MAX_RECORDS`, this contract's scope) |
+
+The v2 record's JSON schema (`evidence/zk/schema/sp1-proof-exercise.v2.schema.json`) names a v2 exercise's
+observations with their token: its `derivedFrom` and `verification.observation.path` patterns require the `.<token>`
+part, so a record derived under these names conforms to its schema and one under the v1 slot's names does not. The v1
+schema, which describes SP1-PA3B's record, is unchanged.
 
 An exercise's token is its identity: the first 16 hexadecimal digits of the sha256 of its run observation's committed
 (LF) bytes, the digest SP1-PA3A's `exercise.id` (`<designation>:<token>`) already carries. A v2 file's name is thus a
@@ -1174,7 +1181,8 @@ The next exercise (SP1-PA3D, owner-authorized; not executed here) follows SP1-PA
 ```bash
 # the attributed measurement's --out is a new file outside the repository; its token names all three files
 token=$(sha256sum /var/lib/sp1-observer/run.raw.json | cut -c1-16)
-cp /var/lib/sp1-observer/run.raw.json evidence/zk/sp1-impl/observations/proof-exercise-run-<host>.$token.raw.json
+# -n: never over an existing file (a name missing its token would replace SP1-PA3B's committed run on its host)
+cp -n /var/lib/sp1-observer/run.raw.json evidence/zk/sp1-impl/observations/proof-exercise-run-<host>.$token.raw.json
 # commit it, then verify that committed file and commit the verification
 SP1_PROOF_EXERCISE_RUN=evidence/zk/sp1-impl/observations/proof-exercise-run-<host>.$token.raw.json \
   SP1_PROOF_EXERCISE_HOST=<host> \
@@ -1189,9 +1197,9 @@ npm run sp1:proving-availability && npm run sp1:circuit-tooling && npm run sp1:h
 (`derivePendingExerciseRecord`). It refuses when none is pending (a record is never derived twice) or more than one
 is (one at a time), when the observations are not committed, when the generation already holds its count, when a v2
 run sits under the v1 slot's names (it names the right file), and when the files carry another token than the run's.
-An attempt whose record has not been committed (a rejected proof, a refused capture, a mistyped token) may still be
-renamed, re-made or dropped by a later commit; from the commit that holds its record on, its observations are as
-permanent as the record.
+An attempt no committed record was derived from (a rejected proof, a refused capture, a mistyped or missing token, a
+second file in a committed record's slot) may still be renamed, re-made or dropped by a later commit; from the commit
+that holds a record on, the two observations its `derivedFrom` names are as permanent as the record.
 
 ### The judgement
 
@@ -1230,10 +1238,12 @@ record carries the assurance its own observer evidence derives (`CONTINUOUS_ATTR
 The directory's git history must be append-only, and so must the observations of every committed record
 (`exerciseHistoryErrors`: the repository's `directoryHistoryErrors`, which already guards the designations, the
 evidence bundles and the wrapper builds, over every parent edge of every commit and over the working tree against
-HEAD; in the shared observation directory a `proof-exercise-*` observation is held to it from the first commit whose
-tree holds its exercise's record, while other observations are re-measured and an attempt without a record may still
-be dropped). A record, and its observations from then on, is never removed, renamed or changed, so deleting
-SP1-PA3B's record after a v2 is committed can never look like "only ever a v2", and SP1-PA3B's observations cannot be
+HEAD; in the shared observation directory an observation is held to it from the first commit whose tree holds a
+record derived from it, as that record's `derivedFrom` names it, whatever the record's name or designation, while
+every other observation, an attempt among them, may still be re-measured or dropped; a file in the records directory
+that is no record naming its observations holds every `proof-exercise-*` observation, failing closed). A record,
+and its observations from then on, is never removed, renamed or changed, so deleting SP1-PA3B's record after a v2 is
+committed can never look like "only ever a v2", and SP1-PA3B's observations cannot be
 restamped, even into content-equivalent bytes. The history is checked even when no record is left (an
 emptied directory is refused, never "no record") and even while no archive record is accepted: withdrawing the
 archive record together with SP1-PA3B's exercise refuses the availability record too. A shallow clone, a directory
