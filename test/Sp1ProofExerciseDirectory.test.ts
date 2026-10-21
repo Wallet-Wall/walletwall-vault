@@ -75,6 +75,7 @@ import {
   PROVING_AVAILABILITY_REL,
   archiveEvidenceFromRepo,
   deriveProvingAvailability,
+  exerciseEvidenceFromRepo,
   provingAvailabilityErrors,
   provingAvailabilityFromRepo,
   serializeProvingAvailability,
@@ -996,6 +997,10 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       commit(s.d, "re-measured");
       const ok = judge(s.d);
       expect(exerciseEvidenceState(ok), ok.errors.join("\n")).to.equal("ACCEPTED");
+      // ... and re-measured again in the working tree only: still none of the exercise's evidence.
+      write(s.d, `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`, '{ "measured": 3 }\n');
+      const still = judge(s.d);
+      expect(exerciseEvidenceState(still), still.errors.join("\n")).to.equal("ACCEPTED");
     });
 
     it("a committed v2 freezes its tools: an edit refuses the directory, the v1 with it; only the old bytes restore it", function () {
@@ -1374,6 +1379,18 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         "NOT_ESTABLISHED",
         "NOT_ESTABLISHED",
       ]);
+    });
+
+    it("availability judges the exercise evidence even with no archive evidence beside it (SP1-PA3B's record then refuses)", function () {
+      this.timeout(120_000);
+      const obs = JSON.parse(readFileSync(PROVING_ARTIFACTS_OBSERVATION_REL, "utf8")) as ProvingArtifactsObservation;
+      const e = exerciseEvidenceFromRepo(".", obs, readDesignations("."), null);
+      expect(e, "judged, never skipped").to.not.equal(null);
+      expect(exerciseEvidenceState(e as ExerciseEvidence)).to.equal("REFUSED");
+      expect((e as ExerciseEvidence).errors.join("\n")).to.include(
+        "a proof-exercise record exists but the archive evidence is not accepted (NO_RECORD)",
+      );
+      expect(exerciseEvidenceFromRepo(".", obs, [], null), "no designation, nothing to judge").to.equal(null);
     });
 
     it("availability holds each accepted exercise to the accepted archive record and the designation, and states each", function () {
