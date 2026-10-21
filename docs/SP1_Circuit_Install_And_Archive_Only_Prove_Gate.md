@@ -1197,19 +1197,24 @@ npm run sp1:proving-availability && npm run sp1:circuit-tooling && npm run sp1:h
 (`derivePendingExerciseRecord`). It refuses when none is pending (a record is never derived twice) or more than one
 is (one at a time), when the observations are not committed, when the generation already holds its count, when a v2
 run sits under the v1 slot's names, and when the files carry another token than the run's. A v2 run under the v1
-slot's names is named to its right file only while that slot holds no record. Beside SP1-PA3B's record, a run from
-another host makes the slot hold two runs, and the directory's refusal (`needs exactly one run observation`) comes
-first; on SP1-PA3B's own host label those names are SP1-PA3B's own files, so the copy would replace SP1-PA3B's run,
-which `cp -n` refuses (and the history would refuse once committed). An attempt no committed record was derived from
+slot's names is named to its right file only while that slot holds no record. Beside SP1-PA3B's record, a run under
+another host label makes the slot hold two runs, and the directory's refusal (`needs exactly one run observation`)
+comes first; under SP1-PA3B's own host label those names are SP1-PA3B's own files, so the copy would replace
+SP1-PA3B's run, which `cp -n` refuses (and the history refuses, in the working tree or committed). An attempt no
+committed record was derived from
 (a rejected proof, a refused capture, a mistyped or missing token, a second file in a committed record's slot) may
 still be renamed, re-made or dropped by a later commit; from the commit that holds a record on, the two observations
 its `derivedFrom` names are as permanent as the record.
 
-The judge requires the run's source commit (the commit the run was made from) in main's history. Make the run from a
-commit main already holds, as SP1-PA3B did (from main's own merge commit). A run made from one of its pull request's
-own commits needs that pull request merged with a merge commit, never squashed or rebase-merged, nor updated by rebase
-while it waits: any of those leaves the source commit outside main's history, and the record, which can never be
-withdrawn, then refuses the directory (SP1-PA3B's v1 included) until a merge commit brings that commit back into it.
+The judge requires the run's source commit (the commit the run was made from) in the history of the HEAD it judges,
+and that commit to hold what the run is judged against (the designated host tree, the archive record and the tools,
+byte for byte). A pull request's own checks run on a history that holds the pull request's commits, so they cannot
+see a squash: only main's checks after the merge would. Make the run from a commit main already holds that also
+holds the v2 tools (`fad7bb43`, the merge of SP1-PA3C, or a later one that keeps them; SP1-PA3B's own run was made
+from main's merge of SP1-PA3A, which predates them). A run made from one of its pull request's own commits needs
+that pull request merged with a merge commit, never squashed or rebase-merged, nor updated by rebase while it waits:
+any of those leaves the source commit outside main's history, and the record, which can never be withdrawn, then
+refuses the directory (SP1-PA3B's v1 included) until a merge commit brings that commit into it.
 
 ### The judgement
 
