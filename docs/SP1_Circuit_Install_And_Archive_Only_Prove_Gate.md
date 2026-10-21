@@ -1149,8 +1149,8 @@ named "the" record in scalars. A second legitimate exercise would therefore have
 second. This lane changes the evidence model only. Nothing was proved, observed or captured, the proving host was not
 used, and SP1-PA3B's run and verification observations and record, the archive record, the designation,
 `PROGRAM_VKEY`, the verifier, the prove gate and SP1-PA3C's observer, tools, run schema and fixture are
-byte-identical. SP1-PA3C's v2 record schema changed in its two observation-path patterns only (below), while no v2
-record exists.
+byte-identical. SP1-PA3C's v2 record schema changed in its two observation-path patterns and one sentence of its
+description (below), while no v2 record exists.
 
 ### The names and the next exercise's procedure
 
@@ -1196,10 +1196,17 @@ npm run sp1:proving-availability && npm run sp1:circuit-tooling && npm run sp1:h
 `sp1:proof-exercise-record` derives the one exercise whose observations are committed without a record
 (`derivePendingExerciseRecord`). It refuses when none is pending (a record is never derived twice) or more than one
 is (one at a time), when the observations are not committed, when the generation already holds its count, when a v2
-run sits under the v1 slot's names (it names the right file), and when the files carry another token than the run's.
-An attempt no committed record was derived from (a rejected proof, a refused capture, a mistyped or missing token, a
-second file in a committed record's slot) may still be renamed, re-made or dropped by a later commit; from the commit
-that holds a record on, the two observations its `derivedFrom` names are as permanent as the record.
+run sits under the v1 slot's names, and when the files carry another token than the run's. A v2 run under the v1
+slot's names is named to its right file only while that slot holds no record; beside SP1-PA3B's record the slot holds
+two runs, and the directory's refusal (`needs exactly one run observation`) comes first. An attempt no committed record
+was derived from (a rejected proof, a refused capture, a mistyped or missing token, a second file in a committed
+record's slot) may still be renamed, re-made or dropped by a later commit; from the commit that holds a record on, the
+two observations its `derivedFrom` names are as permanent as the record.
+
+The pull request that commits an exercise reaches main by a merge commit, never squashed or rebased: the run names
+the commit it was made from, the judge requires that commit in main's history, and a squash or a rebase would leave
+it outside, refusing a record that can never be withdrawn, and with it the directory (SP1-PA3B's v1 included), for
+good.
 
 ### The judgement
 
@@ -1240,11 +1247,12 @@ The directory's git history must be append-only, and so must the observations of
 evidence bundles and the wrapper builds, over every parent edge of every commit and over the working tree against
 HEAD; in the shared observation directory an observation is held to it from the first commit whose tree holds a
 record derived from it, as that record's `derivedFrom` names it, whatever the record's name or designation, while
-every other observation, an attempt among them, may still be re-measured or dropped; a file in the records directory
-that is no record naming its observations holds every `proof-exercise-*` observation, failing closed). A record,
-and its observations from then on, is never removed, renamed or changed, so deleting SP1-PA3B's record after a v2 is
-committed can never look like "only ever a v2", and SP1-PA3B's observations cannot be
-restamped, even into content-equivalent bytes. The history is checked even when no record is left (an
+every other observation, an attempt among them, may still be re-measured or dropped; beside a records-directory file
+that is no record naming its observations (a subdirectory, a link, a file that is not JSON or names no list of
+paths), every proof-exercise observation is held too, failing closed; a blob git cannot read refuses the history).
+A record, and its observations from then on, is never removed, renamed or changed, so deleting SP1-PA3B's record
+after a v2 is committed can never look like "only ever a v2", and SP1-PA3B's observations cannot be restamped, even
+into content-equivalent bytes. The history is checked even when no record is left (an
 emptied directory is refused, never "no record") and even while no archive record is accepted: withdrawing the
 archive record together with SP1-PA3B's exercise refuses the availability record too. A shallow clone, a directory
 without git or a repository without a commit is refused, never read as clean (CI's `Build, lint & test` checks out
