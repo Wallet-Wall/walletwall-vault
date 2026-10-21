@@ -908,6 +908,17 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       commit(again.d, "a rejected v2 of the v1's proof");
       const e = refused(again.d, `${rejected.files.record}: VERIFIER_REJECTED`);
       expect(e.errors.join("\n")).to.not.include("hold one proof");
+      // A v2 of that proof whose pair derives but whose committed record is not the derived one: refused only after
+      // its derivation, and still never counted as a second exercise of the proof.
+      const late = coexisting({ v2: false });
+      const edited = exerciseOf(late.x, late.base, "v2", { fill: 0xab });
+      writeExercise(late.d, { ...edited, record: { ...edited.record, establishes: "edited by hand" } });
+      commit(late.d, "a v2 of the v1's proof, its record edited by hand");
+      const l = refused(
+        late.d,
+        `${edited.files.record}: ${edited.files.record} is not the record the committed observations derive`,
+      );
+      expect(l.errors.join("\n")).to.not.include("hold one proof");
     });
 
     it("a v2 named after another token than its run's bytes is refused (a name is a function of the bytes)", function () {
