@@ -1492,7 +1492,10 @@ function derivedObservationAt(repoRoot: string): (path: string, commit: string) 
   };
 }
 
-/** A record is read whole, however large: spawnSync's default 1 MiB would take a larger one for unreadable. */
+/**
+ * A record is read whole up to the history helper's own bound (spawnSync's default 1 MiB would take a larger one for
+ * unreadable); a blob past it refuses the history, failing closed.
+ */
 const BLOB_MAX_BYTES = 512 * 1024 * 1024;
 
 /** The text of the blob `object`: one git cannot give (a missing object, a read error) throws, never reads as empty. */

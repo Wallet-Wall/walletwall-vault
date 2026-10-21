@@ -1279,18 +1279,26 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       expect(heldBeside("120000", namingNothing), "a link").to.equal(true);
       expect(heldBeside("100644", namingNothing), "a regular file").to.equal(false);
       expect(heldBeside("100755", namingNothing), "an executable file").to.equal(false);
-      // A record is read whole, however large: a 2 MiB regular file naming nothing is a record naming nothing.
-      const big = coexisting({ v2: false });
-      write(big.d, big.v2.files.run, serializeJson(big.v2.run));
-      write(
-        big.d,
-        `${PROOF_EXERCISES_DIR}/large.json`,
-        `{ "derivedFrom": [], "pad": "${"x".repeat(2 * 1024 * 1024)}" }\n`,
-      );
-      commit(big.d, "an attempt beside a large record naming nothing");
-      rmSync(join(big.d, big.v2.files.run));
-      commit(big.d, "the attempt dropped");
-      expect(exerciseHistoryErrors(big.d)).to.deep.equal([]);
+      // A record is read whole past spawnSync's default 1 MiB, by what it names: a 2 MiB record naming nothing holds
+      // nothing, and one naming the attempt holds it (never read as unreadable, nor as naming nothing).
+      const large = (names: (run: string) => string[]) => {
+        const b = coexisting({ v2: false });
+        write(b.d, b.v2.files.run, serializeJson(b.v2.run));
+        const derivedFrom = JSON.stringify(names(b.v2.files.run));
+        write(
+          b.d,
+          `${PROOF_EXERCISES_DIR}/large.json`,
+          `{ "derivedFrom": ${derivedFrom}, "pad": "${"x".repeat(2 * 1024 * 1024)}" }\n`,
+        );
+        commit(b.d, "an attempt beside a large record");
+        rmSync(join(b.d, b.v2.files.run));
+        commit(b.d, "the attempt dropped");
+        return { history: exerciseHistoryErrors(b.d).join("\n"), dropped: `${basename(b.v2.files.run)} was removed` };
+      };
+      expect(large(() => []).history).to.equal("");
+      const named = large((run) => [run]);
+      expect(named.history).to.include(named.dropped);
+      expect(named.history).to.not.include("cannot be read");
       // Beside a stray, what a readable record names stays held, whatever its kind: failing closed only adds.
       const r = coexisting({ v1: false, v2: false });
       const other = `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`;
