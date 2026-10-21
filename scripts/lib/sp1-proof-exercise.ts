@@ -18,8 +18,9 @@
  * attributed run) is recorded beside it as <designation>.v2.<token>.json, its two observations named after the same
  * token (exerciseToken: its run observation's digest, the one its exercise.id carries). Every record is judged on its
  * own and the directory as a whole (exerciseDirectoryOf, productionExerciseEvidence): one or more accepted records are
- * one state, any refused file refuses it, and a record or an observation once committed is never withdrawn or edited
- * (exerciseHistoryErrors). Each record keeps its own egress assurance; a stronger one never rewrites an older record's.
+ * one state, any refused file refuses it, and a record once committed, with its observations from then on, is never
+ * withdrawn or edited (exerciseHistoryErrors). Each record keeps its own egress assurance; a stronger one never rewrites
+ * an older record's.
  *
  * Five facts, kept apart: artifact identity (the archive record, SP1-PA2B/C), proving execution (the run), verifier
  * acceptance (the verification), performance (wall time and memory against the 2-day rotation delay) and production
@@ -1437,24 +1438,53 @@ function inHistory(repoRoot: string, commit: string): boolean {
 
 /**
  * Every way the exercise directory's history withdrew or edited a record it had committed, or the observation
- * directory's a proof-exercise observation (SP1-PA3D0): exercises are history, so a newer one never replaces an older
- * one, and a record or an observation once committed stays, byte for byte, in every later commit and in the working
- * tree (scripts/lib/append-only-history.ts, every parent edge of every commit). A history git cannot show (no
- * repository, a shallow clone, no commit) is refused, never read as clean.
+ * directory's the observation of a committed record (SP1-PA3D0): exercises are history, so a newer one never replaces
+ * an older one, and a record stays, byte for byte, in every later commit and in the working tree from the commit that
+ * holds it, as do its observations from the first commit that holds the record (scripts/lib/append-only-history.ts,
+ * every parent edge of every commit). An attempt whose record was never committed (a rejected proof, a refused
+ * capture, a mistyped token) may still be dropped. A history git cannot show (no repository, a shallow clone, no
+ * commit) is refused, never read as clean.
  */
-export function exerciseHistoryErrors(repoRoot: string): string[] {
-  try {
-    // The records, and the proof-exercise observations they are derived from (the observation directory holds other
-    // kinds too, some re-measured: only these are write-once evidence of an exercise).
-    return [
-      ...directoryHistoryErrors(repoRoot, PROOF_EXERCISES_DIR),
-      ...directoryHistoryErrors(repoRoot, OBSERVATIONS_DIR, (path) => path.startsWith(EXERCISE_OBSERVATION_PREFIX)),
-    ];
-  } catch (error) {
-    return [
-      `the history of ${PROOF_EXERCISES_DIR} cannot be read (${String((error as Error).message).split("\n")[0]}): no history is taken as clean`,
-    ];
-  }
+export function exerciseHistoryErrors(repoRoot: string, designation: string): string[] {
+  const walk = (dirRel: string, include?: (path: string, commit: string) => boolean): string[] => {
+    try {
+      return directoryHistoryErrors(repoRoot, dirRel, include);
+    } catch (error) {
+      return [
+        `the history of ${dirRel} cannot be read (${String((error as Error).message).split("\n")[0]}): no history is taken as clean`,
+      ];
+    }
+  };
+  return [...walk(PROOF_EXERCISES_DIR), ...walk(OBSERVATIONS_DIR, recordedObservationAt(repoRoot, designation))];
+}
+
+/**
+ * Whether a file of OBSERVATIONS_DIR is, in `commit`'s tree, evidence of a committed record: a proof-exercise
+ * observation whose exercise's record (the v1 slot for its untokened names, `<designation>.v2.<token>.json` for its
+ * token's) the records directory holds in that tree. Each commit's records are listed once; a listing git cannot give
+ * throws, and the history is then refused, never read as holding nothing.
+ */
+function recordedObservationAt(repoRoot: string, designation: string): (path: string, commit: string) => boolean {
+  const listed = new Map<string, Set<string>>();
+  const recordsAt = (commit: string): Set<string> => {
+    const known = listed.get(commit);
+    if (known !== undefined) return known;
+    const r = gitOut(repoRoot, ["ls-tree", "--name-only", "-z", commit, "--", `${PROOF_EXERCISES_DIR}/`]);
+    if (r.status !== 0) throw new Error(`git ls-tree ${commit} -- ${PROOF_EXERCISES_DIR}/ failed: ${r.stderr.trim()}`);
+    const names = new Set(
+      r.stdout
+        .split("\0")
+        .filter(Boolean)
+        .map((rel) => rel.slice(PROOF_EXERCISES_DIR.length + 1)),
+    );
+    listed.set(commit, names);
+    return names;
+  };
+  return (path, commit) => {
+    const slot = observationSlotOf(path);
+    if (slot === null) return false;
+    return recordsAt(commit).has(slot.token === null ? `${designation}.json` : `${designation}.v2.${slot.token}.json`);
+  };
 }
 
 /**
@@ -1567,7 +1597,7 @@ function judgeExercise(
 export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvidenceInput): ExerciseEvidence {
   // The history is judged beside everything else, never instead of it: a withdrawn or edited record is reported with
   // whatever else the directory holds, and refuses it even when nothing is left in it.
-  const history = exerciseHistoryErrors(repoRoot);
+  const history = exerciseHistoryErrors(repoRoot, input.anchor.designation);
   const records = exerciseRecordsIn(repoRoot);
   const refused = (observations: string[], errors: string[]): ExerciseEvidence => ({
     records,

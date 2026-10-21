@@ -186,25 +186,29 @@ function removedOrChanged(older: Map<string, string>, newer: Map<string, string>
 
 /**
  * Every way the history of the directory `dirRel` removed or changed a file it had published; empty: it only grew.
- * With `include`, only the files whose paths (relative to the directory) it admits are held to that: a directory
- * shared with records of other kinds (SP1-PA3D0's proof-exercise observations beside re-measured observations).
+ * With `include`, only the files it admits are held to that, judged on the older side of each edge: `include(path,
+ * commit)` receives the path relative to the directory and the commit whose tree is that side ("HEAD" for the working
+ * tree's comparison), so a file can become permanent from the first commit that makes it evidence (SP1-PA3D0: a
+ * proof-exercise observation once its record is committed, never while it is an attempt without one).
  */
 export function directoryHistoryErrors(
   repoRoot: string,
   dirRel: string,
-  include: (path: string) => boolean = () => true,
+  include: (path: string, commit: string) => boolean = () => true,
 ): string[] {
   const unavailable = historyUnavailable(repoRoot);
   if (unavailable.length > 0) return unavailable;
   // Only the older side is filtered: removedOrChanged holds each of its files to the newer side, whatever else is there.
-  const only = (files: Map<string, string>) => new Map([...files].filter(([path]) => include(path)));
+  const only = (files: Map<string, string>, commit: string) =>
+    new Map([...files].filter(([path]) => include(path, commit)));
   const errors: string[] = [];
   for (const [commit, parent, newer, older] of changedEdges(repoRoot, dirRel)) {
-    for (const e of removedOrChanged(only(treeFiles(repoRoot, older)), treeFiles(repoRoot, newer))) {
+    // An introduction has no older side (older is null, parent may be too): nothing it held can have been removed.
+    for (const e of removedOrChanged(only(treeFiles(repoRoot, older), parent ?? ""), treeFiles(repoRoot, newer))) {
       errors.push(`${dirRel} at ${at(commit, parent)}: ${e}`);
     }
   }
-  const head = only(treeFiles(repoRoot, objectIds(repoRoot, ["HEAD"], dirRel).get("HEAD") ?? null));
+  const head = only(treeFiles(repoRoot, objectIds(repoRoot, ["HEAD"], dirRel).get("HEAD") ?? null), "HEAD");
   for (const e of removedOrChanged(head, diskFiles(resolve(repoRoot, dirRel)))) {
     errors.push(`${dirRel} in the working tree (against HEAD): ${e}`);
   }
