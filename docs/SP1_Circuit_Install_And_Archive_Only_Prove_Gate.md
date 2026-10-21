@@ -1189,6 +1189,9 @@ npm run sp1:proving-availability && npm run sp1:circuit-tooling && npm run sp1:h
 (`derivePendingExerciseRecord`). It refuses when none is pending (a record is never derived twice) or more than one
 is (one at a time), when the observations are not committed, when the generation already holds its count, when a v2
 run sits under the v1 slot's names (it names the right file), and when the files carry another token than the run's.
+An attempt whose record has not been committed (a rejected proof, a refused capture, a mistyped token) may still be
+renamed, re-made or dropped by a later commit; from the commit that holds its record on, its observations are as
+permanent as the record.
 
 ### The judgement
 
@@ -1224,34 +1227,46 @@ record carries the assurance its own observer evidence derives (`CONTINUOUS_ATTR
 
 ### History, never withdrawn
 
-The directory's git history must be append-only, and so must every `proof-exercise-*` observation's
+The directory's git history must be append-only, and so must the observations of every committed record
 (`exerciseHistoryErrors`: the repository's `directoryHistoryErrors`, which already guards the designations, the
 evidence bundles and the wrapper builds, over every parent edge of every commit and over the working tree against
-HEAD; in the shared observation directory only the exercise observations are held to it, since other observations
-are re-measured). A record or an exercise observation once committed is never removed, renamed or changed, so
-deleting SP1-PA3B's record after a v2 is committed can never look like "only ever a v2", and SP1-PA3B's observations
-cannot be restamped, even into content-equivalent bytes. The history is checked even when no record is left (an
+HEAD; in the shared observation directory a `proof-exercise-*` observation is held to it from the first commit whose
+tree holds its exercise's record, while other observations are re-measured and an attempt without a record may still
+be dropped). A record, and its observations from then on, is never removed, renamed or changed, so deleting
+SP1-PA3B's record after a v2 is committed can never look like "only ever a v2", and SP1-PA3B's observations cannot be
+restamped, even into content-equivalent bytes. The history is checked even when no record is left (an
 emptied directory is refused, never "no record") and even while no archive record is accepted: withdrawing the
 archive record together with SP1-PA3B's exercise refuses the availability record too. A shallow clone, a directory
 without git or a repository without a commit is refused, never read as clean (CI's `Build, lint & test` checks out
 with full history). A rewrite of main's own history is out of its reach, as it is for every append-only check here;
 the main ruleset is what refuses that. Because every parent edge is walked, a record deleted in any commit that reaches
 main (even one a later commit restores, through a merge commit) refuses from then on: never delete a committed record or
-observation, even temporarily, on a branch that will be merged. A working tree checked out with CRLF line ends
-(`core.autocrlf=true`) reads every record as changed, as the registry's own history check already does; the
-repository's checkouts are LF.
+its observations, even temporarily, on a branch that will be merged. A working tree checked out with CRLF line ends
+(`core.autocrlf=true`) reads every record and every observation of one as changed (the message names no line ends), as
+the registry's own history check already does for its records; the repository's checkouts are LF.
 
 ### What a committed record freezes
 
 A committed exercise record is re-derived by the code of the day on every check, byte for byte, and the history
-forbids withdrawing it. Once committed, its tools and texts are therefore frozen exactly as SP1-PA3B's v1 record
-already froze the v1 measurement tool, the verification tool and the v1 record's text: for a v2 record, the attributed
-measurement tool and the root observer (bound as committed now), the verification tool, the observer evidence's
-normalization and judgement (`scripts/lib/sp1-egress-attribution.ts`) and the v2 record's text
-(`ATTRIBUTED_ESTABLISHES`, `ATTRIBUTED_DOES_NOT_ESTABLISH`, `ATTRIBUTED_EXERCISE_LANE`). A change that alters a
-committed record's derivation refuses the whole directory (SP1-PA3B's v1 with it, as any refused record does), and only
-the old bytes restore it; the suite pins this. A lane that must evolve them versions the derivation, or adds an
-explicit, append-only retirement, before it changes them, never a deletion.
+forbids withdrawing it. Once committed, everything its derivation reads is therefore frozen, exactly as SP1-PA3B's v1
+record already froze it for the v1 generation:
+
+- the tools, as committed now: the v1 measurement tool (v1) or the attributed measurement tool and the root observer
+  (v2), and the verification tool;
+- the judge's rules and constants: the observation shapes, the required probe targets (`EGRESS_CANARY_IPS` among
+  them), `PROBE_WINDOW_SECONDS`, the refusal codes, the clock tolerance, `ROTATION_DELAY_SECONDS`, and for a v2 the
+  observer evidence's normalization and judgement (`scripts/lib/sp1-egress-attribution.ts`);
+- the archive-only gate's environment policy the run is held to (`FROZEN_ENV`, `REFUSED_ENV`, `REFUSED_ENV_PREFIX`,
+  `PASS_THROUGH_ENV` in `scripts/lib/sp1-prove-gate.ts`);
+- the committed inputs the expectations read: the archive record's bytes, the acquisitions' addresses, the canonical
+  rebuild observation, the proof-input fixture and the latest designation;
+- the record's text: the v1 `establishes`/`doesNotEstablish`, or `ATTRIBUTED_ESTABLISHES`,
+  `ATTRIBUTED_DOES_NOT_ESTABLISH` and `ATTRIBUTED_EXERCISE_LANE` for a v2.
+
+A change that alters a committed record's derivation, a hardening of the gate's environment policy included, refuses
+the whole directory (SP1-PA3B's v1 with it, as any refused record does), and only the old bytes restore it; the suite
+pins this. Hardening therefore never applies retroactively: a lane that must evolve any of these versions the
+derivation by run schema, or adds an explicit, append-only retirement, before it changes them, never a deletion.
 
 ### The generated records
 
