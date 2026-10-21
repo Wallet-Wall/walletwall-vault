@@ -863,8 +863,7 @@ export const ASSUMPTIONS: readonly Assumption[] = [
       // Every exercise record on disk, and the availability record's two accounts of them: the same paths, in the same
       // (path) order, or the account is not of these records.
       const exercisesOnDisk = [...input.exerciseRecords].sort();
-      const sameAsOnDisk = (paths: unknown) =>
-        Array.isArray(paths) && JSON.stringify(paths) === JSON.stringify(exercisesOnDisk);
+      const sameAsOnDisk = (paths: unknown) => JSON.stringify(paths) === JSON.stringify(exercisesOnDisk);
       const acceptedExercises = Array.isArray(pa?.exercises?.accepted)
         ? pa.exercises.accepted.map((a: { record?: unknown } | null) => a?.record)
         : null;
