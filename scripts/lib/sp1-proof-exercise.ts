@@ -18,8 +18,8 @@
  * attributed run) is recorded beside it as <designation>.v2.<token>.json, its two observations named after the same
  * token (exerciseToken: its run observation's digest, the one its exercise.id carries). Every record is judged on its
  * own and the directory as a whole (exerciseDirectoryOf, productionExerciseEvidence): one or more accepted records are
- * one state, any refused file refuses it, and a record once committed is never withdrawn (exerciseHistoryErrors).
- * Each record keeps its own egress assurance; a stronger one never rewrites an older record's.
+ * one state, any refused file refuses it, and a record or an observation once committed is never withdrawn or edited
+ * (exerciseHistoryErrors). Each record keeps its own egress assurance; a stronger one never rewrites an older record's.
  *
  * Five facts, kept apart: artifact identity (the archive record, SP1-PA2B/C), proving execution (the run), verifier
  * acceptance (the verification), performance (wall time and memory against the 2-day rotation delay) and production
@@ -1081,7 +1081,10 @@ export const GENERATION_SCHEMAS: Readonly<Record<ExerciseGeneration, { record: s
 /**
  * How many records of each generation one designation's directory admits: v1, SP1-PA3B's slot (its single name makes
  * it one); v2, the one attributed exercise SP1-PA3D0 makes room for. Every v2 file already carries its exercise's
- * token, so a later lane admits a second v2 by raising this number, never by renaming a committed file.
+ * token, so a second v2 never needs a committed file renamed; but raising this number is not enough: every v2 record
+ * is derived with ATTRIBUTED_EXERCISE_LANE, and a committed record is re-derived by the code of the day, so changing
+ * that constant (or any v2 tool or text) re-derives the committed v2 differently and refuses the directory. A lane
+ * that admits a second v2 first makes the lane a fact of each record.
  */
 export const MAX_RECORDS: Readonly<Record<ExerciseGeneration, number>> = { v1: 1, v2: 1 };
 const TOKEN = /^[0-9a-f]{16}$/;
@@ -1433,14 +1436,20 @@ function inHistory(repoRoot: string, commit: string): boolean {
 }
 
 /**
- * Every way the exercise directory's history withdrew or edited a record it had committed (SP1-PA3D0): exercises are
- * history, so a newer one never replaces an older one, and a record once committed stays, byte for byte, in every
- * later commit and in the working tree (scripts/lib/append-only-history.ts, every parent edge of every commit). A
- * history git cannot show (no repository, a shallow clone, no commit) is refused, never read as clean.
+ * Every way the exercise directory's history withdrew or edited a record it had committed, or the observation
+ * directory's a proof-exercise observation (SP1-PA3D0): exercises are history, so a newer one never replaces an older
+ * one, and a record or an observation once committed stays, byte for byte, in every later commit and in the working
+ * tree (scripts/lib/append-only-history.ts, every parent edge of every commit). A history git cannot show (no
+ * repository, a shallow clone, no commit) is refused, never read as clean.
  */
 export function exerciseHistoryErrors(repoRoot: string): string[] {
   try {
-    return directoryHistoryErrors(repoRoot, PROOF_EXERCISES_DIR);
+    // The records, and the proof-exercise observations they are derived from (the observation directory holds other
+    // kinds too, some re-measured: only these are write-once evidence of an exercise).
+    return [
+      ...directoryHistoryErrors(repoRoot, PROOF_EXERCISES_DIR),
+      ...directoryHistoryErrors(repoRoot, OBSERVATIONS_DIR, (path) => path.startsWith(EXERCISE_OBSERVATION_PREFIX)),
+    ];
   } catch (error) {
     return [
       `the history of ${PROOF_EXERCISES_DIR} cannot be read (${String((error as Error).message).split("\n")[0]}): no history is taken as clean`,
@@ -1448,7 +1457,11 @@ export function exerciseHistoryErrors(repoRoot: string): string[] {
   }
 }
 
-/** Every way `accepted` holds one proving run twice: two records of one proof are one exercise described twice. */
+/**
+ * Every way `accepted` holds byte-identical proofs: two records of one proof are one exercise described twice. Only
+ * identical bytes are seen: a Groth16 proof re-encoded into other valid bytes (negating its A and B points, say) is not,
+ * and an exercise's provenance rests on its observations and the owner's review, as it always has.
+ */
 function duplicateProofErrors(accepted: readonly AcceptedExercise[]): string[] {
   const byProof = new Map<string, string[]>();
   for (const a of accepted) {
@@ -1459,7 +1472,7 @@ function duplicateProofErrors(accepted: readonly AcceptedExercise[]): string[] {
     .filter(([, paths]) => paths.length > 1)
     .map(
       ([sha, paths]) =>
-        `${paths.join(" and ")} hold one proof (proofBytesSha256 ${sha}): one proving run is one exercise, never two records`,
+        `${paths.join(" and ")} hold byte-identical proofs (proofBytesSha256 ${sha}): one proof is one exercise, never two records`,
     );
 }
 

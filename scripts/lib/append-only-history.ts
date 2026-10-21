@@ -184,18 +184,27 @@ function removedOrChanged(older: Map<string, string>, newer: Map<string, string>
   return errors;
 }
 
-/** Every way the history of the directory `dirRel` removed or changed a file it had published; empty: it only grew. */
-export function directoryHistoryErrors(repoRoot: string, dirRel: string): string[] {
+/**
+ * Every way the history of the directory `dirRel` removed or changed a file it had published; empty: it only grew.
+ * With `include`, only the files whose paths (relative to the directory) it admits are held to that: a directory
+ * shared with records of other kinds (SP1-PA3D0's proof-exercise observations beside re-measured observations).
+ */
+export function directoryHistoryErrors(
+  repoRoot: string,
+  dirRel: string,
+  include: (path: string) => boolean = () => true,
+): string[] {
   const unavailable = historyUnavailable(repoRoot);
   if (unavailable.length > 0) return unavailable;
+  const only = (files: Map<string, string>) => new Map([...files].filter(([path]) => include(path)));
   const errors: string[] = [];
   for (const [commit, parent, newer, older] of changedEdges(repoRoot, dirRel)) {
-    for (const e of removedOrChanged(treeFiles(repoRoot, older), treeFiles(repoRoot, newer))) {
+    for (const e of removedOrChanged(only(treeFiles(repoRoot, older)), only(treeFiles(repoRoot, newer)))) {
       errors.push(`${dirRel} at ${at(commit, parent)}: ${e}`);
     }
   }
-  const head = treeFiles(repoRoot, objectIds(repoRoot, ["HEAD"], dirRel).get("HEAD") ?? null);
-  for (const e of removedOrChanged(head, diskFiles(resolve(repoRoot, dirRel)))) {
+  const head = only(treeFiles(repoRoot, objectIds(repoRoot, ["HEAD"], dirRel).get("HEAD") ?? null));
+  for (const e of removedOrChanged(head, only(diskFiles(resolve(repoRoot, dirRel))))) {
     errors.push(`${dirRel} in the working tree (against HEAD): ${e}`);
   }
   return errors;

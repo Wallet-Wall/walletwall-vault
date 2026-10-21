@@ -684,7 +684,8 @@ export function deriveProvingAvailability(input: {
   /** The judged archive evidence (scripts/lib/sp1-circuit-acquisition.ts); null only for a repository that holds none. */
   archive: ArchiveEvidence | null;
   exerciseRecords: readonly string[];
-  /** The judged proof-exercise evidence (scripts/lib/sp1-proof-exercise.ts); null while no archive is accepted. */
+  /** The judged proof-exercise evidence (scripts/lib/sp1-proof-exercise.ts), its history included; null only for a
+   * repository without a designation. */
   exercise: ExerciseEvidence | null;
 }): ProvingAvailabilityRecord {
   const obs = input.observation;
@@ -935,8 +936,10 @@ export function archiveEvidenceFromRepo(
 }
 
 /**
- * The proof-exercise evidence of `repoRoot`, judged against the accepted archive evidence (SP1-PA3A); null while no
- * archive record is accepted (then any exercise record is refused by the status derivation, never judged on its own).
+ * The proof-exercise evidence of `repoRoot`, judged against the archive evidence (SP1-PA3A); null only without a
+ * designation. It is judged even while no archive record is accepted (SP1-PA3D0): an exercise record then refuses
+ * itself, and the exercise directory's history is judged too, so withdrawing SP1-PA3B's exercise together with the
+ * archive record never reads as a path that was never exercised.
  */
 export function exerciseEvidenceFromRepo(
   repoRoot: string,
@@ -945,10 +948,10 @@ export function exerciseEvidenceFromRepo(
   archive: ArchiveEvidence | null,
 ): ExerciseEvidence | null {
   const d = latestDesignation(designations);
-  if (!d || archive === null || archive.record === null) return null;
+  if (!d) return null;
   return productionExerciseEvidence(repoRoot, {
     anchor: anchorFromDesignation(d, observation.source.groth16Vk.bytes),
-    archive,
+    archive: archive ?? { records: [], record: null, observations: [], errors: [] },
   });
 }
 
