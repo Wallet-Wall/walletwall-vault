@@ -586,7 +586,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       const { d, v1, v2 } = coexisting();
       const e = judge(d);
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
-      expect(exerciseHistoryErrors(d)).to.deep.equal([]);
+      expect(exerciseHistoryErrors(d, D)).to.deep.equal([]);
       expect(e.records).to.deep.equal([v1.files.record, v2.files.record]);
       expect(e.accepted.map((a) => [a.path, a.generation])).to.deep.equal([
         [v1.files.record, "v1"],
@@ -1003,6 +1003,66 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       expect(exerciseEvidenceState(still), still.errors.join("\n")).to.equal("ACCEPTED");
     });
 
+    it("history: an attempt whose record was never committed may still be dropped, renamed or re-made", function () {
+      this.timeout(240_000);
+      // A rejected attempt, committed so it could be verified and judged, then dropped: the v1 stands alone again.
+      let r = coexisting({ v2: false });
+      const rejected = structuredClone(r.v2);
+      rejected.verification.acceptance = "REJECTED";
+      write(r.d, rejected.files.run, serializeJson(rejected.run));
+      write(r.d, rejected.files.verification, serializeJson(rejected.verification));
+      commit(r.d, "an attempt, its verification rejected");
+      refused(r.d, "and no record of them");
+      for (const rel of [rejected.files.run, rejected.files.verification]) rmSync(join(r.d, rel));
+      commit(r.d, "the attempt dropped");
+      let e = judge(r.d);
+      expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
+      expect(e.accepted.map((a) => a.path)).to.deep.equal([r.v1.files.record]);
+      // Files committed under a mistyped token, then renamed after the run's own token, then derived: accepted.
+      r = coexisting({ v2: false });
+      const token = exerciseToken(serializeJson(r.v2.run));
+      const wrong = {
+        run: r.v2.files.run.replace(token, T1),
+        verification: r.v2.files.verification.replace(token, T1),
+      };
+      write(r.d, wrong.run, serializeJson(r.v2.run));
+      write(r.d, wrong.verification, serializeJson(boundVerification(r.x, r.v2.run, wrong.run)));
+      commit(r.d, "an attempt under a mistyped token");
+      for (const rel of [wrong.run, wrong.verification]) rmSync(join(r.d, rel));
+      write(r.d, r.v2.files.run, serializeJson(r.v2.run));
+      write(r.d, r.v2.files.verification, serializeJson(r.v2.verification));
+      commit(r.d, "renamed after the run's own token");
+      const p = derivePendingExerciseRecord(r.d, { anchor: ANCHOR, archive });
+      write(r.d, p.rel, serializeJson(p.record));
+      commit(r.d, "its record derived");
+      e = judge(r.d);
+      expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
+      expect(e.accepted.map((a) => a.path)).to.deep.equal([r.v1.files.record, r.v2.files.record]);
+      // A verification re-made under the same name before the record exists is no edit of evidence ...
+      r = coexisting({ v2: false });
+      write(r.d, r.v2.files.run, serializeJson(r.v2.run));
+      write(
+        r.d,
+        r.v2.files.verification,
+        serializeJson({ ...r.v2.verification, measuredAtUtc: "2026-11-01T12:20:00Z" }),
+      );
+      commit(r.d, "a first verification");
+      write(r.d, r.v2.files.verification, serializeJson(r.v2.verification));
+      commit(r.d, "verified again, before any record");
+      writeExercise(r.d, r.v2);
+      commit(r.d, "the record");
+      e = judge(r.d);
+      expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
+      // ... and from the record on, the same rewrite is: the observations are as permanent as their record.
+      write(
+        r.d,
+        r.v2.files.verification,
+        serializeJson({ ...r.v2.verification, measuredAtUtc: "2026-11-01T12:20:00Z" }),
+      );
+      commit(r.d, "re-verified after the record");
+      refused(r.d, `${basename(r.v2.files.verification)} was changed; a published record is never edited`);
+    });
+
     it("a committed v2 freezes its tools: an edit refuses the directory, the v1 with it; only the old bytes restore it", function () {
       this.timeout(180_000);
       const r = coexisting();
@@ -1028,15 +1088,15 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
     it("a history git cannot show is refused, never read as clean: no repository, no commit, a shallow clone", function () {
       this.timeout(120_000);
       const bare = dirs.make("sp1-pa3d0-nogit-");
-      expect(exerciseHistoryErrors(bare).join("\n")).to.match(/needs a git repository with its full history/);
+      expect(exerciseHistoryErrors(bare, D).join("\n")).to.match(/needs a git repository with its full history/);
       expect(exerciseEvidenceState(judge(bare))).to.equal("REFUSED");
       const empty = dirs.make("sp1-pa3d0-empty-");
       git(empty, "init", "-q");
-      expect(exerciseHistoryErrors(empty).join("\n")).to.match(/cannot be read .*: no history is taken as clean/);
+      expect(exerciseHistoryErrors(empty, D).join("\n")).to.match(/cannot be read .*: no history is taken as clean/);
       const r = coexisting();
       const shallow = dirs.make("sp1-pa3d0-shallow-");
       git(shallow, "clone", "-q", "--depth", "1", pathToFileURL(r.d).href, ".");
-      expect(exerciseHistoryErrors(shallow).join("\n")).to.match(/this clone is shallow/);
+      expect(exerciseHistoryErrors(shallow, D).join("\n")).to.match(/this clone is shallow/);
       expect(exerciseEvidenceState(judge(shallow))).to.equal("REFUSED");
     });
 
@@ -1199,7 +1259,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       const { d, anchor, archive, v2 } = realWithV2();
       const e = productionExerciseEvidence(d, { anchor, archive });
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
-      expect(exerciseHistoryErrors(d)).to.deep.equal([]);
+      expect(exerciseHistoryErrors(d, anchor.designation)).to.deep.equal([]);
       expect(e.accepted.map((a) => a.path)).to.deep.equal([PA3B.record, v2.files.record]);
       expect(e.accepted[0].observations).to.deep.equal([PA3B.run, PA3B.verification]);
       expect([lfSha(PA3B.record, d), lfSha(PA3B.run, d), lfSha(PA3B.verification, d)]).to.deep.equal([
@@ -1360,7 +1420,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         verification: [PA3B.verification],
         other: [],
       });
-      expect(exerciseHistoryErrors(".")).to.deep.equal([]);
+      expect(exerciseHistoryErrors(".", anchor.designation)).to.deep.equal([]);
       const e = productionExerciseEvidence(".", { anchor, archive });
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
       expect(
