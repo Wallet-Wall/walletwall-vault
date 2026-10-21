@@ -1,6 +1,6 @@
 {
   "schema": "walletwall.rust-lockfile-advisories-observation.v1",
-  "measuredAtUtc": "2026-10-17T01:16:24Z",
+  "measuredAtUtc": "2026-10-21T14:24:49Z",
   "host": "developer-workstation",
   "tool": {
     "script": "scripts/measure-sp1-host-advisories.ts",
@@ -9,9 +9,9 @@
     "cargoAudit": "cargo-audit-audit 0.22.2"
   },
   "database": {
-    "lastCommit": "64f92cdc64401fab47baa10e2e11fe382aa57155",
-    "lastUpdated": "2026-10-17T01:27:42+02:00",
-    "advisoryCount": 1334
+    "lastCommit": "4b587f00996ebe5c05a73eaef105ef241e876414",
+    "lastUpdated": "2026-10-21T08:20:38+02:00",
+    "advisoryCount": 1348
   },
   "index": {
     "base": "https://index.crates.io/",
@@ -26,7 +26,7 @@
       "registryPackages": 536,
       "audit": {
         "database": {
-          "advisory-count": 1334,
+          "advisory-count": 1348,
           "last-commit": null,
           "last-updated": null
         },
@@ -46,7 +46,7 @@
         },
         "vulnerabilities": {
           "found": true,
-          "count": 12,
+          "count": 14,
           "list": [
             {
               "advisory": {
@@ -1066,6 +1066,71 @@
             },
             {
               "advisory": {
+                "id": "RUSTSEC-2026-0382",
+                "package": "rustls-webpki",
+                "title": "Certificate verification may accept distrusted intermediates",
+                "description": "Affected versions may accept certificate paths containing distrusted emSign\r\nintermediate public keys when the configured trust anchors allow such paths.\r\nThe private keys corresponding to these intermediates are now well known.\r\n\r\nVersions 0.103.16 and 0.104.0-alpha.8 reject paths containing these public keys.",
+                "date": "2026-10-20",
+                "aliases": [
+                  "CVE-2026-111943"
+                ],
+                "related": [],
+                "collection": "crates",
+                "categories": [
+                  "crypto-failure"
+                ],
+                "keywords": [
+                  "certificate",
+                  "distrust",
+                  "x509"
+                ],
+                "cvss": null,
+                "informational": null,
+                "references": [
+                  "https://emudhra.we-have-a-problem.com/",
+                  "https://bugzilla.mozilla.org/show_bug.cgi?id=2083449"
+                ],
+                "source": null,
+                "url": "https://github.com/rustls/webpki/pull/546",
+                "withdrawn": null,
+                "license": "CC0-1.0",
+                "expect-deleted": false
+              },
+              "versions": {
+                "patched": [
+                  ">=0.103.16, <0.104.0-alpha.1",
+                  ">=0.104.0-alpha.8"
+                ],
+                "unaffected": []
+              },
+              "affected": null,
+              "package": {
+                "name": "rustls-webpki",
+                "version": "0.103.13",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "checksum": "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e",
+                "dependencies": [
+                  {
+                    "name": "ring",
+                    "version": "0.17.14",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "rustls-pki-types",
+                    "version": "1.14.1",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  },
+                  {
+                    "name": "untrusted",
+                    "version": "0.9.0",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  }
+                ],
+                "replace": null
+              }
+            },
+            {
+              "advisory": {
                 "id": "RUSTSEC-2026-0344",
                 "package": "ruzstd",
                 "title": "Decompression bomb in `ruzstd`: a tiny input can exhaust memory (OOM)",
@@ -1107,6 +1172,62 @@
                   {
                     "name": "twox-hash",
                     "version": "2.1.2",
+                    "source": "registry+https://github.com/rust-lang/crates.io-index"
+                  }
+                ],
+                "replace": null
+              }
+            },
+            {
+              "advisory": {
+                "id": "RUSTSEC-2026-0381",
+                "package": "webpki-roots",
+                "title": "Bundled root certificates allow trust in distrusted emSign intermediates",
+                "description": "Affected versions include `emSign ECC Root CA - G3`, which can allow certificate\r\npaths through distrusted emSign intermediates.\r\n\r\nAffected versions may accept certificate paths containing distrusted emSign\r\nintermediate public keys. The private keys corresponding to these intermediates\r\nare now well known.\r\n\r\nVersion 1.0.10+ removes this root.\r\n\r\nThe `webpki-roots` 0.26.11 compatibility package contains no independent trust\r\nstore and re-exports the roots from its separately resolved 1.x dependency.\r\nThat parent dependency must resolve to 1.0.10 or newer; an older parent remains\r\naffected by this advisory.",
+                "date": "2026-10-19",
+                "aliases": [
+                  "CVE-2026-111943"
+                ],
+                "related": [],
+                "collection": "crates",
+                "categories": [
+                  "crypto-failure"
+                ],
+                "keywords": [
+                  "certificate",
+                  "distrust",
+                  "x509"
+                ],
+                "cvss": null,
+                "informational": null,
+                "references": [
+                  "https://emudhra.we-have-a-problem.com/",
+                  "https://bugzilla.mozilla.org/show_bug.cgi?id=2083449"
+                ],
+                "source": null,
+                "url": "https://github.com/rustls/webpki-roots/pull/133",
+                "withdrawn": null,
+                "license": "CC0-1.0",
+                "expect-deleted": false
+              },
+              "versions": {
+                "patched": [
+                  ">=1.0.10"
+                ],
+                "unaffected": [
+                  "=0.26.11"
+                ]
+              },
+              "affected": null,
+              "package": {
+                "name": "webpki-roots",
+                "version": "1.0.7",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "checksum": "52f5ee44c96cf55f1b349600768e3ece3a8f26010c05265ab73f945bb1a2eb9d",
+                "dependencies": [
+                  {
+                    "name": "rustls-pki-types",
+                    "version": "1.14.1",
                     "source": "registry+https://github.com/rust-lang/crates.io-index"
                   }
                 ],
@@ -1617,6 +1738,11 @@
           "output": "0rustls-pemfile v2.2.0\n1tonic v0.12.3\n2sp1-prover v6.3.1\n3sp1-sdk v6.3.1\n4mldsa65-host v0.1.0 (zkvm/host)\n2sp1-prover-types v6.3.1\n3sp1-prover v6.3.1 (*)\n3sp1-sdk v6.3.1 (*)\n"
         },
         {
+          "spec": "rustls-webpki@0.103.13",
+          "command": "cargo tree --locked --offline --target all -e normal,build,dev --prefix depth -i rustls-webpki@0.103.13",
+          "output": "0rustls-webpki v0.103.13\n1rustls v0.23.40\n2hyper-rustls v0.27.9\n3reqwest v0.12.28\n4sp1-prover v6.3.1\n5sp1-sdk v6.3.1\n6mldsa65-host v0.1.0 (zkvm/host)\n2reqwest v0.12.28 (*)\n2tokio-rustls v0.26.4\n3hyper-rustls v0.27.9 (*)\n3reqwest v0.12.28 (*)\n3tonic v0.12.3\n4sp1-prover v6.3.1 (*)\n4sp1-prover-types v6.3.1\n5sp1-prover v6.3.1 (*)\n5sp1-sdk v6.3.1 (*)\n"
+        },
+        {
           "spec": "rustls@0.23.40",
           "command": "cargo tree --locked --offline --target all -e normal,build,dev --prefix depth -i rustls@0.23.40",
           "output": "0rustls v0.23.40\n1hyper-rustls v0.27.9\n2reqwest v0.12.28\n3sp1-prover v6.3.1\n4sp1-sdk v6.3.1\n5mldsa65-host v0.1.0 (zkvm/host)\n1reqwest v0.12.28 (*)\n1tokio-rustls v0.26.4\n2hyper-rustls v0.27.9 (*)\n2reqwest v0.12.28 (*)\n2tonic v0.12.3\n3sp1-prover v6.3.1 (*)\n3sp1-prover-types v6.3.1\n4sp1-prover v6.3.1 (*)\n4sp1-sdk v6.3.1 (*)\n"
@@ -1630,6 +1756,11 @@
           "spec": "spin@0.9.8",
           "command": "cargo tree --locked --offline --target all -e normal,build,dev --prefix depth -i spin@0.9.8",
           "output": "0spin v0.9.8\n1lazy_static v1.5.0\n2sharded-slab v0.1.7\n3tracing-subscriber v0.3.23\n4slop-utils v6.3.1\n5slop-basefold v6.3.1\n6slop-basefold-prover v6.3.1\n7slop-jagged v6.3.1\n8slop-whir v6.3.1\n9sp1-hypercube v6.3.1\n10sp1-core-executor v6.3.1\n11sp1-core-executor-runner v6.3.1\n12sp1-core-machine v6.3.1\n13sp1-prover v6.3.1\n14sp1-sdk v6.3.1\n15mldsa65-host v0.1.0 (zkvm/host)\n13sp1-prover-types v6.3.1\n14sp1-prover v6.3.1 (*)\n14sp1-sdk v6.3.1 (*)\n13sp1-recursion-circuit v6.3.1\n14sp1-prover v6.3.1 (*)\n13sp1-recursion-compiler v6.3.1\n14sp1-prover v6.3.1 (*)\n14sp1-recursion-circuit v6.3.1 (*)\n14sp1-recursion-gnark-ffi v6.3.1\n15sp1-prover v6.3.1 (*)\n13sp1-sdk v6.3.1 (*)\n12sp1-prover v6.3.1 (*)\n12sp1-sdk v6.3.1 (*)\n11sp1-core-executor-runner-binary v6.3.1\n12sp1-core-executor-runner v6.3.1 (*)\n12sp1-core-executor-runner v6.3.1 (*)\n11sp1-core-machine v6.3.1 (*)\n11sp1-prover v6.3.1 (*)\n11sp1-recursion-circuit v6.3.1 (*)\n11sp1-sdk v6.3.1 (*)\n11sp1-core-executor-runner v6.3.1 (*)\n11sp1-core-executor-runner-binary v6.3.1 (*)\n10sp1-core-machine v6.3.1 (*)\n10sp1-prover v6.3.1 (*)\n10sp1-prover-types v6.3.1 (*)\n10sp1-recursion-circuit v6.3.1 (*)\n10sp1-recursion-compiler v6.3.1 (*)\n10sp1-recursion-executor v6.3.1\n11sp1-prover v6.3.1 (*)\n11sp1-recursion-circuit v6.3.1 (*)\n11sp1-recursion-compiler v6.3.1 (*)\n11sp1-recursion-machine v6.3.1\n12sp1-prover v6.3.1 (*)\n12sp1-recursion-circuit v6.3.1 (*)\n12sp1-verifier v6.3.1\n13sp1-prover v6.3.1 (*)\n13sp1-recursion-gnark-ffi v6.3.1 (*)\n13sp1-sdk v6.3.1 (*)\n11sp1-sdk v6.3.1 (*)\n11sp1-verifier v6.3.1 (*)\n11sp1-recursion-machine v6.3.1 (*)\n10sp1-recursion-gnark-ffi v6.3.1 (*)\n10sp1-recursion-machine v6.3.1 (*)\n10sp1-sdk v6.3.1 (*)\n10sp1-verifier v6.3.1 (*)\n10sp1-core-machine v6.3.1 (*)\n10sp1-recursion-executor v6.3.1 (*)\n10sp1-recursion-machine v6.3.1 (*)\n9sp1-recursion-circuit v6.3.1 (*)\n8sp1-hypercube v6.3.1 (*)\n8sp1-prover v6.3.1 (*)\n8sp1-recursion-circuit v6.3.1 (*)\n7slop-stacked v6.3.1\n8slop-jagged v6.3.1 (*)\n8slop-whir v6.3.1 (*)\n8sp1-hypercube v6.3.1 (*)\n8sp1-prover v6.3.1 (*)\n8sp1-recursion-circuit v6.3.1 (*)\n7sp1-hypercube v6.3.1 (*)\n7sp1-recursion-circuit v6.3.1 (*)\n6slop-jagged v6.3.1 (*)\n6slop-stacked v6.3.1 (*)\n6slop-whir v6.3.1 (*)\n6sp1-hypercube v6.3.1 (*)\n6sp1-prover v6.3.1 (*)\n6sp1-recursion-circuit v6.3.1 (*)\n6sp1-recursion-machine v6.3.1 (*)\n5slop-jagged v6.3.1 (*)\n5slop-merkle-tree v6.3.1\n6slop-basefold v6.3.1 (*)\n6slop-basefold-prover v6.3.1 (*)\n6slop-jagged v6.3.1 (*)\n6slop-stacked v6.3.1 (*)\n6slop-whir v6.3.1 (*)\n6sp1-hypercube v6.3.1 (*)\n6sp1-recursion-circuit v6.3.1 (*)\n5slop-whir v6.3.1 (*)\n4sp1-core-executor-runner-binary v6.3.1 (*)\n4sp1-core-machine v6.3.1 (*)\n4sp1-prover v6.3.1 (*)\n4tracing-appender v0.2.5\n5sp1-prover v6.3.1 (*)\n4tracing-forest v0.1.6\n5slop-utils v6.3.1 (*)\n5sp1-core-machine v6.3.1 (*)\n2slop-baby-bear v6.3.1\n3slop-basefold v6.3.1 (*)\n3slop-basefold-prover v6.3.1 (*)\n3slop-jagged v6.3.1 (*)\n3slop-merkle-tree v6.3.1 (*)\n3slop-sumcheck v6.3.1\n4slop-jagged v6.3.1 (*)\n4sp1-hypercube v6.3.1 (*)\n4sp1-recursion-circuit v6.3.1 (*)\n3slop-whir v6.3.1 (*)\n2sp1-verifier v6.3.1 (*)\n2substrate-bn-succinct-rs v0.6.0\n3sp1-verifier v6.3.1 (*)\n"
+        },
+        {
+          "spec": "webpki-roots@1.0.7",
+          "command": "cargo tree --locked --offline --target all -e normal,build,dev --prefix depth -i webpki-roots@1.0.7",
+          "output": "0webpki-roots v1.0.7\n1hyper-rustls v0.27.9\n2reqwest v0.12.28\n3sp1-prover v6.3.1\n4sp1-sdk v6.3.1\n5mldsa65-host v0.1.0 (zkvm/host)\n1reqwest v0.12.28 (*)\n"
         }
       ],
       "features": [
@@ -1658,72 +1789,82 @@
         {
           "spec": "ansi_term@0.12.1",
           "command": "cargo update --dry-run -p ansi_term@0.12.1",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "bincode@1.3.3",
           "command": "cargo update --dry-run -p bincode@1.3.3",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "crossbeam-epoch@0.9.18",
           "command": "cargo update --dry-run -p crossbeam-epoch@0.9.18",
-          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating crossbeam-epoch v0.9.18 -> v0.9.21\nnote: pass `--verbose` to see 211 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating crossbeam-epoch v0.9.18 -> v0.9.21\nnote: pass `--verbose` to see 214 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "h2@0.4.14",
           "command": "cargo update --dry-run -p h2@0.4.14",
-          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating h2 v0.4.14 -> v0.4.20\nnote: pass `--verbose` to see 211 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating h2 v0.4.14 -> v0.4.20\nnote: pass `--verbose` to see 214 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "lru@0.12.5",
           "command": "cargo update --dry-run -p lru@0.12.5",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "memmap2@0.9.10",
           "command": "cargo update --dry-run -p memmap2@0.9.10",
-          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating memmap2 v0.9.10 -> v0.9.11\nnote: pass `--verbose` to see 211 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating memmap2 v0.9.10 -> v0.9.11\nnote: pass `--verbose` to see 214 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "number_prefix@0.4.0",
           "command": "cargo update --dry-run -p number_prefix@0.4.0",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "paste@1.0.15",
           "command": "cargo update --dry-run -p paste@1.0.15",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "proc-macro-error2@2.0.1",
           "command": "cargo update --dry-run -p proc-macro-error2@2.0.1",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "quinn-proto@0.11.14",
           "command": "cargo update --dry-run -p quinn-proto@0.11.14",
-          "output": "    Updating crates.io index\n     Locking 5 packages to latest compatible versions\n      Adding chacha20 v0.10.2\n    Removing getrandom v0.3.4\n    Updating quinn-proto v0.11.14 -> v0.11.19\n    Removing r-efi v5.3.0\n    Updating rand v0.9.4 -> v0.10.3\n    Removing rand_chacha v0.9.0\n    Updating rand_core v0.9.5 -> v0.10.1\n      Adding rand_pcg v0.10.2\nnote: pass `--verbose` to see 210 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 5 packages to latest compatible versions\n      Adding chacha20 v0.10.2\n    Removing getrandom v0.3.4\n    Updating quinn-proto v0.11.14 -> v0.11.19\n    Removing r-efi v5.3.0\n    Updating rand v0.9.4 -> v0.10.3\n    Removing rand_chacha v0.9.0\n    Updating rand_core v0.9.5 -> v0.10.1\n      Adding rand_pcg v0.10.2\nnote: pass `--verbose` to see 213 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "rustls-pemfile@2.2.0",
           "command": "cargo update --dry-run -p rustls-pemfile@2.2.0",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+        },
+        {
+          "spec": "rustls-webpki@0.103.13",
+          "command": "cargo update --dry-run -p rustls-webpki@0.103.13",
+          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating rustls-webpki v0.103.13 -> v0.103.16\nnote: pass `--verbose` to see 214 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "rustls@0.23.40",
           "command": "cargo update --dry-run -p rustls@0.23.40",
-          "output": "    Updating crates.io index\n     Locking 2 packages to latest compatible versions\n    Updating rustls v0.23.40 -> v0.23.46\n    Updating rustls-webpki v0.103.13 -> v0.103.15\nnote: pass `--verbose` to see 210 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 2 packages to latest compatible versions\n    Updating rustls v0.23.40 -> v0.23.46\n    Updating rustls-webpki v0.103.13 -> v0.103.16\nnote: pass `--verbose` to see 213 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "ruzstd@0.8.3",
           "command": "cargo update --dry-run -p ruzstd@0.8.3",
-          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 212 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 0 packages to latest compatible versions\nnote: pass `--verbose` to see 215 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         },
         {
           "spec": "spin@0.9.8",
           "command": "cargo update --dry-run -p spin@0.9.8",
-          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating spin v0.9.8 -> v0.9.9\nnote: pass `--verbose` to see 211 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating spin v0.9.8 -> v0.9.9\nnote: pass `--verbose` to see 214 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
+        },
+        {
+          "spec": "webpki-roots@1.0.7",
+          "command": "cargo update --dry-run -p webpki-roots@1.0.7",
+          "output": "    Updating crates.io index\n     Locking 1 package to latest compatible version\n    Updating webpki-roots v1.0.7 -> v1.0.10\nnote: pass `--verbose` to see 214 unchanged dependencies behind latest\nwarning: not updating lockfile due to dry run\n"
         }
       ],
       "precise": [
@@ -1755,7 +1896,7 @@
       "registryPackages": 158,
       "audit": {
         "database": {
-          "advisory-count": 1334,
+          "advisory-count": 1348,
           "last-commit": null,
           "last-updated": null
         },
@@ -1928,7 +2069,7 @@
       "registryPackages": 67,
       "audit": {
         "database": {
-          "advisory-count": 1334,
+          "advisory-count": 1348,
           "last-commit": null,
           "last-updated": null
         },
@@ -2101,7 +2242,7 @@
       "registryPackages": 25,
       "audit": {
         "database": {
-          "advisory-count": 1334,
+          "advisory-count": 1348,
           "last-commit": null,
           "last-updated": null
         },
@@ -4412,6 +4553,801 @@
             {
               "path": "src/crypto/ring/tls13.rs",
               "sha256": "2d093ce74d9ad824ed15f0a18abf5d845fd701a5b8de2d7db088e706dd49ab62",
+              "matches": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG",
+      "pattern": "\\bwebpki_roots\\b",
+      "flags": "",
+      "crates": [
+        {
+          "crate": "hyper-rustls",
+          "version": "0.27.9",
+          "checksum": "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f",
+          "members": [
+            {
+              "path": "src/config.rs",
+              "sha256": "811c91b6081a7f8306b3e00ff7d32714c9cdad19cad06a2ac51fe4e7d089e8f8",
+              "matches": 1
+            },
+            {
+              "path": "src/connector.rs",
+              "sha256": "3ed1596650cc01555406f7adb3950f097eb31b787543f15c569464c5e73aa013",
+              "matches": 0
+            },
+            {
+              "path": "src/connector/builder.rs",
+              "sha256": "3fb10ed3bb2d0be47193fb88e3fe388576cfcba5e884dc1e5a3bce7cdaa12497",
+              "matches": 0
+            },
+            {
+              "path": "src/lib.rs",
+              "sha256": "4f55e7914274119123eb563033cc7a8bfc2536d9191f8ddd20943e3c44bf90e2",
+              "matches": 0
+            },
+            {
+              "path": "src/stream.rs",
+              "sha256": "49039649158136eec6e0dec37bb4ab6459fd58cfe821f65b4a578da3e9f4e39a",
+              "matches": 0
+            }
+          ]
+        },
+        {
+          "crate": "reqwest",
+          "version": "0.12.28",
+          "checksum": "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147",
+          "members": [
+            {
+              "path": "src/async_impl/body.rs",
+              "sha256": "60948ec5a44c995beb2dd22f6d4ca1f48a56cf01f8fc3174ed809a1e3dd9ce59",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/client.rs",
+              "sha256": "8c30b009838be2126b90344ef97fb6141ac8bdf695f4e7bb00a3052a707d9b5c",
+              "matches": 1
+            },
+            {
+              "path": "src/async_impl/h3_client/connect.rs",
+              "sha256": "4375585275c9efafbdab94bd2f341fe160555316a3a3948c83fee7c0a1d0eddd",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/h3_client/dns.rs",
+              "sha256": "0b0876288eeba6c39331b3bd6b8b01cd4ab01e0362a1e859d961fcc5d520b43a",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/h3_client/mod.rs",
+              "sha256": "3d7a499aec889845749098bf620dbd8c7e5338b5104a28dd12d3c8162532cab5",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/h3_client/pool.rs",
+              "sha256": "01e118f38288b92cfec9d5e19884e1e8dadc1de94bf0b9bc10336e38092d593a",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/mod.rs",
+              "sha256": "d207798170e6263f62e652a5cca27bf868e7e17c910ba3ee8907a303cb34608d",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/multipart.rs",
+              "sha256": "fa28f3689c3975cad971f902c368b89485317be28aaca0ea4de67ca71413f093",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/request.rs",
+              "sha256": "22bb3a3810cfe505a1eb34e4bf6f16db9f9dbcfb7ec79d1652996e72a6738fd3",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/response.rs",
+              "sha256": "e7ad89c6473ad3adcb96a0adec857cc2c74bbabeffc56346efa270ce7082ea9f",
+              "matches": 0
+            },
+            {
+              "path": "src/async_impl/upgrade.rs",
+              "sha256": "b3944107063f2b5886b754ff80c4d3af34c9a97c4e9206d3bac3f4f3d6ae5d8a",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/body.rs",
+              "sha256": "578d58f3c661a4c43b771e982bac1dd08a6fedaf98f8baacd096fbe0cad63f7a",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/client.rs",
+              "sha256": "28cd16f9133a84484598ab00a3d39c24413067747b3b619d357bfe95c84171bc",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/mod.rs",
+              "sha256": "0f6e73f94fc6088261fc93b3b95fa99b6293fdd482103dcc08f2bf8c5ca44f4f",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/multipart.rs",
+              "sha256": "9b023b57b7f075d9d2ccd48c530cb29344f45f0ce4868f7dcc8ce9d093f6b312",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/request.rs",
+              "sha256": "045ffb9697312fc848f4e2f333f8bed6dae3268652ab298f1d4d4ce517342761",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/response.rs",
+              "sha256": "0ef0d5bfed59109238316f0f6dddf44dcfe68843f4491c59d24fab166cd766f4",
+              "matches": 0
+            },
+            {
+              "path": "src/blocking/wait.rs",
+              "sha256": "295a7be8cb959c1c414b832f58f9268c14aae2a170d4f8a09a133521a8387dfa",
+              "matches": 0
+            },
+            {
+              "path": "src/config.rs",
+              "sha256": "21d3c917c317e2c56ddc227897f88ee0506b11fdc83d1efdad22d4a9c4796eed",
+              "matches": 0
+            },
+            {
+              "path": "src/connect.rs",
+              "sha256": "cbe71704db6ea7ca1c83e7753c90aa9ff60a80f8d8c8ec2e795db054534caa42",
+              "matches": 0
+            },
+            {
+              "path": "src/cookie.rs",
+              "sha256": "1925b79a225bc9c0398c59e2fac11379df5db2d27493a1902ae79388ba1817d5",
+              "matches": 0
+            },
+            {
+              "path": "src/dns/gai.rs",
+              "sha256": "d078d9982d7e5e9e977e90ded62080fc3ac0b124753de508147f15ff8818aff8",
+              "matches": 0
+            },
+            {
+              "path": "src/dns/hickory.rs",
+              "sha256": "7275c4eb9e3ac588e4a291148a007f135db814380f8f27ad6bb2542b380df1da",
+              "matches": 0
+            },
+            {
+              "path": "src/dns/mod.rs",
+              "sha256": "cf9875316437ff762962a867bb3650dfe93f5cb6ec0a8e3397bfa20e36fb9c44",
+              "matches": 0
+            },
+            {
+              "path": "src/dns/resolve.rs",
+              "sha256": "7ca80ad7e849a2ac7b98bafe3a287ecd3580c8fa3dce873d0daabcc41b78ae7f",
+              "matches": 0
+            },
+            {
+              "path": "src/error.rs",
+              "sha256": "4f2ffac588056f8d98f8619fa4046e66efee97c0faef51ddce9c07ea0a46601b",
+              "matches": 0
+            },
+            {
+              "path": "src/into_url.rs",
+              "sha256": "761e9d0e04f652b201317d746cbe2a538de0604240914913fbe968114d88893d",
+              "matches": 0
+            },
+            {
+              "path": "src/lib.rs",
+              "sha256": "e31f340ec37d77c27ddad9ef7889f4924efa12450b63bf0c5af98c337876c9f3",
+              "matches": 0
+            },
+            {
+              "path": "src/proxy.rs",
+              "sha256": "7d5d3ed0fe95b0c82f1081e0907f4691d53c929dbe0f2c6134dceaca304839ba",
+              "matches": 0
+            },
+            {
+              "path": "src/redirect.rs",
+              "sha256": "b8a618396c45884e5557314a0fb99ec01c1868b77132e2cc81aa0a4ac4831c06",
+              "matches": 0
+            },
+            {
+              "path": "src/response.rs",
+              "sha256": "12cf82de2499a426686ed4f3719cce73e269b7b9ddc9c88458e7378beb2c58a8",
+              "matches": 0
+            },
+            {
+              "path": "src/retry.rs",
+              "sha256": "38e827605e2a1905cc9f9ae1194f4799902da43765b2e73a0d4dd9be130f8c7e",
+              "matches": 0
+            },
+            {
+              "path": "src/tls.rs",
+              "sha256": "73afedbf9e144a8c66dad7706bc37c6a73ff185eff1ee8654d158e57a0a8cbd6",
+              "matches": 0
+            },
+            {
+              "path": "src/util.rs",
+              "sha256": "38de462df299faa9294594796a2f90020d4fa6f001724c285850b268c716a7aa",
+              "matches": 0
+            },
+            {
+              "path": "src/wasm/body.rs",
+              "sha256": "81eea1079d4bee8e23e9be0b7488a07373a23c8eddf5c05aa9ec2b83810f9061",
+              "matches": 0
+            },
+            {
+              "path": "src/wasm/client.rs",
+              "sha256": "ca4afe51ea1c8d893fb695eb1867eeed3ad6f0ea80ed6040eda946d50aea0d97",
+              "matches": 0
+            },
+            {
+              "path": "src/wasm/mod.rs",
+              "sha256": "79c7aeac9b9d271e4cfe931b39314aef3a7ad78184a84424306e772652535e0b",
+              "matches": 0
+            },
+            {
+              "path": "src/wasm/multipart.rs",
+              "sha256": "4a347e2beedc2686d5d3818e205715cc6abe7ca678e26bf89de89a2ecb548f40",
+              "matches": 0
+            },
+            {
+              "path": "src/wasm/request.rs",
+              "sha256": "27f7f9790debdce2281c5a310008b5137253d0be106f9f2b9caf8696818e39dc",
+              "matches": 0
+            },
+            {
+              "path": "src/wasm/response.rs",
+              "sha256": "c7931612eb1c370345e938c8ce8a1f600f42b479ae81441f20d8832948cdd7c6",
+              "matches": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS",
+      "pattern": "\\bverify_for_usage\\b",
+      "flags": "",
+      "crates": [
+        {
+          "crate": "rustls",
+          "version": "0.23.40",
+          "checksum": "ef86cd5876211988985292b91c96a8f2d298df24e75989a43a3c73f2d4d8168b",
+          "members": [
+            {
+              "path": "src/bs_debug.rs",
+              "sha256": "4e4ff4ee2d1db612ba7367e88ee587d525a973167c87b28bb2b35555a9eda27b",
+              "matches": 0
+            },
+            {
+              "path": "src/builder.rs",
+              "sha256": "3cfebc1faeb5e2b7fbb8ede68aca1240c7ba69061f3381a1a4ded87f11bf5d6a",
+              "matches": 0
+            },
+            {
+              "path": "src/check.rs",
+              "sha256": "8e5b8a35aebe931c60afa009159a398cf81f300c21898d2002fec88b42d13ad7",
+              "matches": 0
+            },
+            {
+              "path": "src/client/builder.rs",
+              "sha256": "477ece7d60eecb8062341878cf541fc32ce02a1987f5790117b218ebc5b2ed7e",
+              "matches": 0
+            },
+            {
+              "path": "src/client/client_conn.rs",
+              "sha256": "e496dd0d588bfb5fd42e6c721f723925184f98399b2fd234b3814845e53401d6",
+              "matches": 0
+            },
+            {
+              "path": "src/client/common.rs",
+              "sha256": "c745f89b8fd2381118dda319ab69c71a410212d879d380fb8205aa74ece52b48",
+              "matches": 0
+            },
+            {
+              "path": "src/client/ech.rs",
+              "sha256": "9563d93c649cd8abf159d4fcf9096284d6f661372440c279a78d807d58afd80d",
+              "matches": 0
+            },
+            {
+              "path": "src/client/handy.rs",
+              "sha256": "7137eeea1cbd8df5a8620e5934a2c3a6889d992caf45c5b13f33072c46ddefb1",
+              "matches": 0
+            },
+            {
+              "path": "src/client/hs.rs",
+              "sha256": "77a6dbbaddc9cb5da062516bda9ab5e814af4db6263adb223d9b0245b17e1b0f",
+              "matches": 0
+            },
+            {
+              "path": "src/client/test.rs",
+              "sha256": "7e1b05243a6315e2c061fa28729067b0bab8cf8982760765bc83090a1add5e27",
+              "matches": 0
+            },
+            {
+              "path": "src/client/tls12.rs",
+              "sha256": "39b2fd1c88d5b764cfc7f183f6dda7dcf38cf7384a17adfa3e26a5a5ff2d325d",
+              "matches": 0
+            },
+            {
+              "path": "src/client/tls13.rs",
+              "sha256": "818650319e7e48148eb947b2659f4e40a0d67a8b6a7657f62c864401b3ffc888",
+              "matches": 0
+            },
+            {
+              "path": "src/common_state.rs",
+              "sha256": "728270f0e4e5e17f22a2b5d8eab419a4d903fbdd045aaa79727481f90b27929a",
+              "matches": 0
+            },
+            {
+              "path": "src/compress.rs",
+              "sha256": "c8c969fc3c8d2c5294652396b2f04def4d58276c0fab634484f60cf525945db3",
+              "matches": 0
+            },
+            {
+              "path": "src/conn.rs",
+              "sha256": "f3a1562c39d01f16da7581290b7ee012c227967a5ea4f213de89f8ed8a6c8392",
+              "matches": 0
+            },
+            {
+              "path": "src/conn/kernel.rs",
+              "sha256": "ecdbb41cd6e4aa95c33a16584723befe6b310754452174cee9ab201917ffb87e",
+              "matches": 0
+            },
+            {
+              "path": "src/conn/unbuffered.rs",
+              "sha256": "d971c9c046b03e6a2147ab6f99635cf5272083d7c677d257403d7d40c887447f",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/hpke.rs",
+              "sha256": "3ebd35dbd22cf7914288565ab6946be7b243e6c61f079e18cb0f13075a368d68",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/mod.rs",
+              "sha256": "81a60a0e447dbaad5e6986a3b7b039186f435ccdded702557f18f5c862388a44",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/pq/hybrid.rs",
+              "sha256": "a1ac53e228fe7bb6851b3a73b1ba4aa64f09bdbc77a09053f59ae89c8ea152b8",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/pq/mlkem.rs",
+              "sha256": "431389d968ac98aba0a7c6b480d7379a788ac5a6eb77c11cc6df41054515e8b7",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/pq/mod.rs",
+              "sha256": "91edf8221f00d573151bb064badee925afb98a86cb37c1aaf7e23014f3956bf7",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/sign.rs",
+              "sha256": "972f4deb09c5b64091bc9e16bd8062e39aceffb94bad5cc77ab58af066e35543",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/ticketer.rs",
+              "sha256": "a16431d3ac21b944e6b43a78f930e13bd82603483b85cfa823f43f2a86eb0e32",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/tls12.rs",
+              "sha256": "9e3a9220b68ce2a340d2289d376107bf4b75bc73319d1562c2800c5c01476d28",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/aws_lc_rs/tls13.rs",
+              "sha256": "e9998aa39049aa886c34c7ffb0da3b8d74388ce823bd310d07e1cd83b3559857",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/cipher.rs",
+              "sha256": "067842d11b0f2d373ced097392503c36eb318e685d85e1147048c7fbad421672",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/hash.rs",
+              "sha256": "eaa21b2d8f11afb9f5e41794e3461bcc18c950c53153d1fc37dfd23e3bdc1094",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/hmac.rs",
+              "sha256": "82ac9b1da0295b0ab70adec4ce321fb87d7873f530652a8b86397655042d035b",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/hpke.rs",
+              "sha256": "b65ace9c09cc0f83888c000b369376d8b8ca8a49e016d1aa0a9691c7921fdfbc",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/mod.rs",
+              "sha256": "46cb1c195e52824c98ea11129c93cbab03d06fb0c3a6daed81a3bab6f9f79e12",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/hash.rs",
+              "sha256": "d4b594369971c8e8dc275a85beea83b51f5134174a4b37f620e130a51266d6ea",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/hmac.rs",
+              "sha256": "7df8a4c33176c4e53306c23285ed965c9e35e0aebcc6fd03f1cd68759122ae94",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/kx.rs",
+              "sha256": "d385431f42e76b7aa8bd0749ea256da268239d762114b40a37bee8306b07229d",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/mod.rs",
+              "sha256": "b43827457ae0248f1ec3888464d40875f80e60b2d785e38517c79dda819b7675",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/quic.rs",
+              "sha256": "5f6df314c0d7a3988a2cfb4e98a910bf5926b11a4771a4a420a2205274ab8967",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/sign.rs",
+              "sha256": "6bb88454d5751ce1262d68c670ba41a52f88cd152b75d0740743ef603a43f650",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/ticketer.rs",
+              "sha256": "2ec1193097d3032fc31dda08277cfb0fcb8defc6667af09d4ff1bd16be95eba4",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/tls12.rs",
+              "sha256": "a3a65ebd7cf6fe7157dd19500d35ac7a948970fc64f94909ec4cc22e889e3a44",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/ring/tls13.rs",
+              "sha256": "2d093ce74d9ad824ed15f0a18abf5d845fd701a5b8de2d7db088e706dd49ab62",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/signer.rs",
+              "sha256": "b097775c0b30d507255824a8ac65d8d7440e723b16a9e91036e0d096a3d7b071",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/tls12.rs",
+              "sha256": "b729e02f64415570ba68fdde0a17cfaa60062f4d694001658b0467672a4e626d",
+              "matches": 0
+            },
+            {
+              "path": "src/crypto/tls13.rs",
+              "sha256": "feec69f36dcc738ccf735bc69e12a767857d8b52ad9af139b2b8584990b651d3",
+              "matches": 0
+            },
+            {
+              "path": "src/enums.rs",
+              "sha256": "f688a062b2f395d77cff37fffaf3eb393fe5c81091f28b21a13f0e7323aa8478",
+              "matches": 0
+            },
+            {
+              "path": "src/error.rs",
+              "sha256": "d85c232735d313be3661d564c2858fe26ebe72b203a127c3a681ef44d3c95ffd",
+              "matches": 0
+            },
+            {
+              "path": "src/hash_hs.rs",
+              "sha256": "6a03da8c8aea2f44f162843bc803a0dfb683b4b99137e5e5f5a6dd7978b02849",
+              "matches": 0
+            },
+            {
+              "path": "src/key_log_file.rs",
+              "sha256": "9e781ef5e267b56afa0e70f7aeced53e5060814c71d4175741f076d5aa55fa4d",
+              "matches": 0
+            },
+            {
+              "path": "src/key_log.rs",
+              "sha256": "6aeb8c45365e6d53c51246fe8773243096b8c6806274cdcc3ffd1bb82fe360e9",
+              "matches": 0
+            },
+            {
+              "path": "src/lib.rs",
+              "sha256": "a88a095f061d679a88d255252c881509348fbc29decc10829befa56020003e3f",
+              "matches": 0
+            },
+            {
+              "path": "src/limited_cache.rs",
+              "sha256": "a53eb38036ab1db04fe7c561d804076690631dedb17040eaa006f1264cfed097",
+              "matches": 0
+            },
+            {
+              "path": "src/lock.rs",
+              "sha256": "a4d9befd9a53e7dfbd7fb5d30ca16bcdd54e61f3fc9b353992cd45928818d70e",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/defaults.rs",
+              "sha256": "71e854184d355b71a96280d82f3e83224491300e861655916d76f44325bf626a",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/features.rs",
+              "sha256": "a7fecd590287388215fa6bcc6403f425897f3d4ea4f44b72a5dee9bfa2ee8345",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/fips.rs",
+              "sha256": "1e2cd9db42896c0504ae229190f5dca8b540ef5939c5382a5b718b6fc94abe45",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/howto.rs",
+              "sha256": "df03dcc9abd0e8c11c13573680d43c84fd92876e4b128fb8bd881a58e07a0ae2",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/implvulns.rs",
+              "sha256": "b42abb13ce142e83da012f7fa47759091c43216628abd46563de9910748efe5b",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/mod.rs",
+              "sha256": "45e5d510140d668553030695a45e6ad50da2274e097e3e8fa8900446944a7576",
+              "matches": 0
+            },
+            {
+              "path": "src/manual/tlsvulns.rs",
+              "sha256": "9d2dc1d4f8f5703b67eb159d698325788863795848a246e36bef779dbba252be",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/alert.rs",
+              "sha256": "cf85febb6f1bd2719dd4767f6dea61468e2cee211f507956e93cfe79a9139afc",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/base.rs",
+              "sha256": "b6bb842fcfdf2d800e0594cb63c574663e335d4725dc870ee5fb26256f9eba64",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/ccs.rs",
+              "sha256": "61117e8e8cc2fb7b030360f959b66d6392d34a601f4ae1dc7276bb444462a742",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/codec.rs",
+              "sha256": "fa53201ef4387a453c626c37138a6a2de2d2ff13d85c0ec34f8b13ee20daeeaf",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/deframer/buffers.rs",
+              "sha256": "48bb18eff4e5859ec56aba8910488a791457afabc79feba0b09375e11bcca459",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/deframer/handshake.rs",
+              "sha256": "e7309acb70aa406dbd6c2c35c17e9d8fe036e9d24e4d29b362b37aa59bae9944",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/deframer/mod.rs",
+              "sha256": "bab59c49aa59b4d44e49928ab3aa6b58a5d167412585017bdae88cd32ce23847",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/enums.rs",
+              "sha256": "c2e12839e5490d78089d078b856dd3621ea6bc004d6f15e4d86bc4e5ca0eba5e",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/ffdhe_groups.rs",
+              "sha256": "22a2abdede92e082300998e0b0d49cc915a995713db2cdd811b4ff3502c1c619",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/fragmenter.rs",
+              "sha256": "c324f9ac144999ec36673736d0ef026122be9d4f6eb1f2908c01461cebe1122d",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/handshake_test.rs",
+              "sha256": "bb73da98b08bfeea59762441c56a5aa0d9a17f30468ef5f6f87d8feb6cc1ef28",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/handshake.rs",
+              "sha256": "08219f5e36f75163f2c64e3dbf1a4506ef0d1266a42791e33863609225f0c3c8",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/macros.rs",
+              "sha256": "f8f99b70d11e611eba54fbfd599f6df9bd1072dd099aeb1a954352373cc18617",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/message_test.rs",
+              "sha256": "b3889ee3db6b8a28241fc1795209e2202f942445d8ec8ed0b08424ad6ad56dd0",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/message/inbound.rs",
+              "sha256": "85c75ca765f5f7ce70b2f1afbb4d7a1568c1098e7be5267a16a4cb20b50b7ed5",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/message/mod.rs",
+              "sha256": "f1bdfa1ee08e31e54c85dd1c47d090afee672bd50bb6074aaa9c51d08feae3bf",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/message/outbound.rs",
+              "sha256": "fb214090aff53ea7228519feeac4444fa4b0f389c9af6dc062bf6efbe6c8a8ff",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/mod.rs",
+              "sha256": "39c54a233a8bd46497c27b3e2626d8aee173d4c41ec8670386bb8c1f19249d07",
+              "matches": 0
+            },
+            {
+              "path": "src/msgs/persist.rs",
+              "sha256": "33ae762fe42981379082622bd66b2133e224cbaef012535834a4f2eeeaef9a72",
+              "matches": 0
+            },
+            {
+              "path": "src/polyfill.rs",
+              "sha256": "a6c6dcb5c42aa481099e60b85fd16d84559daa68bbef215c5cb02f93d5c65bec",
+              "matches": 0
+            },
+            {
+              "path": "src/quic.rs",
+              "sha256": "f2588a74ab5a0543b1ef2deeec0b04c5ea23c0dd81adf40623c178307f3145a7",
+              "matches": 0
+            },
+            {
+              "path": "src/rand.rs",
+              "sha256": "c0c55d130516c8415836187c9050ecb5269ed7b51f65d70b40305f05f9ba57fb",
+              "matches": 0
+            },
+            {
+              "path": "src/record_layer.rs",
+              "sha256": "299c725f5bb3e032ecb17e9d1b228a1fa6fc580714c1470d5ff93c54592dc97d",
+              "matches": 0
+            },
+            {
+              "path": "src/server/builder.rs",
+              "sha256": "58e8cf2a3655dd1b48876f684dd3642c7dd09fea8162480bbe2feb70b7ab238e",
+              "matches": 0
+            },
+            {
+              "path": "src/server/common.rs",
+              "sha256": "aef13bfc295f17218aa9b157f69c6fdfb9802ee90263acd43e880465a707bb20",
+              "matches": 0
+            },
+            {
+              "path": "src/server/handy.rs",
+              "sha256": "85ce7ea135eb5582703cb41eb8a5ec7d1d6b9266a130935d291eb71c1327394d",
+              "matches": 0
+            },
+            {
+              "path": "src/server/hs.rs",
+              "sha256": "5cfe9298ddf83d22786870460dd22b803d450ae4f0cc13e1e83c67512a24838f",
+              "matches": 0
+            },
+            {
+              "path": "src/server/server_conn.rs",
+              "sha256": "41c259497f55fc9ab80061a632351b82c8abb63508ca3272ab3a22c66c341ff1",
+              "matches": 0
+            },
+            {
+              "path": "src/server/test.rs",
+              "sha256": "dd16d68359b782dd4062a7ced14add95b187f8f9a67f72b17d8664abceca0aa4",
+              "matches": 0
+            },
+            {
+              "path": "src/server/tls12.rs",
+              "sha256": "4db5408886f09341063bde2d143f3bc29c2e4456c942fd1d16309dd4bcd3371c",
+              "matches": 0
+            },
+            {
+              "path": "src/server/tls13.rs",
+              "sha256": "a399e36edbda2f10d2b1e000d30555a4d8e23a40969d3121895bcb2f2be9758c",
+              "matches": 0
+            },
+            {
+              "path": "src/stream.rs",
+              "sha256": "2bf5fc0bb301653697b77324a7bc83c23bc56f573303f504bcc7e1dba7905e77",
+              "matches": 0
+            },
+            {
+              "path": "src/suites.rs",
+              "sha256": "c30424784a78519c041f18200c0e05375b44e0ba32e60a56643e4ee0d4c9c89f",
+              "matches": 0
+            },
+            {
+              "path": "src/test_macros.rs",
+              "sha256": "e5f98aa388375cc195cef7bae2cdba8b33c795ce48e8ff228fbfef153a493c47",
+              "matches": 0
+            },
+            {
+              "path": "src/ticketer.rs",
+              "sha256": "b722e6be43f8920ca495e4a3cbd624a4e69d61e1ad7584cfae0d8bc06429290a",
+              "matches": 0
+            },
+            {
+              "path": "src/time_provider.rs",
+              "sha256": "cdc75369bb353ca1edfb1d700a6467e42779c1c0cba5d5bd7d9f67f392ea92b1",
+              "matches": 0
+            },
+            {
+              "path": "src/tls12/mod.rs",
+              "sha256": "159fb6a519534986e1d1fd2326d30ffa0422650d9fe636c3dac8a5bd113c7c8b",
+              "matches": 0
+            },
+            {
+              "path": "src/tls13/key_schedule.rs",
+              "sha256": "dfe3a46dc72f4b175c70f0e0504819697a4876eed1e68715348d3f30585185cf",
+              "matches": 0
+            },
+            {
+              "path": "src/tls13/mod.rs",
+              "sha256": "f22e73dd261d1cc94076a9d3e0147352d7aa4c86872566bb79c93a8ad9f1c1a7",
+              "matches": 0
+            },
+            {
+              "path": "src/vecbuf.rs",
+              "sha256": "e8941e43ff21527ca3e8f6c9a9dc8526fab2e9a2676acb29065f075f98b622d6",
+              "matches": 0
+            },
+            {
+              "path": "src/verify.rs",
+              "sha256": "b663615e265fede551c613f20e187d08ce6975c9ab4465e5538add685ea75de7",
+              "matches": 0
+            },
+            {
+              "path": "src/verifybench.rs",
+              "sha256": "f4ef5158bc5e86fb160f9d3fdab34d6a56d731440d422f6dfdd3f9ec5949a5a2",
+              "matches": 0
+            },
+            {
+              "path": "src/versions.rs",
+              "sha256": "125d9981b8c02ed6dcbabfdd76721fef3537f41d424ac1fb79e088331061fb22",
+              "matches": 0
+            },
+            {
+              "path": "src/webpki/anchors.rs",
+              "sha256": "82011d21d85376f695044157dbb0659ac42bbf8dcbf671e6c19e6e6bc355c9b7",
+              "matches": 0
+            },
+            {
+              "path": "src/webpki/client_verifier.rs",
+              "sha256": "c6051e79858a70ce746fb55208751a429c691c1bb76bcaca238be310ae11d652",
+              "matches": 1
+            },
+            {
+              "path": "src/webpki/mod.rs",
+              "sha256": "eeb6747164b7a1776afebb6e50bc400a8dc0a9cbe327a5beabdfcc0a276fd768",
+              "matches": 0
+            },
+            {
+              "path": "src/webpki/server_verifier.rs",
+              "sha256": "1678d02f7fa352b990915de691959e1d90309ba631b714992afd1e98600cb301",
+              "matches": 0
+            },
+            {
+              "path": "src/webpki/verify.rs",
+              "sha256": "fcbc90dc30793cbe7f15f363fda793d6e08a132a82d003c1f9e88019a6e1f2b4",
+              "matches": 1
+            },
+            {
+              "path": "src/x509.rs",
+              "sha256": "e036e80ceb688d1b7ff2ff82a63e99545678b262cf5af0c331fbebc714db4444",
               "matches": 0
             }
           ]

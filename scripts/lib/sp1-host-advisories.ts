@@ -945,6 +945,8 @@ export type Expectation =
   | { kind: "absent" }
   | { kind: "present" }
   | { kind: "count"; count: number }
+  /** Every match is in one of `members`: a crate-relative path, or crate:path to name one crate's file when the fact
+   *  reads several crates (two crates can hold the same path). */
   | { kind: "onlyIn"; members: readonly string[] };
 export interface SourceFact {
   id: string;
@@ -1033,7 +1035,9 @@ export const SOURCE_FACTS: readonly SourceFact[] = [
     pattern: String.raw`\bClient::builder\(\)|\breqwest::(get|Client::new)\b`,
     flags: "",
     expect: { kind: "onlyIn", members: ["src/build.rs"] },
-    statement: "sp1-prover builds its one HTTP client in src/build.rs (install_circuit_artifacts), nowhere else",
+    coversDependentsOf: ["reqwest"],
+    statement:
+      "sp1-prover, reqwest's only dependent, builds its one HTTP client in src/build.rs (install_circuit_artifacts), nowhere else",
   },
   {
     id: "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
@@ -1085,6 +1089,28 @@ export const SOURCE_FACTS: readonly SourceFact[] = [
     flags: "i",
     expect: { kind: "absent" },
     statement: "rustls's ring provider implements no ML-KEM (no hybrid post-quantum group)",
+  },
+  {
+    id: "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG",
+    crates: ["hyper-rustls", "reqwest"],
+    select: RS,
+    pattern: String.raw`\bwebpki_roots\b`,
+    flags: "",
+    expect: { kind: "onlyIn", members: ["hyper-rustls:src/config.rs", "reqwest:src/async_impl/client.rs"] },
+    coversDependentsOf: ["webpki-roots", "hyper-rustls"],
+    statement:
+      "webpki-roots's dependents (reqwest, hyper-rustls) read its bundled roots only where an HTTPS client's rustls configuration is built: reqwest's client builder (src/async_impl/client.rs) and hyper-rustls's with_webpki_roots helper (src/config.rs), whose only dependent is reqwest",
+  },
+  {
+    id: "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS",
+    crates: ["rustls"],
+    select: RS,
+    pattern: String.raw`\bverify_for_usage\b`,
+    flags: "",
+    expect: { kind: "onlyIn", members: ["src/webpki/client_verifier.rs", "src/webpki/verify.rs"] },
+    coversDependentsOf: ["rustls-webpki"],
+    statement:
+      "rustls-webpki's only dependent, rustls, validates a certificate path (verify_for_usage) only in its certificate verifiers, during a handshake: a client's check of the server's certificate (src/webpki/verify.rs) and a server's check of a client certificate (src/webpki/client_verifier.rs)",
   },
   {
     id: "SF_LRU_ONLY_IN_TWO_CACHES",
@@ -1231,6 +1257,31 @@ const QUINN = {
 } as const;
 const RUSTLS_DOWNLOAD =
   "rustls runs only inside SP1's own circuit download: release-mode install_circuit_artifacts at the Groth16/PLONK wrap stage, when the v6.1.0 circuit directory is absent (dev mode downloads with the aws CLI instead). The frozen proving configuration installs the circuit from a hash-verified WalletWall archive first, so that download never runs; until the archive path exists no proving run is authorized at all";
+/** The evidence that rustls runs only in that download and that the frozen configuration never runs it. */
+const RUSTLS_DOWNLOAD_EVIDENCE = [
+  "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
+  "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
+  "SF_PROVER_INSTALL_ONLY_AT_WRAP",
+  "SF_SDK_NEVER_INSTALLS_CIRCUITS",
+  "SF_PROVER_NO_NETWORK_TRANSPORT",
+  "F_SP1_SDK_NO_NETWORK",
+  "A_HOST_SOURCE",
+  "A_NO_PROVING_WITHOUT_ARCHIVE",
+] as const;
+/**
+ * RUSTSEC-2026-0381 and RUSTSEC-2026-0382 are one incident (CVE-2026-111943): the private keys of distrusted emSign
+ * intermediates are public, webpki-roots before 1.0.10 still bundles the root they chain to, and rustls-webpki without
+ * the fix (0.103.16, 0.104.0-alpha.8) does not refuse their keys. Both act only while rustls checks a peer's certificate
+ * in a handshake, so they share rustls's download condition and the evidence behind it.
+ */
+const EMSIGN_DISTRUST = {
+  lockfile: "host",
+  kind: "vulnerability",
+  reachability: "CONDITIONAL",
+  exploit:
+    "whoever holds a distrusted intermediate's key and can intercept the connection presents a certificate path through it for the server's name, and the client accepts it: server impersonation (a man in the middle)",
+  condition: RUSTLS_DOWNLOAD,
+} as const;
 
 export const CLAIMS: readonly Claim[] = [
   {
@@ -1296,16 +1347,7 @@ export const CLAIMS: readonly Claim[] = [
     id: "RUSTSEC-2026-0285",
     crate: "rustls",
     reachability: "CONDITIONAL",
-    requires: [
-      "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS",
-      "SF_PROVER_INSTALLS_ONLY_WHEN_ABSENT",
-      "SF_PROVER_INSTALL_ONLY_AT_WRAP",
-      "SF_SDK_NEVER_INSTALLS_CIRCUITS",
-      "SF_PROVER_NO_NETWORK_TRANSPORT",
-      "F_SP1_SDK_NO_NETWORK",
-      "A_HOST_SOURCE",
-      "A_NO_PROVING_WITHOUT_ARCHIVE",
-    ],
+    requires: RUSTLS_DOWNLOAD_EVIDENCE,
     precondition: "a TLS 1.3 server that sends handshake messages across a key change in one record",
     exploit:
       "rustls accepts such messages instead of aborting; the transcript stays authenticated, so the peer cannot alter or complete a handshake (low impact)",
@@ -1350,6 +1392,26 @@ export const CLAIMS: readonly Claim[] = [
       "an unauthenticated ServerHello pins later handshakes to classical X25519 (loss of post-quantum confidentiality; no authentication bypass)",
     rationale:
       "the only rustls provider compiled here is ring, whose groups are X25519, P-256 and P-384: there is no hybrid group to downgrade from",
+  },
+  {
+    ...EMSIGN_DISTRUST,
+    id: "RUSTSEC-2026-0381",
+    crate: "webpki-roots",
+    requires: [...RUSTLS_DOWNLOAD_EVIDENCE, "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG"],
+    precondition:
+      "a TLS client that trusts webpki-roots's bundled roots, which include emSign ECC Root CA - G3, on a connection an attacker can intercept",
+    rationale:
+      "webpki-roots is compiled, and its roots are the trust anchors reqwest builds into its rustls client configuration (hyper-rustls's helper is reached only through reqwest); the host's only HTTPS client is SP1's circuit download, the one connection on which a certificate under a distrusted emSign intermediate could be presented",
+  },
+  {
+    ...EMSIGN_DISTRUST,
+    id: "RUSTSEC-2026-0382",
+    crate: "rustls-webpki",
+    requires: [...RUSTLS_DOWNLOAD_EVIDENCE, "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS"],
+    precondition:
+      "a TLS client whose trust anchors admit a path through a distrusted emSign intermediate (webpki-roots before 1.0.10 do), on a connection an attacker can intercept",
+    rationale:
+      "rustls-webpki is compiled, and rustls, its only dependent, validates certificate paths only in its handshake verifiers; the only handshake the host makes is SP1's circuit download, whose anchors are webpki-roots's, which still admit paths through the distrusted intermediates (RUSTSEC-2026-0381)",
   },
   {
     lockfile: "host",
@@ -1694,7 +1756,7 @@ export function sourceFactResult(fact: SourceFact, observed: ObservedSourceFact)
       break;
     default: {
       const only = fact.expect.members;
-      holds = total >= 1 && hits.every((h) => only.includes(h.path));
+      holds = total >= 1 && hits.every((h) => only.includes(h.path) || only.includes(`${h.crate}:${h.path}`));
     }
   }
   const where = hits.map((h) => `${h.crate}:${h.path} ${h.matches}x`).join(", ");
