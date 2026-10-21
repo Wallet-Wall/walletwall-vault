@@ -68,6 +68,8 @@ const sha256 = (b: string) => createHash("sha256").update(b).digest("hex");
 const R0285 = "RUSTSEC-2026-0285 rustls@0.23.40";
 const R0346 = "RUSTSEC-2026-0346 rustls@0.23.40";
 const R0348 = "RUSTSEC-2026-0348 rustls@0.23.40";
+const R0381 = "RUSTSEC-2026-0381 webpki-roots@1.0.7";
+const R0382 = "RUSTSEC-2026-0382 rustls-webpki@0.103.13";
 const H2 = "RUSTSEC-2026-0258 h2@0.4.14";
 
 let REPO: AdvisoryState;
@@ -104,22 +106,43 @@ describe("SP1 host advisory record — the committed record and its two verdicts
     expect(REPO.recordText).to.equal(serializeHostAdvisoryRecord(deriveHostAdvisoryRecord(fresh())));
   });
 
-  it("records every current finding of zkvm/host/Cargo.lock: 12 vulnerabilities and 10 warnings, in the three buckets", function () {
+  it("records every current finding of zkvm/host/Cargo.lock: 14 vulnerabilities and 10 warnings, in the three buckets", function () {
     const r = deriveHostAdvisoryRecord(fresh());
-    expect(r.assessment.counts.vulnerabilities).to.equal(12);
+    expect(r.assessment.counts.vulnerabilities).to.equal(14);
     expect(r.assessment.counts.warnings).to.equal(10);
     expect(r.assessment.counts.byKind).to.deep.equal({
-      vulnerability: 12,
+      vulnerability: 14,
       unsound: 3,
       yanked: 1,
       unmaintained: 6,
       notice: 0,
     });
     expect(r.buckets.MUST_FIX_BEFORE_REAL_PROVING).to.deep.equal([]);
-    expect(r.buckets.SHOULD_FIX_BEFORE_PRODUCTION).to.have.length(8);
+    expect(r.buckets.SHOULD_FIX_BEFORE_PRODUCTION).to.have.length(10);
     expect(r.buckets.NOT_REACHABLE_OR_UPSTREAM_ONLY).to.have.length(14);
     expect(r.findings.map((f) => f.bucket)).to.not.include("UNASSESSED");
     expect(r.findings.filter((f) => !f.compiled).map((f) => f.crate)).to.deep.equal(Array(5).fill("quinn-proto"));
+  });
+
+  it("the emSign distrust (RUSTSEC-2026-0381, RUSTSEC-2026-0382) is CONDITIONAL on rustls's circuit download, and SHOULD_FIX", function () {
+    const r = deriveHostAdvisoryRecord(fresh());
+    const f = (key: string) => r.findings.find((x) => x.key === key) as (typeof r.findings)[number];
+    const rustls = f(R0285);
+    for (const [key, own, to] of [
+      [R0381, "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG", "1.0.10"],
+      [R0382, "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS", "0.103.16"],
+    ] as const) {
+      const x = f(key);
+      expect(x.compiled, key).to.equal(true);
+      expect(x.reachability, key).to.equal("CONDITIONAL");
+      expect(x.reachableInFrozenProvingPath, key).to.equal(false);
+      expect(x.condition, key).to.equal(rustls.condition);
+      expect(x.evidence, key).to.deep.equal([...rustls.evidence, own]);
+      expect(x.bucket, key).to.equal("SHOULD_FIX_BEFORE_PRODUCTION");
+      expect(x.fix, key).to.include({ lockfileOnly: true, compatibleVersion: to, lowestPatched: to });
+    }
+    expect(f(R0381).dependency.directDependents).to.deep.equal(["hyper-rustls@0.27.9", "reqwest@0.12.28"]);
+    expect(f(R0382).dependency.directDependents).to.deep.equal(["rustls@0.23.40"]);
   });
 
   it("binds the exact designated subject: d1, HEAD:zkvm/host, every host file, the lockfile", function () {
@@ -185,10 +208,10 @@ describe("SP1 host advisory record — assessment validity is not dependency saf
     expect(ok.pass).to.equal(true);
     expect(ok.lines[0]).to.match(/^ASSESSMENT_VALID: evidence\/zk\/sp1-impl\/host-lockfile-advisories\.json is what /);
     expect(ok.lines[1]).to.match(
-      /^DEPENDENCY_STATUS: NOT_DEPENDENCY_SAFE: zkvm\/host\/Cargo\.lock locks 12 RustSec vulnerabilities and 3 unsound crates \(\+1 yanked, 6 unmaintained\); DEFERRED_TO_NEXT_PROGRAM_REBUILD, nothing is patched\. A valid assessment is not a fix\.$/,
+      /^DEPENDENCY_STATUS: NOT_DEPENDENCY_SAFE: zkvm\/host\/Cargo\.lock locks 14 RustSec vulnerabilities and 3 unsound crates \(\+1 yanked, 6 unmaintained\); DEFERRED_TO_NEXT_PROGRAM_REBUILD, nothing is patched\. A valid assessment is not a fix\.$/,
     );
     expect(ok.lines[2]).to.equal(
-      "BUCKETS: MUST_FIX_BEFORE_REAL_PROVING 0 | SHOULD_FIX_BEFORE_PRODUCTION 8 | NOT_REACHABLE_OR_UPSTREAM_ONLY 14 (17 of 22 compiled)",
+      "BUCKETS: MUST_FIX_BEFORE_REAL_PROVING 0 | SHOULD_FIX_BEFORE_PRODUCTION 10 | NOT_REACHABLE_OR_UPSTREAM_ONLY 14 (19 of 24 compiled)",
     );
     const s = fresh();
     s.headHostTree = "0".repeat(40);
@@ -515,6 +538,8 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
     const v = hostAdvisoryVerdict(s);
     expect(messages(v, "ASSUMPTION_FAILED")).to.include("A_NO_PROVING_WITHOUT_ARCHIVE");
     expect(findingOf(s, R0285).reachability).to.equal("UNSUPPORTED");
+    expect(findingOf(s, R0381).reachability).to.equal("UNSUPPORTED");
+    expect(findingOf(s, R0382).reachability).to.equal("UNSUPPORTED");
   });
 });
 
@@ -747,6 +772,51 @@ describe("SP1 host advisory record — the claims catalog", function () {
     const r = evidenceResults(s, sneaky).get("SF_NO_CUSTOM_SESSION_STORE");
     expect(r?.holds).to.equal(false);
     expect(r?.observed).to.include("evil-tls");
+  });
+
+  it("the emSign claims' caller evidence covers every dependent of webpki-roots, hyper-rustls, rustls-webpki and reqwest", function () {
+    const s = fresh();
+    const lock = parseCargoLock(s.locks.host as string);
+    for (const [crate, fact] of [
+      ["webpki-roots", "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG"],
+      ["hyper-rustls", "SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG"],
+      ["rustls-webpki", "SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS"],
+      ["reqwest", "SF_PROVER_HTTP_CLIENT_ONLY_IN_BUILD_RS"],
+    ] as const) {
+      expect(evidenceResults(s, lock).get(fact)?.holds, fact).to.equal(true);
+      const sneaky = [
+        ...lock,
+        { name: "evil-tls", version: "1.0.0", source: null, checksum: null, dependencies: [crate] },
+      ];
+      const r = evidenceResults(s, sneaky).get(fact);
+      expect(r?.holds, `${fact} with another dependent of ${crate}`).to.equal(false);
+      expect(r?.observed).to.include("evil-tls");
+    }
+  });
+
+  it("path validation outside rustls's verifiers, or roots read outside a client builder, breaks only its own emSign claim", function () {
+    for (const [id, key, other, crate, path] of [
+      ["SF_RUSTLS_PATH_VALIDATION_ONLY_IN_VERIFIERS", R0382, R0381, "rustls", "src/client/tls13.rs"],
+      ["SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG", R0381, R0382, "reqwest", "src/blocking/client.rs"],
+      ["SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG", R0381, R0382, "hyper-rustls", "src/connector/builder.rs"],
+      // hyper-rustls's src/config.rs is a listed member, reqwest's is not: the members name one crate's file each.
+      ["SF_WEBPKI_ROOTS_ONLY_IN_HTTP_CLIENT_CONFIG", R0381, R0382, "reqwest", "src/config.rs"],
+    ] as const) {
+      const s = fresh();
+      const fact = (s.observation as NonNullable<AdvisoryState["observation"]>).sourceFacts.find((f) => f.id === id);
+      const member = fact?.crates.find((c) => c.crate === crate)?.members.find((m) => m.path === path);
+      expect(member, `${crate} ${path} is read`).to.not.equal(undefined);
+      expect((member as { matches: number }).matches, `${crate} ${path} has no match today`).to.equal(0);
+      (member as { matches: number }).matches = 1;
+      regenerate(s); // self-consistent: only the evidence layer can refuse
+      const v = hostAdvisoryVerdict(s);
+      expect(codes(v), `${crate} ${path}`).to.deep.equal(["CLAIM_UNSUPPORTED", "EVIDENCE_FAILED"]);
+      expect(messages(v, "EVIDENCE_FAILED")).to.include(id);
+      expect(findingOf(s, key).reachability).to.equal("UNSUPPORTED");
+      expect(findingOf(s, key).bucket).to.equal("UNASSESSED");
+      expect(findingOf(s, other).reachability).to.equal("CONDITIONAL");
+      expect(findingOf(s, R0285).reachability).to.equal("CONDITIONAL");
+    }
   });
 });
 
@@ -1093,7 +1163,7 @@ describe("SP1 host advisory record — parsers and probes", function () {
   it("refuses a cargo-audit report that is not a --no-yanked one, or not the lockfile's", function () {
     const lock = parseCargoLock(REPO.locks.host as string);
     const report = structuredClone(hostAudit(REPO));
-    expect(auditFindingsOf(report, "host", lock)).to.have.length(21);
+    expect(auditFindingsOf(report, "host", lock)).to.have.length(23);
     const yanked = structuredClone(report);
     yanked.warnings.yanked = [];
     expect(() => auditFindingsOf(yanked, "host", lock)).to.throw("--no-yanked");
@@ -1188,6 +1258,12 @@ describe("SP1 host advisory record — the owner-facing doc", function () {
   it("states the bucket counts, the owner's decision and that the record is not a waiver", function () {
     const r = deriveHostAdvisoryRecord(fresh());
     for (const [b, keys] of Object.entries(r.buckets)) expect(doc).to.include(`| \`${b}\` | ${keys.length} |`);
+    const c = r.assessment.counts;
+    expect(doc).to.include(
+      `**${c.findings} findings** in \`zkvm/host/Cargo.lock\`: ${c.vulnerabilities} vulnerabilities and ${c.warnings} warnings`,
+    );
+    expect(doc).to.include(`(\`${r.remediation.status}\` for all ${c.findings})`);
+    expect(doc).to.include(`advisory-db \`${r.assessment.database.lastCommit.slice(0, 8)}\``);
     expect(doc).to.include("`HOST_LOCKFILE_REMEDIATION = DEFER_TO_NEXT_PROGRAM_REBUILD`");
     expect(doc).to.include("It does not make a vulnerable dependency non-vulnerable.");
     expect(doc).to.include("This is not a security waiver");
