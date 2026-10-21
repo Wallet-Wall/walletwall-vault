@@ -898,7 +898,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       commit(r.d, "a v2 of the v1's proof");
       refused(
         r.d,
-        `${r.v1.files.record} and ${same.files.record} hold one proof (proofBytesSha256 ${same.record.proof.proofBytesSha256}): one proving run is one exercise, never two records`,
+        `${r.v1.files.record} and ${same.files.record} hold byte-identical proofs (proofBytesSha256 ${same.record.proof.proofBytesSha256}): one proof is one exercise, never two records`,
       );
       // Only accepted records count toward a duplicate: a refused v2 of the same proof is refused for its own reason.
       const again = coexisting({ v2: false });
@@ -907,7 +907,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       writeExercise(again.d, rejected);
       commit(again.d, "a rejected v2 of the v1's proof");
       const e = refused(again.d, `${rejected.files.record}: VERIFIER_REJECTED`);
-      expect(e.errors.join("\n")).to.not.include("hold one proof");
+      expect(e.errors.join("\n")).to.not.include("byte-identical proofs");
       // A v2 of that proof whose pair derives but whose committed record is not the derived one: refused only after
       // its derivation, and still never counted as a second exercise of the proof.
       const late = coexisting({ v2: false });
@@ -918,7 +918,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         late.d,
         `${edited.files.record}: ${edited.files.record} is not the record the committed observations derive`,
       );
-      expect(l.errors.join("\n")).to.not.include("hold one proof");
+      expect(l.errors.join("\n")).to.not.include("byte-identical proofs");
     });
 
     it("a v2 named after another token than its run's bytes is refused (a name is a function of the bytes)", function () {
@@ -977,6 +977,47 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
         `${D}.json was changed; a published record is never edited`,
         `${r.v1.files.record}: ${r.v1.files.record} is not the record the committed observations derive`,
       );
+    });
+
+    it("history: an exercise observation is never edited once committed, even into equal facts; other kinds are re-measured", function () {
+      this.timeout(180_000);
+      const r = coexisting();
+      const ver = JSON.parse(readFileSync(join(r.d, r.v1.files.verification), "utf8"));
+      write(r.d, r.v1.files.verification, `${JSON.stringify(ver, null, 4)}\n`);
+      commit(r.d, "the v1 verification re-indented: the same facts, other bytes");
+      // The derivation alone would accept it (the record holds the facts, not the bytes); the history does not.
+      const e = refused(r.d, `${basename(r.v1.files.verification)} was changed; a published record is never edited`);
+      expect(e.errors.every((x) => !x.startsWith(`${r.v1.files.record}:`))).to.equal(true);
+      // An observation of another kind in the same directory is no exercise evidence: re-measuring it is no edit of one.
+      const s = coexisting();
+      write(s.d, `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`, '{ "measured": 1 }\n');
+      commit(s.d, "another kind of observation");
+      write(s.d, `${OBSERVATIONS_DIR}/host-advisories-x.raw.json`, '{ "measured": 2 }\n');
+      commit(s.d, "re-measured");
+      const ok = judge(s.d);
+      expect(exerciseEvidenceState(ok), ok.errors.join("\n")).to.equal("ACCEPTED");
+    });
+
+    it("a committed v2 freezes its tools: an edit refuses the directory, the v1 with it; only the old bytes restore it", function () {
+      this.timeout(180_000);
+      const r = coexisting();
+      const tool = readFileSync(join(r.d, ATTRIBUTED_RUN_SCRIPT_REL), "utf8");
+      write(r.d, ATTRIBUTED_RUN_SCRIPT_REL, `${tool}// a later edit\n`);
+      commit(r.d, "the attributed tool edited after the v2 was committed");
+      const e = refused(r.d, `${r.v2.files.record}: TOOL_NOT_BOUND`);
+      expect(
+        e.errors.some((x) => x.startsWith(`${r.v1.files.record}:`)),
+        "the v1 itself is fine",
+      ).to.equal(false);
+      // Only the old bytes restore the directory.
+      write(r.d, ATTRIBUTED_RUN_SCRIPT_REL, tool);
+      commit(r.d, "the attributed tool restored");
+      expect(judge(r.d).accepted.map((a) => a.path)).to.deep.equal([r.v1.files.record, r.v2.files.record]);
+      // Withdrawing the stale v2 instead is refused: the history keeps it.
+      write(r.d, ATTRIBUTED_RUN_SCRIPT_REL, `${tool}// a later edit\n`);
+      for (const rel of Object.values(r.v2.files)) rmSync(join(r.d, rel));
+      commit(r.d, "the v2 withdrawn instead");
+      refused(r.d, `${basename(r.v2.files.record)} was removed or renamed; a published record is never withdrawn`);
     });
 
     it("a history git cannot show is refused, never read as clean: no repository, no commit, a shallow clone", function () {
@@ -1103,7 +1144,8 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
      * run at that HEAD on SP1-PA3B's own host label, its three files committed; with `regenerate`, the availability
      * record then derived and committed.
      */
-    function realWithV2(regenerate = false) {
+    /** A repository holding this checkout's HEAD and its whole history, checked out. */
+    function realRepo() {
       const d = dirs.make("sp1-pa3d0-real-");
       git(d, "init", "-q");
       git(d, "config", "user.email", "test@example.invalid");
@@ -1111,6 +1153,10 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       git(d, "config", "commit.gpgsign", "false");
       git(d, "fetch", "-q", resolve("."), "HEAD");
       git(d, "checkout", "-q", "--detach", "FETCH_HEAD");
+      return d;
+    }
+    function realWithV2(regenerate = false) {
+      const d = realRepo();
       const anchor = committedProductionAnchor(d);
       const archive = productionArchiveEvidenceOf(d);
       const x = exerciseExpectations(d, { anchor, archive });
@@ -1259,6 +1305,36 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       expect(exerciseEvidenceState(r)).to.equal("REFUSED");
       expect(r.errors.join("\n")).to.include("mldsa65-withdrawal-d1.json was removed or renamed");
       expect(r.errors.join("\n")).to.include("mldsa65-withdrawal-d1.v1.json is no proof-exercise record");
+    });
+
+    it("SP1-PA3B's exercise withdrawn together with the archive record is refused by availability too", function () {
+      this.timeout(240_000);
+      const d = realRepo();
+      const archiveRecord = productionRecordRel(committedProductionAnchor(d));
+      for (const rel of [archiveRecord, PA3B.record, PA3B.run, PA3B.verification]) rmSync(join(d, rel));
+      commitAll(d, "the archive record and SP1-PA3B's exercise withdrawn together");
+      // Without an accepted archive, the exercise evidence is still judged, its history with it: never "unexercised".
+      assert.throws(
+        () => provingAvailabilityFromRepo(d),
+        /the proof-exercise evidence is refused without a record: .*mldsa65-withdrawal-d1\.json was removed or renamed/,
+      );
+      expect(provingAvailabilityErrors(d).join("\n")).to.match(/mldsa65-withdrawal-d1\.json was removed or renamed/);
+    });
+
+    it("SP1-PA3B's observations cannot be restamped, even into content-equivalent bytes", function () {
+      this.timeout(240_000);
+      const d = realRepo();
+      const verification = JSON.parse(readFileSync(join(d, PA3B.verification), "utf8"));
+      writeFileSync(join(d, PA3B.verification), `${JSON.stringify(verification, null, 4)}\n`);
+      commitAll(d, "SP1-PA3B's verification observation re-indented: the same facts, other bytes");
+      const e = productionExerciseEvidence(d, {
+        anchor: committedProductionAnchor(d),
+        archive: productionArchiveEvidenceOf(d),
+      });
+      expect(exerciseEvidenceState(e)).to.equal("REFUSED");
+      expect(e.errors.join("\n")).to.include(
+        `${basename(PA3B.verification)} was changed; a published record is never edited`,
+      );
     });
   });
 
