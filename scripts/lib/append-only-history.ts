@@ -189,7 +189,7 @@ function removedOrChanged(older: Map<string, string>, newer: Map<string, string>
  * With `include`, only the files it admits are held to that, judged on the older side of each edge: `include(path,
  * commit)` receives the path relative to the directory and the commit whose tree is that side ("HEAD" for the working
  * tree's comparison), so a file can become permanent from the first commit that makes it evidence (SP1-PA3D0: a
- * proof-exercise observation once its record is committed, never while it is an attempt without one).
+ * proof-exercise observation once a record derived from it is committed, never while it is an attempt).
  */
 export function directoryHistoryErrors(
   repoRoot: string,

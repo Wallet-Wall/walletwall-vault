@@ -1438,14 +1438,15 @@ function inHistory(repoRoot: string, commit: string): boolean {
 
 /**
  * Every way the exercise directory's history withdrew or edited a record it had committed, or the observation
- * directory's the observation of a committed record (SP1-PA3D0): exercises are history, so a newer one never replaces
- * an older one, and a record stays, byte for byte, in every later commit and in the working tree from the commit that
- * holds it, as do its observations from the first commit that holds the record (scripts/lib/append-only-history.ts,
- * every parent edge of every commit). An attempt whose record was never committed (a rejected proof, a refused
- * capture, a mistyped token) may still be dropped. A history git cannot show (no repository, a shallow clone, no
- * commit) is refused, never read as clean.
+ * directory's an observation a committed record was derived from (SP1-PA3D0): exercises are history, so a newer one
+ * never replaces an older one, and a record stays, byte for byte, in every later commit and in the working tree from
+ * the commit that holds it, as do the two observations its `derivedFrom` names from the first commit that holds the
+ * record (scripts/lib/append-only-history.ts, every parent edge of every commit). Any other observation, an attempt
+ * among them (a rejected proof, a refused capture, a mistyped or missing token, a second file in a committed record's
+ * slot), may still be dropped or renamed. A history git cannot show (no repository, a shallow clone, no commit) is
+ * refused, never read as clean.
  */
-export function exerciseHistoryErrors(repoRoot: string, designation: string): string[] {
+export function exerciseHistoryErrors(repoRoot: string): string[] {
   const walk = (dirRel: string, include?: (path: string, commit: string) => boolean): string[] => {
     try {
       return directoryHistoryErrors(repoRoot, dirRel, include);
@@ -1455,36 +1456,53 @@ export function exerciseHistoryErrors(repoRoot: string, designation: string): st
       ];
     }
   };
-  return [...walk(PROOF_EXERCISES_DIR), ...walk(OBSERVATIONS_DIR, recordedObservationAt(repoRoot, designation))];
+  return [...walk(PROOF_EXERCISES_DIR), ...walk(OBSERVATIONS_DIR, derivedObservationAt(repoRoot))];
 }
 
 /**
- * Whether a file of OBSERVATIONS_DIR is, in `commit`'s tree, evidence of a committed record: a proof-exercise
- * observation whose exercise's record (the v1 slot for its untokened names, `<designation>.v2.<token>.json` for its
- * token's) the records directory holds in that tree. Each commit's records are listed once; a listing git cannot give
- * throws, and the history is then refused, never read as holding nothing.
+ * Whether a file of OBSERVATIONS_DIR is, in `commit`'s tree, evidence of a committed record: named in the
+ * `derivedFrom` of a file the records directory holds in that tree, whatever that file's name, so neither a
+ * designation nor a slot decides it, only the record's own account of what it was derived from. A file there that is
+ * no record naming its observations (not JSON, no list of paths: a subdirectory or a link among them) holds every
+ * proof-exercise observation of that tree, so a history is never read as holding less than it might (such a file is
+ * refused for good anyway: the records directory is append-only). Each commit's records are read once; a listing git
+ * cannot give throws, and the history is then refused, never read as holding nothing.
  */
-function recordedObservationAt(repoRoot: string, designation: string): (path: string, commit: string) => boolean {
-  const listed = new Map<string, Set<string>>();
-  const recordsAt = (commit: string): Set<string> => {
-    const known = listed.get(commit);
-    if (known !== undefined) return known;
-    const r = gitOut(repoRoot, ["ls-tree", "--name-only", "-z", commit, "--", `${PROOF_EXERCISES_DIR}/`]);
+function derivedObservationAt(repoRoot: string): (path: string, commit: string) => boolean {
+  const read = new Map<string, Set<string> | null>();
+  const derivedAt = (commit: string): Set<string> | null => {
+    if (read.has(commit)) return read.get(commit) ?? null;
+    const r = gitOut(repoRoot, ["ls-tree", "-z", commit, "--", `${PROOF_EXERCISES_DIR}/`]);
     if (r.status !== 0) throw new Error(`git ls-tree ${commit} -- ${PROOF_EXERCISES_DIR}/ failed: ${r.stderr.trim()}`);
-    const names = new Set(
-      r.stdout
-        .split("\0")
-        .filter(Boolean)
-        .map((rel) => rel.slice(PROOF_EXERCISES_DIR.length + 1)),
-    );
-    listed.set(commit, names);
-    return names;
+    let derived: Set<string> | null = new Set<string>();
+    for (const entry of r.stdout.split("\0").filter(Boolean)) {
+      // `<mode> <type> <object>\t<name>`: a subdirectory's object is no blob, a link's is its target's name; no record.
+      const paths = derivedFromOf(gitOut(repoRoot, ["cat-file", "blob", entry.split("\t")[0].split(" ")[2]]).stdout);
+      if (paths === null) {
+        derived = null;
+        break;
+      }
+      for (const p of paths) derived.add(p);
+    }
+    read.set(commit, derived);
+    return derived;
   };
   return (path, commit) => {
-    const slot = observationSlotOf(path);
-    if (slot === null) return false;
-    return recordsAt(commit).has(slot.token === null ? `${designation}.json` : `${designation}.v2.${slot.token}.json`);
+    const derived = derivedAt(commit);
+    return derived === null ? observationSlotOf(path) !== null : derived.has(`${OBSERVATIONS_DIR}/${path}`);
   };
+}
+
+/** A record's `derivedFrom` (the repository paths of its observations), or null when the text is no record naming them. */
+function derivedFromOf(text: string): string[] | null {
+  let record: unknown;
+  try {
+    record = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const paths = (record as { derivedFrom?: unknown } | null)?.derivedFrom;
+  return Array.isArray(paths) && paths.every((p) => typeof p === "string") ? paths : null;
 }
 
 /**
@@ -1597,7 +1615,7 @@ function judgeExercise(
 export function productionExerciseEvidence(repoRoot: string, input: ExerciseEvidenceInput): ExerciseEvidence {
   // The history is judged beside everything else, never instead of it: a withdrawn or edited record is reported with
   // whatever else the directory holds, and refuses it even when nothing is left in it.
-  const history = exerciseHistoryErrors(repoRoot, input.anchor.designation);
+  const history = exerciseHistoryErrors(repoRoot);
   const records = exerciseRecordsIn(repoRoot);
   const refused = (observations: string[], errors: string[]): ExerciseEvidence => ({
     records,
