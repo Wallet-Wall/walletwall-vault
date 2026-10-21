@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "walletwall.sp1-proof-exercise.v2",
   "title": "WalletWall SP1 proof-exercise record (v2: continuous egress attribution)",
-  "description": "The record an owner-authorized lane derives from a v2 run observation (walletwall.sp1-proof-exercise-run.v2: one run through the archive-only gate under the root egress observer, scripts/sp1-egress-observer.ts) and the designated verifier's acceptance. Every v1 field, plus egress.assurance: what the observer's evidence supports, derived by scripts/lib/sp1-egress-attribution.ts from facts (coverage, continuity, each attempt's process, each refused packet's join, the reconciliation with the declared boundary's counters), never set. A v1 record (SP1-PA3B's) is never read as one: its assurance is EDGE_PROBES_ONLY. The shape only: scripts/lib/sp1-proof-exercise.ts is the validator. Artifact identity, proving execution, verifier acceptance, performance, egress observation quality and production readiness are separate facts; this record carries the first five and never the sixth. Research prototype; not audited; testnet/local only.",
+  "description": "The record an owner-authorized lane derives from a v2 run observation (walletwall.sp1-proof-exercise-run.v2: one run through the archive-only gate under the root egress observer, scripts/sp1-egress-observer.ts) and the designated verifier's acceptance. Every v1 field, plus egress.assurance: what the observer's evidence supports, derived by scripts/lib/sp1-egress-attribution.ts from facts (coverage, continuity, each attempt's process, each refused packet's join, the reconciliation with the declared boundary's counters), never set. A v1 record (SP1-PA3B's) is never read as one: its assurance is EDGE_PROBES_ONLY. A v2 exercise's files are named after its token, the first 16 hex digits of its run observation's sha256 (SP1-PA3D0): the record <designation>.v2.<token>.json, its observations proof-exercise-{run,verification}-<host>.<token>.raw.json. The shape only: scripts/lib/sp1-proof-exercise.ts is the validator. Artifact identity, proving execution, verifier acceptance, performance, egress observation quality and production readiness are separate facts; this record carries the first five and never the sixth. Research prototype; not audited; testnet/local only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -359,7 +359,7 @@
           "properties": {
             "path": {
               "type": "string",
-              "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-verification-[a-z0-9-]+\\.raw\\.json$"
+              "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-verification-[a-z0-9-]+\\.[0-9a-f]{16}\\.raw\\.json$"
             },
             "host": {
               "type": "string",
@@ -766,7 +766,7 @@
       "maxItems": 2,
       "items": {
         "type": "string",
-        "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-(run|verification)-[a-z0-9-]+\\.raw\\.json$"
+        "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-(run|verification)-[a-z0-9-]+\\.[0-9a-f]{16}\\.raw\\.json$"
       }
     },
     "establishes": {
