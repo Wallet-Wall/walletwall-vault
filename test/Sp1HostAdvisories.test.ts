@@ -432,7 +432,7 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
       pa.archives = { ...pa.archives, records: 1, accepted: { record } };
       pa.exercises = { dir: "evidence/zk/sp1-impl/proof-exercises", records: 0 };
       pa.selfHostedPath = { ...pa.selfHostedPath, exercised: false };
-      delete pa.selfHostedPath.record;
+      delete pa.selfHostedPath.witnesses;
       over(pa);
       return a.evaluate({
         hostManifestText: s.hostManifestText,
@@ -459,15 +459,25 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
     expect(archived((pa) => (pa.selfHostedPath.requirements = [])).holds).to.equal(false);
     expect(archived((pa) => (pa.status = "LOCAL_COPY_NOT_ARCHIVED")).holds).to.equal(false);
     expect(archived((pa) => (pa.status = "SELF_HOSTED_PATH_EXERCISED")).holds).to.equal(false);
-    // SP1-PA3A: the exercised state holds only with exactly the one accepted proof-exercise record, on disk and in
-    // the availability record, named by selfHostedPath; a status or flag set without those facts does not.
+    // SP1-PA3A, SP1-PA3D0: the exercised state holds only when every proof-exercise record on disk is accounted for by
+    // the availability record, as an accepted exercise and as a witness, and nothing else is; a status or flag set
+    // without those facts does not. One record or two (SP1-PA3B's v1 beside a v2), the rule is the same.
     const exercise = "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.json";
-    const exercised = (over: (pa: any) => void = () => undefined, exercisesOnDisk: string[] = [exercise]) =>
+    const v2 = "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.0123456789abcdef.json";
+    const exercised = (
+      over: (pa: any) => void = () => undefined,
+      exercisesOnDisk: string[] = [exercise],
+      accounted: string[] = exercisesOnDisk,
+    ) =>
       archived(
         (pa) => {
           pa.status = "SELF_HOSTED_PATH_EXERCISED";
-          pa.exercises = { dir: "evidence/zk/sp1-impl/proof-exercises", records: 1, accepted: { record: exercise } };
-          pa.selfHostedPath = { ...pa.selfHostedPath, exercised: true, record: exercise };
+          pa.exercises = {
+            dir: "evidence/zk/sp1-impl/proof-exercises",
+            records: accounted.length,
+            accepted: accounted.map((r) => ({ record: r })),
+          };
+          pa.selfHostedPath = { ...pa.selfHostedPath, exercised: true, witnesses: [...accounted] };
           over(pa);
         },
         [record],
@@ -475,25 +485,49 @@ describe("SP1 host advisory record — feature and runtime assumptions", functio
       );
     expect(exercised().holds).to.equal(true);
     expect(exercised().observed).to.include("proof-exercise records 1 recorded, 1 on disk");
+    expect(exercised().observed).to.include(`(each accepted and a witness: ${exercise})`);
+    // SP1-PA3B's v1 beside a v2: both accounted for, in path order, whatever order the listing came in.
+    expect(exercised(() => undefined, [exercise, v2]).holds).to.equal(true);
+    expect(exercised(() => undefined, [v2, exercise], [exercise, v2]).holds).to.equal(true);
+    expect(exercised(() => undefined, [exercise, v2]).observed).to.include("2 recorded, 2 on disk");
+    // Availability names v1 and omits v2, or v2 and omits v1, or lists them out of order: the account is not of them.
+    expect(exercised(() => undefined, [exercise, v2], [exercise]).holds).to.equal(false);
+    expect(exercised(() => undefined, [exercise, v2], [v2]).holds).to.equal(false);
+    expect(exercised(() => undefined, [exercise, v2], [v2, exercise]).holds).to.equal(false);
+    // Either account alone wrong is enough: the accepted list, then the witnesses.
+    expect(exercised((pa) => (pa.exercises.accepted = [{ record: exercise }]), [exercise, v2]).holds).to.equal(false);
+    expect(exercised((pa) => (pa.selfHostedPath.witnesses = [exercise]), [exercise, v2]).holds).to.equal(false);
+    expect(exercised((pa) => (pa.exercises.records = 1), [exercise, v2]).holds).to.equal(false);
     expect(exercised((pa) => (pa.selfHostedPath.exercised = false)).holds).to.equal(false);
-    expect(exercised(() => undefined, []).holds).to.equal(false);
-    expect(exercised(() => undefined, [exercise, "evidence/zk/sp1-impl/proof-exercises/second.json"]).holds).to.equal(
-      false,
-    );
+    expect(exercised(() => undefined, [], []).holds).to.equal(false);
+    expect(
+      exercised(() => undefined, [exercise, "evidence/zk/sp1-impl/proof-exercises/second.json"], [exercise]).holds,
+    ).to.equal(false);
     expect(exercised((pa) => (pa.exercises.records = 0)).holds).to.equal(false);
     expect(exercised((pa) => delete pa.exercises.accepted).holds).to.equal(false);
+    expect(exercised((pa) => (pa.exercises.accepted = { record: exercise })).holds).to.equal(false);
+    expect(exercised((pa) => delete pa.selfHostedPath.witnesses).holds).to.equal(false);
     expect(
-      exercised((pa) => (pa.selfHostedPath.record = "evidence/zk/sp1-impl/proof-exercises/other.json")).holds,
+      exercised((pa) => (pa.selfHostedPath.witnesses = ["evidence/zk/sp1-impl/proof-exercises/other.json"])).holds,
+    ).to.equal(false);
+    // v1's scalar names nothing any more: a record named only there is accounted for nowhere.
+    expect(
+      exercised((pa) => (pa.selfHostedPath = { ...pa.selfHostedPath, witnesses: undefined, record: exercise })).holds,
     ).to.equal(false);
     expect(exercised((pa) => (pa.selfHostedPath.requirements = [])).holds).to.equal(false);
     expect(exercised((pa) => (pa.archives.records = 0)).holds).to.equal(false);
     // The exercised facts without the exercised status, the one on-disk record under another name, and the
     // archived state claiming a recorded exercise it has not got on disk: none holds.
     expect(exercised((pa) => (pa.status = "ARCHIVED_VERIFIED_UNEXERCISED")).holds).to.equal(false);
-    expect(exercised(() => undefined, ["evidence/zk/sp1-impl/proof-exercises/other.json"]).holds).to.equal(false);
+    expect(exercised(() => undefined, ["evidence/zk/sp1-impl/proof-exercises/other.json"], [exercise]).holds).to.equal(
+      false,
+    );
     expect(archived((pa) => (pa.exercises.records = 1)).holds).to.equal(false);
     // The archived state with an exercise record on disk that the availability record does not account for.
     expect(archived(() => undefined, [record], [exercise]).holds).to.equal(false);
+    // The archived state claiming an accepted exercise or a witness it has not got: neither holds.
+    expect(archived((pa) => (pa.exercises.accepted = [])).holds).to.equal(false);
+    expect(archived((pa) => (pa.selfHostedPath.witnesses = [])).holds).to.equal(false);
   });
 
   it("a WalletWall archive or a changed proving availability breaks the archive assumption behind rustls's condition", function () {

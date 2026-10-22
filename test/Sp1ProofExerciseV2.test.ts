@@ -42,6 +42,7 @@ import {
   RUN_SCHEMA_V2,
   RUN_SCRIPT_REL,
   VERIFICATION_SCRIPT_REL,
+  attributedExerciseFiles,
   attributedRunObservationErrors,
   commitContentErrors,
   deriveExerciseRecord,
@@ -49,7 +50,6 @@ import {
   exerciseErrors,
   exerciseEvidenceState,
   exerciseExpectations,
-  exerciseRecordRel,
   isAttributedRun,
   productionExerciseEvidence,
   runObservationErrors,
@@ -120,7 +120,9 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
       expect(runObservationErrors(run, expectReal())).to.deep.equal([]);
       const e = productionExerciseEvidence(".", { anchor, archive });
       expect(exerciseEvidenceState(e), e.errors.join("; ")).to.equal("ACCEPTED");
-      expect(serializeJson(e.record)).to.equal(readFileSync(PA3B_RECORD, "utf8").replace(/\r\n/g, "\n"));
+      const pa3b = e.accepted.find((a) => a.path === PA3B_RECORD);
+      expect(pa3b?.generation).to.equal("v1");
+      expect(serializeJson(pa3b?.record)).to.equal(readFileSync(PA3B_RECORD, "utf8").replace(/\r\n/g, "\n"));
       expect(toolingState({ selfTestPassed: true, archive, exercise: e })).to.equal("SELF_HOSTED_PATH_EXERCISED");
     });
 
@@ -346,12 +348,12 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
       observations: [],
       errors: [],
     };
-    const RUN_FILE = `${OBSERVATIONS_DIR}/proof-exercise-run-proving-host-a.raw.json`;
-    const VERIFICATION_FILE = `${OBSERVATIONS_DIR}/proof-exercise-verification-proving-host-a.raw.json`;
-
     /**
-     * The archived state with the attributed tool and the observer committed, then one attributed exercise; with
+     * The archived state with the attributed tool and the observer committed, then one attributed exercise, its three
+     * files named after its token (SP1-PA3D0: a v2 record lives beside the v1 slot, never in it); with
      * `olderObserverAtSource`, the run names the first commit, which held another observer than the one now committed.
+     * An `edit` changes the run file after the record was derived, and the files are named after the edited run (as a
+     * consistent forger would name them), so what refuses it is the binding, not the name.
      */
     function repo(edit?: (run: AttributedRunObservation) => void, opts: { olderObserverAtSource?: boolean } = {}) {
       const d = dirs.make("sp1-pa3c-");
@@ -396,31 +398,40 @@ describe("SP1-PA3C — the v2 evidence contract beside SP1-PA3B's v1 evidence", 
       run.source.zkvmHostTree = x.zkvmHostTree;
       run.inputs.sha256 = String(x.proofInputSha256);
       run.tool.scriptSha256 = String(x.scripts.attributedRun);
+      const files = attributedExerciseFiles(ANCHOR, "proving-host-a", serializeJson(run));
       const v = verificationObservation(run as unknown as RunObservation);
-      v.run = { path: RUN_FILE, sha256: runSha(run as unknown as RunObservation) };
+      v.run = { path: files.run, sha256: runSha(run as unknown as RunObservation) };
       v.tool.scriptSha256 = String(x.scripts.verification);
       const rec = deriveExerciseRecord(
         run,
         v,
-        { runSha256: runSha(run as unknown as RunObservation), verificationPath: VERIFICATION_FILE, runPath: RUN_FILE },
+        {
+          runSha256: runSha(run as unknown as RunObservation),
+          verificationPath: files.verification,
+          runPath: files.run,
+        },
         x,
       );
       const written = structuredClone(run);
       edit?.(written);
-      write(d, RUN_FILE, serializeJson(written));
-      write(d, VERIFICATION_FILE, serializeJson(v));
-      write(d, exerciseRecordRel(ANCHOR), serializeJson(rec));
+      const named = attributedExerciseFiles(ANCHOR, "proving-host-a", serializeJson(written));
+      write(d, named.run, serializeJson(written));
+      write(d, named.verification, serializeJson(v));
+      write(d, named.record, serializeJson(rec));
       commit(d, "the attributed exercise");
-      return { d, rec, x };
+      return { d, rec, x, files };
     }
 
     it("is ACCEPTED: the judge derives the committed v2 record and the third state, with its assurance in the record", function () {
       this.timeout(120_000);
-      const { d, rec } = repo();
+      const { d, rec, files } = repo();
       const e = productionExerciseEvidence(d, { anchor: ANCHOR, archive });
       expect(exerciseEvidenceState(e), e.errors.join("; ")).to.equal("ACCEPTED");
-      expect(e.record).to.deep.equal(rec);
-      expect(egressAssuranceOfRecord(e.record as ProofExerciseRecord).level).to.equal("CONTINUOUS_ATTRIBUTED");
+      expect(e.accepted).to.have.length(1);
+      expect(e.accepted[0]).to.deep.include({ path: files.record, generation: "v2" });
+      expect(e.accepted[0].observations).to.deep.equal([files.run, files.verification]);
+      expect(e.accepted[0].record).to.deep.equal(rec);
+      expect(egressAssuranceOfRecord(e.accepted[0].record).level).to.equal("CONTINUOUS_ATTRIBUTED");
       expect(toolingState({ selfTestPassed: true, archive, exercise: e })).to.equal("SELF_HOSTED_PATH_EXERCISED");
     });
 

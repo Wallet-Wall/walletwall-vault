@@ -1218,7 +1218,7 @@ describe("SP1-PA2B circuit acquisition: observations, agreement, the derived rec
 
     it("toolingState: the self-test, then the archive evidence; a refused record derives no state", function () {
       // No proof-exercise evidence (SP1-PA3A): the archive evidence alone decides between the first three states.
-      const exercise = { records: [], record: null, observations: [], errors: [] };
+      const exercise = { records: [], accepted: [], observations: [], errors: [] };
       expect(toolingState({ selfTestPassed: false, archive: noRecord, exercise })).to.equal("TOOLING_NOT_PRESENT");
       expect(toolingState({ selfTestPassed: true, archive: noRecord, exercise })).to.equal("TOOLING_READY_NO_ARTIFACT");
       expect(toolingState({ selfTestPassed: true, archive: accepted, exercise })).to.equal(

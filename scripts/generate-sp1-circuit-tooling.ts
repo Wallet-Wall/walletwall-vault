@@ -24,7 +24,7 @@ runScript(async () => {
     console.log(
       `PROVING_AVAILABILITY = ${r.provingAvailability.status} (${
         r.state === "SELF_HOSTED_PATH_EXERCISED"
-          ? "an accepted archive record and exactly one accepted proof-exercise record: liveness on one host, never soundness or production readiness"
+          ? "an accepted archive record and every proof-exercise record accepted, one state however many exercises: liveness on one host at one time per exercise, never soundness or production readiness"
           : r.state === "ARCHIVED_VERIFIED_UNEXERCISED"
             ? "an accepted archive record; no proof has been made from it"
             : "no archive record: tooling is not an artifact"

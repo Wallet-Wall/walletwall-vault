@@ -41,18 +41,21 @@ import { latestDesignation, readDesignations, type ProgramDesignation } from "./
 import {
   PROOF_EXERCISES_DIR,
   ROTATION_DELAY_SECONDS,
+  egressAssuranceOfRecord,
   exerciseEvidenceState,
   exerciseRecordsIn,
   productionExerciseEvidence,
+  type AcceptedExercise,
   type ExerciseEvidence,
-  type ProofExerciseRecord,
 } from "./sp1-proof-exercise";
 
 /** The authoritative record directory and its listing live with the record (scripts/lib/sp1-circuit-archive.ts). */
 export { PROVING_ARCHIVES_DIR, archiveRecordsIn };
 
 export const PROVING_AVAILABILITY_REL = "evidence/zk/sp1-impl/proving-availability.json";
-export const PROVING_AVAILABILITY_SCHEMA = "walletwall.sp1-proving-availability.v1";
+/** v2 (SP1-PA3D0): `exercises.accepted` lists every accepted exercise and `selfHostedPath.witnesses` names them; v1's
+ * scalars (`exercises.accepted` as one object, `selfHostedPath.record`) are gone, never redefined. */
+export const PROVING_AVAILABILITY_SCHEMA = "walletwall.sp1-proving-availability.v2";
 export const PROVING_ARTIFACTS_OBSERVATION_REL =
   "evidence/zk/sp1-impl/observations/proving-artifacts-developer-workstation.raw.json";
 export const PROVING_ARTIFACTS_SCHEMA = "walletwall.sp1-proving-artifacts.v1";
@@ -500,9 +503,11 @@ export type ProvingAvailability =
 /**
  * The status, from the measured host, the archive evidence and the proof-exercise evidence (SP1-PA3A). A record
  * counts only as its evidence accepted it (the committed observations derive it, it is accepted for the designation,
- * it is committed); any file under PROVING_ARCHIVES_DIR or PROOF_EXERCISES_DIR that is not that accepted record stops
- * the derivation instead of being read as absent, and a proof-exercise record without an accepted archive derives
- * nothing. SELF_HOSTED_PATH_EXERCISED is liveness on one host at one time, never soundness, never production readiness.
+ * it is committed); any file under PROVING_ARCHIVES_DIR or PROOF_EXERCISES_DIR that is not accepted stops the
+ * derivation instead of being read as absent, and a proof-exercise record without an accepted archive derives
+ * nothing. One or more accepted exercises are the same status (SP1-PA3D0): a second exercise is history, never a
+ * second state. SELF_HOSTED_PATH_EXERCISED is liveness on one host at one time per exercise, never soundness, never
+ * production readiness.
  */
 export function provingAvailabilityStatus(
   obs: ProvingArtifactsObservation,
@@ -528,7 +533,7 @@ export function provingAvailabilityStatus(
       );
     }
     if (exerciseRecords.length > 0) {
-      if (exercise === null || exerciseEvidenceState(exercise) !== "ACCEPTED" || exercise.record === null) {
+      if (exercise === null || exerciseEvidenceState(exercise) !== "ACCEPTED") {
         throw new Error(
           `${exerciseRecords.join(", ")}: not an accepted proof-exercise record (${exercise === null ? "no proof-exercise evidence was judged" : exercise.errors.join("; ")}); a record counts only as the committed run and verification observations derive it`,
         );
@@ -607,27 +612,67 @@ export interface ProvingAvailabilityRecord {
   exercises: {
     dir: string;
     records: number;
-    /** The accepted proof-exercise record and what it establishes, once SP1-PA3B admits one; absent before. */
-    accepted?: {
-      record: string;
-      derivedFrom: string[];
-      host: string;
-      performedAtUtc: string;
-      verifiedAtUtc: string;
-      wallClockSeconds: number;
-      hostSeconds: number;
-      rotationDelaySeconds: number;
-      withinRotationDelay: boolean;
-      peakMemory: { hostProcessBytes: number; gnarkContainersBytes: number };
-      verifier: { runtimeCodeKeccak: string; checks: number };
-      egress: string;
-    };
+    /**
+     * Every accepted proof-exercise record (SP1-PA3B's v1, and any v2 beside it: SP1-PA3D0), sorted by path, each
+     * with what it establishes and its own egress assurance; absent while none is accepted. History, never a ranking:
+     * no entry is "the" or "the latest" exercise.
+     */
+    accepted?: AvailabilityExercise[];
   };
-  /** `exercised` and `record` follow the accepted proof-exercise record (SP1-PA3A); they are never set by hand. */
-  selfHostedPath: { exercised: boolean; requirements: string[]; record?: string };
+  /** `exercised` and `witnesses` follow the accepted proof-exercise records (SP1-PA3A, SP1-PA3D0); never set by hand.
+   * `witnesses` names every accepted record: each one alone establishes the exercised path; together, still one. */
+  selfHostedPath: { exercised: boolean; witnesses?: string[]; requirements: string[] };
   ownerAction: string[];
   notEstablished: string[];
   observation: { path: string; sha256: string };
+}
+
+/** One accepted exercise as the availability record states it: its facts, never another exercise's. */
+export interface AvailabilityExercise {
+  record: string;
+  schema: string;
+  lane: string;
+  exercise: string;
+  derivedFrom: string[];
+  host: string;
+  performedAtUtc: string;
+  verifiedAtUtc: string;
+  wallClockSeconds: number;
+  hostSeconds: number;
+  rotationDelaySeconds: number;
+  withinRotationDelay: boolean;
+  peakMemory: { hostProcessBytes: number; gnarkContainersBytes: number };
+  verifier: { runtimeCodeKeccak: string; checks: number };
+  egress: string;
+  /** The record's own egress assurance (egressAssuranceOfRecord): EDGE_PROBES_ONLY for a v1 record, whatever else
+   * exists; a v2 record's from its own observer evidence. */
+  egressAssurance: string;
+}
+
+/** The availability entry of one accepted exercise. */
+export function availabilityExerciseOf(a: AcceptedExercise): AvailabilityExercise {
+  const x = a.record;
+  return {
+    record: a.path,
+    schema: x.schema,
+    lane: x.lane,
+    exercise: x.exercise.id,
+    derivedFrom: [...a.observations],
+    host: x.exercise.host,
+    performedAtUtc: x.exercise.performedAtUtc,
+    verifiedAtUtc: x.exercise.verifiedAtUtc,
+    wallClockSeconds: x.performance.wallClockSeconds,
+    hostSeconds: x.performance.hostSeconds,
+    rotationDelaySeconds: x.performance.rotationDelaySeconds,
+    withinRotationDelay: x.performance.withinRotationDelay,
+    peakMemory: {
+      hostProcessBytes: x.performance.peakMemory.hostProcess.bytes,
+      gnarkContainersBytes: x.performance.peakMemory.gnarkContainers.bytes,
+    },
+    verifier: { runtimeCodeKeccak: x.verification.verifier.runtimeCodeKeccak, checks: x.verification.checks.length },
+    egress: x.egress.condition,
+    egressAssurance: egressAssuranceOfRecord(x).level,
+  };
 }
 
 export function deriveProvingAvailability(input: {
@@ -639,7 +684,8 @@ export function deriveProvingAvailability(input: {
   /** The judged archive evidence (scripts/lib/sp1-circuit-acquisition.ts); null only for a repository that holds none. */
   archive: ArchiveEvidence | null;
   exerciseRecords: readonly string[];
-  /** The judged proof-exercise evidence (scripts/lib/sp1-proof-exercise.ts); null while no archive is accepted. */
+  /** The judged proof-exercise evidence (scripts/lib/sp1-proof-exercise.ts), its history included; null only for a
+   * repository without a designation. */
   exercise: ExerciseEvidence | null;
 }): ProvingAvailabilityRecord {
   const obs = input.observation;
@@ -658,23 +704,24 @@ export function deriveProvingAvailability(input: {
   );
   const inArchivedState = status === "ARCHIVED_VERIFIED_UNEXERCISED" || status === "SELF_HOSTED_PATH_EXERCISED";
   const record = inArchivedState ? (input.archive as ArchiveEvidence).record : null;
-  const exercised: ProofExerciseRecord | null =
-    status === "SELF_HOSTED_PATH_EXERCISED" ? (input.exercise as ExerciseEvidence).record : null;
-  // The exercise record the judge accepted must be an exercise of THIS accepted archive record for THIS designation:
-  // the judge bound the record's bytes; here the facts the record names are held to the facts beside it.
+  const exercised: AcceptedExercise[] =
+    status === "SELF_HOSTED_PATH_EXERCISED" ? (input.exercise as ExerciseEvidence).accepted : [];
+  // Every exercise record the judge accepted must be an exercise of THIS accepted archive record for THIS designation:
+  // the judge bound each record's bytes; here the facts each record names are held to the facts beside it.
   const latest = latestDesignation(input.designations);
-  if (
-    exercised !== null &&
-    (record === null ||
+  for (const { path, record: x } of exercised) {
+    if (
+      record === null ||
       !latest ||
-      exercised.subject.designation !== latest.id ||
-      exercised.subject.programVKey !== latest.programVKey ||
-      exercised.archiveRecord.path !== input.archiveRecords[0] ||
-      exercised.archiveRecord.archiveSha256 !== record.archive.sha256)
-  ) {
-    throw new Error(
-      `${input.exerciseRecords[0]} is not an exercise of the accepted archive record ${input.archiveRecords[0]} for ${String(latest?.id)}`,
-    );
+      x.subject.designation !== latest.id ||
+      x.subject.programVKey !== latest.programVKey ||
+      x.archiveRecord.path !== input.archiveRecords[0] ||
+      x.archiveRecord.archiveSha256 !== record.archive.sha256
+    ) {
+      throw new Error(
+        `${path} is not an exercise of the accepted archive record ${input.archiveRecords[0]} for ${String(latest?.id)}`,
+      );
+    }
   }
   const verifierCrate = obs.crates.find((c) => c.name === "sp1-verifier") as MeasuredCrate;
   const tarball = s.artifactUrl.slice(s.artifactUrl.lastIndexOf("/") + 1);
@@ -709,13 +756,16 @@ export function deriveProvingAvailability(input: {
         ? [`no WalletWall archive of them is recorded (${PROVING_ARCHIVES_DIR} holds no record)`]
         : [
             `WalletWall archived ${record.archive.file}: ${record.archive.bytes} bytes, sha256 ${record.archive.sha256}, acquired independently on ${record.acquisitions.map((a) => a.host).join(" and ")} (both measured the same bytes), inspected member by member by the SP1-PA2A tooling (${record.members.length} members; ${record.metadata.length} AppleDouble entries ignored), mirrored at ${record.mirrors.length} WalletWall-controlled locations each recorded with that sha256, with the gnark image pinned by digest ${record.gnark.digest}; the record is ${input.archiveRecords[0]}, derived from the committed acquisition observations`,
-            ...(exercised === null
+            ...(exercised.length === 0
               ? [
                   "an archive is not an exercised proving path: no proof has been made from it, and archiving establishes availability of the bytes, never that the Groth16 trusted setup behind the key is sound",
                 ]
               : [
-                  `one real Groth16 proof of the designated program was made on ${exercised.exercise.host} through the archive-only gate from that archive, with SP1_PROVER=cpu, the digest-pinned image ${exercised.gnark.imageRef} and network egress refused before and after the run, and the designated verifier accepted it and refused its tampered copy (${exercised.verification.checks.length} check(s) of the v6.1.0 runtime at code hash ${exercised.verification.verifier.runtimeCodeKeccak}); the gate run took ${exercised.performance.wallClockSeconds} s against the ${ROTATION_DELAY_SECONDS} s rotation delay (${exercised.performance.withinRotationDelay ? "within it" : "EXCEEDING it"}, ${exercised.performance.rotationDelayFraction} of it), with peak memory ${exercised.performance.peakMemory.hostProcess.bytes} bytes (host process) and ${exercised.performance.peakMemory.gnarkContainers.bytes} bytes (gnark containers, sampled); the record is ${input.exerciseRecords[0]}, derived from the committed run and verification observations`,
-                  "an exercised path is liveness on one host at one time: it establishes neither that the Groth16 trusted setup behind the key is sound nor production readiness",
+                  ...exercised.map(
+                    ({ path, record: x }) =>
+                      `one real Groth16 proof of the designated program was made on ${x.exercise.host} through the archive-only gate from that archive, with SP1_PROVER=cpu, the digest-pinned image ${x.gnark.imageRef} and network egress refused before and after the run, and the designated verifier accepted it and refused its tampered copy (${x.verification.checks.length} check(s) of the v6.1.0 runtime at code hash ${x.verification.verifier.runtimeCodeKeccak}); the gate run took ${x.performance.wallClockSeconds} s against the ${ROTATION_DELAY_SECONDS} s rotation delay (${x.performance.withinRotationDelay ? "within it" : "EXCEEDING it"}, ${x.performance.rotationDelayFraction} of it), with peak memory ${x.performance.peakMemory.hostProcess.bytes} bytes (host process) and ${x.performance.peakMemory.gnarkContainers.bytes} bytes (gnark containers, sampled); egress assurance ${egressAssuranceOfRecord(x).level}, its own; the record is ${path} (${x.exercise.id}, ${x.schema}), derived from its committed run and verification observations`,
+                  ),
+                  "each exercise is liveness on one host at one time, and a second exercise is more history, never a second state: none establishes that the Groth16 trusted setup behind the key is sound, nor production readiness",
                 ]),
           ]),
       ...(status === "OWNER_DOWNLOAD_REQUIRED"
@@ -796,35 +846,16 @@ export function deriveProvingAvailability(input: {
             },
           },
     exercises:
-      exercised === null
+      exercised.length === 0
         ? { dir: PROOF_EXERCISES_DIR, records: input.exerciseRecords.length }
         : {
             dir: PROOF_EXERCISES_DIR,
             records: input.exerciseRecords.length,
-            accepted: {
-              record: input.exerciseRecords[0],
-              derivedFrom: (input.exercise as ExerciseEvidence).observations,
-              host: exercised.exercise.host,
-              performedAtUtc: exercised.exercise.performedAtUtc,
-              verifiedAtUtc: exercised.exercise.verifiedAtUtc,
-              wallClockSeconds: exercised.performance.wallClockSeconds,
-              hostSeconds: exercised.performance.hostSeconds,
-              rotationDelaySeconds: exercised.performance.rotationDelaySeconds,
-              withinRotationDelay: exercised.performance.withinRotationDelay,
-              peakMemory: {
-                hostProcessBytes: exercised.performance.peakMemory.hostProcess.bytes,
-                gnarkContainersBytes: exercised.performance.peakMemory.gnarkContainers.bytes,
-              },
-              verifier: {
-                runtimeCodeKeccak: exercised.verification.verifier.runtimeCodeKeccak,
-                checks: exercised.verification.checks.length,
-              },
-              egress: exercised.egress.condition,
-            },
+            accepted: exercised.map(availabilityExerciseOf),
           },
     selfHostedPath: {
-      exercised: exercised !== null,
-      ...(exercised === null ? {} : { record: input.exerciseRecords[0] }),
+      exercised: exercised.length > 0,
+      ...(exercised.length === 0 ? {} : { witnesses: exercised.map((a) => a.path) }),
       requirements: [
         `archive ${tarball} once, from an owner-authorized download, with its sha256 and every member's sha256 and size; upstream hosting is no archive`,
         `accept it only if its ${s.groth16VkFile} has sha256 ${vkHash} and is byte-identical to ${verifierCrateName}'s ${VK_MEMBER}; the other members are checked by proving, never trusted`,
@@ -843,7 +874,7 @@ export function deriveProvingAvailability(input: {
             "name the two archive locations WalletWall controls",
             "authorize the self-hosted proving run: a real proof, which this lane did not generate",
           ]
-        : exercised === null
+        : exercised.length === 0
           ? [
               "authorize the self-hosted proving run (SP1-PA3B): install from the committed verified archive only, with the digest-pinned gnark image, network egress off, one real Groth16 proof of the designated program through the archive-only gate under measurement (sp1:measure-proof-exercise), verified through the designated verifier path (sp1:verify-proof-exercise), peak memory and wall time recorded against the 2-day rotation delay, the two observations committed and the record derived (sp1:proof-exercise-record); only then SELF_HOSTED_PATH_EXERCISED, from facts",
             ]
@@ -851,12 +882,12 @@ export function deriveProvingAvailability(input: {
               "production binding (the implementation receipt's PRODUCTION_SP1_BINDING) is a later, owner-authorized lane: an exercised path is liveness on one host at one time, never production readiness",
             ],
     notEstablished:
-      exercised !== null
+      exercised.length > 0
         ? [
             "the provenance of the proving beyond what the repository binds (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing): the designated verifier accepts a valid proof whoever made it, however it was made; the rest is the operator's observation under the owner's review",
-            `that any other hardware proves within the ${ROTATION_DELAY_SECONDS} s rotation delay: one measured run on one host (a run over the delay is still an exercised path, recorded as EXCEEDING, never a timely one)`,
-            "that egress stayed refused between the two probes, or that the proving host's enforcement reached every container",
-            "that the mirrors keep serving the archive, or that the image stays in the registry: the exercise used them once",
+            `that any other hardware proves within the ${ROTATION_DELAY_SECONDS} s rotation delay: each exercise is one measured run on one host (a run over the delay is still an exercised path, recorded as EXCEEDING, never a timely one)`,
+            "that egress stayed refused while nothing watched it (between an edge-probed exercise's two probes; for an attributed one, beyond what its operator's capture shows), or that the proving host's enforcement reached every container: each exercise's own egress assurance says what was observed, and a stronger one never extends to another exercise",
+            "that the mirrors keep serving the archive, or that the image stays in the registry: each exercise used them once",
             `the Groth16 trusted setup behind the ${v} key: a proof the designated verifier accepts is compatibility with the key, never soundness`,
             "production readiness: the implementation receipt's PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED until its own lane",
           ]
@@ -905,8 +936,10 @@ export function archiveEvidenceFromRepo(
 }
 
 /**
- * The proof-exercise evidence of `repoRoot`, judged against the accepted archive evidence (SP1-PA3A); null while no
- * archive record is accepted (then any exercise record is refused by the status derivation, never judged on its own).
+ * The proof-exercise evidence of `repoRoot`, judged against the archive evidence (SP1-PA3A); null only without a
+ * designation. It is judged even while no archive record is accepted (SP1-PA3D0): an exercise record then refuses
+ * itself, and the exercise directory's history is judged too, so withdrawing SP1-PA3B's exercise together with the
+ * archive record never reads as a path that was never exercised.
  */
 export function exerciseEvidenceFromRepo(
   repoRoot: string,
@@ -915,10 +948,10 @@ export function exerciseEvidenceFromRepo(
   archive: ArchiveEvidence | null,
 ): ExerciseEvidence | null {
   const d = latestDesignation(designations);
-  if (!d || archive === null || archive.record === null) return null;
+  if (!d) return null;
   return productionExerciseEvidence(repoRoot, {
     anchor: anchorFromDesignation(d, observation.source.groth16Vk.bytes),
-    archive,
+    archive: archive ?? { records: [], record: null, observations: [], errors: [] },
   });
 }
 
