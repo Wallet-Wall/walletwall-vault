@@ -180,7 +180,7 @@ jobs:
       # why its whole-file hash is unfit for a committed receipt.
       - name: Upload raw Slither JSON (diagnostic)
         if: ${{ always() && hashFiles('prototype/vnext-kernel/slither-raw.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-slither-raw
           path: prototype/vnext-kernel/slither-raw.json
@@ -193,7 +193,7 @@ jobs:
       # a failing gate below can never suppress the scanner output.
       - name: Upload raw Slither SARIF (complete, diagnostic)
         if: ${{ always() && hashFiles('slither-vnext-kernel-results.sarif') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-slither-sarif-raw
           path: slither-vnext-kernel-results.sarif
@@ -224,7 +224,7 @@ jobs:
       # anchored version lint by name, and the integrity checks -- or, on failure, the failure code.
       - name: Upload SARIF projection report (diagnostic)
         if: ${{ always() && hashFiles('slither-vnext-kernel-projection-report.json') != '' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-slither-sarif-projection
           path: |
@@ -346,7 +346,7 @@ jobs:
 
       - name: Upload authority census
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-authority-census
           path: prototype/vnext-kernel/AUTHORITY_CENSUS.json
@@ -447,7 +447,7 @@ jobs:
 
       - name: Upload the stateful evidence receipt
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vnext-kernel-stateful-authority-evidence
           path: prototype/vnext-kernel/STATEFUL_AUTHORITY_EVIDENCE.json
