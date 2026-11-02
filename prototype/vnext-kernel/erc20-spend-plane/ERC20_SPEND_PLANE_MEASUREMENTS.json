@@ -1,0 +1,193 @@
+{
+  "_WARNING": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. Measurement candidates for a FUTURE kernel generation; the admitted asset in every test is a local mock, and nothing here authorises real value.",
+  "_CUSTODY_DOC": "docs/BASE_MAINNET_CUSTODY_ADJUDICATION.md sections 7.1, 7.2 and 10; record prototype/vnext-kernel/ERC20_SPEND_PLANE_MEASUREMENT.md",
+  "bytes": {
+    "measuredBy": "prototype/vnext-kernel/erc20-spend-plane/compile.ts -- pinned solc 0.8.24+commit.e11b9ed9 via --standard-json, settings identical to prototype/vnext-kernel/hardhat.config.ts; positive control = the Generation-1 kernel compiled through the same path",
+    "build": {
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "viaIR": false
+    },
+    "limits": {
+      "NETWORK_RUNTIME_LIMIT": 24576,
+      "NETWORK_INITCODE_LIMIT": 49152,
+      "WALLETWALL_PORTABILITY_BUDGET": 24576,
+      "WALLETWALL_INTERNAL_RESERVE": 2600,
+      "TARGET_KERNEL_CEILING": 21976,
+      "STOP_CONDITION_HEADROOM": 600
+    },
+    "baseline": {
+      "source": "prototype/vnext-kernel/MEASUREMENTS.json kernel/factory (Generation 1), re-measured here through the same compiler path",
+      "kernel": {
+        "contract": "VaultKernelPrototype",
+        "runtimeBytes": 18331,
+        "initcodeBytes": 18510,
+        "immutableSlots": 0,
+        "selectors": 46,
+        "stateChangingSelectors": 14,
+        "runtimeSha256": "60a68fd1fdee6482868234ad796c15a17ffba54739d4cef434e8af50fb121965",
+        "executablePrefixSha256": "2f2faafc5b331f50540267085e781d0167121aedc8d9be504d5d4edd0556a6a5",
+        "metadataTailBytes": 53,
+        "storageEntries": 17,
+        "storageSlots": 11,
+        "declaredRuntimeBytes": 18331,
+        "declaredRuntimeSha256": "0f3579a1b5e3b90935a87e716e83d3deba42169feeeb771959b82062f98fbf27"
+      },
+      "factory": {
+        "contract": "VaultKernelFactoryPrototype",
+        "runtimeBytes": 2551,
+        "initcodeBytes": 3030,
+        "immutableSlots": 3,
+        "selectors": 5,
+        "stateChangingSelectors": 1,
+        "runtimeSha256": "639b066d038fb507e4cd7d684d2b76b74b6488cb3fe4161a18c222b1b2ae3af4",
+        "executablePrefixSha256": "2278bd601e35dc6de4346b271b35b321a69b4d8ac6facfd9e4050088a8eee92b",
+        "metadataTailBytes": 53,
+        "storageEntries": 0,
+        "storageSlots": 0,
+        "declaredRuntimeBytes": 2551
+      },
+      "cloneRuntimeBytes": 73
+    },
+    "variants": {
+      "A": {
+        "description": "admitted-asset ERC-20 spend plane; genesis KEEPS the admissible-verifier requirement when requirePq == false",
+        "contract": "VaultKernelErc20Prototype",
+        "runtimeBytes": 18572,
+        "initcodeBytes": 18751,
+        "immutableSlots": 0,
+        "selectors": 47,
+        "stateChangingSelectors": 14,
+        "runtimeSha256": "cb3483a37ed8fd8cd026c047bc4ecd11361992021600e2c5a01635292d5acee0",
+        "executablePrefixSha256": "440bb222969a1064de241e8b0cf1f63dc3df5adeaeec8b3b54dc0062fd92915f",
+        "metadataTailBytes": 53,
+        "storageEntries": 17,
+        "storageSlots": 11,
+        "deltaVsGen1Kernel": 241,
+        "headroomVsTargetCeiling": 3404,
+        "headroomVsPortabilityBudget": 6004,
+        "headroomVsNetworkRuntimeLimit": 6004,
+        "initcodeHeadroomVsNetworkLimit": 30401,
+        "stopConditionHeadroomRemaining": 2804,
+        "stopCondition": "CLEAR",
+        "verdict": "TARGET PASS"
+      },
+      "B": {
+        "description": "as A, and genesis ACCEPTS a null verifier (address(0)) when requirePq == false; setVerifier and initiateRecovery still refuse null",
+        "contract": "VaultKernelErc20NullVerifierPrototype",
+        "runtimeBytes": 18629,
+        "initcodeBytes": 18808,
+        "immutableSlots": 0,
+        "selectors": 47,
+        "stateChangingSelectors": 14,
+        "runtimeSha256": "9815821a45c3a1a67d9d960478c314612c09e477ce68550ca693187cccfb7c60",
+        "executablePrefixSha256": "0fcdc9447ebe021c00bb5a3e0d2d61704937ab3428f6f8aa4fb31e2e9d3a3955",
+        "metadataTailBytes": 53,
+        "storageEntries": 17,
+        "storageSlots": 11,
+        "deltaVsGen1Kernel": 298,
+        "headroomVsTargetCeiling": 3347,
+        "headroomVsPortabilityBudget": 5947,
+        "headroomVsNetworkRuntimeLimit": 5947,
+        "initcodeHeadroomVsNetworkLimit": 30344,
+        "stopConditionHeadroomRemaining": 2747,
+        "stopCondition": "CLEAR",
+        "verdict": "TARGET PASS"
+      },
+      "variantDeltaBytesBMinusA": 57
+    },
+    "factory": {
+      "contract": "VaultKernelErc20FactoryPrototype",
+      "runtimeBytes": 2645,
+      "initcodeBytes": 3245,
+      "immutableSlots": 4,
+      "selectors": 6,
+      "stateChangingSelectors": 1,
+      "runtimeSha256": "67868df82778b7af1e7321c2e0cfa6a43b8a82d749240351d9391da0d1f82954",
+      "executablePrefixSha256": "6974820972c72219c6514b1b78ad3925c4e8c5e0fd716744834bbbc436073de1",
+      "metadataTailBytes": 53,
+      "storageEntries": 0,
+      "storageSlots": 0,
+      "deltaVsGen1Factory": 94,
+      "initcodeDeltaVsGen1Factory": 215
+    },
+    "clone": {
+      "runtimeBytes": 93,
+      "argsBytes": 48,
+      "argsLayout": "generation (8) || verifierAuthority (20) || admittedAsset (20)"
+    },
+    "abi": {
+      "stateChangingSelectorsIdenticalToGen1": true,
+      "addedSelectors": [
+        "admittedAsset()"
+      ],
+      "removedSelectors": [],
+      "executeSignature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)"
+    },
+    "storage": {
+      "identicalToGen1": true,
+      "entries": 17,
+      "slots": 11
+    },
+    "interfaceCopyByteIdenticalToGen1": true,
+    "sourceSha256": {
+      "prototype/vnext-kernel/erc20-spend-plane/contracts/VaultKernelErc20Prototype.sol": "e5b2f92239529f0b491ecbeca0f0ecfc53eb81b18d7e4e08355015961f89bdce",
+      "prototype/vnext-kernel/erc20-spend-plane/contracts/VaultKernelErc20NullVerifierPrototype.sol": "e41e0080a19439682ccfb1094d94b013a4c34d6e0dd78af11124f1824936bec7",
+      "prototype/vnext-kernel/erc20-spend-plane/contracts/VaultKernelErc20FactoryPrototype.sol": "edad0e55f4412925f5d239650033d7289fd851826dc07bd73bd1cc9043caa343",
+      "prototype/vnext-kernel/erc20-spend-plane/contracts/Erc20PlaneMocks.sol": "859e5105386fb2a84742651b3bb196a000606c2450c09f8f6112b7c1d231df51",
+      "prototype/vnext-kernel/erc20-spend-plane/contracts/interfaces/IKernelPlanes.sol": "b854520d71c2ff1b52273fdf82a78b98f40cf060deb2839e8dc97c80a2d271cc"
+    }
+  },
+  "gas": {
+    "_note": "LOCAL COMPARATIVE measurements on the Hardhat network (EDR, cancun), receipts' gasUsed, from test/Erc20SpendPlane.test.ts 'gas' on isolated accounts 16..18 so every address and calldata byte is independent of the rest of the suite. Refused probes carry an explicit gas limit and are read from their status-0 receipt. NOT a cost claim for any network; the suite asserts these exact figures and prints a fresh table to re-record when a candidate changes.",
+    "deployImplementationVariantA": 4093713,
+    "deployFactoryErc20": 639852,
+    "deployVaultErc20Factory": 210746,
+    "erc20SpendVanillaRelayed": 108310,
+    "erc20SpendRefusedBadSignature": 38506,
+    "erc20SpendRefusedBlocklistedRecipient": 62313,
+    "erc20EgressAdmittedAsset": 71388,
+    "deployImplementationVariantB": 4106033,
+    "erc20SpendVariantBRelayed": 108310,
+    "erc20SpendRefusedLyingToken": 76413,
+    "deployImplementationGen1": 4041517,
+    "deployFactoryGen1": 615189,
+    "deployVaultGen1Factory": 206501,
+    "ethSpendGen1Baseline": 76456,
+    "ethSpendGen1RefusedBadSignature": 38493,
+    "ethEgressGen1Baseline": 42308
+  },
+  "verdict": "MEASUREMENT_SUPPORTS_ADMISSION",
+  "recommendation": {
+    "_scope": "A measurement verdict is NOT a production admission. The owner decisions in docs/BASE_MAINNET_CUSTODY_ADJUDICATION.md section 10 remain the owner's; this block recommends with numbers and decides nothing.",
+    "section10item6": {
+      "question": "Whether the new generation accepts a null verifier when requirePq == false",
+      "variantA_keepRequirement": {
+        "runtimeBytes": 18572,
+        "newKernelState": "none",
+        "genesisCost": "one permissionless deployVerifier(attestor) call on the Generation root, by anyone, once per attestor address; the verifier is never consulted while requirePq == false"
+      },
+      "variantB_acceptNull": {
+        "runtimeBytes": 18629,
+        "deltaVsA": 57,
+        "newKernelState": "pqVerifier == address(0) becomes a reachable state every later edge must refuse (setVerifier and initiateRecovery do today)"
+      },
+      "spendGasIdentical": true,
+      "recommended": "KEEP THE REQUIREMENT (variant A): the null variant is 57 bytes LARGER, refuting the 'dropping it saves bytes' hypothesis, and buys only the omission of a permissionless call that costs no authority."
+    },
+    "safestAdmission": "Only an asset with vanilla ERC-20 transfer semantics (exact debit, no fee, no rebasing, no hooks); a recipient-leg fee is the one behaviour no sender-side settlement rule can observe. The admission is a property of the ASSET, decided by the owner, not of the kernel.",
+    "blockersBeforeProductionGeneration": [
+      "owner decisions, custody doc section 10 items 1-6",
+      "production constants and the Generation-2 EIP-712 name/version",
+      "Generation-2 provenance root decision (reuse the Generation-1 root or publish a new one, architecture section 22 D8)",
+      "scanner (Slither/CodeQL) scope and stateful campaign extended to the plane, with new receipts",
+      "the asset admission itself: vanilla semantics, blocklist disclosure, proxy governance (off-chain, disclosed)",
+      "independent audit, formal review of the settlement rule, the section 15 artifact set (gates PG-15, SG-03)",
+      "no deployment of any kind until docs/BASE_MAINNET_PRODUCTION_GATES.md is met"
+    ]
+  }
+}
