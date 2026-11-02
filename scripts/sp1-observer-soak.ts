@@ -100,10 +100,17 @@ function main(argv: string[]): number {
   const self = fileURLToPath(import.meta.url);
   const selfErrors = rootOwnedPathErrors(self);
   if (selfErrors.length > 0) throw new Error(`SOAK_PATH_NOT_ROOT_OWNED: ${selfErrors.join("; ")}`);
+  // Every argument that reaches a command or a path is checked by form first: an account name, plain absolute paths.
   const user = argValue(argv, "--as");
-  const repo = realpathSync(argValue(argv, "--repo"));
-  const observer = realpathSync(argValue(argv, "--observer"));
-  const outDir = resolve(argValue(argv, "--out-dir"));
+  if (!/^[a-z_][a-z0-9_-]{0,31}$/.test(user)) throw new Error("--as must be a plain account name");
+  const plainPath = (name: string) => {
+    const value = argValue(argv, name);
+    if (!/^\/[A-Za-z0-9._/-]+$/.test(value)) throw new Error(`${name} must be an absolute path of plain characters`);
+    return value;
+  };
+  const repo = realpathSync(plainPath("--repo"));
+  const observer = realpathSync(plainPath("--observer"));
+  const outDir = resolve(plainPath("--out-dir"));
   const iterations = Number(argValue(argv, "--iterations", "12"));
   const table = argValue(argv, "--table", "sp1obs_q1");
   const boundaryArg = argValue(argv, "--boundary", "self-test-table");

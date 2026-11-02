@@ -47,13 +47,13 @@
       "class": "repository-pinned",
       "component": "qualification CLI (derive, reconcile, controls, assemble)",
       "path": "scripts/sp1-observer-qualification.ts",
-      "sha256": "44d4ab62a859f24b9ce138be8830c98c9968fc3eec9bb46044eb85402436e716"
+      "sha256": "7ac209dac41bebb661ff4e002f76b83e4875c1a4215867fc642c3a848163cf9f"
     },
     {
       "class": "repository-pinned",
       "component": "root soak runner",
       "path": "scripts/sp1-observer-soak.ts",
-      "sha256": "5d878f5046138bbfe32c4092a859416c258490f0ec928d274bdae1022f158fa7"
+      "sha256": "6a5388e295eca120fad951aa6ab8a0a2dc4cb6a9167ce461ebad175d7891bc16"
     },
     {
       "class": "repository-pinned",

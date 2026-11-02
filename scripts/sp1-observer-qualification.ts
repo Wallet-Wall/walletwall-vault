@@ -7,7 +7,7 @@
  *   host-executable --path <node binary> --out <json>              the stand-in host's identity, as stat names it here
  *   derive (--raw <dir> --host-executable <json> | --fixture) --execution tsx|node-type-stripping --out <json>
  *          [--environment-file <json>] [--label <label>] [--source-commit <40 hex>]
- *   registry-check --image <repository@sha256:digest> --out <json> one read-only manifest request (the only network act)
+ *   registry-check --image <repository@sha256:digest>  one read-only manifest request (the only network act); prints its verdict
  *   negative-controls --fixture-host <json> --fixture-container <json> --out <json>
  *   assemble --label <host> --fixture-host <json> --fixture-container <json> --negative <json> --out <json>
  *            --soak <soak.json> --host-dir <dir> --container-dir <dir> [--soak ... --host-dir ... --container-dir ...]
@@ -188,7 +188,6 @@ function hostExecutable(argv: string[]): void {
 /** One read-only manifest request by digest: proves the registry serves exactly these bytes; pulls nothing. */
 async function registryCheck(argv: string[]): Promise<void> {
   const image = arg(argv, "--image") as string;
-  const out = arg(argv, "--out") as string;
   const m = /^([a-z0-9][a-z0-9._/-]*)@(sha256:[0-9a-f]{64})$/.exec(image);
   if (!m) throw new Error("--image must be <repository>@sha256:<digest>");
   const repository = m[1].includes("/") ? m[1] : `library/${m[1]}`;
@@ -208,26 +207,13 @@ async function registryCheck(argv: string[]): Promise<void> {
   const body = Buffer.from(await response.arrayBuffer());
   const bodySha256 = sha256(body);
   const matches = response.status === 200 && `sha256:${bodySha256}` === digest;
+  // The verdict is printed, never written to a file by this tool: the container runner records it in the environment
+  // identity it writes, and the derivation carries it from there. Nothing from the network is stored here.
   const text = `docker.io/${repository} manifest by digest: HTTP ${response.status}, body sha256 ${matches ? "==" : "!="} digest (read-only; nothing pulled)`;
-  writeNew(
-    out,
-    `${JSON.stringify(
-      {
-        image,
-        repository,
-        digest,
-        http: response.status,
-        contentType: response.headers.get("content-type"),
-        bodySha256,
-        matches,
-        registryVerification: text,
-        checkedAtUtc: utcNow(),
-      },
-      null,
-      2,
-    )}\n`,
+  say(
+    `${repository} ${digest}: ${matches ? "the registry serves exactly these bytes" : "NOT confirmed"} (${bodySha256.slice(0, 16)}, ${utcNow()})`,
   );
-  say(`${out}: ${text}`);
+  process.stdout.write(`${text}\n`);
 }
 
 function negativeControls(argv: string[]): void {
