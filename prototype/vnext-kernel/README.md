@@ -144,11 +144,39 @@ only then fixed:
 > governance paths were not calling it. **Closing a hole in a helper does not
 > close the paths that bypass the helper.**
 
+## Generation-2 candidate — the admitted-asset ERC-20 spend plane (MEASURED, not admitted)
+
+> **EXPERIMENTAL · NOT PRODUCTION.** A measurement, not a production generation and not a
+> production asset: the admitted asset in every test is a local mock, nothing is deployed,
+> and the owner decisions of `docs/BASE_MAINNET_CUSTODY_ADJUDICATION.md` §10 stay open.
+
+The custody adjudication (§7.1, §7.2, §10 item 6) asked what it costs to let the kernel
+spend **one admitted ERC-20** instead of native value, with the asset bound into the clone's
+immutable args and settlement judged on an observed balance decrease. Two candidates were
+built as exact-once edits of this kernel in `erc20-spend-plane/` — compiled **in-test** with
+the pinned solc so `contracts/`, the evidence subject, stays untouched — and measured:
+
+| Candidate                                                        | runtime    | Δ vs this kernel | headroom vs ceiling 21,976 | above the 600 B stop line |
+| ---------------------------------------------------------------- | ---------- | ---------------- | -------------------------- | ------------------------- |
+| **A** — admissible verifier still required at genesis            | **18,572** | **+241**         | **3,404**                  | 2,804                     |
+| **B** — null verifier accepted at genesis (`requirePq == false`) | **18,629** | +298             | 3,347                      | 2,747                     |
+
+Both `TARGET PASS`; storage layout and the state-changing selector set are **identical** to this
+kernel, the implementation keeps **0** immutable slots, and `authority/check.ts` passes on both
+with the Generation-1 manifest **unchanged**. Variant B is **57 bytes larger**, not smaller: the
+null-verifier hypothesis is refuted by measurement, and the record recommends keeping the
+requirement. Observed-balance settlement is proved against an adversarial token zoo (lying,
+short-pay, fee-on-transfer, rebasing, hook-bearing and issuer-upgraded assets) rather than
+preferred. Verdict `MEASUREMENT_SUPPORTS_ADMISSION` — which is **not** a production admission.
+Record: [`ERC20_SPEND_PLANE_MEASUREMENT.md`](ERC20_SPEND_PLANE_MEASUREMENT.md); figures:
+`erc20-spend-plane/ERC20_SPEND_PLANE_MEASUREMENTS.json`; suites `test/Erc20SpendPlane*.test.ts`.
+
 ## Layout
 
 ```text
 prototype/vnext-kernel/
   README.md               this file
+  erc20-spend-plane/      Generation-2 CANDIDATES: the admitted-asset ERC-20 spend plane, compiled in-test (see above)
   KERNEL_ADMISSION.md     which responsibilities enter the kernel, and why
   AUTHORITY.md            authority graph, closure, minimum cuts, call inventory
   hardhat.config.ts       ISOLATED build — separate sources/artifacts/cache
@@ -165,6 +193,7 @@ prototype/vnext-kernel/
     connection.ts
     KernelPrototype.test.ts          M-K01..M-K27 (migrated to the remediated API)
     KernelAuthorityClosure.test.ts   M-K28..M-K37 — the independent closure review
+    Erc20SpendPlane*.test.ts         the ERC-20 spend-plane measurement suites (bytes, invariants, settlement, census, mutants)
 ```
 
 ## Running it
