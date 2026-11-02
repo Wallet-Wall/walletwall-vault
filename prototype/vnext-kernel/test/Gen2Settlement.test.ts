@@ -215,9 +215,18 @@ describe("Generation-2 admission — settlement: the kernel's observation and th
         (f) => f.type === "function" && (f as { stateMutability?: string }).stateMutability === "payable",
       );
       expect(payable, "no payable entrypoint: a spend cannot carry value").to.deep.equal([]);
-      expect(
-        abi.filter((f) => f.type === "function" && /delegate|multicall|batch|call$/i.test(f.name ?? "")),
-      ).to.deep.equal([]);
+      const genericCallShape = (f: { type: string; name?: string }): boolean => {
+        if (f.type !== "function") return false;
+        const name = (f.name ?? "").toLowerCase();
+        return (
+          name.includes("delegate") || name.includes("multicall") || name.includes("batch") || name.endsWith("call")
+        );
+      };
+      for (const name of ["delegateTo", "multicallAll", "batchSpend", "staticCall"]) {
+        expect(genericCallShape({ type: "function", name }), `the filter catches ${name}`).to.equal(true);
+      }
+      expect(genericCallShape({ type: "function", name: "callback" }), "call counts only as a suffix").to.equal(false);
+      expect(abi.filter(genericCallShape)).to.deep.equal([]);
     });
 
     it("a spend moves no native value: the vault's ether is reachable only by egress", async function () {
