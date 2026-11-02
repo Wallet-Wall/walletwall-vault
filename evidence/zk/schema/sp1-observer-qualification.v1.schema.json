@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "walletwall.sp1-observer-qualification.v1",
+  "title": "WalletWall SP1 observer qualification record (SP1-PA3C-Q1)",
+  "description": "What scripts/generate-sp1-observer-qualification.ts derives from the committed qualification observation (evidence/zk/sp1-impl/observations/observer-qualification-<host>.raw.json), the committed observer (scripts/sp1-egress-observer.ts) and the committed self-test capture: whether the egress observer's path is stable across a soak of captures on the proving host, whether a clean container derives each capture to the same bytes as the host, whether the harness refuses what it must (negative controls), and the environment's trust boundary. Its state is one of OBSERVER_QUALIFIED_FOR_PA3D, OBSERVER_QUALIFICATION_BLOCKED or OBSERVER_TOOLING_READY_VALIDATION_PENDING, recomputed by the validator from facts; it never holds a proof, and PRODUCTION_SP1_BINDING is NOT_ESTABLISHED whatever it says. The shape only: scripts/lib/sp1-observer-qualification.ts is the validator. Research prototype; not audited; testnet/local only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "lane",
+    "repository",
+    "productionSp1Binding",
+    "state",
+    "blockers",
+    "next",
+    "qualifiedAtUtc",
+    "source",
+    "observer",
+    "components",
+    "fixture",
+    "soak",
+    "container",
+    "environments",
+    "negativeControls",
+    "securityFindings",
+    "networkDependencies",
+    "hostDependencies",
+    "derivedFrom"
+  ],
+  "properties": {
+    "schema": { "const": "walletwall.sp1-observer-qualification.v1" },
+    "lane": { "const": "SP1-PA3C-Q1" },
+    "repository": { "const": "Wallet-Wall/walletwall-vault" },
+    "productionSp1Binding": { "const": "NOT_ESTABLISHED" },
+    "state": {
+      "enum": [
+        "OBSERVER_QUALIFIED_FOR_PA3D",
+        "OBSERVER_QUALIFICATION_BLOCKED",
+        "OBSERVER_TOOLING_READY_VALIDATION_PENDING"
+      ]
+    },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "next": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lane", "what", "authorization", "started"],
+          "properties": {
+            "lane": { "const": "SP1-PA3D" },
+            "what": { "type": "string" },
+            "authorization": { "const": "OWNER" },
+            "started": { "const": false }
+          }
+        }
+      ]
+    },
+    "qualifiedAtUtc": { "oneOf": [{ "type": "null" }, { "type": "string", "format": "date-time" }] },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "observerScriptSha256"],
+      "properties": {
+        "commit": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{40}$" }] },
+        "observerScriptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "observer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["script", "scriptSha256", "mechanism", "workload"],
+      "properties": {
+        "script": { "const": "scripts/sp1-egress-observer.ts" },
+        "scriptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mechanism": { "const": "LINUX_TRACEFS_KPROBES" },
+        "workload": { "const": "test/fixtures/sp1-egress-observer/workload.mjs" }
+      }
+    },
+    "components": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "class"],
+        "properties": {
+          "component": { "type": "string" },
+          "class": {
+            "enum": [
+              "repository-pinned",
+              "digest-pinned",
+              "version-pinned",
+              "host-dependent",
+              "network-dependent",
+              "mutable-external-dependency",
+              "unknown-unverified"
+            ]
+          },
+          "path": { "type": "string" },
+          "sha256": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] },
+          "identity": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "fixture": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dir", "hostExecutable", "host", "container", "reconciliation"],
+          "properties": {
+            "dir": { "const": "test/fixtures/sp1-egress-observer/selftest-capture" },
+            "hostExecutable": { "$ref": "#/$defs/hostExecutable" },
+            "host": { "$ref": "#/$defs/derivation" },
+            "container": { "$ref": "#/$defs/derivation" },
+            "reconciliation": { "$ref": "#/$defs/reconciliation" }
+          }
+        }
+      ]
+    },
+    "soak": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "startedAtUtc", "finishedAtUtc", "iterations", "summary"],
+          "properties": {
+            "host": { "type": "string" },
+            "startedAtUtc": { "type": "string" },
+            "finishedAtUtc": { "type": "string" },
+            "iterations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "n",
+                  "variation",
+                  "exit",
+                  "normalizedSha256",
+                  "stableProjectionSha256",
+                  "judgementSha256",
+                  "refusals",
+                  "reconciliation"
+                ],
+                "properties": {
+                  "n": { "type": "integer", "minimum": 1 },
+                  "variation": { "type": "string" },
+                  "exit": { "type": "integer" },
+                  "normalizedSha256": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] },
+                  "stableProjectionSha256": {
+                    "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }]
+                  },
+                  "judgementSha256": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] },
+                  "refusals": { "type": "integer", "minimum": 0 },
+                  "reconciliation": {
+                    "enum": ["HOST_CONTAINER_OBSERVER_AGREEMENT", "HOST_CONTAINER_OBSERVER_DISAGREEMENT"]
+                  }
+                }
+              }
+            },
+            "summary": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "iterations",
+                "exitZero",
+                "refusalFree",
+                "clean",
+                "distinctCaptures",
+                "distinctProjections",
+                "agreeing",
+                "variations",
+                "stable",
+                "unstableBecause"
+              ],
+              "properties": {
+                "iterations": { "type": "integer" },
+                "exitZero": { "type": "integer" },
+                "refusalFree": { "type": "integer" },
+                "clean": { "type": "integer" },
+                "distinctCaptures": { "type": "integer" },
+                "distinctProjections": { "type": "integer" },
+                "agreeing": { "type": "integer" },
+                "variations": { "type": "array", "items": { "type": "string" } },
+                "stable": { "type": "boolean" },
+                "unstableBecause": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "container": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/container" }] },
+    "environments": { "type": "array", "items": { "$ref": "#/$defs/environment" } },
+    "negativeControls": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "intendedReason", "observedReasons", "ok"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^(P0|NC[1-9][0-9]*)$" },
+          "name": { "type": "string" },
+          "intendedReason": { "type": "string" },
+          "observedReasons": { "type": "array", "items": { "type": "string" } },
+          "ok": { "type": "boolean" }
+        }
+      }
+    },
+    "securityFindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "severity", "blocking", "finding", "disposition", "carriedForwardFrom", "evidence"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "enum": ["INFO", "LOW", "MEDIUM", "HIGH"] },
+          "blocking": { "type": "boolean" },
+          "finding": { "type": "string" },
+          "disposition": { "type": "string" },
+          "carriedForwardFrom": { "oneOf": [{ "type": "null" }, { "type": "string" }] },
+          "evidence": { "oneOf": [{ "type": "null" }, { "type": "string" }] }
+        }
+      }
+    },
+    "networkDependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "dependency", "verification"],
+        "properties": {
+          "phase": { "type": "string" },
+          "dependency": { "type": "string" },
+          "verification": { "type": "string" }
+        }
+      }
+    },
+    "hostDependencies": { "type": "array", "items": { "type": "string" } },
+    "derivedFrom": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256"],
+        "properties": {
+          "path": { "type": "string", "pattern": "^evidence/zk/sp1-impl/observations/observer-qualification-[a-z0-9-]+\\.raw\\.json$" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hostExecutable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "dev", "ino"],
+      "properties": {
+        "path": { "type": "string" },
+        "dev": { "type": "string", "pattern": "^[0-9]+:[0-9]+$" },
+        "ino": { "type": "integer" }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "label", "platform", "release", "arch", "node", "typescriptExecution", "sourceCommit"],
+      "properties": {
+        "kind": { "enum": ["HOST", "CONTAINER"] },
+        "label": { "type": "string" },
+        "platform": { "type": "string" },
+        "release": { "type": "string" },
+        "arch": { "type": "string" },
+        "node": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+" },
+        "typescriptExecution": { "enum": ["tsx", "node-type-stripping"] },
+        "sourceCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "container": { "$ref": "#/$defs/container" }
+      }
+    },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "runOptions", "facts"],
+      "properties": {
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reference", "digest", "id", "nodeVersion", "registryVerification"],
+          "properties": {
+            "reference": { "type": "string" },
+            "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "id": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+            "nodeVersion": { "type": "string" },
+            "registryVerification": { "type": "string" }
+          }
+        },
+        "runOptions": { "type": "array", "items": { "type": "string" } },
+        "facts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["uid", "gid", "networkInterfaces", "capEff", "noNewPrivs", "rootMount", "env"],
+          "properties": {
+            "uid": { "type": "integer" },
+            "gid": { "type": "integer" },
+            "networkInterfaces": { "type": "array", "items": { "type": "string" } },
+            "capEff": { "type": "string" },
+            "noNewPrivs": { "type": "integer" },
+            "rootMount": { "type": "string" },
+            "env": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "environment", "input", "output"],
+      "properties": {
+        "schema": { "const": "walletwall.sp1-observer-derivation.v1" },
+        "environment": { "$ref": "#/$defs/environment" },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["raw", "hostExecutable", "observerScriptSha256", "mode"],
+          "properties": {
+            "raw": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["manifestSha256", "files"],
+              "properties": {
+                "manifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "files": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["name", "bytes", "sha256"],
+                    "properties": {
+                      "name": { "enum": ["trace.txt", "facts.json"] },
+                      "bytes": { "type": "integer" },
+                      "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+                    }
+                  }
+                }
+              }
+            },
+            "hostExecutable": { "$ref": "#/$defs/hostExecutable" },
+            "observerScriptSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+            "mode": { "const": "SELF_TEST" }
+          }
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "normalizedSha256",
+            "configSha256",
+            "nonce",
+            "bootId",
+            "kernelRelease",
+            "refusals",
+            "judgement",
+            "judgementSha256",
+            "stableProjection",
+            "stableProjectionSha256"
+          ],
+          "properties": {
+            "normalizedSha256": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] },
+            "configSha256": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] },
+            "nonce": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{16}$" }] },
+            "bootId": { "oneOf": [{ "type": "null" }, { "type": "string" }] },
+            "kernelRelease": { "oneOf": [{ "type": "null" }, { "type": "string" }] },
+            "refusals": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["reason", "detail"],
+                "properties": { "reason": { "type": "string" }, "detail": { "type": "string" } }
+              }
+            },
+            "judgement": { "oneOf": [{ "type": "null" }, { "type": "object" }] },
+            "judgementSha256": { "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }] },
+            "stableProjection": { "oneOf": [{ "type": "null" }, { "type": "object" }] },
+            "stableProjectionSha256": {
+              "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }]
+            }
+          }
+        }
+      }
+    },
+    "reconciliation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["result", "differences"],
+      "properties": {
+        "result": { "enum": ["HOST_CONTAINER_OBSERVER_AGREEMENT", "HOST_CONTAINER_OBSERVER_DISAGREEMENT"] },
+        "differences": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "a", "b", "class"],
+            "properties": {
+              "path": { "type": "string" },
+              "a": {},
+              "b": {},
+              "class": {
+                "enum": [
+                  "EXPECTED_ENVIRONMENT_IDENTITY",
+                  "SOURCE_IDENTITY_MISMATCH",
+                  "INPUT_IDENTITY_MISMATCH",
+                  "SECURITY_RELEVANT_MISMATCH"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
