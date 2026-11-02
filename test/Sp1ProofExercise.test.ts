@@ -1302,30 +1302,37 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
       }
     });
 
-    it("the real checkout has reached the third state: exactly one record, derived from exactly one run and one verification observation, exercised true", function () {
+    it("the real checkout has reached the third state: SP1-PA3B's v1 record first, every record derived from its own run and verification observation, exercised true", function () {
       this.timeout(120_000);
       const anchor = productionAnchor(".");
       const archive = productionArchiveEvidenceOf(".");
       const records = exerciseRecordsIn(".");
-      expect(records).to.deep.equal([exerciseRecordRel(anchor)]);
+      // SP1-PA3B's v1 in its slot; since SP1-PA3D one v2 record stands beside it, named after its own run (SP1-PA3D0).
+      expect(records[0]).to.equal(exerciseRecordRel(anchor));
+      expect(records.length).to.be.at.least(1);
       const observations = exerciseObservationsIn(".");
-      expect(observations.run).to.have.length(1);
-      expect(observations.verification).to.have.length(1);
+      expect(observations.run).to.have.length(records.length);
+      expect(observations.verification).to.have.length(records.length);
       expect(observations.other).to.deep.equal([]);
       const exercise = productionExerciseEvidence(".", { anchor, archive });
       expect(exercise.errors).to.deep.equal([]);
       expect(exerciseEvidenceState(exercise)).to.equal("ACCEPTED");
       expect(exercise.observations).to.deep.equal([...observations.run, ...observations.verification]);
       const committed = JSON.parse(readFileSync(records[0], "utf8"));
-      expect(exercise.accepted).to.have.length(1);
+      expect(exercise.accepted).to.have.length(records.length);
+      expect(exercise.accepted.map((a) => a.generation)).to.deep.equal(["v1", ...records.slice(1).map(() => "v2")]);
       expect(exercise.accepted[0]).to.deep.include({ path: records[0], generation: "v1" });
       expect(exercise.accepted[0].record).to.deep.equal(committed);
+      for (const a of exercise.accepted.slice(1)) {
+        expect(a.record.lane).to.equal("SP1-PA3D");
+        expect(a.record.derivedFrom.every((p) => exercise.observations.includes(p))).to.equal(true);
+      }
       expect(toolingState({ selfTestPassed: true, archive, exercise })).to.equal("SELF_HOSTED_PATH_EXERCISED");
       const pa = provingAvailabilityFromRepo(".");
       expect(pa.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
       expect(pa.selfHostedPath.exercised).to.equal(true);
       expect(pa.selfHostedPath.witnesses).to.deep.equal(records);
-      expect(pa.exercises.records).to.equal(1);
+      expect(pa.exercises.records).to.equal(records.length);
       expect(pa.exercises.accepted?.map((a) => a.record)).to.deep.equal(records);
       expect(pa.exercises.accepted?.[0].egressAssurance).to.equal("EDGE_PROBES_ONLY");
       // SP1-PA3B's record is bound to the real expectations: the canonical host binary for the designated host tree,
@@ -1587,7 +1594,8 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
 
     it("sp1:proof-exercise-record: never derives a committed exercise again (every exercise has its record), and writes nothing", function () {
       this.timeout(120_000);
-      const rel = exerciseRecordsIn(".")[0];
+      const records = exerciseRecordsIn(".");
+      const rel = records[0];
       const before = readFileSync(rel);
       const r = run("scripts/generate-sp1-proof-exercise-record.ts");
       expect(r.status).to.equal(1);
@@ -1595,7 +1603,7 @@ describe("SP1-PA3A — proof-exercise evidence", function () {
         /nothing to derive: every committed exercise in evidence\/zk\/sp1-impl\/observations already has its record/,
       );
       expect(readFileSync(rel).equals(before)).to.equal(true);
-      expect(exerciseRecordsIn(".")).to.deep.equal([rel]);
+      expect(exerciseRecordsIn(".")).to.deep.equal(records);
     });
 
     it("sp1:measure-proof-exercise refuses before any act: the arguments, then the host, then the record", function () {
