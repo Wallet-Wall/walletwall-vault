@@ -1447,7 +1447,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
     });
   });
 
-  describe("this checkout's real history, a synthetic v2 beside SP1-PA3B's real v1", function () {
+  describe("this checkout's real history before its v2, a synthetic v2 beside SP1-PA3B's real v1", function () {
     const dirs = tempDirs();
     afterEach(() => dirs.cleanup());
     const git = (cwd: string, ...args: string[]) => {
@@ -1465,7 +1465,11 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
      * run at that HEAD on SP1-PA3B's own host label, its three files committed; with `regenerate`, the availability
      * record then derived and committed.
      */
-    /** A repository holding this checkout's HEAD and its whole history, checked out. */
+    /**
+     * A repository holding this checkout's whole history, checked out at the last commit before a v2 record was
+     * committed (SP1-PA3D made the real v2, and MAX_RECORDS admits one; the synthetic v2 of these tests stands beside
+     * SP1-PA3B's v1 in the history as it was then), or at HEAD while no v2 record was ever committed.
+     */
     function realRepo() {
       const d = dirs.make("sp1-pa3d0-real-");
       git(d, "init", "-q");
@@ -1474,6 +1478,24 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       git(d, "config", "commit.gpgsign", "false");
       git(d, "fetch", "-q", resolve("."), "HEAD");
       git(d, "checkout", "-q", "--detach", "FETCH_HEAD");
+      // The first commit that added any v2 file: a tokened run or verification observation, or a v2 record (the
+      // observations precede their record, so the parent of the earliest holds SP1-PA3B's exercise alone).
+      const firstV2 = git(
+        d,
+        "log",
+        "--diff-filter=A",
+        "--format=%H",
+        "--reverse",
+        "HEAD",
+        "--",
+        `${PROOF_EXERCISES_DIR}/*.v2.*.json`,
+        `${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}*.*.raw.json`,
+        `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}*.*.raw.json`,
+      )
+        .split("\n")
+        .filter(Boolean)[0];
+      if (firstV2 !== undefined) git(d, "checkout", "-q", "--detach", `${firstV2}^`);
+      expect(exerciseRecordsIn(d)).to.deep.equal([PA3B.record]);
       return d;
     }
     function realWithV2(regenerate = false) {
@@ -1660,7 +1682,7 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
   });
 
   describe("the real checkout, as merged", function () {
-    it("holds SP1-PA3B's v1 byte for byte, its history append-only, and derives the third state from it alone", function () {
+    it("holds SP1-PA3B's v1 byte for byte, its history append-only, and derives the third state from it and SP1-PA3D's v2 beside it", function () {
       this.timeout(120_000);
       expect([lfSha(PA3B.record), lfSha(PA3B.run), lfSha(PA3B.verification)]).to.deep.equal([
         PA3B.sha256.record,
@@ -1670,25 +1692,55 @@ describe("SP1-PA3D0 — the proof-exercise directory holds history: SP1-PA3B's v
       const anchor = committedProductionAnchor(".");
       const archive = productionArchiveEvidenceOf(".");
       expect(exerciseRecordRel(anchor)).to.equal(PA3B.record);
-      expect(exerciseRecordsIn(".")).to.deep.equal([PA3B.record]);
-      expect(exerciseObservationsIn(".")).to.deep.equal({
-        run: [PA3B.run],
-        verification: [PA3B.verification],
-        other: [],
+      const records = exerciseRecordsIn(".");
+      // SP1-PA3B's v1 in its slot and, since SP1-PA3D, the one v2 record MAX_RECORDS admits, named after its run.
+      const v2s = records.slice(1);
+      expect(records[0]).to.equal(PA3B.record);
+      expect(v2s).to.have.length(MAX_RECORDS.v2);
+      const v2Files = v2s.map((rel) => {
+        const slot = recordSlotOf(basename(rel), anchor.designation);
+        expect(slot).to.deep.include({ generation: "v2" });
+        return { token: String(slot?.token), rel };
       });
+      const observations = exerciseObservationsIn(".");
+      expect(observations.run).to.deep.equal(
+        [
+          PA3B.run,
+          ...v2Files.map(
+            (v) => `${OBSERVATIONS_DIR}/${RUN_OBSERVATION_PREFIX}developer-workstation-wsl2.${v.token}.raw.json`,
+          ),
+        ].sort(),
+      );
+      expect(observations.verification).to.deep.equal(
+        [
+          PA3B.verification,
+          ...v2Files.map(
+            (v) =>
+              `${OBSERVATIONS_DIR}/${VERIFICATION_OBSERVATION_PREFIX}developer-workstation-wsl2.${v.token}.raw.json`,
+          ),
+        ].sort(),
+      );
+      expect(observations.other).to.deep.equal([]);
       expect(exerciseHistoryErrors(".")).to.deep.equal([]);
       const e = productionExerciseEvidence(".", { anchor, archive });
       expect(exerciseEvidenceState(e), e.errors.join("\n")).to.equal("ACCEPTED");
       expect(
         e.accepted.map((a) => [a.path, a.generation, a.record.lane, a.record.schema, a.record.exercise.id]),
-      ).to.deep.equal([[PA3B.record, "v1", "SP1-PA3B", EXERCISE_RECORD_SCHEMA, PA3B.exercise]]);
+      ).to.deep.equal([
+        [PA3B.record, "v1", "SP1-PA3B", EXERCISE_RECORD_SCHEMA, PA3B.exercise],
+        ...v2Files.map((v) => [v.rel, "v2", "SP1-PA3D", EXERCISE_RECORD_SCHEMA_V2, `${anchor.designation}:${v.token}`]),
+      ]);
       expect(e.accepted[0].record.derivedFrom).to.deep.equal([PA3B.run, PA3B.verification]);
       expect(egressAssuranceOfRecord(e.accepted[0].record)).to.deep.equal(EDGE_PROBES_ONLY);
+      for (const a of e.accepted.slice(1)) {
+        expect(egressAssuranceOfRecord(a.record).continuousObservation).to.equal("PRESENT");
+        expect(a.record.derivedFrom.every((p) => e.observations.includes(p))).to.equal(true);
+      }
       expect(toolingState({ selfTestPassed: true, archive, exercise: e })).to.equal("SELF_HOSTED_PATH_EXERCISED");
       const pa = JSON.parse(readFileSync(PROVING_AVAILABILITY_REL, "utf8"));
       expect(pa.status).to.equal("SELF_HOSTED_PATH_EXERCISED");
       expect(pa.selfHostedPath.exercised).to.equal(true);
-      expect(pa.selfHostedPath.witnesses).to.deep.equal([PA3B.record]);
+      expect(pa.selfHostedPath.witnesses).to.deep.equal(records);
       expect(pa.selfHostedPath).to.not.have.property("record");
       const receipt = JSON.parse(readFileSync("evidence/zk/sp1-impl/implementation-receipt.json", "utf8"));
       expect([receipt.statuses.PRODUCTION_SP1_BINDING_STATUS.value, receipt.productionBinding.status]).to.deep.equal([
