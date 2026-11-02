@@ -1,0 +1,1579 @@
+{
+  "blockers": [],
+  "components": [
+    {
+      "class": "repository-pinned",
+      "component": "root egress observer",
+      "path": "scripts/sp1-egress-observer.ts",
+      "sha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "attribution derivation (normalize, judge)",
+      "path": "scripts/lib/sp1-egress-attribution.ts",
+      "sha256": "283808466744277adb50c74a2b3d01a9fb5104431c9824b9d04233c9b0c18c58"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "self-test workload",
+      "path": "test/fixtures/sp1-egress-observer/workload.mjs",
+      "sha256": "d69caa226356d4b72a76a16fd5d2abf9baa57f449eced1cd88f136e04f4ffcef"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "committed self-test capture (fixture)",
+      "path": "test/fixtures/sp1-egress-observer/selftest-capture/trace.txt",
+      "sha256": "41c00deca24ca9c0b6f9e2bdc06a50c250c24b30d066d64e4337d853e4ffc9f4"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "committed self-test capture (fixture)",
+      "path": "test/fixtures/sp1-egress-observer/selftest-capture/facts.json",
+      "sha256": "c41ac410ec7ce7f01a3252aeb8472be564d826abb467a93bb41c28efcac6f688"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "committed self-test capture (fixture)",
+      "path": "test/fixtures/sp1-egress-observer/selftest-capture/manifest.json",
+      "sha256": "d106d37d7127e6f2217c618cb30a593ff97d9dd6d374d714f81ccd775934ac4c"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "qualification library",
+      "path": "scripts/lib/sp1-observer-qualification.ts",
+      "sha256": "4b832d84437faf47f41917708b458ec763442ebc8b1bde0bb2515975f5842ab6"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "qualification CLI (derive, reconcile, controls, assemble)",
+      "path": "scripts/sp1-observer-qualification.ts",
+      "sha256": "7ac209dac41bebb661ff4e002f76b83e4875c1a4215867fc642c3a848163cf9f"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "root soak runner",
+      "path": "scripts/sp1-observer-soak.ts",
+      "sha256": "6a5388e295eca120fad951aa6ab8a0a2dc4cb6a9167ce461ebad175d7891bc16"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "record generator and validator CLI",
+      "path": "scripts/generate-sp1-observer-qualification.ts",
+      "sha256": "729b6b83202711137d90588622cd96237929e189047b52b0ce44e4813f2d002e"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "clean container runner",
+      "path": "scripts/sp1-observer-qualification/container-derive.sh",
+      "sha256": "b32970c9fe9c0d4ef6bf0113b66a31cc71653ffe2e35c7327bb831a109f1f4c2"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "zero-dependency TypeScript loader (container)",
+      "path": "scripts/sp1-observer-qualification/node-ts-loader.mjs",
+      "sha256": "f472054d71fb414909de73d568e701f77043e9224a988286996b59d622cf467c"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "zero-dependency TypeScript loader (container)",
+      "path": "scripts/sp1-observer-qualification/node-ts-resolve-hook.mjs",
+      "sha256": "980c5596c361176ab757865e705a7198c666083e5412e1e979f8dcc5fc598e80"
+    },
+    {
+      "class": "repository-pinned",
+      "component": "record JSON schema",
+      "path": "evidence/zk/schema/sp1-observer-qualification.v1.schema.json",
+      "sha256": "5265a3d610d169bb6996e45b397b63cfe96e95f4d0374052b56651b258efcf3b"
+    },
+    {
+      "class": "digest-pinned",
+      "component": "container base image (Node.js)",
+      "identity": "node@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "note": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+    },
+    {
+      "class": "version-pinned",
+      "component": "container Node.js",
+      "identity": "v24.18.0 (24.18.0, from the image)"
+    },
+    {
+      "class": "version-pinned",
+      "component": "host Node.js (runs the observer as root, the workload as the user, the host derivation)",
+      "identity": "/opt/node/node-v24.16.0-linux-x64/bin/node v24.16.0 sha256 b2959781cc5a74c357ffa02367efa8a0330cbb1c9cb347732fdfaaaca381cbcd"
+    },
+    {
+      "class": "version-pinned",
+      "component": "nftables (the boundary tables)",
+      "identity": "nftables v1.0.9 (Old Doc Yak #3)"
+    },
+    {
+      "class": "version-pinned",
+      "component": "Docker engine (container path only)",
+      "identity": "29.1.3"
+    },
+    {
+      "class": "host-dependent",
+      "component": "Linux kernel: tracefs, kprobes with BTF arguments, netfilter drop reasons",
+      "identity": "6.18.33.1-microsoft-standard-WSL2"
+    },
+    {
+      "class": "host-dependent",
+      "component": "proving host (root for the observer; WSL2 shared network namespace)",
+      "identity": "developer-workstation-wsl2, boot b6a0c805-601b-4c94-936f-4ac597790444"
+    },
+    {
+      "class": "host-dependent",
+      "component": "host binaries the observer runs: setpriv, ip, getent, cat, nft",
+      "identity": "distribution packages; versions recorded only for nft"
+    },
+    {
+      "class": "host-dependent",
+      "component": "stand-in host executable identity (device:inode of the workload's node)",
+      "identity": "/opt/node/node-v24.16.0-linux-x64/bin/node 8:48:1021 (fixture)"
+    },
+    {
+      "class": "network-dependent",
+      "component": "npm registry (tsx and the suite, for the host derivation and the tests)",
+      "identity": "package-lock.json integrity hashes; no runtime fetch"
+    },
+    {
+      "class": "network-dependent",
+      "component": "Docker Hub (read-only manifest lookup of the pinned digest)",
+      "identity": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+    },
+    {
+      "class": "host-dependent",
+      "component": "raw soak captures",
+      "identity": "retained OPERATOR_LOCAL on the proving host; digests and derivations committed"
+    }
+  ],
+  "container": {
+    "facts": {
+      "capEff": "0000000000000000",
+      "env": [
+        "HOME",
+        "HOSTNAME",
+        "NODE_VERSION",
+        "PATH",
+        "PWD",
+        "SHLVL",
+        "YARN_VERSION"
+      ],
+      "gid": 1001,
+      "networkInterfaces": [
+        "lo"
+      ],
+      "noNewPrivs": 1,
+      "rootMount": "ro",
+      "uid": 1001
+    },
+    "image": {
+      "digest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "id": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "nodeVersion": "24.18.0",
+      "reference": "node",
+      "registryVerification": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+    },
+    "runOptions": [
+      "docker",
+      "run",
+      "--rm",
+      "--network",
+      "none",
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges",
+      "--user",
+      "1001:1001",
+      "--pids-limit",
+      "64",
+      "--memory",
+      "1g",
+      "-v",
+      "/home/prover/q1-out/src:/src:ro",
+      "-v",
+      "/var/lib/sp1obs-q1/soak:/raw:ro",
+      "-v",
+      "/home/prover/q1-out/in:/in:ro",
+      "-v",
+      "/home/prover/q1-out/container-fixture:/out",
+      "node@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+      "node",
+      "--import",
+      "/src/scripts/sp1-observer-qualification/node-ts-loader.mjs",
+      "/src/scripts/sp1-observer-qualification.ts",
+      "derive"
+    ]
+  },
+  "derivedFrom": [
+    {
+      "path": "evidence/zk/sp1-impl/observations/observer-qualification-developer-workstation-wsl2.raw.json",
+      "sha256": "5f6ab9ccdbac505b432c46a24571f2f660306e941b08561e3c200573b600efbe"
+    }
+  ],
+  "environments": [
+    {
+      "arch": "x64",
+      "kind": "HOST",
+      "label": "developer-workstation-wsl2",
+      "node": "v24.16.0",
+      "platform": "linux",
+      "release": "6.18.33.1-microsoft-standard-WSL2",
+      "sourceCommit": "d7446589c86d675f20f4b8380fdc9561d0c7a24a",
+      "typescriptExecution": "tsx"
+    },
+    {
+      "arch": "x64",
+      "container": {
+        "facts": {
+          "capEff": "0000000000000000",
+          "env": [
+            "HOME",
+            "HOSTNAME",
+            "NODE_VERSION",
+            "PATH",
+            "PWD",
+            "SHLVL",
+            "YARN_VERSION"
+          ],
+          "gid": 1001,
+          "networkInterfaces": [
+            "lo"
+          ],
+          "noNewPrivs": 1,
+          "rootMount": "ro",
+          "uid": 1001
+        },
+        "image": {
+          "digest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+          "id": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+          "nodeVersion": "24.18.0",
+          "reference": "node",
+          "registryVerification": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+        },
+        "runOptions": [
+          "docker",
+          "run",
+          "--rm",
+          "--network",
+          "none",
+          "--read-only",
+          "--cap-drop",
+          "ALL",
+          "--security-opt",
+          "no-new-privileges",
+          "--user",
+          "1001:1001",
+          "--pids-limit",
+          "64",
+          "--memory",
+          "1g",
+          "-v",
+          "/home/prover/q1-out/src:/src:ro",
+          "-v",
+          "/var/lib/sp1obs-q1/soak:/raw:ro",
+          "-v",
+          "/home/prover/q1-out/in:/in:ro",
+          "-v",
+          "/home/prover/q1-out/container-fixture:/out",
+          "node@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+          "node",
+          "--import",
+          "/src/scripts/sp1-observer-qualification/node-ts-loader.mjs",
+          "/src/scripts/sp1-observer-qualification.ts",
+          "derive"
+        ]
+      },
+      "kind": "CONTAINER",
+      "label": "clean-container",
+      "node": "v24.18.0",
+      "platform": "linux",
+      "release": "6.18.33.1-microsoft-standard-WSL2",
+      "sourceCommit": "d7446589c86d675f20f4b8380fdc9561d0c7a24a",
+      "typescriptExecution": "node-type-stripping"
+    }
+  ],
+  "fixture": {
+    "container": {
+      "environment": {
+        "arch": "x64",
+        "container": {
+          "facts": {
+            "capEff": "0000000000000000",
+            "env": [
+              "HOME",
+              "HOSTNAME",
+              "NODE_VERSION",
+              "PATH",
+              "PWD",
+              "SHLVL",
+              "YARN_VERSION"
+            ],
+            "gid": 1001,
+            "networkInterfaces": [
+              "lo"
+            ],
+            "noNewPrivs": 1,
+            "rootMount": "ro",
+            "uid": 1001
+          },
+          "image": {
+            "digest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+            "id": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+            "nodeVersion": "24.18.0",
+            "reference": "node",
+            "registryVerification": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+          },
+          "runOptions": [
+            "docker",
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--user",
+            "1001:1001",
+            "--pids-limit",
+            "64",
+            "--memory",
+            "1g",
+            "-v",
+            "/home/prover/q1-out/src:/src:ro",
+            "-v",
+            "/var/lib/sp1obs-q1/soak:/raw:ro",
+            "-v",
+            "/home/prover/q1-out/in:/in:ro",
+            "-v",
+            "/home/prover/q1-out/container-fixture:/out",
+            "node@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+            "node",
+            "--import",
+            "/src/scripts/sp1-observer-qualification/node-ts-loader.mjs",
+            "/src/scripts/sp1-observer-qualification.ts",
+            "derive"
+          ]
+        },
+        "kind": "CONTAINER",
+        "label": "clean-container",
+        "node": "v24.18.0",
+        "platform": "linux",
+        "release": "6.18.33.1-microsoft-standard-WSL2",
+        "sourceCommit": "d7446589c86d675f20f4b8380fdc9561d0c7a24a",
+        "typescriptExecution": "node-type-stripping"
+      },
+      "input": {
+        "hostExecutable": {
+          "dev": "8:48",
+          "ino": 1021,
+          "path": "/opt/node/node-v24.16.0-linux-x64/bin/node"
+        },
+        "mode": "SELF_TEST",
+        "observerScriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c",
+        "raw": {
+          "files": [
+            {
+              "bytes": 15116,
+              "name": "trace.txt",
+              "sha256": "41c00deca24ca9c0b6f9e2bdc06a50c250c24b30d066d64e4337d853e4ffc9f4"
+            },
+            {
+              "bytes": 21752,
+              "name": "facts.json",
+              "sha256": "c41ac410ec7ce7f01a3252aeb8472be564d826abb467a93bb41c28efcac6f688"
+            }
+          ],
+          "manifestSha256": "d106d37d7127e6f2217c618cb30a593ff97d9dd6d374d714f81ccd775934ac4c"
+        }
+      },
+      "output": {
+        "bootId": "b4db548b-e808-4ce5-b61b-75a251a16c44",
+        "configSha256": "01942e3edc10939d6d54917ac797e9b9df72e9930a9f9d23859a35949581fbd4",
+        "judgement": {
+          "assurance": {
+            "continuousObservation": "PRESENT",
+            "coverage": {
+              "heartbeats": 2,
+              "maxHeartbeatGapUs": 65680,
+              "window": "OBSERVER_READY..OBSERVER_STOP"
+            },
+            "edgeProbes": "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+            "enforcement": "STATED_AND_COUNTED",
+            "events": {
+              "attempts": 3,
+              "attemptsInWindow": 3,
+              "boundaryResponses": 0,
+              "byScope": {
+                "PROOF": 1,
+                "TOOL": 2
+              },
+              "kernelResponses": 0,
+              "refusedPackets": 3,
+              "unattributedOutsideWindow": 0,
+              "unknownOutcomes": 0,
+              "unseenDestinations": 0
+            },
+            "level": "CONTINUOUS_ATTRIBUTED",
+            "observer": {
+              "configSha256": "01942e3edc10939d6d54917ac797e9b9df72e9930a9f9d23859a35949581fbd4",
+              "mechanism": "LINUX_TRACEFS_KPROBES",
+              "script": "scripts/sp1-egress-observer.ts",
+              "scriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+            },
+            "processAttribution": "COMPLETE",
+            "rawEvidence": {
+              "manifestSha256": "d106d37d7127e6f2217c618cb30a593ff97d9dd6d374d714f81ccd775934ac4c",
+              "retained": "OPERATOR_LOCAL"
+            },
+            "unattributedEvents": 0
+          },
+          "dropClasses": {
+            "ATTEMPT_PACKET": 3
+          },
+          "events": 46,
+          "heartbeats": 2,
+          "leaks": 0,
+          "leaksByScope": {},
+          "lineage": [
+            981,
+            994,
+            1001
+          ],
+          "lostLines": 0,
+          "otherScopeAttempts": 0,
+          "ownAttempts": [
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_BEFORE_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            },
+            {
+              "dest": "192.0.2.53:53",
+              "kind": "send",
+              "outcome": "REFUSED",
+              "phase": "PHASE:HOST_SPAWN",
+              "probe": "udp4",
+              "qname": "pa3c-selftest.example",
+              "scope": "PROOF"
+            },
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_AFTER_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            }
+          ],
+          "ownRefusedPackets": 3,
+          "reconciliation": {
+            "counted": 3,
+            "inner": 3,
+            "ok": true,
+            "outer": 3
+          },
+          "refusals": [],
+          "statsLoss": 0,
+          "unattributedDrops": 0
+        },
+        "judgementSha256": "74eeb11f4f82eaee4adea98b3351867c9027965e55f53e11094a298592c02ced",
+        "kernelRelease": "6.18.33.1-microsoft-standard-WSL2",
+        "nonce": "5fe02e9b8dc53b47",
+        "normalizedSha256": "03cef7f6586fe918ce1cc64a57e67e91bbb028a91b8d61efc6c0aac42ee96a25",
+        "refusals": [],
+        "stableProjection": {
+          "assurance": {
+            "continuousObservation": "PRESENT",
+            "edgeProbes": "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+            "enforcement": "STATED_AND_COUNTED",
+            "unattributedEvents": 0
+          },
+          "boundaryRules": [
+            {
+              "chain": "output",
+              "expr": "[{\"match\":{\"left\":{\"payload\":{\"field\":\"daddr\",\"protocol\":\"ip\"}},\"op\":\"==\",\"right\":\"10.255.255.254\"}},{\"counter\":{}},{\"reject\":{\"expr\":\"port-unreachable\",\"type\":\"icmp\"}}]",
+              "hook": "output",
+              "verdict": "reject"
+            },
+            {
+              "chain": "output",
+              "expr": "[{\"match\":{\"left\":{\"payload\":{\"field\":\"daddr\",\"protocol\":\"ip\"}},\"op\":\"==\",\"right\":{\"prefix\":{\"addr\":\"192.0.2.0\",\"len\":24}}}},{\"match\":{\"left\":{\"meta\":{\"key\":\"l4proto\"}},\"op\":\"==\",\"right\":\"tcp\"}},{\"counter\":{}},{\"reject\":{\"type\":\"tcp reset\"}}]",
+              "hook": "output",
+              "verdict": "reject"
+            },
+            {
+              "chain": "output",
+              "expr": "[{\"match\":{\"left\":{\"payload\":{\"field\":\"daddr\",\"protocol\":\"ip\"}},\"op\":\"==\",\"right\":{\"prefix\":{\"addr\":\"192.0.2.0\",\"len\":24}}}},{\"counter\":{}},{\"reject\":{\"expr\":\"port-unreachable\",\"type\":\"icmp\"}}]",
+              "hook": "output",
+              "verdict": "reject"
+            }
+          ],
+          "boundaryRulesStable": true,
+          "configTemplate": {
+            "bufferKb": 4096,
+            "clock": "mono",
+            "heartbeatMs": 1000,
+            "overwrite": 0,
+            "recordTgid": 1
+          },
+          "filtersTemplate": {
+            "nfdrop": "reason == 12",
+            "xmit": "netns == <hostNetns> && ifindex != 1"
+          },
+          "host": {
+            "interfaceNames": [
+              "lo",
+              "eth0",
+              "docker0"
+            ],
+            "nfDropReason": 12,
+            "resolvers": [
+              "10.255.255.254"
+            ],
+            "uplinkNames": [
+              "eth0"
+            ],
+            "wslInterop": "enabled"
+          },
+          "kernelRelease": "6.18.33.1-microsoft-standard-WSL2",
+          "lineageResolved": true,
+          "lostLines": 0,
+          "observer": {
+            "mechanism": "LINUX_TRACEFS_KPROBES",
+            "mode": "SELF_TEST",
+            "script": "scripts/sp1-egress-observer.ts",
+            "scriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+          },
+          "ownAttempts": [
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_BEFORE_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            },
+            {
+              "dest": "192.0.2.53:53",
+              "kind": "send",
+              "outcome": "REFUSED",
+              "phase": "PHASE:HOST_SPAWN",
+              "probe": "udp4",
+              "qname": "pa3c-selftest.example",
+              "scope": "PROOF"
+            },
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_AFTER_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            }
+          ],
+          "ownRefusedPackets": 3,
+          "probeTemplate": [
+            "p:sp1obs_<nonce>/newtask wake_up_new_task cpid=p->pid:s32 ctgid=p->tgid:s32 pflags=p->flags:x32 comm=$comm",
+            "p:sp1obs_<nonce>/exec begin_new_exec ino=bprm->file->f_inode->i_ino:u64 dev=bprm->file->f_inode->i_sb->s_dev:u32 f0=+0(bprm->filename):x8[64] f1=+64(bprm->filename):x8[64] comm=$comm",
+            "p:sp1obs_<nonce>/exit do_exit code=code:s64 comm=$comm",
+            "p:sp1obs_<nonce>/udp4 udp_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 naddr=+4(msg->msg_name):x32 n6t=+20(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 dport=sk->__sk_common.skc_dport:x16 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/udp4ret udp_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/udp6 udpv6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] dport=sk->__sk_common.skc_dport:x16 da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/udp6ret udpv6_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/tcp4 tcp_v4_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 addr=+4(uaddr):x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/tcp4ret tcp_v4_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/tcp6 tcp_v6_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 a=+8(uaddr):x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/tcp6ret tcp_v6_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/tcpst tcp_set_state sk=$arg1:x64 state=$arg2:s32 old=sk->__sk_common.skc_state:u8",
+            "p:sp1obs_<nonce>/tcpretx tcp_retransmit_skb sk=$arg1:x64 segs=$arg3:s32",
+            "p:sp1obs_<nonce>/raw4 raw_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/raw4ret raw_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/raw6 rawv6_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/raw6ret rawv6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/ping4 ping_v4_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/ping4ret ping_v4_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/ping6 ping_v6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/ping6ret ping_v6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/pkt packet_sendmsg sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/pktret packet_sendmsg ret=$retval:s32 sk=sock->sk:x64",
+            "p:sp1obs_<nonce>/xsksend xsk_sendmsg sk=sock->sk:x64 len=total_len:u64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "p:sp1obs_<nonce>/xskpoll xsk_poll sk=sock->sk:x64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "p:sp1obs_<nonce>/nfdrop sk_skb_reason_drop reason=reason:s32 sk=skb->sk:x64 skns=skb->sk->__sk_common.skc_net.net->ns.inum:u32 proto=skb->protocol:x16 len=skb->len:u32 h0=+0(skb->data):x8[64] h1=+64(skb->data):x8[64] h2=+128(skb->data):x8[64] comm=$comm",
+            "p:sp1obs_<nonce>/xmit dev_hard_start_xmit skb=first:x64 ifindex=dev->ifindex:s32 netns=dev->nd_net.net->ns.inum:u32 proto=first->protocol:x16 len=first->len:u32 h0=+0(first->data):x8[64] comm=$comm"
+          ],
+          "rawFiles": [
+            "facts.json",
+            "trace.txt"
+          ],
+          "reconciliationOk": true,
+          "statsClean": true,
+          "table": "inet sp1obs_selftest",
+          "unattributedDrops": 0
+        },
+        "stableProjectionSha256": "1b1f44f59cebf482fff64cd5e91070ef569cd82a96695d5f8915a983ea3e98cf"
+      },
+      "schema": "walletwall.sp1-observer-derivation.v1"
+    },
+    "dir": "test/fixtures/sp1-egress-observer/selftest-capture",
+    "host": {
+      "environment": {
+        "arch": "x64",
+        "kind": "HOST",
+        "label": "developer-workstation-wsl2",
+        "node": "v24.16.0",
+        "platform": "linux",
+        "release": "6.18.33.1-microsoft-standard-WSL2",
+        "sourceCommit": "d7446589c86d675f20f4b8380fdc9561d0c7a24a",
+        "typescriptExecution": "tsx"
+      },
+      "input": {
+        "hostExecutable": {
+          "dev": "8:48",
+          "ino": 1021,
+          "path": "/opt/node/node-v24.16.0-linux-x64/bin/node"
+        },
+        "mode": "SELF_TEST",
+        "observerScriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c",
+        "raw": {
+          "files": [
+            {
+              "bytes": 15116,
+              "name": "trace.txt",
+              "sha256": "41c00deca24ca9c0b6f9e2bdc06a50c250c24b30d066d64e4337d853e4ffc9f4"
+            },
+            {
+              "bytes": 21752,
+              "name": "facts.json",
+              "sha256": "c41ac410ec7ce7f01a3252aeb8472be564d826abb467a93bb41c28efcac6f688"
+            }
+          ],
+          "manifestSha256": "d106d37d7127e6f2217c618cb30a593ff97d9dd6d374d714f81ccd775934ac4c"
+        }
+      },
+      "output": {
+        "bootId": "b4db548b-e808-4ce5-b61b-75a251a16c44",
+        "configSha256": "01942e3edc10939d6d54917ac797e9b9df72e9930a9f9d23859a35949581fbd4",
+        "judgement": {
+          "assurance": {
+            "continuousObservation": "PRESENT",
+            "coverage": {
+              "heartbeats": 2,
+              "maxHeartbeatGapUs": 65680,
+              "window": "OBSERVER_READY..OBSERVER_STOP"
+            },
+            "edgeProbes": "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+            "enforcement": "STATED_AND_COUNTED",
+            "events": {
+              "attempts": 3,
+              "attemptsInWindow": 3,
+              "boundaryResponses": 0,
+              "byScope": {
+                "PROOF": 1,
+                "TOOL": 2
+              },
+              "kernelResponses": 0,
+              "refusedPackets": 3,
+              "unattributedOutsideWindow": 0,
+              "unknownOutcomes": 0,
+              "unseenDestinations": 0
+            },
+            "level": "CONTINUOUS_ATTRIBUTED",
+            "observer": {
+              "configSha256": "01942e3edc10939d6d54917ac797e9b9df72e9930a9f9d23859a35949581fbd4",
+              "mechanism": "LINUX_TRACEFS_KPROBES",
+              "script": "scripts/sp1-egress-observer.ts",
+              "scriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+            },
+            "processAttribution": "COMPLETE",
+            "rawEvidence": {
+              "manifestSha256": "d106d37d7127e6f2217c618cb30a593ff97d9dd6d374d714f81ccd775934ac4c",
+              "retained": "OPERATOR_LOCAL"
+            },
+            "unattributedEvents": 0
+          },
+          "dropClasses": {
+            "ATTEMPT_PACKET": 3
+          },
+          "events": 46,
+          "heartbeats": 2,
+          "leaks": 0,
+          "leaksByScope": {},
+          "lineage": [
+            981,
+            994,
+            1001
+          ],
+          "lostLines": 0,
+          "otherScopeAttempts": 0,
+          "ownAttempts": [
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_BEFORE_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            },
+            {
+              "dest": "192.0.2.53:53",
+              "kind": "send",
+              "outcome": "REFUSED",
+              "phase": "PHASE:HOST_SPAWN",
+              "probe": "udp4",
+              "qname": "pa3c-selftest.example",
+              "scope": "PROOF"
+            },
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_AFTER_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            }
+          ],
+          "ownRefusedPackets": 3,
+          "reconciliation": {
+            "counted": 3,
+            "inner": 3,
+            "ok": true,
+            "outer": 3
+          },
+          "refusals": [],
+          "statsLoss": 0,
+          "unattributedDrops": 0
+        },
+        "judgementSha256": "74eeb11f4f82eaee4adea98b3351867c9027965e55f53e11094a298592c02ced",
+        "kernelRelease": "6.18.33.1-microsoft-standard-WSL2",
+        "nonce": "5fe02e9b8dc53b47",
+        "normalizedSha256": "03cef7f6586fe918ce1cc64a57e67e91bbb028a91b8d61efc6c0aac42ee96a25",
+        "refusals": [],
+        "stableProjection": {
+          "assurance": {
+            "continuousObservation": "PRESENT",
+            "edgeProbes": "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+            "enforcement": "STATED_AND_COUNTED",
+            "unattributedEvents": 0
+          },
+          "boundaryRules": [
+            {
+              "chain": "output",
+              "expr": "[{\"match\":{\"left\":{\"payload\":{\"field\":\"daddr\",\"protocol\":\"ip\"}},\"op\":\"==\",\"right\":\"10.255.255.254\"}},{\"counter\":{}},{\"reject\":{\"expr\":\"port-unreachable\",\"type\":\"icmp\"}}]",
+              "hook": "output",
+              "verdict": "reject"
+            },
+            {
+              "chain": "output",
+              "expr": "[{\"match\":{\"left\":{\"payload\":{\"field\":\"daddr\",\"protocol\":\"ip\"}},\"op\":\"==\",\"right\":{\"prefix\":{\"addr\":\"192.0.2.0\",\"len\":24}}}},{\"match\":{\"left\":{\"meta\":{\"key\":\"l4proto\"}},\"op\":\"==\",\"right\":\"tcp\"}},{\"counter\":{}},{\"reject\":{\"type\":\"tcp reset\"}}]",
+              "hook": "output",
+              "verdict": "reject"
+            },
+            {
+              "chain": "output",
+              "expr": "[{\"match\":{\"left\":{\"payload\":{\"field\":\"daddr\",\"protocol\":\"ip\"}},\"op\":\"==\",\"right\":{\"prefix\":{\"addr\":\"192.0.2.0\",\"len\":24}}}},{\"counter\":{}},{\"reject\":{\"expr\":\"port-unreachable\",\"type\":\"icmp\"}}]",
+              "hook": "output",
+              "verdict": "reject"
+            }
+          ],
+          "boundaryRulesStable": true,
+          "configTemplate": {
+            "bufferKb": 4096,
+            "clock": "mono",
+            "heartbeatMs": 1000,
+            "overwrite": 0,
+            "recordTgid": 1
+          },
+          "filtersTemplate": {
+            "nfdrop": "reason == 12",
+            "xmit": "netns == <hostNetns> && ifindex != 1"
+          },
+          "host": {
+            "interfaceNames": [
+              "lo",
+              "eth0",
+              "docker0"
+            ],
+            "nfDropReason": 12,
+            "resolvers": [
+              "10.255.255.254"
+            ],
+            "uplinkNames": [
+              "eth0"
+            ],
+            "wslInterop": "enabled"
+          },
+          "kernelRelease": "6.18.33.1-microsoft-standard-WSL2",
+          "lineageResolved": true,
+          "lostLines": 0,
+          "observer": {
+            "mechanism": "LINUX_TRACEFS_KPROBES",
+            "mode": "SELF_TEST",
+            "script": "scripts/sp1-egress-observer.ts",
+            "scriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+          },
+          "ownAttempts": [
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_BEFORE_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            },
+            {
+              "dest": "192.0.2.53:53",
+              "kind": "send",
+              "outcome": "REFUSED",
+              "phase": "PHASE:HOST_SPAWN",
+              "probe": "udp4",
+              "qname": "pa3c-selftest.example",
+              "scope": "PROOF"
+            },
+            {
+              "dest": "192.0.2.10:443",
+              "kind": "connect",
+              "outcome": "REFUSED",
+              "phase": "PHASE:PROBES_AFTER_BEGIN",
+              "probe": "tcp4",
+              "qname": null,
+              "scope": "TOOL"
+            }
+          ],
+          "ownRefusedPackets": 3,
+          "probeTemplate": [
+            "p:sp1obs_<nonce>/newtask wake_up_new_task cpid=p->pid:s32 ctgid=p->tgid:s32 pflags=p->flags:x32 comm=$comm",
+            "p:sp1obs_<nonce>/exec begin_new_exec ino=bprm->file->f_inode->i_ino:u64 dev=bprm->file->f_inode->i_sb->s_dev:u32 f0=+0(bprm->filename):x8[64] f1=+64(bprm->filename):x8[64] comm=$comm",
+            "p:sp1obs_<nonce>/exit do_exit code=code:s64 comm=$comm",
+            "p:sp1obs_<nonce>/udp4 udp_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 naddr=+4(msg->msg_name):x32 n6t=+20(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 dport=sk->__sk_common.skc_dport:x16 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/udp4ret udp_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/udp6 udpv6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] dport=sk->__sk_common.skc_dport:x16 da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/udp6ret udpv6_sendmsg ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/tcp4 tcp_v4_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 addr=+4(uaddr):x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/tcp4ret tcp_v4_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/tcp6 tcp_v6_connect sk=$arg1:x64 fam=+0(uaddr):u16 port=+2(uaddr):x16 a=+8(uaddr):x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/tcp6ret tcp_v6_connect ret=$retval:s32 sk=$arg1:x64 sport=sk->__sk_common.skc_num:u16",
+            "p:sp1obs_<nonce>/tcpst tcp_set_state sk=$arg1:x64 state=$arg2:s32 old=sk->__sk_common.skc_state:u8",
+            "p:sp1obs_<nonce>/tcpretx tcp_retransmit_skb sk=$arg1:x64 segs=$arg3:s32",
+            "p:sp1obs_<nonce>/raw4 raw_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/raw4ret raw_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/raw6 rawv6_sendmsg sk=$arg1:x64 len=len:u64 proto=sk->__sk_common.skc_num:u16 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/raw6ret rawv6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/ping4 ping_v4_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 naddr=+4(msg->msg_name):x32 daddr=sk->__sk_common.skc_daddr:x32 netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/ping4ret ping_v4_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/ping6 ping_v6_sendmsg sk=$arg1:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nport=+2(msg->msg_name):x16 na=+8(msg->msg_name):x32[4] da=sk->__sk_common.skc_v6_daddr:x32[4] netns=sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/ping6ret ping_v6_sendmsg ret=$retval:s32 sk=$arg1:x64",
+            "p:sp1obs_<nonce>/pkt packet_sendmsg sk=sock->sk:x64 len=len:u64 namelen=msg->msg_namelen:s32 nfam=+0(msg->msg_name):u16 nproto=+2(msg->msg_name):x16 nifindex=+4(msg->msg_name):s32 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "r:sp1obs_<nonce>/pktret packet_sendmsg ret=$retval:s32 sk=sock->sk:x64",
+            "p:sp1obs_<nonce>/xsksend xsk_sendmsg sk=sock->sk:x64 len=total_len:u64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "p:sp1obs_<nonce>/xskpoll xsk_poll sk=sock->sk:x64 netns=sock->sk->__sk_common.skc_net.net->ns.inum:u32 comm=$comm",
+            "p:sp1obs_<nonce>/nfdrop sk_skb_reason_drop reason=reason:s32 sk=skb->sk:x64 skns=skb->sk->__sk_common.skc_net.net->ns.inum:u32 proto=skb->protocol:x16 len=skb->len:u32 h0=+0(skb->data):x8[64] h1=+64(skb->data):x8[64] h2=+128(skb->data):x8[64] comm=$comm",
+            "p:sp1obs_<nonce>/xmit dev_hard_start_xmit skb=first:x64 ifindex=dev->ifindex:s32 netns=dev->nd_net.net->ns.inum:u32 proto=first->protocol:x16 len=first->len:u32 h0=+0(first->data):x8[64] comm=$comm"
+          ],
+          "rawFiles": [
+            "facts.json",
+            "trace.txt"
+          ],
+          "reconciliationOk": true,
+          "statsClean": true,
+          "table": "inet sp1obs_selftest",
+          "unattributedDrops": 0
+        },
+        "stableProjectionSha256": "1b1f44f59cebf482fff64cd5e91070ef569cd82a96695d5f8915a983ea3e98cf"
+      },
+      "schema": "walletwall.sp1-observer-derivation.v1"
+    },
+    "hostExecutable": {
+      "dev": "8:48",
+      "ino": 1021,
+      "path": "/opt/node/node-v24.16.0-linux-x64/bin/node"
+    },
+    "reconciliation": {
+      "differences": [
+        {
+          "b": {
+            "facts": {
+              "capEff": "0000000000000000",
+              "env": [
+                "HOME",
+                "HOSTNAME",
+                "NODE_VERSION",
+                "PATH",
+                "PWD",
+                "SHLVL",
+                "YARN_VERSION"
+              ],
+              "gid": 1001,
+              "networkInterfaces": [
+                "lo"
+              ],
+              "noNewPrivs": 1,
+              "rootMount": "ro",
+              "uid": 1001
+            },
+            "image": {
+              "digest": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+              "id": "sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+              "nodeVersion": "24.18.0",
+              "reference": "node",
+              "registryVerification": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+            },
+            "runOptions": [
+              "docker",
+              "run",
+              "--rm",
+              "--network",
+              "none",
+              "--read-only",
+              "--cap-drop",
+              "ALL",
+              "--security-opt",
+              "no-new-privileges",
+              "--user",
+              "1001:1001",
+              "--pids-limit",
+              "64",
+              "--memory",
+              "1g",
+              "-v",
+              "/home/prover/q1-out/src:/src:ro",
+              "-v",
+              "/var/lib/sp1obs-q1/soak:/raw:ro",
+              "-v",
+              "/home/prover/q1-out/in:/in:ro",
+              "-v",
+              "/home/prover/q1-out/container-fixture:/out",
+              "node@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd",
+              "node",
+              "--import",
+              "/src/scripts/sp1-observer-qualification/node-ts-loader.mjs",
+              "/src/scripts/sp1-observer-qualification.ts",
+              "derive"
+            ]
+          },
+          "class": "EXPECTED_ENVIRONMENT_IDENTITY",
+          "path": "environment.container"
+        },
+        {
+          "a": "HOST",
+          "b": "CONTAINER",
+          "class": "EXPECTED_ENVIRONMENT_IDENTITY",
+          "path": "environment.kind"
+        },
+        {
+          "a": "developer-workstation-wsl2",
+          "b": "clean-container",
+          "class": "EXPECTED_ENVIRONMENT_IDENTITY",
+          "path": "environment.label"
+        },
+        {
+          "a": "v24.16.0",
+          "b": "v24.18.0",
+          "class": "EXPECTED_ENVIRONMENT_IDENTITY",
+          "path": "environment.node"
+        },
+        {
+          "a": "tsx",
+          "b": "node-type-stripping",
+          "class": "EXPECTED_ENVIRONMENT_IDENTITY",
+          "path": "environment.typescriptExecution"
+        }
+      ],
+      "result": "HOST_CONTAINER_OBSERVER_AGREEMENT"
+    }
+  },
+  "hostDependencies": [
+    "a Linux kernel with tracefs at /sys/kernel/tracing, kprobes with BTF arguments and the kfree_skb drop-reason format (the proving host's WSL2 kernel)",
+    "root on that host for the observer and the soak runner (tracefs control, nftables, setpriv)",
+    "nft, setpriv, ip, getent and cat on the host's PATH /usr/sbin:/usr/bin:/sbin:/bin",
+    "an unprivileged user who can read the checkout (the workload and the host derivation run as it)",
+    "a Node.js able to run the observer and the workload (the host's node; its device:inode is the stand-in host's identity)",
+    "a Docker engine on the same host for the container path (the native engine; Docker Desktop stayed stopped)",
+    "the complete egress boundary is VM-wide while it stands (every WSL2 distribution and Docker Desktop share the network namespace)"
+  ],
+  "lane": "SP1-PA3C-Q1",
+  "negativeControls": [
+    {
+      "id": "P0",
+      "intendedReason": "NONE",
+      "name": "positive control: the unmodified capture derives, agrees between host and container, and is refusal-free",
+      "observedReasons": [],
+      "ok": true
+    },
+    {
+      "id": "NC1",
+      "intendedReason": "RAW_NOT_BOUND",
+      "name": "modified observer input: one byte of the raw trace changed",
+      "observedReasons": [
+        "RAW_NOT_BOUND"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC2",
+      "intendedReason": "EXPECTED_DIGEST_MISMATCH",
+      "name": "modified expected digest: the host derivation's recorded normalized digest is not what the bytes derive",
+      "observedReasons": [
+        "EXPECTED_DIGEST_MISMATCH"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC3",
+      "intendedReason": "NORMALIZED_NOT_BOUND",
+      "name": "altered evidence payload: one normalized event edited after normalization",
+      "observedReasons": [
+        "NORMALIZED_NOT_BOUND",
+        "PROBE_NOT_OBSERVED"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC4",
+      "intendedReason": "TOOL_NOT_BOUND",
+      "name": "stale evidence reused against a new source identity: the committed observer is another",
+      "observedReasons": [
+        "TOOL_NOT_BOUND"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC5",
+      "intendedReason": "SECURITY_RELEVANT_MISMATCH",
+      "name": "intentionally mismatched host/container record: the container's normalized digest differs",
+      "observedReasons": [
+        "SECURITY_RELEVANT_MISMATCH"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC6",
+      "intendedReason": "RAW_DIR_UNEXPECTED_FILE",
+      "name": "unexpected file mutation: a fourth file appears in the raw directory",
+      "observedReasons": [
+        "RAW_DIR_UNEXPECTED_FILE"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC7",
+      "intendedReason": "ENVIRONMENT_INCOMPLETE",
+      "name": "missing required tool/version: an environment identity without its Node.js version",
+      "observedReasons": [
+        "ENVIRONMENT_INCOMPLETE"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC8",
+      "intendedReason": "PROVENANCE_INVALID",
+      "name": "invalid or absent provenance field: a container image named by a mutable tag, not a digest",
+      "observedReasons": [
+        "PROVENANCE_INVALID"
+      ],
+      "ok": true
+    },
+    {
+      "id": "NC9",
+      "intendedReason": "OBSERVER_COVERAGE",
+      "name": "input modified and manifest re-bound: the STOP marker removed, the manifest rewritten to the new bytes",
+      "observedReasons": [
+        "OBSERVER_COVERAGE"
+      ],
+      "ok": true
+    }
+  ],
+  "networkDependencies": [
+    {
+      "dependency": "registry.npmjs.org (npm ci: tsx and the test suite)",
+      "phase": "HOST_DERIVATION_AND_TESTS",
+      "verification": "package-lock.json integrity hashes"
+    },
+    {
+      "dependency": "registry-1.docker.io, one read-only manifest request by digest (no pull, nothing downloaded)",
+      "phase": "CONTAINER_IMAGE_PROVENANCE",
+      "verification": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)"
+    },
+    {
+      "dependency": "none (--network none)",
+      "phase": "CONTAINER_DERIVATION",
+      "verification": "interfaces seen inside: lo"
+    },
+    {
+      "dependency": "none: the workload names only TEST-NET-1 destinations, refused by every table; under the complete boundary nothing on the host leaves the VM",
+      "phase": "SOAKS",
+      "verification": "A (SELF_TEST_TABLE): 11/12 refusal-free; B (COMPLETE_EGRESS_BOUNDARY): 12/12 refusal-free"
+    }
+  ],
+  "next": {
+    "authorization": "OWNER",
+    "lane": "SP1-PA3D",
+    "started": false,
+    "what": "owner-authorized v2 attributed proof exercise under the observer"
+  },
+  "observer": {
+    "mechanism": "LINUX_TRACEFS_KPROBES",
+    "script": "scripts/sp1-egress-observer.ts",
+    "scriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c",
+    "workload": "test/fixtures/sp1-egress-observer/workload.mjs"
+  },
+  "productionSp1Binding": "NOT_ESTABLISHED",
+  "qualifiedAtUtc": "2026-11-02T01:59:26Z",
+  "repository": "Wallet-Wall/walletwall-vault",
+  "schema": "walletwall.sp1-observer-qualification.v1",
+  "securityFindings": [
+    {
+      "blocking": false,
+      "carriedForwardFrom": null,
+      "disposition": "ACCEPTED_WITH_EVIDENCE: the digest is pinned in the record; the lookup's answer is recorded beside it",
+      "evidence": "docker.io/library/node manifest by digest: HTTP 200, body sha256 == digest (read-only; nothing pulled)",
+      "finding": "The container's base image was not pulled by this lane: it was already in the proving host's native engine (moved there by docker save/load in SP1-PA3B). Its identity is its content digest; its registry provenance rests on a read-only manifest lookup by that digest (nothing downloaded).",
+      "id": "Q1-SF1",
+      "severity": "LOW"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": null,
+      "disposition": "ACCEPTED: two independent TypeScript execution paths agreeing is part of the evidence",
+      "evidence": "host tsx, container node-type-stripping",
+      "finding": "The host derivation runs TypeScript through tsx from node_modules, installed from the npm registry by npm ci; the registry is a network dependency of the host path (integrity-pinned by package-lock.json). The container path has none: Node strips the types itself and a repository-owned hook resolves the two extensionless imports.",
+      "id": "Q1-SF2",
+      "severity": "INFO"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": null,
+      "disposition": "REPORTED: out of this lane's scope (no production tooling changed); an owner decision for the deployer",
+      "evidence": null,
+      "finding": "The repository's deployer Dockerfile names its base image by tag (node:<version>-bookworm-slim, not a digest) and installs apt packages unpinned; docker-compose files reference walletwall-vault:latest. None of these is in the observer path; they are the Sepolia deployer's.",
+      "id": "Q1-SF3",
+      "severity": "LOW"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": "SP1-PA3C",
+      "disposition": "ACCEPTED: retained OPERATOR_LOCAL",
+      "evidence": null,
+      "finding": "Raw captures hold host identity (addresses, boot id, exec paths, pids). The soaks' raw directories stay operator-local (root:prover-group, 0750) as SP1-PA3C's evidence model requires; only their digests and derivations are committed. The committed fixture remains the one privacy-reviewed capture.",
+      "id": "Q1-SF4",
+      "severity": "INFO"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": "#233",
+      "disposition": "CARRIED_FORWARD: owner decision HOST_LOCKFILE_REMEDIATION = DEFER_TO_NEXT_PROGRAM_REBUILD stands",
+      "evidence": null,
+      "finding": "RustSec: zkvm/host/Cargo.lock still locks webpki-roots 1.0.7 (RUSTSEC-2026-0381) and rustls-webpki 0.103.13 (RUSTSEC-2026-0382), assessed CONDITIONAL / SHOULD_FIX_BEFORE_PRODUCTION in #233 (MUST_FIX 0). This lane compiles nothing with cargo, runs no SP1 host and opens no TLS connection: the exposure is unchanged, so the classification is carried forward, neither raised nor suppressed.",
+      "id": "Q1-SF5",
+      "severity": "MEDIUM"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": "SP1-PA3C",
+      "disposition": "STATED: the host trust boundary is the proving host's root, as before",
+      "evidence": null,
+      "finding": "The capture layer cannot be containerized without privileges: tracefs, kprobes and nftables act on the one shared WSL2 kernel, so the observer runs as root on the proving host and only the derivation is reproduced in the clean container. A hostile root on that host could edit a capture before it is derived (SP1-PA3C's trust statement). This qualification does not change that; it makes the derivation of whatever was captured reproducible anywhere.",
+      "id": "Q1-SF6",
+      "severity": "MEDIUM"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": "SP1-PA3C",
+      "disposition": "CARRIED_FORWARD: the proving host's design, disclosed in SP1-PA3B and SP1-PA3C",
+      "evidence": "docker 29.1.3 on developer-workstation-wsl2",
+      "finding": "The proving user is in the docker group of the native engine, which is root-equivalent on the proving host (SP1-PA3C disclosed it); the container self-test is started by that user. Docker Desktop's own engine was stopped throughout and was not started or reset.",
+      "id": "Q1-SF7",
+      "severity": "MEDIUM"
+    },
+    {
+      "blocking": false,
+      "carriedForwardFrom": null,
+      "disposition": "ACCEPTED_AS_MEASURED: the observer detected and attributed it; a SP1-PA3D run should expect refused attempts of other scopes (quieting chronyd first is an owner choice, not a requirement)",
+      "evidence": "soak A: iterations 2 refused as EGRESS_LEAKED by another process; 11/12 refusal-free",
+      "finding": "The proving host is not quiet: its own daemons egress during observation windows. Under the self-test table (TEST-NET-1 and the resolvers refused, nothing else) one soak iteration's capture was refused as EGRESS_LEAKED, as it must under a table that refuses no real egress: a KERNEL-scope attempt inside the window, and the frame it left through the uplink; the workload's own attempts were refused and reconciled as in every other iteration. The operator's inspection of that raw capture (operator-local, not committed) identified the sender as the host's chronyd sending one NTP datagram to a public time server; the committed derivation records the scopes and the refusal, not the process. Under the complete egress boundary (SP1-PA3B's, which SP1-PA3D runs under) the same traffic is refused, counted and attributed to another scope, never a leak.",
+      "id": "Q1-SF8",
+      "severity": "LOW"
+    }
+  ],
+  "soaks": [
+    {
+      "boundary": "SELF_TEST_TABLE",
+      "finishedAtUtc": "2026-11-02T00:38:14Z",
+      "host": "developer-workstation-wsl2",
+      "id": "A",
+      "iterations": [
+        {
+          "exit": 0,
+          "judgementSha256": "c96c1d3f7a01c6b3164d0c29b84ec890a2460c8348219f071cf4aef8d41ab146",
+          "n": 1,
+          "normalizedSha256": "4d88adc7b0cc72d14915b99c9a68615b6cc07a14b4c7c7832cc70b932739de15",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "7d070f7c0c3fd38e578e5222187e7faab45978b7b1bf226462ded6b2b5c5b6f3",
+          "n": 2,
+          "normalizedSha256": "dd63fa7550edde027aa9680c1b70bd068bf96da95376e444ccb4a650517b17bc",
+          "otherScopeAttempts": 1,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [
+            "EGRESS_LEAKED"
+          ],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "456d24cb11c18e5cf8df017fd674137e4cfad25e48e83f45a30c90a044bd87eb",
+          "n": 3,
+          "normalizedSha256": "99e42cd9584045707d9ba3b7d659411597a714917d16c4befbad21ea91890a36",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "60628599b14b68fe61c30d1538fde55bf63ccc034ddefedf5f75f01027a232e4",
+          "n": 4,
+          "normalizedSha256": "23116e54cd0254a24f26782521e2263fee2b2228ec81123daa6b570f15a070e7",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "4d756b7a52e6511b2040dbce8160798b114348f67773e2de00f4473b71bc6e2d",
+          "n": 5,
+          "normalizedSha256": "4d481ac9805f93d53138867387eb2675d1d7e474cef97280a064d2653d01315e",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "tz"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "2ca46f03de1a9b950cc4d41d00808b5c932a4093911238a1419f7f6ed1ea424e",
+          "n": 6,
+          "normalizedSha256": "995125f911441254b81aade1a52ab1009c8ac4967131ad420d51081944626e4a",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "locale"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "2bf17b6f39a03070b59cb508faabb643180434f88660d5de2251352b177df7ee",
+          "n": 7,
+          "normalizedSha256": "32dcdbe0a4fbf178b5c87821edd8cd88043bc0f5dea2ab9e0271cefc17fd54e5",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "home"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "9be6dc2dd97d81d5b02e6217c5822a81e8bc1d912e2985fe86ca162ce3f041d2",
+          "n": 8,
+          "normalizedSha256": "308bcf7393ce2705ffe27c0e126b744683c5f83839f7770428b0d07672af5344",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "umask-077"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "20a19abb901ba16c400e05470ceb2c5199584c10de7d7785c5c4a07a9a122a61",
+          "n": 9,
+          "normalizedSha256": "5fe3c78049878624d9adacd59542f3c25b7ffc40a314f5a6659610fdd2f6e864",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "cwd-root"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "d9bb0b07c5ab91257e8c2757ba1e50051019b967cfa26cdf11c09f0f686b2700",
+          "n": 10,
+          "normalizedSha256": "7e8492ed545892e8478fe2860077dab911d8eb1a7bc9195c03d5d894d7b76f29",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "cwd-tmp"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "780ef1a3ef755c267839ba40190ad4f565395d513189002db19ef3409a080615",
+          "n": 11,
+          "normalizedSha256": "b8b424b26e32ef02c299f972e36caaa1d7f943d126a85ca24fb010d3e96cdc12",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "aa02d7aef334b987ab46ab91217046d85993a61ffdecf1b2fb77093ff3744a3d",
+          "n": 12,
+          "normalizedSha256": "fe6f4cd52cf6ba17e2e7795640886fe69611e0a86c53f4df242c65553d121cce",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "2d72da969a8c88bd21858f9bc79f0b495af2895bf80e636738df053e66b411eb",
+          "variation": "plain"
+        }
+      ],
+      "rawEvidence": {
+        "reDerivable": "OPERATOR_ONLY",
+        "retained": "OPERATOR_LOCAL"
+      },
+      "startedAtUtc": "2026-11-02T00:37:56Z",
+      "summary": {
+        "agreeing": 12,
+        "boundary": "SELF_TEST_TABLE",
+        "clean": 12,
+        "distinctCaptures": 12,
+        "distinctProjections": 1,
+        "environmentsHardened": 12,
+        "exitZero": 12,
+        "iterations": 12,
+        "refusalFree": 11,
+        "refusalReasons": {
+          "EGRESS_LEAKED": 1
+        },
+        "stable": false,
+        "stableExceptThirdPartyLeaks": true,
+        "thirdPartyLeakIterations": [
+          2
+        ],
+        "unstableBecause": [
+          "iteration 2 refused: EGRESS_LEAKED by another process (scope FRAME, KERNEL): the workload's own attempts were all refused"
+        ],
+        "variations": [
+          "plain",
+          "tz",
+          "locale",
+          "home",
+          "umask-077",
+          "cwd-root",
+          "cwd-tmp"
+        ]
+      },
+      "table": {
+        "family": "inet",
+        "name": "sp1obs_q1",
+        "rules": "table inet sp1obs_q1 {\n  chain output {\n    type filter hook output priority -10; policy accept;\n    ip daddr 10.255.255.254 counter reject\n    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n",
+        "rulesSha256": "9882c36eb11531edd7e2cdc7e81a38cca28c1bc41a3881d370f028a2dfb267dd"
+      }
+    },
+    {
+      "boundary": "COMPLETE_EGRESS_BOUNDARY",
+      "finishedAtUtc": "2026-11-02T01:04:13Z",
+      "host": "developer-workstation-wsl2",
+      "id": "B",
+      "iterations": [
+        {
+          "exit": 0,
+          "judgementSha256": "e0c73f0b90db1c015539afc995d78738c34aec2a32a7ea700e63b4d5034cea09",
+          "n": 1,
+          "normalizedSha256": "09c3f75c0a98ec18f2117460d0ad5a0964b68a6e6828022e529f4890a17ba427",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "b1b8f1a4848f9d3a84f13a3658972a23f61f2633ed8e52b291f874454cee2f21",
+          "n": 2,
+          "normalizedSha256": "8ce3de111fc1de970d4c6a0aead4aef65bc5be4e8a9dab47a9e8ad9a093b4450",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "19e950706aa2f0d19c75ac65f2bc9c3c834e6f69d1bcde682baa243dcbc3aee5",
+          "n": 3,
+          "normalizedSha256": "894c9a47bda75339bb4ad66e598f6e31606d7b7025977dddc3c5c64f3f7dbdf6",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "307a6c99374c8cf88a3c73f6b9b8662075cf09b610d37fca4bcfa414ae901a33",
+          "n": 4,
+          "normalizedSha256": "335282dfbd923fb18841923f5348c12df750582ae788d7ca9a55741efdc92e06",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "11874a517e66981969967288f3fa07f75acaf6f14e333a89d15b468107a05b90",
+          "n": 5,
+          "normalizedSha256": "9f869694b066a26969204a6047c33b8290fce447ddb10ca9513570c61406feb8",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "tz"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "c4cd5139227ae3890838de221cf32fede4af28c1ea89eaf612a49ec784975c6b",
+          "n": 6,
+          "normalizedSha256": "e07118a04015dba0261188b0554bedf0aefdfea5e74340f06e0b1b9f439cb950",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "locale"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "4df78354cb066a4e4e261c3867003eec51be3bfd9b50efaa9bb8328bb8246caa",
+          "n": 7,
+          "normalizedSha256": "010c5034a99aa13af70fa27edf07130df348f3e08c336ca9cc39c4f8c7a95bb2",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "home"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "87823bbb5b2f2f4eeac4f1a9b9419f949f340562044563dcfb0ba7da40d8e824",
+          "n": 8,
+          "normalizedSha256": "eeb6007bb9124b89b763ca20774491a57cdf73b8460773df772afee706ec5714",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "umask-077"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "08d1f97ca8c6b4374b2f8cd060146862aadb59a2c043743ffc8f061b2c035cf5",
+          "n": 9,
+          "normalizedSha256": "8ea4a70b4223f6cb4458c03b101949b7075af19a3f172e171ef91e4b9396c0c8",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "cwd-root"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "67850b8423078cc82738930eb5557fad4e3e6b12b1aadf8d22a0070c691b3a72",
+          "n": 10,
+          "normalizedSha256": "03980bc8cfc702570e74649c481b2ddc92e5558ec47dd6c0b8957d7510300e0c",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "cwd-tmp"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "55c2df34aa4c95cbf7724d7f994efc439bbe940ed72988d9dd270212a1beafca",
+          "n": 11,
+          "normalizedSha256": "c8f4b59a2bffafa9df2ce19e9b784c94ff8d62832c69c79736dd0564b7ad47ed",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "plain"
+        },
+        {
+          "exit": 0,
+          "judgementSha256": "ae5a7f0f224a1fd528ac14ce135a9dfdba1ceb17fb6f6717f7dd68132ba4b6fa",
+          "n": 12,
+          "normalizedSha256": "7a985a5f9bc04e4d77d6e23e31ac5776890d17c5b5d2f769f9867c8dd5547f94",
+          "otherScopeAttempts": 0,
+          "reconciliation": "HOST_CONTAINER_OBSERVER_AGREEMENT",
+          "refusals": [],
+          "stableProjectionSha256": "4fccceca9d39cfe2e4459e4a0509e9d5232155f26498d17a0c1c0f845532c758",
+          "variation": "plain"
+        }
+      ],
+      "rawEvidence": {
+        "reDerivable": "OPERATOR_ONLY",
+        "retained": "OPERATOR_LOCAL"
+      },
+      "startedAtUtc": "2026-11-02T01:04:01Z",
+      "summary": {
+        "agreeing": 12,
+        "boundary": "COMPLETE_EGRESS_BOUNDARY",
+        "clean": 12,
+        "distinctCaptures": 12,
+        "distinctProjections": 1,
+        "environmentsHardened": 12,
+        "exitZero": 12,
+        "iterations": 12,
+        "refusalFree": 12,
+        "refusalReasons": {},
+        "stable": true,
+        "stableExceptThirdPartyLeaks": true,
+        "thirdPartyLeakIterations": [],
+        "unstableBecause": [],
+        "variations": [
+          "plain",
+          "tz",
+          "locale",
+          "home",
+          "umask-077",
+          "cwd-root",
+          "cwd-tmp"
+        ]
+      },
+      "table": {
+        "family": "inet",
+        "name": "sp1obs_q1",
+        "rules": "table inet sp1obs_q1 {\n  chain output {\n    type filter hook output priority -10; policy accept;\n    ip daddr 10.255.255.254 counter reject\n    fib daddr type local accept\n    meta l4proto tcp counter reject with tcp reset\n    meta l4proto udp counter reject with icmpx port-unreachable\n    counter reject with icmpx admin-prohibited\n  }\n  chain forward {\n    type filter hook forward priority -10; policy drop;\n    counter drop\n  }\n}\n",
+        "rulesSha256": "983fd257b5d068c3946ba888ee7674f763995d79e17a9319e21c5548ebc6e143"
+      }
+    }
+  ],
+  "source": {
+    "commit": "d7446589c86d675f20f4b8380fdc9561d0c7a24a",
+    "observerScriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+  },
+  "state": "OBSERVER_QUALIFIED_FOR_PA3D"
+}
