@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "walletwall.sp1-pa3d-exercise-record.v1",
   "title": "WalletWall SP1-PA3D exercise record",
-  "description": "What scripts/generate-sp1-pa3d-record.ts derives from committed evidence alone: the manifest authored before the proof, the pre-proof attestation, the one v2 exercise (run observation, verification observation, v2 record) and the observer qualification the run stood on. It holds the attribution chain link by link (each a comparison of committed digests, from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the qualified observer and the declared boundary), the reproducibility statement (the statement's public values reproduced; proof-byte determinism never claimed), the negative controls (the validator's re-run on mutated copies, the verifier's executed by the test suite on a development chain) and the state, one of PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED, PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED, PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE, PA3D_PREPROOF_ENVIRONMENT_REFUSED or PA3D_PROVING_FAILED, recomputed by the validator from facts. It is a v2 proof exercise record, not a production binding record: PRODUCTION_SP1_BINDING is NOT_ESTABLISHED whatever it says. The shape only: scripts/lib/sp1-pa3d-record.ts is the validator. Research prototype; not audited; testnet/local only.",
+  "description": "What scripts/generate-sp1-pa3d-record.ts derives from committed evidence alone: the manifest authored before the proof, the pre-proof attestation, the one v2 exercise (run observation, verification observation, v2 record) and the observer qualification the run stood on. It holds the attribution chain link by link (each a comparison of committed digests or of commit ancestry, from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the qualified observer and the declared boundary), the attribution residue stated by count (refused packets no attempt sent, sends of unseen destination, other-namespace sends beyond the VM), the reproducibility statement (the statement's public values reproduced; proof-byte determinism never claimed), the negative controls (the validator's re-run on mutated copies, the verifier's executed by the test suite on a development chain) and the state, one of PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED, PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED, PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE, PA3D_PREPROOF_ENVIRONMENT_REFUSED or PA3D_PROVING_FAILED, recomputed by the validator from facts. It is a v2 proof exercise record, not a production binding record: PRODUCTION_SP1_BINDING is NOT_ESTABLISHED whatever it says. The shape only: scripts/lib/sp1-pa3d-record.ts is the validator. Research prototype; not audited; testnet/local only.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -17,6 +17,7 @@
     "source",
     "manifest",
     "preproof",
+    "provenance",
     "exercise",
     "statement",
     "chain",
@@ -27,11 +28,22 @@
     "doesNotEstablish"
   ],
   "properties": {
-    "schema": { "const": "walletwall.sp1-pa3d-exercise-record.v1" },
-    "lane": { "const": "SP1-PA3D" },
-    "repository": { "const": "Wallet-Wall/walletwall-vault" },
-    "productionSp1Binding": { "const": "NOT_ESTABLISHED" },
-    "kind": { "type": "string", "minLength": 1 },
+    "schema": {
+      "const": "walletwall.sp1-pa3d-exercise-record.v1"
+    },
+    "lane": {
+      "const": "SP1-PA3D"
+    },
+    "repository": {
+      "const": "Wallet-Wall/walletwall-vault"
+    },
+    "productionSp1Binding": {
+      "const": "NOT_ESTABLISHED"
+    },
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
     "state": {
       "enum": [
         "PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED",
@@ -41,15 +53,27 @@
         "PA3D_PROVING_FAILED"
       ]
     },
-    "blockers": { "type": "array", "items": { "type": "string" } },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "next": {
       "type": "object",
       "additionalProperties": false,
       "required": ["lane", "what", "started"],
       "properties": {
-        "lane": { "const": "SP1-PA3E" },
-        "what": { "type": "string", "minLength": 1 },
-        "started": { "const": false }
+        "lane": {
+          "const": "SP1-PA3E"
+        },
+        "what": {
+          "type": "string",
+          "minLength": 1
+        },
+        "started": {
+          "const": false
+        }
       }
     },
     "source": {
@@ -57,9 +81,20 @@
       "additionalProperties": false,
       "required": ["commit", "parents", "version"],
       "properties": {
-        "commit": { "$ref": "#/$defs/hex40" },
-        "parents": { "type": "array", "items": { "$ref": "#/$defs/hex40" }, "minItems": 1 },
-        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+        "commit": {
+          "$ref": "#/$defs/hex40"
+        },
+        "parents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hex40"
+          },
+          "minItems": 1
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        }
       }
     },
     "manifest": {
@@ -67,9 +102,15 @@
       "additionalProperties": false,
       "required": ["path", "sha256", "startedAtUtc"],
       "properties": {
-        "path": { "const": "evidence/zk/sp1-impl/pa3d-exercise-manifest.json" },
-        "sha256": { "$ref": "#/$defs/hex64" },
-        "startedAtUtc": { "$ref": "#/$defs/utc" }
+        "path": {
+          "const": "evidence/zk/sp1-impl/pa3d-exercise-manifest.json"
+        },
+        "sha256": {
+          "$ref": "#/$defs/hex64"
+        },
+        "startedAtUtc": {
+          "$ref": "#/$defs/utc"
+        }
       }
     },
     "preproof": {
@@ -81,20 +122,78 @@
           "type": "string",
           "pattern": "^evidence/zk/sp1-impl/observations/pa3d-preproof-[a-z0-9-]+\\.raw\\.json$"
         },
-        "sha256": { "$ref": "#/$defs/hex64" },
-        "verdict": { "enum": ["PA3D_PREPROOF_ENVIRONMENT_VALID", "PA3D_PREPROOF_ENVIRONMENT_REFUSED"] },
-        "measuredAtUtc": { "$ref": "#/$defs/utc" }
+        "sha256": {
+          "$ref": "#/$defs/hex64"
+        },
+        "verdict": {
+          "enum": ["PA3D_PREPROOF_ENVIRONMENT_VALID", "PA3D_PREPROOF_ENVIRONMENT_REFUSED"]
+        },
+        "measuredAtUtc": {
+          "$ref": "#/$defs/utc"
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["laneCheckout", "manifestInLaneCheckout", "runLaneCheckout", "attestationInRunCheckout"],
+      "properties": {
+        "laneCheckout": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/hex40"
+            }
+          ]
+        },
+        "manifestInLaneCheckout": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        },
+        "runLaneCheckout": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/hex40"
+            }
+          ]
+        },
+        "attestationInRunCheckout": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            }
+          ]
+        }
       }
     },
     "exercise": {
       "oneOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
           "additionalProperties": false,
           "required": ["token", "run", "verification", "record", "proof"],
           "properties": {
-            "token": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+            "token": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{16}$"
+            },
             "run": {
               "type": "object",
               "additionalProperties": false,
@@ -104,9 +203,16 @@
                   "type": "string",
                   "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-run-[a-z0-9-]+\\.[0-9a-f]{16}\\.raw\\.json$"
                 },
-                "sha256": { "$ref": "#/$defs/hex64" },
-                "measuredAtUtc": { "$ref": "#/$defs/utc" },
-                "gateSeconds": { "type": "integer", "minimum": 0 }
+                "sha256": {
+                  "$ref": "#/$defs/hex64"
+                },
+                "measuredAtUtc": {
+                  "$ref": "#/$defs/utc"
+                },
+                "gateSeconds": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               }
             },
             "verification": {
@@ -118,9 +224,16 @@
                   "type": "string",
                   "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-verification-[a-z0-9-]+\\.[0-9a-f]{16}\\.raw\\.json$"
                 },
-                "sha256": { "$ref": "#/$defs/hex64" },
-                "acceptance": { "enum": ["ACCEPTED", "REJECTED"] },
-                "checks": { "type": "integer", "minimum": 0 }
+                "sha256": {
+                  "$ref": "#/$defs/hex64"
+                },
+                "acceptance": {
+                  "enum": ["ACCEPTED", "REJECTED"]
+                },
+                "checks": {
+                  "type": "integer",
+                  "minimum": 0
+                }
               }
             },
             "record": {
@@ -132,7 +245,9 @@
                   "type": "string",
                   "pattern": "^evidence/zk/sp1-impl/proof-exercises/[a-z0-9-]+\\.v2\\.[0-9a-f]{16}\\.json$"
                 },
-                "sha256": { "$ref": "#/$defs/hex64" },
+                "sha256": {
+                  "$ref": "#/$defs/hex64"
+                },
                 "assurance": {
                   "type": "object",
                   "additionalProperties": false,
@@ -147,22 +262,102 @@
                     "unattributedEvents",
                     "unattributedOutsideWindow",
                     "unknownOutcomes",
-                    "unseenDestinations"
+                    "unseenDestinations",
+                    "otherNamespaceEgress"
                   ],
                   "properties": {
                     "level": {
                       "enum": ["EDGE_PROBES_ONLY", "CONTINUOUS_ATTRIBUTED", "CONTINUOUS_PARTIALLY_ATTRIBUTED"]
                     },
-                    "continuousObservation": { "enum": ["ABSENT", "PRESENT"] },
-                    "processAttribution": { "enum": ["ABSENT", "COMPLETE", "PARTIAL"] },
-                    "enforcement": { "enum": ["STATED", "STATED_AND_COUNTED"] },
-                    "edgeProbes": { "enum": ["REFUSED_BEFORE_AND_AFTER", "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED"] },
-                    "attemptsInWindow": { "type": "integer", "minimum": 0 },
-                    "refusedPackets": { "type": "integer", "minimum": 0 },
-                    "unattributedEvents": { "type": "integer", "minimum": 0 },
-                    "unattributedOutsideWindow": { "type": "integer", "minimum": 0 },
-                    "unknownOutcomes": { "type": "integer", "minimum": 0 },
-                    "unseenDestinations": { "type": "integer", "minimum": 0 }
+                    "continuousObservation": {
+                      "enum": ["ABSENT", "PRESENT"]
+                    },
+                    "processAttribution": {
+                      "enum": ["ABSENT", "COMPLETE", "PARTIAL"]
+                    },
+                    "enforcement": {
+                      "enum": ["STATED", "STATED_AND_COUNTED"]
+                    },
+                    "edgeProbes": {
+                      "enum": ["REFUSED_BEFORE_AND_AFTER", "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED"]
+                    },
+                    "attemptsInWindow": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    },
+                    "refusedPackets": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    },
+                    "unattributedEvents": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    },
+                    "unattributedOutsideWindow": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    },
+                    "unknownOutcomes": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    },
+                    "unseenDestinations": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    },
+                    "otherNamespaceEgress": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "integer",
+                          "minimum": 0
+                        }
+                      ]
+                    }
                   }
                 }
               }
@@ -172,11 +367,23 @@
               "additionalProperties": false,
               "required": ["vkey", "selector", "publicValues", "publicValuesSha256", "proofBytesSha256"],
               "properties": {
-                "vkey": { "$ref": "#/$defs/bytes32" },
-                "selector": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
-                "publicValues": { "type": "string", "pattern": "^0x(?:[0-9a-f]{2})+$" },
-                "publicValuesSha256": { "$ref": "#/$defs/hex64" },
-                "proofBytesSha256": { "$ref": "#/$defs/hex64" }
+                "vkey": {
+                  "$ref": "#/$defs/bytes32"
+                },
+                "selector": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{8}$"
+                },
+                "publicValues": {
+                  "type": "string",
+                  "pattern": "^0x(?:[0-9a-f]{2})+$"
+                },
+                "publicValuesSha256": {
+                  "$ref": "#/$defs/hex64"
+                },
+                "proofBytesSha256": {
+                  "$ref": "#/$defs/hex64"
+                }
               }
             }
           }
@@ -188,26 +395,52 @@
       "additionalProperties": false,
       "required": ["designation", "program", "programVKey", "guestElf", "inputs", "expectedPublicValuesSha256"],
       "properties": {
-        "designation": { "type": "string", "minLength": 1 },
-        "program": { "type": "string", "minLength": 1 },
-        "programVKey": { "$ref": "#/$defs/bytes32" },
+        "designation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "program": {
+          "type": "string",
+          "minLength": 1
+        },
+        "programVKey": {
+          "$ref": "#/$defs/bytes32"
+        },
         "guestElf": {
           "type": "object",
           "additionalProperties": false,
           "required": ["sha256", "bytes"],
-          "properties": { "sha256": { "$ref": "#/$defs/hex64" }, "bytes": { "type": "integer", "minimum": 1 } }
+          "properties": {
+            "sha256": {
+              "$ref": "#/$defs/hex64"
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
         },
         "inputs": {
           "type": "object",
           "additionalProperties": false,
           "required": ["path", "bytes", "sha256"],
           "properties": {
-            "path": { "type": "string", "minLength": 1 },
-            "bytes": { "type": "integer", "minimum": 1 },
-            "sha256": { "$ref": "#/$defs/hex64" }
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bytes": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "sha256": {
+              "$ref": "#/$defs/hex64"
+            }
           }
         },
-        "expectedPublicValuesSha256": { "$ref": "#/$defs/hex64" }
+        "expectedPublicValuesSha256": {
+          "$ref": "#/$defs/hex64"
+        }
       }
     },
     "chain": {
@@ -223,16 +456,37 @@
             "additionalProperties": false,
             "required": ["id", "from", "to", "holds", "detail"],
             "properties": {
-              "id": { "type": "string", "pattern": "^[A-Z0-9_]+$" },
-              "from": { "type": "string", "minLength": 1 },
-              "to": { "type": "string", "minLength": 1 },
-              "holds": { "type": "boolean" },
-              "detail": { "type": "string", "minLength": 1 }
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Z0-9_]+$"
+              },
+              "from": {
+                "type": "string",
+                "minLength": 1
+              },
+              "to": {
+                "type": "string",
+                "minLength": 1
+              },
+              "holds": {
+                "type": "boolean"
+              },
+              "detail": {
+                "type": "string",
+                "minLength": 1
+              }
             }
           }
         },
-        "holds": { "type": "boolean" },
-        "blockers": { "type": "array", "items": { "type": "string" } }
+        "holds": {
+          "type": "boolean"
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "reproducibility": {
@@ -240,15 +494,31 @@
       "additionalProperties": false,
       "required": ["statement", "publicValuesSha256", "proofBytes"],
       "properties": {
-        "statement": { "enum": ["REPRODUCED", "NOT_REPRODUCED", "NO_PROOF"] },
+        "statement": {
+          "enum": ["REPRODUCED", "NOT_REPRODUCED", "NO_PROOF"]
+        },
         "publicValuesSha256": {
           "type": "object",
           "additionalProperties": false,
           "required": ["expected", "observed", "source"],
           "properties": {
-            "expected": { "$ref": "#/$defs/hex64" },
-            "observed": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/hex64" }] },
-            "source": { "type": "string", "minLength": 1 }
+            "expected": {
+              "$ref": "#/$defs/hex64"
+            },
+            "observed": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/hex64"
+                }
+              ]
+            },
+            "source": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         },
         "proofBytes": {
@@ -256,11 +526,36 @@
           "additionalProperties": false,
           "required": ["pa3b", "pa3d", "identical", "determinism", "why"],
           "properties": {
-            "pa3b": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/hex64" }] },
-            "pa3d": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/hex64" }] },
-            "identical": { "type": "boolean" },
-            "determinism": { "const": "NOT_CLAIMED" },
-            "why": { "type": "string", "minLength": 1 }
+            "pa3b": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/hex64"
+                }
+              ]
+            },
+            "pa3d": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/$defs/hex64"
+                }
+              ]
+            },
+            "identical": {
+              "type": "boolean"
+            },
+            "determinism": {
+              "const": "NOT_CLAIMED"
+            },
+            "why": {
+              "type": "string",
+              "minLength": 1
+            }
           }
         }
       }
@@ -271,14 +566,36 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "kind", "expected", "expectedRefusal", "outcome", "refusal"],
+        "required": ["id", "kind", "expected", "expectedRefusal", "outcome", "refusedBy", "refusal"],
         "properties": {
-          "id": { "type": "string", "pattern": "^NC-[VR][0-9]+$" },
-          "kind": { "enum": ["VERIFIER", "VALIDATOR"] },
-          "expected": { "enum": ["REJECTED", "REFUSED"] },
-          "expectedRefusal": { "type": "string", "minLength": 1 },
-          "outcome": { "enum": ["REFUSED", "NOT_REFUSED", "EXECUTED_BY_TEST_SUITE"] },
-          "refusal": { "type": "string", "minLength": 1 }
+          "id": {
+            "type": "string",
+            "pattern": "^NC-[VR][0-9]+$"
+          },
+          "kind": {
+            "enum": ["VERIFIER", "VALIDATOR"]
+          },
+          "expected": {
+            "enum": ["REJECTED", "REFUSED"]
+          },
+          "expectedRefusal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "outcome": {
+            "enum": ["REFUSED", "NOT_REFUSED", "EXECUTED_BY_TEST_SUITE"]
+          },
+          "refusedBy": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "refusal": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
@@ -289,16 +606,42 @@
         "type": "object",
         "additionalProperties": false,
         "required": ["path", "sha256"],
-        "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/hex64" } }
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "$ref": "#/$defs/hex64"
+          }
+        }
       }
     },
-    "establishes": { "type": "string", "minLength": 1 },
-    "doesNotEstablish": { "type": "string", "minLength": 1 }
+    "establishes": {
+      "type": "string",
+      "minLength": 1
+    },
+    "doesNotEstablish": {
+      "type": "string",
+      "minLength": 1
+    }
   },
   "$defs": {
-    "hex40": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
-    "hex64": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-    "bytes32": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
-    "utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" }
+    "hex40": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "hex64": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bytes32": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
+    "utc": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    }
   }
 }
