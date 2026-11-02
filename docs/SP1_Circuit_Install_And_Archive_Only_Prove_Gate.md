@@ -1,4 +1,4 @@
-# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C, SP1-PA3A, SP1-PA3B, SP1-PA3C, SP1-PA3D0, SP1-PA3C-Q1)
+# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C, SP1-PA3A, SP1-PA3B, SP1-PA3C, SP1-PA3D0, SP1-PA3C-Q1, SP1-PA3D)
 
 **Status:** `SELF_HOSTED_PATH_EXERCISED`: SP1-PA3B (owner-authorized) made the first real WalletWall Groth16 proof of
 the designated program through the unchanged archive-only gate, on a Linux proving host with network egress refused,
@@ -17,7 +17,11 @@ the derivation that SP1-PA3B's evidence now satisfies
 ([SP1-PA3A](#sp1-pa3a-the-proof-exercise-evidence-path-no-proof-generated)). SP1-PA3B's v1 record is history and
 stays the authoritative evidence of the first real exercise; since SP1-PA3D0 the exercise directory holds history
 ([SP1-PA3D0](#sp1-pa3d0-the-exercise-directory-holds-history-no-proof-generated)), so a future attributed (v2)
-exercise is recorded beside it, never in its place, and two records are still this one state. No v2 exists yet.
+exercise is recorded beside it, never in its place, and two records are still this one state. SP1-PA3D (owner-authorized,
+one proof) made that v2 exercise: its record `mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json` stands beside SP1-PA3B's
+with its own egress assurance (`CONTINUOUS_PARTIALLY_ATTRIBUTED`, the residue counted), and the lane's record is
+`PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED`
+([SP1-PA3D](#sp1-pa3d-one-real-v2-attributed-proof-independently-verified)). Two exercises, one state, no binding.
 
 > Tooling is not an artifact, and an artifact is not proving. SP1-PA2A built the WalletWall-controlled path that
 > installs SP1's Groth16 circuit v6.1.0 from a verified archive and proves from it; it downloaded nothing, pulled no
@@ -67,6 +71,17 @@ exercise is recorded beside it, never in its place, and two records are still th
 > observation, every record is judged on its own and the directory as a whole, two records are one state, each keeps
 > its own egress assurance, and the directory's git history must show no committed record withdrawn or edited.
 > Nothing was proved, observed or captured; no v2 record exists.
+>
+> **SP1-PA3D** (owner-authorized, one proof): the second real proof, and the first under the qualified observer
+> ([SP1-PA3D](#sp1-pa3d-one-real-v2-attributed-proof-independently-verified)): a manifest authored before the proof
+> from committed facts and the owner's words, a pre-proof attestation of the host derived to VALID, one run from a clean
+> checkout of the merge commit of SP1-PA3C-Q1 under the complete egress boundary and the root observer in RUN mode, the
+> designated verifier's acceptance on a development chain, SP1-PA3D0's v2 record beside SP1-PA3B's, and a lane record
+> whose thirteen-link attribution chain compares committed digests from the source commit to the observer
+> qualification. The proof commits to the same public values as SP1-PA3B's (the statement reproduced) in other bytes
+> (proof-byte determinism not claimed); process attribution is partial, with the residue counted, never excused. One
+> proof was authorized and one was made; the exercise is liveness and attribution, not soundness and not production
+> readiness.
 
 Research prototype. Not audited. Testnet/local only. Do not use real funds.
 
@@ -84,6 +99,7 @@ Research prototype. Not audited. Testnet/local only. Do not use real funds.
 | Blocking, offline check | `npm run validate:sp1-circuit-tooling` in CI's `Build, lint & test` (it judges the archive evidence and the proof-exercise evidence too; `validate:sp1-proving-archive-record` and `validate:sp1-proof-exercise-record` are the same judgements on their own); `test/Sp1ProofExerciseVerifier.test.ts` re-executes every committed proof against the authenticated verifier runtime |
 | Commands for the later lanes | `sp1:circuit-archive:inspect`, `sp1:circuit-install`, `sp1:prove:archive-only`; SP1-PA2B's `sp1:measure-circuit-acquisition`, `sp1:measure-circuit-mirror`, `sp1:proving-archive-record`; SP1-PA3A's `sp1:measure-proof-exercise`, `sp1:verify-proof-exercise`, `sp1:proof-exercise-record` (each run exactly once by SP1-PA3B) |
 | Continuous egress attribution (SP1-PA3C) | the root observer [`scripts/sp1-egress-observer.ts`](../scripts/sp1-egress-observer.ts) (run from a root-owned copy; it alone starts the attributed tool [`scripts/measure-sp1-attributed-proof-exercise.ts`](../scripts/measure-sp1-attributed-proof-exercise.ts)); the derivation [`scripts/lib/sp1-egress-attribution.ts`](../scripts/lib/sp1-egress-attribution.ts); `walletwall.sp1-proof-exercise-run.v2` and `walletwall.sp1-proof-exercise.v2` beside v1 in [`scripts/lib/sp1-proof-exercise.ts`](../scripts/lib/sp1-proof-exercise.ts) |
+| One attributed proof exercise, verified (SP1-PA3D) | the manifest authored before the proof [`scripts/lib/sp1-pa3d-exercise.ts`](../scripts/lib/sp1-pa3d-exercise.ts) ([`evidence/zk/sp1-impl/pa3d-exercise-manifest.json`](../evidence/zk/sp1-impl/pa3d-exercise-manifest.json), shape [`evidence/zk/schema/sp1-pa3d-exercise-manifest.v1.schema.json`](../evidence/zk/schema/sp1-pa3d-exercise-manifest.v1.schema.json)); the pre-proof attestation [`scripts/lib/sp1-pa3d-preproof.ts`](../scripts/lib/sp1-pa3d-preproof.ts), run on the host by [`scripts/sp1-pa3d-preproof.ts`](../scripts/sp1-pa3d-preproof.ts); the lane record [`scripts/lib/sp1-pa3d-record.ts`](../scripts/lib/sp1-pa3d-record.ts) ([`evidence/zk/sp1-impl/pa3d-exercise-record.json`](../evidence/zk/sp1-impl/pa3d-exercise-record.json), shape [`evidence/zk/schema/sp1-pa3d-exercise-record.v1.schema.json`](../evidence/zk/schema/sp1-pa3d-exercise-record.v1.schema.json)); `sp1:pa3d-manifest`, `validate:sp1-pa3d-manifest`, `sp1:pa3d-record`, `validate:sp1-pa3d-record` |
 
 ## Four states, not interchangeable
 
@@ -1389,6 +1405,15 @@ In this repository the regenerated records still say one accepted exercise, SP1-
   with a synthetic v2 beside SP1-PA3B's real v1, the real checkout); `validate:sp1-circuit-tooling` and
   `validate:sp1-proving-availability` (both in CI) judge every record and the exercise history on every run, and
   `validate:sp1-proof-exercise-record` is the same judgement on its own.
+- SP1-PA3D: [`test/Sp1Pa3dExercise.test.ts`](../test/Sp1Pa3dExercise.test.ts) (the manifest's derivation from the
+  checkout, its validator's refusals, the acquisition gate, the committed manifest re-derived),
+  [`test/Sp1Pa3dPreproof.test.ts`](../test/Sp1Pa3dPreproof.test.ts) (every refusal of the pre-proof verdict, the
+  committed attestation re-derived), [`test/Sp1Pa3dRecord.test.ts`](../test/Sp1Pa3dRecord.test.ts) (every link of the
+  chain and its break, the states, the reproducibility statement, the twelve validator-class negative controls, the
+  committed record re-derived, this page's statements) and
+  [`test/Sp1Pa3dNegativeControls.test.ts`](../test/Sp1Pa3dNegativeControls.test.ts) (the committed proof accepted by the
+  designated runtime on a development chain, then five tampered forms refused). `validate:sp1-pa3d-manifest` and
+  `validate:sp1-pa3d-record` re-derive the two lane records offline.
 - Mutation and adversarial review: see the pull requests.
 
 ## Reproduce
@@ -1575,6 +1600,215 @@ proof-shaped field in the record).
   (SP1-PA3C's evidence model, unchanged).
 - Next lane: SP1-PA3D, owner-authorized, from a main commit holding this record, merge-committed; its run observation is
   judged by SP1-PA3C's derivation and may be re-derived in this lane's container.
+
+## SP1-PA3D: one real v2 attributed proof, independently verified
+
+SP1-PA3C-Q1 qualified the observer; the owner authorized exactly one controlled v2 attributed proof and merged the
+qualification by merge commit. This lane made that proof from a clean checkout of
+`debed530c3ff72eda6785bfcadd46595a0c98b69` (the owner's merge commit of SP1-PA3C-Q1, v0.13.33, parents `5ac076fe` and
+`e8a5c85c`), on `developer-workstation-wsl2` (the WSL2 Ubuntu 24.04 environment the qualification soaked), under the
+qualified root observer in RUN mode and the complete egress boundary, and verified it through the designated verifier
+path on a development chain. Nothing was downloaded, pulled or acquired; no Solidity, verifier, custody or policy
+semantics changed; SP1-PA3B's and SP1-PA3C-Q1's evidence is byte-identical; the measurement tool, the observer, the
+gate, the installer and the exercise library are the source commit's bytes, and the manifest refuses a byte of drift
+between the source commit and the checkout that validates it. Every file was committed before the next step read it,
+tooling apart from evidence, so each record binds the committed bytes of what came before. The lane's record is
+[`evidence/zk/sp1-impl/pa3d-exercise-record.json`](../evidence/zk/sp1-impl/pa3d-exercise-record.json), derived by
+`npm run sp1:pa3d-record` from the committed manifest, attestation, exercise and qualification, and checked by
+`npm run validate:sp1-pa3d-record`, which re-derives it and refuses any leaf that differs (a measurement never grades
+itself). The suite does the same on every run.
+
+State: `PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED` (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`: this is a v2 proof
+exercise record, not a production binding record; no production verifier, Solidity, custody or policy semantics
+changed and no mainnet call was made). Next lane: SP1-PA3E, a design review; not started here.
+
+### The order of events, each committed before the next read it
+
+| Step | Committed file | What it holds |
+|---|---|---|
+| 1. Manifest, before the proof | [`evidence/zk/sp1-impl/pa3d-exercise-manifest.json`](../evidence/zk/sp1-impl/pa3d-exercise-manifest.json), sha256 `356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f` | the statement, every identity, the twelve run tools bound at the source commit, the acquisition gate over 24 artifacts (`PASSED`: nothing acquired), the owner's words, the start stamp `2026-11-02T03:03:04Z` |
+| 2. Pre-proof attestation | [`observations/pa3d-preproof-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/pa3d-preproof-developer-workstation-wsl2.raw.json) | facts recorded on the host as the unprivileged prover; `PA3D_PREPROOF_ENVIRONMENT_VALID` derived from them |
+| 3. Run observation | [`observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json), sha256 `45aa26274d265d3faffbe326106a259b3dce22e899077a188319da6eb7f289e3` | the v2 run under the observer, named after its token `45aa26274d265d3f` |
+| 4. Verification observation | [`observations/proof-exercise-verification-developer-workstation-wsl2.45aa26274d265d3f.raw.json`](../evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.45aa26274d265d3f.raw.json), sha256 `c7f6cabfbeb8c6d673da54deb623f65b524cc5d8c25d55d879ff0f498b466e6e` | `ACCEPTED`: success for the proof, `revert ProofInvalid` for its tampered copy, on the authenticated runtime |
+| 5. v2 record | [`proof-exercises/mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json`](../evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json) | SP1-PA3D0's record of the exercise, egress assurance `CONTINUOUS_PARTIALLY_ATTRIBUTED` |
+| 6. Dependent records | `proving-availability.json`, `circuit-tooling.json`, `host-lockfile-advisories.json` | two exercises listed, `SELF_HOSTED_PATH_EXERCISED` unchanged |
+| 7. Lane record | [`pa3d-exercise-record.json`](../evidence/zk/sp1-impl/pa3d-exercise-record.json) | the chain, the reproducibility statement, the negative controls, the state |
+
+### The manifest and the acquisition gate (Phases 1 and 2)
+
+The manifest ([`scripts/lib/sp1-pa3d-exercise.ts`](../scripts/lib/sp1-pa3d-exercise.ts)) takes five things from the
+operator (the source commit, the host label, the environment's kind and words, the start stamp, the owner's quoted
+authorization) and derives everything else from the checkout: the program `mldsa65-withdrawal` of designation
+`mldsa65-withdrawal-d1` (`PROGRAM_VKEY 0x0001a4c6…`, ELF sha256 `2adddae7…`, 206,504 bytes), the committed inputs
+(`zkvm/fixtures/mldsa65-withdrawal.inputs.json`, sha256 `5f317816…`), the public values SP1-PA3B's run recorded for the
+same program and inputs (sha256 `64e08d05…`), the circuit `v6.1.0` through the archive record (archive sha256
+`18beebb6…`, seven members, gnark `sha256:e1a1cd62…`, verifier `0xb69f2584…`, `verifierHash 0x4388a21c…`), the prover
+(the canonical-build host binary sha256 `fc8eff69…`, `sp1-sdk` and `sp1-zkvm` 6.3.1 from the lockfile and the guest
+manifest, `rustc 1.96.0 (ac68faa20 2026-05-25)` from the canonical build's environment log, `SP1_PROVER=cpu`, the four
+frozen variables), the SP1-PA3C-Q1 qualification record by digest and state (anything but
+`OBSERVER_QUALIFIED_FOR_PA3D` for this lane refuses the manifest), and the twelve files the run executes or reads,
+each as the source commit holds it (`TOOL_DRIFT` refuses a byte of difference). Its validator reads the operator's
+inputs back from the committed file, re-derives the manifest and refuses any leaf that differs, a source commit the
+checkout does not descend from, or a qualification that changed under it.
+
+The acquisition gate classifies every artifact the proof needs: digest-pinned (the guest ELF embedded in the host
+binary, the host binary, the seven circuit members, the gnark image, the SP1 build image), repository-pinned (the
+inputs fixture, the twelve run tools, the observer qualification record, the archive record) and host-dependent (the
+WSL2 kernel, the Docker Engine, the node runtime, nftables), each with what pins it and how it is checked before or by
+the proof. It passes only when every class is pinned or a recorded host fact and no artifact is to be acquired; a
+network-dependent, mutable or unknown artifact, or any acquisition, blocks it
+(`PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE`). It passed: nothing was acquired for this proof.
+
+### The pre-proof attestation (Phase 3)
+
+[`scripts/sp1-pa3d-preproof.ts`](../scripts/sp1-pa3d-preproof.ts) ran on the host as the unprivileged prover from a
+clone of the lane at `23a364fb` and recorded facts: the committed manifest valid there and of the committed digest; the
+proving clone a clean checkout of the source commit holding every run tool as the manifest binds it; the installed
+circuit's seven members verified by the gate's own check ([`scripts/lib/sp1-circuit-install.ts`](../scripts/lib/sp1-circuit-install.ts));
+the host binary the canonical build's; the gnark image local by digest; the observer qualification re-derived on that
+host; the platform (Linux `6.18.33.1-microsoft-standard-WSL2`, boot `b6a0c805…`, 24,608,408 KiB RAM and 41,943,040 KiB
+swap, node v24.16.0, Docker Engine 29.1.3 on its unix socket, uid 1001). The verdict is a pure function of those facts
+and the manifest ([`scripts/lib/sp1-pa3d-preproof.ts`](../scripts/lib/sp1-pa3d-preproof.ts)): every refusal it could
+name (seventeen kinds, listed at once, never only the first) was absent, so `PA3D_PREPROOF_ENVIRONMENT_VALID`; the
+root run script refused to start unless the committed attestation said so. The validator recomputes the verdict from
+the recorded facts: a VALID written over refusing facts, or a refusal edited away, is refused.
+
+### The run (Phase 4)
+
+As root, a byte-identical copy of the source commit's observer (sha256 `d53c5310…`, the qualified one) was written
+under `/var/lib/sp1obs-pa3d/bin`, the boundary table `inet pa3d_egress_off` was created from `/etc/resolv.conf` and a
+fixed rules text (the resolver `10.255.255.254` refused first; `fib daddr type local accept`; every other output
+refused and counted, TCP by reset, UDP by ICMP port-unreachable, the rest by ICMP admin-prohibited; the forward hook
+policy drop with a counted drop; and SP1-PA3B's input rule, `iifname "docker0" counter drop`, which SP1-PA3C-Q1's soak
+had not, since the soak ran no container), two rehearsal probes as the prover were refused, and the observer started
+the committed attributed measurement:
+
+```bash
+node /var/lib/sp1obs-pa3d/bin/sp1-egress-observer.ts run --as prover --repo /home/prover/pa3d-src \
+  --table inet pa3d_egress_off --raw-dir /var/lib/sp1obs-pa3d/raw-20261102T032023Z -- \
+  --record /home/prover/pa3d-src/evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json \
+  --circuit-root /home/prover/pa3b/circuit-root --host /home/prover/pa3b/bin/mldsa65-host \
+  --inputs /home/prover/pa3d-src/zkvm/fixtures/mldsa65-withdrawal.inputs.json \
+  --host-label developer-workstation-wsl2 --enforcement "<the statement the run observation holds>" \
+  --out /home/prover/pa3d-out/run.raw.json --proof-out /home/prover/pa3d-out/proof.json \
+  --platform-file /home/prover/pa3d-out/platform.txt
+```
+
+The gate ran from `2026-11-02T03:20:25Z` to `03:31:49Z`: 686 s of wall time (the host process 646 s), 0.40 % of the
+2-day rotation delay, a host-process peak resident set of 23,898,484,736 bytes and 18,661,632,901 bytes sampled in the
+gnark containers over 74 samples; `EGRESS_DISABLED`, every one of the sixteen edge probes refused before and after;
+the observer's 686 heartbeats with a largest gap of 2.96 s, 4,255 normalized events, no lost line, 162 attempts in the
+window (TOOL 40, OTHER 98, KERNEL 10, CONTAINER 7, PROOF_CONTAINER 7), 237 refused packets, 76 boundary responses. The
+run observation was named after its token (the first sixteen hexadecimal digits of its sha256, SP1-PA3D0's rule) and
+committed as written; the raw directory (`trace.txt` 3,232,036 bytes, `facts.json`, `manifest.json` sha256
+`bc6fa371…`) stays operator-local as SP1-PA3C's evidence model requires, its digests bound by the observation, and a
+copy of it as the tool read it was kept beside it. The proof commits to the public values whose sha256 is
+`64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db`, SP1-PA3B's, under the selector `0x4388a21c`; its
+bytes (sha256 `aa3bdb1d9f5baef991c1a11c423de4e278087d1f8ff5afdabf010b1566f9e7a4`) differ from SP1-PA3B's
+(`dfe975da…`), as a randomized Groth16 prover's do.
+
+### The verification (Phase 5)
+
+From a clean clone of the lane at `c4387992` (the commit holding the run observation), on the host, after the boundary
+was gone, `npm run sp1:verify-proof-exercise` deployed the CREATE2-authenticated v6.1.0 runtime on a development chain
+(code keccak `0xcceb864c…`, the designation's) and asked it twice: `success` for the proof as the run holds it,
+`revert 0x7fcdd1f4` (`ProofInvalid()`) for its tampered copy; `acceptance: ACCEPTED`, computed from the answers. The
+observation binds the run's committed bytes by sha256. The v2 record was then derived by `npm run
+sp1:proof-exercise-record` (SP1-PA3D0's one pending exercise) and the dependent records regenerated by their own
+generators; `SELF_HOSTED_PATH_EXERCISED` is unchanged, now from two accepted records, each with its own assurance.
+
+### The attribution chain (Phase 7)
+
+The lane record's chain has thirteen links, each a comparison of committed values, each stating what it compared and
+why it holds or not; `state` is recomputed from the gate, the attestation, the exercise and the chain in that order:
+
+| Link | Holds when |
+|---|---|
+| `SOURCE_TO_MANIFEST` | the manifest validates against the checkout and names the source commit |
+| `MANIFEST_TO_ATTESTATION` | the attestation is of this manifest's digest, VALID, and attests a clean checkout of the source commit |
+| `SOURCE_TO_RUN` | the run's `source.commit` is the source commit, its tool the manifest's digest of the attributed measurement, its schema v2, its host the manifest's, and SP1-PA3D0's directory accepts the exercise |
+| `PROGRAM_TO_RUN` | the run's anchor and proof name `PROGRAM_VKEY`, its host executable is the canonical binary, its mode `cpu` |
+| `INPUTS_TO_RUN` | the run read the committed fixture (sha256 equal) |
+| `STATEMENT_TO_PUBLIC_VALUES` | the proof's public values equal the statement's byte for byte, their sha256 recomputed |
+| `CIRCUIT_TO_RUN` | the run's archive record, installed members, gnark digest and selector are the manifest's |
+| `PROOF_TO_VERIFICATION` | the verification binds the run's bytes and the proof's digests, every check `success` / `revert ProofInvalid`, through the designated runtime |
+| `OBSERVATIONS_TO_RECORD` | the v2 record derives from exactly these two observations, carries the proof's digests, and its assurance is continuous, counted and observed (a `CONTINUOUS_*` level) |
+| `ATTRIBUTION_RESIDUE` | no attempt in the window has an unknown outcome and nothing unattributed lies outside it; the residue (refused packets no attempt sent, sends of unseen destination) is counted and named |
+| `QUALIFICATION_TO_OBSERVER` | the qualification is `OBSERVER_QUALIFIED_FOR_PA3D` and the manifest's, and the run's observer is its digest, in RUN mode |
+| `BOUNDARY_TO_RUN` | the table the observer recorded classifies, from its rules, as the complete egress boundary the manifest planned, and the condition is `EGRESS_DISABLED` with every probe refused |
+| `MANIFEST_BEFORE_PROOF` | the manifest's start stamp precedes the gate's |
+
+All thirteen hold. Process attribution is `PARTIAL`, and the record says so rather than hiding it behind a blocked
+state: 19 refused packets inside the window were sent by no observed attempt (the virtual machine's own resolver
+traffic, as SP1-PA3C predicted and SP1-PA3C-Q1 documented; `chronyd` was inactive), and 10 sends in the kernel scope
+have a destination the capture cannot read (packet, raw or AF_XDP sockets, counted and never read, the method's known
+residue); 0 attempts have an unknown outcome and 0 unattributed packets lie outside the window. The chain's first
+criterion had demanded complete attribution; that was stricter than the v2 contract, whose records each carry their
+own assurance, and it was relaxed before the lane record was first derived, in a commit that says so. Complete
+attribution is claimed only where a v2 record states it; this one does not.
+
+### Reproducibility (Phase 8)
+
+The statement reproduced: the public values of this proof equal, byte for byte, those SP1-PA3B's run recorded for the
+same program and inputs thirteen days earlier on another commit. Proof-byte determinism is `NOT_CLAIMED`: Groth16
+proving is randomized, so the two proofs differ in bytes while verifying the same statement, and one proof was
+authorized here, so no second run of this environment compares. The record states both.
+
+### The negative controls (Phase 6)
+
+Seventeen controls, each named in the record with its expected outcome. Twelve of the validator class are re-run by
+the record's validator itself on mutated copies of the committed evidence, each refused for its own named reason:
+wrong input attribution (`INPUTS_TO_RUN`), a stale proof under a modified manifest (`STATEMENT_TO_PUBLIC_VALUES`), a
+wrong proof digest and an edited acceptance (`PROOF_TO_VERIFICATION`), malformed metadata and another source commit
+(`SOURCE_TO_RUN`), another observer (`QUALIFICATION_TO_OBSERVER`), a refused attestation
+(`PA3D_PREPROOF_ENVIRONMENT_REFUSED`), an edge-probes-only record (`OBSERVATIONS_TO_RECORD`), an edited unknown
+outcome (`ATTRIBUTION_RESIDUE`), a proof stamped before the manifest (`MANIFEST_BEFORE_PROOF`) and a blocked gate
+(`PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE`). Five of the verifier class are executed by
+[`test/Sp1Pa3dNegativeControls.test.ts`](../test/Sp1Pa3dNegativeControls.test.ts) against the designated runtime on a
+development chain, after the committed proof itself is accepted and its tampered copy refused (the positive control):
+one byte of the proof flipped, a wrong program verifying key and wrong public values (each `revert ProofInvalid`), the
+proof truncated by a byte and another selector (each a revert, never success). The canonical verifier was not modified.
+
+### Findings (Phase 9)
+
+- **PA3D-F1, tooling (RUN mode, first executed here): a shutdown deadlock.** After the attributed measurement writes
+  its observation it does not exit: its observer client keeps a line reader on stdin, which the observer holds open
+  while awaiting the tool's exit. The observer's own guard ended it: after 600 s it sent the idle tool `SIGKILL` and
+  returned exit code 1, so the root script's exit code is 1 and its teardown (the table deleted, no probe or instance
+  left) ran ten minutes after the proof. The tool's stderr printed `the observer failed (OBSERVER_GONE): the run is
+  abandoned and no observation is written` as its stdin closed, ten minutes after it had written the observation: a
+  misleading line, not a fact about the evidence. The evidence is unaffected: the observation was complete and
+  validated before the wait began, the raw directory's digests equal the manifest's before and after, and a copy taken
+  before any process was touched is byte-identical. Neither file can be fixed on this branch: the committed run binds
+  the measurement's and the observer's digests as the checkout holds them, so a fix is a later lane with its own
+  qualification (SP1-PA3E's review should take it).
+- **PA3D-F2, attribution is partial on this host**, as predicted: see the chain above. It is recorded as a fact with
+  its counts, never excused into completeness.
+- **PA3D-F3, the Docker Engine leaves a table.** After the gnark container ran, `table ip raw` (the engine's) was present
+  on the host beside its `nat` and `filter` tables; it is not the lane's table and was left alone. The lane's table
+  was created before the observer started and deleted by the teardown; no other table, probe or tracing instance was
+  left.
+- **The boundary shape**: SP1-PA3C-Q1's complete shape plus SP1-PA3B's input rule (a container cannot reach the host's
+  resolver either); the run observation's enforcement statement says so, and the chain classifies the boundary from
+  the rules the observer recorded, never from the statement.
+- **RustSec**: the host lockfile is the source commit's and unchanged; the advisory record's assessment
+  (`NOT_DEPENDENCY_SAFE`, `DEFERRED_TO_NEXT_PROGRAM_REBUILD`, 0 must-fix before real proving) is the same as before
+  this proof; nothing newly reachable was introduced, since no dependency changed.
+
+### What SP1-PA3D establishes, and what it does not
+
+- Established: one real Groth16 proof of the designated program was made from the stated source commit on the stated
+  host by the committed attributed measurement under the qualified observer and the complete boundary, from the
+  archive-only circuit with the digest-pinned image and the canonical host binary, on the committed inputs; it commits
+  to the statement's public values; the designated verifier accepted it and refused its tampered copy; every link from
+  the source commit to the observer qualification compares equal committed digests; the attribution residue is
+  counted. `PROVING_AVAILABILITY = SELF_HOSTED_PATH_EXERCISED`, now from two exercises.
+- Not established: any production binding (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`); proof-byte determinism;
+  complete process attribution (the record says `PARTIAL`); more than the v2 record's own assurance states (the raw
+  capture stays with the operator, as SP1-PA3C's model requires); the soundness of the trusted setup behind the key;
+  that this environment proves within the rotation delay at another time; that the observer tooling's RUN-mode
+  shutdown is sound (PA3D-F1).
+- Next lane: SP1-PA3E, a design review of what this exercise and its findings mean for the path forward; not begun here.
 
 ## Limits
 

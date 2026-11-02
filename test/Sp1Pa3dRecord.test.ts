@@ -417,6 +417,25 @@ describe("SP1-PA3D — the exercise record and its attribution chain", function 
   });
 
   describe("the committed record", function () {
+    it("is stated by the gate document: the heading names the lane, its section the state, the binding, the run and the residue", function () {
+      if (!existsSync(RECORD_REL)) this.skip();
+      const committed = JSON.parse(lf(readFileSync(RECORD_REL, "utf8"))) as Pa3dRecord;
+      const doc = lf(readFileSync("docs/SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md", "utf8"));
+      expect(doc.split("\n")[0]).to.include("SP1-PA3D");
+      const start = doc.indexOf("\n## SP1-PA3D:");
+      expect(start).to.be.greaterThan(0);
+      const section = doc.slice(start, doc.indexOf("\n## ", start + 5));
+      expect(section).to.include(`State: \`${committed.state}\``);
+      expect(section).to.include("`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`");
+      expect(section).to.include(committed.exercise?.token ?? "no token");
+      expect(section).to.include(committed.exercise?.run.sha256 ?? "no run");
+      expect(section).to.include(committed.manifest.sha256);
+      expect(section).to.include(committed.exercise?.record.assurance.level ?? "no level");
+      expect(section).to.include(`${committed.exercise?.record.assurance.unattributedEvents} refused packets`);
+      expect(section).to.include("NOT_CLAIMED");
+      expect(section).to.include("SP1-PA3E");
+    });
+
     it("when committed, is what the committed evidence derives, and its state is the attributed-and-verified one", function () {
       if (!existsSync(RECORD_REL)) this.skip();
       const inputs = pa3dInputsFromRepo(".");
