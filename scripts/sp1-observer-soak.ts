@@ -21,6 +21,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  chownSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -130,6 +131,10 @@ function main(argv: string[]): number {
   const copyObserver = sha256(readFileSync(observer, "utf8").replace(/\r\n/g, "\n"));
   if (committedObserver !== copyObserver)
     throw new Error("OBSERVER_COPY_DIFFERS: the root-owned observer copy is not the checkout's observer");
+  // The soak's own records (the rules, soak.json) are root's and the user's group's, like the observer's raw files:
+  // host facts for the operator, not for every local account.
+  const userGid = Number(run("getent", ["passwd", user]).stdout.trim().split(":")[3]);
+  if (!Number.isSafeInteger(userGid)) throw new Error(`--as ${user}: not an account`);
   mkdirSync(outDir, { mode: 0o755 });
   chmodSync(outDir, 0o755);
 
@@ -150,7 +155,9 @@ function main(argv: string[]): number {
       ? `table inet ${table} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${resolvers}    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n`
       : `table inet ${table} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${resolvers}    fib daddr type local accept\n    meta l4proto tcp counter reject with tcp reset\n    meta l4proto udp counter reject with icmpx port-unreachable\n    counter reject with icmpx admin-prohibited\n  }\n  chain forward {\n    type filter hook forward priority -10; policy drop;\n    counter drop\n  }\n}\n`;
   const rulesPath = join(outDir, "table.nft");
-  writeFileSync(rulesPath, rules, { mode: 0o644 });
+  writeFileSync(rulesPath, rules, { mode: 0o640 });
+  chownSync(rulesPath, 0, userGid);
+  chmodSync(rulesPath, 0o640);
   const nodeBinary = readFileSync(process.execPath);
   const soak: Record<string, unknown> = {
     schema: SOAK_SCHEMA,
@@ -276,7 +283,9 @@ function main(argv: string[]): number {
     soak.tableDeleted = deleted.status === 0;
     soak.finishedAtUtc = utcNow();
     soak.after = { probesLeft: kprobesLeft(), instancesLeft: instancesLeft() };
-    writeFileSync(join(outDir, "soak.json"), `${JSON.stringify(soak, null, 2)}\n`, { mode: 0o644 });
+    writeFileSync(join(outDir, "soak.json"), `${JSON.stringify(soak, null, 2)}\n`, { mode: 0o640 });
+    chownSync(join(outDir, "soak.json"), 0, userGid);
+    chmodSync(join(outDir, "soak.json"), 0o640);
     process.stderr.write(
       `${join(outDir, "soak.json")}: ${list.length} iterations, table deleted ${String(soak.tableDeleted)}\n`,
     );

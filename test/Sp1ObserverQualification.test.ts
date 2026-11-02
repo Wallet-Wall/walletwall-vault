@@ -23,6 +23,7 @@ import {
   NEGATIVE_CONTROLS,
   OBSERVATION_SCHEMA,
   PRODUCTION_SP1_BINDING,
+  QUALIFICATION_JSON_SCHEMA_REL,
   QUALIFICATION_REL,
   QUALIFICATION_SCHEMA,
   REPOSITORY_ID,
@@ -41,10 +42,12 @@ import {
   runNegativeControls,
   serializeQualification,
   soakSummaryOf,
+  validationContextFromRepo,
   type Derivation,
   type DerivationOutput,
   type EnvironmentIdentity,
   type QualificationObservation,
+  type QualificationRecord,
   type Soak,
   type SoakBoundary,
   type SoakIteration,
@@ -146,7 +149,7 @@ function derivationOf(env: EnvironmentIdentity, output: DerivationOutput, raw = 
   const manifest = JSON.parse(raw.manifest) as { files: { name: string; bytes: number; sha256: string }[] };
   return {
     schema: DERIVATION_SCHEMA,
-    environment: env,
+    environment: clone(env),
     input: {
       raw: { manifestSha256: sha256(Buffer.from(raw.manifest, "latin1")), files: manifest.files },
       hostExecutable: FIXTURE_HOST_EXECUTABLE,
@@ -484,6 +487,38 @@ describe("SP1-PA3C-Q1 — observer qualification", function () {
       ]);
     });
 
+    it("does not excuse a frame alone (no process named), nor a leak by the observer or a container", function () {
+      for (const scopes of [["FRAME"], ["OBSERVER", "FRAME"], ["CONTAINER"], ["PROOF_CONTAINER", "KERNEL"]]) {
+        const it2 = syntheticIterations(base, 12);
+        leakByAnotherProcess(it2[2]);
+        for (const side of [it2[2].host, it2[2].container]) {
+          must(side.output.judgement).leaksByScope = Object.fromEntries(scopes.map((s) => [s, 1]));
+        }
+        const s = soakSummaryOf(it2, "SELF_TEST_TABLE");
+        expect(s.stableExceptThirdPartyLeaks, scopes.join("+")).to.equal(false);
+        expect(s.thirdPartyLeakIterations, scopes.join("+")).to.deep.equal([]);
+      }
+    });
+
+    it("is unstable when an iteration's container was not the hardened one, or its sides are mislabelled", function () {
+      const weak = syntheticIterations(base, 12);
+      must(weak[4].container.environment.container).runOptions = [
+        ...must(weak[4].container.environment.container).runOptions,
+        "--privileged",
+      ];
+      const s1 = soakSummaryOf(weak, "COMPLETE_EGRESS_BOUNDARY");
+      expect(s1.environmentsHardened).to.equal(11);
+      expect(s1.stable).to.equal(false);
+      expect(s1.unstableBecause).to.deep.equal([
+        "iteration 5: environments not as required (CONTAINER_NOT_HARDENED: --privileged)",
+      ]);
+      const swapped = syntheticIterations(base, 12);
+      swapped[7].container = clone(swapped[7].host);
+      const s2 = soakSummaryOf(swapped, "COMPLETE_EGRESS_BOUNDARY");
+      expect(s2.environmentsHardened).to.equal(11);
+      expect(s2.unstableBecause.join(" ")).to.match(/iteration 8: environments not as required \(ENVIRONMENT_KIND/);
+    });
+
     it("does not excuse a leak by the workload's own scope, nor a leak beside another refusal", function () {
       const own = syntheticIterations(base, 12);
       leakByAnotherProcess(own[4], "TOOL");
@@ -572,6 +607,33 @@ describe("SP1-PA3C-Q1 — observer qualification", function () {
       expect(errors.join("\n")).to.match(/CONTAINER_NOT_HARDENED: docker\.sock/);
       expect(errors.join("\n")).to.match(/CONTAINER_NOT_HARDENED: ran as root/);
       expect(errors.join("\n")).to.match(/CONTAINER_NOT_HARDENED: network interfaces lo, eth0/);
+    });
+
+    it("reads docker's shorthand and repeated options as docker does, and refuses the ways around the hardening", function () {
+      const withOptions = (change: (o: string[]) => string[]) => {
+        const e = clone(CONTAINER_ENV);
+        must(e.container).runOptions = change([...must(e.container).runOptions]);
+        return environmentErrors(e).join("\n");
+      };
+      const before = (o: string[], ...extra: string[]) => {
+        const at = o.indexOf(`node@${IMAGE_DIGEST}`);
+        return [...o.slice(0, at), ...extra, ...o.slice(at)];
+      };
+      expect(withOptions((o) => before(o, "-v/etc:/x"))).to.match(/\/x is writable/);
+      expect(withOptions((o) => before(o, "-v=/etc:/x"))).to.match(/\/x is writable/);
+      expect(withOptions((o) => before(o, "--network", "container:other"))).to.match(/not the only network/);
+      expect(withOptions((o) => before(o, "--user", "0:0"))).to.match(/--user .* repeated, or root/);
+      expect(withOptions((o) => before(o, "--cap-add", "NET_ADMIN"))).to.match(/--cap-add is given/);
+      expect(withOptions((o) => before(o, "--device", "/dev/sda"))).to.match(/--device is given/);
+      expect(withOptions((o) => before(o, "--pid", "host"))).to.match(/a host namespace is shared/);
+      expect(withOptions((o) => before(o, "--security-opt", "seccomp=unconfined"))).to.match(/unconfined/);
+      expect(withOptions((o) => before(o, "-v", "/var/run:/var/run:ro"))).to.match(
+        /runtime socket directory is mounted/,
+      );
+      expect(withOptions((o) => before(o, "-v", "/run/user/1000:/r:ro"))).to.match(
+        /runtime socket directory is mounted/,
+      );
+      expect(withOptions((o) => o)).to.equal("");
     });
 
     it("requires every mount but the output to be read-only, and the image pinned by digest", function () {
@@ -791,6 +853,35 @@ describe("SP1-PA3C-Q1 — observer qualification", function () {
     it("refuses a record made for another observer (stale evidence against a new source identity)", function () {
       const errors = qualificationErrors(record, { ...ctx, committedObserverSha256: "22".repeat(32) });
       expect(errors.join("\n")).to.match(/OBSERVER_CHANGED: re-qualify/);
+      const o = clone(observation);
+      o.source.observerScriptSha256 = "44".repeat(32);
+      const c2 = validationContext(o);
+      expect(qualificationErrors(qualificationRecordFrom(c2), c2).join("\n")).to.match(
+        /OBSERVER_CHANGED: the observation names another observer/,
+      );
+      const o2 = clone(observation);
+      o2.soaks[1].iterations[5].container.input.observerScriptSha256 = "55".repeat(32);
+      const c3 = validationContext(o2);
+      expect(qualificationErrors(qualificationRecordFrom(c3), c3).join("\n")).to.match(
+        /OBSERVER_CHANGED: a derivation in the observation was bound to another observer/,
+      );
+      const o3 = clone(observation);
+      o3.fixture.host.input.hostExecutable = { ...o3.fixture.host.input.hostExecutable, ino: 9 };
+      const c4 = validationContext(o3);
+      expect(qualificationErrors(qualificationRecordFrom(c4), c4).join("\n")).to.match(/FIXTURE_IDENTITY_MISMATCH/);
+    });
+
+    it("marks every soak's raw evidence as the operator's, and hashes the observation by its LF bytes", function () {
+      for (const s of record.soaks)
+        expect(s.rawEvidence).to.deep.equal({ retained: "OPERATOR_LOCAL", reDerivable: "OPERATOR_ONLY" });
+      const crlf = {
+        ...ctx,
+        readFile: (rel: string) => {
+          const b = ctx.readFile(rel);
+          return b !== null && rel.endsWith(".raw.json") ? Buffer.from(b.toString("utf8").replace(/\n/g, "\r\n")) : b;
+        },
+      };
+      expect(qualificationErrors(record, crlf)).to.deep.equal([]);
     });
 
     it("derives each soak's boundary from the rules it ran under, and refuses a soak labelled otherwise", function () {
@@ -984,6 +1075,85 @@ describe("SP1-PA3C-Q1 — observer qualification", function () {
         "plain",
       ]);
       expect(SOAK_VARIATIONS.length).to.be.at.least(MIN_SOAK_ITERATIONS);
+    });
+  });
+
+  // The committed record, judged from this checkout alone: the observation, the fixture (derived again here, on
+  // whatever machine runs the suite) and the observer. What public bytes can check is checked; the soaks' derivations
+  // rest on raw captures that stay with the operator, and the record says so.
+  describe("the committed record", function () {
+    const ctx = validationContextFromRepo(".");
+    const text = lf(readFileSync(QUALIFICATION_REL, "utf8"));
+    const committed = JSON.parse(text) as QualificationRecord;
+
+    it("is what the committed observation, fixture and observer derive here, now", function () {
+      expect(ctx.observations.map((o) => o.path)).to.deep.equal([
+        "evidence/zk/sp1-impl/observations/observer-qualification-developer-workstation-wsl2.raw.json",
+      ]);
+      expect(qualificationErrors(committed, ctx)).to.deep.equal([]);
+      expect(serializeQualification(qualificationRecordFrom(ctx))).to.equal(text);
+    });
+
+    it("qualifies the observer for SP1-PA3D on two agreeing soaks, ten controls and a hardened container, with no proof", function () {
+      expect(committed.state).to.equal("OBSERVER_QUALIFIED_FOR_PA3D");
+      expect(committed.blockers).to.deep.equal([]);
+      expect(committed.productionSp1Binding).to.equal("NOT_ESTABLISHED");
+      expect(committed.next?.lane).to.equal("SP1-PA3D");
+      expect(
+        committed.soaks.map((s) => [
+          s.id,
+          s.boundary,
+          s.summary.iterations,
+          s.summary.agreeing,
+          s.summary.distinctCaptures,
+          s.summary.distinctProjections,
+          s.summary.stable,
+          s.summary.stableExceptThirdPartyLeaks,
+        ]),
+      ).to.deep.equal([
+        ["A", "SELF_TEST_TABLE", 12, 12, 12, 1, false, true],
+        ["B", "COMPLETE_EGRESS_BOUNDARY", 12, 12, 12, 1, true, true],
+      ]);
+      expect(committed.soaks[0].summary.thirdPartyLeakIterations).to.deep.equal([2]);
+      expect(committed.soaks[0].summary.refusalReasons).to.deep.equal({ EGRESS_LEAKED: 1 });
+      expect(committed.soaks[1].summary.refusalReasons).to.deep.equal({});
+      const fixture = must(committed.fixture);
+      expect(fixture.reconciliation.result).to.equal("HOST_CONTAINER_OBSERVER_AGREEMENT");
+      expect(fixture.host.output.normalizedSha256).to.equal(
+        "03cef7f6586fe918ce1cc64a57e67e91bbb028a91b8d61efc6c0aac42ee96a25",
+      );
+      expect(fixture.host.environment.typescriptExecution).to.equal("tsx");
+      expect(fixture.container.environment.typescriptExecution).to.equal("node-type-stripping");
+      expect(committed.negativeControls.map((c) => c.ok)).to.deep.equal(Array(10).fill(true));
+      const c = must(committed.container);
+      expect([
+        c.facts.uid > 0,
+        c.facts.networkInterfaces,
+        c.facts.capEff,
+        c.facts.noNewPrivs,
+        c.facts.rootMount,
+      ]).to.deep.equal([true, ["lo"], "0000000000000000", 1, "ro"]);
+      expect(c.image.digest).to.match(/^sha256:[0-9a-f]{64}$/);
+      expect(c.image.registryVerification).to.include("HTTP 200");
+      expect(committed.securityFindings.some((f) => f.blocking)).to.equal(false);
+      expect(committed.components.filter((x) => x.class === "unknown-unverified")).to.deep.equal([]);
+    });
+
+    it("has the shape its JSON schema names, and the gate doc states its state and its observation", function () {
+      const schema = JSON.parse(lf(readFileSync(QUALIFICATION_JSON_SCHEMA_REL, "utf8"))) as {
+        required: string[];
+        properties: Record<string, unknown>;
+      };
+      expect(Object.keys(committed).sort()).to.deep.equal([...schema.required].sort());
+      expect(Object.keys(schema.properties).sort()).to.deep.equal([...schema.required].sort());
+      const doc = lf(readFileSync("docs/SP1_Circuit_Install_And_Archive_Only_Prove_Gate.md", "utf8"));
+      expect(doc.split("\n")[0]).to.include("SP1-PA3C-Q1");
+      const start = doc.indexOf("\n## SP1-PA3C-Q1");
+      expect(start).to.be.greaterThan(0);
+      const section = doc.slice(start, doc.indexOf("\n## ", start + 5));
+      expect(section).to.include(`State: \`${committed.state}\``);
+      expect(section).to.include("`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`");
+      expect(section).to.include(committed.derivedFrom[0].sha256);
     });
   });
 });

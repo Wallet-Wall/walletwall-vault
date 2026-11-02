@@ -263,6 +263,8 @@ export interface DerivationOutput {
 }
 
 const OWN_SCOPES: readonly string[] = ["TOOL", "PROOF", "PROOF_CONTAINER"];
+/** The scopes a leak may have for "another process" to be named: a KERNEL- or OTHER-scope attempt, with its frame. */
+const EXCUSABLE_LEAK_SCOPES: readonly string[] = ["KERNEL", "OTHER", "FRAME"];
 
 function rawRefusalReason(message: string): string {
   if (/manifest/.test(message)) return "RAW_NOT_BOUND";
@@ -572,9 +574,13 @@ interface DockerRun {
 
 /** A `docker run` argv read as docker reads it: options (with or without `=`), then the image, then the command. */
 export function parseDockerRun(argv: readonly string[]): DockerRun {
-  const tokens = argv.flatMap((t) =>
-    t.startsWith("--") && t.includes("=") ? [t.slice(0, t.indexOf("=")), t.slice(t.indexOf("=") + 1)] : [t],
-  );
+  const tokens = argv.flatMap((t) => {
+    if (t.startsWith("--") && t.includes("=")) return [t.slice(0, t.indexOf("=")), t.slice(t.indexOf("=") + 1)];
+    // A shorthand with its value attached (`-v/a:/b`, `-v=/a:/b`), as docker reads it.
+    const short = /^(-[a-zA-Z])=?(.+)$/.exec(t);
+    if (short !== null && VALUE_OPTIONS.has(short[1])) return [short[1], short[2]];
+    return [t];
+  });
   const run = tokens.indexOf("run");
   if (tokens[0] !== "docker" || run !== 1) {
     return { flags: [], pairs: [], image: null, command: [], error: "not a docker run command" };
@@ -634,25 +640,38 @@ export function environmentErrors(env: EnvironmentIdentity): string[] {
     if (run.error !== null) errors.push(`CONTAINER_NOT_HARDENED: ${run.error}`);
     const values = (opt: string[]) => run.pairs.filter(([k]) => opt.includes(k)).map(([, v]) => v);
     const networks = values(["--network", "--net"]);
-    if (!networks.includes("none")) errors.push("CONTAINER_NOT_HARDENED: --network none is missing");
-    if (networks.includes("host") || run.flags.includes("--net=host"))
+    if (networks.length !== 1 || networks[0] !== "none")
+      errors.push(
+        `CONTAINER_NOT_HARDENED: --network none is missing or not the only network (${networks.join(", ") || "none given"})`,
+      );
+    if (networks.some((v) => v === "host" || v.startsWith("container:")))
       errors.push("CONTAINER_NOT_HARDENED: host networking");
     if (!run.flags.includes("--read-only")) errors.push("CONTAINER_NOT_HARDENED: --read-only is missing");
     if (!values(["--cap-drop"]).includes("ALL")) errors.push("CONTAINER_NOT_HARDENED: --cap-drop ALL is missing");
     if (!values(["--security-opt"]).some((v) => /^no-new-privileges(:true)?$/.test(v)))
       errors.push("CONTAINER_NOT_HARDENED: --security-opt no-new-privileges is missing");
-    if (!values(["--user", "-u"]).some((v) => /^[1-9]\d*:[1-9]\d*$/.test(v)))
-      errors.push("CONTAINER_NOT_HARDENED: --user <non-root uid>:<gid> is missing");
+    const users = values(["--user", "-u"]);
+    if (users.length !== 1 || !/^[1-9]\d*:[1-9]\d*$/.test(users[0]))
+      errors.push("CONTAINER_NOT_HARDENED: --user <non-root uid>:<gid> is missing, repeated, or root");
     if (!values(["--pids-limit"]).some((v) => /^[1-9]\d*$/.test(v)))
       errors.push("CONTAINER_NOT_HARDENED: --pids-limit is missing");
     if (run.flags.includes("--privileged") || c.runOptions.includes("--privileged"))
       errors.push("CONTAINER_NOT_HARDENED: --privileged");
+    for (const opt of ["--cap-add", "--device", "--group-add", "--sysctl", "--volumes-from"]) {
+      if (run.pairs.some(([k]) => k === opt)) errors.push(`CONTAINER_NOT_HARDENED: ${opt} is given`);
+    }
+    if (values(["--pid", "--ipc", "--uts", "--cgroupns", "--userns"]).includes("host"))
+      errors.push("CONTAINER_NOT_HARDENED: a host namespace is shared");
+    if (values(["--security-opt"]).some((v) => /unconfined|label=disable/.test(v)))
+      errors.push("CONTAINER_NOT_HARDENED: a security profile is unconfined");
     if (c.runOptions.some((t) => t.includes("docker.sock")))
       errors.push("CONTAINER_NOT_HARDENED: docker.sock is mounted");
     if (run.pairs.some(([k]) => ["--env", "-e", "--env-file"].includes(k)))
       errors.push("CONTAINER_NOT_HARDENED: environment variables are passed in");
     for (const v of values(["-v", "--volume"])) {
       const [src, dst, opts] = v.split(":");
+      if (/^\/(?:var\/)?run(?:\/|$)/.test(src ?? ""))
+        errors.push(`CONTAINER_NOT_HARDENED: a runtime socket directory is mounted (${src})`);
       // A home directory itself, or a dotfile store under one (.ssh, .docker, .aws, .npmrc ...), never enters the
       // container; a plain working directory under a home may (the operator's source export, inputs and outputs).
       const home = /^(?:\/(?:home\/[^/]+|root)|\/mnt\/[a-z]\/Users\/[^/]+)(?=\/|$)/.exec(src ?? "");
@@ -788,6 +807,8 @@ export interface SoakSummary {
   distinctCaptures: number;
   distinctProjections: number;
   agreeing: number;
+  /** Iterations whose host derivation is a HOST environment and whose container derivation is the hardened container. */
+  environmentsHardened: number;
   variations: string[];
   refusalReasons: Record<string, number>;
   /** Iterations refused only as EGRESS_LEAKED by attempts outside the workload's scopes (another process's egress). */
@@ -805,6 +826,7 @@ export function soakSummaryOf(iterations: readonly SoakIteration[], boundary: So
   let refusalFree = 0;
   let clean = 0;
   let agreeing = 0;
+  let environmentsHardened = 0;
   const captures = new Map<string, number[]>();
   const projections = new Set<string>();
   const refusalReasons: Record<string, number> = {};
@@ -822,7 +844,12 @@ export function soakSummaryOf(iterations: readonly SoakIteration[], boundary: So
       const scopes = j === null ? [] : Object.keys(j.leaksByScope).sort();
       const onlyLeaks = reasons.length === 1 && reasons[0] === "EGRESS_LEAKED";
       const ownIntact = j !== null && j.ownAttempts.length > 0 && j.ownAttempts.every((x) => x.outcome === "REFUSED");
-      const noOwnLeak = scopes.length > 0 && scopes.every((s) => !OWN_SCOPES.includes(s));
+      // "Another process" must be seen as one: a KERNEL- or OTHER-scope attempt made the leak. A frame alone (no
+      // attempt joined) names nothing and is not excused; nor is a leak by the observer, the tool, the host or a container.
+      const noOwnLeak =
+        scopes.length > 0 &&
+        scopes.every((s) => EXCUSABLE_LEAK_SCOPES.includes(s)) &&
+        scopes.some((s) => s === "KERNEL" || s === "OTHER");
       if (onlyLeaks && ownIntact && noOwnLeak) {
         thirdParty.push(it.n);
         because.push(
@@ -853,6 +880,19 @@ export function soakSummaryOf(iterations: readonly SoakIteration[], boundary: So
       const paths = r.differences.filter((d) => d.class !== "EXPECTED_ENVIRONMENT_IDENTITY").map((d) => d.path);
       because.push(`iteration ${it.n}: host and container disagree (${paths.join(", ")})`);
     }
+    const hostEnvErrors =
+      it.host.environment.kind === "HOST"
+        ? environmentErrors(it.host.environment)
+        : ["ENVIRONMENT_KIND: the host derivation is not a HOST environment"];
+    const containerEnvErrors =
+      it.container.environment.kind === "CONTAINER"
+        ? environmentErrors(it.container.environment)
+        : ["ENVIRONMENT_KIND: the container derivation is not a CONTAINER environment"];
+    if (hostEnvErrors.length === 0 && containerEnvErrors.length === 0) environmentsHardened++;
+    else
+      because.push(
+        `iteration ${it.n}: environments not as required (${[...hostEnvErrors, ...containerEnvErrors].join("; ")})`,
+      );
     const digest = it.host.output.normalizedSha256;
     if (digest !== null) captures.set(digest, [...(captures.get(digest) ?? []), it.n]);
     const p = it.host.output.stableProjectionSha256;
@@ -868,6 +908,7 @@ export function soakSummaryOf(iterations: readonly SoakIteration[], boundary: So
     exitZero === n &&
     clean === n &&
     agreeing === n &&
+    environmentsHardened === n &&
     captures.size === n &&
     projections.size === 1 &&
     first !== null;
@@ -880,6 +921,7 @@ export function soakSummaryOf(iterations: readonly SoakIteration[], boundary: So
     distinctCaptures: captures.size,
     distinctProjections: projections.size,
     agreeing,
+    environmentsHardened,
     variations: [...new Set(iterations.map((i) => i.variation))],
     refusalReasons,
     thirdPartyLeakIterations: thirdParty,
@@ -1222,7 +1264,7 @@ export const SECURITY_FINDINGS: readonly Omit<SecurityFinding, "evidence">[] = [
     severity: "LOW",
     blocking: false,
     finding:
-      "The proving host is not quiet: its own daemons egress during observation windows. Under the self-test table (TEST-NET-1 and the resolvers refused, nothing else) one soak iteration saw the host's chronyd send one NTP datagram to a public time server inside the window, and the derivation refused that capture as EGRESS_LEAKED, as it must under a table that refuses no real egress; the workload's own attempts were refused and reconciled as in every other iteration. Under the complete egress boundary (SP1-PA3B's, which SP1-PA3D runs under) the same traffic is refused, counted and attributed to another scope, never a leak.",
+      "The proving host is not quiet: its own daemons egress during observation windows. Under the self-test table (TEST-NET-1 and the resolvers refused, nothing else) one soak iteration's capture was refused as EGRESS_LEAKED, as it must under a table that refuses no real egress: a KERNEL-scope attempt inside the window, and the frame it left through the uplink; the workload's own attempts were refused and reconciled as in every other iteration. The operator's inspection of that raw capture (operator-local, not committed) identified the sender as the host's chronyd sending one NTP datagram to a public time server; the committed derivation records the scopes and the refusal, not the process. Under the complete egress boundary (SP1-PA3B's, which SP1-PA3D runs under) the same traffic is refused, counted and attributed to another scope, never a leak.",
     disposition:
       "ACCEPTED_AS_MEASURED: the observer detected and attributed it; a SP1-PA3D run should expect refused attempts of other scopes (quieting chronyd first is an owner choice, not a requirement)",
     carriedForwardFrom: null,
@@ -1245,6 +1287,8 @@ export interface RecordSoak {
   startedAtUtc: string;
   finishedAtUtc: string;
   table: Soak["table"];
+  /** The soak's raw captures stay with the operator: its derivations are re-derivable there alone. */
+  rawEvidence: { retained: "OPERATOR_LOCAL"; reDerivable: "OPERATOR_ONLY" };
   iterations: {
     n: number;
     variation: string;
@@ -1428,6 +1472,7 @@ function recordSoaksOf(o: QualificationObservation): RecordSoak[] {
     startedAtUtc: s.startedAtUtc,
     finishedAtUtc: s.finishedAtUtc,
     table: s.table,
+    rawEvidence: { retained: "OPERATOR_LOCAL" as const, reDerivable: "OPERATOR_ONLY" as const },
     iterations: s.iterations.map((it) => ({
       n: it.n,
       variation: it.variation,
@@ -1562,7 +1607,8 @@ export function qualificationRecordFrom(ctx: ValidationContext): QualificationRe
     ],
     derivedFrom: ctx.observations.map((x) => {
       const bytes = ctx.readFile(x.path);
-      return { path: x.path, sha256: bytes === null ? "missing" : sha256Hex(bytes) };
+      // LF bytes, as every other pinned file: a CRLF checkout reads back to the committed digest.
+      return { path: x.path, sha256: bytes === null ? "missing" : sha256Hex(lf(bytes.toString("utf8"))) };
     }),
   };
 }
@@ -1636,12 +1682,23 @@ export function qualificationErrors(value: unknown, ctx: ValidationContext): str
   }
   const o = ctx.observations[0]?.observation;
   if (o !== undefined) {
+    if (o.source.observerScriptSha256 !== ctx.committedObserverSha256)
+      errors.push("OBSERVER_CHANGED: the observation names another observer than the committed one");
+    const bound = [
+      o.fixture.host,
+      o.fixture.container,
+      ...o.soaks.flatMap((s) => s.iterations.flatMap((it) => [it.host, it.container])),
+    ];
+    if (bound.some((d) => d.input.observerScriptSha256 !== ctx.committedObserverSha256))
+      errors.push("OBSERVER_CHANGED: a derivation in the observation was bound to another observer");
+    if (canonicalJson(o.fixture.host.input.hostExecutable) !== canonicalJson(FIXTURE_HOST_EXECUTABLE))
+      errors.push("FIXTURE_IDENTITY_MISMATCH: the observation derived the fixture with another stand-in host identity");
     const raw = fixtureRawFrom(ctx.readFile);
     if (raw === null) errors.push("FIXTURE_MISSING: the committed self-test capture is not there");
     else {
       const rerun = runNegativeControls({
         raw,
-        hostExecutable: o.fixture.host.input.hostExecutable,
+        hostExecutable: FIXTURE_HOST_EXECUTABLE,
         committedObserverSha256: ctx.committedObserverSha256,
         host: o.fixture.host,
         container: o.fixture.container,
@@ -1690,7 +1747,8 @@ export function qualificationErrors(value: unknown, ctx: ValidationContext): str
   if (Array.isArray(r.derivedFrom)) {
     for (const d of r.derivedFrom) {
       const bytes = ctx.readFile(d.path);
-      if (bytes === null || sha256Hex(bytes) !== d.sha256) errors.push(`DERIVED_FROM_MISMATCH: ${d.path}`);
+      if (bytes === null || sha256Hex(lf(bytes.toString("utf8"))) !== d.sha256)
+        errors.push(`DERIVED_FROM_MISMATCH: ${d.path}`);
     }
   }
   return [...new Set(errors)];
