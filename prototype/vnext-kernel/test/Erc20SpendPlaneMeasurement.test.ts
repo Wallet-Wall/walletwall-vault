@@ -212,7 +212,9 @@ describe("ERC-20 spend plane — byte measurement", function () {
       const names = (factory.abi as { type?: string; name?: string }[])
         .filter((f) => f.type === "function")
         .map((f) => f.name!);
-      expect(names.filter((n) => /^set|admin|owner|pause|upgrade|register/i.test(n))).to.deep.equal([]);
+      expect(names.filter((n) => n.startsWith("set") || /admin|owner|pause|upgrade|register/i.test(n))).to.deep.equal(
+        [],
+      );
       expect(names).to.include("admittedAsset");
     });
   });

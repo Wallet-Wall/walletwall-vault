@@ -19,15 +19,23 @@ import { compileGen1Baseline, compilePlane, measurePlane, PLANE_RECORD_JSON } fr
 const WARNING =
   "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. Measurement candidates for a FUTURE kernel generation; the admitted asset in every test is a local mock, and nothing here authorises real value.";
 
+/** The committed record, or an empty object when none exists yet: read once, inside the try, so there is no check-then-use. */
+function readExistingRecord(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(PLANE_RECORD_JSON, "utf8")) as Record<string, unknown>;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
+  }
+}
+
 function main(): void {
   const bytes = measurePlane(compilePlane(), compileGen1Baseline());
   if (!process.argv.includes("--write")) {
     console.log(JSON.stringify(bytes, null, 2));
     return;
   }
-  const existing = fs.existsSync(PLANE_RECORD_JSON)
-    ? (JSON.parse(fs.readFileSync(PLANE_RECORD_JSON, "utf8")) as Record<string, unknown>)
-    : {};
+  const existing = readExistingRecord();
   const record = {
     _WARNING: WARNING,
     _CUSTODY_DOC:
