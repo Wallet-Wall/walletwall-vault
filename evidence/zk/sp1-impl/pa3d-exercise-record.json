@@ -30,6 +30,12 @@
     "verdict": "PA3D_PREPROOF_ENVIRONMENT_VALID",
     "measuredAtUtc": "2026-11-02T03:13:52Z"
   },
+  "provenance": {
+    "laneCheckout": "23a364fb23affebb75f4094253c34787108080c7",
+    "manifestInLaneCheckout": true,
+    "runLaneCheckout": "9fab1a688d016e3050129360619bb8579de7fc4b",
+    "attestationInRunCheckout": true
+  },
   "exercise": {
     "token": "45aa26274d265d3f",
     "run": {
@@ -58,7 +64,8 @@
         "unattributedEvents": 19,
         "unattributedOutsideWindow": 0,
         "unknownOutcomes": 0,
-        "unseenDestinations": 10
+        "unseenDestinations": 10,
+        "otherNamespaceEgress": 3
       }
     },
     "proof": {
@@ -101,11 +108,25 @@
         "detail": "the attestation is of this manifest, VALID, and attests a clean checkout of the source commit"
       },
       {
+        "id": "MANIFEST_IN_ATTESTED_CHECKOUT",
+        "from": "the lane checkout the attestation names (23a364fb23affebb75f4094253c34787108080c7)",
+        "to": "manifest 356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f",
+        "holds": true,
+        "detail": "commit 23a364fb23affebb75f4094253c34787108080c7 is an ancestor of this checkout and holds the manifest at its committed digest: the attestation was made from a checkout holding this manifest"
+      },
+      {
         "id": "SOURCE_TO_RUN",
         "from": "source commit debed530c3ff72eda6785bfcadd46595a0c98b69",
         "to": "run observation 45aa26274d265d3faffbe326106a259b3dce22e899077a188319da6eb7f289e3 (evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json)",
         "holds": true,
         "detail": "the run was made from the source commit, on the manifest's host, by the committed attributed tool, and its exercise is accepted"
+      },
+      {
+        "id": "ATTESTATION_IN_RUN_CHECKOUT",
+        "from": "the lane checkout the run's platform lines name (9fab1a688d016e3050129360619bb8579de7fc4b)",
+        "to": "pre-proof attestation ec167ef17261883e19ec28f6ac245a5ca1d59fd56eea57f78b1b01abadbacc79",
+        "holds": true,
+        "detail": "commit 9fab1a688d016e3050129360619bb8579de7fc4b is an ancestor of this checkout and holds the attestation at its committed digest: the run names a checkout in which the VALID attestation already stood"
       },
       {
         "id": "PROGRAM_TO_RUN",
@@ -151,10 +172,10 @@
       },
       {
         "id": "ATTRIBUTION_RESIDUE",
-        "from": "the run's 162 attempts and 237 refused packets",
-        "to": "residue: 19 refused packets no attempt sent, 10 sends of unseen destination, 0 unknown outcomes, 0 unattributed outside the window",
+        "from": "the run's 162 attempts in the window and 237 refused packets",
+        "to": "residue: 19 refused packets no attempt sent, 10 sends of unseen destination, 3 other-namespace sends or connects beyond the VM, 0 unknown outcomes, 0 unattributed outside the window",
         "holds": true,
-        "detail": "attribution is PARTIAL: every attempt in the window has a seen outcome; the 19 refused packet(s) no observed attempt sent were refused by the boundary, not sent past it, and the 10 send(s) of unseen destination are counted as the method's residue (packet, raw or AF_XDP sockets, whose destination the capture cannot read); complete attribution is not claimed"
+        "detail": "attribution is PARTIAL: no attempt to a resolver, and none from the host namespace to beyond the VM, has an unseen outcome, the classes the frozen derivation judges; the residue it does not judge is counted, not excused: 19 refused packet(s) that no observed attempt sent (refused by the boundary, not sent past it), 10 send(s) of unseen destination (packet, raw or AF_XDP sockets, whose destination the capture cannot read), 3 send(s) or connect(s) from namespaces neither the host's nor the proof container's to addresses beyond the VM that were sent or closed and never refused (an exit the inet boundary does not see); complete attribution is not claimed"
       },
       {
         "id": "QUALIFICATION_TO_OBSERVER",
@@ -168,14 +189,14 @@
         "from": "planned boundary COMPLETE_EGRESS_BOUNDARY",
         "to": "the run's table (COMPLETE_EGRESS_BOUNDARY) and condition EGRESS_DISABLED",
         "holds": true,
-        "detail": "the complete egress boundary stood and every one of the 16 edge probes was refused"
+        "detail": "the complete egress boundary stood, classified from the rules the observer recorded in every snapshot, and every one of the 16 edge probes was refused"
       },
       {
         "id": "MANIFEST_BEFORE_PROOF",
         "from": "manifest started 2026-11-02T03:03:04Z",
         "to": "proof gate 2026-11-02T03:20:25Z .. 2026-11-02T03:31:49Z (686 s)",
         "holds": true,
-        "detail": "the manifest was authored before the proof began"
+        "detail": "the manifest's start stamp precedes the gate's (the stamps are the operator's; the ancestry links above bind the order by commits)"
       }
     ],
     "holds": true,
@@ -203,6 +224,9 @@
       "expected": "REJECTED",
       "expectedRefusal": "ProofInvalid",
       "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
       "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof with one byte flipped, asked of the designated verifier on a development chain)"
     },
     {
@@ -211,6 +235,9 @@
       "expected": "REJECTED",
       "expectedRefusal": "ProofInvalid",
       "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
       "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof under a wrong program verifying key)"
     },
     {
@@ -219,6 +246,9 @@
       "expected": "REJECTED",
       "expectedRefusal": "ProofInvalid",
       "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
       "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof over wrong public values (the last bit flipped))"
     },
     {
@@ -227,6 +257,9 @@
       "expected": "REJECTED",
       "expectedRefusal": "revert",
       "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
       "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof truncated by its last byte)"
     },
     {
@@ -235,6 +268,9 @@
       "expected": "REJECTED",
       "expectedRefusal": "revert",
       "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
       "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof with its four-byte selector replaced)"
     },
     {
@@ -243,6 +279,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "INPUTS_TO_RUN",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "INPUTS_TO_RUN"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; INPUTS_TO_RUN: the run read other inputs"
     },
     {
@@ -251,6 +291,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "STATEMENT_TO_PUBLIC_VALUES",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "STATEMENT_TO_PUBLIC_VALUES"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; STATEMENT_TO_PUBLIC_VALUES: the proof commits to other public values (64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db; recomputed 64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db)"
     },
     {
@@ -259,6 +303,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "PROOF_TO_VERIFICATION",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "PROOF_TO_VERIFICATION"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; PROOF_TO_VERIFICATION: the verification names other proof digests"
     },
     {
@@ -267,6 +315,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "SOURCE_TO_RUN",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "SOURCE_TO_RUN"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; SOURCE_TO_RUN: the run is walletwall.sp1-proof-exercise-run.v1, not v2"
     },
     {
@@ -275,6 +327,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "SOURCE_TO_RUN",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "SOURCE_TO_RUN"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; SOURCE_TO_RUN: the run was made from 0000000000000000000000000000000000000000"
     },
     {
@@ -283,6 +339,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "QUALIFICATION_TO_OBSERVER",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "QUALIFICATION_TO_OBSERVER"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; QUALIFICATION_TO_OBSERVER: the run was watched by an observer other than the qualified one"
     },
     {
@@ -291,6 +351,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "PA3D_PREPROOF_ENVIRONMENT_REFUSED",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PREPROOF_ENVIRONMENT_REFUSED",
+        "MANIFEST_TO_ATTESTATION"
+      ],
       "refusal": "PA3D_PREPROOF_ENVIRONMENT_REFUSED; MANIFEST_TO_ATTESTATION: the attestation is PA3D_PREPROOF_ENVIRONMENT_REFUSED"
     },
     {
@@ -299,6 +363,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "PROOF_TO_VERIFICATION",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "PROOF_TO_VERIFICATION"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; PROOF_TO_VERIFICATION: the designated verifier did not accept (REJECTED)"
     },
     {
@@ -307,6 +375,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "OBSERVATIONS_TO_RECORD",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "OBSERVATIONS_TO_RECORD"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; OBSERVATIONS_TO_RECORD: the record's egress assurance is EDGE_PROBES_ONLY (continuous observation ABSENT, enforcement STATED, edge probes REFUSED_BEFORE_AND_AFTER): not continuous, counted and observed"
     },
     {
@@ -315,7 +387,11 @@
       "expected": "REFUSED",
       "expectedRefusal": "ATTRIBUTION_RESIDUE",
       "outcome": "REFUSED",
-      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; ATTRIBUTION_RESIDUE: 1 attempt(s) to a resolver or beyond the VM have no seen outcome: a packet may have passed the boundary unobserved"
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "ATTRIBUTION_RESIDUE"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; ATTRIBUTION_RESIDUE: 1 attempt(s) to a resolver, or from the host namespace to beyond the VM, have no seen outcome: a packet may have passed the boundary unobserved"
     },
     {
       "id": "NC-R10",
@@ -323,6 +399,10 @@
       "expected": "REFUSED",
       "expectedRefusal": "MANIFEST_BEFORE_PROOF",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "MANIFEST_BEFORE_PROOF"
+      ],
       "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; MANIFEST_BEFORE_PROOF: the proof began before the manifest was authored"
     },
     {
@@ -331,6 +411,9 @@
       "expected": "REFUSED",
       "expectedRefusal": "PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE",
       "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE"
+      ],
       "refusal": "PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE"
     }
   ],
@@ -360,6 +443,6 @@
       "sha256": "61aa350174d0527cbbd3bc1e46fec6ee3f71f276cfd89354f679dd31db295ac0"
     }
   ],
-  "establishes": "one real Groth16 proof of the designated program was made from the manifest's source commit, on the manifest's host, by the committed attributed measurement under the qualified root observer and the complete egress boundary, from the archive-only circuit with the digest-pinned gnark image and the canonical host binary, on the committed inputs; it commits to the statement's public values; the designated verifier accepted it and refused its tampered copy on a development chain; the v2 record derives from the two observations with continuous observation and counted enforcement, its process attribution complete or partial as that record states (the residue, refused packets no attempt sent and sends of unseen destination, counted and named, no attempt of unknown outcome); and every link from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the observer qualification compares equal committed digests",
-  "doesNotEstablish": "any production binding (PRODUCTION_SP1_BINDING = NOT_ESTABLISHED): no production verifier, Solidity, custody or policy semantics changed, no mainnet call was made; nor proof-byte determinism (one proof was authorized, Groth16 proving is randomized); nor more than the v2 record's own egress assurance states (the raw capture stays with the operator and is re-checkable only by someone given it); nor the soundness of the Groth16 trusted setup behind the key; nor that this environment proves within the rotation delay at another time"
+  "establishes": "one real Groth16 proof of the designated program was made from the manifest's source commit, on the manifest's host, by the committed attributed measurement under the qualified root observer and the complete egress boundary, from the archive-only circuit with the digest-pinned gnark image and the canonical host binary, on the committed inputs; it commits to the statement's public values; the designated verifier accepted it and refused its tampered copy on a development chain; the v2 record derives from the two observations with continuous observation and counted enforcement, its process attribution complete or partial as that record states, with no attempt to a resolver and none from the host namespace to beyond the VM of unseen outcome, and the residue the derivation does not judge (refused packets no attempt sent, sends of unseen destination, other-namespace sends beyond the VM) counted and named; the manifest stood in the checkout the attestation names and the attestation in the checkout the run names, each an ancestor of the checkout that validates; and every link from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the observer qualification compares equal committed digests",
+  "doesNotEstablish": "any production binding (PRODUCTION_SP1_BINDING = NOT_ESTABLISHED): no production verifier, Solidity, custody or policy semantics changed, no mainnet call was made; nor proof-byte determinism (one proof was authorized, Groth16 proving is randomized); nor complete process attribution where the v2 record states it partial; nor that nothing left the virtual machine by a path the inet boundary does not see (other namespaces' sends counted as residue left by vsock or a second runtime's network, and frames outside the inet family are not filtered by the table); nor more than the v2 record's own egress assurance states (the raw capture stays with the operator and is re-checkable only by someone given it); nor the soundness of the Groth16 trusted setup behind the key; nor that this environment proves within the rotation delay at another time"
 }
