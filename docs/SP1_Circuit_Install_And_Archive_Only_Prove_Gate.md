@@ -1867,6 +1867,8 @@ proof truncated by a byte and another selector (each a revert, never success). T
   the soundness of the trusted setup behind the key; that this environment proves within the rotation delay at
   another time; that the observer tooling's RUN-mode shutdown is sound (PA3D-F1).
 - Next lane: SP1-PA3E, a design review of what this exercise and its findings mean for the path forward; not begun here.
+  Written afterwards as [SP1_Production_Binding_Design.md](SP1_Production_Binding_Design.md), which adjudicates every
+  residue above (design only; `PRODUCTION_SP1_BINDING = NOT_ESTABLISHED`).
 
 ## Limits
 

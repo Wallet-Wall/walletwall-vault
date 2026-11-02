@@ -1,6 +1,6 @@
 {
   "name": "walletwall-vault",
-  "version": "0.13.36",
+  "version": "0.13.37",
   "description": "Research prototype: hybrid classical (ECDSA) + post-quantum withdrawal-authorization vault. Not audited. Testnet/local only.",
   "type": "module",
   "main": "index.js",
@@ -78,6 +78,7 @@
     "validate:sp1-pa3d-manifest": "tsx scripts/generate-sp1-pa3d-manifest.ts --validate",
     "sp1:pa3d-record": "tsx scripts/generate-sp1-pa3d-record.ts",
     "validate:sp1-pa3d-record": "tsx scripts/generate-sp1-pa3d-record.ts --validate",
+    "validate:sp1-pa3e-design": "tsx scripts/validate-sp1-pa3e-design.ts",
     "presp1-impl:receipt": "hardhat compile",
     "sp1-impl:receipt": "tsx scripts/generate-sp1-impl-receipt.ts",
     "prevalidate:sp1-impl-receipt": "hardhat compile",

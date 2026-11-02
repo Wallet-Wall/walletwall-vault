@@ -59,4 +59,5 @@ attestation → ZK/native, and [Security_Assumptions.md](Security_Assumptions.md
 
 - [Open_PQ_Verifier.md](Open_PQ_Verifier.md) · [Verifier_Result_Schema.md](Verifier_Result_Schema.md) · [PQ_Verifier_Evidence_Artifact.md](PQ_Verifier_Evidence_Artifact.md)
 - [SP1_Smoke_Lane.md](SP1_Smoke_Lane.md) · [ZK_Prover_Runbook.md](ZK_Prover_Runbook.md) · [ZK_Verifier_Production.md](ZK_Verifier_Production.md) · [ZK_Verifier_Feasibility.md](ZK_Verifier_Feasibility.md)
+- [SP1_Production_Binding_Design.md](SP1_Production_Binding_Design.md): SP1-PA3E, the production-binding design review and threat model (design only; `PRODUCTION_SP1_BINDING = NOT_ESTABLISHED`)
 - [Verifier_Roadmap.md](Verifier_Roadmap.md) · [WALLETWALL_APP_BOUNDARY.md](WALLETWALL_APP_BOUNDARY.md) · [Deployments.md](Deployments.md)
