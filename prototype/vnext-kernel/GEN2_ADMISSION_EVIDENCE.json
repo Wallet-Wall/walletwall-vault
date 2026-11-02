@@ -1,0 +1,2849 @@
+{
+  "schema": "vnext-kernel-gen2-admission-evidence.v1",
+  "_WARNING": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. Admission of a kernel candidate approves no asset, no network and no real value.",
+  "evidenceSubject": {
+    "head": "19cca198071a6ace73bd790321c983e4fdb63b1d",
+    "tree": "500b780160b5d201dfbfac682ae44c8a09a3e36e"
+  },
+  "subjectInputs": {
+    "prototype/vnext-kernel/generation-2/ADMISSION_CRITERIA.json": "88cf1104c3d43af6c1166b5b35c815d2a4af50e5afe0b478ee9fdb57f6a42ddc",
+    "prototype/vnext-kernel/generation-2/GEN2_GAS_RECORD.json": "e4323c6b90e4db989e60a4e0bcb62a9a1882299edf6e33d3ed59ab0ac6afd1d5",
+    "prototype/vnext-kernel/generation-2/GEN2_RUN_RECORD.json": "5d2df475754e82c75f4db341cf4b4f7cc49cf34bc53a82055f6b8d55805777dc",
+    "prototype/vnext-kernel/generation-2/admission-matrix.ts": "2d682a00f785538e57afd18f0c9eaa83b8cac8b8cace3b75b72013dc02681c3c",
+    "prototype/vnext-kernel/generation-2/authority/census.ts": "0d1042f73d7bbdaffd0fd2ff4c55c88cca0a71acb189a54d1bc8963a528d14a6",
+    "prototype/vnext-kernel/generation-2/authority/gen2-authority-manifest.json": "69946ea1adc964315a8e4a0db775ef4436811933628975485440ab1d18b09172",
+    "prototype/vnext-kernel/generation-2/compile.ts": "56b5025d6e272aa32e33df8e52276cb63c2d4049233c56fe06a845ecee07eca7",
+    "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol": "6fbed9daa76dee51c753ae2d7ee15cbbd21f47238d577d49f72f082ca44cf71c",
+    "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol": "af816868bcc5f134d2fbfd97607676633e8350e48858b2dfae41d1f3ab0c0fdd",
+    "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol": "64d68a44c7f8c76a3d2314f6ca220b197da382863ca145624be9eb33e3dd4877",
+    "prototype/vnext-kernel/generation-2/contracts/interfaces/IKernelPlanes.sol": "b854520d71c2ff1b52273fdf82a78b98f40cf060deb2839e8dc97c80a2d271cc",
+    "prototype/vnext-kernel/generation-2/generate-evidence.ts": "d073e64bbd5e7cb011b042bb66eb2a943d38fd3e7b7cd1a4343c6e98f8c07a32",
+    "prototype/vnext-kernel/generation-2/identity.ts": "38fabee9e3a9b1e6fdc40891bc547943e605e9874015d2c5365f8b59b6ba18c3",
+    "prototype/vnext-kernel/generation-2/run-record.ts": "ff1809f9db29bfcf2b55a4114c7a6234aff7f22f3e9793e2073c397cc9531ce5",
+    "prototype/vnext-kernel/generation-2/scanner-run.json": "9ae49c38ae2822e01afebac4448b9f49e95728ec2a9a109f94869dfd070072f1",
+    "prototype/vnext-kernel/generation-2/scanner.ts": "d6ab3ee8d473fa8968727783cb6f2474e25e5cde3074ae861864514adf2e95a9",
+    "prototype/vnext-kernel/generation-2/stateful/actions.ts": "48a4272167b18658f6530c7a8d0091502312866fec939698a16bf37a0cf9f899",
+    "prototype/vnext-kernel/generation-2/stateful/campaign.ts": "381345e6a8c4f2dbd03081350cb3a1a2deea6bc20e1351cc1c39c6fb138cae02",
+    "prototype/vnext-kernel/generation-2/stateful/invariants.ts": "104b127eb6c9f1954abd414072ba91c3faa5686801d714c72b40bd17e9442509",
+    "prototype/vnext-kernel/generation-2/stateful/mutants.ts": "f3d9841c7fb606341b91f70d509164d4b340ae0904051cab3c9fdf5832fe818d",
+    "prototype/vnext-kernel/generation-2/stateful/profiles.ts": "fb8cec3fd38f15749ba38fe6ddd692422b88e90ce685aac917cadd7d23a960ca",
+    "prototype/vnext-kernel/generation-2/test/Gen2MutationAdequacy.test.ts": "dea87205931666786ae627b40dd495cbc2ef594c0960c8563c3dc72b605ce4b1",
+    "prototype/vnext-kernel/generation-2/test/Gen2StatefulCampaign.test.ts": "2f7ed847d4dc4bf09167d28930c40aa18e9c978dcc9121945474e47b10b802ea",
+    "prototype/vnext-kernel/generation-2/world.ts": "6b1002c8d7d6623757e0374d603c02afd30fd55f6d15ed1de96f925bb9592762"
+  },
+  "verdict": "GEN2_ADMISSION_BLOCKED",
+  "executionProblems": [],
+  "separately": {
+    "PRODUCTION_BASE_USDC": "NOT_ADMITTED",
+    "MAINNET_REAL_FUNDS": "NOT_APPROVED"
+  },
+  "neutralGates": [
+    "LEGAL_REVIEW_REQUIRED",
+    "SANCTIONS_CONTROL_REVIEW_REQUIRED",
+    "PAYMENTS_PROVIDER_APPROVAL_REQUIRED_IF_APPLICABLE"
+  ],
+  "evidenceRoot": "784dc98ecf053aa02a3b83fd8569ccb2f5f50793b45173577e18561dfa4c611d",
+  "identity": {
+    "schema": "vnext-kernel-gen2-candidate-identity.v1",
+    "warning": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. An admission candidate is not approved for any network or any real value.",
+    "sourceTree": [
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol",
+        "sha256": "64d68a44c7f8c76a3d2314f6ca220b197da382863ca145624be9eb33e3dd4877"
+      },
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol",
+        "sha256": "af816868bcc5f134d2fbfd97607676633e8350e48858b2dfae41d1f3ab0c0fdd"
+      },
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/interfaces/IKernelPlanes.sol",
+        "sha256": "b854520d71c2ff1b52273fdf82a78b98f40cf060deb2839e8dc97c80a2d271cc"
+      }
+    ],
+    "verifierClassSource": {
+      "path": "prototype/vnext-kernel/contracts/ImmutableAttestationVerifierFactoryPrototype.sol",
+      "sha256": "248a6f9b3c6d374c257a267424c7450a9825e0c5d2c42292889b9b0acadb2c22"
+    },
+    "authorityManifest": {
+      "path": "prototype/vnext-kernel/generation-2/authority/gen2-authority-manifest.json",
+      "sha256": "69946ea1adc964315a8e4a0db775ef4436811933628975485440ab1d18b09172"
+    },
+    "compiler": {
+      "solc": "0.8.24+commit.e11b9ed9",
+      "evmVersion": "cancun",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "viaIR": false
+    },
+    "kernel": {
+      "contract": "VaultKernelGen2Prototype",
+      "runtimeBytes": 18914,
+      "initcodeBytes": 19093,
+      "runtimeSha256": "dc1b9e000b5be02262df9c633f23f3ff1fffcdccaf3248f9fb7673e7bf2ef463",
+      "executablePrefixSha256": "e48001e7ab93e144a0170a37ed4877b596d0de744d312999d6ee96a684f5ccac",
+      "initcodeSha256": "c081d8123e76e67bcba2ba6551c8080020580eacc21e856a8b6a1461ecff28ba",
+      "metadataTailBytes": 53,
+      "immutableSlots": 0
+    },
+    "factory": {
+      "contract": "VaultKernelGen2FactoryPrototype",
+      "runtimeBytes": 2645,
+      "initcodeBytes": 3245,
+      "runtimeSha256": "c74bef02e1fe5b96928984b7eba4f65a2166619bd5967a00945872693c5e1f0c",
+      "executablePrefixSha256": "f214552904433c102dac6127a0626a5070d17ba9b9b228b96774b1c74f917057",
+      "initcodeSha256": "3fd00f8e683ba582c2e3bf6ead602841b3e4da69617e55f66e3c0733e83b9f01",
+      "metadataTailBytes": 53,
+      "immutableSlots": 4,
+      "note": "runtimeSha256 is over the compiler's template, with immutables unlinked: a deployed factory's four immutable words differ by constructor argument."
+    },
+    "provenanceRoot": {
+      "contract": "ImmutableAttestationVerifierFactoryPrototype",
+      "runtimeBytes": 4196,
+      "initcodeBytes": 4225,
+      "runtimeSha256": "080be24a87bd981a8e56dc3650e381ec80c1af109a1ec0f63e51a354e67e86c1",
+      "executablePrefixSha256": "d8c7cd76de6e294ec3abe26c7d8a51d2b1487cbde0c30e58d1959c2ca06061c4",
+      "initcodeSha256": "9acc0f851c27529355f0db209da2d839aa345c24daf34618563e268bc28ce8f6",
+      "metadataTailBytes": 53,
+      "immutableSlots": 0
+    },
+    "verifierClass": {
+      "contract": "ImmutableAttestationPQCVerifier",
+      "runtimeBytes": 2653,
+      "initcodeBytes": 3772,
+      "runtimeSha256": "f8b614c82f98683f1c5e33c2b7dffd633b006b31fdba503915cc444149d44281",
+      "executablePrefixSha256": "01701d4e3b34772101a77a21bcc44f72947ecb7ccd7ae2d30486e8a9ca0372ed",
+      "initcodeSha256": "58e9f8e339a213cd934d3e87c862c67b99a6781f888558696f48ccf121e116c7",
+      "metadataTailBytes": 53,
+      "immutableSlots": 8
+    },
+    "clone": {
+      "templateBytes": 45,
+      "argsBytes": 48,
+      "runtimeBytes": 93,
+      "shape": "363d3d373d3d3d363d73 || implementation(20) || 5af43d82803e903d91602b57fd5bf3 || args(48)"
+    },
+    "immutableArgsLayout": [
+      {
+        "field": "generation",
+        "offset": 0,
+        "bytes": 8,
+        "boundAt": "factory constructor argument generation_"
+      },
+      {
+        "field": "verifierAuthority",
+        "offset": 8,
+        "bytes": 20,
+        "boundAt": "factory constructor argument verifierAuthority_"
+      },
+      {
+        "field": "admittedAsset",
+        "offset": 28,
+        "bytes": 20,
+        "boundAt": "factory constructor argument admittedAsset_"
+      }
+    ],
+    "generationIdentifier": "2",
+    "admittedAssetBindingLocation": "bytes 28..48 of the clone's immutable args, i.e. runtime bytes 73..93 of the 93-byte clone; read by _admittedAsset through Clones.fetchCloneArgs; no storage word on the kernel or the factory holds it",
+    "storageLayoutSha256": "42c4fc5831596e3df595be169955ddd515687095903645510b27ec1ac617191d",
+    "selectorSetSha256": "82060335d7b0c49a4ac8106dfcfc37cd6907e81e14cb8b92f010afd33d241aad",
+    "measuredVariantA": {
+      "source": "prototype/vnext-kernel/erc20-spend-plane/contracts/VaultKernelErc20Prototype.sol",
+      "sourceSha256": "e5b2f92239529f0b491ecbeca0f0ecfc53eb81b18d7e4e08355015961f89bdce",
+      "runtimeBytes": 18572,
+      "initcodeBytes": 18751,
+      "runtimeSha256": "c07455c3b5485e56778e56b56b3c19183f3d941a28b1ff8067cafe9484500056",
+      "executablePrefixSha256": "1aa3107009ebf13564e85261f67b2819b0838d7f577f64dd20b869fd643a921b"
+    },
+    "limits": {
+      "NETWORK_RUNTIME_LIMIT": 24576,
+      "NETWORK_INITCODE_LIMIT": 49152,
+      "WALLETWALL_PORTABILITY_BUDGET": 24576,
+      "WALLETWALL_INTERNAL_RESERVE": 2600,
+      "TARGET_KERNEL_CEILING": 21976,
+      "STOP_CONDITION_HEADROOM": 600
+    },
+    "measurement": {
+      "runtimeBytes": 18914,
+      "initcodeBytes": 19093,
+      "deltaFromMeasuredVariantA": 342,
+      "initcodeDeltaFromMeasuredVariantA": 342,
+      "deltaFromGeneration1": 583,
+      "headroomToEip170": 5662,
+      "headroomToTargetKernelCeiling": 3062,
+      "headroomAboveStopLine": 2462,
+      "factoryRuntimeBytes": 2645,
+      "factoryInitcodeBytes": 3245,
+      "cloneRuntimeBytes": 93,
+      "storageEntries": 17,
+      "storageSlots": 11,
+      "selectors": 47,
+      "stateChangingSelectors": 14
+    }
+  },
+  "gas": {
+    "deployImplementation": 4167698,
+    "deployFactory": 639852,
+    "deployVault": 210770,
+    "spendAuthorised": 108310,
+    "spendRefusedBadSignature": 38506,
+    "spendRefusedTransferFailure": 62325,
+    "spendRefusedLyingToken": 76413,
+    "migrationEgress": 71550,
+    "spendAfterRecovery": 108298
+  },
+  "matrixSummary": {
+    "PASS_WITH_DECLARED_RESIDUAL": 7,
+    "PASS": 46,
+    "FAIL": 6,
+    "NOT_APPLICABLE": 2
+  },
+  "matrix": [
+    {
+      "id": "K-1",
+      "concern": "asset custody",
+      "source": "KERNEL_ADMISSION K-1; architecture 4.2; I-CUSTODY-CONSERVATION",
+      "statement": "The clone holds the admitted asset directly under the token's own ledger; there is no pool and no second number; no path removes value except an authorisation the vault's rules accept.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Attack tests exist (#237) but no composition campaign ran against the plane.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "The clone holds the asset under the token's ledger; no storage word holds a balance; every unit is at an account the harness can name, in every history. The statement's 'no path removes value' is true of paths through the vault: the token's own ledger can move value with no kernel act at all.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Settlement.test.ts",
+            "no storage word holds a balance"
+          ],
+          [
+            "Gen2Settlement.test.ts",
+            "ASSET BOUNDARY: the token can debit the clone with no kernel act"
+          ]
+        ],
+        "properties": [
+          "P-CONSERVATION",
+          "P-BALANCE-SPENDABLE"
+        ],
+        "mutants": [
+          "M-G2-14-relayer-chooses-recipient",
+          "M-G2-20-full-balance-unspendable"
+        ]
+      },
+      "residuals": [
+        "R-ASSET-BOUNDARY"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": "I-CUSTODY-CONSERVATION as a kernel can hold it: nothing leaves through the vault without an authorisation its rules accept, and that is what the properties check. An issuer acting on its own ledger goes round the vault. G1's 'component failure' is the widest reading of the words, and a token is not one of section 2.1's components. The placement rests on custody's class, 'Issuer controls are external', with the owner's lane requirements 6 and 12, rather than on a sentence naming each behaviour."
+    },
+    {
+      "id": "K-2",
+      "concern": "execution authority",
+      "source": "KERNEL_ADMISSION K-2; architecture section 5; I-NO-GENERIC-EXECUTION",
+      "statement": "execute is exact typed: one fixed selector on one code-bound asset, recipient and amount signed; no execute(address,bytes) surface exists anywhere.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Census ran only under an in-memory rename with the Generation-1 manifest; no Generation-2 manifest or call census exists.",
+      "measuredOnCandidate": "PASS",
+      "note": "One fixed selector on one code-bound asset, recipient and amount signed; no payable entrypoint; the census lists exactly the new edges.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Settlement.test.ts",
+            "K-2: the kernel's only external call shapes"
+          ],
+          [
+            "Gen2AuthorityCensus.test.ts",
+            "the ERC-20 call is modelled as what it is"
+          ]
+        ],
+        "properties": [
+          "P-SPEND-TOUCHES-ONLY-ASSET"
+        ],
+        "mutants": [
+          "M-G2-1-caller-chooses-token"
+        ],
+        "receipts": [
+          "GEN2_AUTHORITY_CENSUS.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-3",
+      "concern": "replay state",
+      "source": "KERNEL_ADMISSION K-3 and section 3; I-NO-REPLAY",
+      "statement": "Four separate nonce domains; every signed act consumes exactly one nonce before any external effect; a refused act consumes nothing.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Spend-path evidence only.",
+      "measuredOnCandidate": "PASS",
+      "note": "Four domains, independent; a refused act consumes nothing, on a really mined refusal; the nonce is consumed before anything external runs.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "four separate domains"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "a wrong nonce and a passed deadline"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "finds the nonce already consumed"
+          ]
+        ],
+        "properties": [
+          "P-NO-REPLAY",
+          "P-NONCE-SPENT-BEFORE-TOKEN-RUNS"
+        ],
+        "mutants": [
+          "M-G2-6-nonce-after-token-call",
+          "M-G2-13-spend-nonce-not-consumed",
+          "M-G2-18-spent-nonce-accepted",
+          "M10-nonce-not-consumed"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-4",
+      "concern": "credential commitment",
+      "source": "KERNEL_ADMISSION K-4; I-COMMITMENT-EXHIBITED-AT-ADMISSION; I-INCOMING-CREDENTIAL-POSSESSION; I-DECLARATION-EXHIBITED",
+      "statement": "Every commitment written carries an exhibited preimage; rotation and recovery prove possession of the incoming credential.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "Every commitment written carries an exhibited preimage and every install proves incoming possession. What a preimage cannot prove is SD-8.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "a rotation proves possession of the INCOMING credential"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "a non-zero commitment needs its preimage"
+          ]
+        ],
+        "properties": [
+          "P-INCOMING-POSSESSION",
+          "G-COMMITMENT-ATTESTED"
+        ],
+        "mutants": [
+          "M7-pop-checks-outgoing-key",
+          "M21-admission-not-exhibited",
+          "M22-admission-bound-to-the-OUTGOING-commitment"
+        ]
+      },
+      "residuals": [
+        "R-SD8"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-5",
+      "concern": "ECDSA possession floor",
+      "source": "KERNEL_ADMISSION K-5; architecture 4.3a; I-NO-SOLE-EXTERNAL-AUTHENTICATOR; I-FLOOR-IS-SOUND",
+      "statement": "Every asset-moving and credential-changing capability contains a possession test the kernel evaluates itself with ecrecover alone; with every plane removed the floor still denies.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Spend-path evidence only.",
+      "measuredOnCandidate": "PASS",
+      "note": "With every plane removed and an always-true verifier installed, the kernel's own ecrecover still decides, on every credential-changing path.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "the kernel's own ecrecover still decides"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "rotation, verifier and policy changes each contain the same floor"
+          ]
+        ],
+        "properties": [
+          "P-CUT/ASSET_MOVEMENT",
+          "P-CUT/CREDENTIAL_REPLACEMENT"
+        ],
+        "mutants": [
+          "M1-asset-path-one-root",
+          "M2-rotate-floor-only",
+          "M3-setverifier-floor-only",
+          "M4-setpolicy-floor-only"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-6",
+      "concern": "guardian authority",
+      "source": "KERNEL_ADMISSION K-6; architecture 4.2b and section 9; I-GUARDIAN-AUTHORITY-CLOSURE; I-GUARDIAN-CONSTITUENCY-BINDING; I-QUORUM-DISTINCTNESS; I-QUORUM-PRINCIPAL-DISTINCTNESS; I-CONSTITUENCY-RECONSTRUCTIBLE; I-GUARDIAN-FAULT-ISOLATION; I-ATTESTATION-IS-AFFIRMATIVE; I-GUARDIAN-AUTH-MODE-IS-COMMITTED",
+      "statement": "The kernel is the sole writer of the commitment under a quorum of the preceding commitment; k counts distinct principals; a faulty ERC-1271 guardian changes nothing for the others.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "A forged roster, a sub-quorum, an out-of-order index and a duplicate principal are each refused; four kinds of faulty ERC-1271 guardian change nothing for the others.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "the roster arrives as untrusted calldata"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "a roster with one principal in two seats"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "ERC-1271 guardian changes nothing for the others"
+          ]
+        ],
+        "properties": [
+          "P-CUT/GUARDIAN_TRANSITION"
+        ],
+        "mutants": [
+          "M9-duplicate-guardian-principal",
+          "M13-quorum-counts-indices-not-principals"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-7",
+      "concern": "recovery state",
+      "source": "KERNEL_ADMISSION K-7; I-RECOVERY-SOVEREIGNTY; I-RECOVERY-EFFECTIVE-LIVENESS; I-RECOVERY-LOCALITY-V2",
+      "statement": "Recovery state has one writer, liveness is the half-open window, and recovery consults only the clone's implementation, precompiles and committed guardians, never the asset and never a plane.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "FAIL",
+      "note": "As registered, the statement is false. One writer, the half-open window and 'never the asset' all hold. 'Only the clone's implementation, precompiles and committed guardians, never a plane' does not: initiation asks the provenance root on every floor, and execution on an armed floor asks the verifier the approved request names. I-RECOVERY-LOCALITY-V2's last clause also forbids reading state a principal outside the constituency can write, and execution reads the credential-writable floor (SD-4) and the challenge-writable active flag. The class is a T1 text the kernel does not meet, on all three kernels, with no clause of the residual policy to place it under: 24.2's accepted denial is of spending, and it says recovery stays available.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "recovery never consults the asset"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "the window is half-open"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "CONSULT 1, REAL ROOT, EVERY FLOOR"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "CONSULT 2, FIXTURE ROOT, ARMED"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "WHAT THE WORDS ARE FOR STILL HOLDS"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "the same two consults are on the kernel's own record"
+          ],
+          [
+            "Gen2CarriedDefects.test.ts",
+            "PRESERVED: the declaration is still admitted"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "the credential's veto is capped"
+          ]
+        ],
+        "properties": [
+          "G-RECOVERY-COMMITMENT-BINDS",
+          "P-MODEL"
+        ],
+        "mutants": [
+          "M8-recovery-commitment-drops-verifier"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": "OD-RECOVERY-LOCALITY",
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-8",
+      "concern": "recovery execution",
+      "source": "KERNEL_ADMISSION K-8; I-RECOVERY-TERMINATION; I-APPROVED-REQUEST-PRESERVATION",
+      "statement": "A quorum-approved request leaves by execution, cancellation or expiry with no principal needed for expiry; a roster replacement cannot clear it; after execution the new credential spends the admitted asset.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No recovery-to-ERC-20-spend composition.",
+      "measuredOnCandidate": "PASS",
+      "note": "An approved request survives a roster replacement and matures, and the recovered credential spends the admitted asset: the composition #237 had not run.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "I-APPROVED-REQUEST-PRESERVATION"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "every guardian act, recovery included"
+          ]
+        ],
+        "properties": [
+          "P-MODEL"
+        ],
+        "mutants": [
+          "M5-recovery-replay-enabled",
+          "M6-cancel-does-not-invalidate"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-9",
+      "concern": "recovery cancellation and challenge",
+      "source": "KERNEL_ADMISSION K-9; I-VETO-BOUND; I-RECOVERY-NONVETO; I-RECOVERY-CHALLENGE-EPOCH",
+      "statement": "Both mechanisms present; the credential's veto is bounded and self-lifting; the epoch resets only on successful recovery.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "Both mechanisms present, the credential's veto capped, the epoch reset only by a successful recovery. SD-4 raises the bound on one episode to 21 days, and the veto still self-lifts.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "the credential's veto is capped"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "a stranger can cancel nothing"
+          ]
+        ],
+        "properties": [
+          "P-CUT/RECOVERY_QUORUM_CANCEL",
+          "G-CHALLENGE-EPOCH"
+        ],
+        "mutants": [
+          "M6-cancel-does-not-invalidate"
+        ]
+      },
+      "residuals": [
+        "R-SD4"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": "I-VETO-BOUND holds for this veto: it still lifts with no principal acting. SD-4 moves its bound on one episode to 21 days, and the ledger carries that with its disposition."
+    },
+    {
+      "id": "K-10",
+      "concern": "safe-state machine",
+      "source": "KERNEL_ADMISSION K-10; architecture section 6; I-EXIT-REACHABILITY; I-TERMINALITY-IS-AUTHORITY",
+      "statement": "Spending is NORMAL only; recovery stays live in every non-terminal state the kernel can hold a request in; migration egress stays open including from RETIRED; every state has a plane-free exit.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "True as registered: spending is NORMAL only, recovery stays live in every non-terminal state the kernel can hold a request in, egress stays open from RETIRED, and every state has a plane-free exit for whoever holds the authority to take it. With the credential lost on an armed floor the way back is recovery, which consults the verifier the request names: K-7. Narrower than the architecture's table: N-LATTICE. A state the vault cannot leave is K-12-VETO.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "spending is NORMAL only"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "recovery stays live in CONTAINED"
+          ]
+        ],
+        "properties": [
+          "G-EFFECTIVE-STATE-DERIVATION",
+          "P-EXIT-REACHABLE"
+        ],
+        "mutants": [
+          "M15-effective-state-ignores-expiry"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-11",
+      "concern": "emergency transition rules",
+      "source": "KERNEL_ADMISSION K-11; I-CONTAINMENT-BUDGET; I-CONTAINMENT-NO-EXTENSION",
+      "statement": "Containment self-expires on wall clock, cannot be extended, and holds at most 6 d in any rolling 30 d, observed from timestamps; a spend is refused while contained.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "Self-expiry on the wall clock, no extension, and the 6-in-30-day budget measured by an oracle that rebuilds episodes from timestamps.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "containment self-expires on the wall clock"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "the historical straddle stops at the declared 6 days"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "re-entry cannot extend it"
+          ]
+        ],
+        "properties": [
+          "G-CONTAINMENT-ROLLING-BUDGET"
+        ],
+        "mutants": [
+          "M14-containment-budget-removed",
+          "M23-tumbling-reset-restored",
+          "M24-tracks-only-the-most-recent-start"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-12",
+      "concern": "migration binding",
+      "source": "KERNEL_ADMISSION K-12; architecture 13.1 and 22 D2; H-10; I-MIGRATION-BINDING",
+      "statement": "Binding requires quorum AND credential, fixes the destination vault and its code hash, binds no amount and no closed asset set, and can never be rebound by a caller.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Attack tests only.",
+      "measuredOnCandidate": "PASS",
+      "note": "True as registered: quorum AND credential; destination vault and code hash fixed; no amount and no asset set; never rebound by a caller. What its signatures commit to is K-12-SCOPE, and that it never lifts is K-12-VETO.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Migration.test.ts",
+            "the credential alone is refused, the quorum alone is refused"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a binding cannot be rebound"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a binding names no amount and no asset set"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a LIVE recovery blocks binding"
+          ]
+        ],
+        "properties": [
+          "P-CUT/MIGRATION_BINDING"
+        ],
+        "mutants": [
+          "M12-migration-quorum-only"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-12-TIME",
+      "concern": "migration subordinate to recovery",
+      "source": "architecture 13.2 I-MIGRATION-SUBORDINATE-TO-RECOVERY (T0) and 22 D2; H-11 Detection ('a delay-bounded warning window')",
+      "statement": "For every coalition, the minimum time to complete a migration is at least the minimum time to complete a recovery, and a pending recovery blocks binding.",
+      "tier": "T0",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: BIND_DELAY gates only retire(), which gates nothing; egress moves the whole balance in the bind block. On an armed floor the coalition {k guardians, ECDSA key, no PQ key} completes in 0 s against 7 d for its recovery path. The pending-recovery clause holds. Generation 1 carries the same code; no ledger entry records it.",
+      "measuredOnCandidate": "PASS",
+      "note": "Every holding is refused until bind + 7 d and leaves at that exact second, on armed and dormant floors, and the coalition from the finding takes as long to migrate as to recover. Owner-reviewable: OD-EGRESS-DELAY.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Migration.test.ts",
+            "the two delays are the same constant"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "floor: every holding is refused until exactly bind + 7 d"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "ARMED FLOOR, THE COALITION THE DEFECT CONCERNED"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-TIME"
+          ]
+        ],
+        "properties": [
+          "P-MIGRATION-TIME"
+        ],
+        "mutants": [
+          "M-G2-11-egress-delay-removed"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "egress: `if (block.timestamp < b.boundAt + BIND_DELAY) revert TooEarly();`",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-13",
+      "concern": "migration egress",
+      "source": "KERNEL_ADMISSION K-13; architecture 13.1 and 13.2; I-MIGRATION-NONTRAP; I-EGRESS-INDEPENDENCE; I-EGRESS-RETRY-PERPETUAL; I-EGRESS-RECIPIENT-FIXED",
+      "statement": "Egress is permissionless with no discretion: recipient from the binding, disposition full balance, entries independent, retry perpetual, an unsolicited or hostile asset vetoes nothing.",
+      "tier": "T0",
+      "measuredVariantA": "PASS_WITH_DECLARED_RESIDUAL",
+      "measuredReason": "Attack tests pass. MEASURED: an issuer blocklist of the bound destination traps the admitted asset (egress refused, spending refused in MIGRATION_ONLY, no rebind). Not declared anywhere in the architecture (13.4 declares only the SOURCE case).",
+      "measuredOnCandidate": "FAIL",
+      "note": "The registered statement is literally true: permissionless with no discretion, entries independent, retry perpetual, hostile holdings veto nothing, and exit reachable at the end of every campaign history with the token behaving. The row still fails, because its source does. I-MIGRATION-NONTRAP's head sentence forbids an asset state with no authorized exit, an issuer's block of the bound destination is one, 13.0's failure 1 names exactly that as the trap, and 13.4 keeps only the source case. An earlier draft placed it under the external-asset clause, and the classification registered on Variant A did too, while saying it was declared nowhere. The block is external and the trap is not: only a binding that can lift would avoid it. Worse here than on measured Variant A, where a wrapper could bind and egress atomically.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Migration.test.ts",
+            "a stranger's call moves the full balance"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "hostile holdings fail alone and veto nothing"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "I-EGRESS-RETRY-PERPETUAL"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-FREEZE"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "WHAT THE DELAY COST"
+          ]
+        ],
+        "properties": [
+          "P-EGRESS-RECIPIENT",
+          "P-EXIT-REACHABLE"
+        ],
+        "mutants": [
+          "M-G2-8-migration-caller-chooses-token",
+          "M-G2-9-migration-caller-chooses-recipient"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": "OD-BINDING-LIFETIME",
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-13-SETTLE",
+      "concern": "no false settlement",
+      "source": "architecture 13.2 I-NO-FALSE-SETTLEMENT (T1)",
+      "statement": "A movement is reported only on an OBSERVED decrease of the source's own balance. A failed balance query is not an observation.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: _balanceOf reads a failed query as 0. execute with amount == balance and a post-transfer query that reverts or returns short SETTLES with nothing moved and the nonce consumed; egress reports the whole balance as moved. The kernel's own comment claims this fails closed. Generation 1's egress has the same read.",
+      "measuredOnCandidate": "PASS",
+      "note": "A failed or short balance query refuses, before and after, on spend and on egress, and a native egress publishes what the balance lost, so a destination handing the value back cannot be reported as paid. Measured Variant A read a failed query as an observed zero and settled a full-balance spend with nothing moved, and published native value as moved because the call returned.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-SETTLE"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "publish native value as moved because the call returned"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE refuses a native egress that lost nothing"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "I-NO-FALSE-SETTLEMENT on the way out"
+          ]
+        ],
+        "properties": [
+          "P-SETTLEMENT-EXACT",
+          "P-EGRESS-PUBLISHES-THE-TRUTH"
+        ],
+        "mutants": [
+          "M-G2-12-lenient-balance-read",
+          "M-G2-22-egress-publishes-the-whole-balance",
+          "M-G2-25-native-published-unobserved"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "_balanceOf: `if (!ok || data.length < 32) revert TransferFailed();` in place of `return 0`; egress: the native branch reads the balance after the call, and publishes the decrease",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-14",
+      "concern": "verifier governance",
+      "source": "KERNEL_ADMISSION K-14 and the SD-11 block; I-NO-CIRCULAR-ESCAPE; G-VERIFIER-ADMISSION-PROVENANCE",
+      "statement": "Only a root-created verifier can become active, at all three edges; the escape from a dead or hostile verifier is guardian recovery and does not need that verifier.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Default test world binds the ungated fixture root.",
+      "measuredOnCandidate": "PASS",
+      "note": "Only a root-created verifier becomes active, at all three edges, under the real root. The escape from a dead or lost verifier does not need that verifier.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a mock verifier is refused at genesis, at setVerifier and at initiateRecovery"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "the guardian recovery escapes to a live verifier"
+          ]
+        ],
+        "properties": [
+          "P-VERIFIER-PROVENANCE",
+          "P-CUT/VERIFIER_REPLACEMENT"
+        ],
+        "mutants": [
+          "M3-setverifier-floor-only",
+          "M-G2-21-verifier-provenance-unchecked"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-15",
+      "concern": "security floor",
+      "source": "KERNEL_ADMISSION K-15 and its SD5-I correction; I-NO-SILENT-DOWNGRADE-G1; I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE",
+      "statement": "requirePq is monotone; the three metadata fields authorise nothing and cannot move an approved recovery's executability.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "requirePq is one-way, and the three metadata fields cannot move an approved recovery's executability.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "requirePq is one-way"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "I-RECOVERY-SATISFIABILITY-METADATA-INDEPENDENCE"
+          ]
+        ],
+        "properties": [
+          "G-FLOOR-NO-DOWNGRADE"
+        ],
+        "mutants": [
+          "M19-declaration-not-exhibited"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "PLANE-ISOLATION",
+      "concern": "capability-plane isolation",
+      "source": "architecture 4.3 and section 11; I-PLANE-CONJUNCTIVE; AUTHORITY.md section 5",
+      "statement": "A policy plane may only refuse; its call happens after the nonce and before the settlement snapshot, so it cannot influence the observation; a denying plane stops the spend and no plane reaches custody.",
+      "tier": "T2",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "One denial test only.",
+      "measuredOnCandidate": "PASS",
+      "note": "A plane may only refuse. It runs after the nonce and before the snapshot, so it cannot touch the observation, and no plane is consulted on the way out. IKernelPolicy.admit names no asset, which a single-asset vault does not need.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Reentrancy.test.ts",
+            "a plane nesting an authorised spend cannot touch the observation"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "a plane that always allows grants nothing"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "no plane is consulted on the way out"
+          ]
+        ],
+        "properties": [
+          "P-PLANE-SUBTRACTIVE"
+        ],
+        "mutants": [
+          "M11-plane-denial-ignored"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "IMPL-IMMUTABILITY",
+      "concern": "implementation immutability",
+      "source": "architecture 3.1, 15, 15.1; I-PURE-CONSTRUCTOR; I-CLONE-BYTES-EXACT; I-CODE-IDENTITY-LINKAGE; I-IMPL-NONVACUOUS; I-DIRECT-IMPL-CALL-INERT; I-DEPLOY-INIT-ATOMIC",
+      "statement": "Zero immutable slots; the clone is byte-exactly template + implementation + 48 args; the bare implementation cannot be initialised and holds no authority; deployment and initialisation are atomic.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Byte figures exist; the offline identity chain was never executed for the plane.",
+      "measuredOnCandidate": "PASS",
+      "note": "Zero immutable slots; a clone byte-exactly template + implementation + 48 args; the bare implementation cannot be initialised, and its asset read is meaningless bytes with no authority behind them.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "every link is reconstructible from public facts"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "I-PURE-CONSTRUCTOR"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "I-DIRECT-IMPL-CALL-INERT"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "I-DEPLOY-INIT-ATOMIC"
+          ]
+        ],
+        "properties": [
+          "P-ASSET-CODE-IDENTITY"
+        ],
+        "mutants": [
+          "M-G2-2-asset-outside-the-identity"
+        ],
+        "receipts": [
+          "GEN2_ADMISSION_EVIDENCE.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "FACTORY-GENERATION",
+      "concern": "factory-generation binding",
+      "source": "architecture 22 D8; H-32; I-COUNTERFACTUAL-IDENTITY-BINDING; I-SALT-BINDS-PRINCIPAL",
+      "statement": "One immutable factory per generation binding implementation, generation, root and asset at construction; no setter; the salt binds the complete genesis authority.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "ABI assertions only.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "One immutable factory per generation, with no setter and no storage, and a salt that binds the whole genesis. What a given factory was constructed with is a publisher fact, checkable offline.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "the factory exposes no owner, role or registry"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "I-COUNTERFACTUAL-IDENTITY-BINDING"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a codeless asset, a zero asset, a zero generation"
+          ]
+        ],
+        "mutants": [
+          "M-G2-2-asset-outside-the-identity"
+        ]
+      },
+      "residuals": [
+        "R-SD11-CONDITION"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "AUTH-COMPLETENESS",
+      "concern": "authority completeness",
+      "source": "authority/README.md; AUTHORITY.md sections 1-3",
+      "statement": "The real checker classifies every external state-changing function of the candidate under a Generation-2 manifest, with the mechanism reached before the first effect; a derived comparison with Generation 1 shows NO_NEW_PRIVILEGED_PRINCIPAL; the ERC-20 external call is modelled as a new effect surface.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "#237 reused the Generation-1 manifest; no Generation-2 census artifact exists and no call census exists.",
+      "measuredOnCandidate": "PASS",
+      "note": "The real checker, unchanged, classifies all 18 gated entries under a Generation-2 manifest, 16 PASS and 2 PASS_WITH_DECLARED_EXCEPTION. The derived comparison finds NO_NEW_PRIVILEGED_PRINCIPAL, and mutants prove that verdict can change.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AuthorityCensus.test.ts",
+            "the real checker classifies every state-changing function"
+          ],
+          [
+            "Gen2AuthorityCensus.test.ts",
+            "derived verdict: NO_NEW_PRIVILEGED_PRINCIPAL"
+          ],
+          [
+            "Gen2AuthorityCensus.test.ts",
+            "the verdict has teeth"
+          ]
+        ],
+        "mutants": [
+          "M-G2-10-relayer-identity-gains-privilege"
+        ],
+        "receipts": [
+          "GEN2_AUTHORITY_CENSUS.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "AUTH-SATISFIABILITY",
+      "concern": "authority satisfiability",
+      "source": "stateful/defects.ts SD-3, SD-6, SD-7; G-PQ-COMMITMENT-SATISFIABLE; G-COMMITMENT-ATTESTED",
+      "statement": "No accepted transition leaves a mandatory conjunct with no possible witness; a dead vault is reachable only by the declared deliberate routes.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "No accepted transition leaves a mandatory conjunct with no possible witness; a dead vault is reachable only by SD-8's declared deliberate route, and that route still has both exits. Bindings the kernel can see are dead were other routes to one on measured Variant A, and the K-13-DEAD-BINDING delta closes them.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "no vault is born with a mandatory conjunct nothing can satisfy"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "arming needs the exact preimage"
+          ],
+          [
+            "Gen2CarriedDefects.test.ts",
+            "NOT WORSENED, AND THE ASSET IS NOT TRAPPED"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE refuses it at binding"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE refuses both at binding"
+          ]
+        ],
+        "properties": [
+          "G-PQ-COMMITMENT-SATISFIABLE",
+          "P-EXIT-REACHABLE"
+        ],
+        "mutants": [
+          "M19-declaration-not-exhibited",
+          "M20-declaration-unbound-from-the-commitment",
+          "M-G2-23-dead-binding-accepted",
+          "M-G2-24-self-binding-accepted"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "STATEFUL-COMPOSITION",
+      "concern": "stateful compositional authority",
+      "source": "stateful/README.md; PG-06",
+      "statement": "The campaign, extended to Generation 2, composes histories with ERC-20 state under an asymmetric oracle and with mutation adequacy: no violation unexplained by the ledger, every positive control passes, every action and outcome reached.",
+      "tier": "T0",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "#237 records this as blocker 4: the campaign binds Generation 1.",
+      "measuredOnCandidate": "PASS",
+      "note": "Generation 1's fixed seeds and depths, on the candidate, across every inherited profile and thirteen ERC-20 profiles: no violation unexplained by the ledger; every positive control, action, outcome and seam reached. Mutation adequacy on both catalogues, each kill against a clean baseline of the same seed, and every Generation-2 property shown to fire. Exact outcomes are in GEN2_RUN_RECORD.json, which the suites compare themselves with and the verdict reads.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2StatefulCampaign.test.ts",
+            "every positive control passed in every campaign"
+          ],
+          [
+            "Gen2StatefulCampaign.test.ts",
+            "every Generation-2 seam was actually reached"
+          ],
+          [
+            "Gen2StatefulCampaign.test.ts",
+            "every sustained defect with a campaign property"
+          ],
+          [
+            "Gen2StatefulCampaign.test.ts",
+            "the outcome is the committed record"
+          ],
+          [
+            "Gen2MutationAdequacy.test.ts",
+            "every mutant in both catalogues was killed"
+          ],
+          [
+            "Gen2MutationAdequacy.test.ts",
+            "every Generation-2 property has a mutant that dies by it"
+          ],
+          [
+            "Gen2MutationAdequacy.test.ts",
+            "the outcome is the committed record"
+          ]
+        ],
+        "properties": [
+          "P-CUT/ASSET_MOVEMENT",
+          "P-VACUITY"
+        ],
+        "receipts": [
+          "GEN2_STATEFUL_AUTHORITY_EVIDENCE.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "SCANNER-BOUNDARY",
+      "concern": "scanner and static-analysis boundary",
+      "source": "SCANNER_EVIDENCE.json; scanner-input-scope.ts; W2S_SCANNER_TRIAGE_RECORD.md",
+      "statement": "Slither at the pinned commit runs on the candidate itself and every own-code finding is adjudicated by semantic identity; CodeQL's limit is stated; no scanner result is carried from Generation 1.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "The candidates are outside the scanner scope.",
+      "measuredOnCandidate": "PASS",
+      "note": "Slither at the pinned commit ran on the candidate's own tree. Every own-code finding is adjudicated by semantic identity, and each on the candidate names its dynamic property and mutant. CodeQL has no Solidity extractor and was not run locally: stated, not implied.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Scanner.test.ts",
+            "every finding on the candidate's kernel and factory"
+          ],
+          [
+            "Gen2Scanner.test.ts",
+            "the opcode sweep"
+          ]
+        ],
+        "receipts": [
+          "GEN2_SCANNER_EVIDENCE.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "PROVENANCE",
+      "concern": "evidence currency and provenance",
+      "source": "evidence-subject.ts; test/EvidenceSubjectProvenance.test.ts; architecture 15.1a",
+      "statement": "Candidate identity is reconstructible from committed source; every receipt names its subject, never its container; currency is licensed by byte equality of the measured inputs; no timestamp or machine path enters the identity.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "#237 pins source hashes in a measurement record, not an admission identity.",
+      "measuredOnCandidate": "PASS",
+      "note": "The identity reconstructs from committed source through the pinned compiler. Receipts name their subject, never their container, and currency is by byte equality of the measured inputs. No timestamp or machine path enters.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Provenance.test.ts",
+            "the identity in the evidence is what the source compiles to"
+          ],
+          [
+            "Gen2Provenance.test.ts",
+            "no receipt carries a timestamp, a machine path or a container"
+          ],
+          [
+            "Gen2CandidateDerivation.test.ts",
+            "the candidate differs from Variant A in exactly the declared statements"
+          ]
+        ],
+        "receipts": [
+          "GEN2_ADMISSION_EVIDENCE.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "RUNTIME-CEILING",
+      "concern": "runtime byte ceiling",
+      "source": "architecture 19.0 and 19.2 STOP CONDITION; H-20; SG-01",
+      "statement": "Final runtime at or below TARGET_KERNEL_CEILING with at least 600 B of headroom, re-measured after every admission change, every delta from measured Variant A published; zero immutable slots.",
+      "tier": "T0",
+      "measuredVariantA": "PASS",
+      "measuredReason": "18,572 B, headroom 3,404, 2,804 above the stop line, measured in #237.",
+      "measuredOnCandidate": "PASS",
+      "note": "Re-measured after the admission changes, with every delta from measured Variant A published. See `identity.measurement` in the evidence.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Measurement.test.ts",
+            "the candidate clears TARGET_KERNEL_CEILING"
+          ],
+          [
+            "Gen2Measurement.test.ts",
+            "the delta from measured Variant A is computed"
+          ]
+        ],
+        "receipts": [
+          "GEN2_ADMISSION_EVIDENCE.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-1",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5; custody 7.1 and 10.1",
+      "statement": "Asset fixed at Vault creation.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Asserted informally.",
+      "measuredOnCandidate": "PASS",
+      "note": "A vault's asset is its factory's constructor argument from its first block.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a vault's asset is its factory's constructor argument"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "the factory's asset is immutable bytes"
+          ]
+        ],
+        "properties": [
+          "P-ASSET-CODE-IDENTITY"
+        ],
+        "mutants": [
+          "M-G2-2-asset-outside-the-identity"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-2",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5",
+      "statement": "No setter exists, on the kernel or the factory, proven from the ABI and from the AST (no storage word holds the asset).",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "ABI only.",
+      "measuredOnCandidate": "PASS",
+      "note": "No setter on either, from the ABI and from the storage layout, and no storage word holds the value in a live vault.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "the kernel's only functions naming an asset"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "no storage word of the kernel holds the asset"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a setter selector dispatches to nothing"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-3",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5",
+      "statement": "A caller cannot select the asset, including by appended calldata.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No mutant establishes the property has teeth.",
+      "measuredOnCandidate": "PASS",
+      "note": "No asset parameter exists, and appended calldata changes nothing.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "execute has no asset parameter"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a relayer appending another token"
+          ]
+        ],
+        "properties": [
+          "P-SPEND-TOUCHES-ONLY-ASSET"
+        ],
+        "mutants": [
+          "M-G2-1-caller-chooses-token"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-4",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5; relayer threat model",
+      "statement": "A relayer cannot select the asset.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "As above.",
+      "measuredOnCandidate": "PASS",
+      "note": "A relayer can choose whether and when; rewriting a signed field is refused and consumes nothing.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a relayer rewriting the recipient or the amount"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a relayer has no identity to the kernel"
+          ]
+        ],
+        "properties": [
+          "P-UNAUTHORISED-INPUT-NEVER-SETTLES"
+        ],
+        "mutants": [
+          "M-G2-14-relayer-chooses-recipient",
+          "M-G2-17-signed-recipient-unbound",
+          "M-G2-10-relayer-identity-gains-privilege"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-5",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5",
+      "statement": "The credential cannot mutate the asset in place across any history.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No history-based evidence.",
+      "measuredOnCandidate": "PASS",
+      "note": "Every credential act leaves the code byte-identical, across every campaign history.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "every credential act leaves the vault's code"
+          ]
+        ],
+        "properties": [
+          "P-ASSET-CODE-IDENTITY"
+        ],
+        "mutants": [
+          "M-G2-15-credential-moves-the-asset-in-place"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-6",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5",
+      "statement": "A guardian quorum cannot mutate the asset in place, recovery included.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No history-based evidence.",
+      "measuredOnCandidate": "PASS",
+      "note": "Every guardian act, recovery included, leaves the code byte-identical.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "every guardian act, recovery included"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a replaced roster's quorum cannot move it"
+          ]
+        ],
+        "properties": [
+          "P-ASSET-CODE-IDENTITY"
+        ],
+        "mutants": [
+          "M-G2-16-quorum-moves-the-asset-in-place"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-7",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5; custody 7.4",
+      "statement": "WalletWall owns no asset-selection authority; the only choice is the factory's constructor argument, spent at construction (H-32 discovery residual).",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Argued.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "No owner, role, registry or storage; any deployer gets identical bytes for identical arguments. The one choice is the constructor argument, spent before any vault exists.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "the only choice is the constructor's"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "the factory's deployer holds no privilege over a clone"
+          ]
+        ],
+        "receipts": [
+          "GEN2_AUTHORITY_CENSUS.json"
+        ]
+      },
+      "residuals": [
+        "R-SD11-CONDITION"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-8",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5",
+      "statement": "Changing the asset requires migration to a new Vault; the vault's asset read never changes.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Argued.",
+      "measuredOnCandidate": "PASS",
+      "note": "A migration moves the asset; it never converts it. To a vault of another asset it arrives as a holding that can leave and cannot be spent.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a migration moves the admitted asset to a vault of the same asset"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a vault of a DIFFERENT asset holds what arrives"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a binding never changes the source vault's asset read"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-9",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5; architecture 3.3 C2",
+      "statement": "A different admitted asset changes the Vault's address, code and therefore its signing domain.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "One test (#237) without a mutant.",
+      "measuredOnCandidate": "PASS",
+      "note": "With factory, salt, genesis and implementation fixed, the asset alone moves the address, and with it the domain separator.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "the asset alone moves the CREATE2 address"
+          ],
+          [
+            "Gen2AssetIdentity.test.ts",
+            "two real vaults of two assets"
+          ]
+        ],
+        "mutants": [
+          "M-G2-2-asset-outside-the-identity"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-ASSET-10",
+      "concern": "asset identity",
+      "source": "owner lane requirement 5",
+      "statement": "A signature for one asset's vault fails at the other's, both ways, over histories, with the same credential on both.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "One direction, one test.",
+      "measuredOnCandidate": "PASS",
+      "note": "Both directions, over histories, with one credential on both vaults, and neither burns a nonce.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AssetIdentity.test.ts",
+            "a spend signed for this vault fails at the other"
+          ]
+        ],
+        "properties": [
+          "P-CROSS-ASSET"
+        ],
+        "mutants": [
+          "M-G2-3-cross-asset-replay-accepted"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-SEM-KERNEL",
+      "concern": "ERC-20 settlement",
+      "source": "owner lane requirement 6; custody 7.1",
+      "statement": "Spend settlement requires the observed exact decrease; the boolean is never trusted; a failed query refuses; every refusal is atomic. What the kernel can observe is recorded apart from what the asset must guarantee.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "See K-13-SETTLE.",
+      "measuredOnCandidate": "PASS",
+      "note": "Settlement is the observed exact decrease; the boolean is trusted in neither direction; a failed query refuses; every refusal is atomic. What the kernel cannot observe is R-ASSET-BOUNDARY, a residual of asset admission and not of this row.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Settlement.test.ts",
+            "refused as TransferFailed, atomically"
+          ],
+          [
+            "Gen2Settlement.test.ts",
+            "the boolean is trusted in NEITHER direction"
+          ],
+          [
+            "Gen2Settlement.test.ts",
+            "a zero-amount spend needs a transfer that COMPLETED"
+          ]
+        ],
+        "properties": [
+          "P-SETTLEMENT-EXACT",
+          "P-SPEND-COMPLETED-TRANSFER"
+        ],
+        "mutants": [
+          "M-G2-4-boolean-trust",
+          "M-G2-5-any-decrease-accepted",
+          "M-G2-7-failed-transfer-ignored"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "Same as K-13-SETTLE.",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-SEM-BOUNDARY",
+      "concern": "kernel versus asset admission",
+      "source": "owner lane requirement 12; custody 8 D-5; PG-03",
+      "statement": "An asset-admission checklist exists and names every semantic the kernel cannot observe. No real token is admitted and no real address appears.",
+      "tier": "T2",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "#237 section 8 lists behaviours; no checklist exists.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "The checklist exists and names every semantic the kernel cannot observe; no real token is admitted and no real address appears.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Settlement.test.ts",
+            "ASSET BOUNDARY: a recipient-side fee settles"
+          ],
+          [
+            "Gen2CandidateDerivation.test.ts",
+            "the source of the candidate carries the NOT PRODUCTION label"
+          ]
+        ]
+      },
+      "residuals": [
+        "R-ASSET-BOUNDARY"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-NO-ALLOWANCE",
+      "concern": "ERC-20 effect surface",
+      "source": "AUTHORITY.md section 5; KERNEL_ADMISSION section 2 (ERC-1271 not in generation 1); PG-02",
+      "statement": "The vault can grant no allowance and answers no ERC-1271 query, so a token's permit or signature-transfer path cannot authorise a debit.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "New effect surface, never tested.",
+      "measuredOnCandidate": "PASS",
+      "note": "No approve call and no 1271 entrypoint, and a token's permit and signature-transfer paths cannot debit the vault, signed by the credential itself or not. The adversary is shown real on a contract that does answer.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Settlement.test.ts",
+            "the runtime contains no approve call"
+          ],
+          [
+            "Gen2Settlement.test.ts",
+            "a token's permit and signature-transfer paths cannot debit the vault"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-1",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7; custody 10.6",
+      "statement": "Verifier presence creates no WalletWall authority root.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Argued in #237.",
+      "measuredOnCandidate": "PASS",
+      "note": "Neither root nor class has an owner, setter or vault reference, and an attestor key used as a credential is refused.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "neither the root nor the class exposes an owner"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "the attestor key behind the vault's verifier authorises nothing"
+          ]
+        ],
+        "receipts": [
+          "GEN2_AUTHORITY_CENSUS.json"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-2",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7",
+      "statement": "Verifier authority cannot move assets while requirePq == false; it is not consulted at all.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Argued.",
+      "measuredOnCandidate": "PASS",
+      "note": "A spend settles with a reverting verifier installed, which it could not if the verifier were called.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a spend settles on an ECDSA-only floor with a "
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "an always-true verifier gives an attacker with no ECDSA key nothing"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-3",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7; G5",
+      "statement": "Requiring a verifier at genesis makes WalletWall infrastructure no liveness dependency.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Argued.",
+      "measuredOnCandidate": "PASS",
+      "note": "A complete lifecycle with no attestor statement anywhere, and a vault created with no WalletWall involved at all.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "all complete with NO attestor statement anywhere"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a vault can be created without WalletWall"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-4",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7",
+      "statement": "The verifier can be created permissionlessly and creation grants no privilege.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "One outsider deployment in #237.",
+      "measuredOnCandidate": "PASS",
+      "note": "The root is permissionless and records only what it created; a byte-identical copy outside it is refused.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "the outsider created every verifier in a root world"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "the class's attestor is immutable"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-5",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7",
+      "statement": "Later verifier transitions still satisfy the existing cuts and the provenance rule.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run against the real root.",
+      "measuredOnCandidate": "PASS",
+      "note": "All three edges under the real root; on an armed floor one root cannot change the verifier.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a mock verifier is refused at genesis"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "one root cannot change the verifier"
+          ]
+        ],
+        "properties": [
+          "P-CUT/VERIFIER_REPLACEMENT",
+          "P-VERIFIER-PROVENANCE"
+        ],
+        "mutants": [
+          "M3-setverifier-floor-only"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-6",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7",
+      "statement": "A malicious or always-true verifier stays bounded by the existing authority model.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "A bare always-true contract is refused under the real root. A root-created verifier under an attacker's own attestor is admissible, since the root checks the class and not the attestor: installing it takes what installing any verifier takes, and it then voids only the PQ factor, the declared degradation. It reaches the asset no other way.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a bare always-true contract cannot be installed"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a verifier under an attacker's own attestor IS admissible"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "installed anyway, it voids only the PQ factor"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "it cannot reach the asset any other way"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-7",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7",
+      "statement": "Verifier loss cannot trap permitted migration or egress.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No Generation-2 run.",
+      "measuredOnCandidate": "PASS",
+      "note": "With the verifier down, spending stops and a binding by quorum and ECDSA does not; the egress moves everything; recovery escapes.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "spending stops, a binding by quorum and ECDSA does not"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "the guardian recovery escapes to a live verifier"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-VERIFIER-8",
+      "concern": "variant A verifier decision",
+      "source": "owner lane requirement 7; custody 7.2; H-17",
+      "statement": "The candidate does not inherit the trusted-attestor problem as a hard dependency.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Argued.",
+      "measuredOnCandidate": "PASS",
+      "note": "No attestor is needed on a dormant floor. On an armed floor no particular one is: migration by quorum and ECDSA needs none, and a recovery needs some attestor's statement, which the recovering party can make itself. A compromised attestor alone moves nothing.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "ATTESTOR GONE"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "a compromised attestor alone moves nothing"
+          ],
+          [
+            "Gen2VerifierAdjudication.test.ts",
+            "WHAT THE WORDS ARE FOR STILL HOLDS"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "G2-REENTRANCY",
+      "concern": "reentrancy and the external-call boundary",
+      "source": "owner lane requirement 11; AUTHORITY.md section 6; PG-06",
+      "statement": "A reentrant token cannot double-spend, replay, alter migration disposition, escape safe-state restrictions, exploit nonce ordering or manipulate the settlement observation; failure is atomic; state ordering carries the argument and any guard would be a measured delta.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Two hook tests in #237.",
+      "measuredOnCandidate": "PASS",
+      "note": "No guard, and none earned: double-spend, replay, disposition, safe state, nonce order, atomicity and the observation each adversarially exercised, hook before and after the debit, deterministically and over histories. Rotation, roster change and recovery initiation are exercised from inside the hook too, and each is the ordering spend-then-act (N-NESTED-ACTS).",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Reentrancy.test.ts",
+            "cannot double-spend"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "cannot replay"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "cannot alter the migration disposition"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "cannot escape a safe state"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "finds the nonce already consumed"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "failure is atomic"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "the settlement observation cannot be manipulated"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "a rotation from the hook is spend-then-rotate"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "a roster change from the hook is spend-then-replace"
+          ],
+          [
+            "Gen2Reentrancy.test.ts",
+            "a recovery begun from the hook is spend-then-initiate"
+          ]
+        ],
+        "properties": [
+          "P-NONCE-SPENT-BEFORE-TOKEN-RUNS",
+          "P-REENTRY-NO-REPLAY"
+        ],
+        "mutants": [
+          "M-G2-6-nonce-after-token-call",
+          "M-G2-19-replay-accepted-inside-the-transfer"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "DEFECT-CARRY",
+      "concern": "existing defects carried",
+      "source": "stateful/defects.ts; owner lane requirement 17",
+      "statement": "SD-4 and SD-8 (sustained) and SD-11A and SD-11B (conditionally remediated) are each re-executed on the candidate and answered: preserved, worsened, reachable through ERC-20 paths, or accidentally fixed.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "Never run on the plane.",
+      "measuredOnCandidate": "PASS_WITH_DECLARED_RESIDUAL",
+      "note": "SD-4 and SD-8 re-executed and preserved; SD-11A and SD-11B preserved under their condition. None worsened, none reachable through the asset, none accidentally fixed.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2CarriedDefects.test.ts",
+            "the ledger this suite answers is the ledger"
+          ],
+          [
+            "Gen2CarriedDefects.test.ts",
+            "PRESERVED: the declaration is still admitted"
+          ],
+          [
+            "Gen2CarriedDefects.test.ts",
+            "PRESERVED UNDER THE REAL ROOT"
+          ]
+        ]
+      },
+      "residuals": [
+        "R-SD4",
+        "R-SD8",
+        "R-SD11-CONDITION"
+      ],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "OBSERVATORY-CLAIMS",
+      "concern": "claims a kernel cannot carry",
+      "source": "architecture 15.2 and 16.1; I-CODE-IMMUTABILITY-IS-FORK-CONDITIONAL; I-IDENTITY-TYPE-SEPARATION; I-ASSURANCE-NONACTUATION",
+      "statement": "Fork-conditional code immutability is a claim about a network; identity-type separation and assurance non-actuation belong to an observatory the prototype does not contain.",
+      "tier": "T1",
+      "measuredVariantA": "NOT_APPLICABLE",
+      "measuredReason": "OBSERVATORY by architecture 16.1: no assurance here. Recorded so absence is not read as coverage.",
+      "measuredOnCandidate": "NOT_APPLICABLE",
+      "note": "Observatory by architecture 16.1: no assurance here. Recorded so absence is not read as coverage.",
+      "evidence": {},
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-12-VETO",
+      "concern": "a binding's veto is bounded",
+      "source": "architecture section 6 I-VETO-BOUND (T0): 'a pending migration binding (deadline)'; section 6 transitions (any -> MIGRATION_ONLY: delayed, reversible); 13.1 Phase 1; section 16 T0 scope: 'the absence of any unbounded terminal veto'; H-10 Containment",
+      "statement": "A pending binding vetoes spending, rotation, recovery, containment and rebinding, so it carries a bound that lifts with no principal acting.",
+      "tier": "T0",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: no binding has a deadline and nothing ever lifts one. With egress blocked, ten years on the vault is MIGRATION_ONLY with every other capability refused. Generation 1 has the same shape, and no ledger entry records it.",
+      "addedAfterRegistration": "Fresh-context review.",
+      "measuredOnCandidate": "FAIL",
+      "note": "T0, on a reachable state, on all three kernels. A binding has no deadline, nothing lifts it, and while it stands every capability but egress is refused, recovery included. With egress blocked by the asset's own contract the vault waits on nobody it can reach. The block is an external behaviour; the unbounded wait is the kernel's, and the policy says a T0 failing on a reachable state is not a residual. Curing it means changing a T0's words or building a new state edge, and neither is this lane's to choose. It also makes 24.2's 'Permanent recovery veto: unreachable' untrue at k+1 plus an issuer.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-VETO"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE: the destination frozen, ten years pass"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "MEASURED VARIANT A and GENERATION 1 carry the same shape"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "A destination that refuses native value keeps that holding"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": "OD-BINDING-LIFETIME",
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-13-DEAD-BINDING",
+      "concern": "a binding the kernel can see would strand the vault",
+      "source": "I-MIGRATION-NONTRAP (T0); architecture 13.5: 're-checked at EXECUTION, not only at preparation'; H-10 Prevention; I-VETO-BOUND",
+      "statement": "A binding the kernel can see would strand the vault is refused at binding: a destination with no code, the vault itself, or a hash the destination's code does not have. What it cannot see at binding, a destination or token that later refuses what it is sent, is K-12-VETO's: that wait has no bound.",
+      "tier": "T0",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: bindMigration accepts any non-zero hash and egress compares it, so one wrong hash signed at k+1 leaves egress, spending, recovery and rebinding refused forever. A vault bound to itself and a funded empty address that is deployed to afterwards reach the same state. Generation 1 has the same code, and no ledger entry records it.",
+      "addedAfterRegistration": "Fresh-context review.",
+      "measuredOnCandidate": "PASS",
+      "note": "A destination with no code, the vault itself, and a hash the destination's code does not have are each refused at binding, consuming nothing and flipping nothing. The re-check at execution stays, because code can still vanish in the transaction that created it, and re-creating it at the same address restores the exit where the creator can. On measured Variant A each of the three shut the vault for good. This row covers what the kernel can see: what it cannot is K-12-VETO's.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-DEAD-BINDING"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE refuses it at binding"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE refuses both at binding"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "K-13-DEAD-BINDING"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a destination that lost its code after binding is refused"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "MUTANT: with the re-check removed"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "MUTANT: with the no-code check removed"
+          ]
+        ],
+        "properties": [
+          "P-EXIT-REACHABLE"
+        ],
+        "mutants": [
+          "M-G2-23-dead-binding-accepted",
+          "M-G2-24-self-binding-accepted"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "bindMigration: `if (destination.vault.code.length == 0 || destination.vault == address(this)) revert DestinationMismatch();` and `if (destination.vault.codehash != destination.codeHash) revert DestinationMismatch();`",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-13-NONFUNGIBLE",
+      "concern": "exit for every holding class",
+      "source": "I-MIGRATION-NONTRAP (T0) head sentence: 'an asset state with no authorized exit'; architecture 13.1 Phase 3: 'what makes ERC-721 and ERC-1155 workable'; H-25: 'ERC-20 and NFT custody arrive for free'; custody 7.1: 'Anything else that lands on the clone is reachable only by migration egress'",
+      "statement": "An unsolicited holding of any class is egressable on the same permissionless terms as any other.",
+      "tier": "T0",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: egress has one call shape, transfer(address,uint256), on all three kernels, so an ERC-721 or ERC-1155 holding has no exit. The kernel's documents record the fixed selectors and do not record this consequence.",
+      "addedAfterRegistration": "Re-reading the invariant while adjudicating the review's finding about residual clauses.",
+      "measuredOnCandidate": "FAIL",
+      "note": "T0, on a reachable state, on all three kernels. Egress has one call shape, so an unsolicited ERC-721 or ERC-1155 has no exit at all, though it vetoes nothing else. NONTRAP's head sentence forbids that, 13.1 calls the classes workable, and custody 7.1 says anything else that lands on the clone is reachable by egress. The policy has no clause for it.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-NONFUNGIBLE"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "MEASURED VARIANT A, GENERATION 1 and THE CANDIDATE alike"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "OWNER DECISION OD-NONFUNGIBLE-EXIT"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": "OD-NONFUNGIBLE-EXIT",
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-12-CLOCK",
+      "concern": "migration and pending clocks",
+      "source": "architecture 13.2 I-MIGRATION-CLOCK-NEUTRAL (T1)",
+      "statement": "Migration neither shortens nor lengthens the maturity of any pending obligation: containment expiry and recovery delay. This kernel has no queue.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No criterion named it at registration.",
+      "addedAfterRegistration": "A mechanical scan of every named invariant, now a test in test/Gen2AdmissionMatrix.test.ts.",
+      "measuredOnCandidate": "PASS",
+      "note": "A binding made while contained moves no clock word, read from storage, and containment cannot start once bound. A live recovery blocks binding and an expired one holds nothing, so no recovery clock can meet a binding. This kernel has no queue.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Migration.test.ts",
+            "I-MIGRATION-CLOCK-NEUTRAL"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a LIVE recovery blocks binding"
+          ]
+        ],
+        "properties": [
+          "G-EFFECTIVE-STATE-DERIVATION",
+          "G-CONTAINMENT-ROLLING-BUDGET"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-GENERATION",
+      "concern": "generation monotonicity",
+      "source": "architecture section 16 T1 I-GENERATION-MONOTONE",
+      "statement": "Credential and guardian generations only rise, and a signature under a past generation is refused.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: a binding's digest names the guardian generation only, so its credential leg survives a rotation back to the same key: rotated A to B to A, a signature from two generations ago still binds.",
+      "addedAfterRegistration": "The same scan, corrected by the second fresh-context review, which measured the binding's credential leg.",
+      "measuredOnCandidate": "PASS",
+      "note": "A signature by the current key under a past credential generation is refused, and by the current roster under a past guardian generation, each passing under the live one. Both counters only rise, across every campaign history. A binding's digest now names both generations, so its credential leg dies with a rotation too.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "I-GENERATION-MONOTONE"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a binding signed before a credential rotation"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-BINDING-SCOPE"
+          ]
+        ],
+        "properties": [
+          "G-CRED-GENERATION-MONOTONIC",
+          "G-GUARDIAN-GENERATION-MONOTONIC",
+          "G-NONCES-MONOTONIC"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "The same as K-12-SCOPE.",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-INGRESS",
+      "concern": "accounted ingress",
+      "source": "architecture section 6 I-NO-INGRESS-WITHOUT-EGRESS (T1), scope corrected to accounted paths",
+      "statement": "The kernel credits no balance anywhere, so no state can book an inflow it refuses to pay out.",
+      "tier": "T1",
+      "measuredVariantA": "UNPROVEN",
+      "measuredReason": "No criterion named it at registration.",
+      "addedAfterRegistration": "The same scan.",
+      "measuredOnCandidate": "PASS",
+      "note": "The kernel books nothing: no storage word holds a balance, in any state, so the invariant has nothing to be broken by. What arrives with no kernel function, a direct transfer, is what its scope correction excludes.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Settlement.test.ts",
+            "no storage word holds a balance"
+          ]
+        ],
+        "properties": [
+          "P-CONSERVATION"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "OFF-KERNEL-INVARIANTS",
+      "concern": "named invariants a kernel cannot carry, or that no longer stand",
+      "source": "I-SYNCHRONY and I-PARITY (T2, a control plane this prototype does not have); I-DISJUNCTION-TAKES-MIN (a reference-model aggregation rule); I-STRONGER (architecture section 9: not adopted); I-FLOOR-SHAPE-IMMUTABLE (KERNEL_ADMISSION: retired); I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY (AUTHORITY.md: does not exist in any Solidity file)",
+      "statement": "Each is named in the normative documents and has no kernel subject. Recorded so absence is not read as coverage.",
+      "tier": "T2",
+      "measuredVariantA": "NOT_APPLICABLE",
+      "measuredReason": "As stated, per invariant.",
+      "addedAfterRegistration": "The same scan.",
+      "measuredOnCandidate": "NOT_APPLICABLE",
+      "note": "No kernel subject, per invariant, in the criterion's source. Recorded so absence is not read as coverage. test/Gen2AdmissionMatrix.test.ts scans the normative documents, so a newly named invariant fails until a criterion names it.",
+      "evidence": {},
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-12-SCOPE",
+      "concern": "what a binding commits to",
+      "source": "H-10 Prevention (T1): 'credential commitment, guardian commitment, policy commitment, expected safe state, chain id, nonce, deadline'; architecture 13.1 Phase 1; test/helpers/vaultVNextModel.ts MigrationBinding: 'Omitting any field is a mutant'",
+      "statement": "A binding's signatures commit to the source, the destination's address, code hash and generation, the credential and guardian generations, the policy plane, the safe state, the chain, the nonce and a signature deadline. Withdrawn by 13.1 and not carried: an asset set and an amount.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: the digest omits the credential generation, the plane and the safe state, so a signed binding outlives changes to any of them.",
+      "addedAfterRegistration": "Second fresh-context review: a T1 hazard's prevention no row covered.",
+      "measuredOnCandidate": "PASS",
+      "note": "H-10's list, field by field. In the domain: the source and the chain. In the digest: destination, code hash and destination generation; the guardian and credential generations, which move whenever those commitments do; the policy plane; the safe state; the nonce; a signature deadline. Withdrawn by 13.1: an asset set and an amount. A binding signed before any of them changes is refused after. That the deadline is the signature's and not the binding's is K-12-VETO.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Migration.test.ts",
+            "a binding signed before a credential rotation"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a binding signed before a policy change"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "a binding signed in one safe state"
+          ],
+          [
+            "Gen2Migration.test.ts",
+            "the deadline it signs is the signature's"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-BINDING-SCOPE"
+          ]
+        ],
+        "properties": [
+          "P-CUT/MIGRATION_BINDING"
+        ],
+        "mutants": [
+          "M12-migration-quorum-only"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "bindMigration's digest: `keccak256(abi.encode(destination.vault, destination.codeHash, destination.generation, credentialGeneration, policyEngine, _effectiveState()))`",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-6-ATTESTATION",
+      "concern": "an ERC-1271 answer",
+      "source": "architecture 9 I-ATTESTATION-IS-AFFIRMATIVE (T1): 'the returned word equals the ERC-1271 magic value'",
+      "statement": "An ERC-1271 attestation counts only when the whole returned word is the magic value.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: the kernel compares the first four bytes, so magic plus anything reaches quorum.",
+      "addedAfterRegistration": "Second fresh-context review. K-6 names the invariant in its source; its registered statement does not reach this.",
+      "measuredOnCandidate": "PASS",
+      "note": "An ERC-1271 answer counts only if the whole returned word is the magic value. On measured Variant A magic in the first four bytes and anything in the rest reached quorum.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "F-ATTESTATION"
+          ],
+          [
+            "Gen2AdmissionFindings.test.ts",
+            "THE CANDIDATE counts no such answer"
+          ],
+          [
+            "Gen2KernelRows.test.ts",
+            "ERC-1271 guardian changes nothing for the others"
+          ]
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": "_attests: `return ok && answer == bytes32(ERC1271_MAGIC);` in place of comparing `bytes4(answer)`",
+      "blockedOnDecision": null,
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-RETIRE",
+      "concern": "who reaches the terminal state",
+      "source": "architecture section 6 Required invariants: 'No minor principal can force an irreversible terminal state. Only a completed migration ... reaches RETIRED'; section 6 transitions; 22 D2: RETIRE 'the same conjunction, after bindDelay'",
+      "statement": "No minor principal can force the irreversible terminal state: it is reached by a completed migration or by the binding's own conjunction.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: retire() is permissionless after the delay, on all three kernels, with no migration completed. Today it closes nothing a binding has not already closed, and the three texts disagree with each other as well.",
+      "addedAfterRegistration": "Second fresh-context review.",
+      "measuredOnCandidate": "FAIL",
+      "note": "On all three kernels a stranger can force RETIRED once the delay has passed, with no migration completed, where section 6 says only a completed migration reaches it and D2 says the binding's own conjunction does. Today it closes nothing a binding has not already closed, so no cut moves. It stops being harmless if a binding can lapse, which is why it goes with that decision.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2Migration.test.ts",
+            "retire waits for the same instant, and gates nothing"
+          ]
+        ],
+        "properties": [
+          "G-RETIRED-IS-TERMINAL"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": "OD-BINDING-LIFETIME",
+      "whyTheT0Holds": null
+    },
+    {
+      "id": "K-SECURITY-PROFILE",
+      "concern": "section 12's strength policy",
+      "source": "H-05 Prevention (T1): 'strength is a kernel-recorded ordinal per scheme'; architecture section 12; 24.2 'Silent crypto downgrade ... refused by the partial order'; KERNEL_ADMISSION K-15: SECURITY_PROFILE_DISPOSITION = DEFERRED_TO_FUTURE_GENERATION",
+      "statement": "This generation carries section 12's SecurityProfile transition rules, or an owner decision defers them again.",
+      "tier": "T1",
+      "measuredVariantA": "FAIL",
+      "measuredReason": "MEASURED: a flat four-field struct, the construct section 12 withdrew, as on Generation 1, whose admission deferred the rules to a future generation. This is one, and no document says whether the deferral carries over.",
+      "addedAfterRegistration": "Second fresh-context review.",
+      "measuredOnCandidate": "FAIL",
+      "note": "The floor is four flat fields, the construct section 12 withdrew, as on Generation 1, whose admission deferred the rules to a future generation. This is a future generation, and nothing says whether the deferral carries over. H-05's Prevention, a kernel-recorded strength per scheme, is not here, and 24.2's 'refused by the partial order' describes something no kernel built so far has. K-15 passes on what it states. On a dormant floor there is no PQ strength to rate, so a further deferral is coherent, and the owner has to say so.",
+      "evidence": {
+        "tests": [
+          [
+            "Gen2KernelRows.test.ts",
+            "the floor is four flat fields"
+          ]
+        ],
+        "properties": [
+          "G-FLOOR-NO-DOWNGRADE"
+        ]
+      },
+      "residuals": [],
+      "admissionDelta": null,
+      "blockedOnDecision": "OD-SECURITY-PROFILE",
+      "whyTheT0Holds": null
+    }
+  ],
+  "residuals": [
+    {
+      "id": "R-ASSET-BOUNDARY",
+      "title": "What a sender cannot observe, and what an issuer can do without the kernel",
+      "policyClause": "an external asset behaviour the custody adjudication assigns to the asset boundary (custody doc sections 7.1, 8 D-5; architecture section 13.4)",
+      "statement": "The kernel's settlement proof is an exact observed decrease of its own balance. A recipient-side fee settles, and a balanceOf that lies by exactly the expected debit settles with nothing moved and the nonce burned. An issuer can debit the clone on its own ledger with no kernel act at all, by seizure or a downward rebase, can blocklist the clone itself, which stops its spend and egress until lifted (the one case architecture 13.4 keeps, and D-5), and can change any of this for every vault at once by upgrade. No kernel check can close these: asset admission must. A false-returning token that moves settles too, because the boolean is trusted in neither direction. Custody names blocklisting and freezing; 'Issuer controls are external' is the class, and the owner's lane requirements 6 and 12 place the rest of it on asset admission.",
+      "pinnedBy": [
+        [
+          "Gen2Settlement.test.ts",
+          "ASSET BOUNDARY: a recipient-side fee settles"
+        ],
+        [
+          "Gen2Settlement.test.ts",
+          "ASSET BOUNDARY: a balanceOf that lies by exactly the expected debit"
+        ],
+        [
+          "Gen2Settlement.test.ts",
+          "ASSET BOUNDARY: the token can debit the clone with no kernel act"
+        ],
+        [
+          "Gen2Settlement.test.ts",
+          "the boolean is trusted in NEITHER direction"
+        ],
+        [
+          "Gen2Migration.test.ts",
+          "a token blocklisting the SOURCE stops its egress until lifted"
+        ]
+      ]
+    },
+    {
+      "id": "R-SD4",
+      "title": "SD-4: the ECDSA-only declaration destroys an approved recovery at cut 1",
+      "policyClause": "a sustained defect the ledger already carries with its own stated disposition (stateful/defects.ts)",
+      "statement": "PRESERVED, not worsened. The remedy is deniable for one episode, 21 days against the 14 I-VETO-BOUND implies, and the quorum self-heals with no clock touched. Not reachable through the asset except as a carrier for the same credential signature.",
+      "pinnedBy": [
+        [
+          "Gen2CarriedDefects.test.ts",
+          "PRESERVED: the declaration is still admitted"
+        ],
+        [
+          "Gen2CarriedDefects.test.ts",
+          "NOT WORSENED: the architecture-native exit still repairs it"
+        ],
+        [
+          "Gen2CarriedDefects.test.ts",
+          "NOT REACHABLE THROUGH THE ASSET"
+        ]
+      ]
+    },
+    {
+      "id": "R-SD8",
+      "title": "SD-8: an exhibited preimage proves no key is well-formed",
+      "policyClause": "a sustained defect the ledger already carries with its own stated disposition (stateful/defects.ts)",
+      "statement": "PRESERVED, not worsened. A deliberate empty key arms and refuses every spend at cut 0, on the deployer's own vault; recovery and migration both still reach the asset.",
+      "pinnedBy": [
+        [
+          "Gen2CarriedDefects.test.ts",
+          "PRESERVED: a deliberately empty key commits"
+        ],
+        [
+          "Gen2CarriedDefects.test.ts",
+          "NOT WORSENED, AND THE ASSET IS NOT TRAPPED"
+        ],
+        [
+          "Gen2CarriedDefects.test.ts",
+          "the migration exit from the same dead state"
+        ]
+      ]
+    },
+    {
+      "id": "R-SD11-CONDITION",
+      "title": "SD-11A and SD-11B hold on a factory that binds the real root",
+      "policyClause": "a generation-publisher discovery residual (H-32)",
+      "statement": "The kernel bytes do not pin the root, so the same bytes under another root admit what that root approves. Checkable offline from bytes 8..28 of each clone's own args. Which root, implementation and asset a factory binds, and that its generation is 2, are deployment facts: the factory enforces non-zero only.",
+      "pinnedBy": [
+        [
+          "Gen2CarriedDefects.test.ts",
+          "THE CONDITION, STATED BY EXECUTION"
+        ],
+        [
+          "Gen2AssetIdentity.test.ts",
+          "the factory does not choose the generation number's meaning"
+        ]
+      ]
+    }
+  ],
+  "disclosedNarrowings": [
+    {
+      "id": "N-EGRESS-WINDOW",
+      "title": "Nothing can stop a bound egress during its 7 days",
+      "against": "H-11 Detection promises 'a delay-bounded warning window' and names no remedy; I-MIGRATION-SUBORDINATE-TO-RECOVERY asks for the time and no more",
+      "statement": "The delay gives time and visibility, and no principal a way to act on them: MIGRATION_ONLY refuses containment, recovery, spending and a rebind. It also makes every honest migration wait 7 days. Whether a warning with no remedy is what the owner wants is part of OD-EGRESS-DELAY.",
+      "pinnedBy": [
+        [
+          "Gen2Migration.test.ts",
+          "OWNER-REVIEWABLE: the delay buys time and visibility only"
+        ],
+        [
+          "Gen2AdmissionFindings.test.ts",
+          "WHAT THE DELAY COST"
+        ]
+      ]
+    },
+    {
+      "id": "N-BINDING-SCOPE",
+      "title": "What a code hash does not prove about a destination",
+      "against": "H-10 Residual risk: 'A code hash proves which code, never that the code is correct. Destination auditing is out of band'",
+      "statement": "The destination's generation is signed and otherwise unchecked. Whether its asset matches is the signers' responsibility at k+1: a mismatched asset arrives as an unsolicited holding, which can leave and cannot be spent. A hash also says nothing about whether the destination will take what it is sent: one with no receive() keeps native value in the vault. Under EIP-7702 a delegated account has code whose hash its owner can change at will, so a binding naming one is refused at egress until its owner restores it: NOT MEASURED here, because the pinned EVM is cancun. Each of those waits has no bound, which is K-12-VETO.",
+      "pinnedBy": [
+        [
+          "Gen2Migration.test.ts",
+          "a destination's generation is signed, and otherwise a label"
+        ],
+        [
+          "Gen2AssetIdentity.test.ts",
+          "a vault of a DIFFERENT asset holds what arrives as an unsolicited holding"
+        ],
+        [
+          "Gen2AdmissionFindings.test.ts",
+          "A destination that refuses native value keeps that holding"
+        ]
+      ]
+    },
+    {
+      "id": "N-LATTICE",
+      "title": "The kernel's state machine is narrower than the architecture's table",
+      "against": "architecture section 6: the transition table and the action matrix; 13.1's per-entry manifest",
+      "statement": "A live recovery blocks binding and MIGRATION_ONLY refuses recovery, so the two never coexist, where the table keeps recovery execution available. RECOVERY_ONLY is never assigned. The kernel generation does not advance on RETIRED, because it is code. There is no manifest and no per-entry status: one egress call is one entry, and a failed one reverts itself and nothing else. That the flip is immediate and one-way where the table reads delayed and reversible is K-12-VETO, and who reaches RETIRED is K-RETIRE.",
+      "pinnedBy": [
+        [
+          "Gen2Migration.test.ts",
+          "OWNER-REVIEWABLE: the delay buys time and visibility only"
+        ],
+        [
+          "Gen2Migration.test.ts",
+          "I-EGRESS-RETRY-PERPETUAL"
+        ]
+      ]
+    },
+    {
+      "id": "N-DESTINATION-EXISTS",
+      "title": "A destination must have code to be bound",
+      "against": "Nothing written: 13.5 presumes a check at preparation and H-10 says 'code-bearing at proposal time'. Measured Variant A and Generation 1 accepted a counterfactual address and a funded account",
+      "statement": "The check at binding refuses an address with no code, funded or not, so a migration deploys its destination first and cannot name an externally-owned account. The factory is permissionless, so this costs one transaction and no authority.",
+      "pinnedBy": [
+        [
+          "Gen2Migration.test.ts",
+          "a destination must have code to be bound"
+        ],
+        [
+          "Gen2AdmissionFindings.test.ts",
+          "THE CANDIDATE refuses both at binding"
+        ]
+      ]
+    },
+    {
+      "id": "N-ONE-SPENDABLE-ASSET",
+      "title": "Only the admitted asset can be spent",
+      "against": "Generation 1, whose execute moved native value; the admitted-asset plane is what this candidate is",
+      "statement": "Native value and unsolicited ERC-20 holdings cannot be spent at all: they leave only through a migration's egress.",
+      "pinnedBy": [
+        [
+          "Gen2Settlement.test.ts",
+          "a spend moves no native value"
+        ]
+      ]
+    },
+    {
+      "id": "N-NESTED-ACTS",
+      "title": "An authorised act nested in a token's hook or a policy plane takes effect before the outer spend settles",
+      "against": "Nothing: serial equivalence is the claim, and this is what it looks like from the inside",
+      "statement": "A containment, rotation, roster change, recovery initiation or binding, signed by whoever holds that authority, can run inside the transfer or inside the plane's admit, and the outer spend still settles after it, in the state the nested act left: a spend can settle while contained. The nonce and the exact delta hold either way, and the outcome is the one the ordering spend-then-act gives. A token with a hook is what asset admission refuses. A plane is one the credential installed.",
+      "pinnedBy": [
+        [
+          "Gen2Reentrancy.test.ts",
+          "a rotation from the hook is spend-then-rotate"
+        ],
+        [
+          "Gen2Reentrancy.test.ts",
+          "a roster change from the hook is spend-then-replace"
+        ],
+        [
+          "Gen2Reentrancy.test.ts",
+          "a recovery begun from the hook is spend-then-initiate"
+        ],
+        [
+          "Gen2Reentrancy.test.ts",
+          "cannot escape a safe state"
+        ],
+        [
+          "Gen2Reentrancy.test.ts",
+          "a plane nesting a quorum-signed containment is spend-then-contain too"
+        ]
+      ]
+    }
+  ],
+  "hazardCoverage": {
+    "H-01": {
+      "rows": [
+        "AUTH-COMPLETENESS"
+      ],
+      "note": "An admin pause: the kernel has no owner and no pause, and the census would notice one."
+    },
+    "H-02": {
+      "rows": [
+        "FACTORY-GENERATION",
+        "K-4"
+      ],
+      "note": "Identity is the clone's address and authority is rotatable state."
+    },
+    "H-03": {
+      "rows": [
+        "K-9"
+      ],
+      "note": "Its Prevention reads 'guardian-quorum authority only'. D1 superseded that with a bounded credential challenge, and that is what K-9 holds the kernel to."
+    },
+    "H-04": {
+      "rows": [
+        "K-4"
+      ],
+      "note": "Possession of every incoming credential, on both write paths."
+    },
+    "H-05": {
+      "rows": [
+        "K-SECURITY-PROFILE"
+      ],
+      "note": "Not implemented, on any kernel here. Blocking."
+    },
+    "H-10": {
+      "rows": [
+        "K-12-SCOPE",
+        "K-13-DEAD-BINDING"
+      ],
+      "note": "The binding's fields, and the code hash at both ends."
+    },
+    "H-11": {
+      "rows": [
+        "K-12",
+        "K-12-TIME"
+      ],
+      "note": "Decomposed authority, and the warning window it promises."
+    },
+    "H-12": {
+      "rows": [
+        "K-11",
+        "K-10"
+      ],
+      "note": "Containment self-expires, and recovery stays live through it."
+    },
+    "H-13": {
+      "rows": [
+        "K-10",
+        "K-11"
+      ],
+      "note": "No capability exists only in CONTAINED."
+    },
+    "H-15": {
+      "rows": [
+        "K-6"
+      ],
+      "note": "Not prevented: accepted by owner decision D1, and K-6 does not claim otherwise."
+    },
+    "H-17": {
+      "rows": [
+        "G2-VERIFIER-3",
+        "G2-VERIFIER-8"
+      ],
+      "note": "No infrastructure dependency, on a dormant floor or for exit."
+    },
+    "H-18": {
+      "rows": [
+        "OBSERVATORY-CLAIMS"
+      ],
+      "note": "An assurance plane this prototype does not contain."
+    },
+    "H-19": {
+      "rows": [
+        "K-6"
+      ],
+      "note": "Guardian membership is kernel state, with no plane to take over."
+    },
+    "H-20": {
+      "rows": [
+        "RUNTIME-CEILING"
+      ],
+      "note": "One vault's semantics, and a published byte budget."
+    },
+    "H-21": {
+      "rows": [
+        "IMPL-IMMUTABILITY",
+        "AUTH-SATISFIABILITY"
+      ],
+      "note": "Guardians bound atomically with creation."
+    },
+    "H-23": {
+      "rows": [
+        "K-2",
+        "G2-NO-ALLOWANCE"
+      ],
+      "note": "No generic execution and no ERC-1271 surface on the vault."
+    },
+    "H-24": {
+      "rows": [
+        "G2-VERIFIER-4"
+      ],
+      "note": "The admitted class's attestor is immutable."
+    },
+    "H-25": {
+      "rows": [
+        "K-1",
+        "K-INGRESS"
+      ],
+      "note": "No second number. The hazard's aside that NFT custody arrives for free is K-13-NONFUNGIBLE."
+    },
+    "H-26": {
+      "rows": [
+        "G2-ASSET-10"
+      ],
+      "note": "The domain separates vaults."
+    },
+    "H-27": {
+      "rows": [
+        "K-6"
+      ],
+      "note": "The roster is emitted with every write of its commitment."
+    },
+    "H-28": {
+      "rows": [
+        "K-13"
+      ],
+      "note": "Per-entry independence holds. The row fails on another clause."
+    },
+    "H-29": {
+      "rows": [
+        "IMPL-IMMUTABILITY"
+      ],
+      "note": "Zero immutable slots."
+    },
+    "H-30": {
+      "rows": [
+        "K-11"
+      ],
+      "note": "No extension, and a rolling budget with B < W."
+    },
+    "H-31": {
+      "rows": [
+        "K-6"
+      ],
+      "note": "Not prevented, in the register's own words. Unchanged here."
+    },
+    "H-32": {
+      "rows": [
+        "FACTORY-GENERATION"
+      ],
+      "note": "One immutable factory per generation."
+    }
+  },
+  "ownerDecisions": [
+    {
+      "id": "10.1",
+      "decision": "Pin the admitted asset in immutable args",
+      "previousState": "Recommended yes (custody 10.1)",
+      "measurementEvidence": "#237: a clone is 93 bytes with the asset as args field 3; the factory gains one immutable.",
+      "admissionEvidence": "G2-ASSET-1..10 PASS, offline five-link chain, M-G2-2 and M-G2-15/16 killed. This lane's brief also requires it outright.",
+      "recommendation": "Yes. Treated as settled by the brief; the owner's next decision is the value, per generation, in a later lane.",
+      "ownerDecisionRequired": false,
+      "blocksAdmission": false
+    },
+    {
+      "id": "10.2",
+      "decision": "Ship v1 with requirePq = false",
+      "previousState": "Recommended yes, owner-reserved (custody 10.2)",
+      "measurementEvidence": "None directly. #237 kept both floors available.",
+      "admissionEvidence": "Kernel-neutral: the candidate admits both floors and is tested on both. On a dormant floor no attestor statement is needed anywhere (G2-VERIFIER-3,8). An armed floor stakes spending on the installed verifier's attestor, and its recovery on some attestor's statement, which the recovering party can make itself (K-7's third test). Migration by quorum and ECDSA needs none.",
+      "recommendation": "Yes, unchanged. Admission does not depend on the answer.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "10.3",
+      "decision": "WalletWall guardian seats in v1",
+      "previousState": "Recommended none, owner-reserved (custody 10.3)",
+      "measurementEvidence": "None.",
+      "admissionEvidence": "Kernel-neutral: a roster is genesis configuration, and no seat is privileged by identity.",
+      "recommendation": "None, unchanged. Admission does not depend on the answer.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "10.4",
+      "decision": "Production constants (custody 7.3), and the EIP-712 name and version",
+      "previousState": "Open, owner-reserved (architecture B-3)",
+      "measurementEvidence": "None.",
+      "admissionEvidence": "The candidate carries the prototype's constants and domain strings. A production build changes the bytes, so it is a NEW identity that must re-run this suite. Not a kernel-semantics blocker.",
+      "recommendation": "Decide in the deployment lane. This admission is of these bytes; different constants are a different candidate.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "10.5",
+      "decision": "Chain scope: Base Mainnet (8453) only in v1",
+      "previousState": "Recommended, owner-reserved (custody 10.5)",
+      "measurementEvidence": "None.",
+      "admissionEvidence": "Kernel-neutral: the domain separator carries the live chain id and no chain is named in the candidate. No Base configuration was added.",
+      "recommendation": "Unchanged. Admission does not depend on the answer.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "10.6",
+      "decision": "Whether the new generation accepts a null verifier when requirePq == false",
+      "previousState": "Measured by #237: Variant B is 57 B larger; recommended keep the requirement",
+      "measurementEvidence": "Variant B 18,629 B vs Variant A 18,572 B, re-asserted in this lane.",
+      "admissionEvidence": "All eight proofs executed: G2-VERIFIER-1..8 PASS. The verifier is not consulted on a dormant floor, a stranger can create one without WalletWall, a bare mock is refused at all three edges under the real root, and neither migration nor recovery depends on the installed one.",
+      "recommendation": "Keep the requirement: Variant A. This lane's evidence supports the measurement; it does not overturn it.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "OD-BINDING-LIFETIME",
+      "decision": "NEW, AND BLOCKING. A binding never lifts, and I-VETO-BOUND and I-MIGRATION-NONTRAP (T0) say it must not trap. Change the words or change the kernel",
+      "previousState": "Architecture section 6 reads 'delayed, reversible', 13.1 and H-10 give a binding a deadline, I-VETO-BOUND names it, 13.0's failure 1 names a blacklisted destination as the trap, and 13.4 keeps only the source case. Every kernel here binds immediately, one-way, with no deadline, and retire is permissionless. Generation 1's M-K23 pins that a second destination cannot be bound. No document records the disagreement",
+      "measurementEvidence": "None. #237 did not reach it.",
+      "admissionEvidence": "K-12-VETO, K-13 and K-RETIRE FAIL on all three kernels, by execution: ten years on, with egress blocked, the vault is MIGRATION_ONLY with spending, rotation, recovery, containment and rebinding all refused. Only the issuer can end it. What the kernel can see at binding no longer reaches this state (K-13-DEAD-BINDING). An issuer's block of the destination still does, and on the candidate the delay has made it worse.",
+      "recommendation": "(A) Amend: section 6's transitions, action matrix and Required invariants, I-VETO-BOUND's binding clause, NONTRAP's head sentence and 13.0's failure 1, section 16's T0 scope, 22 D2's RETIRE row, 24.2's 'Permanent recovery veto: unreachable' and the 'no veto outcome' summary under it, AUTHORITY.md's matching row, and 2.2 and 13.4 to declare the blocked destination. No bytes change. (B) Build: a dedicated lane adds a self-lifting lapse and re-runs this whole suite on the new bytes. A sketch only, not adjudicated: a binding under which the admitted asset has moved nothing lapses at bind + BIND_DELAY + a window; only admitted-asset movement pins it, because native value or unsolicited dust is griefable; permissionless retire could pin a blocked binding, so it may need D2's conjunction. A lapse matters only when egress cannot succeed, since anyone can egress at day 7. Recommended: (B), because headroom is ample and it makes a T0 true rather than rewriting it. Rewriting a T0 is the owner's alone either way.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": true
+    },
+    {
+      "id": "OD-NONFUNGIBLE-EXIT",
+      "decision": "NEW, AND BLOCKING. A non-fungible holding cannot leave, and the architecture and custody both say it can. Change the words or change the kernel",
+      "previousState": "Architecture 13.1 calls ERC-721 and ERC-1155 'workable' through the caller's asset identifier, H-25 says NFT custody arrives for free, and custody 7.1 says anything else that lands on the clone is reachable by egress. AUTHORITY.md section 5 records the fixed selectors and not this consequence",
+      "measurementEvidence": "None. #237 did not reach it.",
+      "admissionEvidence": "K-13-NONFUNGIBLE FAIL on all three kernels, by execution. It vetoes nothing else: every other holding leaves.",
+      "recommendation": "(A) Amend: scope this kernel's egress to holdings with the ERC-20 transfer shape, in NONTRAP and 13.1, 13.0a, H-25 and custody 7.1, and declare an unsolicited non-fungible holding in 2.2. No bytes change. (B) Build: a lane adds a per-class egress: new selectors, token-id discretion under the same no-recipient rule, settlement on observed ownership, and a callback into the destination on the safe paths. Recommended: (A), because a generation whose purpose is one admitted fungible asset gains little from a new call shape in the kernel, and nothing else is affected. The words have to change, and only the owner can change them.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": true
+    },
+    {
+      "id": "OD-RECOVERY-LOCALITY",
+      "decision": "NEW, AND BLOCKING. Recovery consults two things I-RECOVERY-LOCALITY-V2's closed list does not name, and reads state its last clause forbids",
+      "previousState": "The invariant lists the clone's implementation, precompiles and committed guardians, and forbids reading state any principal outside that constituency can write. KERNEL_ADMISSION K-8 repeats it. AUTHORITY.md section 5 records both calls, lane SD-11 added the root's, and SD-4 and the bounded challenge are the two reads. Nothing reconciles them, and K-7's own registered statement repeated the list",
+      "measurementEvidence": "None. #237 did not reach it.",
+      "admissionEvidence": "K-7 FAIL as registered, by execution: initiation asks the provenance root on every floor; execution on an armed floor asks the verifier the approved request names; execution reads the credential-writable floor (SD-4) and the challenge-writable active flag (K-9). What the invariant says its words are for, 'no replaceable component's failure can stop recovery', holds: the root is ownerless and can only refuse, its cure is permissionless, a dead proposal stops only that request, and a recovering party can run its own attestor with no other infrastructure.",
+      "recommendation": "(A) Amend: add both calls to the closed list, naming their bounds, and narrow its last clause to except the credential's bounded challenge and SD-4's disposition; KERNEL_ADMISSION K-8 and the registered K-7 statement move with it. No bytes change. Recommended, because the alternative is not really available: removing the root's call reopens SD-11, and removing the armed possession proof contradicts I-INCOMING-CREDENTIAL-POSSESSION, which K-4 passes on.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": true
+    },
+    {
+      "id": "OD-SECURITY-PROFILE",
+      "decision": "NEW, AND BLOCKING. Section 12's strength policy was deferred to a future generation, and this is one. Defer it again, or build it",
+      "previousState": "KERNEL_ADMISSION K-15: SECURITY_PROFILE_DISPOSITION = DEFERRED_TO_FUTURE_GENERATION; Generation 1 'claims no strength policy at all'. Custody's list of what the production-asset generation needs does not mention it. 24.2 still says a silent downgrade is refused by section 12's partial order",
+      "measurementEvidence": "None. #237 did not reach it.",
+      "admissionEvidence": "K-SECURITY-PROFILE FAIL: the floor is four flat fields, as on Generation 1, and H-05's Prevention is not implemented. K-15 passes on what it states: requirePq is one-way, and the metadata authorises nothing.",
+      "recommendation": "(A) Defer again, saying so: this generation claims no strength policy either, and 24.2's row and H-05 are corrected to what is built. No bytes change. (B) Build: a large lane. Recommended: (A) for a generation custody 10.2 recommends shipping with requirePq = false, with the policy as a condition of the first generation that arms PQ for real value.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": true
+    },
+    {
+      "id": "OD-EGRESS-DELAY",
+      "decision": "NEW. Accept the admission delta that enforces BIND_DELAY at egress",
+      "previousState": "Absent: measured Variant A and Generation 1 egress in the bind block; architecture 13.2 and H-11 say otherwise",
+      "measurementEvidence": "See section 11 of GEN2_ADMISSION.md: spend gas unchanged, egress slightly up.",
+      "admissionEvidence": "K-12-TIME was FAIL on measured Variant A: {k guardians, ECDSA, no PQ} drained an armed vault in 0 s against 7 d for recovery. PASS on the candidate; M-G2-11 killed. Its cost is measured too: atomic bind-and-egress is gone, and it adds a week to every honest migration (N-EGRESS-WINDOW, row K-13).",
+      "recommendation": "Accept: I-MIGRATION-SUBORDINATE-TO-RECOVERY is T0 and this is the smallest change that satisfies it. Removing it returns the row to FAIL on armed floors. Should the owner prefer the invariant restated instead, that is an architecture amendment and a new admission.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "OD-DEAD-BINDING",
+      "decision": "NEW. Accept the admission delta that checks the destination at binding",
+      "previousState": "Absent: measured Variant A and Generation 1 accept any non-zero hash, against the check at preparation architecture 13.5 presumes",
+      "measurementEvidence": "See section 11 of GEN2_ADMISSION.md.",
+      "admissionEvidence": "K-13-DEAD-BINDING was FAIL on measured Variant A and is PASS here; M-G2-23 and M-G2-24 killed. The re-check at egress stays, and is shown live on a destination destroyed in its creating transaction. It costs counterfactual and externally-owned destinations (N-DESTINATION-EXISTS).",
+      "recommendation": "Accept: one honest mistake at k+1 should not end a vault, and this moves no cut.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    },
+    {
+      "id": "OD-ROOT",
+      "decision": "NEW. Reuse the Generation-1 provenance root, or deploy a new one",
+      "previousState": "Unstated",
+      "measurementEvidence": "None.",
+      "admissionEvidence": "Deployment-only and authority-neutral: the root has no owner, and its identity is checkable from every clone's own code. The candidate compiles the existing class unchanged.",
+      "recommendation": "Either is safe. Decide in the deployment lane.",
+      "ownerDecisionRequired": true,
+      "blocksAdmission": false
+    }
+  ]
+}

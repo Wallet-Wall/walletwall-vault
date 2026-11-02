@@ -1,0 +1,1912 @@
+{
+  "schema": "vnext-kernel-gen2-stateful-authority-evidence.v1",
+  "_WARNING": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. Admission of a kernel candidate approves no asset, no network and no real value.",
+  "evidenceSubject": {
+    "head": "19cca198071a6ace73bd790321c983e4fdb63b1d",
+    "tree": "500b780160b5d201dfbfac682ae44c8a09a3e36e"
+  },
+  "question": "Can individually-valid transitions be composed over time, on the Generation-2 candidate with ERC-20 state in the history, into an outcome below its declared authority cut?",
+  "notInherited": "Generation 1's receipt covers Generation 1. This campaign ran on the candidate: same seeds and depths, same global invariants imported unchanged, same cut model.",
+  "framework": "generation-2/stateful/, reusing stateful/'s PRNG, cut model, defect ledger, global invariants and quorum shapes by import. A campaign is a pure function of (profile, seed, depth).",
+  "oracle": "Asymmetric: IF a protected outcome occurred, by state diff, THEN the roots that authorised it satisfy a declared path. Asset properties read the token's own ledger, never the kernel's view of it. No refusal is judged mid-history: the two liveness properties are judged at the end of a history.",
+  "declaredCuts": {
+    "ASSET_MOVEMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "CREDENTIAL_REPLACEMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "VERIFIER_REPLACEMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "POLICY_CHANGE": {
+      "cut": 2,
+      "source": "DERIVED-FROM-SOURCE"
+    },
+    "GUARDIAN_TRANSITION": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "MIGRATION_BINDING": {
+      "cut": 3,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "CONTAINMENT": {
+      "cut": 2,
+      "source": "AUTHORITY.md-section-3"
+    },
+    "RECOVERY_QUORUM_CANCEL": {
+      "cut": 2,
+      "source": "DERIVED-FROM-SOURCE"
+    }
+  },
+  "actions": [
+    "FUND",
+    "SPEND",
+    "ROTATE_CREDENTIAL",
+    "SET_VERIFIER",
+    "SET_POLICY",
+    "SET_GUARDIANS",
+    "INITIATE_RECOVERY",
+    "CANCEL_RECOVERY",
+    "EXECUTE_RECOVERY",
+    "ENTER_CONTAINMENT",
+    "BIND_MIGRATION",
+    "RETIRE",
+    "EGRESS_NATIVE",
+    "EGRESS_TOKEN",
+    "ADVANCE_TIME",
+    "REPLAY_PAST_CALL",
+    "FACTORY_DEPLOY_TWIN",
+    "CANCEL_RECOVERY_BY_QUORUM",
+    "DIRECT_TRANSFER",
+    "UNSOLICITED_TRANSFER",
+    "EGRESS_OTHER",
+    "TOKEN_MODE",
+    "TOKEN_BLOCKLIST",
+    "TOKEN_REBASE",
+    "ARM_HOOK",
+    "RELAY_TAMPER",
+    "CROSS_ASSET_REPLAY",
+    "DESTINATION_MODE"
+  ],
+  "campaigns": {
+    "inheritedProfiles": 19,
+    "erc20Profiles": 13,
+    "profiles": [
+      {
+        "name": "ecdsa-only-attacker",
+        "description": "One root compromised: the ECDSA credential. The published min(2,k) claim says every protected outcome must stay out of reach. Findings A1 and A2 were both reproduced under exactly this model.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "one-guardian-attacker",
+        "description": "One guardian principal compromised — below k = 2. Targets I-E (guardian cut) and the quorum-shape attacks.",
+        "actors": [
+          "honest",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "mixed-roots-attacker",
+        "description": "One guardian AND the ECDSA credential: two roots from different families. Below k for guardian outcomes and below k+1 for migration, so it tests whether roots that should not combine are being added together.",
+        "actors": [
+          "honest",
+          "attacker-guardian-plus-credential",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "recovery-composition",
+        "description": "Recovery lifecycle under an ECDSA-only adversary: stale, cancelled, superseded, finalised and replayed recoveries (R1-R7).",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "recovery-maturation",
+        "description": "The one profile that reliably drives a recovery THROUGH to execution. The broad mix generates roster changes and cancellations so often that a pending request almost never survives to maturity, so executeRecovery never succeeded across 145 campaigns and R2-R7 were never exercised end-to-end — a hole the anti-vacuity assertion caught. Here SET_GUARDIANS is off (its generation binding voids pending requests by design) and ADVANCE_TIME is biased into the executable window. Adversarial interference with recovery is still covered by recovery-composition, which keeps both.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "replay-composition",
+        "description": "Cross-operation, cross-state and cross-generation replay after arbitrary intervening transitions (PHASE 9).",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "containment-composition",
+        "description": "Stored-vs-effective safe state, containment budget across window boundaries, and migration/retire/egress interaction (PHASE 8).",
+        "actors": [
+          "honest",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "dead-verifier-escape",
+        "description": "The vault is BORN under a permanently reverting verifier. Spending is denied — a DECLARED, ACCEPTED liveness cut of 1 — and the property under test is that the guardian recovery ESCAPE remains usable after arbitrary prior transitions, not that spending works.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "byzantine-verifier",
+        "description": "The vault is born under an ALWAYS-TRUE verifier: the PQ conjunct is structurally satisfied by anyone. HYBRID must then collapse to ECDSA security — never to unauthenticated authorization — so guardian-gated outcomes must still require k.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "ecdsa-only-floor",
+        "description": "A vault born with an ECDSA-ONLY floor — a configuration initialize permits. It is the ONLY way to reach a requirePq false -> true transition, because _requireNoDowngrade makes the reverse unrepresentable, and it is therefore the only profile that can exercise setVerifier's floor-satisfiability seam at all. Its credential is ONE root, so the declared cuts differ here and the model counts them accordingly.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "quorum-without-credential",
+        "description": "An adversary holding TWO guardian principals — AT the guardian cut — but NO credential. It is the only model that can distinguish migration's declared k+1 from k, and the only one that can reach a quorum-gated outcome without the credential leg. Guardian-shape attacks (duplicate rosters, repeated seats, sentinel indices) are weighted heavily here.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "policy-plane-denial",
+        "description": "Heavy on SET_POLICY and SPEND. The policy plane is declared SUBTRACTIVE — it may refuse and can never grant — so a vault carrying the DENYING plane must not move value. This is the only profile that reliably installs that plane and then attempts to spend through it.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "containment-duty-cycle",
+        "description": "ENTER_CONTAINMENT repeated with CONTAINMENT_MAX-sized time steps, so several containments land inside ONE budget window. I-CONTAINMENT-BUDGET says denial is a bounded duty cycle rather than a state; this profile is what puts that bound under pressure.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "containment-straddle",
+        "description": "ENTER_CONTAINMENT with time steps that place a second episode late in a 30-day span and further episodes right after it — the boundary-straddling shape under which a TUMBLING accounting held 9 contiguous contained days against a 6-day budget (SD-2, remediated by the two-start rolling rule). I-CONTAINMENT-BUDGET says the total in ANY 30-day window stays at 6 days; G-CONTAINMENT-ROLLING-BUDGET observes it from episode timestamps alone, without reading the kernel's budget getters.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "recovery-vs-roster",
+        "description": "Matures recoveries (maturation timing, live proposed verifiers) WHILE changing the guardian roster, so the constituency in force can differ from the one that approved a pending request. recovery-maturation deliberately turns SET_GUARDIANS off to reach executeRecovery at all; this profile turns it back on, which is the only way to compose a rotation with a maturing request end-to-end. Until Lane SD10-I that composition was policed by the harness's R1 rule, which asserted a rotation must VOID the request; that rule was implementation-derived, contradicted I-APPROVED-REQUEST-PRESERVATION and has been retired. The composition still matters — it is where the OLD roster's total loss of FRESH authority and the survival of its already-admitted effect have to hold at the same time.",
+        "actors": [
+          "honest",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "stranger-only",
+        "description": "An adversary holding NOTHING. Every permissionless path and every replay, with no authority at all.",
+        "actors": [
+          "honest",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "ecdsa-only-committed",
+        "description": "A vault born with an ECDSA-only floor but a PQ key ALREADY COMMITTED — legal, since initialize refuses only requirePq WITH a zero commitment. Since I-DECLARATION-EXHIBITED this is the only class on which the requirePq false -> true DECLARATION can succeed, so it is the only profile that reaches the armed post-state at all; the sibling ecdsa-only-floor profile reaches only the refusal. It is also the class SD-4 was reproduced on, so the recovery interlock is exercised here and nowhere else.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "commitment-forgery",
+        "description": "An ECDSA-only vault whose credential principal repeatedly attempts to install a PQ commitment it holds no preimage for — the SD-6 attack, generated. This is the ONLY profile on which G-COMMITMENT-ATTESTED's violating transition is ever ATTEMPTED, which is what separates 'the kernel refuses it' from 'no campaign ever tried'. A green campaign without this profile would be absent evidence.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "recovery-lifecycle",
+        "description": "The K-9 lifecycle under both principals: bounded credential challenges to exhaustion, guardian-quorum cancellations at and below the cut, expiry with no sweeper, re-initiation after cancellation and after expiry, refused overwrite of a live request, and recovery followed by a later recovery — the seams the W2 contract requires the campaign to reach rather than assume.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-two-guardians",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-settlement-zoo",
+        "description": "The token changes behaviour mid-history: lies, short-pays, charges the sender, settles dust short, reverts, returns false, returns nothing, or fails its own balance query after the transfer. The credential-holding actor keeps spending through all of it. P-SETTLEMENT-EXACT reads the real ledger, so a kernel that believes the token is caught.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA",
+          "VANILLA",
+          "VANILLA",
+          "RETURN_FALSE_NO_MOVE",
+          "RETURN_TRUE_NO_MOVE",
+          "SHORT_PAY",
+          "SENDER_FEE",
+          "RECIPIENT_FEE",
+          "DUST_SHORT",
+          "REVERTS",
+          "NO_RETURN",
+          "RETURN_FALSE_BUT_MOVES",
+          "QUERY_REVERTS_AFTER_TRANSFER",
+          "QUERY_SHORT_AFTER_TRANSFER",
+          "QUERY_LIES_EXACT_DEBIT"
+        ]
+      },
+      {
+        "name": "erc20-direct-transfer",
+        "description": "Unsolicited credits and rebases, repeated, between spends: the vault has no ledger to desynchronise, so everything it holds stays spendable and a spend of more than the previous balance settles. Rebases are charged to nobody and are never an authority outcome.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-reentrancy",
+        "description": "A hook-bearing asset: before or after the debit the token calls back into the vault with a replay of the spend it sits inside, a second spend at nonce + 1, an egress, a containment, a binding or a retire, each signed only with what the arming actor holds. Serial equivalence is the claim: nothing the hook does may produce an outcome no ordering of authorised acts could.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA",
+          "VANILLA",
+          "VANILLA",
+          "NO_RETURN",
+          "RETURN_FALSE_BUT_MOVES"
+        ]
+      },
+      {
+        "name": "erc20-reentrancy-armed-floor",
+        "description": "The reentrancy profile on a floor that mandates the PQ conjunct, so a nested spend needs both factors.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-guardian-plus-credential",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-migration-and-freeze",
+        "description": "Bindings under pressure: egress attempted before and after the delay, the issuer blocklisting recipient, vault and destination and lifting it again, hostile unsolicited holdings, appended recipients, retire, replays of every migration act. A hostile holding must veto nothing, and no holding may leave early or go anywhere but the destination.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA",
+          "VANILLA",
+          "VANILLA",
+          "VANILLA",
+          "SHORT_PAY",
+          "RETURN_TRUE_NO_MOVE",
+          "RETURN_FALSE_NO_MOVE",
+          "QUERY_REVERTS_AFTER_TRANSFER",
+          "QUERY_SHORT_AFTER_TRANSFER",
+          "QUERY_LIES_EXACT_DEBIT"
+        ]
+      },
+      {
+        "name": "erc20-cross-asset",
+        "description": "Two vaults with byte-identical genesis and one credential, two assets. Every working spend is replayed at the other asset's vault, and signatures made for the other vault are submitted here. P-CROSS-ASSET reads the other vault's ledger and nonce.",
+        "actors": [
+          "honest",
+          "relayer-stranger",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": true,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-relayer",
+        "description": "A stranger submits everything: honest spends relayed verbatim, the same spends with the recipient or amount rewritten and a token address appended. A relayer may choose whether and when, and nothing else. A rewritten field that settles is charged to a stranger holding no roots, which the cut property refuses.",
+        "actors": [
+          "honest",
+          "relayer-stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-recovery-to-spend",
+        "description": "A recovery driven through to a new credential that then spends the admitted asset, under direct transfers and token-mode noise, including a recovery that begins while a zoo token is misbehaving.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA",
+          "VANILLA",
+          "VANILLA",
+          "VANILLA",
+          "REVERTS",
+          "RETURN_TRUE_NO_MOVE"
+        ]
+      },
+      {
+        "name": "erc20-real-root-floor",
+        "description": "The real provenance root on the v1 floor: every verifier is root-created, the mocks are refused adversaries at all three edges, and verifier transitions are followed by spends. Requires no attestor signature anywhere while the floor is dormant, which is the point: G2-VERIFIER-2,3,8.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": true,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-real-root-armed",
+        "description": "The real root on an armed floor: the second factor is an attestor statement over the admitted class's real relation, so an attacker without the PQ root faces the real verifier and not a stand-in.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "attacker-one-guardian",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": false,
+        "realRoot": true,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-policy-then-spend",
+        "description": "The denying plane, the stateful plane and a codeless plane, each followed by spends, with direct credits between them. A plane may only refuse: under the denying plane no asset moves.",
+        "actors": [
+          "honest",
+          "attacker-ecdsa-only",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-containment-then-spend",
+        "description": "Spends straddling containment entry and wall-clock expiry: refused while contained, settled the moment it lapses, with no principal acting.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      },
+      {
+        "name": "erc20-containment-straddle",
+        "description": "Generation 1's straddle timing with almost nothing else: repeated containment entries around a 30-day boundary, with spends only to show when the kernel lets them through. The tumbling-window defect (M23) survived every other profile here, because it needs several entries to succeed in sequence and most quorum shapes are adversarial, so this one mostly attempts honest ones. The oracle is unchanged and is the independent one: it rebuilds episodes from timestamps and reads no budget getter.",
+        "actors": [
+          "honest",
+          "attacker-two-guardians",
+          "stranger"
+        ],
+        "ecdsaOnlyFloor": true,
+        "realRoot": false,
+        "sibling": false,
+        "tokenModes": [
+          "VANILLA"
+        ]
+      }
+    ],
+    "fixedSeeds": {
+      "shallow": [
+        1,
+        2,
+        3,
+        5,
+        8,
+        13,
+        21,
+        34
+      ],
+      "medium": [
+        101,
+        211,
+        331,
+        457
+      ],
+      "deep": [
+        90210,
+        133742
+      ]
+    },
+    "depths": {
+      "shallow": 25,
+      "medium": 65,
+      "deep": 150
+    },
+    "plannedCampaigns": 448,
+    "plannedTransitions": 24320
+  },
+  "executed": {
+    "actions": {
+      "ADVANCE_TIME": 3419,
+      "ARM_HOOK": 323,
+      "BIND_MIGRATION": 529,
+      "CANCEL_RECOVERY": 931,
+      "CANCEL_RECOVERY_BY_QUORUM": 131,
+      "CROSS_ASSET_REPLAY": 199,
+      "DESTINATION_MODE": 34,
+      "DIRECT_TRANSFER": 1089,
+      "EGRESS_NATIVE": 476,
+      "EGRESS_OTHER": 145,
+      "EGRESS_TOKEN": 462,
+      "ENTER_CONTAINMENT": 1933,
+      "EXECUTE_RECOVERY": 1738,
+      "FACTORY_DEPLOY_TWIN": 48,
+      "FUND": 536,
+      "INITIATE_RECOVERY": 2165,
+      "RELAY_TAMPER": 201,
+      "REPLAY_PAST_CALL": 1449,
+      "RETIRE": 269,
+      "ROTATE_CREDENTIAL": 1213,
+      "SET_GUARDIANS": 925,
+      "SET_POLICY": 1095,
+      "SET_VERIFIER": 1137,
+      "SPEND": 3013,
+      "TOKEN_BLOCKLIST": 66,
+      "TOKEN_MODE": 207,
+      "TOKEN_REBASE": 74,
+      "UNSOLICITED_TRANSFER": 513
+    },
+    "campaigns": 448,
+    "knownDefectHits": {
+      "SD-4-ecdsa-only-shape-declaration-is-uncounted": 2
+    },
+    "lifecycle": {
+      "challengeAfterRecoveryReset": 9,
+      "exhaustedBudgetRefusal": 3,
+      "expiredCancellationRefused": 149,
+      "expiredRequestObserved": 2926,
+      "liveOverwriteRefused": 431,
+      "quorumCancelRefusedBelowQuorum": 9,
+      "quorumCancelSucceeded": 8,
+      "recoveryAfterRecovery": 67,
+      "reinitiationAfterCancellation": 51,
+      "reinitiationAfterExpiry": 75
+    },
+    "outcomes": {
+      "ASSET_MOVEMENT": 665,
+      "CONTAINMENT": 179,
+      "CREDENTIAL_REPLACEMENT": 247,
+      "GUARDIAN_TRANSITION": 126,
+      "MIGRATION_BINDING": 55,
+      "POLICY_CHANGE": 308,
+      "RECOVERY_QUORUM_CANCEL": 8,
+      "VERIFIER_REPLACEMENT": 251
+    },
+    "positiveControls": "3976/3976",
+    "reverts": {
+      "AlreadyBound": 90,
+      "BadNonce": 141,
+      "BadRoster": 850,
+      "BadSignature": 3390,
+      "BadState": 3446,
+      "ChallengeExhausted": 3,
+      "ContainmentBudget": 66,
+      "DestinationMismatch": 179,
+      "EMPTY_REVERT": 62,
+      "Expired": 256,
+      "FailedDeployment": 13,
+      "InadmissibleVerifier": 93,
+      "NO_HISTORY": 26,
+      "NoRecovery": 1879,
+      "NotBound": 1239,
+      "NotOrdered": 836,
+      "PolicyDenied": 113,
+      "QuorumNotMet": 1235,
+      "TooEarly": 368,
+      "TransferFailed": 241,
+      "verifier down": 214,
+      "VerifierDenied": 149
+    },
+    "seams": {
+      "assetBoundaryObserved": 11,
+      "balanceControlExercised": 190,
+      "balanceControlSkipped": 203,
+      "containmentExpiredThenSpend": 179,
+      "containmentThenSpendRefused": 348,
+      "crossAssetReplayRefused": 199,
+      "digestMovedOnSuccess": 790,
+      "directTransferObserved": 1089,
+      "drainSettled": 97,
+      "egressFalseSettlementRefused": 2,
+      "egressRefusedByFreeze": 3,
+      "egressTooEarlyRefused": 39,
+      "exitControlExercised": 55,
+      "failedTransferRefused": 146,
+      "hookFiredDuringTransfer": 53,
+      "hookNonceRead": 14,
+      "hookReplayRefused": 9,
+      "hostileHoldingVetoedNothing": 2,
+      "inadmissibleVerifierRefused": 85,
+      "lyingResultRefused": 11,
+      "migrationBound": 55,
+      "migrationEgressMoved": 79,
+      "nativeBounceRefused": 3,
+      "nativeRefusedByDestination": 1,
+      "nestedSpendRefusedByExactDelta": 5,
+      "policyDenialThenSpendRefused": 111,
+      "queryFailureRefused": 12,
+      "rebaseDustRefused": 19,
+      "recoveryThenSpend": 59,
+      "refusalMined": 14863,
+      "relayedSpendSettled": 240,
+      "relayTamperRefused": 201,
+      "repeatedDirectTransfer": 749,
+      "replayedEgressNoDiscretion": 23,
+      "replayedMigrationRefused": 9,
+      "replayedSpendRefused": 87,
+      "selfBindingRefused": 85,
+      "senderFeeRefused": 4,
+      "shortPayRefused": 11,
+      "spendAfterDirectTransfer": 469,
+      "unauthorizedSpendRefused": 957,
+      "verifierTransitionThenSpend": 223,
+      "wrongHashBindingRefused": 83
+    },
+    "successful": 9431,
+    "transitions": 24320,
+    "violations": 0
+  },
+  "properties": {
+    "asset": [
+      {
+        "name": "P-ASSET-CODE-IDENTITY",
+        "statement": "admittedAsset() and the vault's own code never change across any history, and the code's tail is generation || verifierAuthority || admitted asset: no principal can move the asset in place and the asset is the vault's identity (G2-ASSET-1,5,6,8,9)."
+      },
+      {
+        "name": "P-SETTLEMENT-EXACT",
+        "statement": "A spend that SUCCEEDED debited the vault's REAL balance by exactly the signed amount (G2-SEM-KERNEL, K-13-SETTLE). Excludes only the declared lying-to-the-sender mode."
+      },
+      {
+        "name": "P-SPEND-COMPLETED-TRANSFER",
+        "statement": "A spend that SUCCEEDED is backed by a token transfer that itself completed, counted by the token: a zero-amount spend cannot settle over a reverted call."
+      },
+      {
+        "name": "P-SPEND-PAYS-RECIPIENT",
+        "statement": "A successful spend credited the signed recipient by exactly the signed amount, except the declared recipient-leg mode."
+      },
+      {
+        "name": "P-SPEND-TOUCHES-ONLY-ASSET",
+        "statement": "A successful spend moves neither native value nor any other holding, whatever a relayer appended to the calldata (G2-ASSET-3,4)."
+      },
+      {
+        "name": "P-CONSERVATION",
+        "statement": "Every unit of the admitted asset is at an account the harness tracks or in the token's own sink: value cannot reach an address nobody authorised."
+      },
+      {
+        "name": "P-CROSS-ASSET",
+        "statement": "The vault of the other asset, same genesis and same credential, loses nothing and burns no nonce from anything done here, and a signature made for it never settles here (G2-ASSET-9,10)."
+      },
+      {
+        "name": "P-UNAUTHORISED-INPUT-NEVER-SETTLES",
+        "statement": "A relayed spend whose signed recipient or amount the harness rewrote never settles: a relayer chooses whether and when, and nothing else (G2-ASSET-4)."
+      },
+      {
+        "name": "P-NO-REPLAY",
+        "statement": "A nonce-bearing call that already succeeded never succeeds a second time, whoever resubmits it."
+      },
+      {
+        "name": "P-NONCE-SPENT-BEFORE-TOKEN-RUNS",
+        "statement": "When the token gets control during a spend, the spend nonce it sits inside is already consumed, read by the token itself through the vault's own getter (G2-REENTRANCY)."
+      },
+      {
+        "name": "P-REENTRY-NO-REPLAY",
+        "statement": "A same-payload replay fired from inside the token's transfer never succeeds (G2-REENTRANCY)."
+      },
+      {
+        "name": "P-NONCE-ON-SPEND",
+        "statement": "A successful spend consumed at least one spend nonce: no settlement without its authorisation being spent."
+      },
+      {
+        "name": "P-EGRESS-RECIPIENT",
+        "statement": "An egress credits exactly the bound destination with what the vault lost, except the declared recipient-leg mode (I-EGRESS-RECIPIENT-FIXED)."
+      },
+      {
+        "name": "P-EGRESS-PUBLISHES-THE-TRUTH",
+        "statement": "The amount an egress publishes is what the vault's REAL balance lost, except the declared lying-to-the-sender mode (I-NO-FALSE-SETTLEMENT)."
+      },
+      {
+        "name": "P-MIGRATION-TIME",
+        "statement": "After a binding, no holding leaves before the binding's own instant plus 7 days, measured on the harness's clock from the mined bind block (I-MIGRATION-SUBORDINATE-TO-RECOVERY)."
+      },
+      {
+        "name": "P-EXIT-REACHABLE",
+        "statement": "Whatever history ended in a binding, once the delay has passed and the token behaves, a stranger's egress of each class moves the vault's full balance of it to the destination, whichever egress was attempted first (I-EXIT-REACHABILITY, I-MIGRATION-NONTRAP, I-EGRESS-INDEPENDENCE). Liveness: judged at the end of a history, never per step."
+      },
+      {
+        "name": "P-BALANCE-SPENDABLE",
+        "statement": "Whatever history ended in NORMAL with a behaving token and a plane that admits, the current credential can spend the vault's whole real balance, direct credits and rebases included: there is no ledger to desynchronise. Liveness, judged at the end of a history."
+      },
+      {
+        "name": "P-VERIFIER-PROVENANCE",
+        "statement": "Under the real root, the active verifier and any proposed verifier are always among those the harness saw the root create (G-VERIFIER-ADMISSION-PROVENANCE). Zero power under the ungated fixture, so asserted only under the root."
+      }
+    ],
+    "inherited": [
+      "P-CUT/<OUTCOME>",
+      "P-MODEL",
+      "P-INCOMING-POSSESSION",
+      "P-PLANE-SUBTRACTIVE",
+      "P-VACUITY"
+    ],
+    "globalInvariants": [
+      {
+        "name": "G-SIGNER-NONZERO",
+        "source": "initialize reverts ZeroAddress on g.signer == 0; rotateCredential reverts ZeroAddress on c.newSigner == 0; initiateRecovery reverts ZeroAddress on proposedSigner == 0, and executeRecovery installs only that value"
+      },
+      {
+        "name": "G-THRESHOLD-SANE",
+        "source": "_requireCanonicalRoster reverts BadRoster when threshold == 0 or members.length < threshold"
+      },
+      {
+        "name": "G-COMMITMENT-NONZERO",
+        "source": "initialize and setGuardians both write rosterCommitment(...) of a canonical roster"
+      },
+      {
+        "name": "G-CRED-GENERATION-MONOTONIC",
+        "source": "credentialGeneration is written ONLY by _installCredential, as `credentialGeneration += 1`"
+      },
+      {
+        "name": "G-GUARDIAN-GENERATION-MONOTONIC",
+        "source": "guardianGeneration is written ONLY by initialize (= 1) and setGuardians, as `guardianGeneration += 1`"
+      },
+      {
+        "name": "G-NONCES-MONOTONIC",
+        "source": "_consume is the only writer of nonces[domain] and sets it to nonce + 1 after requiring equality"
+      },
+      {
+        "name": "G-FLOOR-NO-DOWNGRADE",
+        "source": "_requireNoDowngrade: requirePq may not go true -> false (I-NO-SILENT-DOWNGRADE-G1). The pqParamLevel ratchet and the two-length freeze were removed in SD5-I with those fields' authority."
+      },
+      {
+        "name": "G-VERIFIER-HAS-CODE",
+        "source": "initialize and setVerifier both reject verifier.code.length == 0; initiateRecovery rejects proposedVerifier.code.length == 0 at INITIATE time"
+      },
+      {
+        "name": "G-MIGRATION-BINDING-WELLFORMED",
+        "source": "bindMigration reverts DestinationMismatch when destination.vault == 0 or destination.codeHash == 0"
+      },
+      {
+        "name": "G-MIGRATION-BINDING-IMMUTABLE",
+        "source": "bindMigration reverts AlreadyBound once migration.bound; nothing anywhere clears it"
+      },
+      {
+        "name": "G-STATE-REACHABILITY",
+        "source": "safeState is assigned in exactly four places: initialize (NORMAL), enterContainment (CONTAINED), bindMigration (MIGRATION_ONLY), retire (RETIRED). RECOVERY_ONLY is declared by the enum and never assigned"
+      },
+      {
+        "name": "G-RETIRED-IS-TERMINAL",
+        "source": "retire sets RETIRED; no assignment anywhere moves safeState out of RETIRED"
+      },
+      {
+        "name": "G-EFFECTIVE-STATE-DERIVATION",
+        "source": "_effectiveState returns NORMAL when safeState == CONTAINED and block.timestamp >= containedUntil, and the stored value otherwise"
+      },
+      {
+        "name": "G-CONTAINMENT-BUDGET-BOUNDED",
+        "source": "containmentUsedInWindow() reports the contained seconds inside [now - CONTAINMENT_WINDOW, now) from the three most recent episode starts (SD-2 remediation); under I-CONTAINMENT-BUDGET it can never exceed CONTAINMENT_BUDGET (3d episodes, 6d budget, 30d window). KERNEL-REPORTED — it reads the kernel's own view; the independent observation is G-CONTAINMENT-ROLLING-BUDGET"
+      },
+      {
+        "name": "G-CONTAINMENT-ROLLING-BUDGET",
+        "source": "I-CONTAINMENT-BUDGET (docs/Vault_vNext_Architecture.md section 6, T0): in every rolling wall-clock interval of length CONTAINMENT_WINDOW the total CONTAINED time is at most CONTAINMENT_BUDGET. Enforced by enterContainment's two-start rule (SD-2 remediation). OBSERVED, NEVER READ BACK: episodes are reconstructed from the snapshot sequence — a new containedUntil while safeState is CONTAINED opens the episode [blockTimestamp, containedUntil) — and this oracle consults NEITHER budget getter, so an accounting that mis-tracks the window (the tumbling accounting SD-2 recorded, which held 9 contiguous days) is caught by wall-clock arithmetic alone"
+      },
+      {
+        "name": "G-RECOVERY-ACTIVE-WELLFORMED",
+        "source": "initiateRecovery is the only writer of recovery.active = true, and it rejects a zero proposedSigner/proposedVerifier"
+      },
+      {
+        "name": "G-CHALLENGE-CAP",
+        "source": "cancelRecovery reverts ChallengeExhausted once challengesUsed >= CHALLENGE_LIMIT (2), and increments by 1; cancelRecoveryByQuorum never touches the field"
+      },
+      {
+        "name": "G-CHALLENGE-EPOCH",
+        "source": "challengesUsed has exactly two writers — cancelRecovery (`+= 1`, effectively-live request only) and executeRecovery's whole-struct `delete recovery`, the documented reset boundary. initiateRecovery carries it forward (`challengesUsed: recovery.challengesUsed`), cancelRecoveryByQuorum clears only `active`, rotateCredential never references `recovery`, and expiry writes nothing"
+      },
+      {
+        "name": "G-COMMITMENT-ATTESTED",
+        "source": "every accepted transition that writes a non-zero pqPublicKeyHash must exhibit a preimage of the value being written, so every reachable state holds either bytes32(0) or a commitment some principal demonstrated a preimage for — initialize (base case), rotateCredential and executeRecovery (inductive step, via _requireIncomingPossession)"
+      },
+      {
+        "name": "G-PQ-COMMITMENT-SATISFIABLE",
+        "source": "initialize reverts BadSignature when g.floor.requirePq && g.pqKeyHash == 0, and setVerifier's I-DECLARATION-EXHIBITED refuses the requirePq false -> true edge unless a preimage of the committed hash is exhibited at the newly declared length — a mandatory PQ conjunct with no satisfiable committed key is unsatisfiable and bricks spending"
+      },
+      {
+        "name": "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
+        "source": "OPEN REQUIREMENT — NO KERNEL MECHANISM ESTABLISHES THIS, AND THAT IS DELIBERATE. Every other entry's `source` names the code that makes the property hold; this one has none, and an earlier revision of this field wrongly named `setVerifier`'s `I-DECLARATION-SUBORDINATE-TO-LIVE-RECOVERY` as though it did. No such identifier exists in the Solidity: `setVerifier`'s 'SD-4 IS NOT CLOSED HERE' block in contracts/VaultKernelPrototype.sol records that precisely this interlock 'was written, measured and REMOVED', because refusing the declaration while a request is live hands the quorum an unbounded veto. The requirement stands anyway — an accepted configuration transition may not silently reduce the satisfiability of an already-quorum-approved recovery — so a firing here is a FINDING (this is how SD-4 is detected), never a regression. CONSUMERS MUST NOT READ THE REMOVED INTERLOCK AS THE INTENDED SEMANTICS: a remediation that leaves the edge permitted and instead lets the quorum re-authorise the request repairs the harm while still tripping this predicate, because the predicate observes the TRANSITION and cannot observe the repair. Since Lane W2 the architecture-native repair is explicit: guardian-quorum cancellation followed by a correctly-shaped fresh recovery (Recovery Amendment section 4). See test/Sd4PropertyOverApproximation.test.ts and defects.ts SD-4."
+      }
+    ],
+    "rejectedInvariants": [
+      {
+        "name": "policyEngine always has code",
+        "whyRejected": "NOT SOURCE-BOUND. Unlike setVerifier, setPolicy performs NO code-length check, and address(0) is a legal value meaning 'no plane'. Asserting this would assert a rule the kernel does not have. The reachable configuration is exercised by an ACTION instead (setPolicy to a codeless non-zero address) and its consequence is reported, not assumed."
+      },
+      {
+        "name": "vault native balance never decreases without an Executed or Egressed event",
+        "whyRejected": "NOT SOURCE-BOUND as a global: gas is paid by callers, not the vault, but a plain `receive()` means the balance can also RISE from any account at any time. The asset property that IS source-bound is asserted per-action instead (P-ASSET-CUT), against the specific transfer the action attempted."
+      },
+      {
+        "name": "recovery fields are zeroed whenever active is false",
+        "whyRejected": "NOT SOURCE-BOUND. cancelRecovery and cancelRecoveryByQuorum both set active = false WITHOUT clearing the other fields (only executeRecovery does `delete recovery`, and that delete is the challenge-epoch reset boundary — Lane W2), so stale non-zero fields alongside active == false are the kernel's DESIGNED behaviour, as is active == true alongside an expired request (expiry writes nothing; liveness is derived, see `recoveryEffectivelyLive`). Asserting the stronger form would fail on correct code."
+      },
+      {
+        "name": "guardianThreshold <= roster size",
+        "whyRejected": "NOT CHECKABLE FROM STORAGE. The kernel stores a COMMITMENT, never the roster, so the harness cannot read the roster size back on chain. _requireCanonicalRoster enforces it on every supplied preimage; there is no post-state to assert it against."
+      },
+      {
+        "name": "G-VERIFIER-ADMISSION-PROVENANCE (the active verifier was created by the vault's bound provenance root)",
+        "whyRejected": "ZERO POWER IN THIS CAMPAIGN, SO NOT ASSERTED HERE. Every campaign world binds the UngatedVerifierAuthority fixture — the pre-SD-11 code-length rule — so that its four mock verifier kinds stay admissible. Against that root the property is true in every reachable state and could never fire, and a kernel with its provenance check deleted would survive it. The invariant is carried where it has teeth: test/Sd11VerifierAdmissionProvenance.test.ts, against the Generation-1 root, with seven mutants each killed only on the observation that a hostile verifier becomes ACTIVE, plus an AST census of every writer of pqVerifier and of a recovery proposal."
+      }
+    ]
+  },
+  "antiVacuity": {
+    "seams": [
+      "relayedSpendSettled",
+      "unauthorizedSpendRefused",
+      "directTransferObserved",
+      "repeatedDirectTransfer",
+      "spendAfterDirectTransfer",
+      "drainSettled",
+      "failedTransferRefused",
+      "lyingResultRefused",
+      "shortPayRefused",
+      "senderFeeRefused",
+      "rebaseDustRefused",
+      "queryFailureRefused",
+      "assetBoundaryObserved",
+      "crossAssetReplayRefused",
+      "migrationBound",
+      "migrationEgressMoved",
+      "egressTooEarlyRefused",
+      "egressRefusedByFreeze",
+      "egressFalseSettlementRefused",
+      "wrongHashBindingRefused",
+      "selfBindingRefused",
+      "nativeBounceRefused",
+      "nativeRefusedByDestination",
+      "hostileHoldingVetoedNothing",
+      "recoveryThenSpend",
+      "containmentThenSpendRefused",
+      "containmentExpiredThenSpend",
+      "verifierTransitionThenSpend",
+      "policyDenialThenSpendRefused",
+      "replayedSpendRefused",
+      "replayedMigrationRefused",
+      "replayedEgressNoDiscretion",
+      "hookFiredDuringTransfer",
+      "hookNonceRead",
+      "hookReplayRefused",
+      "nestedSpendRefusedByExactDelta",
+      "relayTamperRefused",
+      "inadmissibleVerifierRefused",
+      "refusalMined",
+      "digestMovedOnSuccess",
+      "exitControlExercised",
+      "balanceControlExercised"
+    ],
+    "lifecycleSeams": [
+      "exhaustedBudgetRefusal",
+      "expiredRequestObserved",
+      "reinitiationAfterCancellation",
+      "reinitiationAfterExpiry",
+      "liveOverwriteRefused",
+      "quorumCancelSucceeded",
+      "quorumCancelRefusedBelowQuorum",
+      "expiredCancellationRefused",
+      "recoveryAfterRecovery",
+      "challengeAfterRecoveryReset"
+    ],
+    "rule": "generation-2/test/Gen2StatefulCampaign.test.ts requires every positive control to pass, every action to succeed (bar the two whose success is itself the violation), every outcome and every seam to be reached, and every sustained defect with a property to keep firing."
+  },
+  "mutationAdequacy": {
+    "seeds": [
+      11,
+      29,
+      47,
+      83,
+      131,
+      197,
+      251,
+      307
+    ],
+    "depth": 90,
+    "attribution": "Generation-2 catalogue: killed only by the named property, on a mutant whose named positive control still passed, with the same profile, seed and depth clean on the real candidate. Otherwise INCONCLUSIVE or SURVIVED. Generation-1 catalogue: killed by any property, as in Generation 1, against the same clean baseline.",
+    "results": {
+      "generation2": [
+        {
+          "campaigns": 3,
+          "id": "M-G2-1-caller-chooses-token",
+          "profile": "erc20-relayer",
+          "property": "P-SPEND-TOUCHES-ONLY-ASSET",
+          "seed": 47,
+          "step": 49,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-2-asset-outside-the-identity",
+          "profile": "erc20-direct-transfer",
+          "property": "P-ASSET-CODE-IDENTITY",
+          "seed": 11,
+          "step": 0,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-3-cross-asset-replay-accepted",
+          "profile": "erc20-cross-asset",
+          "property": "P-CROSS-ASSET",
+          "seed": 11,
+          "step": 6,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-4-boolean-trust",
+          "profile": "erc20-settlement-zoo",
+          "property": "P-SETTLEMENT-EXACT",
+          "seed": 11,
+          "step": 9,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-5-any-decrease-accepted",
+          "profile": "erc20-settlement-zoo",
+          "property": "P-SETTLEMENT-EXACT",
+          "seed": 11,
+          "step": 11,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 4,
+          "id": "M-G2-6-nonce-after-token-call",
+          "profile": "erc20-reentrancy",
+          "property": "P-NONCE-SPENT-BEFORE-TOKEN-RUNS",
+          "seed": 83,
+          "step": 63,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-7-failed-transfer-ignored",
+          "profile": "erc20-settlement-zoo",
+          "property": "P-SPEND-COMPLETED-TRANSFER",
+          "seed": 11,
+          "step": 53,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M-G2-8-migration-caller-chooses-token",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-EXIT-REACHABLE",
+          "seed": 47,
+          "step": 90,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 6,
+          "id": "M-G2-9-migration-caller-chooses-recipient",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-EGRESS-RECIPIENT",
+          "seed": 197,
+          "step": 67,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 2,
+          "id": "M-G2-10-relayer-identity-gains-privilege",
+          "profile": "stranger-only",
+          "property": "P-CUT/ASSET_MOVEMENT",
+          "seed": 29,
+          "step": 78,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 6,
+          "id": "M-G2-11-egress-delay-removed",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-MIGRATION-TIME",
+          "seed": 197,
+          "step": 13,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 6,
+          "id": "M-G2-12-lenient-balance-read",
+          "profile": "erc20-settlement-zoo",
+          "property": "P-SETTLEMENT-EXACT",
+          "seed": 197,
+          "step": 4,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-13-spend-nonce-not-consumed",
+          "profile": "replay-composition",
+          "property": "P-NONCE-ON-SPEND",
+          "seed": 11,
+          "step": 13,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-14-relayer-chooses-recipient",
+          "profile": "erc20-relayer",
+          "property": "P-SPEND-PAYS-RECIPIENT",
+          "seed": 11,
+          "step": 4,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-15-credential-moves-the-asset-in-place",
+          "profile": "erc20-policy-then-spend",
+          "property": "P-ASSET-CODE-IDENTITY",
+          "seed": 11,
+          "step": 0,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-16-quorum-moves-the-asset-in-place",
+          "profile": "quorum-without-credential",
+          "property": "P-ASSET-CODE-IDENTITY",
+          "seed": 11,
+          "step": 5,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-17-signed-recipient-unbound",
+          "profile": "erc20-relayer",
+          "property": "P-UNAUTHORISED-INPUT-NEVER-SETTLES",
+          "seed": 11,
+          "step": 6,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 2,
+          "id": "M-G2-18-spent-nonce-accepted",
+          "profile": "replay-composition",
+          "property": "P-NO-REPLAY",
+          "seed": 29,
+          "step": 3,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M-G2-19-replay-accepted-inside-the-transfer",
+          "profile": "erc20-reentrancy",
+          "property": "P-REENTRY-NO-REPLAY",
+          "seed": 47,
+          "step": 13,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-20-full-balance-unspendable",
+          "profile": "erc20-direct-transfer",
+          "property": "P-BALANCE-SPENDABLE",
+          "seed": 11,
+          "step": 90,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M-G2-21-verifier-provenance-unchecked",
+          "profile": "erc20-real-root-floor",
+          "property": "P-VERIFIER-PROVENANCE",
+          "seed": 11,
+          "step": 60,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 6,
+          "id": "M-G2-22-egress-publishes-the-whole-balance",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-EGRESS-PUBLISHES-THE-TRUTH",
+          "seed": 197,
+          "step": 17,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M-G2-23-dead-binding-accepted",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-EXIT-REACHABLE",
+          "seed": 47,
+          "step": 90,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 2,
+          "id": "M-G2-24-self-binding-accepted",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-EXIT-REACHABLE",
+          "seed": 29,
+          "step": 90,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 5,
+          "id": "M-G2-25-native-published-unobserved",
+          "profile": "erc20-migration-and-freeze",
+          "property": "P-EGRESS-PUBLISHES-THE-TRUTH",
+          "seed": 131,
+          "step": 83,
+          "verdict": "KILLED"
+        }
+      ],
+      "generation1OnTheCandidate": [
+        {
+          "campaigns": 3,
+          "id": "M1-asset-path-one-root",
+          "profile": "ecdsa-only-attacker",
+          "property": "P-CUT/ASSET_MOVEMENT",
+          "seed": 47,
+          "step": 34,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 2,
+          "id": "M2-rotate-floor-only",
+          "profile": "ecdsa-only-attacker",
+          "property": "P-CUT/CREDENTIAL_REPLACEMENT",
+          "seed": 29,
+          "step": 14,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 4,
+          "id": "M3-setverifier-floor-only",
+          "profile": "ecdsa-only-attacker",
+          "property": "P-CUT/VERIFIER_REPLACEMENT",
+          "seed": 83,
+          "step": 65,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M4-setpolicy-floor-only",
+          "profile": "ecdsa-only-attacker",
+          "property": "P-CUT/POLICY_CHANGE",
+          "seed": 47,
+          "step": 9,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M5-recovery-replay-enabled",
+          "profile": "recovery-composition",
+          "property": "P-MODEL",
+          "seed": 11,
+          "step": 82,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M6-cancel-does-not-invalidate",
+          "profile": "recovery-maturation",
+          "property": "P-MODEL",
+          "seed": 11,
+          "step": 75,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 5,
+          "id": "M7-pop-checks-outgoing-key",
+          "profile": "recovery-maturation",
+          "property": "P-INCOMING-POSSESSION",
+          "seed": 131,
+          "step": 82,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M8-recovery-commitment-drops-verifier",
+          "profile": "recovery-maturation",
+          "property": "G-RECOVERY-COMMITMENT-BINDS",
+          "seed": 11,
+          "step": 20,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 4,
+          "id": "M9-duplicate-guardian-principal",
+          "profile": "quorum-without-credential",
+          "property": "P-CUT/GUARDIAN_TRANSITION",
+          "seed": 83,
+          "step": 73,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M10-nonce-not-consumed",
+          "profile": "replay-composition",
+          "property": "P-NONCE-ON-SPEND",
+          "seed": 11,
+          "step": 13,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M11-plane-denial-ignored",
+          "profile": "policy-plane-denial",
+          "property": "P-PLANE-SUBTRACTIVE",
+          "seed": 11,
+          "step": 54,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 4,
+          "id": "M12-migration-quorum-only",
+          "profile": "quorum-without-credential",
+          "property": "P-CUT/MIGRATION_BINDING",
+          "seed": 83,
+          "step": 1,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M13-quorum-counts-indices-not-principals",
+          "profile": "quorum-without-credential",
+          "property": "P-CUT/CONTAINMENT",
+          "seed": 11,
+          "step": 1,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M14-containment-budget-removed",
+          "profile": "containment-straddle",
+          "property": "G-CONTAINMENT-ROLLING-BUDGET",
+          "seed": 47,
+          "step": 25,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 10,
+          "id": "M23-tumbling-reset-restored",
+          "profile": "erc20-containment-straddle",
+          "property": "G-CONTAINMENT-ROLLING-BUDGET",
+          "seed": 29,
+          "step": 25,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M24-tracks-only-the-most-recent-start",
+          "profile": "containment-straddle",
+          "property": "G-CONTAINMENT-ROLLING-BUDGET",
+          "seed": 47,
+          "step": 25,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M15-effective-state-ignores-expiry",
+          "profile": "containment-composition",
+          "property": "G-EFFECTIVE-STATE-DERIVATION",
+          "seed": 11,
+          "step": 25,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M19-declaration-not-exhibited",
+          "profile": "ecdsa-only-floor",
+          "property": "G-PQ-COMMITMENT-SATISFIABLE",
+          "seed": 47,
+          "step": 8,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 3,
+          "id": "M20-declaration-unbound-from-the-commitment",
+          "profile": "ecdsa-only-floor",
+          "property": "G-PQ-COMMITMENT-SATISFIABLE",
+          "seed": 47,
+          "step": 8,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M21-admission-not-exhibited",
+          "profile": "commitment-forgery",
+          "property": "G-COMMITMENT-ATTESTED",
+          "seed": 11,
+          "step": 50,
+          "verdict": "KILLED"
+        },
+        {
+          "campaigns": 1,
+          "id": "M22-admission-bound-to-the-OUTGOING-commitment",
+          "profile": "commitment-forgery",
+          "property": "G-COMMITMENT-ATTESTED",
+          "seed": 11,
+          "step": 20,
+          "verdict": "KILLED"
+        }
+      ]
+    },
+    "generation2": [
+      {
+        "id": "M-G2-1-caller-chooses-token",
+        "expectedProperty": "P-SPEND-TOUCHES-ONLY-ASSET",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-relayer",
+          "erc20-direct-transfer",
+          "erc20-settlement-zoo"
+        ],
+        "rationale": "execute takes the token from trailing calldata, so a relayer holding no root picks which of the vault's holdings a signed spend moves. The signature still verifies, because the asset is not in the signed parameters: it never needed to be, while the asset is the vault's own code."
+      },
+      {
+        "id": "M-G2-2-asset-outside-the-identity",
+        "expectedProperty": "P-ASSET-CODE-IDENTITY",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-direct-transfer"
+        ],
+        "rationale": "The clone's args carry the factory instead of the asset and the kernel asks the factory, which has a mutable asset and an open setter. Every spend still settles; what is gone is the claim that the asset is the vault's identity, because one address can now mean any asset."
+      },
+      {
+        "id": "M-G2-3-cross-asset-replay-accepted",
+        "expectedProperty": "P-CROSS-ASSET",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-cross-asset"
+        ],
+        "rationale": "The domain separator stops naming the vault. Two vaults with one credential but different assets now accept each other's signatures: the only thing that made a signature asset-specific was that the asset is part of the vault's address, and the signature names the address."
+      },
+      {
+        "id": "M-G2-4-boolean-trust",
+        "expectedProperty": "P-SETTLEMENT-EXACT",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-settlement-zoo"
+        ],
+        "rationale": "Settlement judged on the token's returned boolean, the SafeERC20 shape, with the observed balance never read. A token that says true and moves nothing settles and burns the nonce."
+      },
+      {
+        "id": "M-G2-5-any-decrease-accepted",
+        "expectedProperty": "P-SETTLEMENT-EXACT",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-settlement-zoo"
+        ],
+        "rationale": "Egress's full-balance rule applied to a sized spend: any decrease settles. A short-paying or sender-fee token now moves a different amount from the one the credential signed."
+      },
+      {
+        "id": "M-G2-6-nonce-after-token-call",
+        "expectedProperty": "P-NONCE-SPENT-BEFORE-TOKEN-RUNS",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-reentrancy",
+          "erc20-reentrancy-armed-floor"
+        ],
+        "rationale": "The nonce is consumed after the asset call. The whole no-guard reentrancy argument rests on the opposite order, so the token itself reads the vault's nonce getter from inside its transfer."
+      },
+      {
+        "id": "M-G2-7-failed-transfer-ignored",
+        "expectedProperty": "P-SPEND-COMPLETED-TRANSFER",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-settlement-zoo",
+          "erc20-reentrancy"
+        ],
+        "rationale": "A failed call is ignored and only the observed delta decides. For any non-zero amount the delta still refuses, so the only observable harm is a zero-amount spend settling over a reverted transfer, which is what the token's own completed-transfer count catches."
+      },
+      {
+        "id": "M-G2-8-migration-caller-chooses-token",
+        "expectedProperty": "P-EXIT-REACHABLE",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "The first egress caller's token is pinned as the only asset that can ever leave. Permissionless is safe only because a caller has no discretion, so a stranger who egresses a worthless token first traps the admitted asset: I-MIGRATION-NONTRAP(a) and I-EGRESS-INDEPENDENCE."
+      },
+      {
+        "id": "M-G2-9-migration-caller-chooses-recipient",
+        "expectedProperty": "P-EGRESS-RECIPIENT",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "Egress reads the recipient from trailing calldata. Whoever submits first takes the vault's whole balance: the binding becomes advisory."
+      },
+      {
+        "id": "M-G2-10-relayer-identity-gains-privilege",
+        "expectedProperty": "P-CUT/ASSET_MOVEMENT",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "stranger-only",
+          "erc20-relayer"
+        ],
+        "rationale": "One submitter address passes the credential check. The architecture's zero-msg.sender rule is exactly what this removes: a relayer becomes a root nobody declared."
+      },
+      {
+        "id": "M-G2-11-egress-delay-removed",
+        "expectedProperty": "P-MIGRATION-TIME",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "F-TIME, put back: measured Variant A and Generation 1 both have this. The binding's delay gates only retire, so {k guardians, ECDSA} drains an armed vault in the block after binding, against 7 days for its recovery path."
+      },
+      {
+        "id": "M-G2-12-lenient-balance-read",
+        "expectedProperty": "P-SETTLEMENT-EXACT",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-settlement-zoo"
+        ],
+        "rationale": "F-SETTLE, put back: measured Variant A's read. A failed balance query reads as zero, and a zero after the transfer is exactly what a full-balance movement looks like, so a spend of the whole balance settles with nothing moved and the nonce burned."
+      },
+      {
+        "id": "M-G2-13-spend-nonce-not-consumed",
+        "expectedProperty": "P-NONCE-ON-SPEND",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "replay-composition",
+          "erc20-relayer"
+        ],
+        "rationale": "The spend path skips the nonce. One captured signature empties the vault through any relayer."
+      },
+      {
+        "id": "M-G2-14-relayer-chooses-recipient",
+        "expectedProperty": "P-SPEND-PAYS-RECIPIENT",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-relayer",
+          "erc20-direct-transfer"
+        ],
+        "rationale": "execute pays an address from trailing calldata instead of the signed recipient. The digest still names the signed one, so only the token's ledger can tell."
+      },
+      {
+        "id": "M-G2-15-credential-moves-the-asset-in-place",
+        "expectedProperty": "P-ASSET-CODE-IDENTITY",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-policy-then-spend"
+        ],
+        "rationale": "G2-ASSET-5: a credential-signed setPolicy also rewrites a stored asset. Storage is movable by whoever can write it, which is why the asset is in code."
+      },
+      {
+        "id": "M-G2-16-quorum-moves-the-asset-in-place",
+        "expectedProperty": "P-ASSET-CODE-IDENTITY",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "quorum-without-credential",
+          "recovery-vs-roster"
+        ],
+        "rationale": "G2-ASSET-6: a guardian quorum's setGuardians also rewrites a stored asset, so k guardians choose which token the credential's next spend moves."
+      },
+      {
+        "id": "M-G2-17-signed-recipient-unbound",
+        "expectedProperty": "P-UNAUTHORISED-INPUT-NEVER-SETTLES",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-relayer"
+        ],
+        "rationale": "The digest stops naming the recipient, so a relayer holding nothing rewrites where an honestly-signed spend goes. Honest digests are signed to match, or the mutant would be dead rather than caught."
+      },
+      {
+        "id": "M-G2-18-spent-nonce-accepted",
+        "expectedProperty": "P-NO-REPLAY",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "replay-composition",
+          "erc20-relayer"
+        ],
+        "rationale": "_consume accepts any nonce at or below the counter, so bytes already spent settle again, whoever resubmits them."
+      },
+      {
+        "id": "M-G2-19-replay-accepted-inside-the-transfer",
+        "expectedProperty": "P-REENTRY-NO-REPLAY",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-reentrancy",
+          "erc20-reentrancy-armed-floor"
+        ],
+        "rationale": "The same weakening, seen from inside the call: a token replays the very spend it sits inside. For a non-zero amount the exact delta still refuses, so this dies on a zero-amount spend, which is the one place replay is otherwise invisible."
+      },
+      {
+        "id": "M-G2-20-full-balance-unspendable",
+        "expectedProperty": "P-BALANCE-SPENDABLE",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-direct-transfer",
+          "erc20-policy-then-spend"
+        ],
+        "rationale": "A spend of the whole balance is refused. Every partial spend still works, so only a property judged at the end of a history can see that something has been stranded."
+      },
+      {
+        "id": "M-G2-21-verifier-provenance-unchecked",
+        "expectedProperty": "P-VERIFIER-PROVENANCE",
+        "liveControl": "honest spend moves the admitted asset",
+        "profiles": [
+          "erc20-real-root-floor",
+          "erc20-real-root-armed"
+        ],
+        "rationale": "The admission check accepts anything with code, at all three edges, so an always-true verifier becomes active under the real root: SD-11A and SD-11B reopened."
+      },
+      {
+        "id": "M-G2-22-egress-publishes-the-whole-balance",
+        "expectedProperty": "P-EGRESS-PUBLISHES-THE-TRUTH",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "Egress reports the balance it started with instead of the decrease it observed: a token that short-pays or moves nothing is published as having moved everything. I-NO-FALSE-SETTLEMENT is about what is reported, so only a property reading the event against the real ledger can see it."
+      },
+      {
+        "id": "M-G2-23-dead-binding-accepted",
+        "expectedProperty": "P-EXIT-REACHABLE",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "The bind-time hash check is removed, restoring both kernels' behaviour before this lane: a binding naming the wrong hash is accepted, egress refuses it forever, and nothing can rebind, spend or recover. I-MIGRATION-NONTRAP's trap, reachable by one honest mistake at k+1."
+      },
+      {
+        "id": "M-G2-24-self-binding-accepted",
+        "expectedProperty": "P-EXIT-REACHABLE",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "A vault may bind to itself. It has the right hash, so nothing else stops it, and then its balance can never fall: the asset's egress refuses forever, native value is published as moved with nothing gone, and nothing can rebind, spend or recover."
+      },
+      {
+        "id": "M-G2-25-native-published-unobserved",
+        "expectedProperty": "P-EGRESS-PUBLISHES-THE-TRUTH",
+        "liveControl": "a stranger egresses the admitted asset once the delay has passed",
+        "profiles": [
+          "erc20-migration-and-freeze"
+        ],
+        "rationale": "F-SETTLE on native value, put back: measured Variant A and Generation 1 publish what they sent because the call returned. A destination that hands the value back leaves the balance where it was, with an event saying it all moved."
+      }
+    ],
+    "generation1OnTheCandidate": [
+      {
+        "id": "M1-asset-path-one-root",
+        "expectedProperty": "P-CUT/ASSET_MOVEMENT",
+        "profiles": [
+          "ecdsa-only-attacker"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M2-rotate-floor-only",
+        "expectedProperty": "P-CUT/CREDENTIAL_REPLACEMENT",
+        "profiles": [
+          "ecdsa-only-attacker",
+          "recovery-maturation"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M3-setverifier-floor-only",
+        "expectedProperty": "P-CUT/VERIFIER_REPLACEMENT",
+        "profiles": [
+          "ecdsa-only-attacker"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M4-setpolicy-floor-only",
+        "expectedProperty": "P-CUT/POLICY_CHANGE",
+        "profiles": [
+          "ecdsa-only-attacker",
+          "containment-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M5-recovery-replay-enabled",
+        "expectedProperty": "P-MODEL",
+        "profiles": [
+          "recovery-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M6-cancel-does-not-invalidate",
+        "expectedProperty": "P-MODEL",
+        "profiles": [
+          "recovery-maturation",
+          "recovery-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M7-pop-checks-outgoing-key",
+        "expectedProperty": "P-CUT/CREDENTIAL_REPLACEMENT",
+        "profiles": [
+          "recovery-maturation",
+          "recovery-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M8-recovery-commitment-drops-verifier",
+        "expectedProperty": "P-CUT/VERIFIER_REPLACEMENT",
+        "profiles": [
+          "recovery-maturation",
+          "recovery-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M9-duplicate-guardian-principal",
+        "expectedProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "profiles": [
+          "quorum-without-credential",
+          "one-guardian-attacker"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M10-nonce-not-consumed",
+        "expectedProperty": "P-CUT/ASSET_MOVEMENT",
+        "profiles": [
+          "replay-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M11-plane-denial-ignored",
+        "expectedProperty": "P-PLANE-SUBTRACTIVE",
+        "profiles": [
+          "policy-plane-denial"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M12-migration-quorum-only",
+        "expectedProperty": "P-CUT/MIGRATION_BINDING",
+        "profiles": [
+          "quorum-without-credential"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M13-quorum-counts-indices-not-principals",
+        "expectedProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "profiles": [
+          "quorum-without-credential",
+          "one-guardian-attacker"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M14-containment-budget-removed",
+        "expectedProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "profiles": [
+          "containment-straddle",
+          "containment-duty-cycle",
+          "containment-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M23-tumbling-reset-restored",
+        "expectedProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "profiles": [
+          "containment-straddle",
+          "erc20-containment-straddle"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M24-tracks-only-the-most-recent-start",
+        "expectedProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "profiles": [
+          "containment-straddle"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M15-effective-state-ignores-expiry",
+        "expectedProperty": "G-EFFECTIVE-STATE-DERIVATION",
+        "profiles": [
+          "containment-composition"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M19-declaration-not-exhibited",
+        "expectedProperty": "G-PQ-COMMITMENT-SATISFIABLE",
+        "profiles": [
+          "ecdsa-only-floor",
+          "ecdsa-only-committed"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M20-declaration-unbound-from-the-commitment",
+        "expectedProperty": "G-PQ-COMMITMENT-SATISFIABLE",
+        "profiles": [
+          "ecdsa-only-floor",
+          "ecdsa-only-committed"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M21-admission-not-exhibited",
+        "expectedProperty": "G-COMMITMENT-ATTESTED",
+        "profiles": [
+          "commitment-forgery"
+        ],
+        "applicable": true
+      },
+      {
+        "id": "M22-admission-bound-to-the-OUTGOING-commitment",
+        "expectedProperty": "G-COMMITMENT-ATTESTED",
+        "profiles": [
+          "commitment-forgery"
+        ],
+        "applicable": true
+      }
+    ]
+  },
+  "sustainedDefects": [
+    {
+      "id": "SD-8-genesis-exhibit-cannot-prove-well-formedness",
+      "property": null,
+      "classification": "STATE_INCOHERENCE"
+    },
+    {
+      "id": "SD-4-ecdsa-only-shape-declaration-is-uncounted",
+      "property": "G-DECLARATION-SUBORDINATE-TO-RECOVERY",
+      "classification": "LIVENESS_DENIAL"
+    }
+  ],
+  "conditionallyRemediated": [
+    {
+      "id": "SD-11A-verifier-semantic-admission-is-unverifiable-by-the-kernel",
+      "condition": "GENERATION BINDING — the closure holds on vaults whose clone args bind the Generation-1 root (ImmutableAttestationVerifierFactoryPrototype), i.e. every vault a VaultKernelFactoryPrototype constructed with that root creates, and it is checkable offline from genesisCommitments() bytes 8..28 and the root's code. The kernel IMPLEMENTATION does not pin the root, so the same bytes bound to another root admit what that root approves (UngatedVerifierAuthority reproduces this on purpose): that is D8's generation-publisher residual, H-32, not a principal with authority over any existing vault. CLASS ASSURANCE — 'one accepting relation' is established for ONE class by review of contracts/verifiers/ImmutableAttestationPQCVerifier.sol (a byte-identical copy, identity asserted in M4), not proven on chain for arbitrary bytecode; Generation 1 claims nothing about the attestor's honesty, which remains the class's declared trust root."
+    },
+    {
+      "id": "SD-11B-admitted-verifier-semantic-immutability-is-not-established",
+      "condition": "GENERATION BINDING — as in SD-11A's entry: the closure holds on vaults whose clone args bind the Generation-1 root, and the kernel implementation does not pin that root (D8's generation-publisher residual, H-32). SOURCE ATTRIBUTION — the admitted class's immutability is established mechanically except for its single STATICCALL, whose target is stack-supplied in the bytecode and is attributed to the ecrecover precompile (ECDSA.tryRecover) by source. ZKMLDSAVerifier remains NOT ESTABLISHED, because its relation forwards to an SP1 verifier this repository does not pin, and it is not admissible in Generation 1: the root cannot create it."
+    }
+  ],
+  "whatThisDoesNotProve": [
+    "NOT EXHAUSTIVE. A bounded, seeded campaign over a bounded action vocabulary.",
+    "NOT FORMAL VERIFICATION. 'No violation found' is not 'no violation exists'.",
+    "NOT AN AUDIT. No third party has reviewed this code.",
+    "NOT A TOKEN CLAIM. The admitted asset is a local mock throughout. The token zoo is a set of behaviours, not a model of any real token.",
+    "NO CRYPTOGRAPHIC CLAIM. Under the fixture the second factor is an independent ECDSA key standing in for a PQ scheme.",
+    "MUTATION SCORE IS ADEQUACY, NOT COVERAGE. It shows these properties detect these classes."
+  ],
+  "harnessSelfChecks": [
+    {
+      "name": "P-ATOMICITY",
+      "note": "A reverted call cannot change storage by the EVM's own rule, so this checks the harness's snapshot and digest, never a kernel. It is not evidence for any row."
+    }
+  ],
+  "knownGaps": [
+    "The generator nests no credential, roster or recovery act in a token hook: test/Gen2Reentrancy.test.ts exercises those deterministically.",
+    "The campaign's destination is a fixed stub, so a destination losing its code is exercised deterministically, in test/Gen2Migration.test.ts.",
+    "Generated rosters are EOA seats; ERC-1271 guardian faults are exercised by test/Gen2KernelRows.test.ts.",
+    "Cross-chain replay is covered by the domain separator's construction, not by a second deployed chain.",
+    "The campaign's token zoo reaches one asset at a time; multi-asset vaults do not exist in this kernel."
+  ]
+}
