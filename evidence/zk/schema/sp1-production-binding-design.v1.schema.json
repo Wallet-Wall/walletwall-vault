@@ -1,0 +1,508 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "walletwall.sp1-production-binding-design.v1",
+  "title": "WalletWall SP1 production-binding design manifest (SP1-PA3E)",
+  "description": "The design SP1-PA3E produced from the PA3D evidence: the statement WalletWall would have to bind for an SP1 proof to influence Vault authorization, its public and private inputs classified, the seven trust layers, the twenty threats with their bindings or residuals, the candidate architectures and the decision matrix, the recommendation, the verifier and program identity design, the canonical public-values encoding, the replay model, the identity lifecycle, the dispositions of every PA3D residue, the CI and release gates, the fail-closed failure semantics, the invariants PB-1 onward, the unresolved questions, the non-goals and the implementation-lane prerequisites. A design, not a measurement and not a binding: productionSp1Binding is always NOT_ESTABLISHED. Validated by scripts/lib/sp1-pa3e-design.ts (designErrors) and test/Sp1Pa3eDesign.test.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "lane",
+    "repository",
+    "kind",
+    "state",
+    "productionSp1Binding",
+    "evidenceBaseline",
+    "statement",
+    "trustLayers",
+    "trustAssumptions",
+    "threats",
+    "candidates",
+    "decisionMatrix",
+    "recommended",
+    "identity",
+    "encoding",
+    "replay",
+    "lifecycle",
+    "residues",
+    "gates",
+    "failures",
+    "invariants",
+    "unresolved",
+    "nonGoals",
+    "implementationPrerequisites"
+  ],
+  "properties": {
+    "schema": { "const": "walletwall.sp1-production-binding-design.v1" },
+    "lane": { "const": "SP1-PA3E" },
+    "repository": { "const": "Wallet-Wall/walletwall-vault" },
+    "kind": { "type": "string", "minLength": 40 },
+    "state": {
+      "enum": ["PA3E_PRODUCTION_BINDING_DESIGN_READY", "PA3E_DESIGN_BLOCKED", "PA3E_BLOCKED_ON_PA3D_MERGE"]
+    },
+    "productionSp1Binding": { "const": "NOT_ESTABLISHED" },
+    "evidenceBaseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mainCommit", "mergeCommit", "version", "pa3dRecord", "program", "proof", "qualification", "residue", "carriedForward"],
+      "properties": {
+        "mainCommit": { "$ref": "#/$defs/sha1" },
+        "mergeCommit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha", "parents", "pullRequest", "mergedAtUtc"],
+          "properties": {
+            "sha": { "$ref": "#/$defs/sha1" },
+            "parents": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/sha1" } },
+            "pullRequest": { "type": "integer", "minimum": 1 },
+            "mergedAtUtc": { "type": "string", "format": "date-time" }
+          }
+        },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+        "pa3dRecord": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "sha256", "state"],
+          "properties": {
+            "path": { "const": "evidence/zk/sp1-impl/pa3d-exercise-record.json" },
+            "sha256": { "$ref": "#/$defs/sha256" },
+            "state": { "const": "PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED" }
+          }
+        },
+        "program": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["designation", "program", "programVKey", "guestElfSha256", "sp1Version", "circuitVersion", "sp1VerifierCodehash"],
+          "properties": {
+            "designation": { "type": "string" },
+            "program": { "type": "string" },
+            "programVKey": { "$ref": "#/$defs/bytes32" },
+            "guestElfSha256": { "$ref": "#/$defs/sha256" },
+            "sp1Version": { "type": "string" },
+            "circuitVersion": { "type": "string" },
+            "sp1VerifierCodehash": { "$ref": "#/$defs/bytes32" }
+          }
+        },
+        "proof": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["token", "publicValuesSha256", "proofBytesSha256", "selector", "verification", "proofByteDeterminism"],
+          "properties": {
+            "token": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+            "publicValuesSha256": { "$ref": "#/$defs/sha256" },
+            "proofBytesSha256": { "$ref": "#/$defs/sha256" },
+            "selector": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
+            "verification": { "const": "ACCEPTED" },
+            "proofByteDeterminism": { "const": "NOT_CLAIMED" }
+          }
+        },
+        "qualification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "verdict"],
+          "properties": { "path": { "type": "string" }, "verdict": { "type": "string" } }
+        },
+        "residue": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unattributedEvents", "unseenDestinations", "otherNamespaceEgress", "unknownOutcomes"],
+          "properties": {
+            "unattributedEvents": { "type": "integer", "minimum": 0 },
+            "unseenDestinations": { "type": "integer", "minimum": 0 },
+            "otherNamespaceEgress": { "type": "integer", "minimum": 0 },
+            "unknownOutcomes": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "carriedForward": { "type": "array", "minItems": 12, "items": { "type": "string", "minLength": 20 } }
+      }
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["subject", "relation", "consumerPath", "publicInputs", "privateInputs", "verificationMeans", "verificationDoesNotMean"],
+      "properties": {
+        "subject": { "type": "string", "minLength": 40 },
+        "relation": { "type": "string", "minLength": 40 },
+        "consumerPath": { "type": "array", "minItems": 3, "items": { "type": "string" } },
+        "publicInputs": {
+          "type": "array",
+          "minItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "classification", "boundBy", "today", "why"],
+            "properties": {
+              "name": { "type": "string" },
+              "classification": { "enum": ["MUST_BIND", "MAY_BIND", "MUST_NOT_BIND", "NOT_APPLICABLE"] },
+              "boundBy": {
+                "enum": ["JOURNAL_WORD", "EIP712_DIGEST", "VERIFIER_IMMUTABLE", "PROOF_SELECTOR_AND_CODEHASH_PIN", "CONSUMER_STORAGE", "NONE"]
+              },
+              "today": { "type": "string" },
+              "why": { "type": "string", "minLength": 20 }
+            }
+          }
+        },
+        "privateInputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "why"],
+            "properties": { "name": { "type": "string" }, "why": { "type": "string" } }
+          }
+        },
+        "verificationMeans": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "verificationDoesNotMean": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "trustLayers": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "question", "establishedBy", "transition"],
+        "properties": {
+          "id": { "enum": ["A", "B", "C", "D", "E", "F", "G"] },
+          "name": { "type": "string" },
+          "question": { "type": "string" },
+          "establishedBy": { "type": "string" },
+          "transition": { "type": "string", "minLength": 10 }
+        }
+      }
+    },
+    "trustAssumptions": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "threats": {
+      "type": "array",
+      "minItems": 20,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "status", "layers", "binding", "residual"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^T(0[1-9]|1[0-9]|20)$" },
+          "name": { "type": "string" },
+          "status": { "enum": ["RESOLVED", "PARTIAL", "UNRESOLVED"] },
+          "layers": { "type": "array", "items": { "enum": ["A", "B", "C", "D", "E", "F", "G"] } },
+          "binding": { "type": "string" },
+          "residual": { "type": "string" }
+        }
+      }
+    },
+    "candidates": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "summary", "verdict", "analysis"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]$" },
+          "name": { "type": "string" },
+          "summary": { "type": "string" },
+          "verdict": { "enum": ["RECOMMENDED", "VIABLE", "REJECTED"] },
+          "analysis": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    },
+    "decisionMatrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dimensions", "scores"],
+      "properties": {
+        "dimensions": { "type": "array", "minItems": 15, "items": { "type": "string" } },
+        "scores": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "enum": ["STRONG", "ACCEPTABLE", "WEAK", "BLOCKING"] }
+          }
+        }
+      }
+    },
+    "recommended": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["candidate", "why", "rejected"],
+      "properties": {
+        "candidate": { "type": "string", "pattern": "^[A-Z]$" },
+        "why": { "type": "string", "minLength": 40 },
+        "rejected": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["candidate", "why"],
+            "properties": { "candidate": { "type": "string" }, "why": { "type": "string" } }
+          }
+        }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "programIdentity",
+        "verifierIdentity",
+        "consumerIdentity",
+        "whoMayAdd",
+        "whoMayRemove",
+        "emergencyRevoke",
+        "downgrade",
+        "oldProofsAfterUpgrade",
+        "evidencePerChange"
+      ],
+      "properties": {
+        "programIdentity": { "type": "string" },
+        "verifierIdentity": { "type": "string" },
+        "consumerIdentity": { "type": "string" },
+        "whoMayAdd": { "type": "string" },
+        "whoMayRemove": { "type": "string" },
+        "emergencyRevoke": { "type": "string" },
+        "downgrade": { "type": "string" },
+        "oldProofsAfterUpgrade": { "type": "string" },
+        "evidencePerChange": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "encoding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publicValues", "digest", "proofPayload", "verifierBinding", "domainSeparation", "forbidden", "nextGeneration"],
+      "properties": {
+        "publicValues": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["totalBytes", "layout", "fields"],
+          "properties": {
+            "totalBytes": { "type": "integer", "minimum": 32 },
+            "layout": { "type": "string" },
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name", "abiType", "offset", "bytes", "semantics", "checkedBy"],
+                "properties": {
+                  "name": { "type": "string" },
+                  "abiType": { "type": "string" },
+                  "offset": { "type": "integer", "minimum": 0 },
+                  "bytes": { "type": "integer", "minimum": 1 },
+                  "semantics": { "type": "string" },
+                  "checkedBy": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "digest": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["scheme", "domain", "typeHashes", "construction"],
+          "properties": {
+            "scheme": { "type": "string" },
+            "domain": { "type": "string" },
+            "typeHashes": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+            "construction": { "type": "string" }
+          }
+        },
+        "proofPayload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["abi", "selector"],
+          "properties": { "abi": { "type": "string" }, "selector": { "type": "string" } }
+        },
+        "verifierBinding": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["programVKey", "publicValuesDigest"],
+          "properties": { "programVKey": { "type": "string" }, "publicValuesDigest": { "type": "string" } }
+        },
+        "domainSeparation": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "forbidden": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "nextGeneration": { "type": "string" }
+      }
+    },
+    "replay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nullifier",
+        "stateLocation",
+        "consumedWhen",
+        "atomicity",
+        "onRevert",
+        "retry",
+        "crossChain",
+        "crossContract",
+        "crossUser",
+        "deadline",
+        "notBound"
+      ],
+      "properties": {
+        "nullifier": { "type": "string" },
+        "stateLocation": { "type": "string" },
+        "consumedWhen": { "type": "string" },
+        "atomicity": { "type": "string" },
+        "onRevert": { "type": "string" },
+        "retry": { "type": "string" },
+        "crossChain": { "type": "string" },
+        "crossContract": { "type": "string" },
+        "crossUser": { "type": "string" },
+        "deadline": { "type": "string" },
+        "notBound": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapping", "states", "transitions"],
+      "properties": {
+        "mapping": { "type": "string" },
+        "states": {
+          "type": "array",
+          "minItems": 5,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "meaning",
+              "mayProve",
+              "mayVerify",
+              "mayAuthorizeNew",
+              "mayAuthorizeExisting",
+              "historicalProofsAuditable",
+              "proofBeforeTransitionExecutesAfter"
+            ],
+            "properties": {
+              "id": { "enum": ["PROPOSED", "QUALIFIED", "ACTIVE", "DEPRECATED", "REVOKED"] },
+              "meaning": { "type": "string" },
+              "mayProve": { "type": "boolean" },
+              "mayVerify": { "type": "boolean" },
+              "mayAuthorizeNew": { "type": "boolean" },
+              "mayAuthorizeExisting": { "type": "boolean" },
+              "historicalProofsAuditable": { "const": true },
+              "proofBeforeTransitionExecutesAfter": { "type": "string" }
+            }
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to", "by", "evidence"],
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "by": { "type": "string" },
+              "evidence": { "type": "string", "minLength": 10 },
+              "delaySeconds": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "residues": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "finding", "disposition", "why", "boundary"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^PA3D-[A-Z0-9-]+$" },
+          "name": { "type": "string" },
+          "finding": { "type": "string" },
+          "disposition": {
+            "enum": [
+              "MUST_FIX_BEFORE_IMPLEMENTATION",
+              "MUST_FIX_BEFORE_PRODUCTION",
+              "ACCEPTABLE_WITH_DOCUMENTED_BOUNDARY",
+              "IRRELEVANT_TO_PRODUCTION_BINDING"
+            ]
+          },
+          "why": { "type": "string", "minLength": 20 },
+          "boundary": { "type": "string" }
+        }
+      }
+    },
+    "gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "name", "where", "status", "reference"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^G-\\d{2}$" },
+          "name": { "type": "string" },
+          "where": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "enum": ["UNIT", "INTEGRATION", "SOLIDITY", "HOST_QUALIFICATION", "RELEASE_EVIDENCE", "CANONICAL_CI"] }
+          },
+          "status": { "enum": ["EXISTS", "PARTIAL", "MISSING"] },
+          "reference": { "type": "string" }
+        }
+      }
+    },
+    "failures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["failure", "outcome", "where", "detail"],
+        "properties": {
+          "failure": { "type": "string" },
+          "outcome": { "enum": ["REVERT", "DENY_FALSE", "NO_STATE_CHANGE"] },
+          "where": { "type": "string" },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "invariants": {
+      "type": "array",
+      "minItems": 10,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "statement", "tier", "closes", "enforcedToday"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^PB-\\d+$" },
+          "statement": { "type": "string", "minLength": 20 },
+          "tier": { "enum": ["T0", "T1", "T2", "T3"] },
+          "closes": { "type": "array", "items": { "type": "string", "pattern": "^T(0[1-9]|1[0-9]|20)$" } },
+          "enforcedToday": { "type": "string" }
+        }
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "blocking", "owner"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^U-\\d+$" },
+          "question": { "type": "string" },
+          "blocking": { "type": "boolean" },
+          "owner": { "type": "string" }
+        }
+      }
+    },
+    "nonGoals": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "implementationPrerequisites": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+  },
+  "$defs": {
+    "sha1": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bytes32": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" }
+  }
+}
