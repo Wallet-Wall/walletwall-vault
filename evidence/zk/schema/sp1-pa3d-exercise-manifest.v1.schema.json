@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "walletwall.sp1-pa3d-exercise-manifest.v1",
+  "title": "WalletWall SP1-PA3D exercise manifest",
+  "description": "What scripts/generate-sp1-pa3d-manifest.ts authors BEFORE SP1-PA3D's one authorized proof, from committed facts and the operator's inputs: the proof statement (the designated program, its ELF, the committed inputs, the public values SP1-PA3B's run recorded for the same program and inputs), the circuit and verifier identities (the archive record), the prover (the canonical-build host binary, the pinned SP1 release, the toolchain that built it, the cpu mode and the frozen environment), the environment (its host label and words, and the observer qualification record it stands on, by digest and state), the run tools the source commit must hold byte-identical to the authoring checkout, the plan (one proof, under the complete egress boundary, the files its token names), every artifact the proof needs classified for the acquisition gate (nothing is acquired), the owner's authorization marker and what is not authorized. The validator re-derives it from its own operator inputs and refuses any differing leaf. It is a plan and a binding of identities, not a proof record; PRODUCTION_SP1_BINDING is NOT_ESTABLISHED whatever it says. The shape only: scripts/lib/sp1-pa3d-exercise.ts is the validator. Research prototype; not audited; testnet/local only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "lane",
+    "repository",
+    "productionSp1Binding",
+    "authorization",
+    "startedAtUtc",
+    "source",
+    "statement",
+    "circuit",
+    "prover",
+    "environment",
+    "tools",
+    "plan",
+    "artifacts",
+    "acquisitionGate",
+    "derivedFrom"
+  ],
+  "properties": {
+    "schema": { "const": "walletwall.sp1-pa3d-exercise-manifest.v1" },
+    "lane": { "const": "SP1-PA3D" },
+    "repository": { "const": "Wallet-Wall/walletwall-vault" },
+    "productionSp1Binding": { "const": "NOT_ESTABLISHED" },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["by", "proofs", "words", "recordedAtUtc", "notAuthorized"],
+      "properties": {
+        "by": { "const": "OWNER" },
+        "proofs": { "const": 1 },
+        "words": { "type": "string", "minLength": 1 },
+        "recordedAtUtc": { "$ref": "#/$defs/utc" },
+        "notAuthorized": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "startedAtUtc": { "$ref": "#/$defs/utc" },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "parents", "version"],
+      "properties": {
+        "commit": { "$ref": "#/$defs/hex40" },
+        "parents": { "type": "array", "items": { "$ref": "#/$defs/hex40" }, "minItems": 1 },
+        "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+      }
+    },
+    "statement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "designation",
+        "program",
+        "programVKey",
+        "guestElf",
+        "zkvmGuestTree",
+        "zkvmHostTree",
+        "inputs",
+        "expectedPublicValues"
+      ],
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "designation": { "type": "string", "minLength": 1 },
+        "program": { "type": "string", "minLength": 1 },
+        "programVKey": { "$ref": "#/$defs/bytes32" },
+        "guestElf": { "$ref": "#/$defs/digestAndBytes" },
+        "zkvmGuestTree": { "$ref": "#/$defs/hex40" },
+        "zkvmHostTree": { "$ref": "#/$defs/hex40" },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "bytes", "sha256"],
+          "properties": {
+            "path": { "type": "string", "minLength": 1 },
+            "bytes": { "type": "integer", "minimum": 1 },
+            "sha256": { "$ref": "#/$defs/hex64" }
+          }
+        },
+        "expectedPublicValues": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["hex", "sha256", "source"],
+          "properties": {
+            "hex": { "type": "string", "pattern": "^0x(?:[0-9a-f]{2})+$" },
+            "sha256": { "$ref": "#/$defs/hex64" },
+            "source": { "$ref": "#/$defs/pathAndDigest" }
+          }
+        }
+      }
+    },
+    "circuit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "archiveRecord", "archive", "members", "gnark", "verifier"],
+      "properties": {
+        "version": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+        "archiveRecord": { "$ref": "#/$defs/pathAndDigest" },
+        "archive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "bytes", "sha256", "sourceUrl", "sourceUrlRole"],
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "bytes": { "type": "integer", "minimum": 1 },
+            "sha256": { "$ref": "#/$defs/hex64" },
+            "sourceUrl": { "type": "string", "pattern": "^https://" },
+            "sourceUrlRole": { "const": "PROVENANCE_ONLY" }
+          }
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "bytes", "sha256"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "bytes": { "type": "integer", "minimum": 0 },
+              "sha256": { "$ref": "#/$defs/hex64" }
+            }
+          }
+        },
+        "gnark": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["repository", "digest", "imageRef"],
+          "properties": {
+            "repository": { "type": "string", "minLength": 1 },
+            "digest": { "$ref": "#/$defs/ociDigest" },
+            "imageRef": { "type": "string", "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$" }
+          }
+        },
+        "verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["version", "address", "verifierHash", "selector", "runtimeCodeKeccak"],
+          "properties": {
+            "version": { "type": "string", "pattern": "^v\\d+\\.\\d+\\.\\d+$" },
+            "address": { "type": "string", "pattern": "^0x[0-9a-fA-F]{40}$" },
+            "verifierHash": { "$ref": "#/$defs/bytes32" },
+            "selector": { "type": "string", "pattern": "^0x[0-9a-f]{8}$" },
+            "runtimeCodeKeccak": { "$ref": "#/$defs/bytes32" }
+          }
+        }
+      }
+    },
+    "prover": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["implementation", "mode", "proofSystem", "hostBinary", "sp1", "rust", "buildImage", "frozenEnv"],
+      "properties": {
+        "implementation": { "type": "string", "minLength": 1 },
+        "mode": { "const": "cpu" },
+        "proofSystem": { "const": "groth16" },
+        "hostBinary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file", "sha256", "pinnedBy"],
+          "properties": {
+            "file": { "type": "string", "minLength": 1 },
+            "sha256": { "$ref": "#/$defs/hex64" },
+            "pinnedBy": { "type": "string", "minLength": 1 }
+          }
+        },
+        "sp1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sdk", "zkvm"],
+          "properties": {
+            "sdk": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" },
+            "zkvm": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+" }
+          }
+        },
+        "rust": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rustc", "cargo", "source"],
+          "properties": {
+            "rustc": { "type": "string", "minLength": 1 },
+            "cargo": { "type": "string", "minLength": 1 },
+            "source": { "type": "string", "minLength": 1 }
+          }
+        },
+        "buildImage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reference", "platform"],
+          "properties": {
+            "reference": { "type": "string", "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$" },
+            "platform": { "type": "string", "minLength": 1 }
+          }
+        },
+        "frozenEnv": { "type": "array", "items": { "type": "string" }, "minItems": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostLabel", "kind", "description", "qualification"],
+      "properties": {
+        "hostLabel": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$" },
+        "kind": { "type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{0,63}$" },
+        "description": { "type": "string", "minLength": 1 },
+        "qualification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lane", "path", "sha256", "state", "qualifiedAtUtc", "observerScriptSha256"],
+          "properties": {
+            "lane": { "const": "SP1-PA3C-Q1" },
+            "path": { "const": "evidence/zk/sp1-impl/observer-qualification.json" },
+            "sha256": { "$ref": "#/$defs/hex64" },
+            "state": { "const": "OBSERVER_QUALIFIED_FOR_PA3D" },
+            "qualifiedAtUtc": { "$ref": "#/$defs/utc" },
+            "observerScriptSha256": { "$ref": "#/$defs/hex64" }
+          }
+        }
+      }
+    },
+    "tools": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pathAndDigest" } },
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proofs", "gate", "measurement", "observer", "outputs", "verification"],
+      "properties": {
+        "proofs": { "const": 1 },
+        "gate": { "const": "sp1:prove:archive-only" },
+        "measurement": { "const": "scripts/measure-sp1-attributed-proof-exercise.ts" },
+        "observer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["script", "mode", "boundary"],
+          "properties": {
+            "script": { "const": "scripts/sp1-egress-observer.ts" },
+            "mode": { "const": "run" },
+            "boundary": { "const": "COMPLETE_EGRESS_BOUNDARY" }
+          }
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["token", "runObservation", "verificationObservation", "record"],
+          "properties": {
+            "token": { "type": "string", "minLength": 1 },
+            "runObservation": {
+              "type": "string",
+              "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-run-[a-z0-9-]+\\.<token>\\.raw\\.json$"
+            },
+            "verificationObservation": {
+              "type": "string",
+              "pattern": "^evidence/zk/sp1-impl/observations/proof-exercise-verification-[a-z0-9-]+\\.<token>\\.raw\\.json$"
+            },
+            "record": {
+              "type": "string",
+              "pattern": "^evidence/zk/sp1-impl/proof-exercises/[a-z0-9-]+\\.v2\\.<token>\\.json$"
+            }
+          }
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tool", "where", "recordTool"],
+          "properties": {
+            "tool": { "const": "scripts/verify-sp1-proof-exercise.ts" },
+            "where": { "type": "string", "minLength": 1 },
+            "recordTool": { "const": "scripts/generate-sp1-proof-exercise-record.ts" }
+          }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "class", "identity", "pinnedBy", "acquisition", "verifiedBy"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "class": {
+            "enum": [
+              "repository-pinned",
+              "digest-pinned",
+              "version-pinned",
+              "host-dependent",
+              "network-dependent",
+              "mutable-external-dependency",
+              "unknown-unverified"
+            ]
+          },
+          "identity": { "type": "string", "minLength": 1 },
+          "pinnedBy": { "type": "string", "minLength": 1 },
+          "acquisition": { "const": "NONE" },
+          "verifiedBy": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "acquisitionGate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "blockers"],
+      "properties": {
+        "verdict": { "enum": ["PASSED", "BLOCKED"] },
+        "blockers": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "derivedFrom": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/pathAndDigest" } }
+  },
+  "$defs": {
+    "hex40": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "hex64": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "bytes32": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
+    "ociDigest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "utc": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$" },
+    "digestAndBytes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "bytes"],
+      "properties": { "sha256": { "$ref": "#/$defs/hex64" }, "bytes": { "type": "integer", "minimum": 1 } }
+    },
+    "pathAndDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": { "path": { "type": "string", "minLength": 1 }, "sha256": { "$ref": "#/$defs/hex64" } }
+    }
+  }
+}

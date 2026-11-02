@@ -74,6 +74,8 @@
     "validate:sp1-proof-exercise-record": "tsx scripts/generate-sp1-proof-exercise-record.ts --validate",
     "sp1:observer-qualification": "tsx scripts/generate-sp1-observer-qualification.ts",
     "validate:sp1-observer-qualification": "tsx scripts/generate-sp1-observer-qualification.ts --validate",
+    "sp1:pa3d-manifest": "tsx scripts/generate-sp1-pa3d-manifest.ts",
+    "validate:sp1-pa3d-manifest": "tsx scripts/generate-sp1-pa3d-manifest.ts --validate",
     "presp1-impl:receipt": "hardhat compile",
     "sp1-impl:receipt": "tsx scripts/generate-sp1-impl-receipt.ts",
     "prevalidate:sp1-impl-receipt": "hardhat compile",
