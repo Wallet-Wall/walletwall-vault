@@ -1,0 +1,448 @@
+{
+  "schema": "walletwall.sp1-pa3d-exercise-record.v1",
+  "lane": "SP1-PA3D",
+  "repository": "Wallet-Wall/walletwall-vault",
+  "productionSp1Binding": "NOT_ESTABLISHED",
+  "kind": "a PA3D v2 proof exercise record: one real attributed proof of the designated program, independently verified on a development chain, bound to its source and its observer qualification by committed digests; not a production binding record",
+  "state": "PA3D_V2_PROOF_ATTRIBUTED_AND_VERIFIED",
+  "blockers": [],
+  "next": {
+    "lane": "SP1-PA3E",
+    "what": "design review",
+    "started": false
+  },
+  "source": {
+    "commit": "debed530c3ff72eda6785bfcadd46595a0c98b69",
+    "parents": [
+      "5ac076fed62d9dde49e8a871d8370bb1ea0c03d7",
+      "e8a5c85ce5aaf151aeb5aa62418890ed1195d86e"
+    ],
+    "version": "0.13.33"
+  },
+  "manifest": {
+    "path": "evidence/zk/sp1-impl/pa3d-exercise-manifest.json",
+    "sha256": "356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f",
+    "startedAtUtc": "2026-11-02T03:03:04Z"
+  },
+  "preproof": {
+    "path": "evidence/zk/sp1-impl/observations/pa3d-preproof-developer-workstation-wsl2.raw.json",
+    "sha256": "ec167ef17261883e19ec28f6ac245a5ca1d59fd56eea57f78b1b01abadbacc79",
+    "verdict": "PA3D_PREPROOF_ENVIRONMENT_VALID",
+    "measuredAtUtc": "2026-11-02T03:13:52Z"
+  },
+  "provenance": {
+    "laneCheckout": "23a364fb23affebb75f4094253c34787108080c7",
+    "manifestInLaneCheckout": true,
+    "runLaneCheckout": "9fab1a688d016e3050129360619bb8579de7fc4b",
+    "attestationInRunCheckout": true
+  },
+  "exercise": {
+    "token": "45aa26274d265d3f",
+    "run": {
+      "path": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json",
+      "sha256": "45aa26274d265d3faffbe326106a259b3dce22e899077a188319da6eb7f289e3",
+      "measuredAtUtc": "2026-11-02T03:31:51Z",
+      "gateSeconds": 686
+    },
+    "verification": {
+      "path": "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.45aa26274d265d3f.raw.json",
+      "sha256": "c7f6cabfbeb8c6d673da54deb623f65b524cc5d8c25d55d879ff0f498b466e6e",
+      "acceptance": "ACCEPTED",
+      "checks": 1
+    },
+    "record": {
+      "path": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json",
+      "sha256": "61aa350174d0527cbbd3bc1e46fec6ee3f71f276cfd89354f679dd31db295ac0",
+      "assurance": {
+        "level": "CONTINUOUS_PARTIALLY_ATTRIBUTED",
+        "continuousObservation": "PRESENT",
+        "processAttribution": "PARTIAL",
+        "enforcement": "STATED_AND_COUNTED",
+        "edgeProbes": "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+        "attemptsInWindow": 162,
+        "refusedPackets": 237,
+        "unattributedEvents": 19,
+        "unattributedOutsideWindow": 0,
+        "unknownOutcomes": 0,
+        "unseenDestinations": 10,
+        "otherNamespaceEgress": 3
+      }
+    },
+    "proof": {
+      "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+      "selector": "0x4388a21c",
+      "publicValues": "0x8e345eeac3d258c778ad2384da5952dd41734c24c4912cc168899b54ac24e9863ae18e10835136b3f369b331045bd230caefed3e5c32a3bd0be523a5ccda12f03ad471f5c1048bfc22a707479e3f827bd032da80870c98fbdef2b964ad50caed0000000000000000000000000000000000000000000000000000000000007a690000000000000000000000001111111111111111111111111111111111111111",
+      "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+      "proofBytesSha256": "aa3bdb1d9f5baef991c1a11c423de4e278087d1f8ff5afdabf010b1566f9e7a4"
+    }
+  },
+  "statement": {
+    "designation": "mldsa65-withdrawal-d1",
+    "program": "mldsa65-withdrawal",
+    "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "guestElf": {
+      "sha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+      "bytes": 206504
+    },
+    "inputs": {
+      "path": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "bytes": 10746,
+      "sha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9"
+    },
+    "expectedPublicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db"
+  },
+  "chain": {
+    "links": [
+      {
+        "id": "SOURCE_TO_MANIFEST",
+        "from": "source commit debed530c3ff72eda6785bfcadd46595a0c98b69",
+        "to": "manifest 356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f",
+        "holds": true,
+        "detail": "the manifest validates against the checkout and names the source commit"
+      },
+      {
+        "id": "MANIFEST_TO_ATTESTATION",
+        "from": "manifest 356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f",
+        "to": "pre-proof attestation ec167ef17261883e19ec28f6ac245a5ca1d59fd56eea57f78b1b01abadbacc79 (PA3D_PREPROOF_ENVIRONMENT_VALID)",
+        "holds": true,
+        "detail": "the attestation is of this manifest, VALID, and attests a clean checkout of the source commit"
+      },
+      {
+        "id": "MANIFEST_IN_ATTESTED_CHECKOUT",
+        "from": "the lane checkout the attestation names (23a364fb23affebb75f4094253c34787108080c7)",
+        "to": "manifest 356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f",
+        "holds": true,
+        "detail": "commit 23a364fb23affebb75f4094253c34787108080c7 is an ancestor of this checkout and holds the manifest at its committed digest: the attestation was made from a checkout holding this manifest"
+      },
+      {
+        "id": "SOURCE_TO_RUN",
+        "from": "source commit debed530c3ff72eda6785bfcadd46595a0c98b69",
+        "to": "run observation 45aa26274d265d3faffbe326106a259b3dce22e899077a188319da6eb7f289e3 (evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json)",
+        "holds": true,
+        "detail": "the run was made from the source commit, on the manifest's host, by the committed attributed tool, and its exercise is accepted"
+      },
+      {
+        "id": "ATTESTATION_IN_RUN_CHECKOUT",
+        "from": "the lane checkout the run's platform lines name (9fab1a688d016e3050129360619bb8579de7fc4b)",
+        "to": "pre-proof attestation ec167ef17261883e19ec28f6ac245a5ca1d59fd56eea57f78b1b01abadbacc79",
+        "holds": true,
+        "detail": "commit 9fab1a688d016e3050129360619bb8579de7fc4b is an ancestor of this checkout and holds the attestation at its committed digest: the run names a checkout in which the VALID attestation already stood"
+      },
+      {
+        "id": "PROGRAM_TO_RUN",
+        "from": "program 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc, host binary fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
+        "to": "the run's anchor and host executable",
+        "holds": true,
+        "detail": "the run proved the designated program with the canonical host binary in the planned mode"
+      },
+      {
+        "id": "INPUTS_TO_RUN",
+        "from": "inputs 5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+        "to": "the run's inputs 5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+        "holds": true,
+        "detail": "the run read the committed input fixture"
+      },
+      {
+        "id": "STATEMENT_TO_PUBLIC_VALUES",
+        "from": "expected public values 64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+        "to": "the proof's public values 64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+        "holds": true,
+        "detail": "the proof commits to the statement's public values, byte for byte"
+      },
+      {
+        "id": "CIRCUIT_TO_RUN",
+        "from": "circuit v6.1.0 (archive record a50038e70c9c87d3cdaaa0174ee6c3b570736de17d8943d284dc401021c97116, gnark sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d)",
+        "to": "the run's archive record, installed members and gnark image",
+        "holds": true,
+        "detail": "the run proved from the manifest's circuit, members and gnark image under the verifier's key"
+      },
+      {
+        "id": "PROOF_TO_VERIFICATION",
+        "from": "proof aa3bdb1d9f5baef991c1a11c423de4e278087d1f8ff5afdabf010b1566f9e7a4 in run 45aa26274d265d3faffbe326106a259b3dce22e899077a188319da6eb7f289e3",
+        "to": "verification c7f6cabfbeb8c6d673da54deb623f65b524cc5d8c25d55d879ff0f498b466e6e (ACCEPTED, 1 check(s))",
+        "holds": true,
+        "detail": "the designated verifier accepted the proof and refused its tampered copy, on the run's committed bytes"
+      },
+      {
+        "id": "OBSERVATIONS_TO_RECORD",
+        "from": "run evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json, verification evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.45aa26274d265d3f.raw.json",
+        "to": "v2 record 61aa350174d0527cbbd3bc1e46fec6ee3f71f276cfd89354f679dd31db295ac0 (evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json)",
+        "holds": true,
+        "detail": "the v2 record derives from these two observations with continuous observation, counted enforcement and PARTIAL process attribution (CONTINUOUS_PARTIALLY_ATTRIBUTED)"
+      },
+      {
+        "id": "ATTRIBUTION_RESIDUE",
+        "from": "the run's 162 attempts in the window and 237 refused packets",
+        "to": "residue: 19 refused packets no attempt sent, 10 sends of unseen destination, 3 other-namespace sends or connects beyond the VM, 0 unknown outcomes, 0 unattributed outside the window",
+        "holds": true,
+        "detail": "attribution is PARTIAL: no attempt to a resolver, and none from the host namespace to beyond the VM, has an unseen outcome, the classes the frozen derivation judges; the residue it does not judge is counted, not excused: 19 refused packet(s) that no observed attempt sent (refused by the boundary, not sent past it), 10 send(s) of unseen destination (packet, raw or AF_XDP sockets, whose destination the capture cannot read), 3 send(s) or connect(s) from namespaces neither the host's nor the proof container's to addresses beyond the VM that were sent or closed and never refused (an exit the inet boundary does not see); complete attribution is not claimed"
+      },
+      {
+        "id": "QUALIFICATION_TO_OBSERVER",
+        "from": "observer qualification 468d054b4d558f527591ba6a6ec7fd9811a7b48c782f0061e15b1a811a66cfdf (observer d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c)",
+        "to": "the observer that watched the run (d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c, RUN)",
+        "holds": true,
+        "detail": "the qualified observer, byte-identical, watched the run in RUN mode"
+      },
+      {
+        "id": "BOUNDARY_TO_RUN",
+        "from": "planned boundary COMPLETE_EGRESS_BOUNDARY",
+        "to": "the run's table (COMPLETE_EGRESS_BOUNDARY) and condition EGRESS_DISABLED",
+        "holds": true,
+        "detail": "the complete egress boundary stood, classified from the rules the observer recorded in every snapshot, and every one of the 16 edge probes was refused"
+      },
+      {
+        "id": "MANIFEST_BEFORE_PROOF",
+        "from": "manifest started 2026-11-02T03:03:04Z",
+        "to": "proof gate 2026-11-02T03:20:25Z .. 2026-11-02T03:31:49Z (686 s)",
+        "holds": true,
+        "detail": "the manifest's start stamp precedes the gate's (the stamps are the operator's; the ancestry links above bind the order by commits)"
+      }
+    ],
+    "holds": true,
+    "blockers": []
+  },
+  "reproducibility": {
+    "statement": "REPRODUCED",
+    "publicValuesSha256": {
+      "expected": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+      "observed": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+      "source": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json"
+    },
+    "proofBytes": {
+      "pa3b": "dfe975da331d53bee1485d55f032566fd43ddc0350904a30f74bcd83f7370eee",
+      "pa3d": "aa3bdb1d9f5baef991c1a11c423de4e278087d1f8ff5afdabf010b1566f9e7a4",
+      "identical": false,
+      "determinism": "NOT_CLAIMED",
+      "why": "Groth16 proving is randomized, so two honest proofs of one statement differ in bytes; one proof was authorized here, so no second run of this environment compares, and SP1-PA3B's proof (another commit, another day) is compared only to record that the bytes differ while the public values are the same"
+    }
+  },
+  "negativeControls": [
+    {
+      "id": "NC-V1",
+      "kind": "VERIFIER",
+      "expected": "REJECTED",
+      "expectedRefusal": "ProofInvalid",
+      "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
+      "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof with one byte flipped, asked of the designated verifier on a development chain)"
+    },
+    {
+      "id": "NC-V2",
+      "kind": "VERIFIER",
+      "expected": "REJECTED",
+      "expectedRefusal": "ProofInvalid",
+      "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
+      "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof under a wrong program verifying key)"
+    },
+    {
+      "id": "NC-V3",
+      "kind": "VERIFIER",
+      "expected": "REJECTED",
+      "expectedRefusal": "ProofInvalid",
+      "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
+      "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof over wrong public values (the last bit flipped))"
+    },
+    {
+      "id": "NC-V4",
+      "kind": "VERIFIER",
+      "expected": "REJECTED",
+      "expectedRefusal": "revert",
+      "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
+      "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof truncated by its last byte)"
+    },
+    {
+      "id": "NC-V5",
+      "kind": "VERIFIER",
+      "expected": "REJECTED",
+      "expectedRefusal": "revert",
+      "outcome": "EXECUTED_BY_TEST_SUITE",
+      "refusedBy": [
+        "test/Sp1Pa3dNegativeControls.test.ts"
+      ],
+      "refusal": "test/Sp1Pa3dNegativeControls.test.ts asks the designated verifier on a development chain (the committed proof with its four-byte selector replaced)"
+    },
+    {
+      "id": "NC-R1",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "INPUTS_TO_RUN",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "INPUTS_TO_RUN"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; INPUTS_TO_RUN: the run read other inputs"
+    },
+    {
+      "id": "NC-R2",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "STATEMENT_TO_PUBLIC_VALUES",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "STATEMENT_TO_PUBLIC_VALUES"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; STATEMENT_TO_PUBLIC_VALUES: the proof commits to other public values (64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db; recomputed 64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db)"
+    },
+    {
+      "id": "NC-R3",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "PROOF_TO_VERIFICATION",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "PROOF_TO_VERIFICATION"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; PROOF_TO_VERIFICATION: the verification names other proof digests"
+    },
+    {
+      "id": "NC-R4",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "SOURCE_TO_RUN",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "SOURCE_TO_RUN"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; SOURCE_TO_RUN: the run is walletwall.sp1-proof-exercise-run.v1, not v2"
+    },
+    {
+      "id": "NC-R5",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "SOURCE_TO_RUN",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "SOURCE_TO_RUN"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; SOURCE_TO_RUN: the run was made from 0000000000000000000000000000000000000000"
+    },
+    {
+      "id": "NC-R6",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "QUALIFICATION_TO_OBSERVER",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "QUALIFICATION_TO_OBSERVER"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; QUALIFICATION_TO_OBSERVER: the run was watched by an observer other than the qualified one"
+    },
+    {
+      "id": "NC-R7",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "PA3D_PREPROOF_ENVIRONMENT_REFUSED",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PREPROOF_ENVIRONMENT_REFUSED",
+        "MANIFEST_TO_ATTESTATION"
+      ],
+      "refusal": "PA3D_PREPROOF_ENVIRONMENT_REFUSED; MANIFEST_TO_ATTESTATION: the attestation is PA3D_PREPROOF_ENVIRONMENT_REFUSED"
+    },
+    {
+      "id": "NC-R8",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "PROOF_TO_VERIFICATION",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "PROOF_TO_VERIFICATION"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; PROOF_TO_VERIFICATION: the designated verifier did not accept (REJECTED)"
+    },
+    {
+      "id": "NC-R9",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "OBSERVATIONS_TO_RECORD",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "OBSERVATIONS_TO_RECORD"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; OBSERVATIONS_TO_RECORD: the record's egress assurance is EDGE_PROBES_ONLY (continuous observation ABSENT, enforcement STATED, edge probes REFUSED_BEFORE_AND_AFTER): not continuous, counted and observed"
+    },
+    {
+      "id": "NC-R12",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "ATTRIBUTION_RESIDUE",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "ATTRIBUTION_RESIDUE"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; ATTRIBUTION_RESIDUE: 1 attempt(s) to a resolver, or from the host namespace to beyond the VM, have no seen outcome: a packet may have passed the boundary unobserved"
+    },
+    {
+      "id": "NC-R10",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "MANIFEST_BEFORE_PROOF",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED",
+        "MANIFEST_BEFORE_PROOF"
+      ],
+      "refusal": "PA3D_PROOF_GENERATED_VERIFICATION_BLOCKED; MANIFEST_BEFORE_PROOF: the proof began before the manifest was authored"
+    },
+    {
+      "id": "NC-R11",
+      "kind": "VALIDATOR",
+      "expected": "REFUSED",
+      "expectedRefusal": "PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE",
+      "outcome": "REFUSED",
+      "refusedBy": [
+        "PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE"
+      ],
+      "refusal": "PA3D_BLOCKED_ON_ARTIFACT_PROVENANCE"
+    }
+  ],
+  "derivedFrom": [
+    {
+      "path": "evidence/zk/sp1-impl/observations/pa3d-preproof-developer-workstation-wsl2.raw.json",
+      "sha256": "ec167ef17261883e19ec28f6ac245a5ca1d59fd56eea57f78b1b01abadbacc79"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json",
+      "sha256": "45aa26274d265d3faffbe326106a259b3dce22e899077a188319da6eb7f289e3"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.45aa26274d265d3f.raw.json",
+      "sha256": "c7f6cabfbeb8c6d673da54deb623f65b524cc5d8c25d55d879ff0f498b466e6e"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observer-qualification.json",
+      "sha256": "468d054b4d558f527591ba6a6ec7fd9811a7b48c782f0061e15b1a811a66cfdf"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/pa3d-exercise-manifest.json",
+      "sha256": "356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json",
+      "sha256": "61aa350174d0527cbbd3bc1e46fec6ee3f71f276cfd89354f679dd31db295ac0"
+    }
+  ],
+  "establishes": "one real Groth16 proof of the designated program was made from the manifest's source commit, on the manifest's host, by the committed attributed measurement under the qualified root observer and the complete egress boundary, from the archive-only circuit with the digest-pinned gnark image and the canonical host binary, on the committed inputs; it commits to the statement's public values; the designated verifier accepted it and refused its tampered copy on a development chain; the v2 record derives from the two observations with continuous observation and counted enforcement, its process attribution complete or partial as that record states, with no attempt to a resolver and none from the host namespace to beyond the VM of unseen outcome, and the residue the derivation does not judge (refused packets no attempt sent, sends of unseen destination, other-namespace sends beyond the VM) counted and named; the manifest stood in the checkout the attestation names and the attestation in the checkout the run names, each an ancestor of the checkout that validates; and every link from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the observer qualification compares equal committed digests",
+  "doesNotEstablish": "any production binding (PRODUCTION_SP1_BINDING = NOT_ESTABLISHED): no production verifier, Solidity, custody or policy semantics changed, no mainnet call was made; nor proof-byte determinism (one proof was authorized, Groth16 proving is randomized); nor complete process attribution where the v2 record states it partial; nor that nothing left the virtual machine by a path the inet boundary does not see (other namespaces' sends counted as residue left by vsock or a second runtime's network, and frames outside the inet family are not filtered by the table); nor more than the v2 record's own egress assurance states (the raw capture stays with the operator and is re-checkable only by someone given it); nor the soundness of the Groth16 trusted setup behind the key; nor that this environment proves within the rotation delay at another time"
+}

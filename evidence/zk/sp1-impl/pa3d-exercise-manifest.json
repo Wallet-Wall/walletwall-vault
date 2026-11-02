@@ -1,0 +1,512 @@
+{
+  "schema": "walletwall.sp1-pa3d-exercise-manifest.v1",
+  "lane": "SP1-PA3D",
+  "repository": "Wallet-Wall/walletwall-vault",
+  "productionSp1Binding": "NOT_ESTABLISHED",
+  "authorization": {
+    "by": "OWNER",
+    "proofs": 1,
+    "words": "The owner, in the operator session of 2026-11-02 after merging #236 by merge commit (debed530): \"Yes. I will merge #236 using a merge commit. After the merge, rerun SP1-PA3D from the beginning.\" and \"Owner authorization remains for exactly one controlled v2 attributed proof.\" With the lane's limits restated: prefer the qualified self-hosted path; no hosted proving, no production verifier changes, no Solidity changes, no production-binding claims; if the pre-proof attestation refuses, stop; open the PR as a draft and do not merge; do not begin SP1-PA3E.",
+    "recordedAtUtc": "2026-11-02T03:03:04Z",
+    "notAuthorized": [
+      "repeated proving experiments without need",
+      "production proving",
+      "proof generation against arbitrary external inputs",
+      "unrelated circuit acquisition",
+      "contract changes",
+      "cloud proving spend",
+      "third-party hosted proving",
+      "publishing private host metadata"
+    ]
+  },
+  "startedAtUtc": "2026-11-02T03:03:04Z",
+  "source": {
+    "commit": "debed530c3ff72eda6785bfcadd46595a0c98b69",
+    "parents": [
+      "5ac076fed62d9dde49e8a871d8370bb1ea0c03d7",
+      "e8a5c85ce5aaf151aeb5aa62418890ed1195d86e"
+    ],
+    "version": "0.13.33"
+  },
+  "statement": {
+    "text": "The SP1 guest program mldsa65-withdrawal (ELF sha256 2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a, 206504 bytes; guest tree f61fdc6c8785df742857574c5dbf47aa62283c49), executed by the canonical-build host binary (sha256 fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b; host tree 30f72596c430974bf8113892bf41c26dce3629f3) on the committed input fixture zkvm/fixtures/mldsa65-withdrawal.inputs.json (sha256 5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9), commits to the public values whose sha256 is 64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db (the values SP1-PA3B's run recorded for the same program and inputs). One Groth16 proof of that execution, made by the local cpu prover from the archive-only circuit v6.1.0 (archive sha256 18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810), is to verify under PROGRAM_VKEY 0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc on the designated verifier v6.1.0 (verifierHash 0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696). It is an exercise of the self-hosted path and establishes no production binding: PRODUCTION_SP1_BINDING = NOT_ESTABLISHED.",
+    "designation": "mldsa65-withdrawal-d1",
+    "program": "mldsa65-withdrawal",
+    "programVKey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+    "guestElf": {
+      "sha256": "2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+      "bytes": 206504
+    },
+    "zkvmGuestTree": "f61fdc6c8785df742857574c5dbf47aa62283c49",
+    "zkvmHostTree": "30f72596c430974bf8113892bf41c26dce3629f3",
+    "inputs": {
+      "path": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "bytes": 10746,
+      "sha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9"
+    },
+    "expectedPublicValues": {
+      "hex": "0x8e345eeac3d258c778ad2384da5952dd41734c24c4912cc168899b54ac24e9863ae18e10835136b3f369b331045bd230caefed3e5c32a3bd0be523a5ccda12f03ad471f5c1048bfc22a707479e3f827bd032da80870c98fbdef2b964ad50caed0000000000000000000000000000000000000000000000000000000000007a690000000000000000000000001111111111111111111111111111111111111111",
+      "sha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+      "source": {
+        "path": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
+        "sha256": "5cc66ed58a4a2cf8a9439737e3b6246b59710bab6f22357410def81e761db3ff"
+      }
+    }
+  },
+  "circuit": {
+    "version": "v6.1.0",
+    "archiveRecord": {
+      "path": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "sha256": "a50038e70c9c87d3cdaaa0174ee6c3b570736de17d8943d284dc401021c97116"
+    },
+    "archive": {
+      "file": "v6.1.0-groth16.tar.gz",
+      "bytes": 6211807514,
+      "sha256": "18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      "sourceUrl": "https://sp1-circuits.s3-us-east-2.amazonaws.com/v6.1.0-groth16.tar.gz",
+      "sourceUrlRole": "PROVENANCE_ONLY"
+    },
+    "members": [
+      {
+        "path": "Groth16Verifier.sol",
+        "bytes": 26770,
+        "sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457"
+      },
+      {
+        "path": "SP1VerifierGroth16.sol",
+        "bytes": 3236,
+        "sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0"
+      },
+      {
+        "path": "constraints.json",
+        "bytes": 111997113,
+        "sha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b"
+      },
+      {
+        "path": "groth16_circuit.bin",
+        "bytes": 2437991441,
+        "sha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc"
+      },
+      {
+        "path": "groth16_pk.bin",
+        "bytes": 5862173061,
+        "sha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167"
+      },
+      {
+        "path": "groth16_vk.bin",
+        "bytes": 492,
+        "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+      },
+      {
+        "path": "groth16_witness.json",
+        "bytes": 2802920,
+        "sha256": "ee2ac8e094712a87ec3b0dc50ed39704aa90ee066ce4c5bf6160d54f04014c94"
+      }
+    ],
+    "gnark": {
+      "repository": "ghcr.io/succinctlabs/sp1-gnark",
+      "digest": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+      "imageRef": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
+    },
+    "verifier": {
+      "version": "v6.1.0",
+      "address": "0xb69f2584CBcFf99a58C4e7002E8b89Af54a6f4e2",
+      "verifierHash": "0x4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696",
+      "selector": "0x4388a21c",
+      "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd"
+    }
+  },
+  "prover": {
+    "implementation": "zkvm/host (the sp1-sdk blocking client, Groth16 through the pinned gnark image), run as the canonical-build host binary mldsa65-host under the archive-only prove gate",
+    "mode": "cpu",
+    "proofSystem": "groth16",
+    "hostBinary": {
+      "file": "mldsa65-host",
+      "sha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
+      "pinnedBy": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation.raw.json"
+    },
+    "sp1": {
+      "sdk": "6.3.1",
+      "zkvm": "6.3.1"
+    },
+    "rust": {
+      "rustc": "1.96.0 (ac68faa20 2026-05-25)",
+      "cargo": "1.96.0 (30a34c682 2026-05-25)",
+      "source": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/env.txt"
+    },
+    "buildImage": {
+      "reference": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+      "platform": "linux/amd64"
+    },
+    "frozenEnv": [
+      "SP1_PROVER",
+      "SP1_GROTH16_CIRCUIT_PATH",
+      "SP1_GNARK_IMAGE",
+      "DOCKER_CONTEXT"
+    ]
+  },
+  "environment": {
+    "hostLabel": "developer-workstation-wsl2",
+    "kind": "wsl2-ubuntu-24.04",
+    "description": "the developer workstation's WSL2 Ubuntu 24.04 virtual machine (x86_64, 24 GiB RAM, 40 GiB swap), with the distribution's own Docker Engine (docker.io) on a unix socket and no Docker Desktop integration; the egress observer runs as root in the VM's root network namespace, which every WSL2 distribution on the machine shares, and the prover as the unprivileged user prover, from a clean clone of the source commit; the same environment SP1-PA3C-Q1 qualified",
+    "qualification": {
+      "lane": "SP1-PA3C-Q1",
+      "path": "evidence/zk/sp1-impl/observer-qualification.json",
+      "sha256": "468d054b4d558f527591ba6a6ec7fd9811a7b48c782f0061e15b1a811a66cfdf",
+      "state": "OBSERVER_QUALIFIED_FOR_PA3D",
+      "qualifiedAtUtc": "2026-11-02T01:59:26Z",
+      "observerScriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+    }
+  },
+  "tools": [
+    {
+      "path": "scripts/measure-sp1-attributed-proof-exercise.ts",
+      "sha256": "5e659a8ec3e492dc4130123420c1189a19c1859ef5a7f4fb778011faa807470a"
+    },
+    {
+      "path": "scripts/sp1-egress-observer.ts",
+      "sha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+    },
+    {
+      "path": "scripts/verify-sp1-proof-exercise.ts",
+      "sha256": "1af664236a277c7c854b76a5e56f8d69148c47f96e6ebc9377c214e61c41b656"
+    },
+    {
+      "path": "scripts/sp1-prove-archive-only.ts",
+      "sha256": "c3680243f56b4b3d228d74ffac611e3d2abc0f97df3528d84224e19a0d72c90c"
+    },
+    {
+      "path": "scripts/generate-sp1-proof-exercise-record.ts",
+      "sha256": "3a5ed18eadd3339fdea65a2d30dcfa1c10f17fda58ea2cc7a80ce7a1a07b7bf1"
+    },
+    {
+      "path": "scripts/lib/sp1-prove-gate.ts",
+      "sha256": "524978bb3cd24a697ec7c560250bafbc338ce3fba54354818e765058fa142d40"
+    },
+    {
+      "path": "scripts/lib/sp1-proof-exercise.ts",
+      "sha256": "f4dae926063994d8df76efb038441ba7587ebe67329cf0dd97c3a10d56234ab0"
+    },
+    {
+      "path": "scripts/lib/sp1-egress-attribution.ts",
+      "sha256": "283808466744277adb50c74a2b3d01a9fb5104431c9824b9d04233c9b0c18c58"
+    },
+    {
+      "path": "scripts/lib/sp1-circuit-install.ts",
+      "sha256": "1da6ad06cdc7f17cf9fb545b8671a9a5f2cfb58c8b5f60314120330c658be84e"
+    },
+    {
+      "path": "scripts/lib/sp1-circuit-acquisition.ts",
+      "sha256": "7723782ab77ca149b239241d910dabafd7bd08337398fc7a035845583830e5ce"
+    },
+    {
+      "path": "scripts/lib/sp1-circuit-archive.ts",
+      "sha256": "c54defe7182326a3d69d8f8a9c506e4eb4e669b9953732dc44d585ffabb53c88"
+    },
+    {
+      "path": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "sha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9"
+    }
+  ],
+  "plan": {
+    "proofs": 1,
+    "gate": "sp1:prove:archive-only",
+    "measurement": "scripts/measure-sp1-attributed-proof-exercise.ts",
+    "observer": {
+      "script": "scripts/sp1-egress-observer.ts",
+      "mode": "run",
+      "boundary": "COMPLETE_EGRESS_BOUNDARY"
+    },
+    "outputs": {
+      "token": "the first 16 hexadecimal digits of the sha256 of the run observation's committed (LF) bytes",
+      "runObservation": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.<token>.raw.json",
+      "verificationObservation": "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.<token>.raw.json",
+      "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.<token>.json"
+    },
+    "verification": {
+      "tool": "scripts/verify-sp1-proof-exercise.ts",
+      "where": "the proving host, from a clean checkout at the commit that holds the committed run observation, after the egress boundary is removed",
+      "recordTool": "scripts/generate-sp1-proof-exercise-record.ts"
+    }
+  },
+  "artifacts": [
+    {
+      "name": "guest ELF (mldsa65-withdrawal), embedded in the host binary",
+      "class": "digest-pinned",
+      "identity": "sha256:2adddae753011fb08e30127e38befe99c0092c956e01bf4486ca81827a632d8a",
+      "pinnedBy": "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json",
+      "acquisition": "NONE",
+      "verifiedBy": "the designation's elf.sha256 equals the canonical rebuild's; the host binary that embeds it is hashed before the proof and recorded by the run"
+    },
+    {
+      "name": "host binary mldsa65-host (canonical build)",
+      "class": "digest-pinned",
+      "identity": "sha256:fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
+      "pinnedBy": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation.raw.json",
+      "acquisition": "NONE",
+      "verifiedBy": "the pre-proof attestation hashes the operator-local copy against this digest; the run observation records hostExecutable.sha256 and the record validator binds it to the canonical rebuild"
+    },
+    {
+      "name": "Groth16 circuit v6.1.0 (7 members, installed archive-only)",
+      "class": "digest-pinned",
+      "identity": "archive sha256:18beebb6cd0cc9b4d4a240ee4f49511da6c2a7e51724bad4232de538a9147810",
+      "pinnedBy": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "acquisition": "NONE",
+      "verifiedBy": "the prove gate verifies every installed member's bytes against the archive record before and after the proof and refuses any other entry under the circuit root"
+    },
+    {
+      "name": "gnark prover image ghcr.io/succinctlabs/sp1-gnark",
+      "class": "digest-pinned",
+      "identity": "sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+      "pinnedBy": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "acquisition": "NONE",
+      "verifiedBy": "SP1_GNARK_IMAGE is frozen to the digest reference; the image is present locally before the proof (docker image inspect) and no pull can succeed under the egress boundary"
+    },
+    {
+      "name": "SP1 build image (built the host binary)",
+      "class": "digest-pinned",
+      "identity": "ghcr.io/succinctlabs/sp1@sha256:0942a27dbe8e38f4b14f3732e779df4027b17bde93e9fbc9e8c773c15eb63400",
+      "pinnedBy": "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json",
+      "acquisition": "NONE",
+      "verifiedBy": "not used by the proof; it is the provenance of the host binary (the canonical rebuild observation)"
+    },
+    {
+      "name": "proof inputs fixture",
+      "class": "repository-pinned",
+      "identity": "sha256:5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+      "pinnedBy": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "acquisition": "NONE",
+      "verifiedBy": "the run observation records inputs.sha256; the record validator binds it to the committed fixture"
+    },
+    {
+      "name": "run tool scripts/measure-sp1-attributed-proof-exercise.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:5e659a8ec3e492dc4130123420c1189a19c1859ef5a7f4fb778011faa807470a",
+      "pinnedBy": "scripts/measure-sp1-attributed-proof-exercise.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/sp1-egress-observer.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c",
+      "pinnedBy": "scripts/sp1-egress-observer.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/verify-sp1-proof-exercise.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:1af664236a277c7c854b76a5e56f8d69148c47f96e6ebc9377c214e61c41b656",
+      "pinnedBy": "scripts/verify-sp1-proof-exercise.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/sp1-prove-archive-only.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:c3680243f56b4b3d228d74ffac611e3d2abc0f97df3528d84224e19a0d72c90c",
+      "pinnedBy": "scripts/sp1-prove-archive-only.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/generate-sp1-proof-exercise-record.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:3a5ed18eadd3339fdea65a2d30dcfa1c10f17fda58ea2cc7a80ce7a1a07b7bf1",
+      "pinnedBy": "scripts/generate-sp1-proof-exercise-record.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/lib/sp1-prove-gate.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:524978bb3cd24a697ec7c560250bafbc338ce3fba54354818e765058fa142d40",
+      "pinnedBy": "scripts/lib/sp1-prove-gate.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/lib/sp1-proof-exercise.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:f4dae926063994d8df76efb038441ba7587ebe67329cf0dd97c3a10d56234ab0",
+      "pinnedBy": "scripts/lib/sp1-proof-exercise.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/lib/sp1-egress-attribution.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:283808466744277adb50c74a2b3d01a9fb5104431c9824b9d04233c9b0c18c58",
+      "pinnedBy": "scripts/lib/sp1-egress-attribution.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/lib/sp1-circuit-install.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:1da6ad06cdc7f17cf9fb545b8671a9a5f2cfb58c8b5f60314120330c658be84e",
+      "pinnedBy": "scripts/lib/sp1-circuit-install.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/lib/sp1-circuit-acquisition.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:7723782ab77ca149b239241d910dabafd7bd08337398fc7a035845583830e5ce",
+      "pinnedBy": "scripts/lib/sp1-circuit-acquisition.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool scripts/lib/sp1-circuit-archive.ts",
+      "class": "repository-pinned",
+      "identity": "sha256:c54defe7182326a3d69d8f8a9c506e4eb4e669b9953732dc44d585ffabb53c88",
+      "pinnedBy": "scripts/lib/sp1-circuit-archive.ts",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "run tool zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "class": "repository-pinned",
+      "identity": "sha256:5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+      "pinnedBy": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "acquisition": "NONE",
+      "verifiedBy": "held byte-identical by the source commit and this checkout (TOOL_DRIFT otherwise); the run observation records the tool digests it ran"
+    },
+    {
+      "name": "observer qualification record",
+      "class": "repository-pinned",
+      "identity": "sha256:468d054b4d558f527591ba6a6ec7fd9811a7b48c782f0061e15b1a811a66cfdf",
+      "pinnedBy": "evidence/zk/sp1-impl/observer-qualification.json",
+      "acquisition": "NONE",
+      "verifiedBy": "OBSERVER_QUALIFIED_FOR_PA3D for this lane, re-derived by its own validator before the proof"
+    },
+    {
+      "name": "archive record",
+      "class": "repository-pinned",
+      "identity": "sha256:a50038e70c9c87d3cdaaa0174ee6c3b570736de17d8943d284dc401021c97116",
+      "pinnedBy": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "acquisition": "NONE",
+      "verifiedBy": "the run observation records archiveRecord.sha256; the record validator binds it to the committed record"
+    },
+    {
+      "name": "Linux kernel (WSL2 virtual machine)",
+      "class": "host-dependent",
+      "identity": "a fact of the proving host, recorded, not pinned",
+      "pinnedBy": "the run observation's platform lines and the pre-proof attestation",
+      "acquisition": "NONE",
+      "verifiedBy": "recorded (release, boot id) by the pre-proof attestation and the run observation; the egress observer's kprobes are attached to it"
+    },
+    {
+      "name": "Docker Engine (the distribution's own, unix socket)",
+      "class": "host-dependent",
+      "identity": "a fact of the proving host, recorded, not pinned",
+      "pinnedBy": "the run observation's platform lines and the pre-proof attestation",
+      "acquisition": "NONE",
+      "verifiedBy": "recorded (version, endpoint, context) by the pre-proof attestation and the run observation; DOCKER_CONTEXT is frozen"
+    },
+    {
+      "name": "node runtime",
+      "class": "host-dependent",
+      "identity": "a fact of the proving host, recorded, not pinned",
+      "pinnedBy": "the run observation's platform lines and the pre-proof attestation",
+      "acquisition": "NONE",
+      "verifiedBy": "recorded (version) by the pre-proof attestation and the run observation"
+    },
+    {
+      "name": "nftables (the complete egress boundary)",
+      "class": "host-dependent",
+      "identity": "a fact of the proving host, recorded, not pinned",
+      "pinnedBy": "the run observation's platform lines and the pre-proof attestation",
+      "acquisition": "NONE",
+      "verifiedBy": "the rules text and counters are recorded by the observer's raw evidence; the boundary is derived from the rules, not asserted"
+    }
+  ],
+  "acquisitionGate": {
+    "verdict": "PASSED",
+    "blockers": []
+  },
+  "derivedFrom": [
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation.raw.json",
+      "sha256": "f537e2bbdd3cedd1a353c32793d13bb5796ab8d286d89f3930731eab894efaeb"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/env.txt",
+      "sha256": "5bf58941cb3a4b7490e2ec0de0b873c575fb074ee1a0884b97d7a7e5a49e8f24"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.raw.json",
+      "sha256": "5cc66ed58a4a2cf8a9439737e3b6246b59710bab6f22357410def81e761db3ff"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/observer-qualification.json",
+      "sha256": "468d054b4d558f527591ba6a6ec7fd9811a7b48c782f0061e15b1a811a66cfdf"
+    },
+    {
+      "path": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+      "sha256": "a50038e70c9c87d3cdaaa0174ee6c3b570736de17d8943d284dc401021c97116"
+    },
+    {
+      "path": "evidence/zk/sp1/designations/mldsa65-withdrawal-d1.json",
+      "sha256": "8a491628d559a23a38537cd54030df271d2fc18728830d85dd9ffc25117cdb17"
+    },
+    {
+      "path": "scripts/generate-sp1-proof-exercise-record.ts",
+      "sha256": "3a5ed18eadd3339fdea65a2d30dcfa1c10f17fda58ea2cc7a80ce7a1a07b7bf1"
+    },
+    {
+      "path": "scripts/lib/sp1-circuit-acquisition.ts",
+      "sha256": "7723782ab77ca149b239241d910dabafd7bd08337398fc7a035845583830e5ce"
+    },
+    {
+      "path": "scripts/lib/sp1-circuit-archive.ts",
+      "sha256": "c54defe7182326a3d69d8f8a9c506e4eb4e669b9953732dc44d585ffabb53c88"
+    },
+    {
+      "path": "scripts/lib/sp1-circuit-install.ts",
+      "sha256": "1da6ad06cdc7f17cf9fb545b8671a9a5f2cfb58c8b5f60314120330c658be84e"
+    },
+    {
+      "path": "scripts/lib/sp1-egress-attribution.ts",
+      "sha256": "283808466744277adb50c74a2b3d01a9fb5104431c9824b9d04233c9b0c18c58"
+    },
+    {
+      "path": "scripts/lib/sp1-proof-exercise.ts",
+      "sha256": "f4dae926063994d8df76efb038441ba7587ebe67329cf0dd97c3a10d56234ab0"
+    },
+    {
+      "path": "scripts/lib/sp1-prove-gate.ts",
+      "sha256": "524978bb3cd24a697ec7c560250bafbc338ce3fba54354818e765058fa142d40"
+    },
+    {
+      "path": "scripts/measure-sp1-attributed-proof-exercise.ts",
+      "sha256": "5e659a8ec3e492dc4130123420c1189a19c1859ef5a7f4fb778011faa807470a"
+    },
+    {
+      "path": "scripts/sp1-egress-observer.ts",
+      "sha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+    },
+    {
+      "path": "scripts/sp1-prove-archive-only.ts",
+      "sha256": "c3680243f56b4b3d228d74ffac611e3d2abc0f97df3528d84224e19a0d72c90c"
+    },
+    {
+      "path": "scripts/verify-sp1-proof-exercise.ts",
+      "sha256": "1af664236a277c7c854b76a5e56f8d69148c47f96e6ebc9377c214e61c41b656"
+    },
+    {
+      "path": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+      "sha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9"
+    },
+    {
+      "path": "zkvm/guest/Cargo.toml",
+      "sha256": "e53c6d38fb597c4caa2f20c66433fddc6fb8fec98d458a62b375f76456ba6f3e"
+    },
+    {
+      "path": "zkvm/host/Cargo.lock",
+      "sha256": "d3d07d2ffc7f7b3a10e3f59362ec985a157f2cbb103a84f18000a31c18b33541"
+    }
+  ]
+}

@@ -1,0 +1,143 @@
+{
+  "schema": "walletwall.sp1-pa3d-preproof-attestation.v1",
+  "lane": "SP1-PA3D",
+  "host": "developer-workstation-wsl2",
+  "measuredAtUtc": "2026-11-02T03:13:52Z",
+  "manifest": {
+    "path": "evidence/zk/sp1-impl/pa3d-exercise-manifest.json",
+    "sha256": "356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f",
+    "errors": []
+  },
+  "laneCheckout": {
+    "commit": "23a364fb23affebb75f4094253c34787108080c7",
+    "dirty": false
+  },
+  "provingCheckout": {
+    "path": "/home/prover/pa3d-src",
+    "commit": "debed530c3ff72eda6785bfcadd46595a0c98b69",
+    "dirty": false,
+    "tools": [
+      {
+        "path": "scripts/measure-sp1-attributed-proof-exercise.ts",
+        "sha256": "5e659a8ec3e492dc4130123420c1189a19c1859ef5a7f4fb778011faa807470a"
+      },
+      {
+        "path": "scripts/sp1-egress-observer.ts",
+        "sha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c"
+      },
+      {
+        "path": "scripts/verify-sp1-proof-exercise.ts",
+        "sha256": "1af664236a277c7c854b76a5e56f8d69148c47f96e6ebc9377c214e61c41b656"
+      },
+      {
+        "path": "scripts/sp1-prove-archive-only.ts",
+        "sha256": "c3680243f56b4b3d228d74ffac611e3d2abc0f97df3528d84224e19a0d72c90c"
+      },
+      {
+        "path": "scripts/generate-sp1-proof-exercise-record.ts",
+        "sha256": "3a5ed18eadd3339fdea65a2d30dcfa1c10f17fda58ea2cc7a80ce7a1a07b7bf1"
+      },
+      {
+        "path": "scripts/lib/sp1-prove-gate.ts",
+        "sha256": "524978bb3cd24a697ec7c560250bafbc338ce3fba54354818e765058fa142d40"
+      },
+      {
+        "path": "scripts/lib/sp1-proof-exercise.ts",
+        "sha256": "f4dae926063994d8df76efb038441ba7587ebe67329cf0dd97c3a10d56234ab0"
+      },
+      {
+        "path": "scripts/lib/sp1-egress-attribution.ts",
+        "sha256": "283808466744277adb50c74a2b3d01a9fb5104431c9824b9d04233c9b0c18c58"
+      },
+      {
+        "path": "scripts/lib/sp1-circuit-install.ts",
+        "sha256": "1da6ad06cdc7f17cf9fb545b8671a9a5f2cfb58c8b5f60314120330c658be84e"
+      },
+      {
+        "path": "scripts/lib/sp1-circuit-acquisition.ts",
+        "sha256": "7723782ab77ca149b239241d910dabafd7bd08337398fc7a035845583830e5ce"
+      },
+      {
+        "path": "scripts/lib/sp1-circuit-archive.ts",
+        "sha256": "c54defe7182326a3d69d8f8a9c506e4eb4e669b9953732dc44d585ffabb53c88"
+      },
+      {
+        "path": "zkvm/fixtures/mldsa65-withdrawal.inputs.json",
+        "sha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9"
+      }
+    ]
+  },
+  "circuit": {
+    "root": "/home/prover/pa3b/circuit-root",
+    "members": [
+      {
+        "path": "Groth16Verifier.sol",
+        "bytes": 26770,
+        "sha256": "d5e777120d9f675aefcc8c0c8786d4043acb8e063646e60818564b44fb2ec457"
+      },
+      {
+        "path": "SP1VerifierGroth16.sol",
+        "bytes": 3236,
+        "sha256": "48e1db5baca3b102242ebd88280b3689a088076688146cd0d98876f5dacb76d0"
+      },
+      {
+        "path": "constraints.json",
+        "bytes": 111997113,
+        "sha256": "1fb0b3d5f59c45b8f41973b111604aba2402db3c8e887074300ab8d164def92b"
+      },
+      {
+        "path": "groth16_circuit.bin",
+        "bytes": 2437991441,
+        "sha256": "d6a66be2702206e2b1a20bebf7096142864feac9e399a309e5e6e00353264cbc"
+      },
+      {
+        "path": "groth16_pk.bin",
+        "bytes": 5862173061,
+        "sha256": "c3760e0e3b58487f8704680d5b3ad32a9fbca9f3cb0749d69055c4f1271ca167"
+      },
+      {
+        "path": "groth16_vk.bin",
+        "bytes": 492,
+        "sha256": "4388a21c687fdd5f218d7e3d13190cac4c5355818d3605fd5fb811df468ee696"
+      },
+      {
+        "path": "groth16_witness.json",
+        "bytes": 2802920,
+        "sha256": "ee2ac8e094712a87ec3b0dc50ed39704aa90ee066ce4c5bf6160d54f04014c94"
+      }
+    ],
+    "error": null
+  },
+  "hostBinary": {
+    "path": "/home/prover/pa3b/bin/mldsa65-host",
+    "bytes": 57567008,
+    "sha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b"
+  },
+  "gnark": {
+    "imageRef": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+    "localRepoDigests": [
+      "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d"
+    ],
+    "error": null
+  },
+  "qualification": {
+    "path": "evidence/zk/sp1-impl/observer-qualification.json",
+    "sha256": "468d054b4d558f527591ba6a6ec7fd9811a7b48c782f0061e15b1a811a66cfdf",
+    "errors": []
+  },
+  "platform": {
+    "os": "linux",
+    "kernel": "6.18.33.1-microsoft-standard-WSL2",
+    "machine": "x86_64",
+    "bootId": "b6a0c805-601b-4c94-936f-4ac597790444",
+    "distro": "Ubuntu 24.04.4 LTS",
+    "memTotalKiB": 24608408,
+    "swapTotalKiB": 41943040,
+    "node": "v24.16.0",
+    "docker": "29.1.3 api=1.52 endpoint=unix:///var/run/docker.sock context=default",
+    "user": "prover",
+    "uid": 1001
+  },
+  "verdict": "PA3D_PREPROOF_ENVIRONMENT_VALID",
+  "refusals": []
+}

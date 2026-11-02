@@ -31,7 +31,7 @@
   ],
   "provingAvailability": {
     "path": "evidence/zk/sp1-impl/proving-availability.json",
-    "sha256": "3ec175f0ced53f72680e1dae585fdbc57e11204969feff2d0c2e5d84df17b072",
+    "sha256": "e7e712b7224d5d136b79122d54057d89408b670a870757c11ee3e91eeacf65ad",
     "status": "SELF_HOSTED_PATH_EXERCISED",
     "consistentWithArchiveEvidence": true
   },
@@ -819,6 +819,124 @@
         "egressAssurance": "EDGE_PROBES_ONLY",
         "establishes": "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image, SP1_PROVER=cpu and network egress refused before and after the run, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time",
         "doesNotEstablish": "the provenance of the proving: the verifier proves the proof's validity under the designated key, never that it was made through the gate, with SP1_PROVER=cpu, with egress refused, by this host binary, in this time or with this memory; those facts are the operator's observation, bound as far as the repository can bind them (the proof's digests, the run's commit content, the canonical host binary, the committed input, the probes' shape and timing) and otherwise rest on the owner's review of the pull request that commits them; nor that the Groth16 trusted setup behind the key is sound (the verifier accepting a proof is compatibility, never soundness); nor that any other hardware proves within the rotation delay; nor that egress stayed refused between the two probes (an attestation of the enforcement, probed at the edges); nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)"
+      },
+      {
+        "record": "evidence/zk/sp1-impl/proof-exercises/mldsa65-withdrawal-d1.v2.45aa26274d265d3f.json",
+        "schema": "walletwall.sp1-proof-exercise.v2",
+        "lane": "SP1-PA3D",
+        "exercise": "mldsa65-withdrawal-d1:45aa26274d265d3f",
+        "derivedFrom": [
+          "evidence/zk/sp1-impl/observations/proof-exercise-run-developer-workstation-wsl2.45aa26274d265d3f.raw.json",
+          "evidence/zk/sp1-impl/observations/proof-exercise-verification-developer-workstation-wsl2.45aa26274d265d3f.raw.json"
+        ],
+        "host": "developer-workstation-wsl2",
+        "performedAtUtc": "2026-11-02T03:20:25Z",
+        "verifiedAtUtc": "2026-11-02T03:43:12Z",
+        "archiveRecord": "evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json",
+        "hostExecutableSha256": "fc8eff69e78e39c5c08bfa0eea2f402d5b67341eb27caae7fd34ff6b456abf1b",
+        "proofInputSha256": "5f317816068d60b7a4b71fce703a53be933c05a4109cbe432911fb918f80a0e9",
+        "gnark": "ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d",
+        "prover": "cpu",
+        "proof": {
+          "vkey": "0x0001a4c62de43425bce9febc352a74acc01bac70c02d8acedc09085c4eb8c2dc",
+          "selector": "0x4388a21c",
+          "publicValuesSha256": "64e08d05289e38029768a6c070e157ebc6a283896dc34a626691cc4cee7d67db",
+          "proofBytesSha256": "aa3bdb1d9f5baef991c1a11c423de4e278087d1f8ff5afdabf010b1566f9e7a4"
+        },
+        "verifier": {
+          "runtimeCodeKeccak": "0xcceb864cd8a5a36b2073a8f2b32a773835cd2dd2c78a56f8e6fdb942feff04dd",
+          "checks": [
+            {
+              "chainId": "31337",
+              "mode": "AUTHENTICATED_RUNTIME_LOCAL",
+              "verdicts": {
+                "real": "success",
+                "tampered": "revert 0x7fcdd1f4"
+              }
+            }
+          ],
+          "acceptance": "ACCEPTED"
+        },
+        "performance": {
+          "wallClockSeconds": 686,
+          "hostSeconds": 646,
+          "rotationDelaySeconds": 172800,
+          "withinRotationDelay": true,
+          "rotationDelayFraction": 0.00397,
+          "peakMemory": {
+            "hostProcess": {
+              "bytes": 23898484736,
+              "method": "/proc/<pid>/status VmHWM of the host process, polled every 2000 ms and at exit (the kernel's high-water mark)"
+            },
+            "gnarkContainers": {
+              "bytes": 18661632901,
+              "samples": 74,
+              "intervalMs": 2000,
+              "method": "docker stats --no-stream MemUsage of the running containers whose ancestor is ghcr.io/succinctlabs/sp1-gnark@sha256:e1a1cd62838b561ca301f9b2c26475c4a92bfe0e2c916e9bba213062e1548c4d, summed, polled every 2000 ms (a sampled lower bound of the peak)"
+            }
+          }
+        },
+        "egress": {
+          "condition": "EGRESS_DISABLED",
+          "enforcement": "nftables table inet pa3d_egress_off, created as root in the root network namespace of the WSL2 virtual machine that the Linux proving host (Ubuntu 24.04) shares with every other WSL2 distribution on this machine: output hook (priority -10) first refuses and counts every packet to the WSL DNS-tunnelling resolver 10.255.255.254 (an address on lo that proxies to the Windows host; reject, so ICMP port-unreachable), then accepts packets to the host's own addresses only (fib daddr type local: 127.0.0.0/8, ::1, its eth0 and docker0 addresses, which never leave the VM and carry the kernel's own reset and ICMP answers back to the refusing socket), then refuses and counts every other packet the host originates (TCP by tcp reset, UDP by ICMP port-unreachable, the rest by ICMP admin-prohibited); forward hook (priority -10, policy drop) drops and counts every forwarded packet (the local Docker Engine's bridge docker0, so every container, the gnark container included); input hook drops and counts every packet a container sends to the host (iifname docker0), so a container cannot reach the host's resolver either. This is the COMPLETE_EGRESS_BOUNDARY shape SP1-PA3C-Q1 soaked the observer under, with SP1-PA3B's input rule added (the soak ran no container). The docker endpoint is the local engine's unix:///var/run/docker.sock (Ubuntu docker.io 29.1.3 in this distribution, no Docker Desktop integration). The table was created before the observer started and deleted after it ended, no Windows-side rule was used, and nothing was pulled, downloaded or installed while it existed. The root egress observer (a root-owned copy byte-identical to the source commit's scripts/sp1-egress-observer.ts) attached its probes before the before-probes and detached after the after-probes.",
+          "probes": {
+            "before": 8,
+            "after": 8,
+            "targets": [
+              "dns:ghcr.io",
+              "dns:sp1-circuits.s3-us-east-2.amazonaws.com",
+              "tcp:1.1.1.1:443",
+              "tcp:3.5.90.58:443",
+              "tcp:3.5.93.98:443",
+              "tcp:8.8.8.8:443",
+              "tcp:ghcr.io:443",
+              "tcp:sp1-circuits.s3-us-east-2.amazonaws.com:443"
+            ]
+          },
+          "assurance": {
+            "level": "CONTINUOUS_PARTIALLY_ATTRIBUTED",
+            "enforcement": "STATED_AND_COUNTED",
+            "edgeProbes": "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+            "continuousObservation": "PRESENT",
+            "processAttribution": "PARTIAL",
+            "coverage": {
+              "window": "OBSERVER_READY..OBSERVER_STOP",
+              "heartbeats": 686,
+              "maxHeartbeatGapUs": 2960803
+            },
+            "events": {
+              "attempts": 162,
+              "attemptsInWindow": 162,
+              "refusedPackets": 237,
+              "byScope": {
+                "TOOL": 40,
+                "OTHER": 98,
+                "KERNEL": 10,
+                "CONTAINER": 7,
+                "PROOF_CONTAINER": 7
+              },
+              "boundaryResponses": 76,
+              "kernelResponses": 0,
+              "unattributedOutsideWindow": 0,
+              "unknownOutcomes": 0,
+              "unseenDestinations": 10
+            },
+            "unattributedEvents": 19,
+            "observer": {
+              "mechanism": "LINUX_TRACEFS_KPROBES",
+              "script": "scripts/sp1-egress-observer.ts",
+              "scriptSha256": "d53c53106aa257412ade8155412ed481e5e9d187546a1ddc784505c73575223c",
+              "configSha256": "b27d780be5dd263521ece02092b968bf77bfd37d1c33c45ca76026f9e330f510"
+            },
+            "rawEvidence": {
+              "manifestSha256": "bc6fa371593496cda7b1858a875a714c05aa6e2e53906865aa0976ef907b7efb",
+              "retained": "OPERATOR_LOCAL"
+            }
+          }
+        },
+        "egressAssurance": "CONTINUOUS_PARTIALLY_ATTRIBUTED",
+        "establishes": "one real Groth16 proof of the designated program was made on this host through the archive-only gate from the committed verified archive, with the digest-pinned gnark image and SP1_PROVER=cpu, and the designated verifier (the CREATE2-authenticated v6.1.0 runtime) accepted it and refused its tampered copy; the operator's capture by the committed root observer (kernel probes on every UDP, raw, ping and packet-socket send, every AF_XDP socket's send and poll, every TCP connect, every netfilter drop and every transmit on a host device through the device layer, from before the first egress probe to after the last) covers the run by its own markers, heartbeats and ring-buffer statistics, attributes every attempt in that window to the process, container or kernel that made it or names it unattributed, counts every send whose destination it cannot read or trust (a packet, raw or AF_XDP socket's), shows no packet past the boundary among the sends whose destination it reads, and reconciles its refused packets with the declared boundary's counters as the observer read them; its wall time and peak memory are recorded against the 2-day rotation delay: liveness of the self-hosted path on this hardware, at this time, with the run's network activity as the operator's observer captured it",
+        "doesNotEstablish": "that the capture is complete or unedited: the raw trace, its facts and its manifest stay with the operator, every digest the repository holds is computed from them, and the reconciliation's counters were read into those same facts, so an operator (or any root process on the host, the proof's own tree among them through the Docker engine the gate needs) able to edit the capture before its normalization could remove an event, alter a packet header or rewrite a counter, or able to switch the probes off for the window, without any committed check noticing; continuous attribution adds what an honest observer saw, on the same operator trust as the edge probes, and is re-checkable only by someone given the raw directory, whose re-normalization must reproduce the committed digest; nor the provenance of the proving beyond what the repository binds (the operator's observation, bound by the proof's digests, the run's commit content, the canonical host binary, the committed input, the observer's configuration and the raw capture's digests); nor a channel outside the observed IP stack (WSL interop, the 9P file system, AF_VSOCK), a packet a TUN or TAP device injects (one root made), or a frame that leaves without the device transmit (PACKET_QDISC_BYPASS, an AF_XDP ring, an XDP program's redirect, netpoll: root, CAP_NET_RAW or CAP_NET_ADMIN in the host's namespace), seen at most as a send of unseen destination; nor where a packet, raw or AF_XDP socket's send went (counted as unseen, never read); nor the requester behind a daemon's attempt (an attempt dockerd or systemd-resolved makes on another process's behalf is the daemon's); nor the soundness of the Groth16 trusted setup behind the key; nor that any other hardware proves within the rotation delay; nor that the archive, the mirrors or the image remain available; nor production readiness (the implementation receipt's PRODUCTION_SP1_BINDING)"
       }
     ]
   },
