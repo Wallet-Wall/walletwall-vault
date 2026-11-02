@@ -9,8 +9,8 @@
  *          [--environment-file <json>] [--label <label>] [--source-commit <40 hex>]
  *   registry-check --image <repository@sha256:digest> --out <json> one read-only manifest request (the only network act)
  *   negative-controls --fixture-host <json> --fixture-container <json> --out <json>
- *   assemble --label <host> --soak <soak.json> --fixture-host <json> --fixture-container <json>
- *            --host-dir <dir> --container-dir <dir> --negative <json> --out <json>
+ *   assemble --label <host> --fixture-host <json> --fixture-container <json> --negative <json> --out <json>
+ *            --soak <soak.json> --host-dir <dir> --container-dir <dir> [--soak ... --host-dir ... --container-dir ...]
  *   reconcile <a.json> <b.json>
  *
  * Every output is written once (never over a file). No proof, no download, no image pull. Research prototype. Not audited.
@@ -29,6 +29,8 @@ import {
   FIXTURE_HOST_EXECUTABLE,
   LANE,
   OBSERVATION_SCHEMA,
+  SOAK_BOUNDARIES,
+  SOAK_SCHEMA,
   deriveQualification,
   fixtureRawFrom,
   inputIdentityOf,
@@ -40,6 +42,8 @@ import {
   type EnvironmentIdentity,
   type NegativeControlResult,
   type QualificationObservation,
+  type Soak,
+  type SoakBoundary,
   type SoakIteration,
 } from "./lib/sp1-observer-qualification";
 import { OBSERVER_SCRIPT_REL } from "./sp1-egress-observer";
@@ -48,6 +52,7 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
 const sha256 = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
 const lf = (text: string) => text.replace(/\r\n/g, "\n");
 const say = (text: string) => process.stderr.write(`${text}\n`);
+const utcNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 const HEX40 = /^[0-9a-f]{40}$/;
 
 function arg(argv: string[], name: string, required = true): string | undefined {
@@ -93,8 +98,7 @@ function gitHead(): string {
 /** What the derivation can read of its own container from inside (facts, not the host's claims). */
 function containerFacts(): ContainerIdentity["facts"] {
   const status = existsSync("/proc/self/status") ? readFileSync("/proc/self/status", "utf8") : "";
-  const field = (name: string) =>
-    /^(?:\S+)$/.exec((new RegExp(`^${name}:\\s*(\\S+)`, "m").exec(status) ?? [])[1] ?? "")?.[0] ?? "unknown";
+  const field = (name: string) => new RegExp(`^${name}:\\s*(\\S+)`, "m").exec(status)?.[1] ?? "unknown";
   const mounts = existsSync("/proc/self/mounts") ? readFileSync("/proc/self/mounts", "utf8") : "";
   const root = mounts.split("\n").find((l) => l.split(" ")[1] === "/");
   const rootMount = root === undefined ? "unknown" : (root.split(" ")[3] ?? "").split(",")[0];
@@ -207,7 +211,21 @@ async function registryCheck(argv: string[]): Promise<void> {
   const text = `docker.io/${repository} manifest by digest: HTTP ${response.status}, body sha256 ${matches ? "==" : "!="} digest (read-only; nothing pulled)`;
   writeNew(
     out,
-    `${JSON.stringify({ image, repository, digest, http: response.status, contentType: response.headers.get("content-type"), bodySha256, matches, registryVerification: text, checkedAtUtc: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        image,
+        repository,
+        digest,
+        http: response.status,
+        contentType: response.headers.get("content-type"),
+        bodySha256,
+        matches,
+        registryVerification: text,
+        checkedAtUtc: utcNow(),
+      },
+      null,
+      2,
+    )}\n`,
   );
   say(`${out}: ${text}`);
 }
@@ -231,6 +249,8 @@ function negativeControls(argv: string[]): void {
 
 interface SoakFile {
   schema: string;
+  id: string;
+  boundary: SoakBoundary;
   startedAtUtc: string;
   finishedAtUtc: string;
   kernelRelease: string;
@@ -238,7 +258,7 @@ interface SoakFile {
   node: { execPath: string; version: string; sha256: string };
   nft: string;
   docker: string;
-  table: { family: string; name: string; rulesSha256: string };
+  table: { family: string; name: string; rulesSha256: string; rules: string };
   iterations: {
     n: number;
     variation: string;
@@ -252,60 +272,98 @@ interface SoakFile {
   }[];
 }
 
+/** `--soak <file> --host-dir <dir> --container-dir <dir>`, repeated: each soak with its two derivation directories. */
+function soakGroups(argv: string[]): { soak: string; hostDir: string; containerDir: string }[] {
+  const groups: { soak: string; hostDir?: string; containerDir?: string }[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const value = argv[i + 1];
+    if (argv[i] === "--soak") groups.push({ soak: value });
+    else if (argv[i] === "--host-dir" || argv[i] === "--container-dir") {
+      const g = groups.at(-1);
+      if (!g) throw new Error(`${argv[i]} must follow its --soak`);
+      if (argv[i] === "--host-dir") g.hostDir = value;
+      else g.containerDir = value;
+    }
+  }
+  if (groups.length === 0) throw new Error("at least one --soak <soak.json> --host-dir <dir> --container-dir <dir>");
+  return groups.map((g) => {
+    if (!g.soak || !g.hostDir || !g.containerDir)
+      throw new Error(`--soak ${g.soak} lacks --host-dir or --container-dir`);
+    return { soak: g.soak, hostDir: g.hostDir, containerDir: g.containerDir };
+  });
+}
+
 function assemble(argv: string[]): void {
   const label = arg(argv, "--label") as string;
-  const soak = readJson<SoakFile>(arg(argv, "--soak") as string);
-  if (soak.schema !== "walletwall.sp1-observer-soak.v1") throw new Error("--soak is not a soak record");
   const fixtureHost = readJson<Derivation>(arg(argv, "--fixture-host") as string);
   const fixtureContainer = readJson<Derivation>(arg(argv, "--fixture-container") as string);
-  const hostDir = arg(argv, "--host-dir") as string;
-  const containerDir = arg(argv, "--container-dir") as string;
   const negative = readJson<NegativeControlResult[]>(arg(argv, "--negative") as string);
   const out = arg(argv, "--out") as string;
   const commit = fixtureHost.environment.sourceCommit;
-  const iterations: SoakIteration[] = soak.iterations.map((it) => {
-    const host = readJson<Derivation>(join(hostDir, `derivation-raw-${it.n}.json`));
-    const container = readJson<Derivation>(join(containerDir, `derivation-raw-${it.n}.json`));
-    for (const d of [host, container]) {
-      if (d.environment.sourceCommit !== commit)
-        throw new Error(`iteration ${it.n}: a derivation names another commit`);
-    }
+  if (fixtureContainer.environment.sourceCommit !== commit) throw new Error("the fixture derivations name two commits");
+  const files = soakGroups(argv).map((g) => ({ ...g, file: readJson<SoakFile>(g.soak) }));
+  const soaks: Soak[] = files.map(({ file, hostDir, containerDir, soak }) => {
+    if (file.schema !== SOAK_SCHEMA) throw new Error(`${soak} is not a soak record`);
+    if (!(SOAK_BOUNDARIES as readonly string[]).includes(file.boundary))
+      throw new Error(`${soak}: boundary ${String(file.boundary)} is unknown`);
+    const iterations: SoakIteration[] = file.iterations.map((it) => {
+      const host = readJson<Derivation>(join(hostDir, `derivation-raw-${it.n}.json`));
+      const container = readJson<Derivation>(join(containerDir, `derivation-raw-${it.n}.json`));
+      for (const d of [host, container]) {
+        if (d.environment.sourceCommit !== commit)
+          throw new Error(`soak ${file.id} iteration ${it.n}: a derivation names another commit`);
+      }
+      return {
+        n: it.n,
+        variation: it.variation,
+        startedAtUtc: it.startedAtUtc,
+        seconds: it.seconds,
+        exit: it.exit,
+        rawDir: it.rawDir,
+        rawEntries: it.rawEntries,
+        factsSummary: it.factsSummary,
+        after: it.after,
+        host,
+        container,
+      };
+    });
     return {
-      n: it.n,
-      variation: it.variation,
-      startedAtUtc: it.startedAtUtc,
-      seconds: it.seconds,
-      exit: it.exit,
-      rawDir: it.rawDir,
-      rawEntries: it.rawEntries,
-      factsSummary: it.factsSummary,
-      after: it.after,
-      host,
-      container,
+      id: file.id,
+      boundary: file.boundary,
+      startedAtUtc: file.startedAtUtc,
+      finishedAtUtc: file.finishedAtUtc,
+      table: { family: file.table.family, name: file.table.name, rulesSha256: file.table.rulesSha256 },
+      iterations,
     };
   });
-  if (fixtureContainer.environment.sourceCommit !== commit) throw new Error("the fixture derivations name two commits");
+  if (new Set(soaks.map((s) => s.id)).size !== soaks.length) throw new Error("two soaks share an id");
+  const first = files[0].file;
+  for (const { file } of files) {
+    if (file.kernelRelease !== first.kernelRelease || file.node.sha256 !== first.node.sha256)
+      throw new Error("the soaks ran on different kernels or node binaries: assemble them apart");
+  }
   const observation: QualificationObservation = {
     schema: OBSERVATION_SCHEMA,
     lane: LANE,
     host: label,
-    measuredAtUtc: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    measuredAtUtc: utcNow(),
     tool: { script: CLI_SCRIPT_REL, scriptSha256: sha256(lf(readFileSync(fileURLToPath(import.meta.url), "utf8"))) },
     source: { commit, observerScriptSha256: committedObserver() },
     hostFacts: {
-      kernelRelease: soak.kernelRelease,
-      bootId: soak.bootId,
-      node: soak.node,
-      nft: soak.nft,
-      docker: soak.docker,
-      table: { family: soak.table.family, name: soak.table.name, rulesSha256: soak.table.rulesSha256 },
+      kernelRelease: first.kernelRelease,
+      bootId: first.bootId,
+      node: first.node,
+      nft: first.nft,
+      docker: first.docker,
     },
     fixture: { host: fixtureHost, container: fixtureContainer },
-    soak: { startedAtUtc: soak.startedAtUtc, finishedAtUtc: soak.finishedAtUtc, iterations },
+    soaks,
     negativeControls: negative,
   };
   writeNew(out, `${JSON.stringify(observation, null, 2)}\n`);
-  say(`${out}: ${iterations.length} soak iterations, ${negative.length} controls, commit ${commit}`);
+  say(
+    `${out}: ${soaks.map((s) => `${s.id}/${s.boundary}: ${s.iterations.length} iterations`).join(", ")}; ${negative.length} controls; commit ${commit}`,
+  );
 }
 
 function reconcileFiles(argv: string[]): number {

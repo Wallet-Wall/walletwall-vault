@@ -7,10 +7,13 @@
  * scripts/sp1-observer-qualification.ts, on the host and in the clean container.
  *
  *   node <root-owned copy>/sp1-observer-soak.ts --as <user> --repo <checkout> --observer <root-owned observer copy> \
- *     --out-dir <new directory under a root-owned parent> [--iterations 12] [--table sp1obs_q1]
+ *     --out-dir <new directory under a root-owned parent> [--iterations 12] [--table sp1obs_q1] \
+ *     [--boundary self-test-table|complete] [--id A]
  *
- * As root it creates one private nft table (the host's resolvers and TEST-NET-1 refused at the output hook, every
- * refusal counted, as the integration test does), runs the iterations, deletes the table, and writes soak.json. Node
+ * As root it creates one private nft table (the self-test table: the host's resolvers and TEST-NET-1 refused at the
+ * output hook, every refusal counted, as the integration test does; or the complete egress boundary of SP1-PA3B's
+ * shape, which refuses and counts everything but the host itself, VM-wide), runs the iterations, deletes the table,
+ * and writes soak.json. Node
  * built-ins only (root never executes code from node_modules); the variation list is the library's, repeated here
  * verbatim (a test holds them equal). Linux only. Research prototype. Not audited.
  */
@@ -102,6 +105,12 @@ function main(argv: string[]): number {
   const outDir = resolve(argValue(argv, "--out-dir"));
   const iterations = Number(argValue(argv, "--iterations", "12"));
   const table = argValue(argv, "--table", "sp1obs_q1");
+  const boundaryArg = argValue(argv, "--boundary", "self-test-table");
+  const id = argValue(argv, "--id", "A");
+  if (boundaryArg !== "self-test-table" && boundaryArg !== "complete")
+    throw new Error("--boundary is self-test-table or complete");
+  if (!/^[A-Z][A-Za-z0-9]{0,15}$/.test(id)) throw new Error("--id is a short capitalized name (A, B, ...)");
+  const boundary = boundaryArg === "complete" ? "COMPLETE_EGRESS_BOUNDARY" : "SELF_TEST_TABLE";
   if (!Number.isSafeInteger(iterations) || iterations < 1) throw new Error("--iterations must be a positive integer");
   if (!/^[A-Za-z0-9_]{1,64}$/.test(table)) throw new Error("--table must be a plain name");
   const observerErrors = rootOwnedPathErrors(observer);
@@ -131,12 +140,22 @@ function main(argv: string[]): number {
     .filter((x): x is string => typeof x === "string" && isIP(x) !== 0)
     .map((r) => `    ${isIP(r) === 6 ? "ip6" : "ip"} daddr ${r} counter reject\n`)
     .join("");
-  const rules = `table inet ${table} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${resolvers}    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n`;
+  // SELF_TEST_TABLE: the integration test's (TEST-NET-1 and the resolvers refused, nothing else: another process's
+  // real egress passes and rightly reads as a leak). COMPLETE_EGRESS_BOUNDARY: SP1-PA3B's shape, the one SP1-PA3D runs
+  // under: the resolvers refused first (they live on lo), the host's own addresses accepted (so its RST/ICMP answers
+  // are not swallowed), everything else refused and counted at the output hook, every forwarded packet dropped and
+  // counted. It is VM-wide while it stands.
+  const rules =
+    boundary === "SELF_TEST_TABLE"
+      ? `table inet ${table} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${resolvers}    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n`
+      : `table inet ${table} {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${resolvers}    fib daddr type local accept\n    meta l4proto tcp counter reject with tcp reset\n    meta l4proto udp counter reject with icmpx port-unreachable\n    counter reject with icmpx admin-prohibited\n  }\n  chain forward {\n    type filter hook forward priority -10; policy drop;\n    counter drop\n  }\n}\n`;
   const rulesPath = join(outDir, "table.nft");
   writeFileSync(rulesPath, rules, { mode: 0o644 });
   const nodeBinary = readFileSync(process.execPath);
   const soak: Record<string, unknown> = {
     schema: SOAK_SCHEMA,
+    id,
+    boundary,
     host: process.env.SP1_SOAK_HOST_LABEL ?? "proving-host",
     startedAtUtc: utcNow(),
     finishedAtUtc: null,

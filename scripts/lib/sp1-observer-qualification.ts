@@ -7,8 +7,11 @@
  *
  * Two layers, kept apart as the observer keeps them:
  *  - the kernel capture is host-bound (root, tracefs, nftables): it can only be soaked where it runs, and every capture
- *    is its own (nonce, boot, pids, stamps). The soak asks whether what the evidence model says must be stable is
- *    stable across many captures, and records what varies by name instead of normalizing it away;
+ *    is its own (nonce, boot, pids, stamps). A soak asks whether what the evidence model says must be stable is stable
+ *    across many captures, and records what varies by name instead of normalizing it away. Two soaks are told apart by
+ *    their boundary: the self-test table (TEST-NET-1 and the resolvers refused, nothing else: the integration test's,
+ *    under which another process's real egress rightly reads as a leak) and the complete egress boundary (everything
+ *    but the host itself refused and counted: the one SP1-PA3B ran under and SP1-PA3D will);
  *  - the derivation is pure: the same raw bytes and the same host-executable identity must give the same normalized
  *    evidence and the same judgement anywhere Node runs. The reconciliation asks for byte equality of every derived
  *    field between the proving host and a clean container, and classes only environment identity as expected to differ.
@@ -73,6 +76,9 @@ export const STATES = [
 ] as const;
 export type QualificationState = (typeof STATES)[number];
 export const MIN_SOAK_ITERATIONS = 10;
+/** The two boundaries a soak may run under; only the complete one is the boundary SP1-PA3D runs under. */
+export const SOAK_BOUNDARIES = ["SELF_TEST_TABLE", "COMPLETE_EGRESS_BOUNDARY"] as const;
+export type SoakBoundary = (typeof SOAK_BOUNDARIES)[number];
 export const CLI_SCRIPT_REL = "scripts/sp1-observer-qualification.ts";
 export const SOAK_SCRIPT_REL = "scripts/sp1-observer-soak.ts";
 export const GENERATOR_REL = "scripts/generate-sp1-observer-qualification.ts";
@@ -176,12 +182,17 @@ export interface Judgement {
   dropClasses: Record<string, number>;
   heartbeats: number;
   leaks: number;
+  /** Each leak by the scope of the attempt that made it ("FRAME" for a frame on an uplink no attempt is joined to). */
+  leaksByScope: Record<string, number>;
   lostLines: number;
   statsLoss: number;
   events: number;
 }
 
-/** The fields of a capture the evidence model requires to be the same across captures of one observer on one host. */
+/**
+ * The fields of a capture the evidence model requires to be the same across captures of one observer on one host:
+ * the observer's own behaviour. The verdict (refusals, leaks) is judged beside it, per boundary, by the soak summary.
+ */
 export interface StableProjection {
   observer: { script: string; scriptSha256: string; mechanism: string; mode: string };
   kernelRelease: string;
@@ -202,22 +213,16 @@ export interface StableProjection {
   lostLines: number;
   statsClean: boolean;
   lineageResolved: boolean;
-  refusals: Refusal[];
   ownAttempts: AttemptProjection[];
   ownRefusedPackets: number;
   unattributedDrops: number;
   reconciliationOk: boolean;
   assurance: {
-    level: string;
     enforcement: string;
     edgeProbes: string;
     continuousObservation: string;
-    processAttribution: string;
     unattributedEvents: number | null;
-    unknownOutcomes: number | null;
-    unseenDestinations: number | null;
   };
-  leaks: number;
 }
 
 export interface DerivationOutput {
@@ -245,6 +250,11 @@ export function judgementOf(o: ObserverEvidence, a: Attribution, refusals: Refus
   const counted = a.attempts.filter((x) => !x.delegated);
   const dropClasses: Record<string, number> = {};
   for (const d of a.drops) dropClasses[d.class] = (dropClasses[d.class] ?? 0) + 1;
+  const leaksByScope: Record<string, number> = {};
+  for (const l of a.leaks) {
+    const scope = a.attempts.find((x) => x.i === l.i)?.scope ?? "FRAME";
+    leaksByScope[scope] = (leaksByScope[scope] ?? 0) + 1;
+  }
   return {
     refusals,
     assurance: assuranceOf(o, a),
@@ -267,6 +277,7 @@ export function judgementOf(o: ObserverEvidence, a: Attribution, refusals: Refus
     dropClasses,
     heartbeats: a.heartbeats,
     leaks: a.leaks.length,
+    leaksByScope,
     lostLines: o.lostLines,
     statsLoss: o.stats.reduce((s, c) => s + c.overrun + c.commitOverrun + c.droppedEvents, 0),
     events: o.events.length,
@@ -309,22 +320,16 @@ export function stableProjectionOf(o: ObserverEvidence, j: Judgement): StablePro
     statsClean:
       o.stats.length > 0 && o.stats.every((s) => s.overrun === 0 && s.commitOverrun === 0 && s.droppedEvents === 0),
     lineageResolved: j.lineage.every((x) => x !== null),
-    refusals: j.refusals,
     ownAttempts: j.ownAttempts,
     ownRefusedPackets: j.ownRefusedPackets,
     unattributedDrops: j.unattributedDrops,
     reconciliationOk: j.reconciliation.ok,
     assurance: {
-      level: j.assurance.level,
       enforcement: j.assurance.enforcement,
       edgeProbes: j.assurance.edgeProbes,
       continuousObservation: j.assurance.continuousObservation,
-      processAttribution: j.assurance.processAttribution,
       unattributedEvents: j.assurance.unattributedEvents,
-      unknownOutcomes: j.assurance.events?.unknownOutcomes ?? null,
-      unseenDestinations: j.assurance.events?.unseenDestinations ?? null,
     },
-    leaks: j.leaks,
   };
 }
 
@@ -624,8 +629,17 @@ export function environmentErrors(env: EnvironmentIdentity): string[] {
       errors.push("CONTAINER_NOT_HARDENED: environment variables are passed in");
     for (const v of values(["-v", "--volume"])) {
       const [src, dst, opts] = v.split(":");
-      if (/^\/(home|root)(\/|$)|^\/mnt\/[a-z]\/Users\//.test(src ?? ""))
-        errors.push(`CONTAINER_NOT_HARDENED: a home directory is mounted (${src})`);
+      // A home directory itself, or a dotfile store under one (.ssh, .docker, .aws, .npmrc ...), never enters the
+      // container; a plain working directory under a home may (the operator's source export, inputs and outputs).
+      const home = /^(?:\/(?:home\/[^/]+|root)|\/mnt\/[a-z]\/Users\/[^/]+)(?=\/|$)/.exec(src ?? "");
+      if (home !== null) {
+        const below = (src ?? "")
+          .slice(home[0].length)
+          .split("/")
+          .filter((s) => s !== "");
+        if (below.length === 0 || below.some((s) => s.startsWith(".")))
+          errors.push(`CONTAINER_NOT_HARDENED: a home directory or a dotfile store under it is mounted (${src})`);
+      }
       if (dst !== "/out" && !(opts ?? "").split(",").includes("ro"))
         errors.push(`CONTAINER_NOT_HARDENED: ${dst ?? src} is writable`);
     }
@@ -732,7 +746,17 @@ export interface SoakIteration {
   container: Derivation;
 }
 
+export interface Soak {
+  id: string;
+  boundary: SoakBoundary;
+  startedAtUtc: string;
+  finishedAtUtc: string;
+  table: { family: string; name: string; rulesSha256: string };
+  iterations: SoakIteration[];
+}
+
 export interface SoakSummary {
+  boundary: SoakBoundary;
   iterations: number;
   exitZero: number;
   refusalFree: number;
@@ -741,12 +765,17 @@ export interface SoakSummary {
   distinctProjections: number;
   agreeing: number;
   variations: string[];
+  refusalReasons: Record<string, number>;
+  /** Iterations refused only as EGRESS_LEAKED by attempts outside the workload's scopes (another process's egress). */
+  thirdPartyLeakIterations: number[];
   stable: boolean;
+  /** Stable in every respect but third-party leaks: meaningful under the self-test table alone, which refuses no real egress. */
+  stableExceptThirdPartyLeaks: boolean;
   unstableBecause: string[];
 }
 
 /** What many captures of one observer on one host establish together; every reason they establish less, by name. */
-export function soakSummaryOf(iterations: readonly SoakIteration[]): SoakSummary {
+export function soakSummaryOf(iterations: readonly SoakIteration[], boundary: SoakBoundary): SoakSummary {
   const because: string[] = [];
   let exitZero = 0;
   let refusalFree = 0;
@@ -754,13 +783,29 @@ export function soakSummaryOf(iterations: readonly SoakIteration[]): SoakSummary
   let agreeing = 0;
   const captures = new Map<string, number[]>();
   const projections = new Set<string>();
+  const refusalReasons: Record<string, number> = {};
+  const thirdParty: number[] = [];
   const first = iterations[0]?.host.output.stableProjectionSha256 ?? null;
   for (const it of iterations) {
     if (it.exit === 0) exitZero++;
     else because.push(`iteration ${it.n} exited ${it.exit}`);
     const refusals = [...it.host.output.refusals, ...it.container.output.refusals];
+    const reasons = [...new Set(refusals.map((r) => r.reason))].sort();
+    for (const r of reasons) refusalReasons[r] = (refusalReasons[r] ?? 0) + 1;
     if (refusals.length === 0) refusalFree++;
-    else because.push(`iteration ${it.n} refused: ${[...new Set(refusals.map((r) => r.reason))].join(", ")}`);
+    else {
+      const j = it.host.output.judgement;
+      const scopes = j === null ? [] : Object.keys(j.leaksByScope).sort();
+      const onlyLeaks = reasons.length === 1 && reasons[0] === "EGRESS_LEAKED";
+      const ownIntact = j !== null && j.ownAttempts.length > 0 && j.ownAttempts.every((x) => x.outcome === "REFUSED");
+      const noOwnLeak = scopes.length > 0 && scopes.every((s) => !OWN_SCOPES.includes(s));
+      if (onlyLeaks && ownIntact && noOwnLeak) {
+        thirdParty.push(it.n);
+        because.push(
+          `iteration ${it.n} refused: EGRESS_LEAKED by another process (scope ${scopes.join(", ")}): the workload's own attempts were all refused`,
+        );
+      } else because.push(`iteration ${it.n} refused: ${reasons.join(", ")}`);
+    }
     const entriesOk = canonicalJson([...it.rawEntries].sort()) === canonicalJson(RAW_FILES);
     const isClean =
       it.after.probesLeft === 0 &&
@@ -794,16 +839,16 @@ export function soakSummaryOf(iterations: readonly SoakIteration[]): SoakSummary
     if (ns.length > 1) because.push(`iterations ${ns.join(" and ")} hold one capture (${digest.slice(0, 16)})`);
   }
   const n = iterations.length;
-  const stable =
+  const otherwiseStable =
     n > 0 &&
     exitZero === n &&
-    refusalFree === n &&
     clean === n &&
     agreeing === n &&
     captures.size === n &&
     projections.size === 1 &&
     first !== null;
   return {
+    boundary,
     iterations: n,
     exitZero,
     refusalFree,
@@ -812,7 +857,10 @@ export function soakSummaryOf(iterations: readonly SoakIteration[]): SoakSummary
     distinctProjections: projections.size,
     agreeing,
     variations: [...new Set(iterations.map((i) => i.variation))],
-    stable,
+    refusalReasons,
+    thirdPartyLeakIterations: thirdParty,
+    stable: otherwiseStable && refusalFree === n,
+    stableExceptThirdPartyLeaks: otherwiseStable && refusalFree + thirdParty.length === n,
     unstableBecause: because,
   };
 }
@@ -999,9 +1047,18 @@ export function runNegativeControls(ctx: NegativeContext): NegativeControlResult
 // The state, from facts alone
 // ---------------------------------------------------------------------------------------------------------------
 
+export interface SoakFacts {
+  id: string;
+  boundary: SoakBoundary;
+  iterations: number;
+  stable: boolean;
+  stableExceptThirdPartyLeaks: boolean;
+  unstableBecause: string[];
+}
+
 export interface StateFacts {
   observed: boolean;
-  soak: { stable: boolean; iterations: number; unstableBecause: string[] };
+  soaks: SoakFacts[];
   fixtureAgreement: boolean;
   negativeControls: { id: string; ok: boolean }[];
   positiveControl: boolean;
@@ -1009,12 +1066,23 @@ export interface StateFacts {
   blockingFindings: string[];
 }
 
+/**
+ * The state the facts derive. A soak under the complete egress boundary (SP1-PA3D's) must exist and be stable in every
+ * respect; a soak under the self-test table may be unstable only by another process's egress, which that table does not
+ * refuse and the derivation rightly calls a leak.
+ */
 export function qualificationStateOf(facts: StateFacts): { state: QualificationState; blockers: string[] } {
   if (!facts.observed) return { state: "OBSERVER_TOOLING_READY_VALIDATION_PENDING", blockers: [] };
   const blockers: string[] = [];
-  if (facts.soak.iterations < MIN_SOAK_ITERATIONS)
-    blockers.push(`SOAK_TOO_SHORT: ${facts.soak.iterations} iterations, at least ${MIN_SOAK_ITERATIONS} needed`);
-  if (!facts.soak.stable) blockers.push(`SOAK_UNSTABLE: ${facts.soak.unstableBecause.join("; ")}`);
+  if (!facts.soaks.some((s) => s.boundary === "COMPLETE_EGRESS_BOUNDARY"))
+    blockers.push("SOAK_MISSING: no soak ran under the complete egress boundary (the one SP1-PA3D runs under)");
+  for (const s of facts.soaks) {
+    const where = `${s.id}, ${s.boundary === "COMPLETE_EGRESS_BOUNDARY" ? "complete boundary" : "self-test table"}`;
+    if (s.iterations < MIN_SOAK_ITERATIONS)
+      blockers.push(`SOAK_TOO_SHORT (${where}): ${s.iterations} iterations, at least ${MIN_SOAK_ITERATIONS} needed`);
+    const ok = s.boundary === "COMPLETE_EGRESS_BOUNDARY" ? s.stable : s.stable || s.stableExceptThirdPartyLeaks;
+    if (!ok) blockers.push(`SOAK_UNSTABLE (${where}): ${s.unstableBecause.join("; ")}`);
+  }
   if (!facts.fixtureAgreement)
     blockers.push("HOST_CONTAINER_DISAGREEMENT: the fixture's host and container derivations differ");
   if (facts.negativeControls.length === 0) blockers.push("NEGATIVE_CONTROLS_MISSING: no negative control ran");
@@ -1042,10 +1110,9 @@ export interface QualificationObservation {
     node: { execPath: string; version: string; sha256: string };
     nft: string;
     docker: string;
-    table: { family: string; name: string; rulesSha256: string };
   };
   fixture: { host: Derivation; container: Derivation };
-  soak: { startedAtUtc: string; finishedAtUtc: string; iterations: SoakIteration[] };
+  soaks: Soak[];
   negativeControls: NegativeControlResult[];
 }
 
@@ -1095,7 +1162,7 @@ export const SECURITY_FINDINGS: readonly Omit<SecurityFinding, "evidence">[] = [
     severity: "INFO",
     blocking: false,
     finding:
-      "Raw captures hold host identity (addresses, boot id, exec paths, pids). The soak's raw directories stay operator-local (root:prover-group, 0750) as SP1-PA3C's evidence model requires; only their digests and derivations are committed. The committed fixture remains the one privacy-reviewed capture.",
+      "Raw captures hold host identity (addresses, boot id, exec paths, pids). The soaks' raw directories stay operator-local (root:prover-group, 0750) as SP1-PA3C's evidence model requires; only their digests and derivations are committed. The committed fixture remains the one privacy-reviewed capture.",
     disposition: "ACCEPTED: retained OPERATOR_LOCAL",
     carriedForwardFrom: "SP1-PA3C",
   },
@@ -1126,6 +1193,16 @@ export const SECURITY_FINDINGS: readonly Omit<SecurityFinding, "evidence">[] = [
     disposition: "CARRIED_FORWARD: the proving host's design, disclosed in SP1-PA3B and SP1-PA3C",
     carriedForwardFrom: "SP1-PA3C",
   },
+  {
+    id: "Q1-SF8",
+    severity: "LOW",
+    blocking: false,
+    finding:
+      "The proving host is not quiet: its own daemons egress during observation windows. Under the self-test table (TEST-NET-1 and the resolvers refused, nothing else) one soak iteration saw the host's chronyd send one NTP datagram to a public time server inside the window, and the derivation refused that capture as EGRESS_LEAKED, as it must under a table that refuses no real egress; the workload's own attempts were refused and reconciled as in every other iteration. Under the complete egress boundary (SP1-PA3B's, which SP1-PA3D runs under) the same traffic is refused, counted and attributed to another scope, never a leak.",
+    disposition:
+      "ACCEPTED_AS_MEASURED: the observer detected and attributed it; a SP1-PA3D run should expect refused attempts of other scopes (quieting chronyd first is an owner choice, not a requirement)",
+    carriedForwardFrom: null,
+  },
 ];
 
 export interface Component {
@@ -1135,6 +1212,27 @@ export interface Component {
   sha256?: string | null;
   identity?: string;
   note?: string;
+}
+
+export interface RecordSoak {
+  id: string;
+  boundary: SoakBoundary;
+  host: string;
+  startedAtUtc: string;
+  finishedAtUtc: string;
+  table: Soak["table"];
+  iterations: {
+    n: number;
+    variation: string;
+    exit: number;
+    normalizedSha256: string | null;
+    stableProjectionSha256: string | null;
+    judgementSha256: string | null;
+    refusals: string[];
+    otherScopeAttempts: number | null;
+    reconciliation: DerivationReconciliation["result"];
+  }[];
+  summary: SoakSummary;
 }
 
 export interface QualificationRecord {
@@ -1156,22 +1254,7 @@ export interface QualificationRecord {
     container: Derivation;
     reconciliation: DerivationReconciliation;
   } | null;
-  soak: {
-    host: string;
-    startedAtUtc: string;
-    finishedAtUtc: string;
-    iterations: {
-      n: number;
-      variation: string;
-      exit: number;
-      normalizedSha256: string | null;
-      stableProjectionSha256: string | null;
-      judgementSha256: string | null;
-      refusals: number;
-      reconciliation: DerivationReconciliation["result"];
-    }[];
-    summary: SoakSummary;
-  } | null;
+  soaks: RecordSoak[];
   container: ContainerIdentity | null;
   environments: EnvironmentIdentity[];
   negativeControls: NegativeControlResult[];
@@ -1245,7 +1328,7 @@ function componentsOf(ctx: ValidationContext, o: QualificationObservation | null
       class: "version-pinned",
       identity: `${o.hostFacts.node.execPath} ${o.hostFacts.node.version} sha256 ${o.hostFacts.node.sha256}`,
     },
-    { component: "nftables (the boundary table)", class: "version-pinned", identity: o.hostFacts.nft },
+    { component: "nftables (the boundary tables)", class: "version-pinned", identity: o.hostFacts.nft },
     { component: "Docker engine (container path only)", class: "version-pinned", identity: o.hostFacts.docker },
     {
       component: "Linux kernel: tracefs, kprobes with BTF arguments, netfilter drop reasons",
@@ -1287,7 +1370,7 @@ function componentsOf(ctx: ValidationContext, o: QualificationObservation | null
 
 function factsOf(record: {
   observed: boolean;
-  soak: QualificationRecord["soak"];
+  soaks: RecordSoak[];
   fixture: QualificationRecord["fixture"];
   negativeControls: NegativeControlResult[];
   environments: EnvironmentIdentity[];
@@ -1295,14 +1378,14 @@ function factsOf(record: {
 }): StateFacts {
   return {
     observed: record.observed,
-    soak:
-      record.soak === null
-        ? { stable: false, iterations: 0, unstableBecause: ["no soak"] }
-        : {
-            stable: record.soak.summary.stable,
-            iterations: record.soak.summary.iterations,
-            unstableBecause: record.soak.summary.unstableBecause,
-          },
+    soaks: record.soaks.map((s) => ({
+      id: s.id,
+      boundary: s.boundary,
+      iterations: s.summary.iterations,
+      stable: s.summary.stable,
+      stableExceptThirdPartyLeaks: s.summary.stableExceptThirdPartyLeaks,
+      unstableBecause: s.summary.unstableBecause,
+    })),
     fixtureAgreement: record.fixture?.reconciliation.result === "HOST_CONTAINER_OBSERVER_AGREEMENT",
     negativeControls: record.negativeControls.map((c) => ({ id: c.id, ok: c.ok })),
     positiveControl: record.negativeControls.find((c) => c.id === "P0")?.ok ?? false,
@@ -1313,10 +1396,35 @@ function factsOf(record: {
   };
 }
 
+function recordSoaksOf(o: QualificationObservation): RecordSoak[] {
+  return o.soaks.map((s) => ({
+    id: s.id,
+    boundary: s.boundary,
+    host: o.host,
+    startedAtUtc: s.startedAtUtc,
+    finishedAtUtc: s.finishedAtUtc,
+    table: s.table,
+    iterations: s.iterations.map((it) => ({
+      n: it.n,
+      variation: it.variation,
+      exit: it.exit,
+      normalizedSha256: it.host.output.normalizedSha256,
+      stableProjectionSha256: it.host.output.stableProjectionSha256,
+      judgementSha256: it.host.output.judgementSha256,
+      refusals: [...new Set([...it.host.output.refusals, ...it.container.output.refusals].map((r) => r.reason))].sort(),
+      otherScopeAttempts: it.host.output.judgement?.otherScopeAttempts ?? null,
+      reconciliation: reconcileDerivations(it.host, it.container).result,
+    })),
+    summary: soakSummaryOf(s.iterations, s.boundary),
+  }));
+}
+
 /** The record, a pure function of the committed observation(s), the committed observer and the pinned components. */
 export function qualificationRecordFrom(ctx: ValidationContext): QualificationRecord {
   const first = ctx.observations[0] ?? null;
   const o = first?.observation ?? null;
+  const soaks = o === null ? [] : recordSoaksOf(o);
+  const selfTestSoaks = soaks.filter((s) => s.boundary === "SELF_TEST_TABLE");
   const findings: SecurityFinding[] = SECURITY_FINDINGS.map((f) => ({
     ...f,
     evidence:
@@ -1330,7 +1438,16 @@ export function qualificationRecordFrom(ctx: ValidationContext): QualificationRe
             ? o === null
               ? null
               : `docker ${o.hostFacts.docker} on ${o.host}`
-            : null,
+            : f.id === "Q1-SF8"
+              ? selfTestSoaks.length === 0
+                ? null
+                : selfTestSoaks
+                    .map(
+                      (s) =>
+                        `soak ${s.id}: iterations ${s.summary.thirdPartyLeakIterations.join(", ") || "none"} refused as EGRESS_LEAKED by another process; ${s.summary.refusalFree}/${s.summary.iterations} refusal-free`,
+                    )
+                    .join("; ")
+              : null,
   }));
   const fixture =
     o === null
@@ -1342,29 +1459,10 @@ export function qualificationRecordFrom(ctx: ValidationContext): QualificationRe
           container: o.fixture.container,
           reconciliation: reconcileDerivations(o.fixture.host, o.fixture.container),
         };
-  const soak =
-    o === null
-      ? null
-      : {
-          host: o.host,
-          startedAtUtc: o.soak.startedAtUtc,
-          finishedAtUtc: o.soak.finishedAtUtc,
-          iterations: o.soak.iterations.map((it) => ({
-            n: it.n,
-            variation: it.variation,
-            exit: it.exit,
-            normalizedSha256: it.host.output.normalizedSha256,
-            stableProjectionSha256: it.host.output.stableProjectionSha256,
-            judgementSha256: it.host.output.judgementSha256,
-            refusals: it.host.output.refusals.length + it.container.output.refusals.length,
-            reconciliation: reconcileDerivations(it.host, it.container).result,
-          })),
-          summary: soakSummaryOf(o.soak.iterations),
-        };
   const environments = o === null ? [] : [o.fixture.host.environment, o.fixture.container.environment];
   const negativeControls = o === null ? [] : o.negativeControls;
   const { state, blockers } = qualificationStateOf(
-    factsOf({ observed: o !== null, soak, fixture, negativeControls, environments, securityFindings: findings }),
+    factsOf({ observed: o !== null, soaks, fixture, negativeControls, environments, securityFindings: findings }),
   );
   const containerEnv = o?.fixture.container.environment.container ?? null;
   return {
@@ -1393,7 +1491,7 @@ export function qualificationRecordFrom(ctx: ValidationContext): QualificationRe
     },
     components: componentsOf(ctx, o),
     fixture,
-    soak,
+    soaks,
     container: containerEnv,
     environments,
     negativeControls,
@@ -1418,10 +1516,15 @@ export function qualificationRecordFrom(ctx: ValidationContext): QualificationRe
             : `interfaces seen inside: ${containerEnv.facts.networkInterfaces.join(", ")}`,
       },
       {
-        phase: "SOAK",
-        dependency: "none: every destination the workload names is refused by the declared table; no name is resolved",
+        phase: "SOAKS",
+        dependency:
+          "none: the workload names only TEST-NET-1 destinations, refused by every table; under the complete boundary nothing on the host leaves the VM",
         verification:
-          soak === null ? "not run" : `${soak.summary.refusalFree}/${soak.summary.iterations} iterations refusal-free`,
+          soaks.length === 0
+            ? "not run"
+            : soaks
+                .map((s) => `${s.id} (${s.boundary}): ${s.summary.refusalFree}/${s.summary.iterations} refusal-free`)
+                .join("; "),
       },
     ],
     hostDependencies: [
@@ -1431,6 +1534,7 @@ export function qualificationRecordFrom(ctx: ValidationContext): QualificationRe
       "an unprivileged user who can read the checkout (the workload and the host derivation run as it)",
       "a Node.js able to run the observer and the workload (the host's node; its device:inode is the stand-in host's identity)",
       "a Docker engine on the same host for the container path (the native engine; Docker Desktop stayed stopped)",
+      "the complete egress boundary is VM-wide while it stands (every WSL2 distribution and Docker Desktop share the network namespace)",
     ],
     derivedFrom: ctx.observations.map((x) => {
       const bytes = ctx.readFile(x.path);
@@ -1456,7 +1560,7 @@ function proofShapedKeys(value: unknown, prefix = ""): string[] {
 }
 
 function sectionCode(path: string): string {
-  if (path.startsWith("soak.summary")) return "SOAK_SUMMARY_MISMATCH";
+  if (/^soaks\.\d+\.summary/.test(path)) return "SOAK_SUMMARY_MISMATCH";
   if (path.startsWith("negativeControls")) return "NEGATIVE_CONTROLS_MISMATCH";
   if (path.startsWith("fixture.host.output") || path.startsWith("fixture.container.output"))
     return "FIXTURE_DIGEST_MISMATCH";
@@ -1526,7 +1630,7 @@ export function qualificationErrors(value: unknown, ctx: ValidationContext): str
     const derived = qualificationStateOf(
       factsOf({
         observed: true,
-        soak: expected.soak,
+        soaks: expected.soaks,
         fixture: expected.fixture,
         negativeControls: o.negativeControls,
         environments: expected.environments,
