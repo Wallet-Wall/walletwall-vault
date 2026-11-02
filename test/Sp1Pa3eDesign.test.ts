@@ -21,8 +21,10 @@ import {
   PRODUCTION_SP1_BINDING,
   REQUIRED_RESIDUES,
   REQUIRED_THREATS,
+  baselineErrors,
   designDocErrors,
   designErrors,
+  hermeticClaims,
   type DesignManifest,
 } from "../scripts/lib/sp1-pa3e-design";
 
@@ -347,12 +349,74 @@ describe("SP1-PA3E — the production-binding design manifest and document", fun
       ).to.include("DOC_BINDING");
     });
 
+    it("refuses a document that names an identifier the manifest does not declare (the converse check)", function () {
+      const m = committed();
+      const text = doc();
+      const errors = designDocErrors(
+        m,
+        `${text}\n\nThreat T21 and gate G-99 and invariant PB-99 are not in the manifest.\n`,
+      ).join("\n");
+      expect(errors).to.include("DOC_UNDECLARED T21");
+      expect(errors).to.include("DOC_UNDECLARED G-99");
+      expect(errors).to.include("DOC_UNDECLARED PB-99");
+      expect(designDocErrors(m, `${text}\n\nResidue PA3D-F9 is adjudicated nowhere.\n`).join("\n")).to.include(
+        "DOC_UNDECLARED PA3D-F9",
+      );
+    });
+
+    it("refuses any artifact that calls PA3D hermetic, while negated uses pass", function () {
+      const m = committed();
+      const text = doc();
+      expect(designDocErrors(m, `${text}\n\nThe proving run was hermetic.\n`).join("\n")).to.include("DOC_HERMETIC");
+      expect(designDocErrors(m, `${text}\n\nThe proving run was fully hermetic.\n`).join("\n")).to.include(
+        "DOC_HERMETIC",
+      );
+      expect(
+        designDocErrors(m, `${text}\n\nThe proving run was not hermetic; no hermeticity is claimed.\n`),
+      ).to.deep.equal([]);
+      expect(hermeticClaims("PA3D is never called hermetic; nor hermetic at all")).to.deep.equal([]);
+      expect(hermeticClaims("the exercise was hermetic")).to.have.length(1);
+      expect(errorsOf((m2) => m2.nonGoals.push("the exercise was hermetic and sealed"))).to.include(
+        "MANIFEST_HERMETIC",
+      );
+    });
+
     it("carries the repository's disclaimers (the docs sweep requires one wherever withdrawals are discussed)", function () {
       const text = doc().toLowerCase();
       expect(text).to.include("research prototype");
       expect(text).to.include("not audited");
       expect(text).to.include("do not use real funds");
       expect(text).to.include("not a mainnet write path");
+    });
+  });
+
+  describe("the evidence baseline against the committed PA3D record and the package version", function () {
+    const record = () => JSON.parse(lf(readFileSync(committed().evidenceBaseline.pa3dRecord.path, "utf8")));
+    const version = () => (JSON.parse(lf(readFileSync("package.json", "utf8"))) as { version: string }).version;
+
+    it("agrees with the record on state, binding, program, proof digests, selector, acceptance, determinism and residue counts", function () {
+      expect(baselineErrors(committed(), record(), version())).to.deep.equal([]);
+    });
+
+    it("refuses a residue count, a proof digest or a determinism statement that differs from the record", function () {
+      const m = committed();
+      m.evidenceBaseline.residue.otherNamespaceEgress = 0;
+      expect(baselineErrors(m, record(), version()).join("\n")).to.include("BASELINE_RESIDUE otherNamespaceEgress");
+      const m2 = committed();
+      m2.evidenceBaseline.proof.proofBytesSha256 = "0".repeat(64);
+      expect(baselineErrors(m2, record(), version()).join("\n")).to.include("BASELINE_PROOF_BYTES_SHA256");
+      const m3 = committed();
+      (m3.evidenceBaseline.proof as { proofByteDeterminism: string }).proofByteDeterminism = "CLAIMED";
+      expect(baselineErrors(m3, record(), version()).join("\n")).to.include("BASELINE_DETERMINISM");
+    });
+
+    it("refuses a package version that is not the baseline version or a later patch of it", function () {
+      expect(baselineErrors(committed(), record(), "0.12.99").join("\n")).to.include("BASELINE_VERSION");
+      expect(baselineErrors(committed(), record(), "0.14.0").join("\n")).to.include("BASELINE_VERSION");
+      const m = committed();
+      expect(baselineErrors(m, record(), m.evidenceBaseline.version)).to.deep.equal([]);
+      const [maj, min, patch] = m.evidenceBaseline.version.split(".").map(Number);
+      expect(baselineErrors(m, record(), `${maj}.${min}.${patch + 3}`)).to.deep.equal([]);
     });
   });
 });

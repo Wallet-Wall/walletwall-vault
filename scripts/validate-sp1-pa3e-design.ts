@@ -21,6 +21,7 @@ import {
   DESIGN_JSON_SCHEMA_REL,
   DESIGN_REL,
   PRODUCTION_SP1_BINDING,
+  baselineErrors,
   designDocErrors,
   designErrors,
   type DesignManifest,
@@ -52,10 +53,8 @@ runScript(async () => {
       `BASELINE_RECORD_DIGEST: committed PA3D record is ${recordSha}, manifest names ${manifest.evidenceBaseline.pa3dRecord.sha256}`,
     );
   }
-  const record = JSON.parse(recordText) as { state: string; productionSp1Binding: string };
-  if (record.state !== manifest.evidenceBaseline.pa3dRecord.state)
-    errors.push(`BASELINE_RECORD_STATE: ${record.state}`);
-  if (record.productionSp1Binding !== PRODUCTION_SP1_BINDING) errors.push("BASELINE_RECORD_BINDING");
+  const pkg = JSON.parse(read("package.json")) as { version: string };
+  errors.push(...baselineErrors(manifest, JSON.parse(recordText), pkg.version));
 
   errors.push(...designDocErrors(manifest, read(DESIGN_DOC_REL)));
 

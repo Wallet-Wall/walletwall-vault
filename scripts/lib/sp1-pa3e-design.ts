@@ -508,10 +508,82 @@ export function designErrors(input: unknown): string[] {
   if (!Array.isArray(m.implementationPrerequisites) || m.implementationPrerequisites.length === 0) {
     errors.push("PREREQUISITES_MISSING");
   }
+  for (const claim of hermeticClaims(JSON.stringify(m))) {
+    errors.push(`MANIFEST_HERMETIC: PA3D may not be called hermetic: "${claim}"`);
+  }
   return errors;
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Every use of "hermetic" that is not negated within the preceding forty characters ("not hermetic", "never called
+ * hermetic", "no claim of … hermetic") and is not the noun "hermeticity": PA3D was CONTINUOUS_PARTIALLY_ATTRIBUTED and
+ * no artifact of this lane may describe it as hermetic. Returns the offending snippets.
+ */
+export function hermeticClaims(text: string): string[] {
+  const out: string[] = [];
+  const re = /hermetic(?!ity)/gi;
+  for (const match of text.matchAll(re)) {
+    const start = Math.max(0, (match.index ?? 0) - 40);
+    const before = text.slice(start, match.index ?? 0);
+    if (!/\b(not|never|no|nor)\b/i.test(before))
+      out.push(text.slice(start, (match.index ?? 0) + 8).replace(/\s+/g, " "));
+  }
+  return out;
+}
+
+/** The identifier families the design declares, as they appear in prose; the document may name no undeclared one. */
+const ID_PATTERN = /\b(T\d{2}|PB-\d+|G-\d{2}|U-\d+|PA3D-[A-Z0-9][A-Z0-9-]*[A-Z0-9])\b/g;
+
+/**
+ * The manifest's evidence baseline against the committed PA3D record and the package version: the record's state,
+ * binding, proof digests, selector, acceptance, determinism statement, program vkey and residue counts must be the
+ * ones the manifest carries forward (no downgrade, no drift), and the package version must be the baseline version or
+ * a later patch of the same minor (the lane bumps once above main's version).
+ */
+export function baselineErrors(m: DesignManifest, record: unknown, packageVersion: string): string[] {
+  const errors: string[] = [];
+  const b = m.evidenceBaseline;
+  if (!isRecord(record)) return ["BASELINE_RECORD_NOT_AN_OBJECT"];
+  const r = record as {
+    state?: string;
+    productionSp1Binding?: string;
+    statement?: { programVKey?: string };
+    exercise?: {
+      proof?: { publicValuesSha256?: string; proofBytesSha256?: string; selector?: string };
+      verification?: { acceptance?: string };
+      record?: { assurance?: Record<string, unknown> };
+    };
+    reproducibility?: { proofBytes?: { determinism?: string } };
+  };
+  if (r.state !== b.pa3dRecord.state) errors.push(`BASELINE_RECORD_STATE ${String(r.state)}`);
+  if (r.productionSp1Binding !== PRODUCTION_SP1_BINDING) errors.push("BASELINE_RECORD_BINDING");
+  if (r.statement?.programVKey !== b.program.programVKey) errors.push("BASELINE_PROGRAM_VKEY");
+  if (r.exercise?.proof?.publicValuesSha256 !== b.proof.publicValuesSha256)
+    errors.push("BASELINE_PUBLIC_VALUES_SHA256");
+  if (r.exercise?.proof?.proofBytesSha256 !== b.proof.proofBytesSha256) errors.push("BASELINE_PROOF_BYTES_SHA256");
+  if (r.exercise?.proof?.selector !== b.proof.selector) errors.push("BASELINE_SELECTOR");
+  if (r.exercise?.verification?.acceptance !== b.proof.verification) errors.push("BASELINE_VERIFICATION");
+  if (r.reproducibility?.proofBytes?.determinism !== b.proof.proofByteDeterminism) errors.push("BASELINE_DETERMINISM");
+  const assurance = r.exercise?.record?.assurance ?? {};
+  for (const field of [
+    "unattributedEvents",
+    "unseenDestinations",
+    "otherNamespaceEgress",
+    "unknownOutcomes",
+  ] as const) {
+    if (assurance[field] !== b.residue[field]) {
+      errors.push(`BASELINE_RESIDUE ${field}: record ${String(assurance[field])}, manifest ${b.residue[field]}`);
+    }
+  }
+  const [bMaj, bMin, bPatch] = b.version.split(".").map(Number);
+  const [pMaj, pMin, pPatch] = packageVersion.split(".").map(Number);
+  if (!(pMaj === bMaj && pMin === bMin && pPatch >= bPatch)) {
+    errors.push(`BASELINE_VERSION package ${packageVersion} is not the baseline ${b.version} or a later patch of it`);
+  }
+  return errors;
+}
 
 /**
  * Every way the design document fails to state what the manifest declares: a missing required section, a missing
@@ -537,11 +609,16 @@ export function designDocErrors(m: DesignManifest, text: string): string[] {
   ];
   for (const id of ids) if (!doc.includes(id)) errors.push(`DOC_MISSING ${id}`);
   for (const c of m.candidates) if (!doc.includes(`Candidate ${c.id}`)) errors.push(`DOC_MISSING Candidate ${c.id}`);
+  // The converse: every identifier of a declared family that the document names must be declared by the manifest.
+  const declared = new Set(ids);
+  const undeclared = new Set<string>();
+  for (const match of doc.matchAll(ID_PATTERN)) if (!declared.has(match[1])) undeclared.add(match[1]);
+  for (const id of [...undeclared].sort()) errors.push(`DOC_UNDECLARED ${id}`);
   if (!doc.includes(m.evidenceBaseline.mainCommit)) errors.push("DOC_BASELINE main commit");
   if (!doc.includes(`State: \`${m.state}\``)) errors.push(`DOC_STATE State: \`${m.state}\``);
   if (!doc.includes(`PRODUCTION_SP1_BINDING = ${PRODUCTION_SP1_BINDING}`)) errors.push("DOC_BINDING");
   if (/PRODUCTION_SP1_BINDING = (?!NOT_ESTABLISHED)/.test(doc)) errors.push("DOC_BINDING another value is stated");
   if (!/research prototype/i.test(doc) || !/not audited/i.test(doc)) errors.push("DOC_DISCLAIMER");
-  if (/fully hermetic/i.test(doc)) errors.push("DOC_HERMETIC: PA3D may not be called fully hermetic");
+  for (const claim of hermeticClaims(doc)) errors.push(`DOC_HERMETIC: PA3D may not be called hermetic: "${claim}"`);
   return errors;
 }

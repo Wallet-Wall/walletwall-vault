@@ -47,16 +47,16 @@
       "unknownOutcomes": 0
     },
     "carriedForward": [
-      "one real v2 proof was generated (Groth16, SP1 6.3.1, circuit v6.1.0) of the designated program mldsa65-withdrawal-d1 from the manifest's source commit debed530, in 646 s on one 16-thread host",
+      "one real v2 proof was generated (Groth16, SP1 6.3.1, circuit v6.1.0) of the designated program mldsa65-withdrawal-d1 from the manifest's source commit debed530 (646 s of host time per evidence/zk/sp1-impl/circuit-tooling.json; the record carries the gate's 686 s)",
       "the proof was independently verified by the designated runtime from a fresh process: ACCEPTED, one check, selector 0x4388a21c",
       "the statement reproduced the expected public values: the 160-byte journal's sha256 64e08d05… equals the fixture-derived expectation",
       "proof-byte determinism was NOT claimed: the PA3B and PA3D proofs of one statement differ in bytes, as Groth16 proving is randomized",
       "the attribution chain validated: 15 of 15 links hold, from the source commit through manifest, attestation, run, proof, verification and record to the qualified observer and the declared boundary",
       "the negative controls passed: NC-V1..NC-V5 refused by the designated runtime, NC-R1..NC-R12 refused by the record validator",
-      "process and network attribution was only PARTIAL: assurance CONTINUOUS_PARTIALLY_ATTRIBUTED, 162 attempts, 237 refused packets, 19 unattributed kernel events, 10 sends of unseen destination, 3 other-namespace sends, 0 unknown outcomes",
-      "Docker Desktop was active during the proof (PA3D-F4): its service VM accounts for the 3 other-namespace sends, 192.168.65.x over vsock",
+      "process and network attribution was only PARTIAL: assurance CONTINUOUS_PARTIALLY_ATTRIBUTED; the record counts 162 attempts, 237 refused packets, 19 refused packets that no observed attempt sent, 10 sends of unseen destination, 3 sends or connects from other namespaces to addresses beyond the VM that were never refused, 0 unknown outcomes; the record states that whether anything left by a path the inet boundary does not see reached beyond the Windows host is unknown",
+      "Docker Desktop was active during the proof (PA3D-F4): the gate document's reading of the raw run events, not a record judgement, attributes the 3 other-namespace sends or connects to its service VM (192.168.65.x over vsock); the record only counts them",
       "the measurement tool has a shutdown defect (PA3D-F1): it keeps a readline on stdin after writing its observation and is killed by the observer's 600 s guard, with a misleading stderr line",
-      "chronyd activity existed: 54 refused time-sync attempts inside the window, every one refused; the host clock ran free",
+      "chronyd activity existed: 54 time-sync attempts inside the window, every one refused (the gate document's reading of the run observation; not a record field); the host clock ran free",
       "the acquisition gate does not bind the complete Node dependency tree: package-lock integrity and the installed node_modules are outside the exercise manifest's digests",
       "the PA3D lane validators (validate:sp1-pa3d-manifest, validate:sp1-pa3d-record) are not yet wired into canonical CI; their logic runs there only through the mocha suite",
       "the implementation receipt still reports PRODUCTION_SP1_BINDING_STATUS = NOT_ESTABLISHED with three prerequisites unmet: the two-host canonical rebuild (INSUFFICIENT_HOSTS), a registered active wrapper (0 registrations) and owner review"
@@ -69,7 +69,7 @@
       "WalletWallVault computes digest = _hashTypedDataV4(structHash(request)) from the caller's typed request, under EIP712(\"WalletWallVault\", \"1\") whose domain fixes chainId and verifyingContract",
       "WalletWallVault checks deadline (DeadlineExpired), nonce (InvalidNonce), mode (VaultModeMismatch), balance, then calls pqVerifier.verify(digest, vault.pqPublicKey, pqSignature) where vault.pqPublicKey is the credential registered for that owner",
       "ZKMLDSAVerifier.verify returns false if halted; decodes abi.encode(bytes publicValues, bytes proofBytes); requires publicValues.length == 160 and proofBytes.length > 0; decodes (bytes32, bytes32, bytes32, uint64, address) with ABI validation; requires committedDigest == digest, committedPkHash == keccak256(publicKey), uint256(committedChainId) == block.chainid, committedVerifier == address(this)",
-      "ZKMLDSAVerifier calls ISP1Verifier(SP1_VERIFIER).verifyProof(PROGRAM_VKEY, publicValues, proofBytes) inside try/catch: SP1_VERIFIER is pinned at construction to Succinct's Groth16 SP1Verifier v6.1.0 by runtime code hash, PROGRAM_VKEY is immutable; the verifier derives sha256(publicValues) masked to 253 bits and checks the Groth16 proof against (PROGRAM_VKEY, that digest); any revert is false",
+      "ZKMLDSAVerifier calls ISP1Verifier(SP1_VERIFIER).verifyProof(PROGRAM_VKEY, publicValues, proofBytes) inside try/catch: SP1_VERIFIER is pinned at construction to Succinct's Groth16 SP1Verifier v6.1.0 by runtime code hash, PROGRAM_VKEY is immutable; the verifier checks the Groth16 proof against (PROGRAM_VKEY, a digest of publicValues: sha256 masked to 253 bits per the upstream source, not vendored here); any revert is false",
       "WalletWallVault reverts InvalidPQSignature on false; on true it consumes the nonce in the same transaction and executes or queues exactly the request it hashed"
     ],
     "publicInputs": [
@@ -260,7 +260,7 @@
       }
     ],
     "verificationMeans": [
-      "Layer A: Succinct's Groth16 SP1Verifier v6.1.0, at the code the wrapper pinned, accepted the proof for (PROGRAM_VKEY, sha256(publicValues) masked to 253 bits) on this chain's precompiles",
+      "Layer A: Succinct's Groth16 SP1Verifier v6.1.0, at the code the wrapper pinned, accepted the proof for (PROGRAM_VKEY, the public-values digest) on this chain's precompiles",
       "Layer B: the proof was made by a program whose SP1 verifying key is PROGRAM_VKEY, the designated mldsa65-withdrawal-d1 guest, under the soundness of SP1's Groth16 wrap and the v6.1.0 circuit's trusted setup",
       "Layer C: that program committed exactly these 160 bytes, and the wrapper found the digest, the credential hash, the chain id and its own address in them",
       "Under those assumptions and the correctness of the guest's ML-DSA-65 implementation: someone who held a signature valid under the owner's registered credential over this Vault's digest for this operation produced the proof"
@@ -292,7 +292,7 @@
       "id": "C",
       "name": "statement identity",
       "question": "Were the intended public values actually proven?",
-      "establishedBy": "publicValues.length == 160; ABI-validated decode of five static words; digest, pkHash, chainId and verifierAddress compared by the wrapper; sha256(publicValues) is the verifier's public input",
+      "establishedBy": "publicValues.length == 160; ABI-validated decode of five static words; digest, pkHash, chainId and verifierAddress compared by the wrapper; the verifier's second public input is a digest of publicValues (upstream source: sha256 masked to 253 bits)",
       "transition": "On chain the path ends here: the Vault learns true or false. Layer D is off-chain evidence about where the program and the proof came from; it is never an input to verify()."
     },
     {
@@ -330,8 +330,9 @@
     "correctness of the guest's ML-DSA-65 implementation and of the fixture-derived expectation it is compared with (provenance and review; NOT_ESTABLISHED_BY_PROVENANCE)",
     "keccak256 and sha256 collision resistance (journal hashes, the verifier's public-values digest)",
     "EIP-712 domain separation as implemented by OpenZeppelin EIP712 in WalletWallVault",
-    "the ECDSA floor remains required in generation 1 (Hybrid): the PQ verdict is a conjunct, never the sole authenticator (I-NO-SOLE-EXTERNAL-AUTHENTICATOR)",
-    "Vault governance (the contract owner) proposes verifier rotations honestly or is caught within the 172,800 s delay, which is the users' exit window; the halt principal is independent of governance and can only deny",
+    "the ECDSA floor remains required in generation 1 (Hybrid): the PQ verdict is a conjunct, never the sole authenticator (I-NO-SOLE-EXTERNAL-AUTHENTICATOR); WalletWallVault still offers PqOnly, so this assumption holds only for a consumer that does not",
+    "Vault governance (the contract owner) proposes verifier rotations honestly. The 172,800 s delay gives notice, not a guaranteed exit: the same governance can pause() (onlyOwner, uncapped) through the whole delay and unpause after apply, and large balances also need the queue delay. Generation 1's protection against a malicious governance is therefore the ECDSA floor (PB-13), which makes 'no PqOnly in the production consumer' a requirement rather than a question",
+    "the halt principal's independence from governance is assumed: the guard refuses a halt principal as owner or caller only when the addresses are identical, so a governance that names a second key it controls as halt principal is undetectable on chain; the halt principal can only deny",
     "the designated ELF is what the designation says: a two-host canonical rebuild is required before any identity may become QUALIFIED, and it is unmet today"
   ],
   "threats": [
@@ -340,7 +341,7 @@
       "name": "proof replay",
       "status": "RESOLVED",
       "layers": ["E"],
-      "binding": "The digest commits the per-owner nonce; the Vault requires request.nonce == vault.nonce and advances it in the transaction that accepts the proof (withdraw, queueWithdrawal, rotateCredentials). A second submission of the same proof fails InvalidNonce before the verifier is consulted. Tests: WalletWallVault 'fail on replay with the same nonce', rotation 'cannot be replayed once the nonce has advanced'.",
+      "binding": "The digest commits the per-owner nonce, which the Vault advances in the transaction that accepts the proof. withdraw and queueWithdrawal require request.nonce == vault.nonce, so a second submission of the same proof fails InvalidNonce before the verifier is consulted. rotateCredentials has no nonce parameter: it hashes the current vault.nonce into the digest, so a replayed rotation computes a different digest and fails at the signature and verifier comparisons (InvalidRotationSignature / InvalidPQSignature), after the verifier is called in PqOnly. Tests: WalletWallVault 'fail on replay with the same nonce', rotation 'cannot be replayed once the nonce has advanced'.",
       "residual": ""
     },
     {
@@ -356,7 +357,7 @@
       "name": "cross-Vault replay",
       "status": "RESOLVED",
       "layers": ["C", "E", "G"],
-      "binding": "verifyingContract in the EIP-712 domain makes another Vault's digest differ; the Vault computes the digest itself from the typed request and never accepts a caller-supplied digest (PB-11). The journal's verifierAddress word additionally pins the wrapper deployment. The wrapper is shared by several consumers by design, so this binding is the consumers' typed-data discipline, which PB-11's gate must test for every consumer.",
+      "binding": "verifyingContract in the EIP-712 domain makes another Vault's digest differ; the Vault computes the digest itself from the typed request and never accepts a caller-supplied digest (PB-11). The journal's verifierAddress word is the wrapper's own address, shared by every consumer of that wrapper: it separates wrapper deployments, not consumers. Since one wrapper serves several consumers by design, cross-Vault separation is entirely the consumers' typed-data discipline, which PB-11's gate must test for every consumer.",
       "residual": ""
     },
     {
@@ -418,10 +419,10 @@
     {
       "id": "T11",
       "name": "verifier/program substitution",
-      "status": "RESOLVED",
+      "status": "PARTIAL",
       "layers": ["A", "B"],
-      "binding": "PROGRAM_VKEY is immutable per wrapper; SP1_VERIFIER is pinned at construction to the v6.1.0 runtime code hash, which excludes the owner-mutable gateway, mocks and accept-all contracts; the Vault records pqVerifierIdentity = keccak256(codehash, vkey) at install and changes it only through the 172,800 s rotation guarded by VerifierRotationGuard. Tests: ZKMLDSAVerifierProgramIdentity (ACVP-program proofs refused both ways), 'rejects an EOA as the SP1 verifier'.",
-      "residual": ""
+      "binding": "Within a wrapper: PROGRAM_VKEY is immutable and SP1_VERIFIER is pinned at construction to the v6.1.0 runtime code hash, which excludes the owner-mutable gateway, mocks and accept-all contracts as the SP1 verifier of a ZKMLDSAVerifier; the Vault records the guard identity at install and changes its verifier only through the 172,800 s rotation guarded by VerifierRotationGuard. Tests: ZKMLDSAVerifierProgramIdentity (ACVP-program proofs refused both ways), 'rejects an EOA as the SP1 verifier'.",
+      "residual": "Whole-verifier substitution by governance: nothing binds the Vault to a ZKMLDSAVerifier, so after the delay governance can install any code-bearing verifier, an accept-all one included (the Vault's own comment calls the verifier the SOLE gate in PqOnly, able to enable credential takeover); the rotation test shows only that the swap is not active before the delay. Bounded by the ECDSA floor where it is mandatory (PB-13) and, once built and keyed on the measured code hash, by the register for honest process."
     },
     {
       "id": "T12",
@@ -429,7 +430,7 @@
       "status": "UNRESOLVED",
       "layers": ["B", "E"],
       "binding": "",
-      "residual": "Today the consumer refuses only a HALTED identity (VerifierRotationGuard); a superseded-but-not-halted wrapper, or a fresh wrapper of an old PROGRAM_VKEY, can be re-installed through the owner's timelocked rotation. The design closes this with the identity register (lifecycle: DEPRECATED and REVOKED identities are refused at proposal and at apply, DEPRECATED never returns to ACTIVE) and PB-7; until that is built, downgrade resistance rests on governance plus the 2-day exit window."
+      "residual": "Today the consumer refuses only a HALTED identity (VerifierRotationGuard), the guard identity is self-reported, and a target without the SP1 identity surface has identity zero and is admitted without any identity check; a superseded-but-not-halted wrapper, a fresh wrapper of an old PROGRAM_VKEY, or any code-bearing contract can be installed through the owner's timelocked rotation. The design closes the honest-process part with the identity register (keyed on the measured target.codehash; DEPRECATED and REVOKED identities and a zero guard identity refused at proposal and at apply; DEPRECATED never returns to ACTIVE) and PB-7. Against a malicious governance no register binds: the Hybrid floor (PB-13) is the bound, and the 2-day delay is notice rather than a guaranteed exit because governance can pause through it."
     },
     {
       "id": "T13",
@@ -444,7 +445,7 @@
       "name": "a valid proof paired with wrong public values",
       "status": "RESOLVED",
       "layers": ["A", "C"],
-      "binding": "SP1Verifier derives sha256(publicValues) (masked to 253 bits) and uses it as the Groth16 public input together with the vkey, so any change to the 160 bytes fails verification; the wrapper additionally compares four of the five words with its own context. Tests: NC-V3 (wrong public values refused), 'rejects a withdrawal if the digest is tampered in the proof'.",
+      "binding": "SP1Verifier binds the proof to the public values through their digest as a Groth16 public input together with the vkey (per the upstream SP1VerifierGroth16 source, sha256 masked to 253 bits; the source is not vendored here), so any change to the 160 bytes fails verification, which NC-V3 observed on the pinned runtime; the wrapper additionally compares four of the five words with its own context. Tests: NC-V3 (wrong public values refused), 'should reject a withdrawal if the digest is tampered in the proof'.",
       "residual": ""
     },
     {
@@ -493,7 +494,7 @@
       "status": "PARTIAL",
       "layers": ["B", "E"],
       "binding": "A consumer has exactly one pqVerifier at a time; a rotation is proposed, waits 172,800 s, is re-checked for code at apply and expires after 14 days unused (Sp1Td2VerifierRotation). After apply, proofs addressed to the old wrapper fail its verifierAddress word, so there is no window in which two identities authorize; already-queued operations finalize without re-verification.",
-      "residual": "Lifecycle states are not expressed on chain: the consumer cannot distinguish ACTIVE from DEPRECATED, and a compromised governance can install any admissible wrapper after the delay (the delay is the users' exit window, and the ECDSA floor still applies). The identity register and the recorded identity-at-queue (lifecycle, U-1) are design, not code."
+      "residual": "Lifecycle states are not expressed on chain: the consumer cannot distinguish ACTIVE from DEPRECATED, and a compromised governance can install any code-bearing verifier after the delay, pausing the Vault through the delay so that the delay is notice, not an exit; the ECDSA floor is the bound where it is mandatory. The identity register and the recorded admitting wrapper at queue (lifecycle, U-1) are design, not code."
     }
   ],
   "candidates": [
@@ -507,7 +508,7 @@
         "gas": "one Groth16 verification (pairing precompile) plus two ABI decodes per PQ-gated operation; not measured in this lane",
         "verifierLifecycle": "per-consumer timelocked rotation with the halt as the only emergency control; no memory of deprecated identities",
         "verifierKeyManagement": "none: PROGRAM_VKEY and the code-hash pin are immutable constants, changed only by deploying a new wrapper",
-        "upgradeRisk": "clean cutover (verifierAddress word), but downgrade to any non-halted identity is possible through governance",
+        "upgradeRisk": "clean cutover (verifierAddress word), but governance can install any code-bearing verifier after the delay, an accept-all one included: nothing binds the Vault to a ZKMLDSAVerifier, and only halted identities are refused",
         "calldataSize": "160-byte journal plus about 260 bytes of Groth16 proof plus ABI framing, per operation",
         "failureModes": "every failure is false at the wrapper and a revert at the Vault; nothing is written on failure",
         "operationalComplexity": "lowest: no state beyond the Vault's nonce"
@@ -545,12 +546,12 @@
     {
       "id": "D",
       "name": "stateless adapter as the PQ conjunct of the vNext Hybrid floor, with an identity register",
-      "summary": "Candidate A's stateless wrapper, consumed as the post-quantum conjunct behind the kernel's ecrecover floor (vNext section 4.3a, K-5), under the denial-only verifier plane (section 11) and the delayed lifecycle, plus a consumer-side identity register that gives every (codehash, vkey) identity one of the five lifecycle states, refuses DEPRECATED and REVOKED identities at proposal and apply, never returns from DEPRECATED to ACTIVE, and records the identity that admitted each queued operation.",
+      "summary": "Candidate A's stateless wrapper, consumed as the post-quantum conjunct behind an ECDSA floor the consumer evaluates itself (vNext section 4.3a; the kernel prototype's K-5 floor), under the denial-only verifier plane (section 11) and the delayed lifecycle, plus a consumer-side identity register keyed on the consumer-MEASURED target.codehash paired with the guard's self-reported identity, that gives every identity one of the five lifecycle states, refuses DEPRECATED and REVOKED identities and a zero guard identity at proposal and apply, never returns from DEPRECATED to ACTIVE, and records the admitting wrapper for each queued operation. The register's scope is honest process: it refuses re-installation of superseded programs and process drift; against a malicious governance the floor is the only bound.",
       "verdict": "RECOMMENDED",
       "analysis": {
-        "trustMinimization": "the PQ verdict can only deny: a compromised or unsound verifier cannot move funds while the floor holds",
+        "trustMinimization": "the PQ verdict can only deny where the floor is mandatory: a compromised or unsound verifier cannot move funds while the floor holds",
         "atomicity": "verification and nonce consumption in one transaction, as in A",
-        "downgradeResistance": "the register remembers deprecated identities, so a re-installation of an old program is refused (PB-7); the transition is one-way",
+        "downgradeResistance": "the register remembers deprecated identities by measured code hash, so an honest re-installation of an old program is refused (PB-7) and the transition is one-way; a malicious governance can still install any code-bearing verifier after the delay, bounded only by the floor",
         "upgradeSafety": "propose, delay, re-check code at apply, expire (existing); plus identity states and the identity recorded at queue, so REVOKED can refuse finalization of what it admitted",
         "compatibility": "IPQCVerifier for the v1 Vault today, IKernelPQVerifier for the kernel; the wrapper is unchanged",
         "cost": "one register read at proposal and apply, one identity word stored per queued operation; the verification path is A's",
@@ -578,11 +579,11 @@
     ],
     "scores": {
       "A": {
-        "trustMinimization": "STRONG",
+        "trustMinimization": "ACCEPTABLE",
         "proofOperationAtomicity": "STRONG",
         "replayResistance": "STRONG",
         "downgradeResistance": "WEAK",
-        "verifierUpgradeSafety": "ACCEPTABLE",
+        "verifierUpgradeSafety": "WEAK",
         "programIdentityBinding": "STRONG",
         "publicInputBinding": "STRONG",
         "operationalComplexity": "STRONG",
@@ -649,7 +650,7 @@
   },
   "recommended": {
     "candidate": "D",
-    "why": "D keeps everything A already binds (one verification, one nonce, one transaction, immutable program identity, code-hash-pinned verifier) and adds the two things A lacks: a denial-only position for the PQ verdict behind a floor the kernel evaluates itself, and a memory of deprecated identities so that old programs cannot return. It introduces no key, no attester, no registry of evidence and no second nullifier. Its scores are never BLOCKING and its two ACCEPTABLE lifecycle scores are the parts not yet built, named as implementation-lane prerequisites. The evidence supports this choice because A is built and tested, the vNext invariants it stands on are adjudicated, and the register is a small addition whose invariants (PB-7, PB-13, PB-14) are already stated as executable tests.",
+    "why": "D keeps everything A already binds (one verification, one nonce, one transaction, immutable program identity, code-hash-pinned verifier) and adds the two things A lacks: a denial-only position for the PQ verdict behind a floor the consumer evaluates itself, which is the only on-chain bound on a malicious governance, and a memory of deprecated identities, keyed on a measured code hash, so that old programs cannot return through honest process. It introduces no key, no attester, no registry of evidence and no second nullifier. Its scores are never BLOCKING and its two ACCEPTABLE lifecycle scores are the parts not yet built, named as implementation-lane prerequisites. The evidence supports this choice because A is built and tested, the vNext invariants it stands on are adjudicated, and the register is a small addition whose invariants (PB-7, PB-13, PB-14) are already stated as executable tests.",
     "rejected": [
       {
         "candidate": "A",
@@ -667,19 +668,20 @@
   },
   "identity": {
     "programIdentity": "PROGRAM_VKEY, SP1's verifying-key commitment to the designated ELF (designation mldsa65-withdrawal-d1: source commit, ELF sha256 2adddae7…, vkey 0x0001a4c6…); immutable per wrapper; a different program is a different wrapper.",
-    "verifierIdentity": "the wrapper's runtime identity keccak256(SP1_VERIFIER code hash, PROGRAM_VKEY), as VerifierRotationGuard computes it and WalletWallVault stores it in pqVerifierIdentity at install; SP1_VERIFIER itself is pinned to the v6.1.0 runtime code hash.",
+    "verifierIdentity": "two identities, kept apart. The guard identity is what VerifierRotationGuard.identityOf computes: keccak256(codehash of the SP1 verifier address the target REPORTS, the PROGRAM_VKEY the target REPORTS); WalletWallVault stores it in pqVerifierIdentity at install. It is self-reported, and it is zero for a target without the IHaltableVerifier surface (a mock, an attestation verifier, an accept-all contract), which the guard admits today without any identity check (identityOf returns zero and requireAdmissibleRotation returns before the halted-identity check). The measured identity is target.codehash, the EXTCODEHASH of the wrapper itself: ZKMLDSAVerifier embeds SP1_VERIFIER, PROGRAM_VKEY and HALT_PRINCIPAL as immutables, so one runtime code hash is one such triple, a fresh deployment of an old wrapper has the old code hash, and no impostor can carry a genuine wrapper's code hash without being that wrapper's bytecode. The design's register keys on the measured identity paired with the guard identity.",
     "consumerIdentity": "each consumer (WalletWallVault, the multisig vault, the simulator, the policy bridge, a vNext kernel clone) holds one pqVerifier address and one identity at a time; identity state lives in the consumer's register, never in the wrapper.",
     "whoMayAdd": "an identity enters PROPOSED when the consumer's governance (the contract owner; never the halt principal, which VerifierRotationGuard refuses as a principal) calls proposePQVerifier; it becomes QUALIFIED only with release evidence (designation, wrapper build fact in the append-only registry, two-host canonical rebuild, per-chain execution check, a fixture proof verified by the designated runtime); it becomes ACTIVE at applyPQVerifierUpdate after 172,800 s and a code re-check.",
-    "whoMayRemove": "governance deprecates (timelocked, one-way); the wrapper's HALT_PRINCIPAL revokes immediately and alone through halt(), which the guard turns into a refusal of that identity everywhere; nothing un-deprecates or un-revokes.",
-    "emergencyRevoke": "needed and present: halt() is one-way, immediate, consumer-wide through the guard, and its principal has no other power (denial only).",
-    "downgrade": "today possible to any non-halted identity through the rotation; the register makes DEPRECATED and REVOKED identities inadmissible at proposal and at apply, so a downgrade requires an identity that was never deprecated, which the lifecycle forbids for superseded programs.",
+    "whoMayRemove": "governance deprecates (timelocked, one-way) at its own consumer; the wrapper's HALT_PRINCIPAL revokes the wrapper instance immediately and alone through halt(), after which verify() is false for every consumer of that instance. The guard's identity refusal is per consumer: it covers the identity this consumer verified through and left while halted, not an identity some other consumer used, so a fresh wrapper of a halted identity is admissible today at a consumer that never verified through the halted instance. The design closes that with a permissionless recordHalt(wrapper) on each consumer's register, which probes halted() and records the wrapper's measured and guard identities as REVOKED there. Nothing un-deprecates or un-revokes.",
+    "emergencyRevoke": "needed; present for new operations and absent for queued admissions. halt() is one-way and immediate and only denies: it stops the permissionless immediate-withdraw path (up to largeTxThreshold per nonce) and PqOnly credential rotation through that instance. It does not reach finalizeWithdrawal, which never consults the verifier and is owner-gated (msg.sender must be the vault owner), so a queued admission by a later-revoked identity is still finalizable by its owner today (U-1).",
+    "downgrade": "today possible to any non-halted identity through the rotation, and indeed to any code-bearing target at all: the guard's own header says its checks stop an honest mistake, not a malicious owner, and that after the delay the owner can still install any code-bearing verifier. The register makes DEPRECATED and REVOKED measured identities inadmissible at proposal and at apply and refuses a zero guard identity (no SP1 surface) for SP1-lane consumers, so an honest re-installation of a superseded program, and process drift, are refused. Against a malicious governance the register is no bound: the only on-chain bound then is the Hybrid floor (PB-13), and the rotation delay is notice, not a guaranteed exit, because the same governance can pause through it.",
     "oldProofsAfterUpgrade": "unconsumed proofs addressed to the old wrapper fail its verifierAddress word after apply (no grace period: a prover re-proves against the new wrapper); authorizations already consumed and queued finalize without re-verification unless their admitting identity is REVOKED, in which case the design requires finalization to refuse (U-1).",
     "evidencePerChange": [
       "PQVerifierUpdateProposed(old, new, validAfter) and the apply event with the new pqVerifierIdentity (existing)",
       "VerifierHalted from the wrapper (existing) and the guard's refusal of the halted identity (existing)",
       "a designation record and a wrapper build fact in the append-only registry before QUALIFIED (existing formats, 0 facts today)",
-      "IdentityDeprecated / IdentityRevoked events from the consumer's register (design)",
-      "the identity recorded at queue for every queued operation (design)"
+      "IdentityDeprecated / IdentityRevoked events from the consumer's register (design), including the permissionless recordHalt(wrapper) path",
+      "a governance attestation of QUALIFIED carrying the release-evidence digest (design; governance-asserted, so auditability, not trust)",
+      "the admitting wrapper recorded at queue for every queued operation (design)"
     ]
   },
   "encoding": {
@@ -739,7 +741,7 @@
       "construction": "the consumer computes the digest from the caller's typed request and its own domain; it is both the guest's private message input and the journal's first word; the guest signs it with an empty ML-DSA context string"
     },
     "proofPayload": {
-      "abi": "abi.encode(bytes publicValues, bytes proofBytes), passed as the IPQCVerifier `proof` argument; decoded by an external pure function so malformed offsets become false, not a revert",
+      "abi": "abi.encode(bytes publicValues, bytes proofBytes), passed as the IPQCVerifier `proof` argument; decoded by an external pure function so malformed offsets become false, not a revert. The payload itself is not canonical and need not be: any ABI-valid (bytes, bytes) encoding decodes (trailing bytes included), and Groth16 proof bytes are re-randomizable (determinism NOT_CLAIMED); nothing keys on payload or proof bytes, so canonical form is required of publicValues alone",
       "selector": "proofBytes[0:4] == bytes4(VERIFIER_HASH) = 0x4388a21c for SP1Verifier v6.1.0; the verifier reverts on any other selector"
     },
     "verifierBinding": {
@@ -765,8 +767,8 @@
   },
   "replay": {
     "nullifier": "the per-owner nonce inside the digest (vault.nonce for WalletWallVault); no separate consumed-proof registry, operation-hash set or one-time authorization id is needed, because a digest with a consumed nonce can never be recomputed by the Vault",
-    "stateLocation": "the consumer: VaultOwner.nonce per owner, and for queued operations the pending map keyed by operationId (the digest) with the recorded admitting policy engine and, by design, the admitting verifier identity",
-    "consumedWhen": "in the transaction that accepts the proof: withdraw and rotateCredentials consume at execution; queueWithdrawal consumes at queue, and finalizeWithdrawal later executes the stored request by operationId without re-verifying the proof",
+    "stateLocation": "the consumer: VaultOwner.nonce per owner, and for queued operations one PendingWithdrawal per owner (pendingWithdrawals[owner]) that stores the operationId (the digest), the request fields, the admitting policy engine and, by design, the admitting wrapper",
+    "consumedWhen": "in the transaction that accepts the proof: withdraw consumes at execution (nonce check before the verifier); rotateCredentials consumes at execution (the current nonce is inside the digest, no separate check); queueWithdrawal consumes at queue, and finalizeWithdrawal later executes the stored request matched by operationId without re-verifying the proof",
     "atomicity": "verification, nonce advance and execution (or queue write) are one transaction; a revert anywhere undoes all of them",
     "onRevert": "nothing is consumed: the nonce, the pending map and the balance are unchanged, and the same proof remains usable",
     "retry": "a proof may be resubmitted until its nonce is consumed or its deadline passes; a proof is never retried after a success because the nonce has advanced",
@@ -777,7 +779,7 @@
     "notBound": ["block number or block hash", "state root", "issue timestamp", "block range", "a consumed-proof registry"]
   },
   "lifecycle": {
-    "mapping": "PROPOSED = proposePQVerifier called (pending, validAfter set); QUALIFIED = release evidence complete for the identity (designation, registry fact, two-host rebuild, per-chain check, fixture proof); ACTIVE = installed as pqVerifier after applyPQVerifierUpdate; DEPRECATED = superseded or declared deprecated by governance, refused for re-installation; REVOKED = halted by HALT_PRINCIPAL or revoked by governance, refused everywhere and, by design, refusing finalization of what it admitted. The current contracts implement PROPOSED, ACTIVE and (through halt) REVOKED; QUALIFIED is off-chain evidence today; DEPRECATED and the register are design.",
+    "mapping": "States are per consumer (U-6). PROPOSED = proposePQVerifier called (pending, validAfter set). QUALIFIED = a process state: release evidence complete for the identity (designation, registry fact, two-host rebuild, per-chain check, fixture proof); on chain it can exist only as a governance attestation carrying the evidence digest, asserted by the same authority that proposes, so it adds auditability, not trust. ACTIVE = installed as pqVerifier after applyPQVerifierUpdate. DEPRECATED = no longer installed at this consumer, or declared deprecated by its governance; refused for re-installation. REVOKED = the installed wrapper halted by HALT_PRINCIPAL, or revoked by governance, or recorded through recordHalt; refused at this consumer and, by design, refusing finalization of what it admitted. The current contracts implement PROPOSED, ACTIVE and (through halt, for the current or a left-while-halted identity) REVOKED, and the on-chain path today is PROPOSED to ACTIVE directly, with no qualification check; QUALIFIED, DEPRECATED, the register and the admitting-wrapper record are design.",
     "states": [
       {
         "id": "PROPOSED",
@@ -811,7 +813,7 @@
       },
       {
         "id": "DEPRECATED",
-        "meaning": "no longer installed anywhere, or declared deprecated by governance (one-way break declaration, vNext section 12); refused at proposal and at apply",
+        "meaning": "no longer installed at this consumer, or declared deprecated by its governance (one-way break declaration, vNext section 12); refused at proposal and at apply here",
         "mayProve": true,
         "mayVerify": true,
         "mayAuthorizeNew": false,
@@ -821,7 +823,7 @@
       },
       {
         "id": "REVOKED",
-        "meaning": "halted by HALT_PRINCIPAL (verify() returns false for every input) or revoked by governance; refused everywhere; finalization of operations it admitted is refused by design (U-1)",
+        "meaning": "the installed wrapper halted by HALT_PRINCIPAL (verify() returns false for every input, for every consumer of that instance), or revoked by this consumer's governance, or recorded here through recordHalt; refused at this consumer; finalization of operations it admitted is refused by design (U-1), not today",
         "mayProve": false,
         "mayVerify": false,
         "mayAuthorizeNew": false,
@@ -842,6 +844,13 @@
         "to": "DEPRECATED",
         "by": "governance withdraws the proposal (cancelPQVerifierUpdate) or the apply window expires",
         "evidence": "the cancel event or ProposalExpired; the register marks the identity withdrawn"
+      },
+      {
+        "from": "PROPOSED",
+        "to": "ACTIVE",
+        "by": "today's only on-chain path: governance applies after the delay with no qualification check (applyPQVerifierUpdate); the design's register refuses this transition unless a QUALIFIED attestation exists",
+        "delaySeconds": 172800,
+        "evidence": "PQVerifierUpdateProposed then the apply event (existing); the refusal is design"
       },
       {
         "from": "QUALIFIED",
@@ -889,17 +898,17 @@
     {
       "id": "PA3D-F4",
       "name": "Docker Desktop ran during the proof",
-      "finding": "The Docker Desktop service VM was active on the proving host; its initd and rpc.idmapd sent 3 packets to 192.168.65.x over vsock from another network namespace, counted as otherNamespaceEgress = 3 in the record.",
+      "finding": "Docker Desktop was active on the proving host. The record counts 3 sends or connects from namespaces neither the host's nor the proof container's to addresses beyond the VM, never refused (otherNamespaceEgress = 3), and states that whether they reached beyond the Windows host is unknown. The gate document's reading of the raw events, not a record judgement, attributes them to the Docker Desktop service VM (initd and rpc.idmapd to 192.168.65.x over vsock; one a TCP connect with eight SYN retransmits).",
       "disposition": "ACCEPTABLE_WITH_DOCUMENTED_BOUNDARY",
-      "why": "Production binding does not rely on prover-host hermeticity: a proof is sound or it is not, independent of what else ran on the host (T13). The sends were observed, counted and attributed to the VM, not to the prover. For release evidence the relevant host property is build reproducibility across two independent hosts, which digest equality establishes regardless of co-resident services.",
-      "boundary": "PA3D is described as CONTINUOUS_PARTIALLY_ATTRIBUTED, never as hermetic; the two-host rebuild, not host hygiene, is the reproducibility evidence."
+      "why": "Production binding does not rely on prover-host hermeticity: a proof is sound or it is not, independent of what else ran on the host (T13). The 3 attempts were observed and counted; their attribution to the service VM is the review's reading, and whether they reached beyond the Windows host is unknown, exactly as the record states. For release evidence the relevant host property is build reproducibility across two independent hosts, which digest equality establishes regardless of co-resident services.",
+      "boundary": "PA3D is described as CONTINUOUS_PARTIALLY_ATTRIBUTED, never as hermetic; the two-host rebuild, not host hygiene, is the reproducibility evidence; the record's doesNotEstablish clause is carried forward unchanged."
     },
     {
       "id": "PA3D-ATTRIBUTION-PARTIAL",
       "name": "partial process and network attribution (19 / 10 / 3)",
-      "finding": "19 unattributed kernel events (IPv6 MLD/ND/RS around the gnark container's veth), 10 dockerd packet-socket sends of unseen destination inside the container namespace, 3 Docker Desktop other-namespace sends; 0 unknown outcomes; 237 refused packets.",
+      "finding": "The record counts 19 refused packets that no observed attempt sent, 10 sends of unseen destination (packet, raw or AF_XDP sockets), 3 sends or connects from other namespaces to addresses beyond the VM that were never refused, 0 unknown outcomes, 237 refused packets, 162 attempts. The gate document's reading of the raw events (not a record judgement) attributes the 19 to IPv6 MLD/ND/RS kernel contexts around the gnark container's veth, the 10 to dockerd packet-socket sends inside the container namespace, and the 3 to the Docker Desktop service VM.",
       "disposition": "ACCEPTABLE_WITH_DOCUMENTED_BOUNDARY",
-      "why": "The residue bears on Layer D (how confidently one exercise's egress is attributed), not on Layers A to C, which the on-chain verifier establishes without reference to any host. Every count is recorded and bounded; nothing left the VM unrefused. The design places prover provenance outside the production statement on purpose.",
+      "why": "The residue bears on Layer D (how confidently one exercise's egress is attributed), not on Layers A to C, which the on-chain verifier establishes without reference to any host. Every count is recorded and bounded, and the record's own limit is carried forward unchanged: the 3 other-namespace attempts left the VM by a path the inet boundary does not see and were never refused, and whether they reached beyond the Windows host is unknown; every other attempt was refused or attributed. The design places prover provenance outside the production statement on purpose, which is why this residue can be accepted without being explained away.",
       "boundary": "Attribution evidence is release evidence for the exercise, never an input to verify(); a future gate may require COMPLETE attribution for release-evidence hosts, and that is a host-qualification decision, not a binding one."
     },
     {
@@ -955,7 +964,7 @@
       "name": "domain separator: the consumer computes the digest from its own EIP-712 domain; no function accepts a caller-supplied digest",
       "where": ["SOLIDITY", "UNIT"],
       "status": "PARTIAL",
-      "reference": "WalletWallVault computes _hashTypedDataV4 at every site; a structural test over every IPQCVerifier consumer (like Sp1Td2VerifierRotation's 'the source assigns pqVerifier only in…') is MISSING"
+      "reference": "WalletWallVault computes _hashTypedDataV4 at every site; PolicyControlBridge resolves pqVerifier and credentials from the digest-bound consumer; a structural test over every consumer, the bridge included (like Sp1Td2VerifierRotation's 'the source assigns pqVerifier only in…'), is MISSING"
     },
     {
       "id": "G-04",
@@ -1096,6 +1105,13 @@
       "where": ["INTEGRATION", "RELEASE_EVIDENCE"],
       "status": "MISSING",
       "reference": "not measured in this lane; the decision matrix scores gasCost qualitatively for that reason"
+    },
+    {
+      "id": "G-24",
+      "name": "identity-zero target: a rotation target without the SP1 identity surface (guard identity zero) is refused at proposal and apply by SP1-lane consumers; the register keys on the measured target.codehash",
+      "where": ["SOLIDITY"],
+      "status": "MISSING",
+      "reference": "VerifierRotationGuard.identityOf returns zero for such a target and requireAdmissibleRotation admits it today; the register is design"
     }
   ],
   "failures": [
@@ -1162,8 +1178,8 @@
     {
       "failure": "revoked program (wrapper halted or identity REVOKED)",
       "outcome": "DENY_FALSE",
-      "where": "ZKMLDSAVerifier.verify returns false first thing once halted; the guard refuses the identity at rotation; design: finalization of its admissions refused",
-      "detail": "WalletWallVault reverts InvalidPQSignature on new operations; U-1 covers already-queued ones"
+      "where": "ZKMLDSAVerifier.verify returns false first thing once halted; the guard refuses the identity at this consumer's rotation; design: finalization of its admissions refused",
+      "detail": "WalletWallVault reverts InvalidPQSignature on new operations through that instance; finalizeWithdrawal is untouched today (owner-gated, never consults the verifier): U-1"
     },
     {
       "failure": "verifier unavailable (pqVerifier address has no code, or the pinned SP1 verifier address lost its code)",
@@ -1229,10 +1245,10 @@
     },
     {
       "id": "PB-7",
-      "statement": "A DEPRECATED or REVOKED identity cannot authorize new operations: it is refused at proposal and apply, DEPRECATED never returns to ACTIVE, and a halted wrapper verifies nothing.",
+      "statement": "A DEPRECATED or REVOKED identity cannot authorize new operations at this consumer: keyed on the measured target.codehash, it is refused at proposal and apply together with any zero guard identity, DEPRECATED never returns to ACTIVE, and a halted wrapper verifies nothing. Scope: honest process; a malicious governance is bounded by PB-13, not by this invariant.",
       "tier": "T1",
       "closes": ["T12", "T20"],
-      "enforcedToday": "halt and guard refusal exist; DEPRECATED and the register are design (G-16, G-17)"
+      "enforcedToday": "halt and the guard's per-consumer halted-identity refusal exist; DEPRECATED, the measured-identity register and the identity-zero refusal are design (G-16, G-17, G-24)"
     },
     {
       "id": "PB-8",
@@ -1246,7 +1262,7 @@
       "statement": "Verifier failure or ambiguity fails closed: every non-success path of verify() is false, every false is a Vault revert, and no state is written on failure.",
       "tier": "T0",
       "closes": ["T18", "T20"],
-      "enforcedToday": "try/catch in verify(); 'rejects a withdrawal if the SP1 verifier fails'; 'returns false for malformed ABI proof payloads'"
+      "enforcedToday": "try/catch in verify(); 'should reject a withdrawal if the SP1 verifier fails'; 'returns false for malformed ABI proof payloads'"
     },
     {
       "id": "PB-10",
@@ -1257,10 +1273,10 @@
     },
     {
       "id": "PB-11",
-      "statement": "Every consumer computes the digest it passes to the verifier from its own typed data and domain; no function accepts a caller-supplied digest.",
+      "statement": "Every consumer resolves the digest, the credential and the verifier it uses from its own typed data and its own storage, or from a consumer address that is itself bound in the digest; no function accepts a caller-supplied digest, credential or verifier.",
       "tier": "T1",
       "closes": ["T03", "T05"],
-      "enforcedToday": "true of WalletWallVault by inspection; a structural test over all IPQCVerifier consumers is MISSING (G-03)"
+      "enforcedToday": "true of WalletWallVault by inspection; PolicyControlBridge resolves the verifier and credentials from a caller-supplied consumer that the digest binds (intent.consumer) with per-consumer effects; a structural test over all consumers is MISSING (G-03)"
     },
     {
       "id": "PB-12",
@@ -1281,7 +1297,7 @@
       "statement": "The verifier plane is denial-only: no verifier identity, state, transition or failure can move funds, change ownership or widen authorization.",
       "tier": "T0",
       "closes": ["T20"],
-      "enforcedToday": "halt() has no other power; rotation installs only; vNext section 11"
+      "enforcedToday": "NOT enforced in WalletWallVault: PqOnly is offered, the Vault's own comment calls the verifier the SOLE gate there, and any code-bearing verifier is installable after the delay, so a substituted verifier widens authorization today. halt() itself has no other power than denial. Enforced only where the floor is mandatory and evaluated by the consumer (the kernel prototype's K-5; vNext section 11)."
     },
     {
       "id": "PB-15",
@@ -1292,7 +1308,7 @@
     },
     {
       "id": "PB-16",
-      "statement": "Public values are a fixed-width static ABI tuple whose length and word validity the consumer checks before any cryptographic verification, and whose canonical form three independent implementations (guest, TypeScript, Solidity) agree on.",
+      "statement": "Public values are a fixed-width static ABI tuple whose length and word validity the consumer checks before any cryptographic verification, and whose canonical form three independent implementations (guest, TypeScript, Solidity) agree on; canonical form is required of the public values only, not of the (bytes, bytes) payload or the re-randomizable proof bytes, on which nothing keys.",
       "tier": "T1",
       "closes": ["T18", "T19"],
       "enforcedToday": "length and ABI-validated decode exist; the committed three-way fixture test is PARTIAL (G-02)"
@@ -1315,13 +1331,13 @@
   "unresolved": [
     {
       "id": "U-1",
-      "question": "Should a REVOKED identity refuse finalization of large withdrawals it admitted while ACTIVE? The design says yes (record the admitting identity at queue, like policyEngineAtQueue, and refuse at finalize); the owner confirms, since it changes which queued operations a halt stops.",
+      "question": "Should a REVOKED identity refuse finalization of large withdrawals it admitted while ACTIVE? Today finalizeWithdrawal never consults the verifier and is owner-gated (msg.sender must be the vault owner), so a forged-proof queued admission is finalizable only by that owner address while the live forged-proof exposure is the immediate path. The design says yes: record the admitting wrapper address at queue (like policyEngineAtQueue) and probe its halted() live at finalize, refusing if halted or REVOKED; the owner confirms, since it changes which queued operations a halt stops.",
       "blocking": false,
       "owner": "owner"
     },
     {
       "id": "U-2",
-      "question": "Which consumer is the production candidate for generation 1: WalletWallVault (IPQCVerifier, offers PqOnly) or the vNext kernel (IKernelPQVerifier, Hybrid floor, PqOnly rejected)? The design binds the same statement through either; PB-13 requires the latter's floor rule wherever the binding goes live.",
+      "question": "Which consumer contract is the production candidate for generation 1: WalletWallVault behind IPQCVerifier, or the vNext kernel behind IKernelPQVerifier? The design binds the same statement through either. Not part of the question: PqOnly is excluded from the production consumer as a requirement (PB-13), because a governance that can pause through the rotation delay leaves the floor as the only bound on a substituted verifier.",
       "blocking": false,
       "owner": "owner"
     },
