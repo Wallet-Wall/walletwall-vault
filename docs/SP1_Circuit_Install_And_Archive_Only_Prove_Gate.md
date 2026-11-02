@@ -1,4 +1,4 @@
-# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C, SP1-PA3A, SP1-PA3B, SP1-PA3C, SP1-PA3D0)
+# SP1 circuit install and archive-only prove gate (SP1-PA2A, SP1-PA2B, SP1-PA2C, SP1-PA3A, SP1-PA3B, SP1-PA3C, SP1-PA3D0, SP1-PA3C-Q1)
 
 **Status:** `SELF_HOSTED_PATH_EXERCISED`: SP1-PA3B (owner-authorized) made the first real WalletWall Groth16 proof of
 the designated program through the unchanged archive-only gate, on a Linux proving host with network egress refused,
@@ -1428,6 +1428,153 @@ npx tsx scripts/generate-sp1-impl-receipt.ts --supersession --lane SP1-PA2C \
 # and verify the record against the real archive wherever the archive is:
 npm run sp1:circuit-archive:inspect -- --archive v6.1.0-groth16.tar.gz --record evidence/zk/sp1-impl/proving-archives/v6.1.0-groth16.json
 ```
+
+## SP1-PA3C-Q1: the observer qualified for the next experiment (no proof generated)
+
+SP1-PA3C left two recommendations before SP1-PA3D: a soak of the observer's self-test and a self-test in a container.
+This lane is that qualification: whether the observer's path (`scripts/sp1-egress-observer.ts` capturing,
+`scripts/lib/sp1-egress-attribution.ts` deriving) is deterministic, reproducible, isolated and inspectable enough to
+carry the next controlled experiment. Nothing was proved, downloaded or pulled; no circuit, verifier, receipt, custody
+or policy semantics changed; SP1-PA3B's and SP1-PA3C's evidence is byte-identical. The record is
+[`evidence/zk/sp1-impl/observer-qualification.json`](../evidence/zk/sp1-impl/observer-qualification.json), derived
+by `npm run sp1:observer-qualification` from one committed observation
+([`observer-qualification-developer-workstation-wsl2.raw.json`](../evidence/zk/sp1-impl/observations/observer-qualification-developer-workstation-wsl2.raw.json),
+sha256 `5f6ab9ccdbac505b432c46a24571f2f660306e941b08561e3c200573b600efbe`) and checked by
+`npm run validate:sp1-observer-qualification`, which takes nothing on its word that public bytes can check: it regenerates the record from the observation,
+derives the committed self-test capture again on the machine it runs on and requires equality with both recorded
+derivations, hashes every repository-pinned component again, re-runs the negative controls, re-derives each soak's
+boundary from the rules it ran under, and recomputes the state. The suite does the same on every run
+(`test/Sp1ObserverQualification.test.ts`), so ordinary CI is one more environment deriving the fixture.
+
+State: `OBSERVER_QUALIFIED_FOR_PA3D` (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`: a qualified observer is a
+condition of the next experiment, never evidence of a binding). Next lane: SP1-PA3D, the owner-authorized v2 attributed
+proof exercise under the observer; not started here.
+
+### Two layers, and the trust boundary of each
+
+The kernel capture is host-bound: tracefs, kprobes and nftables act on the one shared WSL2 kernel, so the observer runs
+as root on the proving host and every capture is its own (nonce, boot, pids, stamps, socket pointers, ephemeral ports,
+counter values). The derivation is pure: the same raw bytes and the same stand-in host identity (the executed node's
+path, device and inode) must give the same normalized evidence and the same judgement anywhere Node runs. The
+qualification soaks the first where it runs and reproduces the second in a clean container; it does not pretend the
+first can be containerized without privileges (it cannot, and `--privileged` is not used anywhere).
+
+| Component | Class | Identity |
+|---|---|---|
+| observer, attribution library, workload, the committed capture, this lane's library, CLI, runners, loader, generator, schema | repository-pinned | sha256 of each file's LF bytes in the record's `components`; the observer is `d53c53106aa2…`, unchanged since SP1-PA3C |
+| container base image | digest-pinned | `node@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd` (Node 24.18.0, Alpine), already in the native engine since SP1-PA3B (`docker save`/`load`), never pulled here; one read-only manifest request by digest answered HTTP 200 with a body whose sha256 is the digest |
+| host Node.js (observer as root, workload as the user, host derivation through tsx) | version-pinned | `/opt/node/node-v24.16.0-linux-x64/bin/node` v24.16.0, sha256 `b2959781cc5a74c3…` |
+| nftables 1.0.9, Docker engine 29.1.3 (container path only) | version-pinned | distribution packages |
+| Linux kernel `6.18.33.1-microsoft-standard-WSL2` (tracefs, kprobes with BTF arguments, drop reasons), root, the proving host's WSL2 shared network namespace, `setpriv`/`ip`/`getent`/`cat` | host-dependent | the proving host of SP1-PA3B and SP1-PA3C |
+| npm registry (tsx and the suite, for the host derivation and the tests) | network-dependent | `package-lock.json` integrity hashes; nothing fetched at run time |
+| Docker Hub manifest lookup | network-dependent | read-only, by digest, once |
+| raw soak captures | host-dependent | retained operator-local (`root:prover` 0750), as SP1-PA3C's evidence model requires; digests and derivations committed |
+
+No component is `mutable-external-dependency` or `unknown-unverified` in the observer path. The container derivation
+has no network dependency at all: `--network none`, and the only interface the derivation saw from inside was `lo`.
+
+### The soaks
+
+A soak is twelve `self-test` captures by the committed observer (never `run`: no proof-exercise tool, no SP1) through
+a root, built-ins-only runner (`scripts/sp1-observer-soak.ts`), each under one of twelve variations: plain (six
+times), `TZ`, locale, `HOME`, umask 077, started from `/`, started from `/tmp`. Each capture is derived on the host
+(tsx) and in the clean container (below), and the two derivations are reconciled field by field. What the evidence
+model requires to repeat across captures is the stable projection: the observer's identity and probe set (the nonce
+templated out), its filters and configuration, the kernel, the host's interface names, uplinks and resolvers, the
+table's rules (counters stripped), the raw file names, no lost lines, no ring-buffer loss, a resolved lineage, the
+workload's own attempts (two refused TCP probes to `192.0.2.10:443`, one refused DNS query for
+`pa3c-selftest.example` to `192.0.2.53`, each in its phase), the count of refused packets they produced, zero
+unattributed drops and the counters reconciled. What varies by design is recorded, never normalized away: nonce,
+boot, pids, stamps, sockets, ports, counter values, other processes' attempts. Twelve distinct captures with one
+projection, all clean (no probe or instance left in the kernel, exactly three raw files, no observer failure), all
+agreeing with their container derivation, is a stable soak; a refusal is a verdict, judged beside the projection.
+
+| Soak | Boundary | Window (UTC) | Result |
+|---|---|---|---|
+| A | the self-test table (TEST-NET-1 and the resolvers refused, nothing else; the integration test's; rules sha256 `9882c36eb11531ed…`) | 2026-11-02 00:37:56 to 00:38:14 | 12/12 exit 0, clean, agreeing, one projection (`2d72da969a8c88bd…`), 3/3/3 reconciled every time; 11/12 refusal-free: in iteration 2 a KERNEL-scope attempt inside the window, and the frame it left through the uplink, passed that table and the derivation refused the capture as `EGRESS_LEAKED`, as it must under a table that refuses no real egress; the operator's inspection of the raw capture (operator-local) identified the host's own `chronyd` sending one NTP datagram to `91.189.91.112:123`, which the committed derivation records only as its scopes (`KERNEL`, `FRAME`) and the refusal |
+| B | the complete egress boundary (SP1-PA3B's shape, the one SP1-PA3D runs under: the resolvers refused first, the host's own addresses accepted, every other packet refused and counted at the output hook, every forwarded packet dropped and counted; VM-wide while it stands; rules sha256 `983fd257b5d068c3…`) | 2026-11-02 01:04:01 to 01:04:13 | 12/12 exit 0, clean, agreeing, refusal-free, one projection (`4fccceca9d39cfe2…`), 3/3/3 reconciled every time, no other scope's attempt in any window |
+
+The state needs a soak under the complete boundary that is stable in every respect (B is); a soak under the self-test
+table may be unstable only by another process's egress, and only when the derivation shows the workload's own attempts
+all refused and no leak in an own scope (A's iteration 2 is exactly that: scopes `KERNEL` and `FRAME`). Soak A's
+instability is therefore recorded as what it is, not excused: `stable: false`, `stableExceptThirdPartyLeaks: true`,
+`thirdPartyLeakIterations: [2]`, with the finding `Q1-SF8` naming it. A soak's boundary is derived from the rules its
+runner recorded, never from a label; the validator re-derives it and refuses a soak labelled otherwise.
+
+### The clean container
+
+`scripts/sp1-observer-qualification/container-derive.sh` runs the same CLI file, byte for byte, inside the pinned
+image with `docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --user
+<operator uid>:<gid> --pids-limit 64 --memory 1g`, the source (a `git archive` of the exact commit, never a working
+tree) at `/src:ro`, the raw captures at `/raw:ro`, the inputs at `/in:ro` and one writable `/out`. Nothing is
+installed: the image's Node strips the types itself and the repository's hook
+(`scripts/sp1-observer-qualification/node-ts-resolve-hook.mjs`, Node built-ins only) resolves the path's two
+extensionless imports, so no npm package and no network are involved. The derivation records what it can read of its
+own container, and the record carries it: uid and gid 1001, interfaces `lo` only, `CapEff 0000000000000000`,
+`NoNewPrivs 1`, the root filesystem mounted `ro`, environment keys `HOME HOSTNAME NODE_VERSION PATH PWD SHLVL
+YARN_VERSION` and no other. The validator refuses a container identity, the fixture's or any soak iteration's, that
+lacks any of these options or facts, adds a capability or a device, shares a host namespace, unconfines a security
+profile, mounts a Docker socket, a runtime socket directory, a home directory or a dotfile store, passes environment
+variables in, repeats `--user` or `--network`, or names its image by a tag; a soak iteration whose host derivation is
+not a host environment is refused too.
+
+### Host and container reconciled
+
+For the committed capture and every one of the 24 soak captures, the host derivation (tsx, Node 24.16.0, glibc) and
+the container derivation (Node 24.18.0's own type stripping, musl) are equal in every input and derived field:
+normalized digest, judgement, stable projection, refusals. The committed capture derives to
+`03cef7f6586fe918ce1cc64a57e67e91bbb028a91b8d61efc6c0aac42ee96a25` (the digest SP1-PA3C pinned) on the host, in the
+container and on the Windows workstation; the suite derives it again wherever it runs. Only environment identity
+differs between the two sides (kind, label, Node version, how TypeScript was executed, the container's facts), classed
+`EXPECTED_ENVIRONMENT_IDENTITY`; a source commit that differed would be `SOURCE_IDENTITY_MISMATCH`, an input
+`INPUT_IDENTITY_MISMATCH`, any derived field `SECURITY_RELEVANT_MISMATCH`, and any of those is disagreement. Equal
+exit codes count for nothing. Result: `HOST_CONTAINER_OBSERVER_AGREEMENT`.
+
+### Negative controls
+
+Nine controls and one positive control run on the proving host and again by the validator (which compares the two
+runs): one byte of the raw trace changed (`RAW_NOT_BOUND`); the recorded normalized digest changed
+(`EXPECTED_DIGEST_MISMATCH`); one normalized event edited after normalization (`NORMALIZED_NOT_BOUND`); the capture
+judged against another committed observer (`TOOL_NOT_BOUND`); a container derivation that disagrees
+(`SECURITY_RELEVANT_MISMATCH`); a fourth file in the raw directory (`RAW_DIR_UNEXPECTED_FILE`); an environment identity
+without its Node version (`ENVIRONMENT_INCOMPLETE`); an image named by a tag (`PROVENANCE_INVALID`); the `STOP` marker
+removed and the manifest re-bound to the new bytes (`OBSERVER_COVERAGE`). Each failed for its intended reason and the
+unmodified capture passed; no existing validation was weakened.
+
+### Security review
+
+Eight findings, none blocking, are in the record with their dispositions: the base image's provenance rests on the
+read-only manifest lookup (`Q1-SF1`); the host derivation depends on the npm registry through the lockfile while the
+container path depends on nothing (`Q1-SF2`); the repository's deployer `Dockerfile` names its base image by tag and
+installs packages unpinned, outside this path (`Q1-SF3`, reported, not changed); raw captures stay operator-local
+(`Q1-SF4`); RustSec `RUSTSEC-2026-0381`/`0382` keep #233's `CONDITIONAL` / `SHOULD_FIX_BEFORE_PRODUCTION` classification,
+since this lane compiles nothing with cargo, runs no SP1 host and opens no TLS connection (`Q1-SF5`, carried forward);
+the capture layer's trust boundary remains the proving host's root (`Q1-SF6`); the proving user's docker group remains
+root-equivalent on that host, Docker Desktop's engine stayed stopped (`Q1-SF7`); the host is not quiet, `chronyd`
+egresses during windows (`Q1-SF8`, measured). Not found in the observer path: `curl | sh`, mutable `latest` tags,
+unverified downloads, privileged containers, Docker socket, credential or SSH-agent exposure, `.env` loading, silent
+fetches, mutable Rust channels (no Rust ran), temporary files holding sensitive material, cleanup failures (every soak
+iteration left the kernel clean), or an observer artifact that could be confused with a proof (the validator refuses any
+proof-shaped field in the record).
+
+### What SP1-PA3C-Q1 establishes, and what it does not
+
+- Established: on the proving host, 24 captures by the committed observer in two boundaries were clean and, within
+  each soak, identical in their observer behaviour (the two tables differ, so the two soaks' projections do); every
+  capture derives to the same bytes on the host, in a clean container with no
+  network, no npm, no capabilities and no root, and (the committed capture) on another operating system; the harness
+  refuses each of nine named corruptions; the record is machine-checked from facts, and a measurement never grades
+  itself. The observer path may carry SP1-PA3D.
+- Not established: anything about proving (no proof was made or pretended); production readiness
+  (`PRODUCTION_SP1_BINDING` stays `NOT_ESTABLISHED`); that the capture layer is reproducible anywhere but a root on a
+  kernel with these facilities (it is host-bound by nature); that the proving host is quiet (it is not: expect refused,
+  attributed attempts of other scopes in a SP1-PA3D run, and decide whether to quiet `chronyd` first); a soak of hours
+  (two soaks of twelve captures each, seconds apart, were made; the record's model takes any count); that the soak
+  captures were what the operator says they were: their raw bytes stay operator-local, so the committed soak
+  derivations can be re-derived only where they live, and the committed capture is the one anchor anyone can re-derive
+  (SP1-PA3C's evidence model, unchanged).
+- Next lane: SP1-PA3D, owner-authorized, from a main commit holding this record, merge-committed; its run observation is
+  judged by SP1-PA3C's derivation and may be re-derived in this lane's container.
 
 ## Limits
 
