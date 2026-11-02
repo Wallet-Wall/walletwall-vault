@@ -323,6 +323,14 @@ calls itself a measurement prototype. The byte budget must be re-measured after 
 immutable slots against a `TARGET_KERNEL_CEILING` of **21,976** (headroom 3,645; verdict `TARGET PASS`),
 and the architecture's stop condition is **600 bytes** of headroom (`Vault_vNext_Architecture.md` §19.2).
 
+**MEASURED (2026-11-02).** The plane was built as two Generation-2 _candidates_ in
+`prototype/vnext-kernel/erc20-spend-plane/` (local mock asset only; nothing deployed) and weighed with the
+prototype's pinned compiler: **18,572 bytes** keeping the admissible-verifier requirement at genesis
+(+241; headroom 3,404 against the ceiling) and **18,629 bytes** accepting a null verifier when
+`requirePq == false` (+298; headroom 3,347). Both clear the stop condition by more than 2,700 bytes; the
+authority census passes with the Generation-1 manifest unchanged. Record and recommendation for §10 item 6:
+`prototype/vnext-kernel/ERC20_SPEND_PLANE_MEASUREMENT.md`. A measurement is not a production admission.
+
 ---
 
 ## 8. Attacks on the Model B verdict that still stand (dissent, recorded)
@@ -361,7 +369,11 @@ and the architecture's stop condition is **600 bytes** of headroom (`Vault_vNext
 4. Production constants (§7.3).
 5. Chain scope: **Base Mainnet (8453) only** in v1 (recommended; the relayer's chain allowlist and the
    EIP-712 domain both pin it).
-6. Whether the new generation accepts a null verifier when `requirePq == false` (measure first).
+6. Whether the new generation accepts a null verifier when `requirePq == false` (measure first — **measured**
+   2026-11-02: the null-verifier variant is **57 bytes larger**, not smaller, and it buys a verifier-less
+   state every later edge must special-case, while the kept requirement costs one permissionless root call
+   to create a verifier the ECDSA floor never consults; recommended: **keep the requirement**;
+   `prototype/vnext-kernel/ERC20_SPEND_PLANE_MEASUREMENT.md` §9).
 
 ---
 
