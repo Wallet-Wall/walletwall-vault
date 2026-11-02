@@ -1,0 +1,168 @@
+{
+  "$schema": "vnext-kernel-gen2-authority-manifest.v1",
+  "description": "Declared authority model for every externally reachable state-changing function of VaultKernelGen2Prototype and VaultKernelGen2FactoryPrototype. Written for Generation 2 rather than inherited: each entry is compared against the REAL checker's AST-derived census by generation-2/authority/census.ts, and each cut is re-derived from the candidate's own gates. Keyed by \"<Contract>:<selector-or-kind>\"; the census translates the contract names to the two names authority/check.ts is hard-coded to, in memory, and translates them back in its output. See authority/README.md for the vocabulary. `callerDiscretion` is new in this manifest: what a caller who holds no authority can still choose.",
+  "entries": {
+    "VaultKernelGen2Prototype:constructor": {
+      "signature": "constructor()",
+      "outcomes": ["GENESIS_AUTHORITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- runs once, at the implementation's own deployment",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "none",
+      "justification": "Sets _initialized on the implementation so it can never be claimed and never hold custody as a usable vault. Pins the containment constants' algebra. No kernel admin exists."
+    },
+    "VaultKernelGen2Prototype:9d288286": {
+      "signature": "initialize(GenesisConfig,bytes)",
+      "outcomes": ["GENESIS_AUTHORITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- a one-shot replay guard plus structural genesis validation against the arguments of this call; the factory calls it in the transaction that creates the clone",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "the whole genesis, on the caller's own clone only: a different genesis is a different address (I-COUNTERFACTUAL-IDENTITY-BINDING). The admitted asset is NOT a parameter: it is in the clone's code before this runs.",
+      "justification": "Variant A: a non-null, code-bearing verifier created by the root named in this clone's args is required at genesis even when requirePq is false (G-VERIFIER-ADMISSION-PROVENANCE edge 1; custody 10.6)."
+    },
+    "VaultKernelGen2Prototype:receive": {
+      "signature": "receive()",
+      "outcomes": [],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- unconditional native ingress with no logic",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "how much native value to give away",
+      "justification": "K-1. Under the admitted-asset plane native value is not spendable and leaves only through egress(address(0))."
+    },
+    "VaultKernelGen2Prototype:6bc44090": {
+      "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["ASSET_MOVEMENT"],
+      "expectedMechanisms": ["HYBRID"],
+      "expectedCut": "min(2,k) on a floor that mandates PQ; 1 on an ECDSA-only floor, which is the credential's own declared cut",
+      "orderingExceptionReason": "The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); }` is not the single-revert guard idiom, so the tracer reports it UNRESOLVED rather than accepting it. Verified: it runs after _authorise and _consume, the plane can only refuse, and it runs BEFORE the settlement snapshot, so nothing it does can move the observation. The settlement statements after it are classified EFFECT by the same tracer; they run after every gate. Declared, source-bound, minimal.",
+      "callerDiscretion": "whether and when to submit; every outcome-bearing parameter is signed. A relayer that rewrites recipient or amount invalidates the signature, and the asset is not a parameter.",
+      "justification": "AUTHORITY.md section 3 'Unauthorized asset control'. Generation 2 moves the code-bound admitted asset instead of native value, under the same gate at the same position."
+    },
+    "VaultKernelGen2Prototype:b809c196": {
+      "signature": "rotateCredential(CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["CREDENTIAL_REPLACEMENT"],
+      "expectedMechanisms": ["HYBRID", "POSSESSION_PROOF"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1 (census bodyIdenticalToGen1). HYBRID-authorised, and possession of both incoming factors is proven."
+    },
+    "VaultKernelGen2Prototype:35fae3fb": {
+      "signature": "setVerifier(address,SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["VERIFIER_REPLACEMENT"],
+      "expectedMechanisms": ["HYBRID"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit; pqKey on the arming edge is a public satisfiability witness",
+      "justification": "Function body identical to Generation 1. Provenance is a precondition reached through a view helper, so mechanism and cut are unchanged."
+    },
+    "VaultKernelGen2Prototype:5b704804": {
+      "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+      "outcomes": ["POLICY_CHANGE"],
+      "expectedMechanisms": ["HYBRID"],
+      "expectedCut": "min(2,k)",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1. A plane pointer is governance."
+    },
+    "VaultKernelGen2Prototype:b19138b8": {
+      "signature": "setGuardians(uint64,address[],bool[],QuorumProof,uint256,uint64)",
+      "outcomes": ["GUARDIAN_CHANGE"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1. I-GUARDIAN-AUTHORITY-CLOSURE."
+    },
+    "VaultKernelGen2Prototype:2eeceb79": {
+      "signature": "initiateRecovery(address,bytes32,address,QuorumProof,uint256,uint64)",
+      "outcomes": ["RECOVERY_START"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1. The accepted trust root D1; the only writer of a recovery proposal; edge 3 of the provenance rule."
+    },
+    "VaultKernelGen2Prototype:1271666a": {
+      "signature": "cancelRecovery(uint256,uint64,bytes)",
+      "outcomes": ["RECOVERY_CANCEL"],
+      "expectedMechanisms": ["FLOOR_ONLY"],
+      "expectedCut": "1, bounded by CHALLENGE_LIMIT = 2 per epoch (I-VETO-BOUND)",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1."
+    },
+    "VaultKernelGen2Prototype:02abce4e": {
+      "signature": "cancelRecoveryByQuorum(QuorumProof,uint256,uint64)",
+      "outcomes": ["RECOVERY_CANCEL"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1. K-9 mechanism B."
+    },
+    "VaultKernelGen2Prototype:bfd6b85c": {
+      "signature": "executeRecovery(CredentialChange)",
+      "outcomes": ["CREDENTIAL_REPLACEMENT", "VERIFIER_REPLACEMENT", "RECOVERY_COMPLETION"],
+      "expectedMechanisms": ["POSSESSION_PROOF"],
+      "expectedCut": "k, established at initiateRecovery; this step is permissionless once matured",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "none over the outcome: the incoming credential and verifier are the stored proposal",
+      "justification": "Function body identical to Generation 1. It makes no asset call."
+    },
+    "VaultKernelGen2Prototype:5aabecec": {
+      "signature": "enterContainment(QuorumProof,uint256,uint64)",
+      "outcomes": ["CONTAINMENT_OR_SAFE_STATE_CHANGE"],
+      "expectedMechanisms": ["QUORUM"],
+      "expectedCut": "k",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit",
+      "justification": "Function body identical to Generation 1. The two-start rolling rule."
+    },
+    "VaultKernelGen2Prototype:bb0cea8a": {
+      "signature": "bindMigration(Destination,QuorumProof,uint256,uint64,bytes)",
+      "outcomes": ["MIGRATION"],
+      "expectedMechanisms": ["QUORUM", "FLOOR_ONLY"],
+      "expectedCut": "k+1",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit; the destination is signed by both principals",
+      "justification": "Generation 2 adds two statements before any gate, refusing a destination with no code, the vault itself, and a hash the destination's code does not have: the preparation half of architecture 13.5's check. Its digest also commits to the credential generation, the plane and the safe state (H-10). None of this moves a cut or reads a principal. Binds no asset, no amount and no closed set."
+    },
+    "VaultKernelGen2Prototype:a4874d77": {
+      "signature": "retire()",
+      "outcomes": ["CONTAINMENT_OR_SAFE_STATE_CHANGE"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- permissionless with no discretion after BIND_DELAY; the decision was made at bindMigration",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "none",
+      "justification": "Function body identical to Generation 1. Terminal by authority; egress stays open."
+    },
+    "VaultKernelGen2Prototype:3eabc4e4": {
+      "signature": "egress(address)",
+      "outcomes": ["ASSET_MOVEMENT"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- permissionless with no discretion over recipient or amount after BIND_DELAY; the decision (k+1) was made at bindMigration",
+      "orderingExceptionReason": "The if/else over the asset class holds effect-bearing statements, so the tracer reports it UNRESOLVED. Verified: neither branch contains a gate and none is expected, and the new BIND_DELAY check and the code-hash re-check both precede the branch as plain single-revert guards.",
+      "callerDiscretion": "WHICH holding leaves and when, never where it goes and never how much of it: architecture 13.1 phase 3, so unsolicited assets are reachable with no on-chain enumeration",
+      "justification": "Generation 2 adds the delay that I-MIGRATION-SUBORDINATE-TO-RECOVERY requires, refuses a failed balance query, and publishes native value on an observed decrease (I-NO-FALSE-SETTLEMENT)."
+    },
+    "VaultKernelGen2FactoryPrototype:constructor": {
+      "signature": "constructor(address,uint64,address,address)",
+      "outcomes": ["GENESIS_AUTHORITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- runs once; implementation, generation, root and admitted asset become immutable and unreachable by every principal, the deployer included",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "the four immutables, once, for this factory alone (D8; H-32 discovery residual)",
+      "justification": "The admitted asset is consumed at construction exactly as D8 consumes the implementation. No setter of any of the four exists."
+    },
+    "VaultKernelGen2FactoryPrototype:1d0c155d": {
+      "signature": "deployVault(bytes32,GenesisConfig,bytes)",
+      "outcomes": ["COUNTERFACTUAL_IDENTITY_CREATION"],
+      "expectedMechanisms": [],
+      "expectedCut": "n/a -- permissionless; the salt binds the complete genesis authority and the args bind the asset, so a caller creates only the vault that exact configuration names",
+      "orderingExceptionReason": null,
+      "callerDiscretion": "whether and when to submit; the salt and genesis choose an address, and no caller can occupy another configuration's address",
+      "justification": "I-COUNTERFACTUAL-IDENTITY-BINDING. The asset is not a parameter: it comes from the factory's immutable."
+    }
+  }
+}

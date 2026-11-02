@@ -1,0 +1,809 @@
+{
+  "schema": "vnext-kernel-gen2-scanner-run.v1",
+  "note": "The reduction of one Slither run on generation-2/contracts. The raw file embeds absolute paths and is deliberately not committed: canonicalAllFindingsSha256 is what a re-run compares. Gen2TokenZoo.sol is a test fixture, never measured and never part of the candidate's identity. Adversarial behaviour is what it is for.",
+  "tool": {
+    "slitherCommit": "ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad",
+    "slitherVersion": "0.11.5",
+    "crypticCompile": "0.4.2",
+    "solc": "0.8.24+commit.e11b9ed9",
+    "target": "prototype/vnext-kernel/generation-2/contracts",
+    "flags": "--compile-force-framework solc --solc-remaps \"@openzeppelin/=node_modules/@openzeppelin/\" --solc-args \"--evm-version cancun --optimize --optimize-runs 200\" --exclude-dependencies --no-fail-pedantic"
+  },
+  "semanticConfigSha256": "5b3981fdab0285c5d62617b94e2277da179bacb13ffea3b8732f52a0acd0a3ce",
+  "analyzedSources": [
+    {
+      "path": "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol",
+      "sha256": "64d68a44c7f8c76a3d2314f6ca220b197da382863ca145624be9eb33e3dd4877"
+    },
+    {
+      "path": "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol",
+      "sha256": "af816868bcc5f134d2fbfd97607676633e8350e48858b2dfae41d1f3ab0c0fdd"
+    },
+    {
+      "path": "prototype/vnext-kernel/generation-2/contracts/interfaces/IKernelPlanes.sol",
+      "sha256": "b854520d71c2ff1b52273fdf82a78b98f40cf060deb2839e8dc97c80a2d271cc"
+    },
+    {
+      "path": "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol",
+      "sha256": "6fbed9daa76dee51c753ae2d7ee15cbbd21f47238d577d49f72f082ca44cf71c"
+    }
+  ],
+  "rawResults": 216,
+  "ownRawResults": 78,
+  "dependencyOnlyResults": 138,
+  "canonicalAllFindingsSha256": "8c7d49b7263e1b9eee0d7ef0231a6ea3addd259a036ed3c97d6ef04131183685",
+  "distinctOwnFindings": [
+    {
+      "semanticId": "0974fcfd44286011912be7b2c75743dbeb41719b3abe76cc806f56fc9527a6b7",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|Gen2SwitchableDestination.receive()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:379-386",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:383-383"
+      ],
+      "narrow": "ccc9fde65bd9023413fa2990631babeb0d8ca8cd3d548c995092c931712e8060",
+      "broad": "37ba1e3eb9936881f324b47531d4a0934c20b07e0db8bcbb5616871074a8d4a1",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "1188f2bd66c15eb70aa5d4890a5437c5f2bed960e69f273df619f56261d255a5",
+      "check": "reentrancy-benign",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-benign|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:134-134",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:135-135",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:136-136",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:155-155",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:158-158",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:161-161",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:164-164",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:167-167",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:170-170",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:171-171",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:172-172",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:174-174"
+      ],
+      "narrow": "84f4723004f4cda3fc03c69a8cc224a8f9d5edd02c50eb13bf5336198ef5da1b",
+      "broad": "7b676b583467aa205217f69f73e4c0abd32f8a7cc1f0a312494d4e8ffc74be66",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "140059f80ccf2ebcc396a86d5c5c27406c567ec970dc3addcfbda89cb1c4716c",
+      "check": "arbitrary-send-eth",
+      "impact": "High",
+      "confidence": "Medium",
+      "key": "arbitrary-send-eth|VaultKernelGen2Prototype.egress(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1879-1879"
+      ],
+      "narrow": "2d55941410174ecc247682d5a72529ea62723c4a3759c0eaf82b226599233d7d",
+      "broad": "b7333a42383721e16608a7a86a805df025eb5901d354687b5bbe94560f175c61",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "2b7b6fcfc8086435453b4672502edd832e7eaa1969593bffaf4d200f0a237bff",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-events|VaultKernelGen2Prototype.egress(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1879-1879",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1890-1890",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1897-1897"
+      ],
+      "narrow": "ac9ec4016f7514f7e9ebeceebf3f4ecd8fdd9be7a65ea53b8140ce0bf4ba2316",
+      "broad": "6ad5c19415b248f7bbcdeb6aa1f24ba29f9c4c0620ef986515a8ee5b4ea5f1cd",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "341e2ecaab15af5fab715e9925e876f49c0522f4eb8aab262dce2ec9834ecb49",
+      "check": "missing-zero-check",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "missing-zero-check|Gen2ProbingPolicy.arm(address,bytes,bool).target_",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:298-298",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:299-299"
+      ],
+      "narrow": "5ab57128330f5ded050a8979a9b99e7720f2d0a1c024e55adc2cb2295786ed68",
+      "broad": "8a66be992d26ba13cad54a1b21e372271421d9df4282d3e6476e1fe38e924bc0",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "3781ecccbaa8c78ff91a4f2948eee62f34b30a95298d4142d4c9fe9412d34398",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|Gen2ZooToken.balanceOf(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:111-121",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:114-117"
+      ],
+      "narrow": "5bcce7b6b9de44f4f33b4ce88421bcfbd63ce02daadd3aa1d565d0585f0b658f",
+      "broad": "d426335f0913085af43f39983f8bc2d7537789f8ae8126849f17f64d3143fdc4",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "3ed719ee3e550add8a9ba69b4937efd45a7687d7a932c7da1b1ae129f4bb7fe3",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|VaultKernelGen2Prototype._balanceOf(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1908-1912",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1909-1909"
+      ],
+      "narrow": "af1daddfaa5af121ea330f9887de734eac11b431e0e9a3ca863aace9534088d0",
+      "broad": "bd116deb941f36b6c86947c69b2dc69fc6b5efe2a70c4b150974b6cf22f09c58",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "4e03e916da30924b2e7c1aeaa084240a70ebaac332790b8d19f84bd85c425b71",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|VaultKernelGen2Prototype._admittedAsset()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:665-675",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:671-673"
+      ],
+      "narrow": "5a31cb6a68bd286b5e3fedd62c4e834a1186d506c24d3550603b140f1c7a7b4f",
+      "broad": "de5ee78b011c9ffb3506b955eac1969046d8538bb282d27623879dc3578b8aee",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "4f6cf758aa9a4324e4ed3ec2e2a6bc45cd1fba676c84162bedebeb7985c6be89",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.enterContainment(VaultKernelGen2Prototype.QuorumProof,uint256,uint64)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1705-1739",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1732-1732"
+      ],
+      "narrow": "c7c4598e3a2675f91df746ed66e32f8a5193ddcfa60ce081d27fac79c011c562",
+      "broad": "03747f493bec6bfd576a3a4ab4f07146905217205f472bb69a7edda5d488b86b",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "562097fd6b3b24dc34bdc7861e5e2b98a3c893412e93c0d6b49bd7fb03fc95b8",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|Gen2ZooToken._fireHook()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:123-129",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126"
+      ],
+      "narrow": "d7eb60bab9bf44552e19000760797a0eace8e72d4e48a09a32692d2668824c48",
+      "broad": "b75982a58703443929a66425cd55d6e9b472633c88fb80d45c25b0b614003d60",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "5f023f25abd74022b4649c551402c45a8862200412a53be494cde95e6b5c8dad",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|Gen2AtomicMigrator._call(address,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:354-361",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:357-359"
+      ],
+      "narrow": "60046950e3e8cc6acac7eb4c635ac225a4641e56ed133abac96ff8e3e9a0c5f9",
+      "broad": "0f446fc3901438226d1c1d6f42e72c6d80d563ee1dc8fdca927fd23d6c7fe4f7",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "6d7a63096f5e2cd4c55956437a84b8e085cad05b7ff436f1eacf36ea5c8b97c4",
+      "check": "reentrancy-benign",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-benign|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:127-127",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:128-128",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:178-178"
+      ],
+      "narrow": "0d31087f66184a8fc698c665e0e4ccf58515fec3b235e11ee9d7b666ffff2648",
+      "broad": "8d848cb247622bee4a7d85123c253e0b2f6fad986148f4b93469cc28e417527d",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "7185fad597eb696ccb13e59b63350009eb965e4f91835a5a292b4fbbb358d512",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.retire()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1839-1846",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1841-1841"
+      ],
+      "narrow": "d6f58020e46f568863942ffea74324c76fdbd5e926c15355b182aa8fd6c2eb54",
+      "broad": "189d935a01880e57bbc0955abbf9da0d4c38e49fa9e2138080db2b5a98f7c2c6",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "76e7920fe4870a05000394d1653faecb9a2121d069b3850c4e251438ae47e9ef",
+      "check": "unused-return",
+      "impact": "Medium",
+      "confidence": "Medium",
+      "key": "unused-return|VaultKernelGen2Prototype._attests(bytes32,address,bool,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1449-1478",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1459-1459"
+      ],
+      "narrow": "57e70d7bce2816f10cba9c6403be43ad1a250210dcb3335e848f8a647a6f6008",
+      "broad": "ef3654038661b88868fe4e762cd5f992fc1d1dc685e94b8f62128268438dfe18",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "791baa79464d5239d6e1f949deb1351f817d187ad5dfbcddd80cca2c5d69c745",
+      "check": "incorrect-equality",
+      "impact": "Medium",
+      "confidence": "High",
+      "key": "incorrect-equality|VaultKernelGen2Prototype.containmentUsedInWindow()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1760-1768",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1764-1764"
+      ],
+      "narrow": "ef5f1df5d72e27d9cb9802d757f292a3d7df4e3a38a72f9eff4fa419a80cdf3c",
+      "broad": "0b7f1a33d6c987777f3f00934e5a16cc6505a125f9dbd37e0a5e9a0e216a1c32",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "7a7b67f5a894f0de756a11d6a82f8ef2fd37815abc3b28777329c620f861c17b",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|Gen2ProbingPolicy.admit(address,address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:306-312",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:309-309"
+      ],
+      "narrow": "44425185e41e09bde2f2e130b05f1558c51035c20ba3c980be7711feee84c385",
+      "broad": "0390b4c0319da73e162bf9271c496ab523053b7465c4db27547379b4801276d4",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "7b3fb8693617357d4265c0411584d7c4032f2211307051b81efa4987d925d733",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.executeRecovery(VaultKernelGen2Prototype.CredentialChange)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1656-1692",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1660-1660",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1664-1664"
+      ],
+      "narrow": "e0116b33184daab92f638a941d8a9701a3faca19c18fc3056ba72a1769b37943",
+      "broad": "e504f7b5432cbb1a87ffb99b7280939ac12add3f637da18ba4f4a2b5413ca78f",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "7d1af0842ddbf05a8015a0b035c77d3c8974f28f18d9a6455904e3e40a35343f",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype._requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelGen2Prototype.CredentialChange)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:883-933",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:894-894"
+      ],
+      "narrow": "6ddb54a936e317fbf9068a68d660190b233714887254ccec0804fc2d191b0608",
+      "broad": "e8f2cde27803f5188d0143073fd1634e29bbd4c2338be6e43ac9978814bd07d1",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "86d86ce6df0f96c778d6172f4eb915f57a2922ee6be2586886571855bc37072b",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype._containedWithin(uint64,uint64,uint64)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1771-1777",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1772-1772",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1774-1774",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1775-1775",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1776-1776"
+      ],
+      "narrow": "af76646c9b084b61b0f9a646550c6e7d8bbcaf0cae7053f7cdcf89fabaa810b3",
+      "broad": "a80860f666ca85f646830f257c1f1bc6ddf1a69f5a0b2c0a23d4ca3f61b7f056",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "88401f038c241906ceb4cebfd22a3b7f4137857db0dfe170ae3eb653d71e58d7",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-events|VaultKernelGen2Prototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1001-1071",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1048-1048",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1052-1052"
+      ],
+      "narrow": "841e289df86d6af3be39dbe9fc9b8b410b96358d5c14c64dffb671e64d0741ed",
+      "broad": "b9f77fd649755facb33826dbbbc2152e0724e9be57def71c021c1a5f0fe43baf",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "8b0a1f0e34d711d8e9a5624596c19aca8684f5097e9bacb3d9aabea15ffaf0f6",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype._recoveryIsLive()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:992-994",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:993-993"
+      ],
+      "narrow": "89963130fbd43a1f13ee6732cfe544f6caac66df4ecdbc8aec3e04fc0f3e53c4",
+      "broad": "9b54b85c529def9f2e42f13eb2ef60a8c099304ea70bb568faac3bcfdec07e1b",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "91d9fec27be5a42d32a63ba31c56ab8d9d38a03366749e33cdbb7579645c562c",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|VaultKernelGen2Prototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1001-1071",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1067-1067"
+      ],
+      "narrow": "ed7e6498be341c7bea3f6fd11fae1bedd515c00ca2cb3cd2fa11afd6778c53a8",
+      "broad": "de978980c88e7f082ac3019a0a996d3e99cae0e3b80cb534bf9e19e72f0a321e",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "92ccdcad676396f3348d5a149373aa28fcf2e120ae30295c9ef7af9797b8da38",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|VaultKernelGen2Prototype._attests(bytes32,address,bool,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1449-1478",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1466-1475"
+      ],
+      "narrow": "4128409f6b23e460cb0ecd5f196e5550c6033b91a79e1c7a1194c7570d063145",
+      "broad": "8eae76cee92774167e97d568ffed783ec66715c4cff21c7f6f22ed15f7dde28a",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "952533697baef3e1b1df9dec52987cab1237937d36900378f59a993a95e5d6d9",
+      "check": "uninitialized-local",
+      "impact": "Medium",
+      "confidence": "Medium",
+      "key": "uninitialized-local|VaultKernelGen2Prototype._requireQuorum(bytes32,VaultKernelGen2Prototype.QuorumProof).counted",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1421-1421"
+      ],
+      "narrow": null,
+      "broad": "2608f840db12279398b4354b1689eb7c7cfc3878d77744e2caf153cb98ad1bf9",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "9525b599a1bc983bb18e48dd4e6da9779455fcdabf39aaa1dd45cc3660a06ea0",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|Gen2BindThenDestroy.run(bytes32,address,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:329-338",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:331-331"
+      ],
+      "narrow": "586719bf09e27ba89d0ea633c4409f362ec4d41989d2443fb4111804f2a7d895",
+      "broad": "3f30ba5bde83b5c95d7b6abcc60995375692146b329fe0b09f43c47fbf8291f3",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "95f9a8e7213aafa542de062b4487d53ba7ac4c06c94dd2255aec30d65373f3c4",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype._effectiveState()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:961-965",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:963-963"
+      ],
+      "narrow": "2ef9670337082090934ceb2a89d27e6bcd252171c9e5a681e98ca9c7d4f63365",
+      "broad": "675dd853520ea860fe28885bbb3cd5c8bc9ca8a9723eff4df40d9aa278920aea",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "a0a8157ac61e9535ccbf504dd59768bdcdaa1f6c61b5e25073a52abeeeee7c40",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|Gen2SignatureDebitToken._accepts(address,bytes32,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:255-261",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:257-259"
+      ],
+      "narrow": "38f66d06833f02152a85db33297a1af72def77de698a98b232040b4e490548b9",
+      "broad": "2c8b0714e6f2a245a8f0e5ab0d70ee75a18fe657f2b3725a56c85aaa8079cab7",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "a129d7d0e17a256531342bd0f1a8b47d33c9c08be86e277ddcdabb6dca4b4825",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|Gen2BindThenDestroy.run(bytes32,address,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:329-338",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:333-335"
+      ],
+      "narrow": "d3e726d881a843fc55a4e54d10c9fb7164d83324a0734a98c52f14aa0decc48a",
+      "broad": "cdb0612e29fae96456a1842b441b7d2d685d2386f259faec7d7f303560376ac3",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "a90fe4957b424cdabc39d9f5ae2c8bc0cd7441690356b9977a1d30c8a9b76be7",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|VaultKernelGen2Prototype.egress(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1879-1879",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1890-1890"
+      ],
+      "narrow": "e570f4e84fa30323fe784a2dbc4dd62e4b3737d82ffd71e56bb90a2e03788857",
+      "broad": "70c18565744a8a5309b2255956a5787f15c03bb3622914fd9f89d04b33dc9c4e",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "ae5f6575036b41d8d8e7074d0e5737a0a5c7296a110a508c81fdcc49b6b5e73c",
+      "check": "missing-zero-check",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "missing-zero-check|Gen2ZooToken.transfer(address,uint256).to",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-140",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:142-142"
+      ],
+      "narrow": "0fba950218f18fe576839066728545839e2c7feec5168c7f61df2ad3a1080086",
+      "broad": "6a1c940b4bae5b0300f2eb1fae9283211032a9bb0e6eee6fa0eb0a768af8e623",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "b0d43cd753e82b232ddf4200055353a989ea86b6f31aedcfdceed961b188274b",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-events|VaultKernelGen2FactoryPrototype.deployVault(bytes32,VaultKernelGen2Prototype.GenesisConfig,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol:118-127",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol:125-125",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol:126-126"
+      ],
+      "narrow": "0240c5a3ad857b333ff4c8cf14c18711582d1154c061bd7249df4543232c549e",
+      "broad": "c4c46274e1af0ca8afbb69c168d75626eaa578e61f2acc182e84ed2ce919aa72",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "b68fc7304e88cc7d646df3117cf181f85f2b1bd1e5f44c880f31894b244fcc06",
+      "check": "missing-zero-check",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "missing-zero-check|Gen2ZooToken.armHook(address,bytes,bool).target",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:83-83",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:84-84"
+      ],
+      "narrow": "115afba14c6ef8539ef95ff7ea8821e9d79d83152261b12ac30038018cd2560a",
+      "broad": "a17c7f25743ff9c5272a014fcbb0496593ae443b6be5f3ceb1340ef75a2709a5",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "b94634b7c11215272e859ba07ce00a9776701dcbc312e851c51d01b9c3e59864",
+      "check": "reentrancy-benign",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-benign|Gen2ZooToken._fireHook()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:123-129",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:127-127",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:128-128"
+      ],
+      "narrow": "7f804b17936c62b016a57dbdb86866a99caf0ac7864fd904d8bb465b0abcdc35",
+      "broad": "7e138b6e310bb6360f35a263416a3956c24085c22e5ed5e3b61aaa5dfb533fc1",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "bfaf77b98e998927eacebec25b41f979c28be03bb5727be7b161a52aefd9021d",
+      "check": "suicidal",
+      "impact": "High",
+      "confidence": "High",
+      "key": "suicidal|Gen2EphemeralDestination.destroy(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:319-321"
+      ],
+      "narrow": null,
+      "broad": "cb18ab410ccd6569ef7a111b67ad6a9c0da7d3a53509344fbbcc5b0c09cf3c6c",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "c0ec15f8ce154030ec383a55623d26dc73dab5d873ce8b75cff74b62acc24c0c",
+      "check": "reentrancy-events",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "reentrancy-events|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:137-137",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:155-155",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:158-158",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:161-161",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:164-164",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:174-174"
+      ],
+      "narrow": "13e1af62b1fb36200162565626a7367f5958a451366647b0383cf1c134db82a0",
+      "broad": "edb08065a983e8dd0decf02abeb49739239ca4958c64d5fa2d30d3aaf7708736",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "c6592dddfaa76d1f6b49ada3a271efd6ac5be383467a5aa27f197658b0d2bc4d",
+      "check": "missing-zero-check",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "missing-zero-check|VaultKernelGen2Prototype.setPolicy(address,uint256,uint64,bytes,bytes,bytes).policy",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1276-1276",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1294-1294"
+      ],
+      "narrow": "e7bac80625d8105e3df2e8712d7c059f1efe50afba3e6dc116e696bd61ca210a",
+      "broad": "6f39ab1c89c60f94cfcaf17aa373bd2f548d1fb86f96754d2b3c25a72639541f",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "c7dd91f8c518724a029e619a69d77a115043cb63dfa96615ad441e2cf71a575b",
+      "check": "reentrancy-no-eth",
+      "impact": "Medium",
+      "confidence": "Medium",
+      "key": "reentrancy-no-eth|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:125-125",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:178-178"
+      ],
+      "narrow": "a282bcaa2f32bdda6ed9e8d3dab71a6bb451b7b0657b011894f1b27af33b1c6a",
+      "broad": "d84bab985419aea63c2540c1ef48513283193360b65ef49f185c3a2cdddf9f31",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "ce4e543b2f9293e1e939db695e4a9608184a1cfd757aceafd5cb7d3a6742f60f",
+      "check": "events-maths",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "events-maths|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:172-172"
+      ],
+      "narrow": "ecf70640f04e47568426adcd006732261a68a8295b8177b5a6c0e5d4da0a7a41",
+      "broad": "5c9d57b0a0d2d21f499ea64ccf9d3ac8149dbb76122377261187119ec8208ac9",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "d0af5e6b26ba681e0e655bb0d2cff5390a05c6dcdfd952faec02912ae8cc9131",
+      "check": "too-many-digits",
+      "impact": "Informational",
+      "confidence": "Medium",
+      "key": "too-many-digits|Gen2UnsolicitedToken.balanceOf(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:211-218",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:214-214"
+      ],
+      "narrow": "87ebf8b7922006b61ab0f3fc69ede8ccb8b8ef0515af41a7f6438c0d910a513c",
+      "broad": "5b1179d25276932baa3dffca2c5560fcf47c46981b90a48705ffde7cd2a83469",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "d14072ed769d9455e01c225170aec6822c977a4cb6792a4669713cb3ab224257",
+      "check": "incorrect-equality",
+      "impact": "Medium",
+      "confidence": "High",
+      "key": "incorrect-equality|VaultKernelGen2Prototype._containedWithin(uint64,uint64,uint64)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1771-1777",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1772-1772"
+      ],
+      "narrow": "128e7772b3fdeb494f1c58b31025ace39e3cde8f65976a26b5f22ab8333edfce",
+      "broad": "b9b79865bf3bc8eabe19c462b4230cd6a716a2a59a7652f1b6e9cf1b83f58c2d",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "d3997ebd92cbc02ad43a4ec886a062f24c9ba0b75a8e24bfbffe975461c8e8c6",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:180-182"
+      ],
+      "narrow": "91b91efc1f677e5fea9f8e8865497b3142f286e66f1bc0153a20cb6eb70cee7f",
+      "broad": "6d012ec2abc4155c6e6767c56a20e30f09e6c8a2d7390b237e7d9ffb13bf9df9",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "dbc6918a3a2cc94d6d13827e15a0762efe2877eacaf1d403e9347905a19a137d",
+      "check": "locked-ether",
+      "impact": "Medium",
+      "confidence": "High",
+      "key": "locked-ether|Contract locking ether found:",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:328-345",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:344-344"
+      ],
+      "narrow": null,
+      "broad": "e6bc6060e2aa1efbe8fb898ff70fde9864e8d66ad781ba3926511611150a4a11",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "e15ee19180e9dd4812193e164a5267f1f5da12ff4bf14488ab9b47e6d53d368a",
+      "check": "cyclomatic-complexity",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "cyclomatic-complexity|Gen2ZooToken.transfer(address,uint256)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185"
+      ],
+      "narrow": null,
+      "broad": "139d2165c7846b1e66fc1a83e3f051064ac27e315a8f0db7a269dd8441f7cc19",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "e200714128c4b0070fc7a1efac5b1129cf7dee7e362dfa4f34b36d096501d30c",
+      "check": "uninitialized-local",
+      "impact": "Medium",
+      "confidence": "Medium",
+      "key": "uninitialized-local|VaultKernelGen2Prototype.egress(address).moved",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1874-1874"
+      ],
+      "narrow": null,
+      "broad": "12a396b0ba0c02a8ad9f37d6931996949c7f1dd38f75f4961bf5dd24b53ff856",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "e25507cf8dc051fb97d41b644e967475d6e4b45b3cc548bb967ff5387e210dc5",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype._consume(uint8,uint256,uint64)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:935-941",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:937-937"
+      ],
+      "narrow": "80e5048fd87bae65a9fafca0543e228b69d1044a77d3ecff3b9d9bcda57f9c8a",
+      "broad": "e769b8865e27540ef73e246b8e65b34c4d4da0a6c51d337890c8650e6642f429",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "e2d0019e7aa248097a2f28cbf65ff642bb30549f641cf4423456beeb9f7fd716",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.cancelRecovery(uint256,uint64,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1550-1573",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1555-1555"
+      ],
+      "narrow": "aead6bd0c9fc8bcc4293b42935867bbfe82b3de36b6ccbb12f22a532eb57db69",
+      "broad": "789c3b49bb162072000fb4828bfe1c234e19805f133dadd040b8e67f17a1bdfd",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "e54f8d39be9b2374d390df9a486c2e7df8f47f62c887300b383f2b828891900e",
+      "check": "low-level-calls",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "low-level-calls|Gen2AtomicMigrator._call(address,bytes)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:354-361",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:355-355"
+      ],
+      "narrow": "98f9629f57cd4e104a56db71d1b51a0cdf71222cb4b785822dc57a01c327c839",
+      "broad": "24456fce1a57230110c871a63d16c49c9b8581acacc02d41d966aaa56c591c3a",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "e8339e1a2ce709d66940b0d7f6dba13bdf893f98aae0d40000264685f2889c9f",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.containmentUsedInWindow()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1760-1768",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1762-1762",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1764-1764"
+      ],
+      "narrow": "03f00228cd465ce1796601880bdafb99072aee16d087a68dd67e35e2d606850a",
+      "broad": "35b74b09c1882e4e4ed6624131b4cbaad248da75cfbc064b70fa8ad24022dba2",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "ea948a5f99929dc3de7d934a29f03595d03b1361e7bf6d60a97fc05eda4e3734",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.egress(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1869-1869",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1872-1872"
+      ],
+      "narrow": "0e3fc32ac6b1c9103ed55e1212f30d7672d1d6a21a98e915955bbb5a6d41fb09",
+      "broad": "a2947821c7d5b8265d67f00af5b03305bf7b5e9597781e65d9df6836fe899830",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "ec8597ff283e6b8b80efae893b7c120c3b03e00b4d7a5465e692f0607c090f07",
+      "check": "missing-zero-check",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "missing-zero-check|Gen2BindThenDestroy.run(bytes32,address,bytes).vault",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:329-329",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:331-331"
+      ],
+      "narrow": "586719bf09e27ba89d0ea633c4409f362ec4d41989d2443fb4111804f2a7d895",
+      "broad": "73db1d7e13206bd144ad3ed5fbdabd274ba0254c8b3457e4473b91bfd0bdad5f",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    },
+    {
+      "semanticId": "f0ce344b34b634b1fb1c95d109ab5ac0d6203659152d11436c92239ceaf3cd4d",
+      "check": "timestamp",
+      "impact": "Low",
+      "confidence": "Medium",
+      "key": "timestamp|VaultKernelGen2Prototype.containmentWindowStart()",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1748-1751",
+        "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1750-1750"
+      ],
+      "narrow": "c608294ac91f7e70ed5bb9545f8850a00a1dfa9ca775ae503a901cd7b5e71c4b",
+      "broad": "a7053b296a048d79fc81ecd6a3d26a54cc02933531b0ab97a413f5f84c76501a",
+      "classification": "PASS_WITH_DECLARED_EXCEPTION"
+    },
+    {
+      "semanticId": "f1ec55a6ef8088c7e92b954f29e585ffd357eb13e67bd63bb1e5e7353c18bed3",
+      "check": "assembly",
+      "impact": "Informational",
+      "confidence": "High",
+      "key": "assembly|Gen2UnsolicitedToken.balanceOf(address)",
+      "sourceLocation": [
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:211-218",
+        "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:213-215"
+      ],
+      "narrow": "58003c1bf8fe4b139806ef52ffb92154c2f6a6e6ef2f40608d6ad4ee1b684164",
+      "broad": "35ef71caf711c563ccb99b8805355d4ec6a1a6f829b9fc51c6f3b855b4a5a7a3",
+      "classification": "TEST_FIXTURE_BY_DESIGN"
+    }
+  ],
+  "kernelAndFactoryFindings": 27,
+  "fixtureFindings": 25,
+  "severity": {
+    "Informational": 18,
+    "Low": 25,
+    "High": 2,
+    "Medium": 7
+  }
+}

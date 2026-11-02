@@ -1,0 +1,552 @@
+{
+  "_note": "What the two heavy suites did on the candidate, exact, because a campaign is deterministic. Each suite fails on any difference from this record. Written with G2_WRITE_RUN_RECORD=1.",
+  "campaign": {
+    "actions": {
+      "ADVANCE_TIME": 3419,
+      "ARM_HOOK": 323,
+      "BIND_MIGRATION": 529,
+      "CANCEL_RECOVERY": 931,
+      "CANCEL_RECOVERY_BY_QUORUM": 131,
+      "CROSS_ASSET_REPLAY": 199,
+      "DESTINATION_MODE": 34,
+      "DIRECT_TRANSFER": 1089,
+      "EGRESS_NATIVE": 476,
+      "EGRESS_OTHER": 145,
+      "EGRESS_TOKEN": 462,
+      "ENTER_CONTAINMENT": 1933,
+      "EXECUTE_RECOVERY": 1738,
+      "FACTORY_DEPLOY_TWIN": 48,
+      "FUND": 536,
+      "INITIATE_RECOVERY": 2165,
+      "RELAY_TAMPER": 201,
+      "REPLAY_PAST_CALL": 1449,
+      "RETIRE": 269,
+      "ROTATE_CREDENTIAL": 1213,
+      "SET_GUARDIANS": 925,
+      "SET_POLICY": 1095,
+      "SET_VERIFIER": 1137,
+      "SPEND": 3013,
+      "TOKEN_BLOCKLIST": 66,
+      "TOKEN_MODE": 207,
+      "TOKEN_REBASE": 74,
+      "UNSOLICITED_TRANSFER": 513
+    },
+    "campaigns": 448,
+    "knownDefectHits": {
+      "SD-4-ecdsa-only-shape-declaration-is-uncounted": 2
+    },
+    "lifecycle": {
+      "challengeAfterRecoveryReset": 9,
+      "exhaustedBudgetRefusal": 3,
+      "expiredCancellationRefused": 149,
+      "expiredRequestObserved": 2926,
+      "liveOverwriteRefused": 431,
+      "quorumCancelRefusedBelowQuorum": 9,
+      "quorumCancelSucceeded": 8,
+      "recoveryAfterRecovery": 67,
+      "reinitiationAfterCancellation": 51,
+      "reinitiationAfterExpiry": 75
+    },
+    "outcomes": {
+      "ASSET_MOVEMENT": 665,
+      "CONTAINMENT": 179,
+      "CREDENTIAL_REPLACEMENT": 247,
+      "GUARDIAN_TRANSITION": 126,
+      "MIGRATION_BINDING": 55,
+      "POLICY_CHANGE": 308,
+      "RECOVERY_QUORUM_CANCEL": 8,
+      "VERIFIER_REPLACEMENT": 251
+    },
+    "positiveControls": "3976/3976",
+    "reverts": {
+      "AlreadyBound": 90,
+      "BadNonce": 141,
+      "BadRoster": 850,
+      "BadSignature": 3390,
+      "BadState": 3446,
+      "ChallengeExhausted": 3,
+      "ContainmentBudget": 66,
+      "DestinationMismatch": 179,
+      "EMPTY_REVERT": 62,
+      "Expired": 256,
+      "FailedDeployment": 13,
+      "InadmissibleVerifier": 93,
+      "NO_HISTORY": 26,
+      "NoRecovery": 1879,
+      "NotBound": 1239,
+      "NotOrdered": 836,
+      "PolicyDenied": 113,
+      "QuorumNotMet": 1235,
+      "TooEarly": 368,
+      "TransferFailed": 241,
+      "verifier down": 214,
+      "VerifierDenied": 149
+    },
+    "seams": {
+      "assetBoundaryObserved": 11,
+      "balanceControlExercised": 190,
+      "balanceControlSkipped": 203,
+      "containmentExpiredThenSpend": 179,
+      "containmentThenSpendRefused": 348,
+      "crossAssetReplayRefused": 199,
+      "digestMovedOnSuccess": 790,
+      "directTransferObserved": 1089,
+      "drainSettled": 97,
+      "egressFalseSettlementRefused": 2,
+      "egressRefusedByFreeze": 3,
+      "egressTooEarlyRefused": 39,
+      "exitControlExercised": 55,
+      "failedTransferRefused": 146,
+      "hookFiredDuringTransfer": 53,
+      "hookNonceRead": 14,
+      "hookReplayRefused": 9,
+      "hostileHoldingVetoedNothing": 2,
+      "inadmissibleVerifierRefused": 85,
+      "lyingResultRefused": 11,
+      "migrationBound": 55,
+      "migrationEgressMoved": 79,
+      "nativeBounceRefused": 3,
+      "nativeRefusedByDestination": 1,
+      "nestedSpendRefusedByExactDelta": 5,
+      "policyDenialThenSpendRefused": 111,
+      "queryFailureRefused": 12,
+      "rebaseDustRefused": 19,
+      "recoveryThenSpend": 59,
+      "refusalMined": 14863,
+      "relayedSpendSettled": 240,
+      "relayTamperRefused": 201,
+      "repeatedDirectTransfer": 749,
+      "replayedEgressNoDiscretion": 23,
+      "replayedMigrationRefused": 9,
+      "replayedSpendRefused": 87,
+      "selfBindingRefused": 85,
+      "senderFeeRefused": 4,
+      "shortPayRefused": 11,
+      "spendAfterDirectTransfer": 469,
+      "unauthorizedSpendRefused": 957,
+      "verifierTransitionThenSpend": 223,
+      "wrongHashBindingRefused": 83
+    },
+    "successful": 9431,
+    "transitions": 24320,
+    "violations": 0
+  },
+  "generation2Catalogue": [
+    {
+      "campaigns": 3,
+      "id": "M-G2-1-caller-chooses-token",
+      "profile": "erc20-relayer",
+      "property": "P-SPEND-TOUCHES-ONLY-ASSET",
+      "seed": 47,
+      "step": 49,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-2-asset-outside-the-identity",
+      "profile": "erc20-direct-transfer",
+      "property": "P-ASSET-CODE-IDENTITY",
+      "seed": 11,
+      "step": 0,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-3-cross-asset-replay-accepted",
+      "profile": "erc20-cross-asset",
+      "property": "P-CROSS-ASSET",
+      "seed": 11,
+      "step": 6,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-4-boolean-trust",
+      "profile": "erc20-settlement-zoo",
+      "property": "P-SETTLEMENT-EXACT",
+      "seed": 11,
+      "step": 9,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-5-any-decrease-accepted",
+      "profile": "erc20-settlement-zoo",
+      "property": "P-SETTLEMENT-EXACT",
+      "seed": 11,
+      "step": 11,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 4,
+      "id": "M-G2-6-nonce-after-token-call",
+      "profile": "erc20-reentrancy",
+      "property": "P-NONCE-SPENT-BEFORE-TOKEN-RUNS",
+      "seed": 83,
+      "step": 63,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-7-failed-transfer-ignored",
+      "profile": "erc20-settlement-zoo",
+      "property": "P-SPEND-COMPLETED-TRANSFER",
+      "seed": 11,
+      "step": 53,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M-G2-8-migration-caller-chooses-token",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-EXIT-REACHABLE",
+      "seed": 47,
+      "step": 90,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 6,
+      "id": "M-G2-9-migration-caller-chooses-recipient",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-EGRESS-RECIPIENT",
+      "seed": 197,
+      "step": 67,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 2,
+      "id": "M-G2-10-relayer-identity-gains-privilege",
+      "profile": "stranger-only",
+      "property": "P-CUT/ASSET_MOVEMENT",
+      "seed": 29,
+      "step": 78,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 6,
+      "id": "M-G2-11-egress-delay-removed",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-MIGRATION-TIME",
+      "seed": 197,
+      "step": 13,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 6,
+      "id": "M-G2-12-lenient-balance-read",
+      "profile": "erc20-settlement-zoo",
+      "property": "P-SETTLEMENT-EXACT",
+      "seed": 197,
+      "step": 4,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-13-spend-nonce-not-consumed",
+      "profile": "replay-composition",
+      "property": "P-NONCE-ON-SPEND",
+      "seed": 11,
+      "step": 13,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-14-relayer-chooses-recipient",
+      "profile": "erc20-relayer",
+      "property": "P-SPEND-PAYS-RECIPIENT",
+      "seed": 11,
+      "step": 4,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-15-credential-moves-the-asset-in-place",
+      "profile": "erc20-policy-then-spend",
+      "property": "P-ASSET-CODE-IDENTITY",
+      "seed": 11,
+      "step": 0,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-16-quorum-moves-the-asset-in-place",
+      "profile": "quorum-without-credential",
+      "property": "P-ASSET-CODE-IDENTITY",
+      "seed": 11,
+      "step": 5,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-17-signed-recipient-unbound",
+      "profile": "erc20-relayer",
+      "property": "P-UNAUTHORISED-INPUT-NEVER-SETTLES",
+      "seed": 11,
+      "step": 6,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 2,
+      "id": "M-G2-18-spent-nonce-accepted",
+      "profile": "replay-composition",
+      "property": "P-NO-REPLAY",
+      "seed": 29,
+      "step": 3,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M-G2-19-replay-accepted-inside-the-transfer",
+      "profile": "erc20-reentrancy",
+      "property": "P-REENTRY-NO-REPLAY",
+      "seed": 47,
+      "step": 13,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-20-full-balance-unspendable",
+      "profile": "erc20-direct-transfer",
+      "property": "P-BALANCE-SPENDABLE",
+      "seed": 11,
+      "step": 90,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M-G2-21-verifier-provenance-unchecked",
+      "profile": "erc20-real-root-floor",
+      "property": "P-VERIFIER-PROVENANCE",
+      "seed": 11,
+      "step": 60,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 6,
+      "id": "M-G2-22-egress-publishes-the-whole-balance",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-EGRESS-PUBLISHES-THE-TRUTH",
+      "seed": 197,
+      "step": 17,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M-G2-23-dead-binding-accepted",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-EXIT-REACHABLE",
+      "seed": 47,
+      "step": 90,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 2,
+      "id": "M-G2-24-self-binding-accepted",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-EXIT-REACHABLE",
+      "seed": 29,
+      "step": 90,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 5,
+      "id": "M-G2-25-native-published-unobserved",
+      "profile": "erc20-migration-and-freeze",
+      "property": "P-EGRESS-PUBLISHES-THE-TRUTH",
+      "seed": 131,
+      "step": 83,
+      "verdict": "KILLED"
+    }
+  ],
+  "generation1Catalogue": [
+    {
+      "campaigns": 3,
+      "id": "M1-asset-path-one-root",
+      "profile": "ecdsa-only-attacker",
+      "property": "P-CUT/ASSET_MOVEMENT",
+      "seed": 47,
+      "step": 34,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 2,
+      "id": "M2-rotate-floor-only",
+      "profile": "ecdsa-only-attacker",
+      "property": "P-CUT/CREDENTIAL_REPLACEMENT",
+      "seed": 29,
+      "step": 14,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 4,
+      "id": "M3-setverifier-floor-only",
+      "profile": "ecdsa-only-attacker",
+      "property": "P-CUT/VERIFIER_REPLACEMENT",
+      "seed": 83,
+      "step": 65,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M4-setpolicy-floor-only",
+      "profile": "ecdsa-only-attacker",
+      "property": "P-CUT/POLICY_CHANGE",
+      "seed": 47,
+      "step": 9,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M5-recovery-replay-enabled",
+      "profile": "recovery-composition",
+      "property": "P-MODEL",
+      "seed": 11,
+      "step": 82,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M6-cancel-does-not-invalidate",
+      "profile": "recovery-maturation",
+      "property": "P-MODEL",
+      "seed": 11,
+      "step": 75,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 5,
+      "id": "M7-pop-checks-outgoing-key",
+      "profile": "recovery-maturation",
+      "property": "P-INCOMING-POSSESSION",
+      "seed": 131,
+      "step": 82,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M8-recovery-commitment-drops-verifier",
+      "profile": "recovery-maturation",
+      "property": "G-RECOVERY-COMMITMENT-BINDS",
+      "seed": 11,
+      "step": 20,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 4,
+      "id": "M9-duplicate-guardian-principal",
+      "profile": "quorum-without-credential",
+      "property": "P-CUT/GUARDIAN_TRANSITION",
+      "seed": 83,
+      "step": 73,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M10-nonce-not-consumed",
+      "profile": "replay-composition",
+      "property": "P-NONCE-ON-SPEND",
+      "seed": 11,
+      "step": 13,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M11-plane-denial-ignored",
+      "profile": "policy-plane-denial",
+      "property": "P-PLANE-SUBTRACTIVE",
+      "seed": 11,
+      "step": 54,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 4,
+      "id": "M12-migration-quorum-only",
+      "profile": "quorum-without-credential",
+      "property": "P-CUT/MIGRATION_BINDING",
+      "seed": 83,
+      "step": 1,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M13-quorum-counts-indices-not-principals",
+      "profile": "quorum-without-credential",
+      "property": "P-CUT/CONTAINMENT",
+      "seed": 11,
+      "step": 1,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M14-containment-budget-removed",
+      "profile": "containment-straddle",
+      "property": "G-CONTAINMENT-ROLLING-BUDGET",
+      "seed": 47,
+      "step": 25,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 10,
+      "id": "M23-tumbling-reset-restored",
+      "profile": "erc20-containment-straddle",
+      "property": "G-CONTAINMENT-ROLLING-BUDGET",
+      "seed": 29,
+      "step": 25,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M24-tracks-only-the-most-recent-start",
+      "profile": "containment-straddle",
+      "property": "G-CONTAINMENT-ROLLING-BUDGET",
+      "seed": 47,
+      "step": 25,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M15-effective-state-ignores-expiry",
+      "profile": "containment-composition",
+      "property": "G-EFFECTIVE-STATE-DERIVATION",
+      "seed": 11,
+      "step": 25,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M19-declaration-not-exhibited",
+      "profile": "ecdsa-only-floor",
+      "property": "G-PQ-COMMITMENT-SATISFIABLE",
+      "seed": 47,
+      "step": 8,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 3,
+      "id": "M20-declaration-unbound-from-the-commitment",
+      "profile": "ecdsa-only-floor",
+      "property": "G-PQ-COMMITMENT-SATISFIABLE",
+      "seed": 47,
+      "step": 8,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M21-admission-not-exhibited",
+      "profile": "commitment-forgery",
+      "property": "G-COMMITMENT-ATTESTED",
+      "seed": 11,
+      "step": 50,
+      "verdict": "KILLED"
+    },
+    {
+      "campaigns": 1,
+      "id": "M22-admission-bound-to-the-OUTGOING-commitment",
+      "profile": "commitment-forgery",
+      "property": "G-COMMITMENT-ATTESTED",
+      "seed": 11,
+      "step": 20,
+      "verdict": "KILLED"
+    }
+  ]
+}

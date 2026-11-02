@@ -1,0 +1,834 @@
+{
+  "schema": "vnext-kernel-gen2-scanner-evidence.v1",
+  "_WARNING": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. Admission of a kernel candidate approves no asset, no network and no real value.",
+  "evidenceSubject": {
+    "head": "19cca198071a6ace73bd790321c983e4fdb63b1d",
+    "tree": "500b780160b5d201dfbfac682ae44c8a09a3e36e"
+  },
+  "slither": {
+    "tool": {
+      "slitherCommit": "ff1bf3ff4a5ebdfa63e4b83cb4885f682624daad",
+      "slitherVersion": "0.11.5",
+      "crypticCompile": "0.4.2",
+      "solc": "0.8.24+commit.e11b9ed9",
+      "target": "prototype/vnext-kernel/generation-2/contracts",
+      "flags": "--compile-force-framework solc --solc-remaps \"@openzeppelin/=node_modules/@openzeppelin/\" --solc-args \"--evm-version cancun --optimize --optimize-runs 200\" --exclude-dependencies --no-fail-pedantic"
+    },
+    "semanticConfigSha256": "5b3981fdab0285c5d62617b94e2277da179bacb13ffea3b8732f52a0acd0a3ce",
+    "analyzedSources": [
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol",
+        "sha256": "64d68a44c7f8c76a3d2314f6ca220b197da382863ca145624be9eb33e3dd4877"
+      },
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol",
+        "sha256": "af816868bcc5f134d2fbfd97607676633e8350e48858b2dfae41d1f3ab0c0fdd"
+      },
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/interfaces/IKernelPlanes.sol",
+        "sha256": "b854520d71c2ff1b52273fdf82a78b98f40cf060deb2839e8dc97c80a2d271cc"
+      },
+      {
+        "path": "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol",
+        "sha256": "6fbed9daa76dee51c753ae2d7ee15cbbd21f47238d577d49f72f082ca44cf71c"
+      }
+    ],
+    "rawResults": 216,
+    "dependencyOnlyResults": 138,
+    "distinctOwnFindings": 52,
+    "canonicalAllFindingsSha256": "8c7d49b7263e1b9eee0d7ef0231a6ea3addd259a036ed3c97d6ef04131183685",
+    "severity": {
+      "Informational": 18,
+      "Low": 25,
+      "High": 2,
+      "Medium": 7
+    },
+    "findings": [
+      {
+        "semanticId": "0974fcfd44286011912be7b2c75743dbeb41719b3abe76cc806f56fc9527a6b7",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|Gen2SwitchableDestination.receive()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:379-386",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:383-383"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "1188f2bd66c15eb70aa5d4890a5437c5f2bed960e69f273df619f56261d255a5",
+        "check": "reentrancy-benign",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-benign|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:134-134",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:135-135",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:136-136",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:155-155",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:158-158",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:161-161",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:164-164",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:167-167",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:170-170",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:171-171",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:172-172",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:174-174"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "140059f80ccf2ebcc396a86d5c5c27406c567ec970dc3addcfbda89cb1c4716c",
+        "check": "arbitrary-send-eth",
+        "impact": "High",
+        "confidence": "Medium",
+        "key": "arbitrary-send-eth|VaultKernelGen2Prototype.egress(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1879-1879"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "The recipient is migration.destinationVault, written once by bindMigration under guardian quorum AND credential. Permissionless because a caller has no discretion over it.",
+        "whyStaticAnalysisCannotResolve": "Slither sees a value transfer to a storage-derived address reachable by anyone; that the address was fixed by a k+1 authorisation in an earlier transaction is a fact about histories.",
+        "dynamicProperty": "P-EGRESS-RECIPIENT",
+        "mutant": "M-G2-9-migration-caller-chooses-recipient"
+      },
+      {
+        "semanticId": "2b7b6fcfc8086435453b4672502edd832e7eaa1969593bffaf4d200f0a237bff",
+        "check": "reentrancy-events",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-events|VaultKernelGen2Prototype.egress(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1879-1879",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1890-1890",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1897-1897"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "The kernel emits after an external call by design: the nonce is consumed before the plane and the token run, the balance is snapshotted after the plane and read again after the token, and every nested call clears its own authority. The event order carries no authority. Egress holds no nonce and needs none: it has no discretion to replay, and a nested egress can only move holdings to the same destination (test/Gen2Reentrancy.test.ts).",
+        "whyStaticAnalysisCannotResolve": "As above.",
+        "dynamicProperty": "P-EGRESS-RECIPIENT",
+        "mutant": "M-G2-9-migration-caller-chooses-recipient"
+      },
+      {
+        "semanticId": "341e2ecaab15af5fab715e9925e876f49c0522f4eb8aab262dce2ec9834ecb49",
+        "check": "missing-zero-check",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "missing-zero-check|Gen2ProbingPolicy.arm(address,bytes,bool).target_",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:298-298",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:299-299"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "3781ecccbaa8c78ff91a4f2948eee62f34b30a95298d4142d4c9fe9412d34398",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|Gen2ZooToken.balanceOf(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:111-121",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:114-117"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "3ed719ee3e550add8a9ba69b4937efd45a7687d7a932c7da1b1ae129f4bb7fe3",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|VaultKernelGen2Prototype._balanceOf(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1908-1912",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1909-1909"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A read-only fixed-selector staticcall, strict since this lane: a failed query or a short return refuses, so a failure can never read as an observed zero (F-SETTLE).",
+        "whyStaticAnalysisCannotResolve": "Whether a query's answer is true is the token's behaviour.",
+        "dynamicProperty": "P-SETTLEMENT-EXACT",
+        "mutant": "M-G2-12-lenient-balance-read"
+      },
+      {
+        "semanticId": "4e03e916da30924b2e7c1aeaa084240a70ebaac332790b8d19f84bd85c425b71",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|VaultKernelGen2Prototype._admittedAsset()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:665-675",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:671-673"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "One mload of the third args field at a fixed offset, memory-safe: reading bytes 28..48 of the clone's own code.",
+        "whyStaticAnalysisCannotResolve": "The detector reports all assembly; that the offset is right is proven by reading the deployed code byte for byte.",
+        "dynamicProperty": "P-ASSET-CODE-IDENTITY",
+        "mutant": "M-G2-2-asset-outside-the-identity"
+      },
+      {
+        "semanticId": "4f6cf758aa9a4324e4ed3ec2e2a6bc45cd1fba676c84162bedebeb7985c6be89",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.enterContainment(VaultKernelGen2Prototype.QuorumProof,uint256,uint64)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1705-1739",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1732-1732"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "This comparison IS I-CONTAINMENT-BUDGET, stated on wall-clock time, at day scale.",
+        "whyStaticAnalysisCannotResolve": "The bound is a claim over rolling windows of a history.",
+        "dynamicProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "mutant": "M14-containment-budget-removed"
+      },
+      {
+        "semanticId": "562097fd6b3b24dc34bdc7861e5e2b98a3c893412e93c0d6b49bd7fb03fc95b8",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|Gen2ZooToken._fireHook()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:123-129",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "5f023f25abd74022b4649c551402c45a8862200412a53be494cde95e6b5c8dad",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|Gen2AtomicMigrator._call(address,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:354-361",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:357-359"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "6d7a63096f5e2cd4c55956437a84b8e085cad05b7ff436f1eacf36ea5c8b97c4",
+        "check": "reentrancy-benign",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-benign|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:127-127",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:128-128",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:178-178"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "7185fad597eb696ccb13e59b63350009eb965e4f91835a5a292b4fbbb358d512",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.retire()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1839-1846",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1841-1841"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Compares against the same bound. retire gates nothing a binding has not already opened; it freezes authority and egress stays open.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "P-MIGRATION-TIME",
+        "mutant": "M-G2-11-egress-delay-removed"
+      },
+      {
+        "semanticId": "76e7920fe4870a05000394d1653faecb9a2121d069b3850c4e251438ae47e9ef",
+        "check": "unused-return",
+        "impact": "Medium",
+        "confidence": "Medium",
+        "key": "unused-return|VaultKernelGen2Prototype._attests(bytes32,address,bool,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1449-1478",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1459-1459"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Destructures ECDSA.tryRecover's three values and uses recovered and err. The third is the error's detail, which adds nothing to a refusal.",
+        "whyStaticAnalysisCannotResolve": "The detector flags the ignored member.",
+        "dynamicProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "mutant": "M9-duplicate-guardian-principal"
+      },
+      {
+        "semanticId": "791baa79464d5239d6e1f949deb1351f817d187ad5dfbcddd80cca2c5d69c745",
+        "check": "incorrect-equality",
+        "impact": "Medium",
+        "confidence": "High",
+        "key": "incorrect-equality|VaultKernelGen2Prototype.containmentUsedInWindow()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1760-1768",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1764-1764"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "`containedUntil == 0` is the no-episode sentinel of a word written once per episode from a block timestamp.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every strict equality on a clock-derived word.",
+        "dynamicProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "mutant": "M24-tracks-only-the-most-recent-start"
+      },
+      {
+        "semanticId": "7a7b67f5a894f0de756a11d6a82f8ef2fd37815abc3b28777329c620f861c17b",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|Gen2ProbingPolicy.admit(address,address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:306-312",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:309-309"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "7b3fb8693617357d4265c0411584d7c4032f2211307051b81efa4987d925d733",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.executeRecovery(VaultKernelGen2Prototype.CredentialChange)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1656-1692",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1660-1660",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1664-1664"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "The half-open recovery window: 7 days to mature, 14 to expire. Day scale.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "P-MODEL",
+        "mutant": "M6-cancel-does-not-invalidate"
+      },
+      {
+        "semanticId": "7d1af0842ddbf05a8015a0b035c77d3c8974f28f18d9a6455904e3e40a35343f",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype._requireIncomingPossession(bytes32,address,bytes32,address,VaultKernelGen2Prototype.CredentialChange)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:883-933",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:894-894"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A detector artefact: this function reads no clock. The flagged comparisons are its signature and key checks, reached through a caller's timing guard.",
+        "whyStaticAnalysisCannotResolve": "Taint from the caller reaches it.",
+        "dynamicProperty": "P-INCOMING-POSSESSION",
+        "mutant": "M7-pop-checks-outgoing-key"
+      },
+      {
+        "semanticId": "86d86ce6df0f96c778d6172f4eb915f57a2922ee6be2586886571855bc37072b",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype._containedWithin(uint64,uint64,uint64)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1771-1777",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1772-1772",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1774-1774",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1775-1775",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1776-1776"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Pure interval arithmetic behind a view. No authority reads it.",
+        "whyStaticAnalysisCannotResolve": "Taint from the view's clock argument.",
+        "dynamicProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "mutant": "M24-tracks-only-the-most-recent-start"
+      },
+      {
+        "semanticId": "88401f038c241906ceb4cebfd22a3b7f4137857db0dfe170ae3eb653d71e58d7",
+        "check": "reentrancy-events",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-events|VaultKernelGen2Prototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1001-1071",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1048-1048",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1052-1052"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "The kernel emits after an external call by design: the nonce is consumed before the plane and the token run, the balance is snapshotted after the plane and read again after the token, and every nested call clears its own authority. The event order carries no authority.",
+        "whyStaticAnalysisCannotResolve": "Slither reports the ordering; serial equivalence of what a hook can do is a claim about all histories.",
+        "dynamicProperty": "P-NONCE-SPENT-BEFORE-TOKEN-RUNS",
+        "mutant": "M-G2-6-nonce-after-token-call"
+      },
+      {
+        "semanticId": "8b0a1f0e34d711d8e9a5624596c19aca8684f5097e9bacb3d9aabea15ffaf0f6",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype._recoveryIsLive()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:992-994",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:993-993"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "This IS I-RECOVERY-EFFECTIVE-LIVENESS.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "P-MODEL",
+        "mutant": "M5-recovery-replay-enabled"
+      },
+      {
+        "semanticId": "91d9fec27be5a42d32a63ba31c56ab8d9d38a03366749e33cdbb7579645c562c",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|VaultKernelGen2Prototype.execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1001-1071",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1067-1067"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "The new effect surface: one fixed selector on the code-bound asset. A low-level call is required, because the observed delta is the settlement rule and the token's boolean is deliberately not read: a typed call would revert on a token that returns nothing.",
+        "whyStaticAnalysisCannotResolve": "Whether the call settled is a property of the token's ledger, which no static analysis of the kernel can read.",
+        "dynamicProperty": "P-SETTLEMENT-EXACT",
+        "mutant": "M-G2-4-boolean-trust"
+      },
+      {
+        "semanticId": "92ccdcad676396f3348d5a149373aa28fcf2e120ae30295c9ef7af9797b8da38",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|VaultKernelGen2Prototype._attests(bytes32,address,bool,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1449-1478",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1466-1475"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A bounded-gas, bounded-returndata STATICCALL Solidity's high-level syntax cannot express, for I-GUARDIAN-FAULT-ISOLATION.",
+        "whyStaticAnalysisCannotResolve": "Fault isolation is a property under hostile callees.",
+        "dynamicProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "mutant": "M13-quorum-counts-indices-not-principals"
+      },
+      {
+        "semanticId": "952533697baef3e1b1df9dec52987cab1237937d36900378f59a993a95e5d6d9",
+        "check": "uninitialized-local",
+        "impact": "Medium",
+        "confidence": "Medium",
+        "key": "uninitialized-local|VaultKernelGen2Prototype._requireQuorum(bytes32,VaultKernelGen2Prototype.QuorumProof).counted",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1421-1421"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A uint256 local Solidity zero-initialises. A counter starting at zero is what is meant.",
+        "whyStaticAnalysisCannotResolve": "A style detector with no security content here; the quorum it counts is what the property watches.",
+        "dynamicProperty": "P-CUT/GUARDIAN_TRANSITION",
+        "mutant": "M13-quorum-counts-indices-not-principals"
+      },
+      {
+        "semanticId": "9525b599a1bc983bb18e48dd4e6da9779455fcdabf39aaa1dd45cc3660a06ea0",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|Gen2BindThenDestroy.run(bytes32,address,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:329-338",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:331-331"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "95f9a8e7213aafa542de062b4487d53ba7ac4c06c94dd2255aec30d65373f3c4",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype._effectiveState()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:961-965",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:963-963"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Containment self-expires on the wall clock with no principal acting, at a 3-day scale.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "G-EFFECTIVE-STATE-DERIVATION",
+        "mutant": "M15-effective-state-ignores-expiry"
+      },
+      {
+        "semanticId": "a0a8157ac61e9535ccbf504dd59768bdcdaa1f6c61b5e25073a52abeeeee7c40",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|Gen2SignatureDebitToken._accepts(address,bytes32,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:255-261",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:257-259"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "a129d7d0e17a256531342bd0f1a8b47d33c9c08be86e277ddcdabb6dca4b4825",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|Gen2BindThenDestroy.run(bytes32,address,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:329-338",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:333-335"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "a90fe4957b424cdabc39d9f5ae2c8bc0cd7441690356b9977a1d30c8a9b76be7",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|VaultKernelGen2Prototype.egress(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1879-1879",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1890-1890"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Two calls: a value transfer to the bound destination, and a fixed-selector transfer on a caller-named holding. The caller names which class leaves, and neither where it goes nor how much.",
+        "whyStaticAnalysisCannotResolve": "An arbitrary address is called, and only the composition with the binding's fixed recipient and the independent per-asset retry makes that safe.",
+        "dynamicProperty": "P-EXIT-REACHABLE",
+        "mutant": "M-G2-8-migration-caller-chooses-token"
+      },
+      {
+        "semanticId": "ae5f6575036b41d8d8e7074d0e5737a0a5c7296a110a508c81fdcc49b6b5e73c",
+        "check": "missing-zero-check",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "missing-zero-check|Gen2ZooToken.transfer(address,uint256).to",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-140",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:142-142"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "b0d43cd753e82b232ddf4200055353a989ea86b6f31aedcfdceed961b188274b",
+        "check": "reentrancy-events",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-events|VaultKernelGen2FactoryPrototype.deployVault(bytes32,VaultKernelGen2Prototype.GenesisConfig,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol:118-127",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol:125-125",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2FactoryPrototype.sol:126-126"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "The event follows a call into a clone this same transaction created, delegating to an implementation the factory fixed at construction. There is no third party in the call.",
+        "whyStaticAnalysisCannotResolve": "Slither does not know the callee was created one statement earlier from an immutable implementation.",
+        "dynamicProperty": "P-ASSET-CODE-IDENTITY",
+        "mutant": "M-G2-2-asset-outside-the-identity"
+      },
+      {
+        "semanticId": "b68fc7304e88cc7d646df3117cf181f85f2b1bd1e5f44c880f31894b244fcc06",
+        "check": "missing-zero-check",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "missing-zero-check|Gen2ZooToken.armHook(address,bytes,bool).target",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:83-83",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:84-84"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "b94634b7c11215272e859ba07ce00a9776701dcbc312e851c51d01b9c3e59864",
+        "check": "reentrancy-benign",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-benign|Gen2ZooToken._fireHook()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:123-129",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:127-127",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:128-128"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "bfaf77b98e998927eacebec25b41f979c28be03bb5727be7b161a52aefd9021d",
+        "check": "suicidal",
+        "impact": "High",
+        "confidence": "High",
+        "key": "suicidal|Gen2EphemeralDestination.destroy(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:319-321"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "c0ec15f8ce154030ec383a55623d26dc73dab5d873ce8b75cff74b62acc24c0c",
+        "check": "reentrancy-events",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "reentrancy-events|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:137-137",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:155-155",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:158-158",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:161-161",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:164-164",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:174-174"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "c6592dddfaa76d1f6b49ada3a271efd6ac5be383467a5aa27f197658b0d2bc4d",
+        "check": "missing-zero-check",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "missing-zero-check|VaultKernelGen2Prototype.setPolicy(address,uint256,uint64,bytes,bytes,bytes).policy",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1276-1276",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1294-1294"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "address(0) is the documented way back to the kernel floor, never to 'no restriction'.",
+        "whyStaticAnalysisCannotResolve": "The detector cannot know zero is a meaningful value here.",
+        "dynamicProperty": "P-PLANE-SUBTRACTIVE",
+        "mutant": "M11-plane-denial-ignored"
+      },
+      {
+        "semanticId": "c7dd91f8c518724a029e619a69d77a115043cb63dfa96615ad441e2cf71a575b",
+        "check": "reentrancy-no-eth",
+        "impact": "Medium",
+        "confidence": "Medium",
+        "key": "reentrancy-no-eth|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:125-125",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:126-126",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:147-147",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:178-178"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "ce4e543b2f9293e1e939db695e4a9608184a1cfd757aceafd5cb7d3a6742f60f",
+        "check": "events-maths",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "events-maths|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:172-172"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "d0af5e6b26ba681e0e655bb0d2cff5390a05c6dcdfd952faec02912ae8cc9131",
+        "check": "too-many-digits",
+        "impact": "Informational",
+        "confidence": "Medium",
+        "key": "too-many-digits|Gen2UnsolicitedToken.balanceOf(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:211-218",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:214-214"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "d14072ed769d9455e01c225170aec6822c977a4cb6792a4669713cb3ab224257",
+        "check": "incorrect-equality",
+        "impact": "Medium",
+        "confidence": "High",
+        "key": "incorrect-equality|VaultKernelGen2Prototype._containedWithin(uint64,uint64,uint64)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1771-1777",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1772-1772"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "`start == 0` is the same sentinel.",
+        "whyStaticAnalysisCannotResolve": "As above.",
+        "dynamicProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "mutant": "M24-tracks-only-the-most-recent-start"
+      },
+      {
+        "semanticId": "d3997ebd92cbc02ad43a4ec886a062f24c9ba0b75a8e24bfbffe975461c8e8c6",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:180-182"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "dbc6918a3a2cc94d6d13827e15a0762efe2877eacaf1d403e9347905a19a137d",
+        "check": "locked-ether",
+        "impact": "Medium",
+        "confidence": "High",
+        "key": "locked-ether|Contract locking ether found:",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:328-345",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:344-344"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "e15ee19180e9dd4812193e164a5267f1f5da12ff4bf14488ab9b47e6d53d368a",
+        "check": "cyclomatic-complexity",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "cyclomatic-complexity|Gen2ZooToken.transfer(address,uint256)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:140-185"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "e200714128c4b0070fc7a1efac5b1129cf7dee7e362dfa4f34b36d096501d30c",
+        "check": "uninitialized-local",
+        "impact": "Medium",
+        "confidence": "Medium",
+        "key": "uninitialized-local|VaultKernelGen2Prototype.egress(address).moved",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1874-1874"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Zero until assigned, and zero is the truth when nothing moved. A zero-balance egress publishes a zero.",
+        "whyStaticAnalysisCannotResolve": "Style detector.",
+        "dynamicProperty": "P-EGRESS-RECIPIENT",
+        "mutant": "M-G2-9-migration-caller-chooses-recipient"
+      },
+      {
+        "semanticId": "e25507cf8dc051fb97d41b644e967475d6e4b45b3cc548bb967ff5387e210dc5",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype._consume(uint8,uint256,uint64)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:935-941",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:937-937"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A signer's own deadline. Slack favours nobody but the signer who chose it.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "P-NO-REPLAY",
+        "mutant": "M-G2-13-spend-nonce-not-consumed"
+      },
+      {
+        "semanticId": "e2d0019e7aa248097a2f28cbf65ff642bb30549f641cf4423456beeb9f7fd716",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.cancelRecovery(uint256,uint64,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1550-1573",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1555-1555"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "Its only clock read is the liveness gate above.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "P-MODEL",
+        "mutant": "M6-cancel-does-not-invalidate"
+      },
+      {
+        "semanticId": "e54f8d39be9b2374d390df9a486c2e7df8f47f62c887300b383f2b828891900e",
+        "check": "low-level-calls",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "low-level-calls|Gen2AtomicMigrator._call(address,bytes)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:354-361",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:355-355"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "e8339e1a2ce709d66940b0d7f6dba13bdf893f98aae0d40000264685f2889c9f",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.containmentUsedInWindow()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1760-1768",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1762-1762",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1764-1764"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A view reporting clock-derived accounting. Nothing reads it for authority, and the oracle deliberately does not trust it.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "mutant": "M24-tracks-only-the-most-recent-start"
+      },
+      {
+        "semanticId": "ea948a5f99929dc3de7d934a29f03595d03b1361e7bf6d60a97fc05eda4e3734",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.egress(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1861-1898",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1869-1869",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1872-1872"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "This lane's admission delta: `block.timestamp < b.boundAt + BIND_DELAY`. The comparison IS I-MIGRATION-SUBORDINATE-TO-RECOVERY. Seven days dwarfs any producer's timestamp slack.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read; only the invariant says this one is meant.",
+        "dynamicProperty": "P-MIGRATION-TIME",
+        "mutant": "M-G2-11-egress-delay-removed"
+      },
+      {
+        "semanticId": "ec8597ff283e6b8b80efae893b7c120c3b03e00b4d7a5465e692f0607c090f07",
+        "check": "missing-zero-check",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "missing-zero-check|Gen2BindThenDestroy.run(bytes32,address,bytes).vault",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:329-329",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:331-331"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      },
+      {
+        "semanticId": "f0ce344b34b634b1fb1c95d109ab5ac0d6203659152d11436c92239ceaf3cd4d",
+        "check": "timestamp",
+        "impact": "Low",
+        "confidence": "Medium",
+        "key": "timestamp|VaultKernelGen2Prototype.containmentWindowStart()",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1748-1751",
+          "prototype/vnext-kernel/generation-2/contracts/VaultKernelGen2Prototype.sol:1750-1750"
+        ],
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "rationale": "A view reporting the rolling origin. Nothing reads it for authority.",
+        "whyStaticAnalysisCannotResolve": "The detector flags every clock read.",
+        "dynamicProperty": "G-CONTAINMENT-ROLLING-BUDGET",
+        "mutant": "M14-containment-budget-removed"
+      },
+      {
+        "semanticId": "f1ec55a6ef8088c7e92b954f29e585ffd357eb13e67bd63bb1e5e7353c18bed3",
+        "check": "assembly",
+        "impact": "Informational",
+        "confidence": "High",
+        "key": "assembly|Gen2UnsolicitedToken.balanceOf(address)",
+        "sourceLocation": [
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:211-218",
+          "prototype/vnext-kernel/generation-2/contracts/Gen2TokenZoo.sol:213-215"
+        ],
+        "verdict": "TEST_FIXTURE_BY_DESIGN"
+      }
+    ]
+  },
+  "codeql": {
+    "status": "NOT_RUN_LOCALLY",
+    "why": "CodeQL ships no Solidity extractor, so it cannot analyse the candidate at any commit: this is a permanent limit of the tool, not a gap in this run. It analyses this lane's TypeScript tooling in CI at publication. It is not installed on the machine this lane ran on."
+  },
+  "authorityScanner": {
+    "tool": "authority/check.ts, unchanged, driven through an in-memory rename",
+    "receipt": "GEN2_AUTHORITY_CENSUS.json"
+  },
+  "prohibitedPatterns": {
+    "tool": "test/Gen2Scanner.test.ts: opcode sweep of the runtime, and AST and source patterns",
+    "receipt": "this suite; it has no separate file"
+  },
+  "ciBoundary": "The repository's Slither CI job targets prototype/vnext-kernel/contracts only. Adding this tree to it is a workflow edit the App cannot push: an owner act at publication. Until then this receipt is a reproducible local run, recorded as such.",
+  "doesNotEstablish": [
+    "That the candidate is free of defects Slither's detectors cannot express.",
+    "Anything about a real token: the zoo is a fixture."
+  ]
+}

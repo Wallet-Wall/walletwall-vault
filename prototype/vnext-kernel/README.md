@@ -171,12 +171,24 @@ preferred. Verdict `MEASUREMENT_SUPPORTS_ADMISSION` — which is **not** a produ
 Record: [`ERC20_SPEND_PLANE_MEASUREMENT.md`](ERC20_SPEND_PLANE_MEASUREMENT.md); figures:
 `erc20-spend-plane/ERC20_SPEND_PLANE_MEASUREMENTS.json`; suites `test/Erc20SpendPlane*.test.ts`.
 
+## Generation-2 admission
+
+> **Not a production admission of any asset, and not an approval of any network or any real value.**
+
+Whether measured Variant A may become the canonical Generation-2 candidate was then adjudicated against a bar
+committed before the candidate existed. The candidate in `generation-2/` is Variant A plus the smallest change for each
+failing row this lane could close. **It is not canonical: the verdict is `GEN2_ADMISSION_BLOCKED`**, on four owner
+decisions where the kernel and the architecture's text disagree, on every kernel here including this one. Record:
+[`GEN2_ADMISSION.md`](GEN2_ADMISSION.md); map: [`generation-2/README.md`](generation-2/README.md); receipts
+`GEN2_*.json`; suites `test/Gen2*.test.ts` and `generation-2/test/`.
+
 ## Layout
 
 ```text
 prototype/vnext-kernel/
   README.md               this file
   erc20-spend-plane/      Generation-2 CANDIDATES: the admitted-asset ERC-20 spend plane, compiled in-test (see above)
+  generation-2/           The Generation-2 ADMISSION CANDIDATE, under review, with its campaign, census and receipts (see above)
   KERNEL_ADMISSION.md     which responsibilities enter the kernel, and why
   AUTHORITY.md            authority graph, closure, minimum cuts, call inventory
   hardhat.config.ts       ISOLATED build — separate sources/artifacts/cache

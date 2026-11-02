@@ -1,0 +1,14 @@
+{
+  "_note": "Exact local Hardhat figures from test/Gen2Measurement.test.ts, isolated accounts 13..15. Not a cost claim for any network and never converted to a currency.",
+  "gas": {
+    "deployImplementation": 4167698,
+    "deployFactory": 639852,
+    "deployVault": 210770,
+    "spendAuthorised": 108310,
+    "spendRefusedBadSignature": 38506,
+    "spendRefusedTransferFailure": 62325,
+    "spendRefusedLyingToken": 76413,
+    "migrationEgress": 71550,
+    "spendAfterRecovery": 108298
+  }
+}
