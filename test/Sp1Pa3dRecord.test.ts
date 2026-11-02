@@ -105,6 +105,13 @@ function exerciseOf(): ExerciseView {
         continuousObservation: "PRESENT",
         processAttribution: "COMPLETE",
         enforcement: "STATED_AND_COUNTED",
+        edgeProbes: "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED",
+        attemptsInWindow: 160,
+        refusedPackets: 230,
+        unattributedEvents: 0,
+        unattributedOutsideWindow: 0,
+        unknownOutcomes: 0,
+        unseenDestinations: 0,
       },
       derivedFrom: [
         `evidence/zk/sp1-impl/observations/proof-exercise-run-${host}.${token}.raw.json`,
@@ -209,6 +216,7 @@ describe("SP1-PA3D — the exercise record and its attribution chain", function 
       expect(ids).to.include("CIRCUIT_TO_RUN");
       expect(ids).to.include("PROOF_TO_VERIFICATION");
       expect(ids).to.include("OBSERVATIONS_TO_RECORD");
+      expect(ids).to.include("ATTRIBUTION_RESIDUE");
       expect(ids).to.include("QUALIFICATION_TO_OBSERVER");
       expect(ids).to.include("BOUNDARY_TO_RUN");
       expect(ids).to.include("MANIFEST_BEFORE_PROOF");
@@ -270,8 +278,34 @@ describe("SP1-PA3D — the exercise record and its attribution chain", function 
         "OBSERVATIONS_TO_RECORD",
       );
       expect(broken((e) => (e.record.lane = "SP1-PA3B")).join("\n")).to.include("OBSERVATIONS_TO_RECORD");
-      expect(broken((e) => (e.record.assurance.processAttribution = "PARTIAL")).join("\n")).to.include(
+      expect(
+        broken((e) => {
+          e.record.assurance.level = "EDGE_PROBES_ONLY";
+          e.record.assurance.continuousObservation = "ABSENT";
+        }).join("\n"),
+      ).to.include("OBSERVATIONS_TO_RECORD");
+      expect(broken((e) => (e.record.assurance.enforcement = "STATED")).join("\n")).to.include(
         "OBSERVATIONS_TO_RECORD",
+      );
+    });
+
+    it("carries partial attribution as a fact: it holds while every attempt's outcome is seen, and names the residue", function () {
+      const i = inputsOf();
+      const a = (i.exercise as ExerciseView).record.assurance;
+      a.level = "CONTINUOUS_PARTIALLY_ATTRIBUTED";
+      a.processAttribution = "PARTIAL";
+      a.unattributedEvents = 19;
+      a.unseenDestinations = 10;
+      const chain = chainOf(i);
+      expect(chain.holds).to.equal(true);
+      const residue = chain.links.find((l) => l.id === "ATTRIBUTION_RESIDUE");
+      expect(residue?.holds).to.equal(true);
+      expect(residue?.detail).to.include("19 refused packet");
+      expect(residue?.detail).to.include("10 send");
+      expect(residue?.detail).to.include("complete attribution is not claimed");
+      expect(broken((e) => (e.record.assurance.unknownOutcomes = 1)).join("\n")).to.include("ATTRIBUTION_RESIDUE");
+      expect(broken((e) => (e.record.assurance.unattributedOutsideWindow = 2)).join("\n")).to.include(
+        "ATTRIBUTION_RESIDUE",
       );
     });
 

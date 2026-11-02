@@ -108,7 +108,23 @@ export interface RecordView {
   schema: string;
   lane: string;
   proof: { publicValuesSha256: string; proofBytesSha256: string };
-  assurance: { level: string; continuousObservation: string; processAttribution: string; enforcement: string };
+  /** The v2 record's egress assurance as derived (scripts/lib/sp1-egress-attribution.ts assuranceOf), with its residue. */
+  assurance: {
+    level: string;
+    continuousObservation: string;
+    processAttribution: string;
+    enforcement: string;
+    edgeProbes: string;
+    attemptsInWindow: number;
+    refusedPackets: number;
+    /** Refused packets inside the window that no observed attempt sent (refused, not leaked; unattributed). */
+    unattributedEvents: number;
+    unattributedOutsideWindow: number;
+    /** Attempts to a resolver or beyond the VM whose outcome the capture does not show: the one class that may hide a leak. */
+    unknownOutcomes: number;
+    /** Sends whose destination the capture cannot read (packet, raw, AF_XDP sockets): counted, never read. */
+    unseenDestinations: number;
+  };
   derivedFrom: string[];
 }
 
@@ -341,8 +357,9 @@ export function chainOf(inputs: Pa3dInputs): Chain {
       rec.proof.proofBytesSha256 === r.proof.proofBytesSha256 &&
       rec.proof.publicValuesSha256 === r.proof.publicValuesSha256 &&
       rec.assurance.continuousObservation === "PRESENT" &&
-      rec.assurance.processAttribution === "COMPLETE" &&
-      rec.assurance.level === "CONTINUOUS_ATTRIBUTED",
+      rec.assurance.enforcement === "STATED_AND_COUNTED" &&
+      rec.assurance.edgeProbes === "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED" &&
+      (rec.assurance.level === "CONTINUOUS_ATTRIBUTED" || rec.assurance.level === "CONTINUOUS_PARTIALLY_ATTRIBUTED"),
     rec.schema !== EXERCISE_RECORD_SCHEMA_V2 || rec.lane !== LANE
       ? `the record is ${rec.schema} of ${rec.lane}`
       : !same([...rec.derivedFrom].sort(), [r.path, v.path].sort())
@@ -350,9 +367,31 @@ export function chainOf(inputs: Pa3dInputs): Chain {
         : rec.proof.proofBytesSha256 !== r.proof.proofBytesSha256 ||
             rec.proof.publicValuesSha256 !== r.proof.publicValuesSha256
           ? "the record carries other proof digests"
-          : rec.assurance.level !== "CONTINUOUS_ATTRIBUTED"
-            ? `the record's egress assurance is ${rec.assurance.level} (${rec.assurance.processAttribution} attribution)`
-            : "the v2 record derives from these two observations with continuous, complete attribution",
+          : rec.assurance.continuousObservation !== "PRESENT" ||
+              rec.assurance.enforcement !== "STATED_AND_COUNTED" ||
+              rec.assurance.edgeProbes !== "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED" ||
+              (rec.assurance.level !== "CONTINUOUS_ATTRIBUTED" &&
+                rec.assurance.level !== "CONTINUOUS_PARTIALLY_ATTRIBUTED")
+            ? `the record's egress assurance is ${rec.assurance.level} (continuous observation ${rec.assurance.continuousObservation}, enforcement ${rec.assurance.enforcement}, edge probes ${rec.assurance.edgeProbes}): not continuous, counted and observed`
+            : `the v2 record derives from these two observations with continuous observation, counted enforcement and ${rec.assurance.processAttribution} process attribution (${rec.assurance.level})`,
+  );
+  // Partial attribution is a fact the derivation computes, never hidden: refused packets no observed attempt sent and
+  // sends of unseen destination are counted as residue; what the chain requires is that no attempt in the window has
+  // an unknown outcome (the one class that may hide a packet past the boundary) and nothing unattributed lies outside
+  // the window. Complete attribution is not claimed where the record does not state it.
+  const a = rec.assurance;
+  link(
+    "ATTRIBUTION_RESIDUE",
+    `the run's ${a.attemptsInWindow} attempts and ${a.refusedPackets} refused packets`,
+    `residue: ${a.unattributedEvents} refused packets no attempt sent, ${a.unseenDestinations} sends of unseen destination, ${a.unknownOutcomes} unknown outcomes, ${a.unattributedOutsideWindow} unattributed outside the window`,
+    a.unknownOutcomes === 0 && a.unattributedOutsideWindow === 0,
+    a.unknownOutcomes !== 0
+      ? `${a.unknownOutcomes} attempt(s) to a resolver or beyond the VM have no seen outcome: a packet may have passed the boundary unobserved`
+      : a.unattributedOutsideWindow !== 0
+        ? `${a.unattributedOutsideWindow} refused packet(s) outside the window are unattributed`
+        : a.processAttribution === "COMPLETE"
+          ? "every refused packet is attributed and no send has an unseen destination or outcome: complete attribution"
+          : `attribution is ${a.processAttribution}: every attempt in the window has a seen outcome; the ${a.unattributedEvents} refused packet(s) no observed attempt sent were refused by the boundary, not sent past it, and the ${a.unseenDestinations} send(s) of unseen destination are counted as the method's residue (packet, raw or AF_XDP sockets, whose destination the capture cannot read); complete attribution is not claimed`,
   );
   link(
     "QUALIFICATION_TO_OBSERVER",
@@ -547,9 +586,16 @@ export const PA3D_NEGATIVE_CONTROLS: readonly NegativeControl[] = [
   {
     id: "NC-R9",
     kind: "VALIDATOR",
-    description: "the v2 record's egress assurance edited to partial attribution",
+    description: "the v2 record's egress assurance edited to an edge-probes-only one (continuous observation ABSENT)",
     expected: "REFUSED",
     expectedRefusal: "OBSERVATIONS_TO_RECORD",
+  },
+  {
+    id: "NC-R12",
+    kind: "VALIDATOR",
+    description: "the v2 record's attribution residue edited to name an attempt of unknown outcome",
+    expected: "REFUSED",
+    expectedRefusal: "ATTRIBUTION_RESIDUE",
   },
   {
     id: "NC-R10",
@@ -579,7 +625,15 @@ const MUTATIONS: Record<string, (i: Pa3dInputs) => void> = {
     i.preproof.value.refusals = ["HOST_BINARY_DIFFERS: the control's refusal"];
   },
   "NC-R8": (i) => ((i.exercise as ExerciseView).verification.acceptance = "REJECTED"),
-  "NC-R9": (i) => ((i.exercise as ExerciseView).record.assurance.processAttribution = "PARTIAL"),
+  "NC-R9": (i) => {
+    const a = (i.exercise as ExerciseView).record.assurance;
+    a.level = "EDGE_PROBES_ONLY";
+    a.continuousObservation = "ABSENT";
+    a.processAttribution = "ABSENT";
+    a.enforcement = "STATED";
+    a.edgeProbes = "REFUSED_BEFORE_AND_AFTER";
+  },
+  "NC-R12": (i) => ((i.exercise as ExerciseView).record.assurance.unknownOutcomes = 1),
   "NC-R10": (i) => ((i.exercise as ExerciseView).run.timing.startedAtUtc = "2000-01-01T00:00:00Z"),
   "NC-R11": (i) => (i.manifest.value.acquisitionGate = { verdict: "BLOCKED", blockers: ["the control's blocker"] }),
 };
@@ -688,7 +742,7 @@ export const RECORD_KEYS: readonly (keyof Pa3dRecord)[] = [
 ];
 
 export const ESTABLISHES =
-  "one real Groth16 proof of the designated program was made from the manifest's source commit, on the manifest's host, by the committed attributed measurement under the qualified root observer and the complete egress boundary, from the archive-only circuit with the digest-pinned gnark image and the canonical host binary, on the committed inputs; it commits to the statement's public values; the designated verifier accepted it and refused its tampered copy on a development chain; the v2 record derives from the two observations with continuous, complete process attribution; and every link from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the observer qualification compares equal committed digests";
+  "one real Groth16 proof of the designated program was made from the manifest's source commit, on the manifest's host, by the committed attributed measurement under the qualified root observer and the complete egress boundary, from the archive-only circuit with the digest-pinned gnark image and the canonical host binary, on the committed inputs; it commits to the statement's public values; the designated verifier accepted it and refused its tampered copy on a development chain; the v2 record derives from the two observations with continuous observation and counted enforcement, its process attribution complete or partial as that record states (the residue, refused packets no attempt sent and sends of unseen destination, counted and named, no attempt of unknown outcome); and every link from the source commit through the manifest, the attestation, the run, the proof, the verification and the record to the observer qualification compares equal committed digests";
 export const DOES_NOT_ESTABLISH =
   "any production binding (PRODUCTION_SP1_BINDING = NOT_ESTABLISHED): no production verifier, Solidity, custody or policy semantics changed, no mainnet call was made; nor proof-byte determinism (one proof was authorized, Groth16 proving is randomized); nor more than the v2 record's own egress assurance states (the raw capture stays with the operator and is re-checkable only by someone given it); nor the soundness of the Groth16 trusted setup behind the key; nor that this environment proves within the rotation delay at another time";
 
@@ -933,6 +987,13 @@ export function pa3dInputsFromRepo(repoRoot: string): Pa3dInputs {
           continuousObservation: record.egress.assurance.continuousObservation,
           processAttribution: record.egress.assurance.processAttribution,
           enforcement: record.egress.assurance.enforcement,
+          edgeProbes: record.egress.assurance.edgeProbes,
+          attemptsInWindow: record.egress.assurance.events?.attemptsInWindow ?? 0,
+          refusedPackets: record.egress.assurance.events?.refusedPackets ?? 0,
+          unattributedEvents: record.egress.assurance.unattributedEvents ?? 0,
+          unattributedOutsideWindow: record.egress.assurance.events?.unattributedOutsideWindow ?? 0,
+          unknownOutcomes: record.egress.assurance.events?.unknownOutcomes ?? 0,
+          unseenDestinations: record.egress.assurance.events?.unseenDestinations ?? 0,
         },
         derivedFrom: [...record.derivedFrom],
       },

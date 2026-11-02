@@ -77,7 +77,10 @@
       "additionalProperties": false,
       "required": ["path", "sha256", "verdict", "measuredAtUtc"],
       "properties": {
-        "path": { "type": "string", "pattern": "^evidence/zk/sp1-impl/observations/pa3d-preproof-[a-z0-9-]+\\.raw\\.json$" },
+        "path": {
+          "type": "string",
+          "pattern": "^evidence/zk/sp1-impl/observations/pa3d-preproof-[a-z0-9-]+\\.raw\\.json$"
+        },
         "sha256": { "$ref": "#/$defs/hex64" },
         "verdict": { "enum": ["PA3D_PREPROOF_ENVIRONMENT_VALID", "PA3D_PREPROOF_ENVIRONMENT_REFUSED"] },
         "measuredAtUtc": { "$ref": "#/$defs/utc" }
@@ -133,12 +136,33 @@
                 "assurance": {
                   "type": "object",
                   "additionalProperties": false,
-                  "required": ["level", "continuousObservation", "processAttribution", "enforcement"],
+                  "required": [
+                    "level",
+                    "continuousObservation",
+                    "processAttribution",
+                    "enforcement",
+                    "edgeProbes",
+                    "attemptsInWindow",
+                    "refusedPackets",
+                    "unattributedEvents",
+                    "unattributedOutsideWindow",
+                    "unknownOutcomes",
+                    "unseenDestinations"
+                  ],
                   "properties": {
-                    "level": { "type": "string", "minLength": 1 },
+                    "level": {
+                      "enum": ["EDGE_PROBES_ONLY", "CONTINUOUS_ATTRIBUTED", "CONTINUOUS_PARTIALLY_ATTRIBUTED"]
+                    },
                     "continuousObservation": { "enum": ["ABSENT", "PRESENT"] },
                     "processAttribution": { "enum": ["ABSENT", "COMPLETE", "PARTIAL"] },
-                    "enforcement": { "enum": ["STATED", "STATED_AND_COUNTED"] }
+                    "enforcement": { "enum": ["STATED", "STATED_AND_COUNTED"] },
+                    "edgeProbes": { "enum": ["REFUSED_BEFORE_AND_AFTER", "REFUSED_BEFORE_AND_AFTER_AND_OBSERVED"] },
+                    "attemptsInWindow": { "type": "integer", "minimum": 0 },
+                    "refusedPackets": { "type": "integer", "minimum": 0 },
+                    "unattributedEvents": { "type": "integer", "minimum": 0 },
+                    "unattributedOutsideWindow": { "type": "integer", "minimum": 0 },
+                    "unknownOutcomes": { "type": "integer", "minimum": 0 },
+                    "unseenDestinations": { "type": "integer", "minimum": 0 }
                   }
                 }
               }
