@@ -79,6 +79,30 @@ export const MIN_SOAK_ITERATIONS = 10;
 /** The two boundaries a soak may run under; only the complete one is the boundary SP1-PA3D runs under. */
 export const SOAK_BOUNDARIES = ["SELF_TEST_TABLE", "COMPLETE_EGRESS_BOUNDARY"] as const;
 export type SoakBoundary = (typeof SOAK_BOUNDARIES)[number];
+
+/**
+ * Which boundary a soak ran under, from the rules its runner installed (a label is never trusted): the self-test
+ * table refuses TEST-NET-1 (twice: TCP with a reset, the rest) and nothing else; the complete boundary accepts the
+ * host's own addresses and refuses and counts everything else at the output hook and drops every forwarded packet.
+ */
+export function boundaryOfRules(rules: string): SoakBoundary {
+  const selfTest =
+    rules.includes("ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset") &&
+    rules.includes("ip daddr 192.0.2.0/24 counter reject") &&
+    !rules.includes("fib daddr type local accept") &&
+    !rules.includes("hook forward");
+  const complete =
+    rules.includes("fib daddr type local accept") &&
+    rules.includes("meta l4proto tcp counter reject with tcp reset") &&
+    rules.includes("meta l4proto udp counter reject") &&
+    /\n\s+counter reject with icmpx admin-prohibited\n/.test(rules) &&
+    rules.includes("hook forward") &&
+    /\n\s+counter drop\n/.test(rules) &&
+    !rules.includes("192.0.2.0/24");
+  if (selfTest && !complete) return "SELF_TEST_TABLE";
+  if (complete && !selfTest) return "COMPLETE_EGRESS_BOUNDARY";
+  throw new Error("the table's rules are neither the self-test table nor the complete egress boundary");
+}
 export const CLI_SCRIPT_REL = "scripts/sp1-observer-qualification.ts";
 export const SOAK_SCRIPT_REL = "scripts/sp1-observer-soak.ts";
 export const GENERATOR_REL = "scripts/generate-sp1-observer-qualification.ts";
@@ -751,7 +775,7 @@ export interface Soak {
   boundary: SoakBoundary;
   startedAtUtc: string;
   finishedAtUtc: string;
-  table: { family: string; name: string; rulesSha256: string };
+  table: { family: string; name: string; rulesSha256: string; rules: string };
   iterations: SoakIteration[];
 }
 
@@ -1643,6 +1667,21 @@ export function qualificationErrors(value: unknown, ctx: ValidationContext): str
     errors.push(
       `STATE_MISMATCH: the facts derive OBSERVER_TOOLING_READY_VALIDATION_PENDING, the record says ${String(r.state)}`,
     );
+  }
+  // A soak's boundary is a fact of the rules it ran under, re-derived here from the committed rules text.
+  for (const s of expected.soaks) {
+    let derivedBoundary: SoakBoundary | null = null;
+    try {
+      derivedBoundary = boundaryOfRules(s.table.rules);
+    } catch (error) {
+      errors.push(`SOAK_BOUNDARY_MISMATCH: soak ${s.id}: ${(error as Error).message}`);
+    }
+    if (derivedBoundary !== null && derivedBoundary !== s.boundary)
+      errors.push(
+        `SOAK_BOUNDARY_MISMATCH: soak ${s.id} is labelled ${s.boundary} but its rules are the ${derivedBoundary}`,
+      );
+    if (sha256Hex(s.table.rules) !== s.table.rulesSha256)
+      errors.push(`SOAK_BOUNDARY_MISMATCH: soak ${s.id}'s rules are not the bytes rulesSha256 names`);
   }
   if (Array.isArray(r.environments)) {
     for (const e of r.environments as EnvironmentIdentity[])

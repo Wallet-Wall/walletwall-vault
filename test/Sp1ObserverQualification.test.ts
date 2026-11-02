@@ -29,6 +29,7 @@ import {
   REPOSITORY_PINNED_COMPONENTS,
   SOAK_VARIATIONS,
   STATES,
+  boundaryOfRules,
   deriveQualification,
   environmentErrors,
   leafDifferences,
@@ -195,13 +196,25 @@ function leakByAnotherProcess(it: SoakIteration, scope = "KERNEL"): void {
   }
 }
 
+/** The two tables scripts/sp1-observer-soak.ts installs (one resolver here), verbatim in shape. */
+const RESOLVER_RULE = "    ip daddr 10.255.255.254 counter reject\n";
+const RULES: Record<SoakBoundary, string> = {
+  SELF_TEST_TABLE: `table inet sp1obs_q1_a {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${RESOLVER_RULE}    ip daddr 192.0.2.0/24 meta l4proto tcp counter reject with tcp reset\n    ip daddr 192.0.2.0/24 counter reject\n  }\n}\n`,
+  COMPLETE_EGRESS_BOUNDARY: `table inet sp1obs_q1_b {\n  chain output {\n    type filter hook output priority -10; policy accept;\n${RESOLVER_RULE}    fib daddr type local accept\n    meta l4proto tcp counter reject with tcp reset\n    meta l4proto udp counter reject with icmpx port-unreachable\n    counter reject with icmpx admin-prohibited\n  }\n  chain forward {\n    type filter hook forward priority -10; policy drop;\n    counter drop\n  }\n}\n`,
+};
+
 function soakOf(id: string, boundary: SoakBoundary, iterations: SoakIteration[]): Soak {
   return {
     id,
     boundary,
     startedAtUtc: "2026-11-01T10:00:00Z",
     finishedAtUtc: "2026-11-01T10:01:00Z",
-    table: { family: "inet", name: `sp1obs_q1_${id.toLowerCase()}`, rulesSha256: sha256(`rules-${id}`) },
+    table: {
+      family: "inet",
+      name: `sp1obs_q1_${id.toLowerCase()}`,
+      rulesSha256: sha256(RULES[boundary]),
+      rules: RULES[boundary],
+    },
     iterations,
   };
 }
@@ -778,6 +791,26 @@ describe("SP1-PA3C-Q1 — observer qualification", function () {
     it("refuses a record made for another observer (stale evidence against a new source identity)", function () {
       const errors = qualificationErrors(record, { ...ctx, committedObserverSha256: "22".repeat(32) });
       expect(errors.join("\n")).to.match(/OBSERVER_CHANGED: re-qualify/);
+    });
+
+    it("derives each soak's boundary from the rules it ran under, and refuses a soak labelled otherwise", function () {
+      expect(boundaryOfRules(RULES.SELF_TEST_TABLE)).to.equal("SELF_TEST_TABLE");
+      expect(boundaryOfRules(RULES.COMPLETE_EGRESS_BOUNDARY)).to.equal("COMPLETE_EGRESS_BOUNDARY");
+      expect(() => boundaryOfRules("table inet x {\n}\n")).to.throw(
+        /neither the self-test table nor the complete egress boundary/,
+      );
+      const o = clone(observation);
+      o.soaks[0].boundary = "COMPLETE_EGRESS_BOUNDARY";
+      const c2 = validationContext(o);
+      expect(qualificationErrors(qualificationRecordFrom(c2), c2).join("\n")).to.match(
+        /SOAK_BOUNDARY_MISMATCH: soak A is labelled COMPLETE_EGRESS_BOUNDARY but its rules are the SELF_TEST_TABLE/,
+      );
+      const tampered = clone(observation);
+      tampered.soaks[1].table.rulesSha256 = sha256("other rules");
+      const c3 = validationContext(tampered);
+      expect(qualificationErrors(qualificationRecordFrom(c3), c3).join("\n")).to.match(
+        /SOAK_BOUNDARY_MISMATCH: soak B's rules are not the bytes rulesSha256 names/,
+      );
     });
 
     it("refuses a record whose pinned component bytes changed", function () {

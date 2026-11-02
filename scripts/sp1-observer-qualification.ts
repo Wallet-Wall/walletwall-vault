@@ -29,8 +29,8 @@ import {
   FIXTURE_HOST_EXECUTABLE,
   LANE,
   OBSERVATION_SCHEMA,
-  SOAK_BOUNDARIES,
   SOAK_SCHEMA,
+  boundaryOfRules,
   deriveQualification,
   fixtureRawFrom,
   inputIdentityOf,
@@ -249,8 +249,9 @@ function negativeControls(argv: string[]): void {
 
 interface SoakFile {
   schema: string;
-  id: string;
-  boundary: SoakBoundary;
+  /** Written by the runner since its second revision; the boundary is derived from the rules either way. */
+  id?: string;
+  boundary?: SoakBoundary;
   startedAtUtc: string;
   finishedAtUtc: string;
   kernelRelease: string;
@@ -302,10 +303,14 @@ function assemble(argv: string[]): void {
   const commit = fixtureHost.environment.sourceCommit;
   if (fixtureContainer.environment.sourceCommit !== commit) throw new Error("the fixture derivations name two commits");
   const files = soakGroups(argv).map((g) => ({ ...g, file: readJson<SoakFile>(g.soak) }));
-  const soaks: Soak[] = files.map(({ file, hostDir, containerDir, soak }) => {
+  const soaks: Soak[] = files.map(({ file, hostDir, containerDir, soak }, index) => {
     if (file.schema !== SOAK_SCHEMA) throw new Error(`${soak} is not a soak record`);
-    if (!(SOAK_BOUNDARIES as readonly string[]).includes(file.boundary))
-      throw new Error(`${soak}: boundary ${String(file.boundary)} is unknown`);
+    // The boundary is a fact of the rules the runner installed, never a label: derived from them; a declared label
+    // (when the runner wrote one) must agree. Soaks are lettered in the order given unless the runner named them.
+    const boundary = boundaryOfRules(file.table.rules);
+    if (file.boundary !== undefined && file.boundary !== boundary)
+      throw new Error(`${soak}: declares ${String(file.boundary)} but its rules are the ${boundary}`);
+    const id = file.id ?? String.fromCharCode(65 + index);
     const iterations: SoakIteration[] = file.iterations.map((it) => {
       const host = readJson<Derivation>(join(hostDir, `derivation-raw-${it.n}.json`));
       const container = readJson<Derivation>(join(containerDir, `derivation-raw-${it.n}.json`));
@@ -328,11 +333,16 @@ function assemble(argv: string[]): void {
       };
     });
     return {
-      id: file.id,
-      boundary: file.boundary,
+      id,
+      boundary,
       startedAtUtc: file.startedAtUtc,
       finishedAtUtc: file.finishedAtUtc,
-      table: { family: file.table.family, name: file.table.name, rulesSha256: file.table.rulesSha256 },
+      table: {
+        family: file.table.family,
+        name: file.table.name,
+        rulesSha256: file.table.rulesSha256,
+        rules: file.table.rules,
+      },
       iterations,
     };
   });
