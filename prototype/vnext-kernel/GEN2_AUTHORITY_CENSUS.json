@@ -1,0 +1,854 @@
+{
+  "_WARNING": "EXPERIMENTAL PROTOTYPE. NOT AUDITED. NOT PRODUCTION. NO DEPLOYMENT. Admission of a kernel candidate approves no asset, no network and no real value.",
+  "evidenceSubject": {
+    "head": "19cca198071a6ace73bd790321c983e4fdb63b1d",
+    "tree": "500b780160b5d201dfbfac682ae44c8a09a3e36e"
+  },
+  "schema": "vnext-kernel-gen2-authority-census.v1",
+  "question": "Does the Generation-2 candidate add a privileged principal or an unmodelled authority edge relative to Generation 1?",
+  "subjectInputs": {
+    "candidateKernelSourceSha256": "64d68a44c7f8c76a3d2314f6ca220b197da382863ca145624be9eb33e3dd4877",
+    "candidateFactorySourceSha256": "af816868bcc5f134d2fbfd97607676633e8350e48858b2dfae41d1f3ab0c0fdd",
+    "manifestSha256": "69946ea1adc964315a8e4a0db775ef4436811933628975485440ab1d18b09172",
+    "checkerSha256": "79e45cb870db91d527c4e8f55692046ad72420870298a6f7acd2e0b48e875b7f"
+  },
+  "checker": {
+    "tool": "prototype/vnext-kernel/authority/check.ts, unchanged",
+    "how": "runCheck on the candidate compiled under the two contract names the checker is hard-coded to (in-memory rename), against generation-2/authority/gen2-authority-manifest.json",
+    "summary": {
+      "total": 18,
+      "pass": 16,
+      "passWithDeclaredException": 2,
+      "failed": 0,
+      "byVerdict": {
+        "PASS": 16,
+        "PASS_WITH_DECLARED_EXCEPTION": 2
+      }
+    },
+    "rows": [
+      {
+        "key": "VaultKernelGen2Prototype:constructor",
+        "signature": "constructor()",
+        "verdict": "PASS",
+        "observedMechanisms": [],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:9d288286",
+        "signature": "initialize(struct VaultKernelPrototype.GenesisConfig,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:receive",
+        "signature": "receive()",
+        "verdict": "PASS",
+        "observedMechanisms": [],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:6bc44090",
+        "signature": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "observedMechanisms": [
+          "HYBRID"
+        ],
+        "observedUnresolved": true,
+        "reasons": [
+          "unresolved statement(s) present, covered by declared exception: The nested `if (plane != address(0)) { if (!IKernelPolicy(plane).admit(...)) revert PolicyDenied(); }` is not the single-revert guard idiom, so the tracer reports it UNRESOLVED rather than accepting it. Verified: it runs after _authorise and _consume, the plane can only refuse, and it runs BEFORE the settlement snapshot, so nothing it does can move the observation. The settlement statements after it are classified EFFECT by the same tracer; they run after every gate. Declared, source-bound, minimal."
+        ]
+      },
+      {
+        "key": "VaultKernelGen2Prototype:b809c196",
+        "signature": "rotateCredential(struct VaultKernelPrototype.CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "HYBRID",
+          "POSSESSION_PROOF"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:35fae3fb",
+        "signature": "setVerifier(address,struct VaultKernelPrototype.SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "HYBRID"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:5b704804",
+        "signature": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "HYBRID"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:b19138b8",
+        "signature": "setGuardians(uint64,address[],bool[],struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "QUORUM"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:2eeceb79",
+        "signature": "initiateRecovery(address,bytes32,address,struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "QUORUM"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:1271666a",
+        "signature": "cancelRecovery(uint256,uint64,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "FLOOR_ONLY"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:02abce4e",
+        "signature": "cancelRecoveryByQuorum(struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "QUORUM"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:bfd6b85c",
+        "signature": "executeRecovery(struct VaultKernelPrototype.CredentialChange)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "POSSESSION_PROOF"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:5aabecec",
+        "signature": "enterContainment(struct VaultKernelPrototype.QuorumProof,uint256,uint64)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "QUORUM"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:bb0cea8a",
+        "signature": "bindMigration(struct VaultKernelPrototype.Destination,struct VaultKernelPrototype.QuorumProof,uint256,uint64,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [
+          "QUORUM",
+          "FLOOR_ONLY"
+        ],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:a4874d77",
+        "signature": "retire()",
+        "verdict": "PASS",
+        "observedMechanisms": [],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2Prototype:3eabc4e4",
+        "signature": "egress(address)",
+        "verdict": "PASS_WITH_DECLARED_EXCEPTION",
+        "observedMechanisms": [],
+        "observedUnresolved": true,
+        "reasons": [
+          "unresolved statement(s) present, covered by declared exception: The if/else over the asset class holds effect-bearing statements, so the tracer reports it UNRESOLVED. Verified: neither branch contains a gate and none is expected, and the new BIND_DELAY check and the code-hash re-check both precede the branch as plain single-revert guards."
+        ]
+      },
+      {
+        "key": "VaultKernelGen2FactoryPrototype:constructor",
+        "signature": "constructor()",
+        "verdict": "PASS",
+        "observedMechanisms": [],
+        "observedUnresolved": false,
+        "reasons": []
+      },
+      {
+        "key": "VaultKernelGen2FactoryPrototype:1d0c155d",
+        "signature": "deployVault(bytes32,struct VaultKernelPrototype.GenesisConfig,bytes)",
+        "verdict": "PASS",
+        "observedMechanisms": [],
+        "observedUnresolved": false,
+        "reasons": []
+      }
+    ]
+  },
+  "comparisonWithGeneration1": [
+    {
+      "selector": "02abce4e",
+      "signatureGen1": "cancelRecoveryByQuorum(QuorumProof,uint256,uint64)",
+      "signatureGen2": "cancelRecoveryByQuorum(QuorumProof,uint256,uint64)",
+      "mechanismsGen1": [
+        "QUORUM"
+      ],
+      "mechanismsGen2": [
+        "QUORUM"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "k",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "nonces",
+        "recovery"
+      ],
+      "stateEffectsGen2": [
+        "nonces",
+        "recovery"
+      ],
+      "externalCallsGen1": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ],
+      "externalCallsGen2": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ]
+    },
+    {
+      "selector": "1271666a",
+      "signatureGen1": "cancelRecovery(uint256,uint64,bytes)",
+      "signatureGen2": "cancelRecovery(uint256,uint64,bytes)",
+      "mechanismsGen1": [
+        "FLOOR_ONLY"
+      ],
+      "mechanismsGen2": [
+        "FLOOR_ONLY"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "1, bounded by CHALLENGE_LIMIT = 2 per epoch (I-VETO-BOUND)",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "nonces",
+        "recovery"
+      ],
+      "stateEffectsGen2": [
+        "nonces",
+        "recovery"
+      ],
+      "externalCallsGen1": [
+        "precompile.ecrecover"
+      ],
+      "externalCallsGen2": [
+        "precompile.ecrecover"
+      ]
+    },
+    {
+      "selector": "2eeceb79",
+      "signatureGen1": "initiateRecovery(address,bytes32,address,QuorumProof,uint256,uint64)",
+      "signatureGen2": "initiateRecovery(address,bytes32,address,QuorumProof,uint256,uint64)",
+      "mechanismsGen1": [
+        "QUORUM"
+      ],
+      "mechanismsGen2": [
+        "QUORUM"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "k",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "nonces",
+        "recovery"
+      ],
+      "stateEffectsGen2": [
+        "nonces",
+        "recovery"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ]
+    },
+    {
+      "selector": "35fae3fb",
+      "signatureGen1": "setVerifier(address,SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+      "signatureGen2": "setVerifier(address,SecurityFloor,uint256,uint64,bytes,bytes,bytes)",
+      "mechanismsGen1": [
+        "HYBRID"
+      ],
+      "mechanismsGen2": [
+        "HYBRID"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "min(2,k)",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit; pqKey on the arming edge is a public satisfiability witness",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "nonces",
+        "pqVerifier",
+        "securityFloor"
+      ],
+      "stateEffectsGen2": [
+        "nonces",
+        "pqVerifier",
+        "securityFloor"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelPQVerifier.verify",
+        "interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+        "precompile.ecrecover"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelPQVerifier.verify",
+        "interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+        "precompile.ecrecover"
+      ]
+    },
+    {
+      "selector": "3eabc4e4",
+      "signatureGen1": "egress(address)",
+      "signatureGen2": "egress(address)",
+      "mechanismsGen1": [],
+      "mechanismsGen2": [],
+      "verdictGen2": "PASS_WITH_DECLARED_EXCEPTION",
+      "expectedCut": "n/a -- permissionless with no discretion over recipient or amount after BIND_DELAY; the decision (k+1) was made at bindMigration",
+      "permissionless": true,
+      "callerDiscretion": "WHICH holding leaves and when, never where it goes and never how much of it: architecture 13.1 phase 3, so unsolicited assets are reachable with no on-chain enumeration",
+      "bodyIdenticalToGen1": false,
+      "stateEffectsGen1": [],
+      "stateEffectsGen2": [],
+      "externalCallsGen1": [
+        "lowlevel.call:asset:0xa9059cbb",
+        "lowlevel.call:payable(...):value",
+        "lowlevel.staticcall:asset:0x70a08231"
+      ],
+      "externalCallsGen2": [
+        "lowlevel.call:asset:0xa9059cbb",
+        "lowlevel.call:payable(...):value",
+        "lowlevel.staticcall:asset:0x70a08231"
+      ]
+    },
+    {
+      "selector": "5aabecec",
+      "signatureGen1": "enterContainment(QuorumProof,uint256,uint64)",
+      "signatureGen2": "enterContainment(QuorumProof,uint256,uint64)",
+      "mechanismsGen1": [
+        "QUORUM"
+      ],
+      "mechanismsGen2": [
+        "QUORUM"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "k",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "_earlierContainmentStart",
+        "_previousContainmentStart",
+        "containedUntil",
+        "nonces",
+        "safeState"
+      ],
+      "stateEffectsGen2": [
+        "_earlierContainmentStart",
+        "_previousContainmentStart",
+        "containedUntil",
+        "nonces",
+        "safeState"
+      ],
+      "externalCallsGen1": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ],
+      "externalCallsGen2": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ]
+    },
+    {
+      "selector": "5b704804",
+      "signatureGen1": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+      "signatureGen2": "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+      "mechanismsGen1": [
+        "HYBRID"
+      ],
+      "mechanismsGen2": [
+        "HYBRID"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "min(2,k)",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "nonces",
+        "policyEngine"
+      ],
+      "stateEffectsGen2": [
+        "nonces",
+        "policyEngine"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelPQVerifier.verify",
+        "precompile.ecrecover"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelPQVerifier.verify",
+        "precompile.ecrecover"
+      ]
+    },
+    {
+      "selector": "6bc44090",
+      "signatureGen1": "execute(address payable,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "signatureGen2": "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)",
+      "mechanismsGen1": [
+        "HYBRID"
+      ],
+      "mechanismsGen2": [
+        "HYBRID"
+      ],
+      "verdictGen2": "PASS_WITH_DECLARED_EXCEPTION",
+      "expectedCut": "min(2,k) on a floor that mandates PQ; 1 on an ECDSA-only floor, which is the credential's own declared cut",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit; every outcome-bearing parameter is signed. A relayer that rewrites recipient or amount invalidates the signature, and the asset is not a parameter.",
+      "bodyIdenticalToGen1": false,
+      "stateEffectsGen1": [
+        "nonces"
+      ],
+      "stateEffectsGen2": [
+        "nonces"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelPQVerifier.verify",
+        "interface.IKernelPolicy.admit",
+        "lowlevel.call:recipient:value",
+        "precompile.ecrecover"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelPQVerifier.verify",
+        "interface.IKernelPolicy.admit",
+        "lowlevel.call:asset:0xa9059cbb",
+        "lowlevel.staticcall:asset:0x70a08231",
+        "precompile.ecrecover"
+      ]
+    },
+    {
+      "selector": "9d288286",
+      "signatureGen1": "initialize(GenesisConfig,bytes)",
+      "signatureGen2": "initialize(GenesisConfig,bytes)",
+      "mechanismsGen1": [],
+      "mechanismsGen2": [],
+      "verdictGen2": "PASS",
+      "expectedCut": "n/a -- a one-shot replay guard plus structural genesis validation against the arguments of this call; the factory calls it in the transaction that creates the clone",
+      "permissionless": true,
+      "callerDiscretion": "the whole genesis, on the caller's own clone only: a different genesis is a different address (I-COUNTERFACTUAL-IDENTITY-BINDING). The admitted asset is NOT a parameter: it is in the clone's code before this runs.",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "_initialized",
+        "credentialGeneration",
+        "ecdsaSigner",
+        "guardianCommitment",
+        "guardianGeneration",
+        "guardianThreshold",
+        "pqPublicKeyHash",
+        "pqVerifier",
+        "safeState",
+        "securityFloor"
+      ],
+      "stateEffectsGen2": [
+        "_initialized",
+        "credentialGeneration",
+        "ecdsaSigner",
+        "guardianCommitment",
+        "guardianGeneration",
+        "guardianThreshold",
+        "pqPublicKeyHash",
+        "pqVerifier",
+        "safeState",
+        "securityFloor"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelVerifierAuthority.isAdmissibleVerifier"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelVerifierAuthority.isAdmissibleVerifier"
+      ]
+    },
+    {
+      "selector": "a4874d77",
+      "signatureGen1": "retire()",
+      "signatureGen2": "retire()",
+      "mechanismsGen1": [],
+      "mechanismsGen2": [],
+      "verdictGen2": "PASS",
+      "expectedCut": "n/a -- permissionless with no discretion after BIND_DELAY; the decision was made at bindMigration",
+      "permissionless": true,
+      "callerDiscretion": "none",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "safeState"
+      ],
+      "stateEffectsGen2": [
+        "safeState"
+      ],
+      "externalCallsGen1": [],
+      "externalCallsGen2": []
+    },
+    {
+      "selector": "b19138b8",
+      "signatureGen1": "setGuardians(uint64,address[],bool[],QuorumProof,uint256,uint64)",
+      "signatureGen2": "setGuardians(uint64,address[],bool[],QuorumProof,uint256,uint64)",
+      "mechanismsGen1": [
+        "QUORUM"
+      ],
+      "mechanismsGen2": [
+        "QUORUM"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "k",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "guardianCommitment",
+        "guardianGeneration",
+        "guardianThreshold",
+        "nonces"
+      ],
+      "stateEffectsGen2": [
+        "guardianCommitment",
+        "guardianGeneration",
+        "guardianThreshold",
+        "nonces"
+      ],
+      "externalCallsGen1": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ],
+      "externalCallsGen2": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ]
+    },
+    {
+      "selector": "b809c196",
+      "signatureGen1": "rotateCredential(CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+      "signatureGen2": "rotateCredential(CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+      "mechanismsGen1": [
+        "HYBRID",
+        "POSSESSION_PROOF"
+      ],
+      "mechanismsGen2": [
+        "HYBRID",
+        "POSSESSION_PROOF"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "min(2,k)",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "credentialGeneration",
+        "ecdsaSigner",
+        "nonces",
+        "pqPublicKeyHash"
+      ],
+      "stateEffectsGen2": [
+        "credentialGeneration",
+        "ecdsaSigner",
+        "nonces",
+        "pqPublicKeyHash"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelPQVerifier.verify",
+        "precompile.ecrecover"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelPQVerifier.verify",
+        "precompile.ecrecover"
+      ]
+    },
+    {
+      "selector": "bb0cea8a",
+      "signatureGen1": "bindMigration(Destination,QuorumProof,uint256,uint64,bytes)",
+      "signatureGen2": "bindMigration(Destination,QuorumProof,uint256,uint64,bytes)",
+      "mechanismsGen1": [
+        "QUORUM",
+        "FLOOR_ONLY"
+      ],
+      "mechanismsGen2": [
+        "QUORUM",
+        "FLOOR_ONLY"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "k+1",
+      "permissionless": false,
+      "callerDiscretion": "whether and when to submit; the destination is signed by both principals",
+      "bodyIdenticalToGen1": false,
+      "stateEffectsGen1": [
+        "migration",
+        "nonces",
+        "safeState"
+      ],
+      "stateEffectsGen2": [
+        "migration",
+        "nonces",
+        "safeState"
+      ],
+      "externalCallsGen1": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ],
+      "externalCallsGen2": [
+        "precompile.ecrecover",
+        "yul.staticcall:_attests"
+      ]
+    },
+    {
+      "selector": "bfd6b85c",
+      "signatureGen1": "executeRecovery(CredentialChange)",
+      "signatureGen2": "executeRecovery(CredentialChange)",
+      "mechanismsGen1": [
+        "POSSESSION_PROOF"
+      ],
+      "mechanismsGen2": [
+        "POSSESSION_PROOF"
+      ],
+      "verdictGen2": "PASS",
+      "expectedCut": "k, established at initiateRecovery; this step is permissionless once matured",
+      "permissionless": false,
+      "callerDiscretion": "none over the outcome: the incoming credential and verifier are the stored proposal",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "credentialGeneration",
+        "ecdsaSigner",
+        "pqPublicKeyHash",
+        "pqVerifier",
+        "recovery"
+      ],
+      "stateEffectsGen2": [
+        "credentialGeneration",
+        "ecdsaSigner",
+        "pqPublicKeyHash",
+        "pqVerifier",
+        "recovery"
+      ],
+      "externalCallsGen1": [
+        "interface.IKernelPQVerifier.verify",
+        "precompile.ecrecover"
+      ],
+      "externalCallsGen2": [
+        "interface.IKernelPQVerifier.verify",
+        "precompile.ecrecover"
+      ]
+    },
+    {
+      "selector": "constructor",
+      "signatureGen1": "constructor()",
+      "signatureGen2": "constructor()",
+      "mechanismsGen1": [],
+      "mechanismsGen2": [],
+      "verdictGen2": "PASS",
+      "expectedCut": "n/a -- runs once, at the implementation's own deployment",
+      "permissionless": true,
+      "callerDiscretion": "none",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [
+        "_initialized"
+      ],
+      "stateEffectsGen2": [
+        "_initialized"
+      ],
+      "externalCallsGen1": [],
+      "externalCallsGen2": []
+    },
+    {
+      "selector": "receive",
+      "signatureGen1": "receive()",
+      "signatureGen2": "receive()",
+      "mechanismsGen1": [],
+      "mechanismsGen2": [],
+      "verdictGen2": "PASS",
+      "expectedCut": "n/a -- unconditional native ingress with no logic",
+      "permissionless": true,
+      "callerDiscretion": "how much native value to give away",
+      "bodyIdenticalToGen1": true,
+      "stateEffectsGen1": [],
+      "stateEffectsGen2": [],
+      "externalCallsGen1": [],
+      "externalCallsGen2": []
+    }
+  ],
+  "viewSurface": {
+    "addedViews": [
+      "admittedAsset()"
+    ],
+    "removedViews": []
+  },
+  "principals": {
+    "addressHoldersGen1": [
+      "ecdsaSigner",
+      "policyEngine",
+      "pqVerifier"
+    ],
+    "addressHoldersGen2": [
+      "ecdsaSigner",
+      "policyEngine",
+      "pqVerifier"
+    ],
+    "callerIdentityUsesKernel": [],
+    "callerIdentityUsesFactory": [],
+    "factoryImmutables": [
+      "admittedAsset",
+      "generation",
+      "implementation",
+      "verifierAuthority"
+    ],
+    "assetBinding": "bytes 28..48 of the clone's immutable args, read by `_admittedAsset` through Clones.fetchCloneArgs: code, not storage. No storage variable holds the asset, on the kernel or the factory.",
+    "relayer": "NOT A PRINCIPAL. The kernel and factory reference no caller identity (derived above); a relayer can choose whether and when to submit, and any change to a signed field invalidates the signature.",
+    "walletWall": "NOT A PRINCIPAL. No storage word, immutable or args field names WalletWall. Choosing the factory's asset at construction is the generation publisher's one-shot act, spent before any vault exists, and its residual is discovery (H-32), checkable offline from each clone's own code."
+  },
+  "effectSurface": {
+    "edgesGen2": [
+      "bindMigration -> precompile.ecrecover",
+      "bindMigration -> yul.staticcall:_attests",
+      "cancelRecovery -> precompile.ecrecover",
+      "cancelRecoveryByQuorum -> precompile.ecrecover",
+      "cancelRecoveryByQuorum -> yul.staticcall:_attests",
+      "egress -> lowlevel.call:asset:0xa9059cbb",
+      "egress -> lowlevel.call:payable(...):value",
+      "egress -> lowlevel.staticcall:asset:0x70a08231",
+      "enterContainment -> precompile.ecrecover",
+      "enterContainment -> yul.staticcall:_attests",
+      "execute -> interface.IKernelPQVerifier.verify",
+      "execute -> interface.IKernelPolicy.admit",
+      "execute -> lowlevel.call:asset:0xa9059cbb",
+      "execute -> lowlevel.staticcall:asset:0x70a08231",
+      "execute -> precompile.ecrecover",
+      "executeRecovery -> interface.IKernelPQVerifier.verify",
+      "executeRecovery -> precompile.ecrecover",
+      "initialize -> interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+      "initiateRecovery -> interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+      "initiateRecovery -> precompile.ecrecover",
+      "initiateRecovery -> yul.staticcall:_attests",
+      "rotateCredential -> interface.IKernelPQVerifier.verify",
+      "rotateCredential -> precompile.ecrecover",
+      "setGuardians -> precompile.ecrecover",
+      "setGuardians -> yul.staticcall:_attests",
+      "setPolicy -> interface.IKernelPQVerifier.verify",
+      "setPolicy -> precompile.ecrecover",
+      "setVerifier -> interface.IKernelPQVerifier.verify",
+      "setVerifier -> interface.IKernelVerifierAuthority.isAdmissibleVerifier",
+      "setVerifier -> precompile.ecrecover"
+    ],
+    "newEdges": {
+      "added": [
+        "execute -> lowlevel.call:asset:0xa9059cbb",
+        "execute -> lowlevel.staticcall:asset:0x70a08231"
+      ],
+      "removed": [
+        "execute -> lowlevel.call:recipient:value"
+      ]
+    },
+    "expectedNewEdges": [
+      "execute -> lowlevel.call:asset:0xa9059cbb",
+      "execute -> lowlevel.staticcall:asset:0x70a08231"
+    ],
+    "modelled": "The ERC-20 call is a NEW EFFECT SURFACE with no new principal behind it: `execute` now hands control to the admitted asset, which can run code, and can observe and re-enter the kernel. It is treated as adversarial in test/Gen2Reentrancy.test.ts and in the campaign's reentrancy profile, its ordering is mutated by M-G2-6, and what it can still lie about is the asset boundary in GEN2_ADMISSION.md. The native value edge to the recipient is removed from `execute` and remains only in `egress`."
+  },
+  "bodyIdentity": {
+    "identicalToGen1": [
+      "_authorise(bytes32,bytes,bytes,bytes)",
+      "_consume(uint8,uint256,uint64)",
+      "_containedWithin(uint64,uint64,uint64)",
+      "_digest(bytes32,uint64,bytes32,uint8,uint256,uint64)",
+      "_effectiveState()",
+      "_floorAuthorises(bytes32,bytes)",
+      "_installCredential(address,bytes32)",
+      "_recoveryIsLive()",
+      "_requireAdmissibleVerifier(address)",
+      "_requireCanonicalRoster(uint64,address[],bool[])",
+      "_requireIncomingPossession(bytes32,address,bytes32,address,CredentialChange)",
+      "_requireNoDowngrade(SecurityFloor)",
+      "_requireNormal()",
+      "_requireQuorum(bytes32,QuorumProof)",
+      "_requireRecoveryOpen()",
+      "_requireSaneFloor(SecurityFloor)",
+      "_verifierAuthority()",
+      "cancelRecovery(uint256,uint64,bytes)",
+      "cancelRecoveryByQuorum(QuorumProof,uint256,uint64)",
+      "constructor()",
+      "containmentUsedInWindow()",
+      "containmentWindowStart()",
+      "credentialPossessionDigest(address,bytes32)",
+      "domainSeparator()",
+      "effectiveSafeState()",
+      "enterContainment(QuorumProof,uint256,uint64)",
+      "executeRecovery(CredentialChange)",
+      "genesisCommitments()",
+      "genesisSalt(bytes32,GenesisConfig)",
+      "initialize(GenesisConfig,bytes)",
+      "initiateRecovery(address,bytes32,address,QuorumProof,uint256,uint64)",
+      "kernelGeneration()",
+      "receive()",
+      "recoveryPossessionDigest()",
+      "retire()",
+      "rosterCommitment(uint64,address[],bool[])",
+      "rotateCredential(CredentialChange,uint256,uint64,bytes,bytes,bytes)",
+      "setGuardians(uint64,address[],bool[],QuorumProof,uint256,uint64)",
+      "setPolicy(address,uint256,uint64,bytes,bytes,bytes)",
+      "setVerifier(address,SecurityFloor,uint256,uint64,bytes,bytes,bytes)"
+    ],
+    "differentFromGen1": [
+      "_attests(bytes32,address,bool,bytes)",
+      "_balanceOf(address)",
+      "bindMigration(Destination,QuorumProof,uint256,uint64,bytes)",
+      "egress(address)",
+      "execute(address,uint256,uint256,uint64,bytes,bytes,bytes)"
+    ],
+    "addedInGen2": [
+      "_admittedAsset()",
+      "admittedAsset()"
+    ],
+    "removedFromGen1": []
+  },
+  "derivedVerdict": {
+    "verdict": "NO_NEW_PRIVILEGED_PRINCIPAL",
+    "reasons": []
+  },
+  "doesNotEstablish": [
+    "That a cut is the right cut: expectedCut is declared and checked for consistency, and the campaign tests it over histories.",
+    "That the token is honest. The asset can lie about its own ledger; that is the asset boundary, not a kernel fact.",
+    "Anything about a deployed factory: which asset, root and implementation a factory binds is a deployment fact, checkable offline."
+  ]
+}
