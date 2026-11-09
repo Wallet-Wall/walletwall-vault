@@ -40,14 +40,14 @@
     "max": 1548867,
     "mean": 1543262
    },
-   "directTxEstimate": {
+   "directTxExecutionGas": {
     "n": 6,
-    "min": 1618806,
-    "max": 1624712,
-    "mean": 1621853
+    "min": 1543322,
+    "max": 1549072,
+    "mean": 1546299
    },
    "directTxCalldataBytes": 3556,
-   "note": "inside-call gas = the verifier's consumption in a STATICCALL from the probe; the direct estimate adds the 21,000 base and calldata (3,556 bytes: selector, three heads, a 40-byte handle, a 32-byte digest, a 3,309-byte signature)"
+   "note": "inside-call gas = the verifier's consumption in a STATICCALL from the probe; directTxExecutionGas = eth_estimateGas minus the intrinsic gas of the calldata (3,556 bytes: selector, three heads, a 40-byte handle, a 32-byte digest, a 3,309-byte signature); the intrinsic part varies with the zero bytes of the handle's addresses, so it is recorded per run, not compared"
   },
   "quorum": {
    "txGasCap": 16777216,
@@ -56,7 +56,7 @@
      "k": 1,
      "accepted": 1,
      "gasInsideLoop": 1543569,
-     "estimateGas": 1621266,
+     "estimateExecutionGas": 1544514,
      "calldataBytes": 3780,
      "fitsTxCap": true
     },
@@ -64,7 +64,7 @@
      "k": 2,
      "accepted": 2,
      "gasInsideLoop": 3082354,
-     "estimateGas": 3214568,
+     "estimateExecutionGas": 3083300,
      "calldataBytes": 7332,
      "fitsTxCap": true
     },
@@ -72,7 +72,7 @@
      "k": 3,
      "accepted": 3,
      "gasInsideLoop": 4624712,
-     "estimateGas": 4811443,
+     "estimateExecutionGas": 4625659,
      "calldataBytes": 10884,
      "fitsTxCap": true
     },
@@ -80,7 +80,7 @@
      "k": 4,
      "accepted": 4,
      "gasInsideLoop": 6167498,
-     "estimateGas": 6408818,
+     "estimateExecutionGas": 6168446,
      "calldataBytes": 14436,
      "fitsTxCap": true
     },
@@ -88,7 +88,7 @@
      "k": 5,
      "accepted": 5,
      "gasInsideLoop": 7704250,
-     "estimateGas": 7999967,
+     "estimateExecutionGas": 7705199,
      "calldataBytes": 17988,
      "fitsTxCap": true
     },
@@ -96,7 +96,7 @@
      "k": 6,
      "accepted": 6,
      "gasInsideLoop": 9239736,
-     "estimateGas": 9589838,
+     "estimateExecutionGas": 9240686,
      "calldataBytes": 21540,
      "fitsTxCap": true
     },
@@ -104,7 +104,7 @@
      "k": 7,
      "accepted": 7,
      "gasInsideLoop": 10780518,
-     "estimateGas": 11185148,
+     "estimateExecutionGas": 10781468,
      "calldataBytes": 25092,
      "fitsTxCap": true
     },
@@ -112,7 +112,7 @@
      "k": 8,
      "accepted": 8,
      "gasInsideLoop": 12322106,
-     "estimateGas": 12781325,
+     "estimateExecutionGas": 12323057,
      "calldataBytes": 28644,
      "fitsTxCap": true
     },
@@ -120,7 +120,7 @@
      "k": 9,
      "accepted": 9,
      "gasInsideLoop": 13856044,
-     "estimateGas": 14369744,
+     "estimateExecutionGas": 13856996,
      "calldataBytes": 32196,
      "fitsTxCap": true
     },
@@ -128,17 +128,17 @@
      "k": 10,
      "accepted": 10,
      "gasInsideLoop": 15390243,
-     "estimateGas": 15958472,
+     "estimateExecutionGas": 15391196,
      "calldataBytes": 35748,
      "fitsTxCap": true
     }
    ],
    "largestKInOneTransaction": {
     "k": 10,
-    "gasUsedAtCap": 15958472
+    "executionGasAtCap": 15391196
    },
    "overCapRefusal": "Transaction gas limit is 16777217 and exceeds transaction gas cap of 16777216",
-   "note": "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false"
+   "note": "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. estimateExecutionGas = eth_estimateGas minus the calldata's intrinsic gas (the intrinsic part varies with the zero bytes of the handles' addresses and is recorded per run). A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false"
   },
   "refusals": [
    {
@@ -226,6 +226,81 @@
     "gas": 140307
    }
   ]
+ },
+ "thisRun": {
+  "verify32": {
+   "directTxEstimate": {
+    "n": 6,
+    "min": 1618806,
+    "max": 1624712,
+    "mean": 1621853
+   },
+   "intrinsic": {
+    "n": 6,
+    "min": 75484,
+    "max": 75640,
+    "mean": 75554
+   }
+  },
+  "quorum": {
+   "raw": [
+    {
+     "k": 1,
+     "estimateGas": 1621254,
+     "intrinsic": 76740
+    },
+    {
+     "k": 2,
+     "estimateGas": 3214556,
+     "intrinsic": 131256
+    },
+    {
+     "k": 3,
+     "estimateGas": 4811431,
+     "intrinsic": 185772
+    },
+    {
+     "k": 4,
+     "estimateGas": 6408806,
+     "intrinsic": 240360
+    },
+    {
+     "k": 5,
+     "estimateGas": 7999955,
+     "intrinsic": 294756
+    },
+    {
+     "k": 6,
+     "estimateGas": 9589826,
+     "intrinsic": 349140
+    },
+    {
+     "k": 7,
+     "estimateGas": 11185124,
+     "intrinsic": 403656
+    },
+    {
+     "k": 8,
+     "estimateGas": 12781301,
+     "intrinsic": 458244
+    },
+    {
+     "k": 9,
+     "estimateGas": 14369720,
+     "intrinsic": 512724
+    },
+    {
+     "k": 10,
+     "estimateGas": 15958448,
+     "intrinsic": 567252
+    }
+   ],
+   "largestK": {
+    "k": 10,
+    "gasUsedAtCap": 15958448,
+    "intrinsic": 567252
+   }
+  }
  },
  "environment": {
   "hardhat": "3.14.0",

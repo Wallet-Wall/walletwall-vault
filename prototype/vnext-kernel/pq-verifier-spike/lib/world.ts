@@ -71,6 +71,19 @@ export async function sendTx(tx: { to?: string; data: string; gas?: number; from
   return r;
 }
 
+/**
+ * The intrinsic gas of a transaction carrying `dataHex`: 21,000 plus 4 per zero byte and 16 per non-zero byte
+ * (EIP-2028). Addresses inside calldata have a run-dependent number of zero bytes, so a transaction's total gas
+ * differs by a few units between runs; subtracting the intrinsic part leaves the execution gas, which does not.
+ * (EIP-7623's calldata floor never binds here: every measured transaction executes far more than its floor.)
+ */
+export function intrinsicGas(dataHex: string): number {
+  const bytes = unhex(dataHex);
+  let g = 21_000;
+  for (const b of bytes) g += b === 0 ? 4 : 16;
+  return g;
+}
+
 /** initcode that returns `runtime` verbatim: PUSH2 len, DUP1, PUSH1 0x0c, PUSH1 0, CODECOPY, PUSH1 0, RETURN, runtime */
 export const rawInitcode = (runtimeHex: string): string => {
   const rt = runtimeHex.replace(/^0x/, "");
@@ -124,8 +137,8 @@ export interface World {
   /** verify(bytes,bytes,bytes,bytes) through the probe */
   tryCtx(handle: string, msgHex: string, sigHex: string, ctxHex: string): Promise<Verdict>;
   /** k verifications in one probe call */
-  tryK(handles: string[], digests: string[], sigs: string[]): Promise<{ accepted: number; gas: number; calldataBytes: number; estimate: number | string }>;
-  estimateDirect32(handle: string, digestHex: string, sigHex: string): Promise<{ estimate: number | string; calldataBytes: number }>;
+  tryK(handles: string[], digests: string[], sigs: string[]): Promise<{ accepted: number; gas: number; calldataBytes: number; estimate: number | string; intrinsic: number; data: string }>;
+  estimateDirect32(handle: string, digestHex: string, sigHex: string): Promise<{ estimate: number | string; calldataBytes: number; intrinsic: number }>;
 }
 
 const blobCache = new Map<string, string>();
@@ -249,7 +262,7 @@ export async function createWorld(): Promise<World> {
       } catch (e) {
         estimate = `ESTIMATE_FAILED: ${String((e as Error).message).slice(0, 120)}`;
       }
-      return { accepted: Number(accepted), gas: Number(gas), calldataBytes: byteLength(data), estimate };
+      return { accepted: Number(accepted), gas: Number(gas), calldataBytes: byteLength(data), estimate, intrinsic: intrinsicGas(data), data };
     },
     async estimateDirect32(handle, digestHex, sigHex) {
       const data = iface.encodeFunctionData("verify(bytes,bytes32,bytes)", [handle, with0x(digestHex), with0x(sigHex)]);
@@ -259,7 +272,7 @@ export async function createWorld(): Promise<World> {
       } catch (e) {
         estimate = `ESTIMATE_FAILED: ${String((e as Error).message).slice(0, 120)}`;
       }
-      return { estimate, calldataBytes: byteLength(data) };
+      return { estimate, calldataBytes: byteLength(data), intrinsic: intrinsicGas(data) };
     },
   };
   return world;

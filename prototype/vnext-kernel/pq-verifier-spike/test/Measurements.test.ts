@@ -13,6 +13,7 @@ import {
   TX_GAS_CAP,
   accounts,
   createWorld,
+  intrinsicGas,
   loadFixture,
   readResults,
   rpc,
@@ -35,6 +36,8 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
   const gen = loadFixture<GeneratedFixture>("generated-vectors.json");
   const valid = gen.vectors.filter((v) => v.family === "digest32_valid");
   const record: Record<string, unknown> = {};
+  /** figures that depend on this run's addresses (zero bytes in calldata): recorded, never compared */
+  const thisRun: Record<string, unknown> = {};
 
   before(async function () {
     world = await createWorld();
@@ -88,31 +91,34 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
       expect(r.outcome).to.equal("ACCEPT");
       inside.push(r.gas);
     }
-    const direct: { estimate: number | string; calldataBytes: number }[] = [];
+    const direct: { estimate: number | string; calldataBytes: number; intrinsic: number }[] = [];
     for (const v of valid.slice(0, 6)) {
       const h = (await world.publish(v.pk)).handle;
       direct.push(await world.estimateDirect32(h, v.msg, v.sig));
     }
+    expect(direct.every((d) => typeof d.estimate === "number")).to.equal(true);
     record.verify32 = {
       insideCallGas: stats(inside),
-      directTxEstimate: stats(direct.map((d) => d.estimate as number)),
+      directTxExecutionGas: stats(direct.map((d) => (d.estimate as number) - d.intrinsic)),
       directTxCalldataBytes: direct[0]!.calldataBytes,
-      note: "inside-call gas = the verifier's consumption in a STATICCALL from the probe; the direct estimate adds the 21,000 base and calldata (3,556 bytes: selector, three heads, a 40-byte handle, a 32-byte digest, a 3,309-byte signature)",
+      note: "inside-call gas = the verifier's consumption in a STATICCALL from the probe; directTxExecutionGas = eth_estimateGas minus the intrinsic gas of the calldata (3,556 bytes: selector, three heads, a 40-byte handle, a 32-byte digest, a 3,309-byte signature); the intrinsic part varies with the zero bytes of the handle's addresses, so it is recorded per run, not compared",
     };
-    expect(direct.every((d) => typeof d.estimate === "number")).to.equal(true);
-    console.log("[verify32]", JSON.stringify(record.verify32));
+    thisRun.verify32 = { directTxEstimate: stats(direct.map((d) => d.estimate as number)), intrinsic: stats(direct.map((d) => d.intrinsic)) };
+    console.log("[verify32]", JSON.stringify(record.verify32), JSON.stringify(thisRun.verify32));
   });
 
   it("k verifications in one call (k = 1..10): callee gas, transaction estimate, and the EIP-7825 cap decides which k fit in one transaction", async function () {
     const distinct = gen.keys.map((k) => valid.find((v) => v.pk === k.pk)!);
-    const rows: { k: number; accepted: number; gasInsideLoop: number; estimateGas: number | string; calldataBytes: number; fitsTxCap: boolean | null }[] = [];
+    const rows: { k: number; accepted: number; gasInsideLoop: number; estimateExecutionGas: number | string; calldataBytes: number; fitsTxCap: boolean | null }[] = [];
+    const raw: { k: number; estimateGas: number | string; intrinsic: number }[] = [];
     for (let k = 1; k <= 10; k++) {
       const vs = Array.from({ length: k }, (_, i) => distinct[i % distinct.length]!);
       const handles: string[] = [];
       for (const v of vs) handles.push((await world.publish(v.pk)).handle);
       const r = await world.tryK(handles, vs.map((v) => v.msg), vs.map((v) => v.sig));
       expect(r.accepted).to.equal(k);
-      rows.push({ k, accepted: r.accepted, gasInsideLoop: r.gas, estimateGas: r.estimate, calldataBytes: r.calldataBytes, fitsTxCap: typeof r.estimate === "number" ? r.estimate <= TX_GAS_CAP : null });
+      rows.push({ k, accepted: r.accepted, gasInsideLoop: r.gas, estimateExecutionGas: typeof r.estimate === "number" ? r.estimate - r.intrinsic : r.estimate, calldataBytes: r.calldataBytes, fitsTxCap: typeof r.estimate === "number" ? r.estimate <= TX_GAS_CAP : null });
+      raw.push({ k, estimateGas: r.estimate, intrinsic: r.intrinsic });
     }
     // the largest k whose estimate fits is sent as a real transaction at exactly the cap; the next k is refused by the node
     const fits = rows.filter((r) => r.fitsTxCap === true);
@@ -135,11 +141,12 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
     record.quorum = {
       txGasCap: TX_GAS_CAP,
       rows,
-      largestKInOneTransaction: { k: largest.k, gasUsedAtCap: Number(receipt.gasUsed) },
+      largestKInOneTransaction: { k: largest.k, executionGasAtCap: Number(receipt.gasUsed) - intrinsicGas(data) },
       overCapRefusal: overCapError.slice(0, 160),
-      note: "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false",
+      note: "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. estimateExecutionGas = eth_estimateGas minus the calldata's intrinsic gas (the intrinsic part varies with the zero bytes of the handles' addresses and is recorded per run). A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false",
     };
-    console.log("[quorum]", JSON.stringify(record.quorum));
+    thisRun.quorum = { raw, largestK: { k: largest.k, gasUsedAtCap: Number(receipt.gasUsed), intrinsic: intrinsicGas(data) } };
+    console.log("[quorum]", JSON.stringify(record.quorum), JSON.stringify(thisRun.quorum));
   });
 
   it("refusal costs: what a kernel pays when the verifier says no", async function () {
@@ -164,7 +171,7 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
   });
 
   it("records the measurements (results/measurements.json) and reproduces the committed record exactly", async function () {
-    const full = { schema: "gen2-pq-conformance-1/measurements.v1", comparable: record, environment: await toolchainRecord() };
+    const full = { schema: "gen2-pq-conformance-1/measurements.v1", comparable: record, thisRun, environment: await toolchainRecord() };
     writeResults("measurements.json", full);
     const committed = readResults<typeof full>("measurements.json");
     if (committed) expect(record).to.deep.equal(committed.comparable);

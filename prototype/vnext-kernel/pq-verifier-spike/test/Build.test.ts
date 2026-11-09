@@ -154,15 +154,20 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
       kernelInterfaceSelector: ethers.id(KERNEL_PQ_VERIFIER_SIGNATURE).slice(0, 10),
       helper: { runtimeBytes: world.helper.runtimeBytes, codehash: world.helper.codehash, pinnedByVerifier: pinnedHelperCodehash() },
       deployment: {
-        deployerNonceOrder: ["helper (raw runtime)", "verifier(helper)", "SpikeProbe"],
-        helperAddress: world.helper.address.toLowerCase(),
-        verifierAddress: world.verifier.address.toLowerCase(),
-        verifierDeployedCodehash: world.verifier.codehash,
         helperDeployGas: world.helper.gasUsed,
         verifierDeployGas: world.verifier.gasUsed,
+        deployedCodeEqualsRuntimeWithHelperInImmutableSlots: true,
       },
     };
-    const record = { schema: "gen2-pq-conformance-1/build.v1", comparable, environment: await toolchainRecord() };
+    // Addresses and the deployed code hash depend on the deployer's nonce, i.e. on which suites ran before this one
+    // in the same process (all suites share one simulated chain), so they are recorded but not compared.
+    const thisRun = {
+      deployerNonceOrder: ["helper (raw runtime)", "verifier(helper)", "SpikeProbe"],
+      helperAddress: world.helper.address.toLowerCase(),
+      verifierAddress: world.verifier.address.toLowerCase(),
+      verifierDeployedCodehash: world.verifier.codehash,
+    };
+    const record = { schema: "gen2-pq-conformance-1/build.v1", comparable, thisRun, environment: await toolchainRecord() };
     writeResults("build.json", record);
     const committed = readResults<typeof record>("build.json");
     if (committed) {
