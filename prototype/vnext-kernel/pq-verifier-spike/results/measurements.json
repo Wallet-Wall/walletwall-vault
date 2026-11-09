@@ -1,0 +1,241 @@
+{
+ "schema": "gen2-pq-conformance-1/measurements.v1",
+ "comparable": {
+  "code": {
+   "helperRuntimeBytes": 21622,
+   "helperDeployGas": 4716328,
+   "verifierRuntimeBytes": 24272,
+   "verifierEip170Headroom": 304,
+   "verifierDeployGas": 5242460,
+   "verifierCreationBytes": 24479,
+   "probeRuntimeBytes": 2792,
+   "probeDeployGas": 652635
+  },
+  "setKey": {
+   "keys": 8,
+   "gasUsed": {
+    "n": 8,
+    "min": 8709985,
+    "max": 8710285,
+    "mean": 8710129
+   },
+   "estimateGas": {
+    "n": 8,
+    "min": 8804523,
+    "max": 8804819,
+    "mean": 8804665
+   },
+   "calldataBytes": 40388,
+   "halfCodeBytes": [
+    20161,
+    20161
+   ],
+   "halfPrefix": "0x00",
+   "note": "two CREATEs of 20,161 bytes (0x00 STOP prefix + 20,160 data bytes) inside one transaction; the 40-byte handle is the two addresses"
+  },
+  "verify32": {
+   "insideCallGas": {
+    "n": 32,
+    "min": 1538385,
+    "max": 1548867,
+    "mean": 1543262
+   },
+   "directTxEstimate": {
+    "n": 6,
+    "min": 1618806,
+    "max": 1624712,
+    "mean": 1621853
+   },
+   "directTxCalldataBytes": 3556,
+   "note": "inside-call gas = the verifier's consumption in a STATICCALL from the probe; the direct estimate adds the 21,000 base and calldata (3,556 bytes: selector, three heads, a 40-byte handle, a 32-byte digest, a 3,309-byte signature)"
+  },
+  "quorum": {
+   "txGasCap": 16777216,
+   "rows": [
+    {
+     "k": 1,
+     "accepted": 1,
+     "gasInsideLoop": 1543569,
+     "estimateGas": 1621266,
+     "calldataBytes": 3780,
+     "fitsTxCap": true
+    },
+    {
+     "k": 2,
+     "accepted": 2,
+     "gasInsideLoop": 3082354,
+     "estimateGas": 3214568,
+     "calldataBytes": 7332,
+     "fitsTxCap": true
+    },
+    {
+     "k": 3,
+     "accepted": 3,
+     "gasInsideLoop": 4624712,
+     "estimateGas": 4811443,
+     "calldataBytes": 10884,
+     "fitsTxCap": true
+    },
+    {
+     "k": 4,
+     "accepted": 4,
+     "gasInsideLoop": 6167498,
+     "estimateGas": 6408818,
+     "calldataBytes": 14436,
+     "fitsTxCap": true
+    },
+    {
+     "k": 5,
+     "accepted": 5,
+     "gasInsideLoop": 7704250,
+     "estimateGas": 7999967,
+     "calldataBytes": 17988,
+     "fitsTxCap": true
+    },
+    {
+     "k": 6,
+     "accepted": 6,
+     "gasInsideLoop": 9239736,
+     "estimateGas": 9589838,
+     "calldataBytes": 21540,
+     "fitsTxCap": true
+    },
+    {
+     "k": 7,
+     "accepted": 7,
+     "gasInsideLoop": 10780518,
+     "estimateGas": 11185148,
+     "calldataBytes": 25092,
+     "fitsTxCap": true
+    },
+    {
+     "k": 8,
+     "accepted": 8,
+     "gasInsideLoop": 12322106,
+     "estimateGas": 12781325,
+     "calldataBytes": 28644,
+     "fitsTxCap": true
+    },
+    {
+     "k": 9,
+     "accepted": 9,
+     "gasInsideLoop": 13856044,
+     "estimateGas": 14369744,
+     "calldataBytes": 32196,
+     "fitsTxCap": true
+    },
+    {
+     "k": 10,
+     "accepted": 10,
+     "gasInsideLoop": 15390243,
+     "estimateGas": 15958472,
+     "calldataBytes": 35748,
+     "fitsTxCap": true
+    }
+   ],
+   "largestKInOneTransaction": {
+    "k": 10,
+    "gasUsedAtCap": 15958472
+   },
+   "overCapRefusal": "Transaction gas limit is 16777217 and exceeds transaction gas cap of 16777216",
+   "note": "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false"
+  },
+  "refusals": [
+   {
+    "case": "wrong digest",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1541681
+   },
+   {
+    "case": "zero digest",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1541681
+   },
+   {
+    "case": "cross key",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1541801
+   },
+   {
+    "case": "flip c~ byte 0",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1542082
+   },
+   {
+    "case": "flip z byte 0",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1541801
+   },
+   {
+    "case": "flip z last byte",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1541661
+   },
+   {
+    "case": "flip hint index byte 0",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 1541774
+   },
+   {
+    "case": "flip hint count byte (last)",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 48793
+   },
+   {
+    "case": "sig length 3308",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 3437
+   },
+   {
+    "case": "sig length 3310",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 3437
+   },
+   {
+    "case": "handle of 40 zero bytes",
+    "outcome": "REVERT",
+    "detail": "BadPubKeyBlob",
+    "gas": 15580
+   },
+   {
+    "case": "hedged signature with ||z||inf = 524091 (= gamma1 - beta - 1) after 299 draws",
+    "outcome": "ACCEPT",
+    "detail": "0x024ad318",
+    "gas": 1545751
+   },
+   {
+    "case": "z = +(gamma1-beta) at field 489 (encoded 196)",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 140307
+   },
+   {
+    "case": "z = -(gamma1-beta) at field 489 (encoded 1048380)",
+    "outcome": "REJECT",
+    "detail": "0xffffffff",
+    "gas": 140307
+   }
+  ]
+ },
+ "environment": {
+  "hardhat": "3.14.0",
+  "edr": "0.17.0",
+  "ethers": "6.17.0",
+  "noblePostQuantum": "0.7.0",
+  "nobleHashes": "2.3.0",
+  "node": "v24.16.0",
+  "platform": "win32-x64",
+  "chainId": 31337,
+  "hardfork": "osaka (hardhat.config.ts of this spike)"
+ }
+}

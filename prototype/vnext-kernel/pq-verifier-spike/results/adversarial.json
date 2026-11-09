@@ -1,0 +1,508 @@
+{
+ "schema": "gen2-pq-conformance-1/adversarial.v1",
+ "comparable": [
+  {
+   "challenge": "handle: 40 zero bytes",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: two pointers to the probe (code of another shape)",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: two pointers to a 1,000-byte data contract",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: two pointers to an address without code",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: genuine halves swapped",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: half0 of key 0 with half1 of key 1",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: half0 of key 1 with half1 of key 0",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: 39-byte handle (last byte dropped)",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: 20-byte handle (one pointer)",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: empty handle",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: 41-byte handle (genuine plus a trailing byte)",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "finding": "the verifier reads only the first 40 bytes of `pk`; bytes beyond are ignored, so distinct handle encodings name one key: an adapter MUST enforce exactly 40 bytes before committing to keccak(handle)"
+  },
+  {
+   "challenge": "handle: 72-byte handle (genuine plus 32 trailing bytes)",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "finding": "the verifier reads only the first 40 bytes of `pk`; bytes beyond are ignored, so distinct handle encodings name one key: an adapter MUST enforce exactly 40 bytes before committing to keccak(handle)"
+  },
+  {
+   "challenge": "blob: both halves deployed by a plain CREATE outside setKey, same bytes",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "finding": "setKey adds nothing the verifier later checks: any address pair holding the right bytes is a key, so handle-to-key binding must come from a publisher the kernel can audit (PUBLISHER_BINDING.md)"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 31 (outer tuple: offset word of element 0, low byte (byte 31))",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 100 (outer tuple: length word of element 0, byte 100 (a framing word the reader never loads))",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "finding": "this byte is never read: two blobs with different code hashes name the same key, so a blob's EXTCODEHASH is not a key identity and a publisher must bind the canonical public key, not the blob bytes"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 515 (aHat[0][0] word 0, byte 3: low byte of field 0 (a coefficient))",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 543 (aHat[0][0] word 0, byte 31: low byte of field 7 (a coefficient))",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 512 (aHat[0][0] word 0, byte 0: the padding bits above a 23-bit coefficient in a 32-bit field)",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 16746 (tr, byte 10)",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 17055 (t1[0] word 0, byte 31: low byte of a coefficient)",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 17024 (t1[0] word 0, byte 0: padding bits)",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "degenerate key (degenerate rho A): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318; noble=true",
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+  },
+  {
+   "challenge": "degenerate key (degenerate rho B): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318; noble=true",
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+  },
+  {
+   "challenge": "signature: empty signature",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3433 gas; 4-arg InvalidSignatureLength @ 3798 gas",
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 3,308 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3437 gas; 4-arg InvalidSignatureLength @ 3798 gas",
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 3,310 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3437 gas; 4-arg InvalidSignatureLength @ 3798 gas",
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 4,096 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3433 gas; 4-arg InvalidSignatureLength @ 3799 gas",
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 3,309 zero bytes",
+   "outcome": "3-arg REJECT / 4-arg REJECT",
+   "detail": "3-arg 0xffffffff @ 137742 gas; 4-arg false @ 138292 gas",
+   "finding": "a constant signature is rejected by the decoder or the final hash"
+  },
+  {
+   "challenge": "signature: 3,309 bytes of 0xff",
+   "outcome": "3-arg REJECT / 4-arg REJECT",
+   "detail": "3-arg 0xffffffff @ 81911 gas; 4-arg false @ 82461 gas",
+   "finding": "a constant signature is rejected by the decoder or the final hash"
+  },
+  {
+   "challenge": "public key: lengths 0, 32, 1951, 1953, 40320 at expansion",
+   "outcome": "REFUSED",
+   "detail": "expandPublicKey65 throws",
+   "finding": "the verifier never sees a canonical public key; its only key input is the 40-byte handle, so canonical-key validation is entirely off-chain or in a publisher"
+  },
+  {
+   "challenge": "helper: code at the bound address replaced by other code",
+   "outcome": "REVERT",
+   "detail": "BadHelper",
+   "finding": "EXTCODEHASH binding holds: a helper with any other code is refused on every call, so the residual risk is the PROVENANCE of the pinned bytes themselves, not substitution"
+  },
+  {
+   "challenge": "sponge: 50 raw permutations and 37 batched SHAKE256 messages vs @noble/hashes",
+   "outcome": "AGREE",
+   "detail": "permutation gas 44655..44655; batch gas 45424..459471",
+   "finding": "behavioural agreement with an independent implementation on these inputs; NOT a proof, and no substitute for the lost generator of f1600_core.hex"
+  },
+  {
+   "challenge": "routing: |M| = 733, empty context (mu preimage 799 bytes)",
+   "outcome": "ACCEPT",
+   "detail": "true @ 1751199 gas",
+   "finding": "batched path"
+  },
+  {
+   "challenge": "routing: |M| = 734, empty context (mu preimage 800 bytes)",
+   "outcome": "ACCEPT",
+   "detail": "true @ 1762306 gas",
+   "finding": "the 800-byte preimage takes shake256Fast (raw permutation protocol) because the batched helper entry cannot express it; verdict unchanged"
+  },
+  {
+   "challenge": "routing: |M| = 735, empty context (mu preimage 801 bytes)",
+   "outcome": "ACCEPT",
+   "detail": "true @ 1749961 gas",
+   "finding": "batched path"
+  }
+ ],
+ "findings": [
+  {
+   "challenge": "handle: 40 zero bytes",
+   "input": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 15580,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: two pointers to the probe (code of another shape)",
+   "input": "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e09fE46736679d2D9a65F0992F2272dE9f3c7fa6e0",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 14195,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: two pointers to a 1,000-byte data contract",
+   "input": "0x5fc8d32690cc91d4c39d9d3abcbd16989f8757075fc8d32690cc91d4c39d9d3abcbd16989f875707",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 15944,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: two pointers to an address without code",
+   "input": "0x00000000000000000000000000000000000000ee00000000000000000000000000000000000000ee",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 15580,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: genuine halves swapped",
+   "input": "0x9f1ac54bef0dd2f6f3462ea0fa94fc62300d3a8ecafac3dd18ac6c6e92c921884f9e4176737c052c",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541801,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: half0 of key 0 with half1 of key 1",
+   "input": "0xcafac3dd18ac6c6e92c921884f9e4176737c052c93b6bda6a0813d808d75aa42e900664ceb868bcf",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541721,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: half0 of key 1 with half1 of key 0",
+   "input": "0xbf9fbff01664500a33080da5d437028b07dfcc559f1ac54bef0dd2f6f3462ea0fa94fc62300d3a8e",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541761,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: 39-byte handle (last byte dropped)",
+   "input": "0xcafac3dd18ac6c6e92c921884f9e4176737c052c9f1ac54bef0dd2f6f3462ea0fa94fc62300d3a",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 27336,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: 20-byte handle (one pointer)",
+   "input": "0xcafac3dd18ac6c6e92c921884f9e4176737c052c",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 27336,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: empty handle",
+   "input": "0x",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 18080,
+   "finding": "no substituted or malformed handle verifies the genuine signature"
+  },
+  {
+   "challenge": "handle: 41-byte handle (genuine plus a trailing byte)",
+   "input": "0xcafac3dd18ac6c6e92c921884f9e4176737c052c9f1ac54bef0dd2f6f3462ea0fa94fc62300d3a8eff",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "gas": 1541682,
+   "finding": "the verifier reads only the first 40 bytes of `pk`; bytes beyond are ignored, so distinct handle encodings name one key: an adapter MUST enforce exactly 40 bytes before committing to keccak(handle)"
+  },
+  {
+   "challenge": "handle: 72-byte handle (genuine plus 32 trailing bytes)",
+   "input": "0xcafac3dd18ac6c6e92c921884f9e4176737c052c9f1ac54bef0dd2f6f3462ea0fa94fc62300d3a8effffffff…",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "gas": 1541682,
+   "finding": "the verifier reads only the first 40 bytes of `pk`; bytes beyond are ignored, so distinct handle encodings name one key: an adapter MUST enforce exactly 40 bytes before committing to keccak(handle)"
+  },
+  {
+   "challenge": "blob: both halves deployed by a plain CREATE outside setKey, same bytes",
+   "input": "0x0165878a594ca255338adfa4d48449f69242eb8fa513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "gas": 1541682,
+   "finding": "setKey adds nothing the verifier later checks: any address pair holding the right bytes is a key, so handle-to-key binding must come from a publisher the kernel can audit (PUBLISHER_BINDING.md)"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 31 (outer tuple: offset word of element 0, low byte (byte 31))",
+   "input": "0x2279b7a0a67db372996a5fab50d91eaa73d2ebe6a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REVERT",
+   "detail": "BadPubKeyBlob",
+   "gas": 29297,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 100 (outer tuple: length word of element 0, byte 100 (a framing word the reader never loads))",
+   "input": "0x8a791620dd6260079bf849dc5567adc3f2fdc318a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "gas": 1541682,
+   "finding": "this byte is never read: two blobs with different code hashes name the same key, so a blob's EXTCODEHASH is not a key identity and a publisher must bind the canonical public key, not the blob bytes"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 515 (aHat[0][0] word 0, byte 3: low byte of field 0 (a coefficient))",
+   "input": "0x610178da211fef7d417bc0e6fed39f05609ad788a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541661,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 543 (aHat[0][0] word 0, byte 31: low byte of field 7 (a coefficient))",
+   "input": "0xb7f8bc63bbcad18155201308c8f3540b07f84f5ea513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541701,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 512 (aHat[0][0] word 0, byte 0: the padding bits above a 23-bit coefficient in a 32-bit field)",
+   "input": "0xa51c1fc2f0d1a1b8494ed1fe312d7c3a78ed91c0a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541641,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 16746 (tr, byte 10)",
+   "input": "0x0dcd1bf9a1b36ce34237eeafef220932846bcd82a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541681,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 17055 (t1[0] word 0, byte 31: low byte of a coefficient)",
+   "input": "0x9a676e781a523b5d0c0e43731313a708cb607508a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541681,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "blob: one bit flipped at half-0 byte 17024 (t1[0] word 0, byte 0: padding bits)",
+   "input": "0x0b306bf915c4d645ff596e518faf3f9669b97016a513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541701,
+   "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
+  },
+  {
+   "challenge": "degenerate key (degenerate rho A): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
+   "input": "48166bb7e350eecb07e7deff5cc8d4ed0187982521c973b66464fecb9a8a9af2…",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318; noble=true",
+   "gas": 1527620,
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+  },
+  {
+   "challenge": "degenerate key (degenerate rho B): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
+   "input": "1c2d7a21837574a9f2983d88de5825bd0ff49460822565c2c09c54bf67f05a27…",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318; noble=true",
+   "gas": 1527705,
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+  },
+  {
+   "challenge": "signature: empty signature",
+   "input": "0 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3433 gas; 4-arg InvalidSignatureLength @ 3798 gas",
+   "gas": 3433,
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 3,308 bytes",
+   "input": "3308 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3437 gas; 4-arg InvalidSignatureLength @ 3798 gas",
+   "gas": 3437,
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 3,310 bytes",
+   "input": "3310 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3437 gas; 4-arg InvalidSignatureLength @ 3798 gas",
+   "gas": 3437,
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 4,096 bytes",
+   "input": "4096 bytes",
+   "outcome": "3-arg REJECT / 4-arg REVERT",
+   "detail": "3-arg 0xffffffff @ 3433 gas; 4-arg InvalidSignatureLength @ 3799 gas",
+   "gas": 3433,
+   "finding": "length is checked first: 0xFFFFFFFF on the ERC-7913 path, InvalidSignatureLength on the context path, both before any key read"
+  },
+  {
+   "challenge": "signature: 3,309 zero bytes",
+   "input": "3309 bytes",
+   "outcome": "3-arg REJECT / 4-arg REJECT",
+   "detail": "3-arg 0xffffffff @ 137742 gas; 4-arg false @ 138292 gas",
+   "gas": 137742,
+   "finding": "a constant signature is rejected by the decoder or the final hash"
+  },
+  {
+   "challenge": "signature: 3,309 bytes of 0xff",
+   "input": "3309 bytes",
+   "outcome": "3-arg REJECT / 4-arg REJECT",
+   "detail": "3-arg 0xffffffff @ 81911 gas; 4-arg false @ 82461 gas",
+   "gas": 81911,
+   "finding": "a constant signature is rejected by the decoder or the final hash"
+  },
+  {
+   "challenge": "public key: lengths 0, 32, 1951, 1953, 40320 at expansion",
+   "input": "client",
+   "outcome": "REFUSED",
+   "detail": "expandPublicKey65 throws",
+   "gas": null,
+   "finding": "the verifier never sees a canonical public key; its only key input is the 40-byte handle, so canonical-key validation is entirely off-chain or in a publisher"
+  },
+  {
+   "challenge": "helper: code at the bound address replaced by other code",
+   "input": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+   "outcome": "REVERT",
+   "detail": "BadHelper",
+   "gas": 6022,
+   "finding": "EXTCODEHASH binding holds: a helper with any other code is refused on every call, so the residual risk is the PROVENANCE of the pinned bytes themselves, not substitution"
+  },
+  {
+   "challenge": "sponge: 50 raw permutations and 37 batched SHAKE256 messages vs @noble/hashes",
+   "input": "see test",
+   "outcome": "AGREE",
+   "detail": "permutation gas 44655..44655; batch gas 45424..459471",
+   "gas": null,
+   "finding": "behavioural agreement with an independent implementation on these inputs; NOT a proof, and no substitute for the lost generator of f1600_core.hex"
+  },
+  {
+   "challenge": "routing: |M| = 733, empty context (mu preimage 799 bytes)",
+   "input": "733 bytes",
+   "outcome": "ACCEPT",
+   "detail": "true @ 1751199 gas",
+   "gas": 1751199,
+   "finding": "batched path"
+  },
+  {
+   "challenge": "routing: |M| = 734, empty context (mu preimage 800 bytes)",
+   "input": "734 bytes",
+   "outcome": "ACCEPT",
+   "detail": "true @ 1762306 gas",
+   "gas": 1762306,
+   "finding": "the 800-byte preimage takes shake256Fast (raw permutation protocol) because the batched helper entry cannot express it; verdict unchanged"
+  },
+  {
+   "challenge": "routing: |M| = 735, empty context (mu preimage 801 bytes)",
+   "input": "735 bytes",
+   "outcome": "ACCEPT",
+   "detail": "true @ 1749961 gas",
+   "gas": 1749961,
+   "finding": "batched path"
+  }
+ ],
+ "environment": {
+  "hardhat": "3.14.0",
+  "edr": "0.17.0",
+  "ethers": "6.17.0",
+  "noblePostQuantum": "0.7.0",
+  "nobleHashes": "2.3.0",
+  "node": "v24.16.0",
+  "platform": "win32-x64",
+  "chainId": 31337,
+  "hardfork": "osaka (hardhat.config.ts of this spike)"
+ }
+}
