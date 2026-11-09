@@ -112,7 +112,7 @@ export interface Verdict {
   outcome: Outcome;
   /** custom error name on REVERT, raw selector on UNEXPECTED */
   detail: string;
-  /** gas consumed by the verifier inside the STATICCALL */
+  /** gasleft() delta around the probe's STATICCALL: the verifier's consumption plus the call opcode itself (~0.2 %) */
   gas: number;
   raw: string;
 }

@@ -128,16 +128,40 @@
    "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
   },
   {
+   "challenge": "blob: one bit flipped at half-1 byte 16746 (half 1's copy of tr, validated for length, never read)",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "finding": "half 1's tr is never read: a second unread region, so blob bytes are not a key identity"
+  },
+  {
+   "challenge": "blob: half 0 with the row-1 offset word aliased to row 0 (two rows of A read from one polynomial set)",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "finding": "a non-canonical ABI layout is accepted as a well-formed blob (shape checks only): it is read as a different key, not refused"
+  },
+  {
    "challenge": "degenerate key (degenerate rho A): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
    "outcome": "ACCEPT",
    "detail": "0x024ad318; noble=true",
-   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; only a registrar that sees the canonical key can refuse it, and `t1 == 0` is only the most visible member of the class (see the t1 = 1023 key below)."
   },
   {
    "challenge": "degenerate key (degenerate rho B): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
    "outcome": "ACCEPT",
    "detail": "0x024ad318; noble=true",
-   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; only a registrar that sees the canonical key can refuse it, and `t1 == 0` is only the most visible member of the class (see the t1 = 1023 key below)."
+  },
+  {
+   "challenge": "degenerate key (t1 = 1023 everywhere, pk = rho || 0xff^1920): signature by the public witness (s1, s2, t0) = (0, -1, 0) over a registrar-chosen challenge",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318; noble=true; pk[32..] all zero = false",
+   "finding": "a `t1 == 0` gate does not see this key, and a proof of possession cannot reject it: on this class a signature is exactly what is free (the class publishes its own secret keys). The only complete registration criterion is binding the key to its KeyGen seed xi (re-run FIPS 204 Alg. 1); the registrar-evaluable floor is the centred-lift criterion of Fireblocks SAFETY.md §3, which refuses both keys here (0 of 1,536 coefficients with |lift| > gamma2) and admits genuine keys."
+  },
+  {
+   "challenge": "centred-lift floor over the three degenerate keys and the eight genuine keys",
+   "outcome": "SEPARATES",
+   "detail": "degenerate: 0/1536 large for all three; genuine: 1429,1429,1447,1435,1435,1446,1444,1413/1536 large",
+   "finding": "a registrar can evaluate this from the canonical key alone; it is a floor to refuse beneath (Fireblocks measured the cheaply forgeable set at roughly |lift| <= gamma2/4 with message grinding), never a certificate; seed binding is the complete criterion"
   },
   {
    "challenge": "signature: empty signature",
@@ -382,12 +406,28 @@
    "finding": "a corrupted expansion is read as a different key with no integrity error: a wrong blob is silently a wrong key"
   },
   {
+   "challenge": "blob: one bit flipped at half-1 byte 16746 (half 1's copy of tr, validated for length, never read)",
+   "input": "0x0165878a594ca255338adfa4d48449f69242eb8f959922be3caee4b8cd9a407cc3ac1c251c2007b1",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318",
+   "gas": 1541682,
+   "finding": "half 1's tr is never read: a second unread region, so blob bytes are not a key identity"
+  },
+  {
+   "challenge": "blob: half 0 with the row-1 offset word aliased to row 0 (two rows of A read from one polynomial set)",
+   "input": "0x9a9f2ccfde556a7e9ff0848998aa4a0cfd8863aea513e6e4b8f2a923d98304ec87f64353c4d5c853",
+   "outcome": "REJECT",
+   "detail": "0xffffffff",
+   "gas": 1541681,
+   "finding": "a non-canonical ABI layout is accepted as a well-formed blob (shape checks only): it is read as a different key, not refused"
+  },
+  {
    "challenge": "degenerate key (degenerate rho A): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
    "input": "48166bb7e350eecb07e7deff5cc8d4ed0187982521c973b66464fecb9a8a9af2…",
    "outcome": "ACCEPT",
    "detail": "0x024ad318; noble=true",
    "gas": 1527620,
-   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; only a registrar that sees the canonical key can refuse it, and `t1 == 0` is only the most visible member of the class (see the t1 = 1023 key below)."
   },
   {
    "challenge": "degenerate key (degenerate rho B): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61",
@@ -395,7 +435,23 @@
    "outcome": "ACCEPT",
    "detail": "0x024ad318; noble=true",
    "gas": 1527705,
-   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here."
+   "finding": "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; only a registrar that sees the canonical key can refuse it, and `t1 == 0` is only the most visible member of the class (see the t1 = 1023 key below)."
+  },
+  {
+   "challenge": "degenerate key (t1 = 1023 everywhere, pk = rho || 0xff^1920): signature by the public witness (s1, s2, t0) = (0, -1, 0) over a registrar-chosen challenge",
+   "input": "64c2e60662536158048d9e5797a0a09a78a361ed02e6e2ebdde680901d515a33…",
+   "outcome": "ACCEPT",
+   "detail": "0x024ad318; noble=true; pk[32..] all zero = false",
+   "gas": 1527722,
+   "finding": "a `t1 == 0` gate does not see this key, and a proof of possession cannot reject it: on this class a signature is exactly what is free (the class publishes its own secret keys). The only complete registration criterion is binding the key to its KeyGen seed xi (re-run FIPS 204 Alg. 1); the registrar-evaluable floor is the centred-lift criterion of Fireblocks SAFETY.md §3, which refuses both keys here (0 of 1,536 coefficients with |lift| > gamma2) and admits genuine keys."
+  },
+  {
+   "challenge": "centred-lift floor over the three degenerate keys and the eight genuine keys",
+   "input": "t1 coefficients, |centred_lift(v * 2^13 mod q)| > gamma2 = 261,888",
+   "outcome": "SEPARATES",
+   "detail": "degenerate: 0/1536 large for all three; genuine: 1429,1429,1447,1435,1435,1446,1444,1413/1536 large",
+   "gas": null,
+   "finding": "a registrar can evaluate this from the canonical key alone; it is a floor to refuse beneath (Fireblocks measured the cheaply forgeable set at roughly |lift| <= gamma2/4 with message grinding), never a certificate; seed binding is the complete criterion"
   },
   {
    "challenge": "signature: empty signature",

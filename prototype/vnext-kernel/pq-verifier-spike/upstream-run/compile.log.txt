@@ -1,0 +1,50 @@
+
+Warning: This declaration shadows an existing declaration.
+   --> .\test\dilithium_core_packed.t.sol:208:18:
+    |
+208 |             for (uint256 k = 0; k < 32 && i + k < 2304; k++) {
+    |                  ^^^^^^^^^
+Note: The shadowed declaration is here:
+  --> .\src\ZKNOX_dilithium_utils.sol:44:1:
+   |
+44 | uint256 constant k = 4;
+   | ^^^^^^^^^^^^^^^^^^^^^^
+
+Warning: Unused local variable.
+  --> .\test\benchmarks.t.sol:34:9:
+   |
+34 |         uint256[] memory c = sampleInBallNist(cTilde, TAU, q);
+   |         ^^^^^^^^^^^^^^^^^^
+
+Warning: Unused local variable.
+  --> .\test\benchmarks.t.sol:41:9:
+   |
+41 |         uint256[] memory c = sampleInBallKeccakPrng(cTilde, TAU, q);
+   |         ^^^^^^^^^^^^^^^^^^
+
+Warning: Function state mutability can be restricted to pure
+ --> .\test\ethdilithium_internal.sol:8:5:
+  |
+8 |     function expose_verify_internal(PubKey memory pk, bytes memory m_prime, Signature memory signature)
+  |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning: Function state mutability can be restricted to pure
+ --> .\test\shake.t.sol:9:5:
+  |
+9 |     function test_shake_F1600Zero() public view {
+  |     ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning: Contract code size is 33453 bytes and exceeds 24576 bytes (a limit introduced in Spurious Dragon). This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+ --> .\script\Deploy_MLDSAETH_PK.s.sol:8:1:
+  |
+8 | contract DeployPKContract is BaseScript {
+  | ^ (Relevant source part starts here and spans across multiple lines).
+
+Warning: Contract code size is 33454 bytes and exceeds 24576 bytes (a limit introduced in Spurious Dragon). This contract may not be deployable on Mainnet. Consider enabling the optimizer (with a low "runs" value!), turning off revert strings, or using libraries.
+ --> .\script\Deploy_MLDSA_PK.s.sol:8:1:
+  |
+8 | contract DeployPKContract is BaseScript {
+  | ^ (Relevant source part starts here and spans across multiple lines).
+
+Compiled 41 Solidity files with solc 0.8.30 (evm target: osaka)
+exit 0

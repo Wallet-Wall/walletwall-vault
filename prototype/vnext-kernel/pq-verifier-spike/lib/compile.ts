@@ -16,7 +16,7 @@
  *
  * What this does NOT establish: equality with a build made by the vendor's own `forge build`. No ML-DSA-65
  * deployment or artefact was published by the vendor to compare against; `forge` itself could not be
- * installed in this environment (TOOLCHAIN.md). The reproducibility claim recorded in MEASUREMENTS.json is
+ * installed in this environment (TOOLCHAIN.md). The reproducibility claim recorded in `results/build.json` is
  * therefore: the same pinned binary and settings produce the same bytes on every run, here and in a fresh
  * checkout, and the runtime minus its CBOR metadata tail does not depend on source-unit naming.
  */

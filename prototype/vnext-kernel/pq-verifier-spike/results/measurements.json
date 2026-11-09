@@ -8,8 +8,8 @@
    "verifierEip170Headroom": 304,
    "verifierDeployGas": 5242460,
    "verifierCreationBytes": 24479,
-   "probeRuntimeBytes": 2792,
-   "probeDeployGas": 652635
+   "probeRuntimeBytes": 2791,
+   "probeDeployGas": 652419
   },
   "setKey": {
    "keys": 8,
@@ -55,87 +55,87 @@
     {
      "k": 1,
      "accepted": 1,
-     "gasInsideLoop": 1543569,
-     "estimateExecutionGas": 1544514,
+     "gasInsideLoop": 1543566,
+     "estimateExecutionGas": 1544511,
      "calldataBytes": 3780,
      "fitsTxCap": true
     },
     {
      "k": 2,
      "accepted": 2,
-     "gasInsideLoop": 3082354,
-     "estimateExecutionGas": 3083300,
+     "gasInsideLoop": 3082348,
+     "estimateExecutionGas": 3083294,
      "calldataBytes": 7332,
      "fitsTxCap": true
     },
     {
      "k": 3,
      "accepted": 3,
-     "gasInsideLoop": 4624712,
-     "estimateExecutionGas": 4625659,
+     "gasInsideLoop": 4624703,
+     "estimateExecutionGas": 4625650,
      "calldataBytes": 10884,
      "fitsTxCap": true
     },
     {
      "k": 4,
      "accepted": 4,
-     "gasInsideLoop": 6167498,
-     "estimateExecutionGas": 6168446,
+     "gasInsideLoop": 6167486,
+     "estimateExecutionGas": 6168434,
      "calldataBytes": 14436,
      "fitsTxCap": true
     },
     {
      "k": 5,
      "accepted": 5,
-     "gasInsideLoop": 7704250,
-     "estimateExecutionGas": 7705199,
+     "gasInsideLoop": 7704235,
+     "estimateExecutionGas": 7705184,
      "calldataBytes": 17988,
      "fitsTxCap": true
     },
     {
      "k": 6,
      "accepted": 6,
-     "gasInsideLoop": 9239736,
-     "estimateExecutionGas": 9240686,
+     "gasInsideLoop": 9239718,
+     "estimateExecutionGas": 9240668,
      "calldataBytes": 21540,
      "fitsTxCap": true
     },
     {
      "k": 7,
      "accepted": 7,
-     "gasInsideLoop": 10780518,
-     "estimateExecutionGas": 10781468,
+     "gasInsideLoop": 10780497,
+     "estimateExecutionGas": 10781447,
      "calldataBytes": 25092,
      "fitsTxCap": true
     },
     {
      "k": 8,
      "accepted": 8,
-     "gasInsideLoop": 12322106,
-     "estimateExecutionGas": 12323057,
+     "gasInsideLoop": 12322082,
+     "estimateExecutionGas": 12323033,
      "calldataBytes": 28644,
      "fitsTxCap": true
     },
     {
      "k": 9,
      "accepted": 9,
-     "gasInsideLoop": 13856044,
-     "estimateExecutionGas": 13856996,
+     "gasInsideLoop": 13856017,
+     "estimateExecutionGas": 13856969,
      "calldataBytes": 32196,
      "fitsTxCap": true
     },
     {
      "k": 10,
      "accepted": 10,
-     "gasInsideLoop": 15390243,
-     "estimateExecutionGas": 15391196,
+     "gasInsideLoop": 15390213,
+     "estimateExecutionGas": 15391166,
      "calldataBytes": 35748,
      "fitsTxCap": true
     }
    ],
    "largestKInOneTransaction": {
     "k": 10,
-    "executionGasAtCap": 15391196
+    "executionGasAtCap": 15391166
    },
    "overCapRefusal": "Transaction gas limit is 16777217 and exceeds transaction gas cap of 16777216",
    "note": "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. estimateExecutionGas = eth_estimateGas minus the calldata's intrinsic gas (the intrinsic part varies with the zero bytes of the handles' addresses and is recorded per run). A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false"
@@ -233,72 +233,72 @@
     "n": 6,
     "min": 1618806,
     "max": 1624712,
-    "mean": 1621853
+    "mean": 1621849
    },
    "intrinsic": {
     "n": 6,
     "min": 75484,
     "max": 75640,
-    "mean": 75554
+    "mean": 75550
    }
   },
   "quorum": {
    "raw": [
     {
      "k": 1,
-     "estimateGas": 1621254,
-     "intrinsic": 76740
+     "estimateGas": 1621263,
+     "intrinsic": 76752
     },
     {
      "k": 2,
-     "estimateGas": 3214556,
+     "estimateGas": 3214550,
      "intrinsic": 131256
     },
     {
      "k": 3,
-     "estimateGas": 4811431,
+     "estimateGas": 4811422,
      "intrinsic": 185772
     },
     {
      "k": 4,
-     "estimateGas": 6408806,
-     "intrinsic": 240360
+     "estimateGas": 6408782,
+     "intrinsic": 240348
     },
     {
      "k": 5,
-     "estimateGas": 7999955,
-     "intrinsic": 294756
+     "estimateGas": 7999916,
+     "intrinsic": 294732
     },
     {
      "k": 6,
-     "estimateGas": 9589826,
-     "intrinsic": 349140
+     "estimateGas": 9589784,
+     "intrinsic": 349116
     },
     {
      "k": 7,
-     "estimateGas": 11185124,
-     "intrinsic": 403656
+     "estimateGas": 11185079,
+     "intrinsic": 403632
     },
     {
      "k": 8,
-     "estimateGas": 12781301,
-     "intrinsic": 458244
+     "estimateGas": 12781253,
+     "intrinsic": 458220
     },
     {
      "k": 9,
-     "estimateGas": 14369720,
-     "intrinsic": 512724
+     "estimateGas": 14369669,
+     "intrinsic": 512700
     },
     {
      "k": 10,
-     "estimateGas": 15958448,
-     "intrinsic": 567252
+     "estimateGas": 15958382,
+     "intrinsic": 567216
     }
    ],
    "largestK": {
     "k": 10,
-    "gasUsedAtCap": 15958448,
-    "intrinsic": 567252
+    "gasUsedAtCap": 15958382,
+    "intrinsic": 567216
    }
   }
  },

@@ -13,9 +13,11 @@
  *   generated    WalletWall-shaped 32-byte digests (32 valid, 10 negative), z-norm boundary (3), hint
  *                canonicality (6), degenerate key (1): 52 vectors, generated once and committed
  * Every public key is expanded by the VENDORED client module (js/mldsa65.js, byte-identical to upstream) and
- * the expansion is pinned by digest against two independent earlier runs (the feasibility run on the upstream
- * ESM module; the vendor's own test file). Every vector is also run through @noble/post-quantum 0.7.0 as a
- * second oracle; a chain/client split is a finding, not a pass.
+ * the expansion is pinned by digest against two earlier runs of the SAME expansion code (the feasibility run on
+ * the upstream ESM module; the vendor's own test file, written by that module). That is a drift check, not an
+ * independent oracle for the expansion: its correctness is evidenced by the on-chain acceptances (a wrong A-hat,
+ * t1-hat or tr makes c~ mismatch). Every vector is also run through @noble/post-quantum 0.7.0 as a second
+ * verification oracle; a chain/client split is a finding, not a pass.
  */
 import { expect } from "chai";
 import {
@@ -253,7 +255,7 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
     for (const r of boundary.slice(1)) expect(r.gas!, "a norm-gate rejection costs a fraction of a full verification").to.be.lessThan(accepted / 5);
   });
 
-  it("every expanded key matches an independent earlier expansion (feasibility run or the vendor's file)", function () {
+  it("every expanded key matches an earlier expansion by the same code (drift check: feasibility run or the vendor's file)", function () {
     expect(expansionChecks.length).to.be.greaterThan(40);
     const unpinned = expansionChecks.filter((e) => e.pinnedBy === "UNPINNED");
     expect(unpinned, "every key has a pinned expansion digest").to.deep.equal([]);

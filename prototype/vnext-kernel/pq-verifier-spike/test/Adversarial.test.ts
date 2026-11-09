@@ -175,10 +175,57 @@ describe("pq-verifier-spike — adversarial challenges (what the verifier does N
       else if (expectation === "REJECT") expect(r.outcome, name).to.equal("REJECT");
       else if (expectation === "NOT_ACCEPT") expect(r.outcome, name).to.not.equal("ACCEPT");
     }
-    expect(unread.length, "at least one blob byte is unread by the verifier (the finding)").to.be.greaterThan(0);
+    // half 1 carries its own copy of tr, which the reader validates for length and never reads (readPubKeyPacked65 keeps
+    // half 0's); and the reader follows ABI offsets, so a half whose row-1 offset aliases row 0 is a well-formed blob
+    // for a different key rather than a malformed one.
+    {
+      const trPos1 = h1.indexOf(hex(expanded.tr)) / 2;
+      expect(trPos1, "tr located in half 1").to.be.greaterThan(0);
+      const i = (trPos1 + 10) * 2;
+      const flipped = h1.slice(0, i) + (parseInt(h1.slice(i, i + 2), 16) ^ 0x01).toString(16).padStart(2, "0") + h1.slice(i + 2);
+      const d = await deployRaw("00" + flipped);
+      const r = await world.try32(raw0.address + d.address.slice(2), digest0, sig0);
+      note({ challenge: `blob: one bit flipped at half-1 byte ${trPos1 + 10} (half 1's copy of tr, validated for length, never read)`, input: raw0.address + d.address.slice(2), outcome: r.outcome, detail: r.detail, gas: r.gas, finding: "half 1's tr is never read: a second unread region, so blob bytes are not a key identity" });
+      expect(r.outcome).to.equal("ACCEPT");
+      unread.push("half-1 tr");
+
+      const word = (hexHalf: string, byteOffset: number): bigint => BigInt("0x" + hexHalf.slice(byteOffset * 2, byteOffset * 2 + 64));
+      expect(word(h0, 0), "outer offset of the aHat bytes element").to.equal(96n);
+      expect(word(h0, 128), "inner abi.encode offset word").to.equal(32n);
+      expect(word(h0, 160), "aHat rows: 3").to.equal(3n);
+      const row0Offset = h0.slice(192 * 2, 224 * 2);
+      const aliased = h0.slice(0, 224 * 2) + row0Offset + h0.slice(256 * 2);
+      const da = await deployRaw("00" + aliased);
+      const ra = await world.try32(da.address + raw1.address.slice(2), digest0, sig0);
+      note({ challenge: "blob: half 0 with the row-1 offset word aliased to row 0 (two rows of A read from one polynomial set)", input: da.address + raw1.address.slice(2), outcome: ra.outcome, detail: ra.detail, gas: ra.gas, finding: "a non-canonical ABI layout is accepted as a well-formed blob (shape checks only): it is read as a different key, not refused" });
+      expect(ra.outcome, "accepted as a blob, rejected as a signature").to.equal("REJECT");
+    }
+    expect(unread.length, "at least one blob byte is unread by the verifier (the finding)").to.be.greaterThan(1);
   });
 
-  it("degenerate keys: t1 = 0 keys are forgeable without any secret, and the verifier (like FIPS 204 and @noble) ACCEPTS the forgery (finding: registration must refuse them)", async function () {
+  it("degenerate keys: t1 = 0 and t1 = 1023 keys are forgeable with no private material; the verifier (like FIPS 204 and @noble) ACCEPTS; a `t1 == 0` gate and a proof of possession do not stop the class (finding)", async function () {
+    const Q = 8_380_417;
+    const GAMMA2 = (Q - 1) / 32;
+    // Power2Round's low part is zero for every v, so t1 = v means t = v * 2^13 (mod q); the centred lift of that is what a
+    // registrar can evaluate from the key alone (fireblocks-labs/evm-ml-dsa-verifier docs/SAFETY.md §3, criterion (i)).
+    const centredLift = (v: number): number => {
+      const t = (v * 8192) % Q;
+      return t > (Q - 1) / 2 ? t - Q : t;
+    };
+    const t1Coefficients = (pk: Uint8Array): number[] => {
+      const body = pk.slice(32);
+      const out: number[] = [];
+      for (let i = 0; i < 1536; i++) {
+        const bit = i * 10;
+        const byte = bit >> 3;
+        const w = body[byte]! | (body[byte + 1]! << 8) | ((body[byte + 2] ?? 0) << 16);
+        out.push((w >> (bit & 7)) & 0x3ff);
+      }
+      return out;
+    };
+    const largeLifts = (pk: Uint8Array): number => t1Coefficients(pk).filter((v) => Math.abs(centredLift(v)) > GAMMA2).length;
+    const degeneratePks: Uint8Array[] = [];
+
     for (const label of ["degenerate rho A", "degenerate rho B"]) {
       const rho = shake256(utf8(`GEN2-PQ-CONFORMANCE-1 ${label}`), { dkLen: 32 });
       const pk = new Uint8Array(1952);
@@ -197,14 +244,64 @@ describe("pq-verifier-spike — adversarial challenges (what the verifier does N
       const handle = (await world.publish(hex(pk))).handle;
       const v = await world.try32(handle, hex(m), hex(sig));
       const noble = nobleVerdict(hex(sig), hex(m), hex(pk));
-      note({ challenge: `degenerate key (${label}): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61`, input: hex(pk).slice(0, 64) + "…", outcome: v.outcome, detail: `${v.detail}; noble=${String(noble)}`, gas: v.gas, finding: "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; a registration gate must refuse pk[32..1952) == 0 (and the client must derive keys from a seed). Subtler degenerate classes are UNKNOWN here." });
+      note({ challenge: `degenerate key (${label}): pk = rho || 0^1920, sigma = c~ || zEncode(0) || 0^61`, input: hex(pk).slice(0, 64) + "…", outcome: v.outcome, detail: `${v.detail}; noble=${String(noble)}`, gas: v.gas, finding: "ML-DSA offers no exclusive ownership: a FIPS-conformant verifier accepts a key-free forgery for a degenerate key. The kernel cannot see t1; only a registrar that sees the canonical key can refuse it, and `t1 == 0` is only the most visible member of the class (see the t1 = 1023 key below)." });
       expect(v.outcome).to.equal("ACCEPT");
       expect(noble).to.equal(true);
-      // the trivial gate
-      expect(pk.slice(32).every((b) => b === 0)).to.equal(true);
+      degeneratePks.push(pk);
     }
-    // a genuine key is never all-zero in t1
-    expect(unhex(key0.pk).slice(32).some((b) => b !== 0)).to.equal(true);
+
+    // t1 = 1023 in every coefficient (pk = rho || 0xff^1920): 1023 * 2^13 = q - 1, so (s1, s2, t0) = (0, -1, 0) is a
+    // PUBLIC witness satisfying A*s1 + s2 = t1*2^13 + t0 with ||s2|| = 1 <= eta. Packed as an ML-DSA-65 secret key, the
+    // reference signer signs any registrar-chosen challenge with it. No "t1 == 0" or "low weight" gate sees this key.
+    {
+      const rho = shake256(utf8("GEN2-PQ-CONFORMANCE-1 degenerate rho C (t1 = 1023)"), { dkLen: 32 });
+      const pk = new Uint8Array(1952);
+      pk.set(rho, 0);
+      pk.fill(0xff, 32);
+      const tr = shake256(pk, { dkLen: 64 });
+      const pack13 = (values: number[]): Uint8Array => {
+        const out = new Uint8Array((values.length * 13) / 8);
+        let acc = 0n;
+        let bits = 0;
+        let o = 0;
+        for (const val of values) {
+          acc |= BigInt(val) << BigInt(bits);
+          bits += 13;
+          while (bits >= 8) {
+            out[o++] = Number(acc & 0xffn);
+            acc >>= 8n;
+            bits -= 8;
+          }
+        }
+        return out;
+      };
+      const sk = new Uint8Array([
+        ...rho,
+        ...new Uint8Array(32), // K: any value; it only seeds the signer's randomness
+        ...tr,
+        ...new Uint8Array(5 * 128).fill(0x44), // s1 = 0: nibbles eta - 0 = 4
+        ...new Uint8Array(6 * 128).fill(0x55), // s2 = -1: nibbles eta - (-1) = 5
+        ...pack13(new Array<number>(6 * 256).fill(4096)), // t0 = 0: 13-bit fields 2^12 - 0
+      ]);
+      expect(sk.length, "ML-DSA-65 secret key").to.equal(4032);
+      expect(hex(ml_dsa65.getPublicKey(sk)), "the public witness re-derives exactly this public key").to.equal(hex(pk));
+      const m = shake256(utf8("registrar-chosen proof-of-possession challenge"), { dkLen: 32 });
+      const sig = ml_dsa65.sign(m, sk, { extraEntropy: false });
+      const noble = ml_dsa65.verify(sig, m, pk);
+      const handle = (await world.publish(hex(pk))).handle;
+      const v = await world.try32(handle, hex(m), hex(sig));
+      note({ challenge: "degenerate key (t1 = 1023 everywhere, pk = rho || 0xff^1920): signature by the public witness (s1, s2, t0) = (0, -1, 0) over a registrar-chosen challenge", input: hex(pk).slice(0, 64) + "…", outcome: v.outcome, detail: `${v.detail}; noble=${String(noble)}; pk[32..] all zero = ${pk.slice(32).every((b) => b === 0)}`, gas: v.gas, finding: "a `t1 == 0` gate does not see this key, and a proof of possession cannot reject it: on this class a signature is exactly what is free (the class publishes its own secret keys). The only complete registration criterion is binding the key to its KeyGen seed xi (re-run FIPS 204 Alg. 1); the registrar-evaluable floor is the centred-lift criterion of Fireblocks SAFETY.md §3, which refuses both keys here (0 of 1,536 coefficients with |lift| > gamma2) and admits genuine keys." });
+      expect(v.outcome).to.equal("ACCEPT");
+      expect(noble).to.equal(true);
+      expect(pk.slice(32).every((b) => b === 0), "the trivial t1 == 0 gate does NOT catch this key").to.equal(false);
+      degeneratePks.push(pk);
+    }
+
+    // the centred-lift floor (a floor, not a certificate): every degenerate key here has NO large coefficient; the
+    // genuine seeded keys have most of theirs large
+    for (const pk of degeneratePks) expect(largeLifts(pk)).to.equal(0);
+    for (const k of gen.keys) expect(largeLifts(unhex(k.pk)), `genuine key ${k.i}`).to.be.greaterThan(1536 / 2);
+    note({ challenge: "centred-lift floor over the three degenerate keys and the eight genuine keys", input: "t1 coefficients, |centred_lift(v * 2^13 mod q)| > gamma2 = 261,888", outcome: "SEPARATES", detail: `degenerate: 0/1536 large for all three; genuine: ${gen.keys.map((k) => largeLifts(unhex(k.pk))).join(",")}/1536 large`, gas: null, finding: "a registrar can evaluate this from the canonical key alone; it is a floor to refuse beneath (Fireblocks measured the cheaply forgeable set at roughly |lift| <= gamma2/4 with message grinding), never a certificate; seed binding is the complete criterion" });
   });
 
   it("malformed signatures: wrong lengths are refused cheaply on both entry points; constant signatures are rejected", async function () {

@@ -6,12 +6,13 @@ pragma solidity 0.8.30;
  *
  * A measurement probe around an externally deployed ML-DSA-65 verifier. It never interprets a
  * verdict: it forwards the exact calldata a caller would send, reports whether the call succeeded,
- * returns the raw return data and the gas the callee consumed, so a test can record the verifier's
+ * returns the raw return data and the gas the call consumed, so a test can record the verifier's
  * behaviour (selector / 0xFFFFFFFF / custom error) without wrapping it in an opinion.
  *
  * Nothing here is a kernel adapter and nothing here decides anything. The gas figures it reports
- * are the callee's consumption inside a STATICCALL on the local simulated EVM, not a cost claim for
- * any network.
+ * are `gasleft()` deltas around a STATICCALL on the local simulated EVM: the callee's consumption
+ * PLUS the STATICCALL opcode itself (cold or warm account access, return-data memory), a few
+ * thousand gas (~0.2 %) above the callee alone. They are not a cost claim for any network.
  */
 contract SpikeProbe {
     /// @notice The verifier's 3-argument (ERC-7913-style) entry point, by full signature, so the overload is unambiguous.
@@ -54,7 +55,7 @@ contract SpikeProbe {
         uint256 g0 = gasleft();
         for (uint256 i = 0; i < pks.length; i++) {
             (bool ok, bytes memory ret) = verifier.staticcall(abi.encodeWithSelector(SEL_VERIFY_32, pks[i], digests[i], sigs[i]));
-            if (ok && ret.length >= 4 && bytes4(ret) == SEL_VERIFY_32) accepted++;
+            if (ok && ret.length > 3 && bytes4(ret) == SEL_VERIFY_32) accepted++;
         }
         gasUsed = g0 - gasleft();
     }

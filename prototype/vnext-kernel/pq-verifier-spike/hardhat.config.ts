@@ -12,9 +12,9 @@
  *
  * Only the harness contracts (`harness/`) are compiled through Hardhat. The VENDORED verifier
  * closure (`vendor/`) is compiled by `lib/compile.ts` straight from the pinned solc binary with
- * the vendor's own source-unit names and settings, so the bytes recorded in MEASUREMENTS.json are
- * reproducible without this file. Hardhat's part is to supply the pinned compiler binary and the
- * simulated EVM (EDR, Osaka rules: EIP-7825 per-transaction gas cap in force).
+ * the vendor's own source-unit names and settings, so the bytes recorded in `results/build.json`
+ * are reproducible without this file. Hardhat's part is to supply the pinned compiler binary and
+ * the simulated EVM (EDR, Osaka rules: EIP-7825 per-transaction gas cap in force).
  *
  * Compiler settings are the vendor's (ZKNoxHQ/ETHDILITHIUM, branch mldsa-65, 4c370bb5,
  * foundry.toml [profile.default]): solc 0.8.30, evm osaka, via-IR, optimizer runs 1,000,000.
