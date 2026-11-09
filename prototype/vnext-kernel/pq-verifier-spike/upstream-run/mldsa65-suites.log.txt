@@ -1,0 +1,56 @@
+== targeted ML-DSA-65 + helper suites (explicit KAT file permissions), started 2026-11-09T14:49:50Z
+No contracts to compile
+
+Running Solidity tests
+
+  test/dilithium65KATS.t.sol:KATDilithium65Test
+Gas used: 1544360
+    ✔ testVerify()
+    ✔ testRejects()
+
+  test/shake_fast.t.sol:ShakeFastTest
+    ✔ test_shake256Fast_matches_reference()
+    ✔ test_shake256Batch_matches_reference()
+    ✔ test_sampleInBallFast_matches_reference()
+sampleInBallFast (1 perm)   : 65814
+shake256Fast 98 -> 64 (1 perm): 45244
+shake256Fast 832 -> 32 (7 perm): 303974
+    ✔ test_gas()
+    ✔ testFuzz_shake256Fast(bytes,uint8) (runs: 256)
+    ✔ testFuzz_shake256Any(bytes,uint8) (runs: 256)
+    ✔ testFuzz_sampleInBallFast(bytes32) (runs: 256)
+
+  test/dilithium65_vectors.t.sol:Dilithium65VectorsTest
+vectors: 28 valid: 15
+rejected as expected: 13
+    ✔ testNistVectors()
+    ✔ testInterfaceSelector()
+
+  test/dilithium65_core_packed.t.sol:Dilithium65CorePackedTest
+    ✔ test_useHint65_scalar_steps()
+    ✔ test_useHint65_boundaries()
+    ✔ test_unpackZPacked65_sweep()
+    ✔ test_unpackZPacked65_real_signature()
+    ✔ test_unpackZPacked65_boundaries()
+    ✔ test_sampleInBallFastTau_kat()
+    ✔ test_readPubKeyPacked65()
+    ✔ test_matvec_row65_saturated()
+    ✔ test_hint_masks65()
+    ✔ test_core2_packed65_matches_scalar_real_signature()
+    ✔ test_core1_packed65_rejects()
+    ✔ test_checkHintBytes65()
+    ✔ testFuzz_useHint65(uint256,uint256) (runs: 256)
+    ✔ testFuzz_unpackZPacked65_inNorm(bytes32) (runs: 256)
+    ✔ testFuzz_unpackZPacked65(bytes32) (runs: 256)
+    ✔ testFuzz_sampleInBallFastTau(bytes32,bytes16) (runs: 256)
+    ✔ testFuzz_matvec_row65(uint256) (runs: 256)
+    ✔ testFuzz_hintBytes65(bytes32,uint8) (runs: 256)
+
+
+  29 passing
+
+
+real	0m4.748s
+user	0m0.061s
+sys	0m0.061s
+exit 0

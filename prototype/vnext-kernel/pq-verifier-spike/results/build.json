@@ -1,0 +1,97 @@
+{
+ "schema": "gen2-pq-conformance-1/build.v1",
+ "comparable": {
+  "solc": "0.8.30",
+  "solcCommit": "73712a01",
+  "settings": {
+   "evmVersion": "osaka",
+   "viaIR": true,
+   "optimizer": {
+    "enabled": true,
+    "runs": 1000000
+   },
+   "remappings": [
+    "sstore2/=lib/sstore2/contracts/",
+    "InterfaceVerifier/=lib/InterfaceVerifier/src/"
+   ]
+  },
+  "sourceUnits": {
+   "src/ZKNOX_dilithium65.sol": "c9bb688b6680701c8dcd46b5bd9126825c8d5fde2d836ae46aa8e2065168c597",
+   "src/ZKNOX_dilithium65_core_packed.sol": "dc1744acbaa25932618bd8c49657e20c4c8a919b8fb2b3b2a52a7d694ca7b201",
+   "src/ZKNOX_dilithium_core_packed.sol": "11378f5051e5a24b86453bd8c1c242d0608b3e1ed8bdd4b889169d2fe339ec27",
+   "src/ZKNOX_dilithium_utils.sol": "a44b903394d014e6e365ad2256dde779445e56ebf78320d1efc654bf9ac28762",
+   "src/ZKNOX_NTT_dilithium_mont.sol": "81c2b923fcfd982a640b1a2f23fbe22d8d2b8948427dc68d0f1b238fcd1defb9",
+   "src/ZKNOX_shake_fast.sol": "688892f62c364e40bbff02edcb6a867de36037e9ed03045dba2b0295b59e6976",
+   "lib/sstore2/contracts/SSTORE2.sol": "97b278afcb749135985ba99fa856866193288939068ea926837a44c085d7ee2d",
+   "lib/sstore2/contracts/utils/Bytecode.sol": "0c3cd70d5511cce5ebf828cb84d25e248691ebfe79e246ef1179e0d6651ee40d",
+   "lib/InterfaceVerifier/src/IVerifier.sol": "6774d6c1ef221f39839afdece576b0a6905c468d8a02b9eab6f554485066b5ae"
+  },
+  "contract": "ZKNOX_dilithium65",
+  "creationBytecodeBytes": 24479,
+  "creationBytecodeSha256": "321ee558bcdc81c49534f18703d9788fd7c1f7a98b0063f23989c4c49cac5c01",
+  "runtimeBytes": 24272,
+  "eip170Headroom": 304,
+  "runtimeSha256": "8e813d0c43c8d79c45dc4dc26a6dfed8233c4ec3a30af69c3616b1138d722148",
+  "runtimeSansCborSha256": "5c7943db56e110d8c911e9e20a1da91aa6285b484a61c37927c3e137906205fb",
+  "cborTailBytes": 51,
+  "immutableReferences": {
+   "845": [
+    {
+     "length": 32,
+     "start": 907
+    },
+    {
+     "length": 32,
+     "start": 1107
+    },
+    {
+     "length": 32,
+     "start": 1531
+    },
+    {
+     "length": 32,
+     "start": 3342
+    }
+   ]
+  },
+  "methodIdentifiers": {
+   "f1600Helper()": "ac7e2e2d",
+   "setKey(bytes)": "218ebfa3",
+   "verify(bytes,bytes,bytes,bytes)": "067874cf",
+   "verify(bytes,bytes32,bytes)": "024ad318"
+  },
+  "erc7913MagicValue": "0x024ad318",
+  "kernelInterfaceSelector": "0x5bf48e3a",
+  "helper": {
+   "runtimeBytes": 21622,
+   "codehash": "0x4afb4435879cdf8e50474c7aab2bc3a679caed432550ad6dba64f509309a817b",
+   "pinnedByVerifier": "0x4afb4435879cdf8e50474c7aab2bc3a679caed432550ad6dba64f509309a817b"
+  },
+  "deployment": {
+   "helperDeployGas": 4716328,
+   "verifierDeployGas": 5242460,
+   "deployedCodeEqualsRuntimeWithHelperInImmutableSlots": true
+  }
+ },
+ "thisRun": {
+  "deployerNonceOrder": [
+   "helper (raw runtime)",
+   "verifier(helper)",
+   "SpikeProbe"
+  ],
+  "helperAddress": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+  "verifierAddress": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+  "verifierDeployedCodehash": "0xef5b3051273a3e579fb535435257302e5d283a96e7ffbdbfcb897691cc74d13a"
+ },
+ "environment": {
+  "hardhat": "3.14.0",
+  "edr": "0.17.0",
+  "ethers": "6.17.0",
+  "noblePostQuantum": "0.7.0",
+  "nobleHashes": "2.3.0",
+  "node": "v24.16.0",
+  "platform": "win32-x64",
+  "chainId": 31337,
+  "hardfork": "osaka (hardhat.config.ts of this spike)"
+ }
+}

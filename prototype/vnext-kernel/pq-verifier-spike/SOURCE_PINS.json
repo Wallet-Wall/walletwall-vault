@@ -1,0 +1,148 @@
+{
+  "schema": "gen2-pq-conformance-1/source-pins.v1",
+  "generatedAt": "2026-11-09",
+  "upstreams": {
+    "zknox-ethdilithium-4c370bb5": {
+      "repository": "https://github.com/ZKNoxHQ/ETHDILITHIUM",
+      "branch": "mldsa-65",
+      "commit": "4c370bb5ff90d98e1ce8fb96f867126f0fbb9046",
+      "commitDate": "2026-09-16T17:18:26+02:00",
+      "licence": "MIT",
+      "licenceFile": "LICENSE",
+      "role": "ML-DSA-65 verifier (production import closure of src/ZKNOX_dilithium65.sol) and the client-side key expansion (js/)",
+      "note": "main (f9f4fe1d) has no ML-DSA-65 source; the code is only on branch mldsa-65. ZKNOX_dilithium65_utils.sol is NOT in the import closure of the verifier and is not vendored.",
+      "files": {
+        "LICENSE": {
+          "upstreamPath": "LICENSE",
+          "bytes": 1085,
+          "sha256": "aaa29eb2ebad2e3778e46af4ac80fcf7e7280849cb8fb2701b4b63dc8f70ad32"
+        },
+        "src/ZKNOX_dilithium65.sol": {
+          "upstreamPath": "src/ZKNOX_dilithium65.sol",
+          "bytes": 8255,
+          "sha256": "c9bb688b6680701c8dcd46b5bd9126825c8d5fde2d836ae46aa8e2065168c597"
+        },
+        "src/ZKNOX_dilithium65_core_packed.sol": {
+          "upstreamPath": "src/ZKNOX_dilithium65_core_packed.sol",
+          "bytes": 29601,
+          "sha256": "dc1744acbaa25932618bd8c49657e20c4c8a919b8fb2b3b2a52a7d694ca7b201"
+        },
+        "src/ZKNOX_dilithium_core_packed.sol": {
+          "upstreamPath": "src/ZKNOX_dilithium_core_packed.sol",
+          "bytes": 29079,
+          "sha256": "11378f5051e5a24b86453bd8c1c242d0608b3e1ed8bdd4b889169d2fe339ec27"
+        },
+        "src/ZKNOX_dilithium_utils.sol": {
+          "upstreamPath": "src/ZKNOX_dilithium_utils.sol",
+          "bytes": 15485,
+          "sha256": "a44b903394d014e6e365ad2256dde779445e56ebf78320d1efc654bf9ac28762"
+        },
+        "src/ZKNOX_NTT_dilithium_mont.sol": {
+          "upstreamPath": "src/ZKNOX_NTT_dilithium_mont.sol",
+          "bytes": 162056,
+          "sha256": "81c2b923fcfd982a640b1a2f23fbe22d8d2b8948427dc68d0f1b238fcd1defb9"
+        },
+        "src/ZKNOX_shake_fast.sol": {
+          "upstreamPath": "src/ZKNOX_shake_fast.sol",
+          "bytes": 17272,
+          "sha256": "688892f62c364e40bbff02edcb6a867de36037e9ed03045dba2b0295b59e6976"
+        },
+        "js/mldsa65.js": {
+          "upstreamPath": "js/mldsa65.js",
+          "bytes": 7433,
+          "sha256": "13f1596ac6d0d7615042ee21c4728fa132e38d77478e48771c584741ec603d3f"
+        },
+        "js/ntt_mldsa.js": {
+          "upstreamPath": "js/ntt_mldsa.js",
+          "bytes": 2930,
+          "sha256": "4b862315cdf2350fec5db8eee583115c9bf539437135c45e3a4b75e5539109dc"
+        },
+        "js/utils_mldsa.js": {
+          "upstreamPath": "js/utils_mldsa.js",
+          "bytes": 3623,
+          "sha256": "6d4a0e8bb3fd5af77ebf4b85744efb29981fd9f5fa89ca06bdcf0680a7ef9596"
+        }
+      }
+    },
+    "sstore2-0a28fe61": {
+      "repository": "https://github.com/0xsequence/sstore2",
+      "commit": "0a28fe61b6e81de9a05b462a24b9f4ba8c70d5b7",
+      "licence": "MIT",
+      "licenceFile": "LICENSE.md",
+      "role": "SSTORE2.write: the expanded-key halves are stored as contract code (CREATE, 0x00 prefix); imported by ZKNOX_dilithium65.setKey",
+      "pinnedBy": "ZKNoxHQ/ETHDILITHIUM .gitmodules (lib/sstore2) at 4c370bb5",
+      "files": {
+        "LICENSE.md": {
+          "upstreamPath": "LICENSE.md",
+          "bytes": 1101,
+          "sha256": "158c6325f5f52bd96d6d23c76c84ccf7c700ca13776b3aec7472205214df73e2"
+        },
+        "contracts/SSTORE2.sol": {
+          "upstreamPath": "contracts/SSTORE2.sol",
+          "bytes": 2472,
+          "sha256": "97b278afcb749135985ba99fa856866193288939068ea926837a44c085d7ee2d"
+        },
+        "contracts/utils/Bytecode.sol": {
+          "upstreamPath": "contracts/utils/Bytecode.sol",
+          "bytes": 2820,
+          "sha256": "0c3cd70d5511cce5ebf828cb84d25e248691ebfe79e246ef1179e0d6651ee40d"
+        }
+      }
+    },
+    "interface-verifier-5ec0596c": {
+      "repository": "https://github.com/ZKNOXHQ/InterfaceVerifier",
+      "commit": "5ec0596c7fad2fcdde8bdb2dd50565858c84007c",
+      "licence": "MIT",
+      "licenceFile": "LICENSE",
+      "role": "ISigVerifier: setKey(bytes) and the ERC-7913-style verify(bytes,bytes32,bytes) returns (bytes4)",
+      "pinnedBy": "ZKNoxHQ/ETHDILITHIUM .gitmodules (lib/InterfaceVerifier) at 4c370bb5",
+      "files": {
+        "LICENSE": {
+          "upstreamPath": "LICENSE",
+          "bytes": 1085,
+          "sha256": "9547140d69ecad8def09126bae691dfe8ccf89691bd7b6a3234778060a028d96"
+        },
+        "src/IVerifier.sol": {
+          "upstreamPath": "src/IVerifier.sol",
+          "bytes": 697,
+          "sha256": "6774d6c1ef221f39839afdece576b0a6905c468d8a02b9eab6f554485066b5ae"
+        }
+      }
+    },
+    "fireblocks-evm-ml-dsa-verifier-cca262b5": {
+      "repository": "https://github.com/fireblocks-labs/evm-ml-dsa-verifier",
+      "commit": "cca262b5",
+      "licence": "MIT",
+      "licenceFile": "LICENSE",
+      "role": "Origin of the Keccak-f[1600] helper runtime (helpers/f1600_170.hex, 21,622 bytes) that the ZKNOX verifier binds by EXTCODEHASH, of the helper rebuild tool, and of the sponge glue in ZKNOX_shake_fast.sol",
+      "note": "helpers/f1600_core.hex has NO generator in any repository (Fireblocks helpers/README.md); f1600_170.hex is rebuilt from it by tools/build_f1600_batch.py --check. ZKNOX test/f1600_170.hex is byte-identical to helpers/f1600_170.hex.",
+      "files": {
+        "LICENSE": {
+          "upstreamPath": "LICENSE",
+          "bytes": 2942,
+          "sha256": "7570287ac8366aa503610349ace89c66cc687a2103b9b174566395fce10332e2"
+        },
+        "helpers/f1600_core.hex": {
+          "upstreamPath": "helpers/f1600_core.hex",
+          "bytes": 39234,
+          "sha256": "46fbc67c4040f22929be6abb43abb935a3f2ae6b03398729c09afe0c898764ee"
+        },
+        "helpers/f1600_170.hex": {
+          "upstreamPath": "helpers/f1600_170.hex",
+          "bytes": 43244,
+          "sha256": "f26320c4be54bdf71270d0ca92a6cf665966f0a320b84676aa75d5fa3dc612c4"
+        },
+        "helpers/README.md": {
+          "upstreamPath": "helpers/README.md",
+          "bytes": 1796,
+          "sha256": "7632336be5ae8ad358f37525055e25f84b09ca1d569238075e602ecb3d4d73dd"
+        },
+        "tools/build_f1600_batch.py": {
+          "upstreamPath": "tools/build_f1600_batch.py",
+          "bytes": 42353,
+          "sha256": "aa8703eb2c7b35fc45b05ea51360a926f0bec7fe43c16e6af86931c13ee60859"
+        }
+      }
+    }
+  }
+}
