@@ -22,7 +22,12 @@ export const provider = connection.provider;
 export const rpc = <T = unknown>(method: string, params: unknown[] = []): Promise<T> =>
   provider.request({ method, params }) as Promise<T>;
 
-export const HELPER_HEX_PATH = path.join(VENDOR_DIR, "fireblocks-evm-ml-dsa-verifier-cca262b5", "helpers", "f1600_170.hex");
+export const HELPER_HEX_PATH = path.join(
+  VENDOR_DIR,
+  "fireblocks-evm-ml-dsa-verifier-cca262b5",
+  "helpers",
+  "f1600_170.hex",
+);
 export const FIXTURES_DIR = path.join(SPIKE_DIR, "fixtures");
 export const RESULTS_DIR = path.join(SPIKE_DIR, "results");
 
@@ -32,7 +37,8 @@ export const with0x = (h: string): string => (h.startsWith("0x") ? h : "0x" + h)
 export const sha256 = (data: Uint8Array | Buffer | string): string => createHash("sha256").update(data).digest("hex");
 export const keccakHex = (data: Uint8Array | Buffer): string => "0x" + hex(keccak_256(data));
 
-export const loadFixture = <T>(name: string): T => JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, name), "utf8")) as T;
+export const loadFixture = <T>(name: string): T =>
+  JSON.parse(fs.readFileSync(path.join(FIXTURES_DIR, name), "utf8")) as T;
 
 /** Write a results record when SPIKE_WRITE_RESULTS=1 (the committed records were produced this way). */
 export function writeResults(name: string, data: unknown): boolean {
@@ -100,7 +106,10 @@ export const helperRuntimeHex = (): string => "0x" + fs.readFileSync(HELPER_HEX_
 
 /** The F1600_CODEHASH constant, read from the vendored verifier source rather than retyped. */
 export function pinnedHelperCodehash(): string {
-  const src = fs.readFileSync(path.join(VENDOR_DIR, "zknox-ethdilithium-4c370bb5", "src", "ZKNOX_dilithium65.sol"), "utf8");
+  const src = fs.readFileSync(
+    path.join(VENDOR_DIR, "zknox-ethdilithium-4c370bb5", "src", "ZKNOX_dilithium65.sol"),
+    "utf8",
+  );
   const m = src.match(/F1600_CODEHASH = (0x[0-9a-f]{64});/);
   if (!m) throw new Error("F1600_CODEHASH not found in the vendored verifier source");
   return m[1]!;
@@ -137,8 +146,23 @@ export interface World {
   /** verify(bytes,bytes,bytes,bytes) through the probe */
   tryCtx(handle: string, msgHex: string, sigHex: string, ctxHex: string): Promise<Verdict>;
   /** k verifications in one probe call */
-  tryK(handles: string[], digests: string[], sigs: string[]): Promise<{ accepted: number; gas: number; calldataBytes: number; estimate: number | string; intrinsic: number; data: string }>;
-  estimateDirect32(handle: string, digestHex: string, sigHex: string): Promise<{ estimate: number | string; calldataBytes: number; intrinsic: number }>;
+  tryK(
+    handles: string[],
+    digests: string[],
+    sigs: string[],
+  ): Promise<{
+    accepted: number;
+    gas: number;
+    calldataBytes: number;
+    estimate: number | string;
+    intrinsic: number;
+    data: string;
+  }>;
+  estimateDirect32(
+    handle: string,
+    digestHex: string,
+    sigHex: string,
+  ): Promise<{ estimate: number | string; calldataBytes: number; intrinsic: number }>;
 }
 
 const blobCache = new Map<string, string>();
@@ -239,30 +263,53 @@ export async function createWorld(): Promise<World> {
       return rec;
     },
     async try32(handle, digestHex, sigHex) {
-      const [success, ret, gas] = (await probeContract.getFunction("try32").staticCall(verifierAddress, handle, with0x(digestHex), with0x(sigHex))) as [boolean, string, bigint];
+      const [success, ret, gas] = (await probeContract
+        .getFunction("try32")
+        .staticCall(verifierAddress, handle, with0x(digestHex), with0x(sigHex))) as [boolean, string, bigint];
       if (!success) return { outcome: "REVERT", detail: decodeRevert(ret), gas: Number(gas), raw: ret };
       const sel = ret.slice(0, 10);
       if (sel === sel32 && ret.length === 66) return { outcome: "ACCEPT", detail: sel, gas: Number(gas), raw: ret };
-      if (sel === "0xffffffff" && ret.length === 66) return { outcome: "REJECT", detail: sel, gas: Number(gas), raw: ret };
+      if (sel === "0xffffffff" && ret.length === 66)
+        return { outcome: "REJECT", detail: sel, gas: Number(gas), raw: ret };
       return { outcome: "UNEXPECTED", detail: sel, gas: Number(gas), raw: ret };
     },
     async tryCtx(handle, msgHex, sigHex, ctxHex) {
-      const [success, ret, gas] = (await probeContract.getFunction("tryCtx").staticCall(verifierAddress, handle, with0x(msgHex), with0x(sigHex), with0x(ctxHex))) as [boolean, string, bigint];
+      const [success, ret, gas] = (await probeContract
+        .getFunction("tryCtx")
+        .staticCall(verifierAddress, handle, with0x(msgHex), with0x(sigHex), with0x(ctxHex))) as [
+        boolean,
+        string,
+        bigint,
+      ];
       if (!success) return { outcome: "REVERT", detail: decodeRevert(ret), gas: Number(gas), raw: ret };
       if (ret.length !== 66) return { outcome: "UNEXPECTED", detail: ret.slice(0, 10), gas: Number(gas), raw: ret };
       const [ok] = ethers.AbiCoder.defaultAbiCoder().decode(["bool"], ret) as unknown as [boolean];
       return { outcome: ok ? "ACCEPT" : "REJECT", detail: ok ? "true" : "false", gas: Number(gas), raw: ret };
     },
     async tryK(hs, digests, sigs) {
-      const data = probeContract.interface.encodeFunctionData("tryK", [verifierAddress, hs, digests.map(with0x), sigs.map(with0x)]);
-      const [accepted, gas] = (await probeContract.getFunction("tryK").staticCall(verifierAddress, hs, digests.map(with0x), sigs.map(with0x))) as [bigint, bigint];
+      const data = probeContract.interface.encodeFunctionData("tryK", [
+        verifierAddress,
+        hs,
+        digests.map(with0x),
+        sigs.map(with0x),
+      ]);
+      const [accepted, gas] = (await probeContract
+        .getFunction("tryK")
+        .staticCall(verifierAddress, hs, digests.map(with0x), sigs.map(with0x))) as [bigint, bigint];
       let estimate: number | string;
       try {
         estimate = Number(await rpc<string>("eth_estimateGas", [{ from, to: probeAddress, data }]));
       } catch (e) {
         estimate = `ESTIMATE_FAILED: ${String((e as Error).message).slice(0, 120)}`;
       }
-      return { accepted: Number(accepted), gas: Number(gas), calldataBytes: byteLength(data), estimate, intrinsic: intrinsicGas(data), data };
+      return {
+        accepted: Number(accepted),
+        gas: Number(gas),
+        calldataBytes: byteLength(data),
+        estimate,
+        intrinsic: intrinsicGas(data),
+        data,
+      };
     },
     async estimateDirect32(handle, digestHex, sigHex) {
       const data = iface.encodeFunctionData("verify(bytes,bytes32,bytes)", [handle, with0x(digestHex), with0x(sigHex)]);
@@ -282,7 +329,11 @@ export async function createWorld(): Promise<World> {
 export async function toolchainRecord(): Promise<Record<string, unknown>> {
   const pkg = (name: string): string => {
     try {
-      return (JSON.parse(fs.readFileSync(path.join(SPIKE_DIR, "..", "..", "..", "node_modules", name, "package.json"), "utf8")) as { version: string }).version;
+      return (
+        JSON.parse(
+          fs.readFileSync(path.join(SPIKE_DIR, "..", "..", "..", "node_modules", name, "package.json"), "utf8"),
+        ) as { version: string }
+      ).version;
     } catch {
       return "unknown";
     }

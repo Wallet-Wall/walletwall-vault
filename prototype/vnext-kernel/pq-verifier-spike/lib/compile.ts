@@ -146,7 +146,8 @@ export interface CompileOptions {
 
 export function vendoredSources(): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [unit, rel] of Object.entries(SOURCE_UNITS)) out[unit] = fs.readFileSync(path.join(VENDOR_DIR, rel), "utf8");
+  for (const [unit, rel] of Object.entries(SOURCE_UNITS))
+    out[unit] = fs.readFileSync(path.join(VENDOR_DIR, rel), "utf8");
   return out;
 }
 
@@ -207,7 +208,10 @@ export function compileVendoredVerifier(options: CompileOptions = {}): CompiledV
           metadata: string;
           evm: {
             bytecode: { object: string };
-            deployedBytecode: { object: string; immutableReferences?: Record<string, { start: number; length: number }[]> };
+            deployedBytecode: {
+              object: string;
+              immutableReferences?: Record<string, { start: number; length: number }[]>;
+            };
             methodIdentifiers: Record<string, string>;
           };
         }
@@ -229,7 +233,11 @@ export function compileVendoredVerifier(options: CompileOptions = {}): CompiledV
     methodIdentifiers: c.evm.methodIdentifiers,
     metadata: c.metadata,
     solcVersion: solcVersionString(),
-    settings: { ...COMPILE_SETTINGS, remappings: remappings as unknown as typeof COMPILE_SETTINGS.remappings, ...(options.bytecodeHash ? { metadata: { bytecodeHash: options.bytecodeHash } } : {}) },
+    settings: {
+      ...COMPILE_SETTINGS,
+      remappings: remappings as unknown as typeof COMPILE_SETTINGS.remappings,
+      ...(options.bytecodeHash ? { metadata: { bytecodeHash: options.bytecodeHash } } : {}),
+    },
     sourceSha256: Object.fromEntries(Object.entries(sources).map(([u, s]) => [u, sha256Hex(s)])),
   };
   cache.set(key, result);

@@ -39,11 +39,30 @@ interface AcvpFixture {
   source: { sha256: string; vsId: number };
   group: { tgId: number; parameterSet: string };
   count: number;
-  tests: { tcId: number; reason: string; testPassed: boolean; pk: string; message: string; context: string; signature: string }[];
+  tests: {
+    tcId: number;
+    reason: string;
+    testPassed: boolean;
+    pk: string;
+    message: string;
+    context: string;
+    signature: string;
+  }[];
 }
 interface WycheproofFixture {
   numberOfTests: number;
-  testGroups: { publicKey: string; tests: { tcId: number; comment: string; msg: string; ctx?: string; sig: string; result: string; flags?: string[] }[] }[];
+  testGroups: {
+    publicKey: string;
+    tests: {
+      tcId: number;
+      comment: string;
+      msg: string;
+      ctx?: string;
+      sig: string;
+      result: string;
+      flags?: string[];
+    }[];
+  }[];
 }
 interface RspFixture {
   count: number;
@@ -51,7 +70,16 @@ interface RspFixture {
 }
 interface VendorFixture {
   count: number;
-  jsVectors: { name: string; tcId: number; valid: boolean; pk: string; blobSha256: string; msg: string; ctx: string; sig: string }[];
+  jsVectors: {
+    name: string;
+    tcId: number;
+    valid: boolean;
+    pk: string;
+    blobSha256: string;
+    msg: string;
+    ctx: string;
+    sig: string;
+  }[];
   hash32: { key: string; hash: string; sig: string };
   blobDigests: { name: string; tcId: number; valid: boolean; blobSha256: string }[];
   acvpPkByTcId: Record<string, string>;
@@ -59,7 +87,17 @@ interface VendorFixture {
 interface GeneratedFixture {
   counts: Record<string, number>;
   keys: { i: number; seed: string; pk: string }[];
-  vectors: { id: number; family: string; source: string; note: string; pk: string; msg: string; sig: string; expected: boolean | "BADLEN"; noble: boolean | "THROW" }[];
+  vectors: {
+    id: number;
+    family: string;
+    source: string;
+    note: string;
+    pk: string;
+    msg: string;
+    sig: string;
+    expected: boolean | "BADLEN";
+    noble: boolean | "THROW";
+  }[];
 }
 interface ExpansionPins {
   count: number;
@@ -89,7 +127,8 @@ function judge(expected: Expected, v: Verdict): boolean {
   if (expected === false) return v.outcome === "REJECT";
   if (expected === "BADLEN") return v.outcome === "REJECT" && v.detail === "0xffffffff";
   if (expected === "REVERT:ContextTooLong") return v.outcome === "REVERT" && v.detail === "ContextTooLong";
-  if (expected === "REVERT:InvalidSignatureLength") return v.outcome === "REVERT" && v.detail === "InvalidSignatureLength";
+  if (expected === "REVERT:InvalidSignatureLength")
+    return v.outcome === "REVERT" && v.detail === "InvalidSignatureLength";
   return false;
 }
 
@@ -117,7 +156,12 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
     const pkSha = sha256(Buffer.from(unhex(pk)));
     const pinned = expectedBlobSha256 ?? pins.byPkSha256[pkSha]?.blobSha256;
     if (!expansionChecks.some((e) => e.pkSha256 === pkSha)) {
-      expansionChecks.push({ pkSha256: pkSha, blobSha256: blobSha, pinnedBy: pinned ? pinnedBy : "UNPINNED", matches: pinned ? pinned === blobSha : false });
+      expansionChecks.push({
+        pkSha256: pkSha,
+        blobSha256: blobSha,
+        pinnedBy: pinned ? pinnedBy : "UNPINNED",
+        matches: pinned ? pinned === blobSha : false,
+      });
     }
     const { handle } = await world.publish(pk);
     expect(handle.length, "a 40-byte handle (two SSTORE2 pointers)").to.equal(82);
@@ -139,7 +183,18 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
       const handle = await publishChecked(t.pk, "vendor test/KAT/mldsa65_vectors.json", vendorBlob);
       const v = await world.tryCtx(handle, t.message, t.signature, t.context);
       const noble = nobleVerdict(t.signature, t.message, t.pk, t.context);
-      record({ family: "acvp", source: `ACVP vsId ${acvp.source.vsId} tgId 3 tcId ${t.tcId} (${t.reason})`, iface: "ctx", expected: t.testPassed, outcome: v.outcome, detail: v.detail, gas: v.gas, noble, consistent: judge(t.testPassed, v), chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT") });
+      record({
+        family: "acvp",
+        source: `ACVP vsId ${acvp.source.vsId} tgId 3 tcId ${t.tcId} (${t.reason})`,
+        iface: "ctx",
+        expected: t.testPassed,
+        outcome: v.outcome,
+        detail: v.detail,
+        gas: v.gas,
+        noble,
+        consistent: judge(t.testPassed, v),
+        chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT"),
+      });
     }
     expect(rows.filter((r) => r.family === "acvp" && !r.consistent)).to.deep.equal([]);
   });
@@ -175,12 +230,37 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
         else expected = t.result === "valid";
         const noble = nobleVerdict(sig, msg, pk, ctx);
         if (handle === null) {
-          record({ family: "wycheproof", source: `Wycheproof tcId ${t.tcId}`, iface: "ctx", expected, outcome: "NOT_RUN", detail: `pk length ${pkLen}`, gas: null, noble, consistent: true, chainVsNobleSplit: false, note });
+          record({
+            family: "wycheproof",
+            source: `Wycheproof tcId ${t.tcId}`,
+            iface: "ctx",
+            expected,
+            outcome: "NOT_RUN",
+            detail: `pk length ${pkLen}`,
+            gas: null,
+            noble,
+            consistent: true,
+            chainVsNobleSplit: false,
+            note,
+          });
           continue;
         }
         const v = await world.tryCtx(handle, msg, sig, ctx);
         run++;
-        record({ family: "wycheproof", source: `Wycheproof tcId ${t.tcId}`, iface: "ctx", expected, outcome: v.outcome, detail: v.detail, gas: v.gas, noble, consistent: judge(expected, v), chainVsNobleSplit: typeof noble === "boolean" && typeof expected === "boolean" && noble !== (v.outcome === "ACCEPT"), note });
+        record({
+          family: "wycheproof",
+          source: `Wycheproof tcId ${t.tcId}`,
+          iface: "ctx",
+          expected,
+          outcome: v.outcome,
+          detail: v.detail,
+          gas: v.gas,
+          noble,
+          consistent: judge(expected, v),
+          chainVsNobleSplit:
+            typeof noble === "boolean" && typeof expected === "boolean" && noble !== (v.outcome === "ACCEPT"),
+          note,
+        });
       }
     }
     console.log(`[wycheproof] ${run} run on chain, ${210 - run} refused at expansion`);
@@ -190,11 +270,24 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
   it("NIST reference KAT (.rsp counts 0..9): 10 valid vectors verify with an empty context", async function () {
     expect(rsp.count).to.equal(10);
     for (const t of rsp.tests) {
-      const vendorBlob = vendor.blobDigests.find((d) => d.tcId === t.count && d.name.startsWith("PQCsignKAT"))?.blobSha256;
+      const vendorBlob = vendor.blobDigests.find(
+        (d) => d.tcId === t.count && d.name.startsWith("PQCsignKAT"),
+      )?.blobSha256;
       const handle = await publishChecked(t.pk, "vendor test/KAT/mldsa65_vectors.json", vendorBlob);
       const v = await world.tryCtx(handle, t.msg, t.signature, "");
       const noble = nobleVerdict(t.signature, t.msg, t.pk, "");
-      record({ family: "rsp", source: `PQCsignKAT_Dilithium3.rsp count ${t.count} (mlen ${t.mlen})`, iface: "ctx", expected: true, outcome: v.outcome, detail: v.detail, gas: v.gas, noble, consistent: judge(true, v), chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT") });
+      record({
+        family: "rsp",
+        source: `PQCsignKAT_Dilithium3.rsp count ${t.count} (mlen ${t.mlen})`,
+        iface: "ctx",
+        expected: true,
+        outcome: v.outcome,
+        detail: v.detail,
+        gas: v.gas,
+        noble,
+        consistent: judge(true, v),
+        chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT"),
+      });
     }
     expect(rows.filter((r) => r.family === "rsp" && !r.consistent)).to.deep.equal([]);
   });
@@ -204,7 +297,18 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
       const handle = await publishChecked(t.pk, "vendor test/KAT/mldsa65_vectors.json", t.blobSha256);
       const v = await world.tryCtx(handle, strip(t.msg), strip(t.sig), strip(t.ctx));
       const noble = nobleVerdict(strip(t.sig), strip(t.msg), strip(t.pk), strip(t.ctx));
-      record({ family: "vendor", source: t.name, iface: "ctx", expected: t.valid, outcome: v.outcome, detail: v.detail, gas: v.gas, noble, consistent: judge(t.valid, v), chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT") });
+      record({
+        family: "vendor",
+        source: t.name,
+        iface: "ctx",
+        expected: t.valid,
+        outcome: v.outcome,
+        detail: v.detail,
+        gas: v.gas,
+        noble,
+        consistent: judge(t.valid, v),
+        chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT"),
+      });
     }
     // hash32: the vendor's test publishes the blob of .rsp count 0 and verifies `.hash32.sig` over `.hash32.hash`
     // through ISigVerifier.verify(pk, hash, sig). `key` is whatever the vendor's generator wrote: a 1,952-byte
@@ -219,7 +323,9 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
       handle = await publishChecked(pk, "vendor test/KAT/mldsa65_vectors.json");
     } else if (key.length / 2 === 40_320) {
       pk = strip(rsp0.pk);
-      expect(sha256(Buffer.from(unhex(key))), "the vendor's hash32 blob is the expansion of rsp count 0").to.equal(sha256(Buffer.from(unhex(expandToBlob(pk)))));
+      expect(sha256(Buffer.from(unhex(key))), "the vendor's hash32 blob is the expansion of rsp count 0").to.equal(
+        sha256(Buffer.from(unhex(expandToBlob(pk)))),
+      );
       handle = (await world.publishBlob(key)).handle;
     } else {
       pk = strip(rsp0.pk);
@@ -227,9 +333,35 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
     }
     const v = await world.try32(handle, strip(vendor.hash32.hash), strip(vendor.hash32.sig));
     const noble = nobleVerdict(strip(vendor.hash32.sig), strip(vendor.hash32.hash), pk, "");
-    record({ family: "vendor", source: "hash32 (ISigVerifier.verify(pk, hash, sig), deterministic, rsp count 0 key)", iface: "digest32", expected: true, outcome: v.outcome, detail: v.detail, gas: v.gas, noble, consistent: judge(true, v), chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT") });
-    const wrong = await world.try32(handle, strip(vendor.hash32.hash).replace(/^../, (b) => (parseInt(b, 16) ^ 0xff).toString(16).padStart(2, "0")), strip(vendor.hash32.sig));
-    record({ family: "vendor", source: "hash32 with the first digest byte complemented", iface: "digest32", expected: false, outcome: wrong.outcome, detail: wrong.detail, gas: wrong.gas, noble: null, consistent: judge(false, wrong), chainVsNobleSplit: false });
+    record({
+      family: "vendor",
+      source: "hash32 (ISigVerifier.verify(pk, hash, sig), deterministic, rsp count 0 key)",
+      iface: "digest32",
+      expected: true,
+      outcome: v.outcome,
+      detail: v.detail,
+      gas: v.gas,
+      noble,
+      consistent: judge(true, v),
+      chainVsNobleSplit: typeof noble === "boolean" && noble !== (v.outcome === "ACCEPT"),
+    });
+    const wrong = await world.try32(
+      handle,
+      strip(vendor.hash32.hash).replace(/^../, (b) => (parseInt(b, 16) ^ 0xff).toString(16).padStart(2, "0")),
+      strip(vendor.hash32.sig),
+    );
+    record({
+      family: "vendor",
+      source: "hash32 with the first digest byte complemented",
+      iface: "digest32",
+      expected: false,
+      outcome: wrong.outcome,
+      detail: wrong.detail,
+      gas: wrong.gas,
+      noble: null,
+      consistent: judge(false, wrong),
+      chainVsNobleSplit: false,
+    });
     expect(rows.filter((r) => r.family === "vendor" && !r.consistent)).to.deep.equal([]);
   });
 
@@ -240,9 +372,30 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
       const v = await world.try32(handle, t.msg, t.sig);
       const noble = nobleVerdict(t.sig, t.msg, t.pk, "");
       const expected: Expected = t.expected;
-      record({ family: t.family, source: t.source, iface: "digest32", expected, outcome: v.outcome, detail: v.detail, gas: v.gas, noble, consistent: judge(expected, v), chainVsNobleSplit: typeof noble === "boolean" && typeof expected === "boolean" && noble !== (v.outcome === "ACCEPT"), note: t.note });
+      record({
+        family: t.family,
+        source: t.source,
+        iface: "digest32",
+        expected,
+        outcome: v.outcome,
+        detail: v.detail,
+        gas: v.gas,
+        noble,
+        consistent: judge(expected, v),
+        chainVsNobleSplit:
+          typeof noble === "boolean" && typeof expected === "boolean" && noble !== (v.outcome === "ACCEPT"),
+        note: t.note,
+      });
     }
-    const bad = rows.filter((r) => r.family.startsWith("digest32") || r.family === "znorm_boundary" || r.family === "hint_canonicality" || r.family === "degenerate_key").filter((r) => !r.consistent);
+    const bad = rows
+      .filter(
+        (r) =>
+          r.family.startsWith("digest32") ||
+          r.family === "znorm_boundary" ||
+          r.family === "hint_canonicality" ||
+          r.family === "degenerate_key",
+      )
+      .filter((r) => !r.consistent);
     expect(bad).to.deep.equal([]);
     // the degenerate key is ACCEPTED, by FIPS 204 and by this verifier alike: that is the finding, recorded as such
     const degenerate = rows.find((r) => r.family === "degenerate_key");
@@ -252,7 +405,8 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
     const boundary = rows.filter((r) => r.family === "znorm_boundary");
     expect(boundary.map((r) => r.outcome)).to.deep.equal(["ACCEPT", "REJECT", "REJECT"]);
     const accepted = boundary[0]!.gas!;
-    for (const r of boundary.slice(1)) expect(r.gas!, "a norm-gate rejection costs a fraction of a full verification").to.be.lessThan(accepted / 5);
+    for (const r of boundary.slice(1))
+      expect(r.gas!, "a norm-gate rejection costs a fraction of a full verification").to.be.lessThan(accepted / 5);
   });
 
   it("every expanded key matches an earlier expansion by the same code (drift check: feasibility run or the vendor's file)", function () {
@@ -270,7 +424,9 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
       consistent: rows.filter((r) => r.consistent).length,
       inconsistent: rows.filter((r) => !r.consistent).length,
       chainVsNobleSplits: rows.filter((r) => r.chainVsNobleSplit).length,
-      byFamily: rows.reduce<Record<string, { n: number; accept: number; reject: number; revert: number; notRun: number }>>((acc, r) => {
+      byFamily: rows.reduce<
+        Record<string, { n: number; accept: number; reject: number; revert: number; notRun: number }>
+      >((acc, r) => {
         const f = (acc[r.family] ??= { n: 0, accept: 0, reject: 0, revert: 0, notRun: 0 });
         f.n++;
         if (r.outcome === "ACCEPT") f.accept++;
@@ -279,9 +435,17 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
         else if (r.outcome === "NOT_RUN") f.notRun++;
         return acc;
       }, {}),
-      gasByOutcome: (["ACCEPT", "REJECT", "REVERT"] as const).reduce<Record<string, { n: number; min: number; max: number; mean: number }>>((acc, o) => {
+      gasByOutcome: (["ACCEPT", "REJECT", "REVERT"] as const).reduce<
+        Record<string, { n: number; min: number; max: number; mean: number }>
+      >((acc, o) => {
         const g = rows.filter((r) => r.outcome === o && r.gas !== null).map((r) => r.gas as number);
-        if (g.length) acc[o] = { n: g.length, min: Math.min(...g), max: Math.max(...g), mean: Math.round(g.reduce((a, b) => a + b, 0) / g.length) };
+        if (g.length)
+          acc[o] = {
+            n: g.length,
+            min: Math.min(...g),
+            max: Math.max(...g),
+            mean: Math.round(g.reduce((a, b) => a + b, 0) / g.length),
+          };
         return acc;
       }, {}),
       uniqueKeysPublished: expansionChecks.length,
@@ -290,7 +454,13 @@ describe("pq-verifier-spike — conformance campaign (partial conformance eviden
     expect(summary.inconsistent).to.equal(0);
     expect(summary.chainVsNobleSplits).to.equal(0);
     expect(summary.vectors).to.equal(15 + 210 + 10 + 5 + 52);
-    const record = { schema: "gen2-pq-conformance-1/conformance.v1", summary, expansionChecks, rows, environment: await toolchainRecord() };
+    const record = {
+      schema: "gen2-pq-conformance-1/conformance.v1",
+      summary,
+      expansionChecks,
+      rows,
+      environment: await toolchainRecord(),
+    };
     writeResults("conformance.json", record);
     const committed = readResults<typeof record>("conformance.json");
     if (committed) {

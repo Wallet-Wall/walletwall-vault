@@ -7,9 +7,7 @@
    "verifierRuntimeBytes": 24272,
    "verifierEip170Headroom": 304,
    "verifierDeployGas": 5242460,
-   "verifierCreationBytes": 24479,
-   "probeRuntimeBytes": 2791,
-   "probeDeployGas": 652419
+   "verifierCreationBytes": 24479
   },
   "setKey": {
    "keys": 8,
@@ -228,6 +226,10 @@
   ]
  },
  "thisRun": {
+  "code": {
+   "probeRuntimeBytes": 2791,
+   "probeDeployGas": 652407
+  },
   "verify32": {
    "directTxEstimate": {
     "n": 6,

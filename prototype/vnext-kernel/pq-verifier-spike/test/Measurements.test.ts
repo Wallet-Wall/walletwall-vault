@@ -25,10 +25,23 @@ import {
 
 interface GeneratedFixture {
   keys: { i: number; seed: string; pk: string }[];
-  vectors: { id: number; family: string; source: string; pk: string; msg: string; sig: string; expected: boolean | "BADLEN" }[];
+  vectors: {
+    id: number;
+    family: string;
+    source: string;
+    pk: string;
+    msg: string;
+    sig: string;
+    expected: boolean | "BADLEN";
+  }[];
 }
 
-const stats = (xs: number[]): { n: number; min: number; max: number; mean: number } => ({ n: xs.length, min: Math.min(...xs), max: Math.max(...xs), mean: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length) });
+const stats = (xs: number[]): { n: number; min: number; max: number; mean: number } => ({
+  n: xs.length,
+  min: Math.min(...xs),
+  max: Math.max(...xs),
+  mean: Math.round(xs.reduce((a, b) => a + b, 0) / xs.length),
+});
 
 describe("pq-verifier-spike — measurements (local EVM only; Base economics UNKNOWN)", function () {
   this.timeout(1_800_000);
@@ -51,9 +64,10 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
       verifierEip170Headroom: 24_576 - world.verifier.runtimeBytes,
       verifierDeployGas: world.verifier.gasUsed,
       verifierCreationBytes: byteLength(world.compiled.bytecode),
-      probeRuntimeBytes: world.probe.runtimeBytes,
-      probeDeployGas: world.probe.gasUsed,
     };
+    // the probe is the harness, not the subject: its metadata hash (and so its initcode's zero-byte count and
+    // deployment gas) follows its source text, so its figures are recorded per run and never compared
+    thisRun.code = { probeRuntimeBytes: world.probe.runtimeBytes, probeDeployGas: world.probe.gasUsed };
     expect(world.verifier.runtimeBytes).to.be.at.most(24_576);
     expect(world.verifier.gasUsed).to.be.at.most(TX_GAS_CAP);
     console.log("[code]", JSON.stringify(record.code));
@@ -103,21 +117,42 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
       directTxCalldataBytes: direct[0]!.calldataBytes,
       note: "inside-call gas = the verifier's consumption in a STATICCALL from the probe; directTxExecutionGas = eth_estimateGas minus the intrinsic gas of the calldata (3,556 bytes: selector, three heads, a 40-byte handle, a 32-byte digest, a 3,309-byte signature); the intrinsic part varies with the zero bytes of the handle's addresses, so it is recorded per run, not compared",
     };
-    thisRun.verify32 = { directTxEstimate: stats(direct.map((d) => d.estimate as number)), intrinsic: stats(direct.map((d) => d.intrinsic)) };
+    thisRun.verify32 = {
+      directTxEstimate: stats(direct.map((d) => d.estimate as number)),
+      intrinsic: stats(direct.map((d) => d.intrinsic)),
+    };
     console.log("[verify32]", JSON.stringify(record.verify32), JSON.stringify(thisRun.verify32));
   });
 
   it("k verifications in one call (k = 1..10): callee gas, transaction estimate, and the EIP-7825 cap decides which k fit in one transaction", async function () {
     const distinct = gen.keys.map((k) => valid.find((v) => v.pk === k.pk)!);
-    const rows: { k: number; accepted: number; gasInsideLoop: number; estimateExecutionGas: number | string; calldataBytes: number; fitsTxCap: boolean | null }[] = [];
+    const rows: {
+      k: number;
+      accepted: number;
+      gasInsideLoop: number;
+      estimateExecutionGas: number | string;
+      calldataBytes: number;
+      fitsTxCap: boolean | null;
+    }[] = [];
     const raw: { k: number; estimateGas: number | string; intrinsic: number }[] = [];
     for (let k = 1; k <= 10; k++) {
       const vs = Array.from({ length: k }, (_, i) => distinct[i % distinct.length]!);
       const handles: string[] = [];
       for (const v of vs) handles.push((await world.publish(v.pk)).handle);
-      const r = await world.tryK(handles, vs.map((v) => v.msg), vs.map((v) => v.sig));
+      const r = await world.tryK(
+        handles,
+        vs.map((v) => v.msg),
+        vs.map((v) => v.sig),
+      );
       expect(r.accepted).to.equal(k);
-      rows.push({ k, accepted: r.accepted, gasInsideLoop: r.gas, estimateExecutionGas: typeof r.estimate === "number" ? r.estimate - r.intrinsic : r.estimate, calldataBytes: r.calldataBytes, fitsTxCap: typeof r.estimate === "number" ? r.estimate <= TX_GAS_CAP : null });
+      rows.push({
+        k,
+        accepted: r.accepted,
+        gasInsideLoop: r.gas,
+        estimateExecutionGas: typeof r.estimate === "number" ? r.estimate - r.intrinsic : r.estimate,
+        calldataBytes: r.calldataBytes,
+        fitsTxCap: typeof r.estimate === "number" ? r.estimate <= TX_GAS_CAP : null,
+      });
       raw.push({ k, estimateGas: r.estimate, intrinsic: r.intrinsic });
     }
     // the largest k whose estimate fits is sent as a real transaction at exactly the cap; the next k is refused by the node
@@ -127,13 +162,22 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
     const vs = Array.from({ length: largest.k }, (_, i) => distinct[i % distinct.length]!);
     const handles: string[] = [];
     for (const v of vs) handles.push((await world.publish(v.pk)).handle);
-    const data = world.probeContract.interface.encodeFunctionData("tryK", [world.verifier.address, handles, vs.map((v) => with0x(v.msg)), vs.map((v) => with0x(v.sig))]);
-    const txHash = await rpc<string>("eth_sendTransaction", [{ from, to: world.probe.address, data, gas: "0x" + TX_GAS_CAP.toString(16) }]);
+    const data = world.probeContract.interface.encodeFunctionData("tryK", [
+      world.verifier.address,
+      handles,
+      vs.map((v) => with0x(v.msg)),
+      vs.map((v) => with0x(v.sig)),
+    ]);
+    const txHash = await rpc<string>("eth_sendTransaction", [
+      { from, to: world.probe.address, data, gas: "0x" + TX_GAS_CAP.toString(16) },
+    ]);
     const receipt = await rpc<{ status: string; gasUsed: string }>("eth_getTransactionReceipt", [txHash]);
     expect(receipt.status).to.equal("0x1");
     let overCapError = "";
     try {
-      await rpc("eth_sendTransaction", [{ from, to: world.probe.address, data, gas: "0x" + (TX_GAS_CAP + 1).toString(16) }]);
+      await rpc("eth_sendTransaction", [
+        { from, to: world.probe.address, data, gas: "0x" + (TX_GAS_CAP + 1).toString(16) },
+      ]);
     } catch (e) {
       overCapError = String((e as Error).message);
     }
@@ -145,7 +189,10 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
       overCapRefusal: overCapError.slice(0, 160),
       note: "k distinct-key verifications in one STATICCALL loop; keys repeat beyond 8. estimateExecutionGas = eth_estimateGas minus the calldata's intrinsic gas (the intrinsic part varies with the zero bytes of the handles' addresses and is recorded per run). A k-member admissible set that must verify ALL members in one transaction is bounded by the row where fitsTxCap turns false",
     };
-    thisRun.quorum = { raw, largestK: { k: largest.k, gasUsedAtCap: Number(receipt.gasUsed), intrinsic: intrinsicGas(data) } };
+    thisRun.quorum = {
+      raw,
+      largestK: { k: largest.k, gasUsedAtCap: Number(receipt.gasUsed), intrinsic: intrinsicGas(data) },
+    };
     console.log("[quorum]", JSON.stringify(record.quorum), JSON.stringify(thisRun.quorum));
   });
 
@@ -171,7 +218,12 @@ describe("pq-verifier-spike — measurements (local EVM only; Base economics UNK
   });
 
   it("records the measurements (results/measurements.json) and reproduces the committed record exactly", async function () {
-    const full = { schema: "gen2-pq-conformance-1/measurements.v1", comparable: record, thisRun, environment: await toolchainRecord() };
+    const full = {
+      schema: "gen2-pq-conformance-1/measurements.v1",
+      comparable: record,
+      thisRun,
+      environment: await toolchainRecord(),
+    };
     writeResults("measurements.json", full);
     const committed = readResults<typeof full>("measurements.json");
     if (committed) expect(record).to.deep.equal(committed.comparable);

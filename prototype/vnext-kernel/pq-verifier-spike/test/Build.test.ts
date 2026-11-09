@@ -74,7 +74,12 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
 
   it("the runtime minus its CBOR tail does not depend on source-unit naming or on the metadata hash setting", function () {
     const a = compileVendoredVerifier();
-    const renamed = Object.fromEntries(Object.entries(SOURCE_UNITS).map(([unit, rel]) => [unit, `prototype/vnext-kernel/pq-verifier-spike/vendor/${rel}`]));
+    const renamed = Object.fromEntries(
+      Object.entries(SOURCE_UNITS).map(([unit, rel]) => [
+        unit,
+        `prototype/vnext-kernel/pq-verifier-spike/vendor/${rel}`,
+      ]),
+    );
     const b = compileVendoredVerifier({ sourceUnitNames: renamed });
     const n = compileVendoredVerifier({ bytecodeHash: "none" });
     const ca = splitCborTail(a.deployedBytecode);
@@ -82,7 +87,10 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
     const cn = splitCborTail(n.deployedBytecode);
     expect(cb.code).to.equal(ca.code);
     expect(cn.code).to.equal(ca.code);
-    expect(a.deployedBytecode, "the metadata hash binds the source-unit names, so the full runtime differs").to.not.equal(b.deployedBytecode);
+    expect(
+      a.deployedBytecode,
+      "the metadata hash binds the source-unit names, so the full runtime differs",
+    ).to.not.equal(b.deployedBytecode);
     expect(cn.cborLength).to.be.lessThan(ca.cborLength);
     expect(b.methodIdentifiers).to.deep.equal(a.methodIdentifiers);
   });
@@ -99,7 +107,10 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
     expect("0x" + c.methodIdentifiers["verify(bytes,bytes,bytes,bytes)"]).to.equal(world.selCtx);
     expect(world.sel32).to.equal(ethers.id("verify(bytes,bytes32,bytes)").slice(0, 10));
     const kernelSelector = ethers.id(KERNEL_PQ_VERIFIER_SIGNATURE).slice(0, 10);
-    expect(kernelSelector, "IKernelPQVerifier.verify(bytes32 digest, bytes publicKey, bytes signature) is a different function").to.not.equal(world.sel32);
+    expect(
+      kernelSelector,
+      "IKernelPQVerifier.verify(bytes32 digest, bytes publicKey, bytes signature) is a different function",
+    ).to.not.equal(world.sel32);
     expect(kernelSelector).to.not.equal(world.selCtx);
     const selectors = Object.values(c.methodIdentifiers);
     expect(new Set(selectors).size, "no selector collision inside the verifier").to.equal(selectors.length);
@@ -125,7 +136,10 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
       } catch (e) {
         failed = true;
         const data = String((e as { data?: string; message?: string }).data ?? (e as Error).message ?? "");
-        expect(data.includes(badHelperSelector.slice(2)) || /BadHelper|revert/i.test(data), `${name}: ${data.slice(0, 160)}`).to.equal(true);
+        expect(
+          data.includes(badHelperSelector.slice(2)) || /BadHelper|revert/i.test(data),
+          `${name}: ${data.slice(0, 160)}`,
+        ).to.equal(true);
       }
       expect(failed, `${name}: deployment must revert`).to.equal(true);
     }
@@ -138,7 +152,12 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
     const comparable = {
       solc: solc.version,
       solcCommit: solc.commit,
-      settings: { evmVersion: c.settings.evmVersion, viaIR: c.settings.viaIR, optimizer: c.settings.optimizer, remappings: [...c.settings.remappings] },
+      settings: {
+        evmVersion: c.settings.evmVersion,
+        viaIR: c.settings.viaIR,
+        optimizer: c.settings.optimizer,
+        remappings: [...c.settings.remappings],
+      },
       sourceUnits: c.sourceSha256,
       contract: c.contract,
       creationBytecodeBytes: byteLength(c.bytecode),
@@ -152,7 +171,11 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
       methodIdentifiers: c.methodIdentifiers,
       erc7913MagicValue: world.sel32,
       kernelInterfaceSelector: ethers.id(KERNEL_PQ_VERIFIER_SIGNATURE).slice(0, 10),
-      helper: { runtimeBytes: world.helper.runtimeBytes, codehash: world.helper.codehash, pinnedByVerifier: pinnedHelperCodehash() },
+      helper: {
+        runtimeBytes: world.helper.runtimeBytes,
+        codehash: world.helper.codehash,
+        pinnedByVerifier: pinnedHelperCodehash(),
+      },
       deployment: {
         helperDeployGas: world.helper.gasUsed,
         verifierDeployGas: world.verifier.gasUsed,
@@ -167,11 +190,18 @@ describe("pq-verifier-spike — build: reproduced bytecode, selectors, helper bi
       verifierAddress: world.verifier.address.toLowerCase(),
       verifierDeployedCodehash: world.verifier.codehash,
     };
-    const record = { schema: "gen2-pq-conformance-1/build.v1", comparable, thisRun, environment: await toolchainRecord() };
+    const record = {
+      schema: "gen2-pq-conformance-1/build.v1",
+      comparable,
+      thisRun,
+      environment: await toolchainRecord(),
+    };
     writeResults("build.json", record);
     const committed = readResults<typeof record>("build.json");
     if (committed) {
-      expect(comparable, "a fresh build must reproduce the committed record exactly").to.deep.equal(committed.comparable);
+      expect(comparable, "a fresh build must reproduce the committed record exactly").to.deep.equal(
+        committed.comparable,
+      );
     } else {
       this.skip();
     }
