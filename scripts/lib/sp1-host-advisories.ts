@@ -1737,8 +1737,24 @@ export function fixFactsOf(
 const outputOf = (list: readonly ObservedOutput[], spec: string, what: string): string => {
   const hit = list.filter((t) => t?.spec === spec);
   if (hit.length !== 1) throw new Error(`the observation has ${hit.length} ${what} of ${spec}, not one`);
-  return String(hit[0].output);
+  if (typeof hit[0].output !== "string") throw new Error(`the observation has no text for ${what} of ${spec}`);
+  return hit[0].output;
 };
+
+function observedFixFacts(
+  lf: ObservedLockfile,
+  finding: MeasuredFinding,
+  readPrecise: (probe: ObservedPrecise) => string = (probe) => probe.output,
+): FixFacts {
+  const spec = specOf(finding.crate, finding.version);
+  return fixFactsOf(finding, outputOf(lf.updates, spec, "update probes"), (s, v) => {
+    const hit = lf.precise.filter((p) => p?.spec === s && p.version === v);
+    if (hit.length !== 1 || typeof hit[0].output !== "string") {
+      throw new Error(`the observation has no unique precise probe text for ${s} at ${v}`);
+    }
+    return readPrecise(hit[0]);
+  });
+}
 
 export interface SourceFactResult extends EvidenceResult {
   membersRead: number;
@@ -2270,11 +2286,7 @@ function deriveFindings(
   return measuredFindingsOf(lf, lock).map((f) => {
     const spec = specOf(f.crate, f.version);
     const tree = treeFactsOf(outputOf(lf.trees, spec, "trees"), f.crate, f.version, where.root);
-    const fix = fixFactsOf(f, outputOf(lf.updates, spec, "update probes"), (s, v) => {
-      const hit = lf.precise.filter((p) => p.spec === s && p.version === v);
-      if (hit.length !== 1) throw new Error(`the observation has no precise probe of ${s} at ${v}`);
-      return hit[0].output;
-    });
+    const fix = observedFixFacts(lf, f);
     const claim = claimFor(claims, f);
     const informational = f.kind === "yanked" || f.kind === "unmaintained" || f.kind === "notice";
     let reachability: Reachability;
@@ -2891,6 +2903,7 @@ export type DriftType =
   | "LOCKFILE_DRIFT"
   | "GRAPH_DRIFT"
   | "FIX_DRIFT"
+  | "FIX_MEASUREMENT_UNAVAILABLE"
   | "EVIDENCE_DRIFT"
   | "UNAVAILABLE";
 export interface DriftItem {
@@ -2949,6 +2962,46 @@ const comparedAdvisory = (a: AdvisoryProjection | null) =>
     functions: a.functions,
   };
 
+class YankedFixCandidate extends Error {}
+
+/** A precise probe may warn about a yanked candidate even when Cargo can resolve it. Neither outcome proves a fix. */
+function livePreciseOutput(f: MeasuredFinding, { spec, version, output }: ObservedPrecise): string {
+  const lines = output.split(/\r?\n/).map((line) => line.trim());
+  const candidate = specOf(f.crate, version);
+  const errors = lines.filter((line) => /^error\b/.test(line));
+  const dryRun = lines.includes("warning: not updating lockfile due to dry run");
+  const updated = lines.includes(`Updating ${f.crate} v${f.version} -> v${version}`);
+  const completed = errors.length === 0 && dryRun && updated;
+  if (lines.includes(`warning: selected package \`${candidate}\` was yanked by the author`)) {
+    const rejected =
+      errors.length === 1 &&
+      errors[0] === `error: no matching package named \`${f.crate}\` found` &&
+      lines.includes("location searched: crates.io index") &&
+      lines.some((line) => /^required by package `[^`]+`$/.test(line)) &&
+      !dryRun &&
+      !updated;
+    if (rejected || completed) {
+      throw new YankedFixCandidate(
+        `fix availability could not be measured: Cargo's precise probe selected yanked candidate ${candidate}`,
+      );
+    }
+    throw new Error(`the precise probe of ${spec} at ${version} has an unrecognized yanked-candidate result`);
+  }
+  const result = preciseProbeOf(output, f.crate, f.version);
+  if (
+    result.blocked
+      ? errors.length !== 1 ||
+        errors[0] !== `error: failed to select a version for the requirement \`${result.requirement}\`` ||
+        dryRun ||
+        updated ||
+        !result.requirement.startsWith(`${f.crate} = `)
+      : !completed || result.to !== version || !f.advisory?.patched.some((range) => satisfies(version, range))
+  ) {
+    throw new Error(`the precise probe of ${spec} at ${version} has no usable dependency-resolution result`);
+  }
+  return output;
+}
+
 /**
  * Compares a fresh measurement with the committed record. Exact identities only (lockfile, kind, advisory id, crate,
  * version): a known justification never covers another advisory, another crate version or another lockfile. A live
@@ -2976,25 +3029,34 @@ export function rustsecDrift(
   }
   if (!/^[0-9a-f]{40}$/.test(String(obs.database?.lastCommit)))
     return unavailable("the live observation names no advisory database");
-  type Facts = { findings: RecordFinding[]; sha256: string };
+  type LiveFinding = MeasuredFinding & { key: string; dependency: TreeFacts; fix: FixFacts | null };
+  type Facts = { findings: LiveFinding[]; sha256: string };
   const liveFacts = new Map<LockfileId, Facts>();
   for (const [i, spec] of LOCKFILES.entries()) {
     const lf = obs.lockfiles[i];
     try {
       const text = locks[spec.id];
+      if (text === null) throw new Error(`the checkout's ${lockPathOf(spec)} could not be read`);
       if (typeof text === "string" && sha256(text) !== lf.sha256) {
         throw new Error(`it measured another ${lockPathOf(spec)} than the checkout's`);
       }
-      // Reachability is not compared here (it needs the repository's assumptions); identities, advisory fields,
-      // graph facts, fix facts and the re-measured evidence are.
-      const findings = deriveFindings(
-        lf,
-        typeof text === "string" ? parseCargoLock(text) : null,
-        spec,
-        new Map(),
-        "",
-        CLAIMS,
-      );
+      const findings = measuredFindingsOf(lf, typeof text === "string" ? parseCargoLock(text) : null).map((f) => {
+        const key = keyOf(f);
+        const dependency = treeFactsOf(
+          outputOf(lf.trees, specOf(f.crate, f.version), "trees"),
+          f.crate,
+          f.version,
+          spec.root,
+        );
+        try {
+          const fix = observedFixFacts(lf, f, (probe) => livePreciseOutput(f, probe));
+          return { ...f, key, dependency, fix };
+        } catch (error) {
+          if (!(error instanceof YankedFixCandidate)) throw error;
+          items.push({ type: "FIX_MEASUREMENT_UNAVAILABLE", lockfile: spec.id, key, detail: error.message });
+          return { ...f, key, dependency, fix: null };
+        }
+      });
       liveFacts.set(spec.id, { findings, sha256: lf.sha256 });
     } catch (error) {
       return unavailable(`the live ${spec.id} measurement is unusable: ${(error as Error).message}`);
@@ -3016,7 +3078,8 @@ export function rustsecDrift(
         detail: `${lockPathOf(spec)} is not the lockfile the record assessed`,
       });
     }
-    const ident = (f: RecordFinding) => `${f.kind}|${f.id}|${f.crate}|${f.version}`;
+    const ident = (f: Pick<MeasuredFinding, "kind" | "id" | "crate" | "version">) =>
+      `${f.kind}|${f.id}|${f.crate}|${f.version}`;
     const liveByIdent = new Map(got.findings.map((f) => [ident(f), f]));
     const wantByIdent = new Map(want.findings.map((f) => [ident(f), f]));
     for (const f of want.findings) {
@@ -3041,10 +3104,10 @@ export function rustsecDrift(
             type: "GRAPH_DRIFT",
             lockfile: spec.id,
             key: f.key,
-            detail: `cargo tree now says compiled=${l.compiled}, role ${l.dependency.role}, dependents ${l.dependency.directDependents.join(", ") || "none"}`,
+            detail: `cargo tree now says compiled=${l.dependency.compiled}, role ${l.dependency.role}, dependents ${l.dependency.directDependents.join(", ") || "none"}`,
           });
         }
-        if (fixStateOf(f.fix) !== fixStateOf(l.fix)) {
+        if (l.fix && fixStateOf(f.fix) !== fixStateOf(l.fix)) {
           items.push({
             type: "FIX_DRIFT",
             lockfile: spec.id,
@@ -3104,9 +3167,11 @@ export function rustsecDrift(
   }
   const verdict: DriftVerdict = items.some((i) => RED.has(i.type))
     ? "SECURITY_DRIFT"
-    : items.some((i) => i.type === "DISAPPEARED")
-      ? "RECORD_CLEANUP_REQUIRED"
-      : "MATCH";
+    : items.some((i) => i.type === "FIX_MEASUREMENT_UNAVAILABLE")
+      ? "AUDIT_UNAVAILABLE"
+      : items.some((i) => i.type === "DISAPPEARED")
+        ? "RECORD_CLEANUP_REQUIRED"
+        : "MATCH";
   return { verdict, items, known, database: obs.database.lastCommit };
 }
 

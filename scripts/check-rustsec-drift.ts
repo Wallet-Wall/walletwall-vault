@@ -9,8 +9,9 @@
  *   1  SECURITY_DRIFT           a new advisory, a changed one (kind, severity, ranges), another crate version or
  *                               lockfile, or a changed graph, feature, source or fix fact: reassess
  *   2  RECORD_CLEANUP_REQUIRED  only disappearances: RustSec no longer reports a recorded finding; remove it
- *   3  AUDIT_UNAVAILABLE        no usable live measurement (the advisory database, the index or a tool failed):
- *                               unmeasured, which is never read as clean
+ *   3  AUDIT_UNAVAILABLE        no usable live measurement, or an unavailable fix measurement without confirmed
+ *                               security drift. Confirmed security drift still exits 1 with the unavailable fix
+ *                               measurement reported separately.
  *
  * It reads the checkout's lockfiles to hold the live findings to them, and appends a summary to $GITHUB_STEP_SUMMARY
  * when that is set. No network. Research prototype. Not audited. Testnet/local only. Do not use real funds.
@@ -63,7 +64,7 @@ function main(): number {
   const text = report(r, livePath);
   console.log(text);
   for (const item of r.items) {
-    const level = item.type === "DISAPPEARED" ? "warning" : "error";
+    const level = item.type === "DISAPPEARED" || item.type === "FIX_MEASUREMENT_UNAVAILABLE" ? "warning" : "error";
     console.log(
       `::${level} title=RustSec ${item.type}::${item.lockfile ?? ""} ${item.key ?? ""} ${item.detail}`.trim(),
     );
