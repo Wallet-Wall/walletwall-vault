@@ -41,6 +41,24 @@ const push = (o: AdvisoryObservation, item: unknown, i = 0) => {
   v.found = true;
 };
 
+const yankedWarning = "warning: selected package `lru@0.16.3` was yanked by the author";
+const yankedRejection = [
+  "    Updating crates.io index",
+  yankedWarning,
+  "  |",
+  "  = help: if possible, try a compatible non-yanked version",
+  "error: no matching package named `lru` found",
+  "location searched: crates.io index",
+  "required by package `sp1-prover v6.3.1`",
+  "",
+].join("\n");
+const preciseSuccess = "    Updating lru v0.12.5 -> v0.16.3\nwarning: not updating lockfile due to dry run\n";
+function setLruPreciseOutput(o: AdvisoryObservation, output: string): void {
+  const probe = o.lockfiles[0].precise.find((p) => p.spec === "lru@0.12.5" && p.version === "0.16.3");
+  if (!probe) throw new Error("the baseline has no precise lru@0.12.5 probe for 0.16.3");
+  probe.output = output;
+}
+
 describe("RustSec drift — reconciling a fresh measurement with the committed record", function () {
   before(function () {
     const s = advisoryStateFromRepo(".");
@@ -167,6 +185,71 @@ describe("RustSec drift — reconciling a fresh measurement with the committed r
     ]);
   });
 
+  it("retains independent new advisories when the precise candidate is yanked and rejected", function () {
+    const o = live();
+    setLruPreciseOutput(o, yankedRejection);
+    const twin = vuln(o, "RUSTSEC-2026-0258");
+    twin.advisory.id = "RUSTSEC-2099-0001";
+    push(o, twin);
+    const r = rustsecDrift(RECORD, o, LOCKS);
+    expect(r.verdict).to.equal("SECURITY_DRIFT");
+    expect(keys(r, "NEW_FINDING")).to.deep.equal(["host RUSTSEC-2099-0001 h2@0.4.14"]);
+    expect(keys(r, "FIX_MEASUREMENT_UNAVAILABLE")).to.deep.equal(["host RUSTSEC-2026-0002 lru@0.12.5"]);
+    expect(keys(r, "FIX_DRIFT")).to.deep.equal([]);
+  });
+
+  it("reports an incomplete measurement even when the advisory list matches the record", function () {
+    const o = live();
+    setLruPreciseOutput(o, yankedRejection);
+    const r = rustsecDrift(RECORD, o, LOCKS);
+    expect(r.verdict).to.equal("AUDIT_UNAVAILABLE");
+    expect(r.known).to.equal(30);
+    expect(types(r)).to.deep.equal(["FIX_MEASUREMENT_UNAVAILABLE"]);
+  });
+
+  it("never promotes a completed precise update to a yanked candidate into a compatible fix", function () {
+    const o = live();
+    setLruPreciseOutput(o, `${yankedWarning}\n${preciseSuccess}`);
+    const r = rustsecDrift(RECORD, o, LOCKS);
+    expect(r.verdict).to.equal("AUDIT_UNAVAILABLE");
+    expect(types(r)).to.deep.equal(["FIX_MEASUREMENT_UNAVAILABLE"]);
+  });
+
+  it("compares a completed precise update without a yanked warning as measured fix drift", function () {
+    const o = live();
+    setLruPreciseOutput(o, preciseSuccess);
+    const r = rustsecDrift(RECORD, o, LOCKS);
+    expect(r.verdict).to.equal("SECURITY_DRIFT");
+    expect(types(r)).to.deep.equal(["FIX_DRIFT"]);
+    expect(r.items[0].detail).to.equal("fix availability changed from UPSTREAM_BLOCKED to LOCKFILE_ONLY");
+  });
+
+  for (const [label, output] of [
+    ["a generic dependency-resolution error", yankedRejection.replace(yankedWarning + "\n", "")],
+    ["a yanked warning for a different candidate", yankedRejection.replace("lru@0.16.3", "lru@0.16.4")],
+    ["a truncated yanked warning", yankedWarning],
+    ["an error after a reported update", `${preciseSuccess}error: failed to resolve dependencies\n`],
+    ["a precise update to the wrong version", preciseSuccess.replace("v0.16.3", "v0.16.4")],
+  ]) {
+    it(`fails closed on ${label}`, function () {
+      const o = live();
+      setLruPreciseOutput(o, output);
+      const r = rustsecDrift(RECORD, o, LOCKS);
+      expect(r.verdict).to.equal("AUDIT_UNAVAILABLE");
+      expect(types(r)).to.deep.equal(["UNAVAILABLE"]);
+      expect(r.known).to.equal(0);
+    });
+  }
+
+  it("fails closed when an audit is malformed even if another lockfile's fix probe shows a yanked candidate", function () {
+    const o = live();
+    setLruPreciseOutput(o, yankedRejection);
+    audit(o, 1).vulnerabilities.count = 99;
+    const r = rustsecDrift(RECORD, o, LOCKS);
+    expect(r.verdict).to.equal("AUDIT_UNAVAILABLE");
+    expect(types(r)).to.deep.equal(["UNAVAILABLE"]);
+  });
+
   it("a re-measured source or feature fact that no longer holds is evidence drift", function () {
     const o = live();
     const sf = o.sourceFacts.find(
@@ -232,6 +315,12 @@ describe("RustSec drift — reconciling a fresh measurement with the committed r
   it("a live measurement of other lockfiles than the checkout's is AUDIT_UNAVAILABLE", function () {
     const r = rustsecDrift(RECORD, live(), { ...LOCKS, host: `${LOCKS.host}\n` });
     expect(r.verdict).to.equal("AUDIT_UNAVAILABLE");
+  });
+
+  it("a missing checkout lockfile is AUDIT_UNAVAILABLE", function () {
+    const r = rustsecDrift(RECORD, live(), { ...LOCKS, host: null });
+    expect(r.verdict).to.equal("AUDIT_UNAVAILABLE");
+    expect(types(r)).to.deep.equal(["UNAVAILABLE"]);
   });
 
   it("the four outcomes have four distinct exit codes", function () {
@@ -347,5 +436,18 @@ describe("RustSec drift — the check-rustsec-drift CLI", function () {
     const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/check-rustsec-drift.ts"], { encoding: "utf8" });
     expect(r.status).to.equal(3);
     expect(r.stderr).to.include("--live <observation.json> is required");
+  });
+
+  it("annotates unavailable fix measurements separately from advisory drift", function () {
+    const o = live();
+    setLruPreciseOutput(o, yankedRejection);
+    const twin = vuln(o, "RUSTSEC-2026-0258");
+    twin.advisory.id = "RUSTSEC-2099-0001";
+    push(o, twin);
+    const r = run("partial.json", JSON.stringify(o));
+    expect(r.status, r.stderr).to.equal(1);
+    expect(r.stdout).to.include("::warning title=RustSec FIX_MEASUREMENT_UNAVAILABLE::");
+    expect(r.stdout).to.include("::error title=RustSec NEW_FINDING::");
+    expect(r.stdout).to.not.include("FIX_DRIFT");
   });
 });
