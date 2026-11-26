@@ -7,7 +7,7 @@ import { expect } from "chai";
 import { spawnSync } from "node:child_process";
 import fs, { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { mock } from "node:test";
 
 import { IMPL_RECEIPT_REL } from "../scripts/lib/sp1-impl-receipt";
@@ -171,6 +171,72 @@ describe("SP1 implementation lane — records are created once, never checked an
         expect(() => write(path, replacement)).to.throw("a proof-exercise record is never overwritten");
         expect(readFileSync(path)).to.deep.equal(Buffer.from(original));
       }
+    });
+  }
+
+  for (const [mode, relativePath] of [
+    ["receipt integration", IMPL_RECEIPT_INTEGRATION_REL],
+    ["default receipt", IMPL_RECEIPT_REL],
+  ] as const) {
+    describe(mode, function () {
+      let checkout: string;
+      let output: string;
+      beforeEach(function () {
+        checkout = join(dir, "checkout");
+        output = join(checkout, relativePath);
+        fs.mkdirSync(dirname(output), { recursive: true });
+      });
+
+      for (const targetExists of [true, false]) {
+        it(`refuses a ${targetExists ? "live" : "dangling"} leaf symlink and leaves its external target alone`, function () {
+          const target = join(dir, "outside.json");
+          if (targetExists) writeFileSync(target, "external bytes\n");
+          try {
+            fs.symlinkSync(target, output, "file");
+          } catch (error) {
+            if (
+              process.platform === "win32" &&
+              ["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")
+            ) {
+              this.skip(); // Windows may require Developer Mode for file symlinks.
+            }
+            throw error;
+          }
+
+          expect(() => rewriteEvidenceFile(output, "{}\n", checkout)).to.throw("Output is not a regular file");
+          expect(fs.lstatSync(output).isSymbolicLink()).to.equal(true);
+          if (targetExists) expect(readFileSync(target, "utf8")).to.equal("external bytes\n");
+          else expect(existsSync(target)).to.equal(false);
+        });
+      }
+
+      it("refuses a directory at the destination and preserves its contents", function () {
+        fs.mkdirSync(output);
+        const sentinel = join(output, "sentinel");
+        writeFileSync(sentinel, "keep me\n");
+
+        expect(() => rewriteEvidenceFile(output, "{}\n", checkout)).to.throw("Output is not a regular file");
+        expect(readFileSync(sentinel, "utf8")).to.equal("keep me\n");
+      });
+
+      it("validates the opened descriptor before truncating an existing file", function () {
+        const other = join(dir, "other.json");
+        writeFileSync(output, "original receipt\n");
+        writeFileSync(other, "other file\n");
+        const openSync = fs.openSync;
+        const stub = mock.method(fs, "openSync", (_path: fs.PathLike, flags: number, mode?: number) =>
+          openSync(other, flags, mode),
+        );
+        try {
+          expect(() => rewriteEvidenceFile(output, "{}\n", checkout)).to.throw(
+            "could not be verified before rewriting",
+          );
+        } finally {
+          stub.mock.restore();
+        }
+        expect(readFileSync(output, "utf8")).to.equal("original receipt\n");
+        expect(readFileSync(other, "utf8")).to.equal("other file\n");
+      });
     });
   }
 
