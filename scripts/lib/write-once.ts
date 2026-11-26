@@ -22,6 +22,15 @@ function isWithin(root: string, directory: string): boolean {
   return rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel);
 }
 
+function outputLeaf(path: string): string {
+  const leaf = basename(path);
+  const windowsStream = process.platform === "win32" && leaf.includes(":");
+  if (!leaf || leaf === "." || leaf === ".." || path.endsWith(sep) || path.endsWith("/") || windowsStream) {
+    throw new Error(`Output path must name a file: ${path}`);
+  }
+  return leaf;
+}
+
 function trustedDirectory(directory: string, checkoutRoot: string): string {
   const canonical = fs.realpathSync.native(directory);
   const stat = fs.statSync(canonical);
@@ -64,6 +73,48 @@ export function createEvidenceOutputDirectory(directory: string, checkoutRoot = 
   fs.mkdirSync(resolve(canonical, relative(ancestor, output)), { recursive: true, mode: 0o755 });
 }
 
+/** Creates an evidence file and its directories under the same checkout root. */
+export function writeNewEvidenceFile(path: string, data: string, what: string, checkoutRoot: string): void {
+  createEvidenceOutputDirectory(dirname(path), checkoutRoot);
+  writeNewFiles([[path, data]], what, checkoutRoot);
+}
+
+function sameRegularFile(entry: BigIntStats | undefined, opened: BigIntStats): boolean {
+  return entry?.isFile() === true && opened.ino !== 0n && entry.dev === opened.dev && entry.ino === opened.ino;
+}
+
+/**
+ * Legacy receipt rewrite on a trusted, stable local filesystem that reports file identities.
+ * Windows has no portable O_NOFOLLOW through Node. It relies on the leaf checks and descriptor
+ * identity comparison, and requires restricted ACLs on the directory and its ancestors.
+ * Path checks cannot guarantee race-free containment in a hostile namespace on any platform.
+ */
+export function rewriteEvidenceFile(path: string, data: string, checkoutRoot: string): void {
+  const leaf = outputLeaf(path);
+  const root = resolve(checkoutRoot);
+  const parent = resolve(dirname(path));
+  createEvidenceOutputDirectory(parent, root);
+  const canonical = resolve(trustedDirectory(parent, root), leaf);
+  const previous = fs.lstatSync(canonical, { bigint: true, throwIfNoEntry: false });
+  if (previous && !previous.isFile()) throw new Error(`Output is not a regular file: ${path}`);
+
+  const { O_WRONLY, O_CREAT, O_EXCL, O_NOFOLLOW, O_NONBLOCK } = fs.constants;
+  const leafFlags = process.platform === "win32" ? 0 : (O_NOFOLLOW ?? 0) | (O_NONBLOCK ?? 0);
+  const flags = O_WRONLY | leafFlags | (previous ? 0 : O_CREAT | O_EXCL);
+  const fd = fs.openSync(canonical, flags, 0o666);
+  try {
+    const opened = fs.fstatSync(fd, { bigint: true });
+    const current = fs.lstatSync(canonical, { bigint: true, throwIfNoEntry: false });
+    if (!opened.isFile() || !sameRegularFile(current, opened) || (previous && !sameRegularFile(previous, opened))) {
+      throw new Error(`Output changed or could not be verified before rewriting: ${path}`);
+    }
+    fs.ftruncateSync(fd, 0);
+    fs.writeFileSync(fd, data);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 interface CreatedFile {
   path: string;
   identity?: BigIntStats;
@@ -81,11 +132,7 @@ export function writeNewFiles(
 ): void {
   const root = resolve(checkoutRoot);
   const destinations = files.map(([path, data]) => {
-    const leaf = basename(path);
-    const windowsStream = process.platform === "win32" && leaf.includes(":");
-    if (!leaf || leaf === "." || leaf === ".." || path.endsWith(sep) || path.endsWith("/") || windowsStream) {
-      throw new Error(`Output path must name a file: ${path}`);
-    }
+    const leaf = outputLeaf(path);
     const parent = trustedDirectory(dirname(path), root);
     // Keep the caller's path for existing-file diagnostics, including relative paths.
     return { path, canonical: resolve(parent, leaf), data };

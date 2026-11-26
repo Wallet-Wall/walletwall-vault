@@ -8,6 +8,7 @@
  */
 import { expect } from "chai";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 
@@ -550,6 +551,18 @@ describe("SP1-PA3D — the exercise record and its attribution chain", function 
   });
 
   describe("the committed record", function () {
+    it("refuses historical tool identities when asked to publish a record", function () {
+      const before = readFileSync(RECORD_REL);
+      const result = spawnSync(
+        process.execPath,
+        ["--import", import.meta.resolve("tsx"), "scripts/generate-sp1-pa3d-record.ts"],
+        { encoding: "utf8", timeout: 60_000 },
+      );
+      expect(result.status, result.stderr).to.equal(1);
+      expect(result.stderr).to.match(/TOOL_DRIFT.*generate-sp1-proof-exercise-record/);
+      expect(readFileSync(RECORD_REL)).to.deep.equal(before);
+    });
+
     it("is stated by the gate document: the heading names the lane, its section the state, the binding, the run and the residue", function () {
       if (!existsSync(RECORD_REL)) this.skip();
       const committed = JSON.parse(lf(readFileSync(RECORD_REL, "utf8"))) as Pa3dRecord;

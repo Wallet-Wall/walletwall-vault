@@ -16,7 +16,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { runScript } from "./lib/run-script";
-import { PRODUCTION_SP1_BINDING } from "./lib/sp1-pa3d-exercise";
+import { MANIFEST_REL, PRODUCTION_SP1_BINDING, manifestContextFromRepo, manifestErrors } from "./lib/sp1-pa3d-exercise";
 import {
   RECORD_REL,
   pa3dInputsFromRepo,
@@ -29,8 +29,17 @@ import { writeNewFiles } from "./lib/write-once";
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 
 runScript(async () => {
+  const validate = process.argv.includes("--validate");
+  if (!validate) {
+    // Historical replay is for validating committed evidence, never for publishing a new record.
+    const ctx = manifestContextFromRepo(REPO);
+    const manifest: unknown = JSON.parse(readFileSync(resolve(REPO, MANIFEST_REL), "utf8"));
+    const errors = manifestErrors(manifest, ctx);
+    if (errors.length > 0)
+      throw new Error(`the PA3D manifest does not validate against live tools:\n - ${errors.join("\n - ")}`);
+  }
   const inputs = pa3dInputsFromRepo(REPO);
-  if (process.argv.includes("--validate")) {
+  if (validate) {
     const committedText = readFileSync(resolve(REPO, RECORD_REL), "utf8").replace(/\r\n/g, "\n");
     const committed: unknown = JSON.parse(committedText);
     const errors = pa3dRecordErrors(committed, inputs);

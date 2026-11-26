@@ -48,6 +48,14 @@ export const MANIFEST_SCHEMA = "walletwall.sp1-pa3d-exercise-manifest.v1";
 export const MANIFEST_REL = "evidence/zk/sp1-impl/pa3d-exercise-manifest.json";
 export const MANIFEST_JSON_SCHEMA_REL = "evidence/zk/schema/sp1-pa3d-exercise-manifest.v1.schema.json";
 
+// The historical PA3D manifest predates the proof-exercise writer's directory guard.
+const HISTORICAL_MANIFEST_COMMIT = "91a11fbb824b2fca7d4102f0eff90d8b0b5de35b";
+const HISTORICAL_MANIFEST_SHA256 = "356571afd7a95d1b32a4bd34ac6107de485e20f6773fe2b9cb6a759c9c8cdd5f";
+const HISTORICAL_SOURCE_COMMIT = "debed530c3ff72eda6785bfcadd46595a0c98b69";
+const RECORD_TOOL_REL = "scripts/generate-sp1-proof-exercise-record.ts";
+const ORIGINAL_RECORD_TOOL_SHA256 = "3a5ed18eadd3339fdea65a2d30dcfa1c10f17fda58ea2cc7a80ce7a1a07b7bf1";
+const GUARDED_RECORD_TOOL_SHA256 = "f25259288c77a37f465531df6c4acc561888ded47c8065b7bf02113ff09562aa";
+
 /** The canonical build's environment log, where the toolchain that built the host binary printed its versions. */
 export const TOOLCHAIN_ENV_REL =
   "evidence/zk/sp1-impl/observations/canonical-rebuild-developer-workstation/builds/developer-workstation/host/env.txt";
@@ -63,7 +71,7 @@ export const RUN_TOOLS: readonly string[] = [
   OBSERVER_SCRIPT_REL,
   VERIFICATION_SCRIPT_REL,
   "scripts/sp1-prove-archive-only.ts",
-  "scripts/generate-sp1-proof-exercise-record.ts",
+  RECORD_TOOL_REL,
   "scripts/lib/sp1-prove-gate.ts",
   "scripts/lib/sp1-proof-exercise.ts",
   "scripts/lib/sp1-egress-attribution.ts",
@@ -558,7 +566,7 @@ export function manifestFrom(ctx: ManifestContext, inputs: ManifestInputs): Mani
       tool: VERIFICATION_SCRIPT_REL,
       where:
         "the proving host, from a clean checkout at the commit that holds the committed run observation, after the egress boundary is removed",
-      recordTool: "scripts/generate-sp1-proof-exercise-record.ts",
+      recordTool: RECORD_TOOL_REL,
     },
   };
   const artifacts = artifactsOf({ statement, circuit, prover, environment, tools });
@@ -709,8 +717,8 @@ export const serializeManifest = (m: Manifest) => serializeJson(m);
  * differs from what the checkout derives from those inputs now (TOOL_DRIFT, a changed qualification, a changed record
  * all surface here, since the derivation fails or differs).
  */
-export function manifestErrors(value: unknown, ctx: ManifestContext): string[] {
-  if (!isObject(value)) return ["NOT_AN_OBJECT: a manifest is a JSON object"];
+function checkManifest(value: unknown, ctx: ManifestContext): { errors: string[]; manifest?: Manifest } {
+  if (!isObject(value)) return { errors: ["NOT_AN_OBJECT: a manifest is a JSON object"] };
   const errors: string[] = [];
   const keys = new Set(Object.keys(value));
   for (const k of MANIFEST_KEYS) if (!keys.has(k)) errors.push(`MISSING_FIELD ${k}`);
@@ -724,7 +732,7 @@ export function manifestErrors(value: unknown, ctx: ManifestContext): string[] {
   }
   const inputs = manifestInputsOf(value);
   if (inputs === null)
-    return [...errors, "INPUTS_UNREADABLE: the manifest does not carry its operator inputs in shape"];
+    return { errors: [...errors, "INPUTS_UNREADABLE: the manifest does not carry its operator inputs in shape"] };
   errors.push(...inputErrors(inputs));
   if (
     errors.some(
@@ -736,13 +744,13 @@ export function manifestErrors(value: unknown, ctx: ManifestContext): string[] {
         e.startsWith("ENVIRONMENT"),
     )
   ) {
-    return errors;
+    return { errors };
   }
   let derived: Manifest;
   try {
     derived = manifestFrom(ctx, inputs);
   } catch (error) {
-    return [...errors, `DERIVATION_FAILED: ${(error as Error).message}`];
+    return { errors: [...errors, `DERIVATION_FAILED: ${(error as Error).message}`] };
   }
   for (const d of leafDifferences(value, derived)) {
     errors.push(`LEAF_DIFFERS ${d.path}: committed ${JSON.stringify(d.a)}, derived ${JSON.stringify(d.b)}`);
@@ -750,5 +758,45 @@ export function manifestErrors(value: unknown, ctx: ManifestContext): string[] {
   if (derived.acquisitionGate.verdict !== "PASSED") {
     errors.push(`ACQUISITION_GATE_BLOCKED: ${derived.acquisitionGate.blockers.join("; ")}`);
   }
-  return errors;
+  return errors.length > 0 ? { errors } : { errors, manifest: derived };
+}
+
+export function manifestErrors(value: unknown, ctx: ManifestContext): string[] {
+  return checkManifest(value, ctx).errors;
+}
+
+/** Re-derive recorded evidence, retaining the exact historical tool bytes for this manifest only. */
+export function validateRecordedManifest(text: string, ctx: ManifestContext): ReturnType<typeof checkManifest> {
+  const committedText = lf(text);
+  let value: unknown;
+  try {
+    value = JSON.parse(committedText);
+  } catch (error) {
+    return { errors: [`MANIFEST_UNREADABLE: ${(error as Error).message}`] };
+  }
+  let validationContext = ctx;
+  if (sha256(committedText) === HISTORICAL_MANIFEST_SHA256) {
+    const historicalManifest = ctx.blobAt(HISTORICAL_MANIFEST_COMMIT, MANIFEST_REL);
+    const originalTool = ctx.blobAt(HISTORICAL_SOURCE_COMMIT, RECORD_TOOL_REL);
+    const successorTool = ctx.readFile(RECORD_TOOL_REL);
+    if (
+      manifestInputsOf(value)?.sourceCommit !== HISTORICAL_SOURCE_COMMIT ||
+      !historicalManifest?.equals(Buffer.from(committedText)) ||
+      originalTool === null ||
+      sha256(originalTool) !== ORIGINAL_RECORD_TOOL_SHA256 ||
+      successorTool === null ||
+      sha256(lf(successorTool.toString("utf8"))) !== GUARDED_RECORD_TOOL_SHA256
+    ) {
+      return {
+        errors: ["TOOL_DRIFT: historical PA3D manifest or record-tool bytes do not match the pinned transition"],
+      };
+    }
+    // The normal derivation hashes this blob into both tools and derivedFrom, then checks every other input as usual.
+    validationContext = { ...ctx, readFile: (rel) => (rel === RECORD_TOOL_REL ? originalTool : ctx.readFile(rel)) };
+  }
+  const validated = checkManifest(value, validationContext);
+  if (validated.manifest && serializeManifest(validated.manifest) !== committedText) {
+    return { errors: ["MANIFEST_BYTES_DIFFER: the committed text is not the derivation's serialization"] };
+  }
+  return validated;
 }

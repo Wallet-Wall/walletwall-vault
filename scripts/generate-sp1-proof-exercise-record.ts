@@ -16,8 +16,7 @@
  * binds their committed bytes. No network, no docker, no proof: the observations are the measurements. Research
  * prototype. Not audited.
  */
-import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { archiveEvidenceState, serializeJson } from "./lib/sp1-circuit-acquisition";
@@ -32,7 +31,7 @@ import {
   productionExerciseEvidence,
 } from "./lib/sp1-proof-exercise";
 import { runScript } from "./lib/run-script";
-import { writeNewFiles } from "./lib/write-once";
+import { writeNewEvidenceFile } from "./lib/write-once";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 
@@ -70,8 +69,7 @@ runScript(async () => {
     return;
   }
   const { rel, record } = derivePendingExerciseRecord(REPO, input);
-  mkdirSync(dirname(resolve(REPO, rel)), { recursive: true });
-  writeNewFiles([[resolve(REPO, rel), serializeJson(record)]], "a proof-exercise record is never overwritten");
+  writeNewEvidenceFile(resolve(REPO, rel), serializeJson(record), "a proof-exercise record is never overwritten", REPO);
   console.log(
     `${rel}: ${record.exercise.id} on ${record.exercise.host}, ${record.performance.wallClockSeconds} s (${record.performance.withinRotationDelay ? "within" : "EXCEEDING"} the ${ROTATION_DELAY_SECONDS} s rotation delay), verifier ${record.verification.acceptance}, egress assurance ${egressAssuranceOfRecord(record).level}.`,
   );

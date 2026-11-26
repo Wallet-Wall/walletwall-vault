@@ -3,12 +3,11 @@ name: vNext Kernel
 # Independent scanner coverage for the vNext minimal trust kernel PROTOTYPE
 # (prototype/vnext-kernel/**), which sits OUTSIDE the production Hardhat
 # compilation unit (see prototype/vnext-kernel/README.md "Compilation
-# boundary"). It was never in scope for CI.yml / slither.yml / codeql.yml:
-# those workflows target `contracts/` (a different Hardhat project) and,
-# before this workflow existed, none of them ran on a PR whose base branch
-# isn't `main` -- which every PR in this design/prototype/security stack is.
-# Path-scoped, branch-unrestricted triggers close both gaps at once without
-# touching the production-scoped workflows.
+# boundary"). This workflow keeps the prototype assurance separate from the
+# production Hardhat project.
+# Prototype assurance jobs remain path-scoped on every branch. The same scoped
+# CodeQL category also runs on all pull requests to main so code scanning can
+# compare it with the configuration uploaded on main.
 #
 # These checks are named "vNext Kernel / <job>" specifically so they cannot
 # be mistaken for repository-wide security coverage.
@@ -20,18 +19,48 @@ on:
       - ".github/workflows/vnext-kernel-assurance.yml"
       - ".github/codeql/vnext-kernel-codeql-config.yml"
   pull_request:
-    paths:
-      - "prototype/vnext-kernel/**"
-      - ".github/workflows/vnext-kernel-assurance.yml"
-      - ".github/codeql/vnext-kernel-codeql-config.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  pull-request-scope:
+    name: Check prototype paths
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.paths.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          sparse-checkout: .github/workflows/vnext-kernel-assurance.yml
+          sparse-checkout-cone-mode: false
+      - name: Match the push path scope against the PR diff
+        id: paths
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --quiet --no-renames "$BASE_SHA...$HEAD_SHA" -- \
+            prototype/vnext-kernel/ \
+            .github/workflows/vnext-kernel-assurance.yml \
+            .github/codeql/vnext-kernel-codeql-config.yml
+          then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+          else
+            status=$?
+            if [ "$status" -ne 1 ]; then exit "$status"; fi
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          fi
+
   prototype-tests:
     name: Prototype Tests
+    needs: pull-request-scope
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.pull-request-scope.outputs.changed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -75,6 +104,8 @@ jobs:
 
   slither:
     name: Slither
+    needs: pull-request-scope
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.pull-request-scope.outputs.changed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -309,6 +340,8 @@ jobs:
 
   authority-completeness:
     name: Authority Completeness
+    needs: pull-request-scope
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.pull-request-scope.outputs.changed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -354,6 +387,8 @@ jobs:
 
   stateful-authority:
     name: Stateful Authority
+    needs: pull-request-scope
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.pull-request-scope.outputs.changed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -455,9 +490,11 @@ jobs:
 
   codeql:
     name: CodeQL
-    # Same repo-wide kill switch as codeql.yml, so a single toggle disables
-    # every CodeQL job in the repository together.
-    if: ${{ vars.CODEQL_ENABLED == 'true' }}
+    needs: pull-request-scope
+    if: >-
+      ${{ !cancelled() && vars.CODEQL_ENABLED == 'true' &&
+          (github.event_name != 'pull_request' || github.base_ref == 'main' ||
+           needs.pull-request-scope.outputs.changed == 'true') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

@@ -33,7 +33,7 @@ import {
   PRODUCTION_SP1_BINDING,
   REPOSITORY_ID,
   manifestContextFromRepo,
-  manifestErrors,
+  validateRecordedManifest,
   type FinalState,
   type Manifest,
   type ManifestContext,
@@ -1155,7 +1155,12 @@ export function pa3dInputsFromRepo(repoRoot: string): Pa3dInputs {
   }
   const laneCheckout = HEX40.test(String(preproof.laneCheckout?.commit)) ? preproof.laneCheckout.commit : null;
   return {
-    manifest: { path: MANIFEST_REL, sha256: manifestSha, value: manifest, errors: manifestErrors(manifest, ctx) },
+    manifest: {
+      path: MANIFEST_REL,
+      sha256: manifestSha,
+      value: manifest,
+      errors: validateRecordedManifest(manifestText, ctx).errors,
+    },
     preproof: { path: preproofRel, sha256: preproofSha, value: preproof, errors: preproofErrors(preproof, ctx) },
     qualification: {
       path: QUALIFICATION_REL,

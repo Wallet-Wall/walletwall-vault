@@ -12,7 +12,7 @@ import { createHash } from "node:crypto";
 
 import { serializeJson } from "./sp1-circuit-acquisition";
 import type { ArchiveMember } from "./sp1-circuit-archive";
-import { LANE, MANIFEST_REL, manifestErrors, type Manifest, type ManifestContext } from "./sp1-pa3d-exercise";
+import { LANE, MANIFEST_REL, validateRecordedManifest, type Manifest, type ManifestContext } from "./sp1-pa3d-exercise";
 import { OBSERVATIONS_DIR } from "./sp1-proof-exercise";
 
 export const PREPROOF_SCHEMA = "walletwall.sp1-pa3d-preproof-attestation.v1";
@@ -200,14 +200,10 @@ export function preproofErrors(value: unknown, ctx: ManifestContext): string[] {
   const manifestBytes = ctx.readFile(MANIFEST_REL);
   if (manifestBytes === null) return [...errors, `MANIFEST_MISSING: ${MANIFEST_REL}`];
   const manifestText = manifestBytes.toString("utf8").replace(/\r\n/g, "\n");
-  let manifest: Manifest;
-  try {
-    manifest = JSON.parse(manifestText);
-  } catch (error) {
-    return [...errors, `MANIFEST_UNREADABLE: ${(error as Error).message}`];
+  const { errors: manifestBad, manifest } = validateRecordedManifest(manifestText, ctx);
+  if (manifestBad.length > 0 || manifest === undefined) {
+    return [...errors, ...manifestBad.map((e) => `MANIFEST_INVALID: ${e}`)];
   }
-  const manifestBad = manifestErrors(manifest, ctx);
-  if (manifestBad.length > 0) return [...errors, ...manifestBad.map((e) => `MANIFEST_INVALID: ${e}`)];
   if (errors.length > 0) return errors;
   let derived: { verdict: PreproofVerdict; refusals: string[] };
   try {
