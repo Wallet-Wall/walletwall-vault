@@ -10,7 +10,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mock } from "node:test";
 
-import { createEvidenceOutputDirectory, writeNewFiles } from "../scripts/lib/write-once";
+import { IMPL_RECEIPT_REL } from "../scripts/lib/sp1-impl-receipt";
+import { IMPL_RECEIPT_INTEGRATION_REL } from "../scripts/lib/sp1-impl-receipt-integration";
+import { PROOF_EXERCISES_DIR } from "../scripts/lib/sp1-proof-exercise";
+import {
+  createEvidenceOutputDirectory,
+  rewriteEvidenceFile,
+  writeNewEvidenceFile,
+  writeNewFiles,
+} from "../scripts/lib/write-once";
 
 describe("SP1 implementation lane — records are created once, never checked and then written", function () {
   let dir: string;
@@ -129,6 +137,42 @@ describe("SP1 implementation lane — records are created once, never checked an
     expect(() => writeNewFiles([[output, "{}"]], "keep observations")).to.throw("not group- or world-writable");
     expect(existsSync(output)).to.equal(false);
   });
+
+  for (const [mode, relativePath, rewrite] of [
+    ["proof-exercise record", `${PROOF_EXERCISES_DIR}/record.json`, false],
+    ["receipt integration", IMPL_RECEIPT_INTEGRATION_REL, true],
+    ["default receipt", IMPL_RECEIPT_REL, true],
+  ] as const) {
+    const write = (path: string, content: string) =>
+      rewrite
+        ? rewriteEvidenceFile(path, content, dir)
+        : writeNewEvidenceFile(path, content, "a proof-exercise record is never overwritten", dir);
+
+    it(`${mode} refuses a redirected evidence ancestor before creating any directories`, function () {
+      const other = join(dir, "other");
+      fs.mkdirSync(other);
+      fs.mkdirSync(join(dir, "evidence"));
+      fs.symlinkSync(other, join(dir, "evidence", "zk"), process.platform === "win32" ? "junction" : "dir");
+
+      expect(() => write(join(dir, relativePath), "{}\n")).to.throw("outside its expected evidence directory");
+      expect(fs.readdirSync(other)).to.deep.equal([]);
+    });
+
+    it(`${mode} creates missing parents, writes exact bytes and preserves its existing-file contract`, function () {
+      const path = join(dir, relativePath);
+      const original = '{\n  "result": "é"\n}\n';
+      const replacement = "{}\n";
+      write(path, original);
+      expect(readFileSync(path)).to.deep.equal(Buffer.from(original));
+      if (rewrite) {
+        write(path, replacement);
+        expect(readFileSync(path)).to.deep.equal(Buffer.from(replacement));
+      } else {
+        expect(() => write(path, replacement)).to.throw("a proof-exercise record is never overwritten");
+        expect(readFileSync(path)).to.deep.equal(Buffer.from(original));
+      }
+    });
+  }
 
   it("caps the POSIX file mode and honors a private umask for observations", function () {
     if (!process.geteuid) this.skip();

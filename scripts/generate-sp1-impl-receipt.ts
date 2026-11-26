@@ -21,8 +21,8 @@
  * Testnet/local only. Do not use real funds.
  */
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import {
   IMPL_RECEIPT_REL,
@@ -36,7 +36,7 @@ import {
   serializeImplReceipt,
   type ImplSupersession,
 } from "./lib/sp1-impl-receipt";
-import { writeNewFiles } from "./lib/write-once";
+import { rewriteEvidenceFile, writeNewFiles } from "./lib/write-once";
 import {
   IMPL_RECEIPT_INTEGRATION_REL,
   MAIN_REF,
@@ -78,8 +78,7 @@ async function main() {
     );
   } else if (process.argv.includes("--integration")) {
     const binding = deriveReceiptIntegration(".", IMPL_RECEIPT_REL);
-    mkdirSync(dirname(resolve(IMPL_RECEIPT_INTEGRATION_REL)), { recursive: true });
-    writeFileSync(resolve(IMPL_RECEIPT_INTEGRATION_REL), serializeReceiptIntegration(binding));
+    rewriteEvidenceFile(resolve(IMPL_RECEIPT_INTEGRATION_REL), serializeReceiptIntegration(binding), process.cwd());
     console.log(
       `${IMPL_RECEIPT_INTEGRATION_REL}: reviewed head ${binding.reviewedSubject.commit}, integrated by ` +
         `${binding.integratedSubject.commit}, historical lane base ${binding.historicalReceipt.historicalLaneBase}`,
@@ -89,8 +88,7 @@ async function main() {
     const base =
       at !== -1 ? String(process.argv[at + 1]) : gitObjects(".", ["merge-base", "HEAD", MAIN_REF]).toString().trim();
     const receipt = deriveImplReceipt(await readImplReceiptInputs(".", base));
-    mkdirSync(dirname(resolve(IMPL_RECEIPT_REL)), { recursive: true });
-    writeFileSync(resolve(IMPL_RECEIPT_REL), serializeImplReceipt(receipt));
+    rewriteEvidenceFile(resolve(IMPL_RECEIPT_REL), serializeImplReceipt(receipt), process.cwd());
     console.log(
       `${IMPL_RECEIPT_REL}: ${receipt.verdict}; PRODUCTION_SP1_BINDING_STATUS ${receipt.statuses.PRODUCTION_SP1_BINDING_STATUS.value}`,
     );

@@ -784,9 +784,12 @@ describe("SP1 implementation receipt — the integration binding after the merge
       repo.commit("empty");
       const written = cli("--integration");
       expect(written.status, written.stderr).to.equal(0);
-      expect(readFileSync(join(repo.dir, IMPL_RECEIPT_INTEGRATION_REL), "utf8")).to.equal(
-        `${JSON.stringify(deriveReceiptIntegration(repo.dir, RECEIPT), null, 2)}\n`,
-      );
+      const expected = `${JSON.stringify(deriveReceiptIntegration(repo.dir, RECEIPT), null, 2)}\n`;
+      expect(readFileSync(join(repo.dir, IMPL_RECEIPT_INTEGRATION_REL), "utf8")).to.equal(expected);
+      repo.write({ [IMPL_RECEIPT_INTEGRATION_REL]: "older receipt bytes\n" });
+      const rewritten = cli("--integration");
+      expect(rewritten.status, rewritten.stderr).to.equal(0);
+      expect(readFileSync(join(repo.dir, IMPL_RECEIPT_INTEGRATION_REL), "utf8")).to.equal(expected);
       // The false STOP came from exactly this: generating again, on a descendant, against the merge as the base.
       const regenerated = cli();
       expect(regenerated.status).to.equal(1);

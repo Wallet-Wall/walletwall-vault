@@ -11,8 +11,9 @@
  * qualification, SP1-PA3B's run (the expected public values), the canonical rebuild (host binary, toolchain), the
  * lockfiles, and the run tools as the source commit holds them. The validator re-derives the manifest from the inputs
  * the committed file carries and refuses any leaf that differs, a source commit the checkout does not descend from, a
- * tool the source commit holds differently (TOOL_DRIFT), or an observer that is not qualified for this lane. No proof,
- * no network, no docker, no kernel. PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED. Research prototype. Not audited.
+ * tool the source commit holds differently (TOOL_DRIFT), or an observer that is not qualified for this lane. Historical
+ * validation verifies the exact recorded manifest and pinned successor writer before reusing the original writer blob.
+ * No proof, no network, no docker, no kernel. PRODUCTION_SP1_BINDING stays NOT_ESTABLISHED. Research prototype. Not audited.
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -23,10 +24,9 @@ import {
   MANIFEST_REL,
   PRODUCTION_SP1_BINDING,
   manifestContextFromRepo,
-  manifestErrors,
   manifestFrom,
-  manifestInputsOf,
   serializeManifest,
+  validateRecordedManifest,
   type ManifestInputs,
 } from "./lib/sp1-pa3d-exercise";
 import { writeNewFiles } from "./lib/write-once";
@@ -49,15 +49,11 @@ const utcNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 runScript(async () => {
   const ctx = manifestContextFromRepo(REPO);
   if (process.argv.includes("--validate")) {
-    const committedText = readFileSync(resolve(REPO, MANIFEST_REL), "utf8").replace(/\r\n/g, "\n");
-    const committed: unknown = JSON.parse(committedText);
-    const errors = manifestErrors(committed, ctx);
-    const inputs = manifestInputsOf(committed);
-    if (errors.length === 0 && inputs !== null && committedText !== serializeManifest(manifestFrom(ctx, inputs))) {
-      errors.push("MANIFEST_BYTES_DIFFER: the committed text is not the derivation's serialization; regenerate it");
+    const committedText = readFileSync(resolve(REPO, MANIFEST_REL), "utf8");
+    const { errors, manifest: m } = validateRecordedManifest(committedText, ctx);
+    if (errors.length > 0 || m === undefined) {
+      throw new Error(`the PA3D exercise manifest is invalid:\n - ${errors.join("\n - ")}`);
     }
-    if (errors.length > 0) throw new Error(`the PA3D exercise manifest is invalid:\n - ${errors.join("\n - ")}`);
-    const m = manifestFrom(ctx, inputs as ManifestInputs);
     console.log(
       `OK: ${MANIFEST_REL} is what the checkout derives from its operator inputs: source ${m.source.commit} (v${m.source.version}), ` +
         `${m.statement.designation} on ${m.environment.hostLabel}, ${m.artifacts.length} artifacts, acquisition gate ${m.acquisitionGate.verdict}, ` +

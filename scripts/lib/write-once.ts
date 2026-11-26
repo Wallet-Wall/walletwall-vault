@@ -64,6 +64,18 @@ export function createEvidenceOutputDirectory(directory: string, checkoutRoot = 
   fs.mkdirSync(resolve(canonical, relative(ancestor, output)), { recursive: true, mode: 0o755 });
 }
 
+/** Creates an evidence file and its directories under the same checkout root. */
+export function writeNewEvidenceFile(path: string, data: string, what: string, checkoutRoot: string): void {
+  createEvidenceOutputDirectory(dirname(path), checkoutRoot);
+  writeNewFiles([[path, data]], what, checkoutRoot);
+}
+
+/** Legacy receipt write. The operator must also trust the destination leaf. */
+export function rewriteEvidenceFile(path: string, data: string, checkoutRoot: string): void {
+  createEvidenceOutputDirectory(dirname(path), checkoutRoot);
+  fs.writeFileSync(path, data);
+}
+
 interface CreatedFile {
   path: string;
   identity?: BigIntStats;

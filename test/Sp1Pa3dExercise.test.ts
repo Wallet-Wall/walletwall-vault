@@ -37,6 +37,7 @@ import {
   serializeManifest,
   sp1VersionsOf,
   toolchainOf,
+  validateRecordedManifest,
   type Artifact,
   type Manifest,
   type ManifestContext,
@@ -449,16 +450,61 @@ describe("SP1-PA3D — the exercise manifest", function () {
   });
 
   describe("the committed manifest", function () {
+    const recordTool = "scripts/generate-sp1-proof-exercise-record.ts";
+    const originalDigest = "3a5ed18eadd3339fdea65a2d30dcfa1c10f17fda58ea2cc7a80ce7a1a07b7bf1";
+    const committedText = lf(readFileSync(MANIFEST_REL, "utf8"));
+
     it("is what the checkout derives from its own operator inputs, byte for byte, and passes the gate", function () {
-      const committedText = lf(readFileSync(MANIFEST_REL, "utf8"));
-      const committed = JSON.parse(committedText) as Manifest;
-      expect(manifestErrors(committed, ctx)).to.deep.equal([]);
+      const { errors, manifest } = validateRecordedManifest(committedText, ctx);
+      expect(errors).to.deep.equal([]);
+      assert(manifest);
+      expect(serializeManifest(manifest)).to.equal(committedText);
+      const historicalIdentity = { path: recordTool, sha256: originalDigest };
+      expect(manifest.tools).to.deep.include(historicalIdentity);
+      expect(manifest.derivedFrom).to.deep.include(historicalIdentity);
+      expect(manifest.acquisitionGate.verdict).to.equal("PASSED");
+      expect(manifest.authorization.proofs).to.equal(1);
+      expect(manifest.source.commit).to.not.equal(ctx.headCommit);
+      expect(validateRecordedManifest(committedText.replaceAll("\n", "\r\n"), ctx).errors).to.deep.equal([]);
+    });
+
+    it("retains strict run-tool identity for authoring and live preproof", function () {
+      const committed = JSON.parse(committedText);
       const inputs = manifestInputsOf(committed);
-      expect(inputs).to.not.equal(null);
-      expect(serializeManifest(manifestFrom(ctx, inputs as ManifestInputs))).to.equal(committedText);
-      expect(committed.acquisitionGate.verdict).to.equal("PASSED");
-      expect(committed.authorization.proofs).to.equal(1);
-      expect(committed.source.commit).to.not.equal(ctx.headCommit);
+      assert(inputs);
+      expect(() => manifestFrom(ctx, inputs)).to.throw(/TOOL_DRIFT.*generate-sp1-proof-exercise-record/);
+      expect(manifestErrors(committed, ctx).join("\n")).to.match(/TOOL_DRIFT.*generate-sp1-proof-exercise-record/);
+    });
+
+    it("fails closed on missing or changed history and on a missing or unapproved successor", function () {
+      const changed = "// an unapproved tool version\n";
+      const committed = JSON.parse(committedText) as Manifest;
+      const oldTool = ctx.blobAt(committed.source.commit, recordTool);
+      assert(oldTool);
+      for (const altered of [
+        withFiles(ctx, {}, { [MANIFEST_REL]: null }),
+        withFiles(ctx, {}, { [MANIFEST_REL]: committedText + "\n" }),
+        withFiles(ctx, {}, { [recordTool]: null }),
+        withFiles(ctx, {}, { [recordTool]: changed }),
+        withFiles(ctx, { [recordTool]: null }),
+        withFiles(ctx, { [recordTool]: changed }),
+        withFiles(ctx, { [recordTool]: oldTool.toString("utf8") }),
+        withFiles(ctx, { [ATTRIBUTED_RUN_SCRIPT_REL]: changed }),
+      ]) {
+        const result = validateRecordedManifest(committedText, altered);
+        expect(result.errors.join("\n")).to.include("TOOL_DRIFT");
+        expect(result.manifest).to.equal(undefined);
+      }
+    });
+
+    it("denies the historical transition to edited or reformatted manifests", function () {
+      const tampered = JSON.parse(committedText) as Manifest;
+      tampered.authorization.words += " (changed)";
+      for (const text of [serializeManifest(tampered), committedText + "\n"]) {
+        const result = validateRecordedManifest(text, ctx);
+        expect(result.errors.join("\n")).to.include("TOOL_DRIFT");
+        expect(result.manifest).to.equal(undefined);
+      }
     });
 
     it("names the owner's merge of the qualification lane as its source: a merge commit with two parents", function () {
