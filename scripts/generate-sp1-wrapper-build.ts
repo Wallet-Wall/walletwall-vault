@@ -32,7 +32,7 @@ function record(): void {
     return;
   }
   const path = resolve(WRAPPER_BUILDS_DIR, `${next.id}.json`);
-  writeNewFiles([[path, serializeBuild(next)]], "a recorded build is never rewritten");
+  writeNewFiles([[path, serializeBuild(next)]], "a recorded build is never rewritten", process.cwd());
   console.log(`recorded ${next.id} (${next.runtime.bytes} runtime bytes, ${next.runtime.templateKeccak})`);
 }
 

@@ -71,6 +71,7 @@ async function main() {
     writeNewFiles(
       [[resolve(IMPL_SUPERSESSION_REL), `${JSON.stringify(supersession, null, 2)}\n`]],
       "a supersession is never rewritten",
+      process.cwd(),
     );
     console.log(
       `${IMPL_SUPERSESSION_REL}: the receipt is superseded at ${supersession.historicalSubject} for ${supersession.supersedes.join(", ")}`,

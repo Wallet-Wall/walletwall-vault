@@ -1,30 +1,143 @@
 /**
- * Write-once creation of published records (designations, their evidence bundles, wrapper build records).
+ * Write-once output on local filesystems that honor exclusive creation and report file identities.
  *
- * A record is created once and never rewritten. Checking that it is absent and then writing it leaves a window in
- * which a file that appears is overwritten; here each file is opened with O_CREAT|O_EXCL ("wx"), so the refusal and
- * the creation are one operation. A set is all-or-nothing: on any failure the files this call created are removed
- * again, and a file that already exists is refused by name and left untouched.
+ * "wx" atomically creates or refuses one leaf. A reader can see incomplete bytes, a set can
+ * become visible incrementally, and an interrupted process can leave outputs behind. Rollback
+ * on a caught failure is best-effort. Validate completed output before accepting it as evidence.
+ *
+ * The operator must protect the canonical parent and its ancestors from replacement or writes
+ * by untrusted users throughout the operation. POSIX checks the parent owner and mode. On
+ * Windows the operator must restrict the directory ACLs, and the POSIX mode is inapplicable.
+ * Network filesystems and device paths are outside this contract. Canonical paths and the
+ * rollback identity check do not defend against a hostile namespace.
  */
-import { closeSync, openSync, rmSync, writeFileSync } from "node:fs";
+import fs, { type BigIntStats } from "node:fs";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
-/** Creates every `[path, data]` file, none of which may exist yet; `what` says why an existing one is refused. */
-export function writeNewFiles(files: readonly (readonly [path: string, data: string])[], what: string): void {
-  const created: string[] = [];
+const CHECKOUT_ROOT = fileURLToPath(new URL("../..", import.meta.url));
+
+function isWithin(root: string, directory: string): boolean {
+  const rel = relative(root, directory);
+  return rel !== ".." && !rel.startsWith(".." + sep) && !isAbsolute(rel);
+}
+
+function trustedDirectory(directory: string, checkoutRoot: string): string {
+  const canonical = fs.realpathSync.native(directory);
+  const stat = fs.statSync(canonical);
+  if (!stat.isDirectory()) throw new Error(`Output parent is not a directory: ${directory}`);
+
+  if (isWithin(resolve(checkoutRoot, "evidence"), directory)) {
+    const expected = resolve(fs.realpathSync.native(checkoutRoot), relative(checkoutRoot, directory));
+    if (relative(expected, canonical) !== "") {
+      throw new Error(`Output parent resolves outside its expected evidence directory: ${directory}`);
+    }
+  }
+
+  const uid = process.geteuid?.();
+  if (uid !== undefined && ((stat.uid !== uid && stat.uid !== 0) || (stat.mode & 0o022) !== 0)) {
+    throw new Error(
+      `Output parent must be owned by the operator or root and not group- or world-writable: ${directory}`,
+    );
+  }
+  return canonical;
+}
+
+/** Makes a missing evidence directory only after checking the nearest existing ancestor. */
+export function createEvidenceOutputDirectory(directory: string, checkoutRoot = CHECKOUT_ROOT): void {
+  const root = resolve(checkoutRoot);
+  const output = resolve(directory);
+  if (!isWithin(resolve(root, "evidence"), output)) throw new Error(`Output parent is outside evidence: ${directory}`);
+
+  let ancestor = output;
+  while (!fs.lstatSync(ancestor, { throwIfNoEntry: false })) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) throw new Error(`No existing output ancestor: ${directory}`);
+    ancestor = parent;
+  }
+
+  const canonical = trustedDirectory(ancestor, root);
+  const expected = resolve(fs.realpathSync.native(root), relative(root, ancestor));
+  if (relative(expected, canonical) !== "") {
+    throw new Error(`Output ancestor resolves outside its expected evidence directory: ${ancestor}`);
+  }
+  fs.mkdirSync(resolve(canonical, relative(ancestor, output)), { recursive: true, mode: 0o755 });
+}
+
+interface CreatedFile {
+  path: string;
+  identity?: BigIntStats;
+}
+
+/**
+ * Creates every [path, data] with the existing serializers and order. Caller-selected paths
+ * may use trusted parent aliases. Paths under checkout evidence keep their exact relative parent.
+ * Use a private directory and umask 077 (or a private Windows ACL) for sensitive observations.
+ */
+export function writeNewFiles(
+  files: readonly (readonly [path: string, data: string])[],
+  what: string,
+  checkoutRoot = CHECKOUT_ROOT,
+): void {
+  const root = resolve(checkoutRoot);
+  const destinations = files.map(([path, data]) => {
+    const leaf = basename(path);
+    const windowsStream = process.platform === "win32" && leaf.includes(":");
+    if (!leaf || leaf === "." || leaf === ".." || path.endsWith(sep) || path.endsWith("/") || windowsStream) {
+      throw new Error(`Output path must name a file: ${path}`);
+    }
+    const parent = trustedDirectory(dirname(path), root);
+    // Keep the caller's path for existing-file diagnostics, including relative paths.
+    return { path, canonical: resolve(parent, leaf), data };
+  });
+  const created: CreatedFile[] = [];
+  const cleanupErrors: unknown[] = [];
+  let outputPath: string | undefined;
   try {
-    for (const [path, data] of files) {
-      const fd = openSync(path, "wx");
-      created.push(path);
+    for (const { path, canonical, data } of destinations) {
+      outputPath = path;
+      const fd = fs.openSync(canonical, "wx", 0o644);
+      const entry: CreatedFile = { path: canonical };
+      created.push(entry);
       try {
-        writeFileSync(fd, data);
-      } finally {
-        closeSync(fd);
+        entry.identity = fs.fstatSync(fd, { bigint: true });
+        if (!entry.identity.isFile()) throw new Error(`Output is not a regular file: ${path}`);
+        fs.writeFileSync(fd, data);
+      } catch (error) {
+        try {
+          fs.closeSync(fd);
+        } catch (closeError) {
+          cleanupErrors.push(closeError);
+        }
+        throw error;
       }
+      fs.closeSync(fd);
     }
   } catch (error) {
-    for (const path of created) rmSync(path, { force: true });
-    const e = error as NodeJS.ErrnoException;
-    if (e?.code === "EEXIST") throw new Error(`${e.path ?? "a file"} exists: ${what}`);
-    throw error;
+    for (const { path, identity } of created.reverse()) {
+      try {
+        const current = fs.lstatSync(path, { bigint: true, throwIfNoEntry: false });
+        if (current === undefined) continue;
+        if (!current.isFile() || !identity?.ino || current.dev !== identity.dev || current.ino !== identity.ino) {
+          throw new Error(`Cannot verify ownership of created output: ${path}`);
+        }
+        fs.unlinkSync(path);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
+    }
+    const code = (error as NodeJS.ErrnoException)?.code;
+    const primary =
+      code === "EEXIST" ? new Error(`${outputPath ?? "a file"} exists: ${what}`, { cause: error }) : error;
+    if (cleanupErrors.length === 0) throw primary;
+
+    const details = cleanupErrors.map((failure) => (failure instanceof Error ? failure.message : String(failure)));
+    const message = primary instanceof Error ? primary.message : String(primary);
+    throw Object.assign(
+      new AggregateError([primary, ...cleanupErrors], `${message}\nOutput cleanup incomplete: ${details.join("\n")}`, {
+        cause: primary,
+      }),
+      { code },
+    );
   }
 }

@@ -12,7 +12,7 @@
  * A designation is written once and never rewritten (the append-only history check keeps it that way). No
  * transactions, no deploys, no network. Research prototype. Not audited. Testnet/local only. Do not use real funds.
  */
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import {
@@ -27,7 +27,7 @@ import {
   validateDesignationsInRepo,
 } from "./lib/sp1-designation";
 import { readDecisionContext } from "./lib/sp1-td1-decision";
-import { writeNewFiles } from "./lib/write-once";
+import { createEvidenceOutputDirectory, writeNewFiles } from "./lib/write-once";
 
 function generateInitial(): void {
   const existing = readDesignations();
@@ -38,9 +38,9 @@ function generateInitial(): void {
     return;
   }
   const d1 = deriveInitialDesignation(readDecisionContext());
-  mkdirSync(resolve(DESIGNATIONS_DIR), { recursive: true });
+  createEvidenceOutputDirectory(resolve(DESIGNATIONS_DIR), process.cwd());
   const path = resolve(DESIGNATIONS_DIR, `${d1.id}.json`);
-  writeNewFiles([[path, serializeDesignation(d1)]], "a designation is never rewritten");
+  writeNewFiles([[path, serializeDesignation(d1)]], "a designation is never rewritten", process.cwd());
   console.log(`designated ${d1.id}: PROGRAM_VKEY ${d1.programVKey}, identity ${d1.identity}`);
 }
 
@@ -52,13 +52,14 @@ function generateSuccessor(bundlePath: string): void {
   const next = deriveSuccessorDesignation(bundle, set);
   const designationPath = resolve(DESIGNATIONS_DIR, `${next.id}.json`);
   const bundleOut = resolve(DESIGNATION_EVIDENCE_DIR, `${next.id}.json`);
-  mkdirSync(resolve(DESIGNATION_EVIDENCE_DIR), { recursive: true });
+  createEvidenceOutputDirectory(resolve(DESIGNATION_EVIDENCE_DIR), process.cwd());
   writeNewFiles(
     [
       [bundleOut, `${JSON.stringify(bundle, null, 2)}\n`],
       [designationPath, serializeDesignation(next)],
     ],
     "a designation and its evidence are never rewritten",
+    process.cwd(),
   );
   console.log(
     `designated ${next.id} (succeeds ${String(next.predecessor?.id)}): PROGRAM_VKEY ${next.programVKey}, identity ${next.identity}`,

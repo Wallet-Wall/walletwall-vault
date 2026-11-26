@@ -1,14 +1,16 @@
 /**
  * Published records are created once and never rewritten. The generators used to check that a record was absent and
  * then write it (CodeQL js/file-system-race): a file appearing in between was overwritten. writeNewFiles creates each
- * file exclusively (O_CREAT|O_EXCL), so the refusal and the creation are one operation, and a set is all-or-nothing.
+ * file exclusively (O_CREAT|O_EXCL) and attempts rollback on caught failures.
  */
 import { expect } from "chai";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import fs, { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { mock } from "node:test";
 
-import { writeNewFiles } from "../scripts/lib/write-once";
+import { createEvidenceOutputDirectory, writeNewFiles } from "../scripts/lib/write-once";
 
 describe("SP1 implementation lane — records are created once, never checked and then written", function () {
   let dir: string;
@@ -40,7 +42,7 @@ describe("SP1 implementation lane — records are created once, never checked an
     expect(readFileSync(path, "utf8")).to.equal("the published record\n");
   });
 
-  it("is all-or-nothing: when a later file exists, the files this call created are removed again", function () {
+  it("rolls back files created before a later exclusive-open refusal", function () {
     const first = join(dir, "bundle.json");
     const second = join(dir, "designation.json");
     writeFileSync(second, "the published designation\n");
@@ -57,7 +59,7 @@ describe("SP1 implementation lane — records are created once, never checked an
     expect(readFileSync(second, "utf8")).to.equal("the published designation\n");
   });
 
-  it("passes any other failure through unchanged, after removing what it created", function () {
+  it("checks all parents before creating any output and preserves a missing-parent failure", function () {
     const created = join(dir, "created.json");
     const unwritable = join(dir, "missing-directory", "x.json");
     let failure: NodeJS.ErrnoException | undefined;
@@ -74,5 +76,173 @@ describe("SP1 implementation lane — records are created once, never checked an
     }
     expect(failure?.code).to.equal("ENOENT");
     expect(existsSync(created)).to.equal(false);
+  });
+
+  it("refuses an existing leaf symlink and leaves its target alone", function () {
+    const original = join(dir, "original.json");
+    const alias = join(dir, "alias.json");
+    writeFileSync(original, "original bytes");
+    try {
+      fs.symlinkSync(original, alias, "file");
+    } catch (error) {
+      if (process.platform === "win32" && ["EPERM", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+        this.skip(); // Windows may require Developer Mode for file symlinks.
+      }
+      throw error;
+    }
+    expect(() => writeNewFiles([[alias, "new bytes"]], "keep the original")).to.throw("exists: keep the original");
+    expect(readFileSync(original, "utf8")).to.equal("original bytes");
+    expect(fs.lstatSync(alias).isSymbolicLink()).to.equal(true);
+  });
+
+  it("permits a trusted operator parent alias but refuses an evidence parent redirected to another directory", function () {
+    const evidence = join(dir, "evidence");
+    const outside = join(dir, "operator-output");
+    const operatingAlias = join(dir, "operator-alias");
+    const redirected = join(evidence, "redirected");
+    fs.mkdirSync(evidence);
+    fs.mkdirSync(outside);
+    const linkType = process.platform === "win32" ? "junction" : "dir";
+    fs.symlinkSync(outside, operatingAlias, linkType);
+    fs.symlinkSync(outside, redirected, linkType);
+    writeNewFiles([[join(operatingAlias, "observation.json"), "operator output"]], "keep observations", dir);
+    expect(readFileSync(join(outside, "observation.json"), "utf8")).to.equal("operator output");
+    expect(() => writeNewFiles([[join(redirected, "record.json"), "{}"]], "keep records", dir)).to.throw(
+      "outside its expected evidence directory",
+    );
+    expect(existsSync(join(outside, "record.json"))).to.equal(false);
+    expect(() => createEvidenceOutputDirectory(join(redirected, "missing"), dir)).to.throw(
+      "outside its expected evidence directory",
+    );
+    expect(existsSync(join(outside, "missing"))).to.equal(false);
+
+    const normal = join(evidence, "nested", "records");
+    createEvidenceOutputDirectory(normal, dir);
+    writeNewFiles([[join(normal, "record.json"), "{}"]], "keep records", dir);
+    expect(readFileSync(join(normal, "record.json"), "utf8")).to.equal("{}");
+  });
+
+  it("refuses a POSIX output parent writable by other users", function () {
+    if (!process.geteuid) this.skip();
+    fs.chmodSync(dir, 0o770);
+    const output = join(dir, "observation.json");
+    expect(() => writeNewFiles([[output, "{}"]], "keep observations")).to.throw("not group- or world-writable");
+    expect(existsSync(output)).to.equal(false);
+  });
+
+  it("caps the POSIX file mode and honors a private umask for observations", function () {
+    if (!process.geteuid) this.skip();
+    const previous = process.umask(0);
+    try {
+      const published = join(dir, "published.json");
+      writeNewFiles([[published, "{}"]], "keep records");
+      expect(fs.statSync(published).mode & 0o777).to.equal(0o644);
+
+      process.umask(0o077);
+      const privateObservation = join(dir, "private.json");
+      writeNewFiles([[privateObservation, '{"observation":"synthetic"}']], "keep observations");
+      expect(fs.statSync(privateObservation).mode & 0o777).to.equal(0o600);
+    } finally {
+      process.umask(previous);
+    }
+  });
+
+  it("leaves a replaced entry alone, continues cleanup, and exposes the primary open failure", function () {
+    const cleanup = join(dir, "cleanup.json");
+    const replaced = join(dir, "replaced.json");
+    const renamed = join(dir, "renamed.json");
+    const collision = join(dir, "exists.json");
+    writeFileSync(collision, "published");
+    const openSync = fs.openSync;
+    const canonicalDir = fs.realpathSync.native(dir);
+    const stub = mock.method(fs, "openSync", (path: Parameters<typeof openSync>[0], flags: string, mode?: number) => {
+      if (path === join(canonicalDir, "exists.json")) {
+        fs.renameSync(replaced, renamed); // Simulate an unexpected change before cleanup.
+        writeFileSync(replaced, "replacement");
+      }
+      return openSync(path, flags, mode);
+    });
+    try {
+      let failure: (AggregateError & { code?: string }) | undefined;
+      try {
+        writeNewFiles(
+          [
+            [cleanup, "{}"],
+            [replaced, "written by this call"],
+            [collision, "refused"],
+          ],
+          "keep records",
+        );
+      } catch (error) {
+        failure = error as AggregateError & { code?: string };
+      }
+      expect(failure).to.be.instanceOf(AggregateError);
+      expect(failure?.code).to.equal("EEXIST");
+      expect(failure?.cause).to.be.instanceOf(Error).and.have.property("message", `${collision} exists: keep records`);
+      expect(failure?.message).to.include("Output cleanup incomplete");
+      expect(readFileSync(replaced, "utf8")).to.equal("replacement");
+      expect(readFileSync(renamed, "utf8")).to.equal("written by this call");
+      expect(readFileSync(collision, "utf8")).to.equal("published");
+      expect(existsSync(cleanup)).to.equal(false);
+    } finally {
+      stub.mock.restore();
+    }
+  });
+
+  it("keeps the write error as the cause when rollback cannot unlink the created entry", function () {
+    const output = join(dir, "output.json");
+    const primary = Object.assign(new Error("synthetic write failure"), { code: "ENOSPC" });
+    const writer = mock.method(fs, "writeFileSync", () => {
+      throw primary;
+    });
+    const unlink = mock.method(fs, "unlinkSync", () => {
+      throw new Error("synthetic cleanup failure");
+    });
+    try {
+      let failure: (AggregateError & { code?: string }) | undefined;
+      try {
+        writeNewFiles([[output, "{}"]], "keep records");
+      } catch (error) {
+        failure = error as AggregateError & { code?: string };
+      }
+      expect(failure).to.be.instanceOf(AggregateError);
+      expect(failure?.cause).to.equal(primary);
+      expect(failure?.code).to.equal("ENOSPC");
+      expect(failure?.message).to.include("synthetic cleanup failure");
+      expect(existsSync(output)).to.equal(true);
+    } finally {
+      writer.mock.restore();
+      unlink.mock.restore();
+    }
+  });
+
+  it("can leave an incomplete file after process interruption and still refuses an overwrite", function () {
+    const first = join(dir, "first.json");
+    const second = join(dir, "second.json");
+    const child = spawnSync(
+      process.execPath,
+      [
+        "--experimental-strip-types",
+        "--input-type=module",
+        "--eval",
+        `import fs from "node:fs";
+       const { writeNewFiles } = await import(process.argv[1]);
+       fs.writeFileSync = (fd) => {
+         fs.writeSync(fd, "partial");
+         process.exit(23);
+       };
+       writeNewFiles([[process.argv[2], "{}"], [process.argv[3], "{}"]], "keep records");`,
+        new URL("../scripts/lib/write-once.ts", import.meta.url).href,
+        first,
+        second,
+      ],
+      { encoding: "utf8" },
+    );
+
+    expect(child.status, child.stderr).to.equal(23);
+    expect(readFileSync(first, "utf8")).to.equal("partial");
+    expect(existsSync(second)).to.equal(false);
+    expect(() => writeNewFiles([[first, "{}"]], "keep records")).to.throw("exists: keep records");
+    expect(readFileSync(first, "utf8")).to.equal("partial");
   });
 });
