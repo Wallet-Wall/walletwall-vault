@@ -10,7 +10,7 @@
  * working directory; the gnark image the record must name is the pinned prover's default, from the proving-artifacts
  * observation. No network, no download, no archive: the observations are the measurements. Research prototype.
  */
-import { mkdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,7 +28,7 @@ import { archiveRecordErrors } from "./lib/sp1-circuit-archive";
 import { committedProductionAnchor } from "./lib/sp1-circuit-tooling";
 import { PROVING_ARTIFACTS_OBSERVATION_REL } from "./lib/sp1-proving-availability";
 import { runScript } from "./lib/run-script";
-import { writeNewFiles } from "./lib/write-once";
+import { createEvidenceOutputDirectory, writeNewFiles } from "./lib/write-once";
 
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 
@@ -64,7 +64,7 @@ runScript(async () => {
     );
   }
   const rel = productionRecordRel(anchor);
-  mkdirSync(dirname(resolve(REPO, rel)), { recursive: true });
+  createEvidenceOutputDirectory(dirname(resolve(REPO, rel)), REPO);
   writeNewFiles([[resolve(REPO, rel), serializeJson(record)]], "a production record is never overwritten");
   console.log(
     `${rel}: ${record.archive.bytes} bytes, sha256 ${record.archive.sha256}, ${record.members.length} members, ${record.mirrors.length} mirrors.`,
